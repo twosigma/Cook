@@ -159,7 +159,11 @@ def query_across_clusters(clusters, query_fn):
         for future, cluster in future_to_cluster.items():
             entities = future.result()
             all_entities['clusters'][cluster['name']] = entities
-            count += entities['count']
+            if entities.get('using_pools', False):
+                for pool_entities in entities['pools'].values():
+                    count += pool_entities['count']
+            else:
+                count += entities['count']
     all_entities['count'] = count
     return all_entities
 

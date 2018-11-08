@@ -1748,7 +1748,15 @@ class CookCliTest(util.CookTest):
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(3, len(uuids))
         uuid_7, uuid_8, uuid_9 = uuids
-        all_uuids = [uuid_1, uuid_2, uuid_3, uuid_4, uuid_5, uuid_6, uuid_7, uuid_8, uuid_9]
+
+        cp, uuids = cli.submit(command, self.cook_url, submit_flags='--cpus 0.2 --mem 32 --pool alpha')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        uuid_10 = uuids[0]
+        cp, uuids = cli.submit(command, self.cook_url, submit_flags='--cpus 0.2 --mem 32 --pool alpha')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        uuid_11 = uuids[0]
+
+        all_uuids = [uuid_1, uuid_2, uuid_3, uuid_4, uuid_5, uuid_6, uuid_7, uuid_8, uuid_9, uuid_10, uuid_11]
         try:
             # Wait for all jobs to be running
             util.wait_for_jobs(self.cook_url, all_uuids, 'running')
@@ -1758,7 +1766,9 @@ class CookCliTest(util.CookTest):
             cp, usage = cli.usage(user, self.cook_url)
             self.assertEqual(0, cp.returncode, cp.stderr)
             self.logger.info(f'Usage map: {json.dumps(usage, indent=2)}')
-            cluster_usage = usage['clusters'][self.cook_url]
+
+            # Check default pool, gamma
+            cluster_usage = usage['clusters'][self.cook_url]['pools']['gamma']
             total_usage = cluster_usage['usage']
             share = cluster_usage['share']
             applications = cluster_usage['applications']
@@ -1807,6 +1817,32 @@ class CookCliTest(util.CookTest):
             self.assertIn(uuid_7, custom_application_grouped_jobs)
             self.assertIn(uuid_8, custom_application_grouped_jobs)
             self.assertIn(uuid_9, custom_application_grouped_jobs)
+
+            # Check default pool, alpha
+            cluster_usage = usage['clusters'][self.cook_url]['pools']['alpha']
+            total_usage = cluster_usage['usage']
+            share = cluster_usage['share']
+            applications = cluster_usage['applications']
+            cs_usage = applications['cook-scheduler-cli']['usage']
+            ungrouped_usage = applications['cook-scheduler-cli']['groups']['null']['usage']
+            ungrouped_jobs = applications['cook-scheduler-cli']['groups']['null']['jobs']
+
+            self.assertLessEqual(round(0.2 * 2, 1), round(total_usage['cpus'], 1))
+            self.assertLessEqual(round(32 * 2, 1), round(total_usage['mem'], 1))
+            self.assertLessEqual(0, total_usage['gpus'])
+            self.assertLessEqual(9, usage['count'])
+            self.assertLessEqual(0, share['cpus'])
+            self.assertLessEqual(0, share['mem'])
+            self.assertLessEqual(0, share['gpus'])
+            self.assertLessEqual(round(0.2 * 2, 1), round(cs_usage['cpus'], 1))
+            self.assertLessEqual(round(32 * 2, 1), round(cs_usage['mem'], 1))
+            self.assertLessEqual(0, cs_usage['gpus'])
+            self.assertLessEqual(round(0.2 * 2, 1), round(ungrouped_usage['cpus'], 1))
+            self.assertLessEqual(round(32 * 2, 1), round(ungrouped_usage['mem'], 1))
+            self.assertLessEqual(0, ungrouped_usage['gpus'])
+            self.assertIn(uuid_10, ungrouped_jobs)
+            self.assertIn(uuid_11, ungrouped_jobs)
+
         finally:
             cli.kill(all_uuids, self.cook_url)
 

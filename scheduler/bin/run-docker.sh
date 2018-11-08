@@ -134,9 +134,6 @@ docker create \
     --publish=${COOK_NREPL_PORT}:${COOK_NREPL_PORT} \
     --publish=${COOK_PORT}:${COOK_PORT} \
     --publish=${COOK_SSL_PORT}:${COOK_SSL_PORT} \
-    --publish=4334:4334 \
-    --publish=4335:4335 \
-    --publish=4336:4336 \
     -e "COOK_EXECUTOR=file://${SCHEDULER_EXECUTOR_DIR}/${EXECUTOR_NAME}.tar.gz" \
     -e "COOK_EXECUTOR_COMMAND=${COOK_EXECUTOR_COMMAND}" \
     -e "COOK_PORT=${COOK_PORT}" \

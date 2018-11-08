@@ -6,20 +6,7 @@ from cook.format import format_job_memory
 from cook.querying import query_across_clusters, make_job_request
 from cook.util import guard_no_cluster, current_user, print_info, print_error
 
-
-def get_usage_on_cluster(cluster, user):
-    """Queries cluster for usage information for the given user"""
-    params = {'user': user, 'group_breakdown': 'true'}
-    usage_map = http.make_data_request(cluster, lambda: http.get(cluster, 'usage', params=params))
-    if not usage_map:
-        print_error(f'Unable to retrieve usage information on {cluster["name"]} ({cluster["url"]}).')
-        return {'count': 0}
-
-    share_map = http.make_data_request(cluster, lambda: http.get(cluster, 'share', params={'user': user}))
-    if not share_map:
-        print_error(f'Unable to retrieve share information on {cluster["name"]} ({cluster["url"]}).')
-        return {'count': 0}
-
+def get_job_data(cluster, usage_map):
     ungrouped_running_job_uuids = usage_map['ungrouped']['running_jobs']
     job_uuids_to_retrieve = ungrouped_running_job_uuids[:]
     grouped = usage_map['grouped']
@@ -32,10 +19,6 @@ def get_usage_on_cluster(cluster, user):
 
     applications = {}
     num_running_jobs = len(job_uuids_to_retrieve)
-    query_result = {'usage': usage_map['total_usage'],
-                    'count': num_running_jobs,
-                    'share': share_map,
-                    'applications': applications}
 
     if num_running_jobs > 0:
         jobs = http.make_data_request(cluster, lambda: make_job_request(cluster, job_uuids_to_retrieve))
@@ -62,8 +45,50 @@ def get_usage_on_cluster(cluster, user):
             applications[application]['groups'][group]['usage']['gpus'] += job['gpus']
             applications[application]['groups'][group]['jobs'].append(job['uuid'])
 
-    return query_result
+    return {'count': num_running_jobs,
+            'applications': applications}
 
+def get_usage_on_cluster(cluster, user):
+    """Queries cluster for usage information for the given user"""
+    params = {'user': user, 'group_breakdown': 'true'}
+    usage_map = http.make_data_request(cluster, lambda: http.get(cluster, 'usage', params=params))
+    if not usage_map:
+        print_error(f'Unable to retrieve usage information on {cluster["name"]} ({cluster["url"]}).')
+        return {'count': 0}
+
+    using_pools = 'pools' in usage_map
+    pool_names = usage_map['pools'].keys() if using_pools else []
+
+    share_map = http.make_data_request(cluster, lambda: http.get(cluster, 'share', params={'user': user}))
+    if not share_map:
+        print_error(f'Unable to retrieve share information on {cluster["name"]} ({cluster["url"]}).')
+        return {'count': 0}
+
+    if using_pools != ('pools' in share_map):
+        print_error(f'Share information on {cluster["name"]} ({cluster["url"]}) is invalid. Usage information is{"" if using_pools else " not"} per pool, but share is{"" if not using_pools else " not"}')
+        return {'count': 0}
+    if pool_names != (share_map['pools'].keys() if using_pools else []):
+        print_error(f'Share information on {cluster["name"]} ({cluster["url"]}) is invalid. Usage information has pools: {pool_names}, but share has pools: {share_map["pools"].keys()}')
+        return {'count': 0}
+
+    def make_query_result(using_pools, usage_map, share_map):
+        query_result = {'using_pools': using_pools,
+                      'usage': usage_map['total_usage'],
+                      'share': share_map}
+        query_result.update(get_job_data(cluster, usage_map))
+        return query_result
+
+    if using_pools:
+        query_result = {'using_pools': using_pools,
+                        'pools': dict([
+                            [pool_name,
+                             make_query_result(using_pools,
+                                               usage_map['pools'][pool_name],
+                                               share_map['pools'][pool_name])]
+                            for pool_name in pool_names])}
+        return query_result
+    else:
+        return make_query_result(using_pools, usage_map, share_map)
 
 def query(clusters, user):
     """
@@ -127,34 +152,40 @@ def format_percent(n):
     return '{:.1%}'.format(n)
 
 
+def print_formatted_cluster_usage(cluster, cluster_usage):
+    usage_map = cluster_usage['usage']
+    share_map = cluster_usage['share']
+    print_info(colors.bold(cluster))
+    print_info(format_share(share_map))
+    print_info(format_usage(usage_map))
+    applications = cluster_usage['applications']
+    if applications:
+        print_info('Applications:')
+    else:
+        print_info(colors.waiting('Nothing Running'))
+    for application, application_usage in applications.items():
+        usage_map = application_usage['usage']
+        print_info(f'- {colors.running(application if application else "[no application defined]")}')
+        print_info(f'  {format_usage(usage_map)}')
+        print_info('  Job Groups:')
+        for group, group_usage in application_usage['groups'].items():
+            usage_map = group_usage['usage']
+            jobs = group_usage['jobs']
+            print_info(f'\t- {colors.bold(group if group else "[ungrouped]")}')
+            print_info(f'\t  {format_usage(usage_map)}')
+            print_info(f'\t  Jobs: {len(jobs)}')
+            print_info('')
+    print_info('')
+
 def print_formatted(query_result):
     """Prints the query result as a hierarchical set of bullets"""
     for cluster, cluster_usage in query_result['clusters'].items():
-        if 'usage' in cluster_usage:
-            usage_map = cluster_usage['usage']
-            share_map = cluster_usage['share']
-            print_info(colors.bold(cluster))
-            print_info(format_share(share_map))
-            print_info(format_usage(usage_map))
-            applications = cluster_usage['applications']
-            if applications:
-                print_info('Applications:')
+        if 'using_pools' in cluster_usage:
+            if cluster_usage['using_pools']:
+                for pool, pool_usage in cluster_usage['pools'].items():
+                    print_formatted_cluster_usage(f'{cluster} ({pool} pool)', pool_usage)
             else:
-                print_info(colors.waiting('Nothing Running'))
-            for application, application_usage in applications.items():
-                usage_map = application_usage['usage']
-                print_info(f'- {colors.running(application if application else "[no application defined]")}')
-                print_info(f'  {format_usage(usage_map)}')
-                print_info('  Job Groups:')
-                for group, group_usage in application_usage['groups'].items():
-                    usage_map = group_usage['usage']
-                    jobs = group_usage['jobs']
-                    print_info(f'\t- {colors.bold(group if group else "[ungrouped]")}')
-                    print_info(f'\t  {format_usage(usage_map)}')
-                    print_info(f'\t  Jobs: {len(jobs)}')
-                    print_info('')
-            print_info('')
-
+                print_formatted_cluster_usage(cluster, cluster_usage)
 
 def usage(clusters, args, _):
     """Prints cluster usage info for the given user"""
