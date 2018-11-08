@@ -54,9 +54,9 @@
               :job-launch {:bucket-size 10000
                            :enforce? true
                            :tokens-replenished-per-minute 5000}
-              :job-submission {:bucket-size 1003
+              :job-submission {:bucket-size 1000
                                :enforce? true
-                               :tokens-replenished-per-minute 601}
+                               :tokens-replenished-per-minute 600}
               :user-limit-per-m 1000000}
  :rebalancer {:dru-scale 1
               :interval-seconds 30
