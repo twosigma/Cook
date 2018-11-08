@@ -1782,6 +1782,7 @@ class CookCliTest(util.CookTest):
             cluster_usage = usage_data['pools'][default_pool] if usage_data.get('using_pools', False) else usage_data
             total_usage = cluster_usage['usage']
             share = cluster_usage['share']
+            quota = cluster_usage['quota']
             applications = cluster_usage['applications']
             cs_usage = applications['cook-scheduler-cli']['usage']
             ungrouped_usage = applications['cook-scheduler-cli']['groups']['null']['usage']
@@ -1802,6 +1803,9 @@ class CookCliTest(util.CookTest):
             self.assertLessEqual(0, share['cpus'])
             self.assertLessEqual(0, share['mem'])
             self.assertLessEqual(0, share['gpus'])
+            self.assertLessEqual(9, quota['cpus'])
+            self.assertLessEqual(2048, quota['mem'])
+            self.assertLessEqual(0, quota['gpus'])
             self.assertLessEqual(round(0.1 * 6, 1), round(cs_usage['cpus'], 1))
             self.assertLessEqual(round(16 * 6, 1), round(cs_usage['mem'], 1))
             self.assertLessEqual(0, cs_usage['gpus'])
@@ -1834,6 +1838,7 @@ class CookCliTest(util.CookTest):
                 cluster_usage = usage['clusters'][self.cook_url]['pools'][extra_pool]
                 total_usage = cluster_usage['usage']
                 share = cluster_usage['share']
+                quota = cluster_usage['quota']
                 applications = cluster_usage['applications']
                 cs_usage = applications['cook-scheduler-cli']['usage']
                 ungrouped_usage = applications['cook-scheduler-cli']['groups']['null']['usage']
@@ -1846,6 +1851,9 @@ class CookCliTest(util.CookTest):
                 self.assertLessEqual(0, share['cpus'])
                 self.assertLessEqual(0, share['mem'])
                 self.assertLessEqual(0, share['gpus'])
+                self.assertLessEqual(8, quota['cpus'])
+                self.assertLessEqual(1024, quota['mem'])
+                self.assertLessEqual(0, quota['gpus'])
                 self.assertLessEqual(round(0.2 * 2, 1), round(cs_usage['cpus'], 1))
                 self.assertLessEqual(round(32 * 2, 1), round(cs_usage['mem'], 1))
                 self.assertLessEqual(0, cs_usage['gpus'])

@@ -76,10 +76,27 @@ def get_usage_on_cluster(cluster, user):
                     f'has pools: {share_map["pools"].keys()}')
         return {'count': 0}
 
-    def make_query_result(using_pools, usage_map, share_map, pool_data=None):
+    quota_map = http.make_data_request(cluster, lambda: http.get(cluster, 'quota', params={'user': user}))
+    if not quota_map:
+        print_error(f'Unable to retrieve quota information on {cluster["name"]} ({cluster["url"]}).')
+        return {'count': 0}
+
+    if using_pools != ('pools' in quota_map):
+        print_error(f'Quota information on {cluster["name"]} ({cluster["url"]}) is invalid. '
+                    f'Usage information is{"" if using_pools else " not"} per pool, but quota '
+                    f'is{"" if not using_pools else " not"}')
+        return {'count': 0}
+    if pool_names != (quota_map['pools'].keys() if using_pools else []):
+        print_error(f'Quota information on {cluster["name"]} ({cluster["url"]}) is invalid. '
+                    f'Usage information has pools: {pool_names}, but quota '
+                    f'has pools: {quota_map["pools"].keys()}')
+        return {'count': 0}
+
+    def make_query_result(using_pools, usage_map, share_map, quota_map, pool_data=None):
         query_result = {'using_pools': using_pools,
                         'usage': usage_map['total_usage'],
-                        'share': share_map}
+                        'share': share_map,
+                        'quota': quota_map}
         query_result.update(get_job_data(cluster, usage_map))
         if pool_data:
             query_result.update(pool_data)
@@ -97,11 +114,12 @@ def get_usage_on_cluster(cluster, user):
                         'pools': {pool_name: make_query_result(using_pools,
                                                                usage_map['pools'][pool_name],
                                                                share_map['pools'][pool_name],
+                                                               quota_map['pools'][pool_name],
                                                                {'state': pools_dict[pool_name]['state']})
                                   for pool_name in pool_names}}
         return query_result
     else:
-        return make_query_result(using_pools, usage_map, share_map)
+        return make_query_result(using_pools, usage_map, share_map, quota_map)
 
 def query(clusters, user):
     """
@@ -133,31 +151,37 @@ def format_usage(usage_map):
         s += f', {gpus} GPU{"s" if gpus > 1 else ""}'
     return s
 
+def format_resource(resource_map, heading):
+    """Given a "resource map" with cpus, mem, and gpus, returns a formatted resource string"""
+    cpus = resource_map['cpus']
+    mem = resource_map['mem']
+    gpus = resource_map['gpus']
+
+    if cpus == sys.float_info.max:
+        cpu_resource = 'No CPU Limit'
+    else:
+        cpu_resource = f'{cpus} CPU{"s" if cpus > 1 else ""}'
+
+    if mem == sys.float_info.max:
+        mem_resource = 'No Memory Limit'
+    else:
+        mem_resource = f'{format_job_memory(resource_map)} Memory'
+
+    if gpus == sys.float_info.max:
+        gpu_resource = 'No GPU Limit'
+    else:
+        gpu_resource = f'{gpus} GPU{"s" if gpus > 1 else ""}'
+
+    s = f'{heading}: {cpu_resource}, {mem_resource}, {gpu_resource}'
+    return s
 
 def format_share(share_map):
     """Given a "share map" with cpus, mem, and gpus, returns a formatted share string"""
-    cpus = share_map['cpus']
-    mem = share_map['mem']
-    gpus = share_map['gpus']
+    return format_resource(share_map, 'Non-preemptible share')
 
-    if cpus == sys.float_info.max:
-        cpu_share = 'No CPU Limit'
-    else:
-        cpu_share = f'{cpus} CPU{"s" if cpus > 1 else ""}'
-
-    if mem == sys.float_info.max:
-        mem_share = 'No Memory Limit'
-    else:
-        mem_share = f'{format_job_memory(share_map)} Memory'
-
-    if gpus == sys.float_info.max:
-        gpu_share = 'No GPU Limit'
-    else:
-        gpu_share = f'{gpus} GPU{"s" if gpus > 1 else ""}'
-
-    s = f'Share: {cpu_share}, {mem_share}, {gpu_share}'
-    return s
-
+def format_quota(quota_map):
+    """Given a "quota map" with cpus, mem, and gpus, returns a formatted share string"""
+    return format_resource(quota_map, 'Max quota')
 
 def format_percent(n):
     """Formats n as a percentage"""
@@ -168,7 +192,9 @@ def print_formatted_cluster_or_pool_usage(cluster_or_pool, cluster_or_pool_usage
     """Prints the query result for a cluster or pool in a cluster as a hierarchical set of bullets"""
     usage_map = cluster_or_pool_usage['usage']
     share_map = cluster_or_pool_usage['share']
+    quota_map = cluster_usage['quota']
     print_info(colors.bold(cluster_or_pool))
+    print_info(format_quota(quota_map))
     print_info(format_share(share_map))
     print_info(format_usage(usage_map))
     applications = cluster_or_pool_usage['applications']
