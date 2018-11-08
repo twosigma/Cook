@@ -39,8 +39,7 @@
   "
   ([^double token-rate ^long max-tokens ^long current-time ^long current-tokens]
    {:pre [(> token-rate 0)
-          (>= max-tokens 0)
-          (>= current-time 0)]}
+          (>= max-tokens 0)]}
    {:token-rate token-rate :max-tokens max-tokens :last-update current-time :current-tokens current-tokens})
   ([^double token-rate ^long max-tokens ^long current-time]
    (create-tbf token-rate max-tokens current-time 0)))
@@ -60,7 +59,6 @@
   "Earn tokens. Helper function, takes the current timestamp and adds in any newly earned tokens. It is numerically
   robust to the timestamp being out of order."
   [{:keys [last-update token-rate] :as tbf} ^long current-time]
-  {:pre [(>= current-time 0)]}
   (let [current-time (max current-time last-update)]
     (cond-> tbf
             (not (= current-time last-update))

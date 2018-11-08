@@ -13,6 +13,7 @@ COOK_AUTH=one-user
 COOK_EXECUTOR=mesos
 COOK_POOLS=on
 CONFIG_FILE=scheduler_travis_config.edn
+JOB_LAUNCH_RATE_LIMIT=off
 
 while (( $# > 0 )); do
   case "$1" in
@@ -26,6 +27,10 @@ while (( $# > 0 )); do
       ;;
     --pools=*)
       COOK_POOLS="${1#--pools=}"
+      shift
+      ;;
+    --job-launch-rate-limit=*)
+      JOB_LAUNCH_RATE_LIMIT="${1#--job-launch-rate-limit=}"
       shift
       ;;
     *)
@@ -107,6 +112,24 @@ case "$COOK_POOLS" in
     exit 1
 esac
 
+case "$JOB_LAUNCH_RATE_LIMIT" in
+    on)
+      # Note: Carefully chosen for test_rate_limit_launching_jobs unit test.
+      export JOB_LAUNCH_RATE_LIMIT_BUCKET_SIZE=10
+      export JOB_LAUNCH_RATE_LIMIT_REPLENISHED_PER_MINUTE=5
+      echo "Job launch rate limit turned on"
+    ;;
+    off)
+      # Note: Wide enough that we're unlikely to hit these in testing.
+      export JOB_LAUNCH_RATE_LIMIT_BUCKET_SIZE=10000
+      export JOB_LAUNCH_RATE_LIMIT_REPLENISHED_PER_MINUTE=10000
+      echo "Job launch rate limit turned off"
+    ;;
+  *)
+    echo "Unrecognized job-launch-rate-limit toggle (should be on/off): $JOB_LAUNCH_RATE_LIMIT"
+    exit 1
+esac
+
 pip install flask
 export DATA_LOCAL_SERVICE="http://localhost:5000"
 export DATA_LOCAL_ENDPOINT="${DATA_LOCAL_SERVICE}/retrieve-costs"
@@ -163,9 +186,14 @@ export COOK_SLAVE_URL=http://localhost:12323
 export COOK_MESOS_LEADER_URL=${MINIMESOS_MASTER}
 {
     echo "Using Mesos leader URL: ${COOK_MESOS_LEADER_URL}"
-    pytest -n4 -v --color=no --timeout-method=thread --boxed -m "not serial" || test_failures=true
-    pytest -n0 -v --color=no --timeout-method=thread --boxed -m "serial" || test_failures=true
+    if [ "$JOB_LAUNCH_RATE_LIMIT" = off ]; then 
+      pytest -n4 -v --color=no --timeout-method=thread --boxed -m "not serial" || test_failures=true
+      pytest -n0 -v --color=no --timeout-method=thread --boxed -m "serial" || test_failures=true
+    else
+      pytest -n0 -v --color=no --timeout-method=thread --boxed -m multi_user tests/cook/test_multi_user.py -k test_rate_limit_launching_jobs || test_failures=true
+    fi
 } &> >(tee ./log/pytest.log)
+ 
 
 # If there were failures, then we should save the logs
 if [ "$test_failures" = true ]; then

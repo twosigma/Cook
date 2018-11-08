@@ -40,6 +40,7 @@
             [cook.mesos.share :as share]
             [cook.mesos.task :as task]
             [cook.mesos.util :as util]
+            [cook.rate-limit :as ratelimit]
             [datomic.api :as d :refer (q)]
             [mesomatic.scheduler :as mesos]
             [metatransaction.core :refer (db)]
@@ -636,10 +637,29 @@
    Further limit the considerable jobs to a maximum of num-considerable jobs."
   [db pending-jobs user->quota user->usage num-considerable pool-name]
   (log/debug "In" pool-name "pool, there are" (count pending-jobs) "pending jobs:" pending-jobs)
-  (->> pending-jobs
-       (filter-based-on-quota user->quota user->usage)
-       (filter (fn [job] (util/job-allowed-to-start? db job)))
-       (take num-considerable)))
+  (let [enforcing-job-launch-rate-limit? (ratelimit/enforce? ratelimit/job-launch-rate-limiter)
+        user->number-jobs (atom {})
+        user->max-time-until-out-of-debt (atom {})
+        user-within-launch-rate-limit?-fn
+        (fn
+          [{:keys [job/user]}]
+          (let [time-until-out-of-debt-millis (ratelimit/time-until-out-of-debt-millis! ratelimit/job-launch-rate-limiter user)
+                in-debt? (not (zero? time-until-out-of-debt-millis))]
+            (when in-debt?
+              (swap! user->max-time-until-out-of-debt update user #(max (or % 0) time-until-out-of-debt-millis))
+              (swap! user->number-jobs update user #(inc (or % 0))))
+            (not (and in-debt? enforcing-job-launch-rate-limit?))))
+        considerable-jobs
+        (->> pending-jobs
+             (filter-based-on-quota user->quota user->usage)
+             (filter (fn [job] (util/job-allowed-to-start? db job)))
+             (filter user-within-launch-rate-limit?-fn)
+             (take num-considerable)
+             (doall))]
+    (log/info "Users job launch rate-limit filtered and counts: " @user->number-jobs)
+    (log/info "Users job launch rate-limit filtered and max time until out of debt: " @user->max-time-until-out-of-debt)
+    considerable-jobs))
+
 
 (defn matches->job-uuids
   "Returns the matched job uuids."
@@ -733,12 +753,16 @@
     (meters/mark! (meters/meter (metric-title "matched-tasks" pool-name)) (count task-txns))
     (timers/time!
       (timers/timer (metric-title "handle-resource-offer!-mesos-submit-duration" pool-name))
+      ;; Iterates over offers (each offer can match to multiple tasks)
       (doseq [{:keys [leases task-metadata-seq]} matches
               :let [offers (mapv :offer leases)
                     task-infos (task/compile-mesos-messages offers task-metadata-seq)]]
         (log/debug "Matched task-infos" task-infos)
         (mesos/launch-tasks! driver (mapv :id offers) task-infos)
-        (doseq [{:keys [hostname task-request]} task-metadata-seq]
+        (doseq [{:keys [hostname task-request] :as meta} task-metadata-seq]
+          ; Iterate over the tasks we matched
+          (let [user (get-in task-request [:job :job/user])]
+            (ratelimit/spend! ratelimit/job-launch-rate-limiter user 1))
           (locking fenzo
             (.. fenzo
                 (getTaskAssigner)
