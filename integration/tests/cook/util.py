@@ -1098,28 +1098,15 @@ def active_pools(cook_url):
     return [p for p in pools if p['state'] == 'active'], resp
 
 
-@functools.lru_cache()
-def _cook_estimated_completion_constraint():
-    """Get the estimated completion constraint config from the /settings endpoint"""
-    cook_url = retrieve_cook_url()
-    _wait_for_cook(cook_url)
-    estimated_completion_constraint = settings(cook_url).get('estimated-completion-constraint', None)
-    logger.info(f"Cook's estimated completion constraint is {estimated_completion_constraint}")
-    return estimated_completion_constraint
-
-
 def has_ephemeral_hosts():
     """Returns True if the cluster under test has ephemeral hosts"""
     s = os.getenv('COOK_TEST_EPHEMERAL_HOSTS')
     if s is not None:
         return to_bool(s)
     else:
-        try:
-            # If the estimated completion constraint is turned on, it's a
-            # good indication that the hosts on the cluster are ephemeral
-            return _cook_estimated_completion_constraint() is not None
-        except:
-            return False
+        # Default to assuming that the cluster
+        # under test does not have ephemeral hosts
+        return False
 
 
 @functools.lru_cache()
