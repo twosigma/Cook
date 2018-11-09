@@ -1166,8 +1166,7 @@ class CookTest(util.CookTest):
 
     @unittest.skipIf(util.has_ephemeral_hosts(), util.EPHEMERAL_HOSTS_SKIP_REASON)
     def test_hostname_equals_job_constraint(self):
-        state = util.get_mesos_state(self.mesos_url)
-        hosts = [agent['hostname'] for agent in state['slaves']][:10]
+        hosts = util.hosts_to_consider(self.cook_url, self.mesos_url)[:10]
 
         bad_job_uuid, resp = util.submit_job(self.cook_url, constraints=[["HOSTNAME",
                                                                           "EQUALS",
@@ -1176,7 +1175,8 @@ class CookTest(util.CookTest):
 
         try:
             host_to_job_uuid = {}
-            for hostname in hosts:
+            for host in hosts:
+                hostname = host['hostname']
                 constraints = [["HOSTNAME", "EQUALS", hostname]]
                 job_uuid, resp = util.submit_job(self.cook_url, constraints=constraints, name=self.current_name())
                 self.assertEqual(resp.status_code, 201, resp.text)
@@ -1184,15 +1184,17 @@ class CookTest(util.CookTest):
 
             try:
                 for hostname, job_uuid in host_to_job_uuid.items():
+                    self.logger.info(f'Waiting for job {job_uuid} to complete')
                     job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
                     hostname_constrained = job['instances'][0]['hostname']
                     self.assertEqual(hostname, hostname_constrained)
                     self.assertEqual([["HOSTNAME", "EQUALS", hostname]], job['constraints'])
                 # This job should have been scheduled since the job submitted after it has completed
                 # however, its constraint means it won't get scheduled
+                self.logger.info(f'Waiting for job {bad_job_uuid} to be waiting')
                 util.wait_for_job(self.cook_url, bad_job_uuid, 'waiting', max_wait_ms=3000)
             finally:
-                util.kill_jobs(self.cook_url, host_to_job_uuid.values())
+                util.kill_jobs(self.cook_url, list(host_to_job_uuid.values()))
         finally:
             util.kill_jobs(self.cook_url, [bad_job_uuid])
 
