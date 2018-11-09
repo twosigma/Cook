@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.25.0] - 2018-11-08
+### Added
+- Support for job launch rate limits, from @scrosby
+### Changed
+- Updated dependencies for integration tests to newer versions
+
 ## [1.24.0] - 2018-10-26
 ### Added
 - Support for x-cook-pool header, from @pschorf
