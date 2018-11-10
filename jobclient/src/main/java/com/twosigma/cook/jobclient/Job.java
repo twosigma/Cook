@@ -88,6 +88,7 @@ final public class Job {
         private Long _expectedRuntime;
         private Status _status;
         private Integer _priority;
+        private String _pool;
         private Boolean _isMeaCulpaRetriesDisabled;
         private List<Instance> _instances = Collections.synchronizedList(new ArrayList<Instance>());
         private List<FetchableURI> _uris = new ArrayList<>();
@@ -139,12 +140,12 @@ final public class Job {
                 _isMeaCulpaRetriesDisabled = false;
             }
             return new Job(_uuid, _name, _command, _executor, _memory, _cpus, _retries, _maxRuntime, _expectedRuntime, _status,
-                    _priority, _isMeaCulpaRetriesDisabled, _instances, _env, _uris, _container, _labels, _constraints,
+                    _priority, _pool, _isMeaCulpaRetriesDisabled, _instances, _env, _uris, _container, _labels, _constraints,
                     _groups, _application, _progressOutputFile, _progressRegexString, _user, _datasets);
         }
 
         /**
-         * Set command, memory, cpus, env vars, uris, and retries from a job.
+         * Set command, memory, cpus, env vars, uris, pool and retries from a job.
          *
          * @param job {@link Job} specifies a job.
          * @return this builder.
@@ -159,6 +160,7 @@ final public class Job {
             setEnv(job.getEnv());
             setUris(job.getUris());
             setContainer(job.getContainer());
+            setPool(job.getPool());
             setLabels(job.getLabels());
             setDatasets(job.getDatasets());
             if (job.isMeaCulpaRetriesDisabled()) {
@@ -502,6 +504,17 @@ final public class Job {
         }
 
         /**
+         * Set the pool the job is expected to run in.
+         *
+         * @param pool {@link String} specifies the pool the job is expected to run in.
+         * @return this builder.
+         */
+        public Builder setPool(String pool) {
+            _pool = pool;
+            return this;
+        }
+
+        /**
          * Add an instance to the job expected to build.
          *
          * @param instance {@link Instance} specifies an instance for a job.
@@ -592,6 +605,7 @@ final public class Job {
     final private Long _maxRuntime;
     final private Long _expectedRuntime;
     final private Integer _priority;
+    final private String _pool;
     final private Status _status;
     final private Boolean _isMeaCulpaRetriesDisabled;
     final private List<Instance> _instances;
@@ -610,7 +624,7 @@ final public class Job {
     final private JSONArray _datasets;
 
     private Job(UUID uuid, String name, String command, Executor executor, Double memory, Double cpus, Integer retries,
-                Long maxRuntime, Long expectedRuntime, Status status, Integer priority, Boolean isMeaCulpaRetriesDisabled,
+                Long maxRuntime, Long expectedRuntime, Status status, Integer priority, String pool, Boolean isMeaCulpaRetriesDisabled,
                 List<Instance> instances, Map<String, String> env, List<FetchableURI> uris, JSONObject container,
                 Map<String, String> labels, Set<Constraint> constraints, List<UUID> groups, Application application,
                 String progressOutputFile, String progressRegexString, String user, JSONArray datasets) {
@@ -625,6 +639,7 @@ final public class Job {
         _expectedRuntime = expectedRuntime;
         _status = status;
         _priority = priority;
+        _pool = pool;
         _isMeaCulpaRetriesDisabled = isMeaCulpaRetriesDisabled;
         _instances = ImmutableList.copyOf(instances);
         _env = ImmutableMap.copyOf(env);
@@ -786,6 +801,13 @@ final public class Job {
     }
 
     /**
+     * @return the job pool.
+     */
+    public String getPool() {
+        return _pool;
+    }
+
+    /**
      * @return whether "mea-culpa" retries is disabled.
      * @see <a href ="https://github.com/twosigma/Cook/blob/master/scheduler/docs/faq.md#how-can-i-configure-my-job-to-run-exactly-once">
      * how-can-i-configure-my-job-to-run-exactly-once
@@ -933,6 +955,9 @@ final public class Job {
         }
         if (job._datasets != null) {
             object.put("datasets", job._datasets);
+        }
+        if (job._pool != null) {
+            object.put("pool", job._pool);
         }
         return object;
     }
@@ -1098,6 +1123,9 @@ final public class Job {
             if (json.has("datasets")) {
                 jobBuilder.setDatasets(json.getJSONArray("datasets"));
             }
+            if (json.has("pool")) {
+                jobBuilder.setPool(json.getString("pool"));
+            }
             jobs.add(jobBuilder.build());
         }
         return jobs;
@@ -1121,7 +1149,7 @@ final public class Job {
         stringBuilder
                 .append("Job [_uuid=" + _uuid + ", _name=" + _name + ", _command=" + _command + ", _executor=" + _executor
                     + ", _memory=" + _memory + ", _cpus=" + _cpus + ", _retries=" + _retries
-                    + ", _maxRuntime=" + _maxRuntime + ", _status=" + _status + ", _priority=" + _priority
+                    + ", _maxRuntime=" + _maxRuntime + ", _status=" + _status + ", _priority=" + _priority + ", _pool=" + _pool
                     + ", _progressOutputFile=" + _progressOutputFile + ", _progressRegexString=" + _progressRegexString
                     + ", _isMeaCulpaRetriesDisabled=" + _isMeaCulpaRetriesDisabled + ", _user=" + _user + "]");
         stringBuilder.append('\n');
