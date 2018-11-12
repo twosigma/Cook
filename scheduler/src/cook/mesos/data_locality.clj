@@ -6,6 +6,7 @@
             [clj-time.format :as tf]
             [clojure.set :as set]
             [clojure.tools.logging :as log]
+            [cook.cache :as ccache]
             [cook.config :as config]
             [cook.mesos.util :as util]
             [datomic.api :as d]
@@ -49,7 +50,7 @@
 (defn get-dataset-maps
   "Returns the (possibly cached) datasets for the given job"
   [job]
-  (util/lookup-cache! job-uuid->dataset-maps-cache
+  (ccache/lookup-cache! job-uuid->dataset-maps-cache
                       :job/uuid
                       make-dataset-maps
                       job))
