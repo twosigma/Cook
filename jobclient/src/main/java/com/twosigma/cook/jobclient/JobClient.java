@@ -196,10 +196,10 @@ public class JobClient implements Closeable, JobClientInterface {
         }
 
         public Builder setKerberosAuth() {
-            return setKerberosAuth(null);
+            return setKerberosAuth((GSSCredentialProvider)null);
         }
 
-        public Builder setKerberosAuth(GSSCredentialProvider gssCrendentialProvider) {
+        public Builder setKerberosAuth(AuthSchemeProvider authSchemaProvider) {
             Credentials creds = new Credentials() {
                 @Override
                 public String getPassword() {
@@ -216,12 +216,13 @@ public class JobClient implements Closeable, JobClientInterface {
                     AuthScope.ANY_REALM, AuthSchemes.SPNEGO), creds);
             _httpClientBuilder.setDefaultCredentialsProvider(credentialsProvider);
 
-            AuthSchemeProvider authSchemaProvider = gssCrendentialProvider == null ?
-                    new SPNegoSchemeFactory(true) : new BasicSPNegoSchemeFactory(true, gssCrendentialProvider);
-
             _httpClientBuilder.setDefaultAuthSchemeRegistry(RegistryBuilder.<AuthSchemeProvider> create()
                     .register(AuthSchemes.SPNEGO, authSchemaProvider).build());
             return this;
+        }
+
+        public Builder setKerberosAuth(GSSCredentialProvider gssCredentialProvider) {
+            return setKerberosAuth(BasicSPNegoSchemeFactory.build(true, gssCredentialProvider));
         }
 
         /**
