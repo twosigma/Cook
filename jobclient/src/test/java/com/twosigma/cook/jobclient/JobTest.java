@@ -62,6 +62,7 @@ public class JobTest {
         jobBuilder.setExpectedRuntime(500L);
         jobBuilder.addConstraint(_constraint1);
         jobBuilder.addConstraint(Collections.singletonList(_constraint2));
+        jobBuilder.setPool("dummy-pool");
     }
 
     private JSONObject convertJobToJsonObject(Job basicJob) {
@@ -88,6 +89,7 @@ public class JobTest {
             new JSONObject().put("name", "baz-app").put("version", "1.2.3").toString());
         Assert.assertEquals(500L, jsonJob.getLong("expected_runtime"));
         Assert.assertEquals(true, jsonJob.getBoolean("disable_mea_culpa_retries"));
+        Assert.assertEquals("dummy-pool", jsonJob.getString("pool"));
         JSONArray constraints = jsonJob.getJSONArray("constraints");
         Assert.assertEquals(constraints.length(), 2);
         Assert.assertEquals(constraints.getJSONArray(0).toString(), _constraint1.toJson().toString());
@@ -111,6 +113,7 @@ public class JobTest {
         Assert.assertEquals(job.getApplication().getName(), "baz-app");
         Assert.assertEquals(job.getApplication().getVersion(), "1.2.3");
         Assert.assertEquals(job.getExpectedRuntime(), new Long(500L));
+        Assert.assertEquals(job.getPool(), "dummy-pool");
 
         final Set<Constraint> constraints = job.getConstraints();
         Assert.assertEquals(constraints.size(), 2);
