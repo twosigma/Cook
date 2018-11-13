@@ -2,6 +2,7 @@
 # See scheduler/src/cook/mesos/schema.clj for the reason code names.
 MAX_RUNTIME_EXCEEDED = 2003
 EXECUTOR_UNREGISTERED = 6002
+UNKNOWN_MESOS_REASON = 99001
 CMD_NON_ZERO_EXIT = 99003
 
 # Named constants for unscheduled job reason strings from cook or fenzo.

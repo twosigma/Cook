@@ -1339,7 +1339,10 @@ class CookTest(util.CookTest):
                 # cook killed the job, so it exits non-zero
                 reasons.CMD_NON_ZERO_EXIT,
                 # cook killed the job during setup, so the executor had an error
-                reasons.EXECUTOR_UNREGISTERED]
+                reasons.EXECUTOR_UNREGISTERED,
+                # we've seen this happen in the wild
+                reasons.UNKNOWN_MESOS_REASON
+            ]
             self.assertIn(jobs[1]['instances'][0]['reason_code'], valid_reasons, slow_job_details)
         finally:
             # Now try to kill the group again
