@@ -86,8 +86,8 @@ def get_usage_on_cluster(cluster, user):
     if using_pools:
         query_result = {'using_pools': using_pools,
                         'pools': {pool_name: make_query_result(using_pools,
-                                                                 usage_map['pools'][pool_name],
-                                                                 share_map['pools'][pool_name])
+                                                               usage_map['pools'][pool_name],
+                                                               share_map['pools'][pool_name])
                                   for pool_name in pool_names}}
         return query_result
     else:
