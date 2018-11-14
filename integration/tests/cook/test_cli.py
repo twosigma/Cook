@@ -1755,6 +1755,7 @@ class CookCliTest(util.CookTest):
         active_pools, _ = util.active_pools(self.cook_url)
         extra_pool = None
 
+        # If using pools, submit jobs to another pool
         if len(active_pools) > 0:
             for pool in active_pools:
                 if pool['name'] != default_pool:
@@ -1859,6 +1860,31 @@ class CookCliTest(util.CookTest):
 
         finally:
             cli.kill(all_uuids, self.cook_url)
+
+    @unittest.skipUnless(util.are_pools_enabled(), 'Pools are not enabled on the cluster')
+    def test_usage_pool_filter(self):
+        pools, _ = util.all_pools(self.cook_url)
+        user = 'none'
+
+        half_of_the_pools = [pool['name'] for pool in pools[:len(pools)//2]]
+        # filter half
+        cp, usage = cli.usage(user, self.cook_url, ' '.join(f'--pool {pool}' for pool in half_of_the_pools))
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(set(usage['clusters'][self.cook_url]['pools'].keys()), set(half_of_the_pools))
+        self.assertEqual('', cli.decode(cp.stderr))
+
+        # filter half with one bad pool
+        cp, usage = cli.usage(user, self.cook_url, '-p zzzz ' + ' '.join(f'--pool {pool}' for pool in half_of_the_pools))
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(set(usage['clusters'][self.cook_url]['pools'].keys()), set(half_of_the_pools))
+        self.assertIn("WARNING: 'zzzz' is not a valid pool in cluster", cli.decode(cp.stderr))
+
+        # filter half with two bad pools
+        cp, usage = cli.usage(user, self.cook_url, '-p zzzz -p zzzzx ' + ' '.join(f'--pool {pool}' for pool in half_of_the_pools))
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(set(usage['clusters'][self.cook_url]['pools'].keys()), set(half_of_the_pools))
+        self.assertIn(" are not valid pools in cluster", cli.decode(cp.stderr))
+
 
     def test_avoid_exit_on_connection_error(self):
         name = uuid.uuid4()

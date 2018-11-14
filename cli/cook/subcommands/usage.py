@@ -76,24 +76,34 @@ def get_usage_on_cluster(cluster, user):
                     f'has pools: {share_map["pools"].keys()}')
         return {'count': 0}
 
-    def make_query_result(using_pools, usage_map, share_map):
+    def make_query_result(using_pools, usage_map, share_map, pool_data=None):
         query_result = {'using_pools': using_pools,
                         'usage': usage_map['total_usage'],
                         'share': share_map}
         query_result.update(get_job_data(cluster, usage_map))
+        if pool_data:
+            query_result.update(pool_data)
         return query_result
 
     if using_pools:
+        pools = http.make_data_request(cluster, lambda: http.get(cluster, 'pools', params={}))
+        pools_dict = {pool['name']: pool for pool in pools}
+        for pool_name in pool_names:
+            if pool_name not in pools_dict or 'state' not in pools_dict[pool_name]:
+                print_error(f'Pool information on {cluster["name"]} ({cluster["url"]}) is invalid. '
+                            f'Can\'t determine the state of pool {pool_name}')
+                return {'count': 0}
         query_result = {'using_pools': using_pools,
                         'pools': {pool_name: make_query_result(using_pools,
                                                                usage_map['pools'][pool_name],
-                                                               share_map['pools'][pool_name])
+                                                               share_map['pools'][pool_name],
+                                                               {'state': pools_dict[pool_name]['state']})
                                   for pool_name in pool_names}}
         return query_result
     else:
         return make_query_result(using_pools, usage_map, share_map)
 
-def query(clusters, user, pools):
+def query(clusters, user):
     """
     Uses query_across_clusters to make the /usage
     requests in parallel across the given clusters
@@ -102,21 +112,7 @@ def query(clusters, user, pools):
     def submit(cluster, executor):
         return executor.submit(get_usage_on_cluster, cluster, user)
 
-    query_result = query_across_clusters(clusters, submit)
-    if pools:
-        query_result.update(
-            {'clusters':
-                 {cluster: cluster_usage
-                  for cluster, cluster_usage in query_result['clusters'].items()
-                  if cluster_usage['using_pools'] and set(cluster_usage['pools']) & set(pools)}})
-        for cluster, cluster_usage in query_result['clusters'].items():
-            cluster_usage.update(
-                {'pools':
-                     {pool: pool_usage
-                      for pool, pool_usage in cluster_usage['pools'].items()
-                      if pool in pools}})
-    return query_result
-
+    return query_across_clusters(clusters, submit)
 
 def print_as_json(query_result):
     """Prints the query result as raw JSON"""
@@ -168,14 +164,14 @@ def format_percent(n):
     return '{:.1%}'.format(n)
 
 
-def print_formatted_cluster_or_pool_usage(cluster, cluster_usage):
+def print_formatted_cluster_or_pool_usage(cluster_or_pool, cluster_or_pool_usage):
     """Prints the query result for a cluster or pool in a cluster as a hierarchical set of bullets"""
-    usage_map = cluster_usage['usage']
-    share_map = cluster_usage['share']
-    print_info(colors.bold(cluster))
+    usage_map = cluster_or_pool_usage['usage']
+    share_map = cluster_or_pool_usage['share']
+    print_info(colors.bold(cluster_or_pool))
     print_info(format_share(share_map))
     print_info(format_usage(usage_map))
-    applications = cluster_usage['applications']
+    applications = cluster_or_pool_usage['applications']
     if applications:
         print_info('Applications:')
     else:
@@ -200,25 +196,61 @@ def print_formatted(query_result):
         if 'using_pools' in cluster_usage:
             if cluster_usage['using_pools']:
                 for pool, pool_usage in cluster_usage['pools'].items():
-                    print_formatted_cluster_or_pool_usage(f'{cluster} ({pool} pool)', pool_usage)
+                    state = ' (inactive)' if pool_usage['state'] == 'inactive' else ''
+                    print_formatted_cluster_or_pool_usage(f'{cluster} - {pool}{state}', pool_usage)
             else:
                 print_formatted_cluster_or_pool_usage(cluster, cluster_usage)
+
+def filter_query_result_by_pools(query_result, pools):
+    """Filter query result if pools are provided. Return warning message if some of the pools not found in any cluster"""
+
+    clusters = []
+    known_pools = []
+
+    pools_set = set(pools)
+    filtered_clusters = {}
+    for cluster, cluster_usage in query_result['clusters'].items():
+        clusters.append(cluster)
+        if cluster_usage['using_pools']:
+            filtered_pools = {}
+            for pool, pool_usage in cluster_usage['pools'].items():
+                known_pools.append(pool)
+                if pool in pools_set:
+                    filtered_pools[pool] = pool_usage
+            if filtered_pools:
+                filtered_clusters[cluster] = cluster_usage
+                cluster_usage['pools'] = filtered_pools
+    query_result['clusters'] = filtered_clusters
+
+    missing_pools = pools_set.difference(set(known_pools))
+    if missing_pools:
+        print_error(f"WARNING: " +
+                    (f"'{list(missing_pools)[0]}' is not a valid pool in "
+                     if len(missing_pools) == 1 else
+                     f"{list(missing_pools)} are not valid pools in ") +
+                    (f"cluster '{clusters[0]}'"
+                     if len(clusters) == 1 else
+                     f"clusters {clusters}"))
+
+    return query_result
 
 def usage(clusters, args, _):
     """Prints cluster usage info for the given user"""
     guard_no_cluster(clusters)
     as_json = args.get('json')
     user = args.get('user')
-    pools = args.get('pools')
+    pools = args.get('pool')
 
-    query_result = query(clusters, user, pools)
+    query_result = query(clusters, user)
+
+    if pools:
+        query_result = filter_query_result_by_pools(query_result, pools)
+
     if as_json:
         print_as_json(query_result)
     else:
-        if pools and not query_result['clusters'].items():
-            print(f"No usage found for pools {pools}")
-            return 0
         print_formatted(query_result)
+
     return 0
 
 
@@ -226,7 +258,7 @@ def register(add_parser, add_defaults):
     """Adds this sub-command's parser and returns the action function"""
     parser = add_parser('usage', help='show breakdown of usage by application and group')
     parser.add_argument('--user', '-u', help='show usage for a user')
-    parser.add_argument('--pools', '-p', nargs='*', help='limit results to one or more pools')
+    parser.add_argument('--pool', '-p', action='append', help='filter by pool (can be repeated)')
     parser.add_argument('--json', help='show the data in JSON format', dest='json', action='store_true')
 
     add_defaults('usage', {'user': current_user()})
