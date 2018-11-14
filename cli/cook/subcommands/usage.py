@@ -192,7 +192,7 @@ def print_formatted_cluster_or_pool_usage(cluster_or_pool, cluster_or_pool_usage
     """Prints the query result for a cluster or pool in a cluster as a hierarchical set of bullets"""
     usage_map = cluster_or_pool_usage['usage']
     share_map = cluster_or_pool_usage['share']
-    quota_map = cluster_usage['quota']
+    quota_map = cluster_or_pool_usage['quota']
     print_info(colors.bold(cluster_or_pool))
     print_info(format_quota(quota_map))
     print_info(format_share(share_map))
