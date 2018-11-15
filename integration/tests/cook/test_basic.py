@@ -496,6 +496,7 @@ class CookTest(util.CookTest):
                 # If the command was killed, it will have exited with 137 (Fatal error signal of 128 + SIGKILL)
                 self.assertEqual('Command exited non-zero', instance['reason_string'], instance_details)
                 if executor_type == 'cook':
+                    instance = util.wait_for_exit_code(self.cook_url, job_uuid)
                     self.assertEqual(137, instance['exit_code'], instance_details)
             else:
                 self.fail('Unknown reason code {}, details {}'.format(instance['reason_code'], instance_details))
