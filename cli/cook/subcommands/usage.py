@@ -224,13 +224,15 @@ def filter_query_result_by_pools(query_result, pools):
 
     missing_pools = pools_set.difference(set(known_pools))
     if missing_pools:
-        print_error(f"WARNING: " +
-                    (f"'{list(missing_pools)[0]}' is not a valid pool in "
+        print_error((f"{list(missing_pools)[0]} is not a valid pool in "
                      if len(missing_pools) == 1 else
-                     f"{list(missing_pools)} are not valid pools in ") +
-                    (f"cluster '{clusters[0]}'"
+                     f"{' / '.join(missing_pools)} are not valid pools in ") +
+                    (clusters[0]
                      if len(clusters) == 1 else
-                     f"clusters {clusters}"))
+                     ' / '.join(clusters)) +
+                    '.')
+        if query_result['clusters'].items():
+            print_error('')
 
     return query_result
 

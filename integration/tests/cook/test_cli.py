@@ -1756,19 +1756,16 @@ class CookCliTest(util.CookTest):
         extra_pool = None
 
         # If using pools, submit jobs to another pool
-        if len(active_pools) > 0:
-            for pool in active_pools:
-                if pool['name'] != default_pool:
-                    extra_pool = pool['name']
-                    cp, uuids = cli.submit(command, self.cook_url, submit_flags=f'--cpus 0.2 --mem 32 --pool {extra_pool}')
-                    self.assertEqual(0, cp.returncode, cp.stderr)
-                    uuid_10 = uuids[0]
-                    all_uuids.append(uuid_10)
-                    cp, uuids = cli.submit(command, self.cook_url, submit_flags=f'--cpus 0.2 --mem 32 --pool {extra_pool}')
-                    self.assertEqual(0, cp.returncode, cp.stderr)
-                    uuid_11 = uuids[0]
-                    all_uuids.append(uuid_11)
-                    break
+        if len(active_pools) > 1:
+            extra_pool = next(pool['name'] for pool in active_pools if pool['name'] != default_pool)
+            cp, uuids = cli.submit(command, self.cook_url, submit_flags=f'--cpus 0.2 --mem 32 --pool {extra_pool}')
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            uuid_10 = uuids[0]
+            all_uuids.append(uuid_10)
+            cp, uuids = cli.submit(command, self.cook_url, submit_flags=f'--cpus 0.2 --mem 32 --pool {extra_pool}')
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            uuid_11 = uuids[0]
+            all_uuids.append(uuid_11)
 
         try:
             # Wait for all jobs to be running
