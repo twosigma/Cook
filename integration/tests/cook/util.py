@@ -560,7 +560,7 @@ def load_resource(cook_url, resource, uuid, assert_response=True):
     """Loads an entity by UUID using GET /resource/UUID"""
     response = session.get(f'{cook_url}/{resource}/{uuid}')
     if assert_response:
-        assert 200 == response.status_code
+        assert 200 == response.status_code, f'Expected 200, got {response.status_code} with body {response.text}'
     return response.json()
 
 
