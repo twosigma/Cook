@@ -357,5 +357,4 @@ def usage(user, cook_url, usage_flags='', flags=None):
     args = f'usage --user {user} --json {usage_flags}'
     cp = cli(args, cook_url, flags=flags)
     out = stdout(cp)
-    logging.info(output(cp))
     return cp, json.loads(out)
