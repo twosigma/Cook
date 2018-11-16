@@ -1748,7 +1748,25 @@ class CookCliTest(util.CookTest):
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(3, len(uuids))
         uuid_7, uuid_8, uuid_9 = uuids
+
         all_uuids = [uuid_1, uuid_2, uuid_3, uuid_4, uuid_5, uuid_6, uuid_7, uuid_8, uuid_9]
+
+        default_pool = util.default_pool(self.cook_url)
+        active_pools, _ = util.active_pools(self.cook_url)
+        extra_pool = None
+
+        # If using pools, submit jobs to another pool
+        if len(active_pools) > 1:
+            extra_pool = next(pool['name'] for pool in active_pools if pool['name'] != default_pool)
+            cp, uuids = cli.submit(command, self.cook_url, submit_flags=f'--cpus 0.2 --mem 32 --pool {extra_pool}')
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            uuid_10 = uuids[0]
+            all_uuids.append(uuid_10)
+            cp, uuids = cli.submit(command, self.cook_url, submit_flags=f'--cpus 0.2 --mem 32 --pool {extra_pool}')
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            uuid_11 = uuids[0]
+            all_uuids.append(uuid_11)
+
         try:
             # Wait for all jobs to be running
             util.wait_for_jobs(self.cook_url, all_uuids, 'running')
@@ -1758,7 +1776,10 @@ class CookCliTest(util.CookTest):
             cp, usage = cli.usage(user, self.cook_url)
             self.assertEqual(0, cp.returncode, cp.stderr)
             self.logger.info(f'Usage map: {json.dumps(usage, indent=2)}')
-            cluster_usage = usage['clusters'][self.cook_url]
+
+            # Check default pool
+            usage_data = usage['clusters'][self.cook_url]
+            cluster_usage = usage_data['pools'][default_pool] if usage_data.get('using_pools', False) else usage_data
             total_usage = cluster_usage['usage']
             share = cluster_usage['share']
             applications = cluster_usage['applications']
@@ -1807,8 +1828,60 @@ class CookCliTest(util.CookTest):
             self.assertIn(uuid_7, custom_application_grouped_jobs)
             self.assertIn(uuid_8, custom_application_grouped_jobs)
             self.assertIn(uuid_9, custom_application_grouped_jobs)
+
+            # Check extra pool
+            if usage_data.get('using_pools', False):
+                cluster_usage = usage['clusters'][self.cook_url]['pools'][extra_pool]
+                total_usage = cluster_usage['usage']
+                share = cluster_usage['share']
+                applications = cluster_usage['applications']
+                cs_usage = applications['cook-scheduler-cli']['usage']
+                ungrouped_usage = applications['cook-scheduler-cli']['groups']['null']['usage']
+                ungrouped_jobs = applications['cook-scheduler-cli']['groups']['null']['jobs']
+
+                self.assertLessEqual(round(0.2 * 2, 1), round(total_usage['cpus'], 1))
+                self.assertLessEqual(round(32 * 2, 1), round(total_usage['mem'], 1))
+                self.assertLessEqual(0, total_usage['gpus'])
+                self.assertLessEqual(9, usage['count'])
+                self.assertLessEqual(0, share['cpus'])
+                self.assertLessEqual(0, share['mem'])
+                self.assertLessEqual(0, share['gpus'])
+                self.assertLessEqual(round(0.2 * 2, 1), round(cs_usage['cpus'], 1))
+                self.assertLessEqual(round(32 * 2, 1), round(cs_usage['mem'], 1))
+                self.assertLessEqual(0, cs_usage['gpus'])
+                self.assertLessEqual(round(0.2 * 2, 1), round(ungrouped_usage['cpus'], 1))
+                self.assertLessEqual(round(32 * 2, 1), round(ungrouped_usage['mem'], 1))
+                self.assertLessEqual(0, ungrouped_usage['gpus'])
+                self.assertIn(uuid_10, ungrouped_jobs)
+                self.assertIn(uuid_11, ungrouped_jobs)
+
         finally:
             cli.kill(all_uuids, self.cook_url)
+
+    @unittest.skipUnless(util.are_pools_enabled(), 'Pools are not enabled on the cluster')
+    def test_usage_pool_filter(self):
+        pools, _ = util.all_pools(self.cook_url)
+        user = 'none'
+
+        half_of_the_pools = [pool['name'] for pool in pools[:len(pools)//2]]
+        # filter half
+        cp, usage = cli.usage(user, self.cook_url, ' '.join(f'--pool {pool}' for pool in half_of_the_pools))
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(set(usage['clusters'][self.cook_url]['pools'].keys()), set(half_of_the_pools))
+        self.assertEqual('', cli.decode(cp.stderr))
+
+        # filter half with one bad pool
+        cp, usage = cli.usage(user, self.cook_url, '-p zzzz ' + ' '.join(f'--pool {pool}' for pool in half_of_the_pools))
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(set(usage['clusters'][self.cook_url]['pools'].keys()), set(half_of_the_pools))
+        self.assertIn("zzzz is not a valid pool in ", cli.decode(cp.stderr))
+
+        # filter half with two bad pools
+        cp, usage = cli.usage(user, self.cook_url, '-p zzzz -p zzzzx ' + ' '.join(f'--pool {pool}' for pool in half_of_the_pools))
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(set(usage['clusters'][self.cook_url]['pools'].keys()), set(half_of_the_pools))
+        self.assertIn(" are not valid pools in ", cli.decode(cp.stderr))
+
 
     def test_avoid_exit_on_connection_error(self):
         name = uuid.uuid4()

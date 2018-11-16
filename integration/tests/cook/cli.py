@@ -352,9 +352,9 @@ def wait_for_output_file(cook_url, job_uuid, name):
     return response
 
 
-def usage(user, cook_url):
+def usage(user, cook_url, usage_flags='', flags=None):
     """Invokes the usage subcommand"""
-    args = f'usage --user {user} --json'
-    cp = cli(args, cook_url)
+    args = f'usage --user {user} --json {usage_flags}'
+    cp = cli(args, cook_url, flags=flags)
     out = stdout(cp)
     return cp, json.loads(out)

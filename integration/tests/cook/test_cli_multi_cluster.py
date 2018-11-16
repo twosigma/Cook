@@ -52,6 +52,45 @@ class MultiCookCliTest(unittest.TestCase):
             self.assertIn(str(uuid_1), uuids)
             self.assertIn(str(uuid_2), uuids)
 
+    def test_multicluster_usage(self):
+        pools_1, _ = util.all_pools(self.cook_url_1)
+        pools_2, _ = util.all_pools(self.cook_url_2)
+        pools = pools_1 + pools_2
+        user = 'none'
+
+        half_of_the_pools = [pool['name'] for pool in pools[:len(pools)//2]]
+        expected_pools_1 = set(half_of_the_pools) & set([pool['name'] for pool in pools_1])
+        expected_pools_2 = set(half_of_the_pools) & set([pool['name'] for pool in pools_2])
+
+        config = self.__two_cluster_config()
+        with cli.temp_config_file(config) as path:
+            # filter half
+            cp, usage = cli.usage(user, None, ' '.join(f'--pool {pool}' for pool in half_of_the_pools), flags='--config %s' % path)
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            if expected_pools_1:
+                self.assertEqual(set(usage['clusters']['cook1']['pools'].keys()), expected_pools_1)
+            if expected_pools_2:
+                self.assertEqual(set(usage['clusters']['cook2']['pools'].keys()), expected_pools_2)
+            self.assertEqual('', cli.decode(cp.stderr))
+
+            # filter half with one bad pool
+            cp, usage = cli.usage(user, None, '-p zzzz ' + ' '.join(f'--pool {pool}' for pool in half_of_the_pools), flags='--config %s' % path)
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            if expected_pools_1:
+                self.assertEqual(set(usage['clusters']['cook1']['pools'].keys()), expected_pools_1)
+            if expected_pools_2:
+                self.assertEqual(set(usage['clusters']['cook2']['pools'].keys()), expected_pools_2)
+            self.assertIn("zzzz is not a valid pool in ", cli.decode(cp.stderr))
+
+            # filter half with two bad pools
+            cp, usage = cli.usage(user, None, '-p zzzz -p zzzzx ' + ' '.join(f'--pool {pool}' for pool in half_of_the_pools), flags='--config %s' % path)
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            if expected_pools_1:
+                self.assertEqual(set(usage['clusters']['cook1']['pools'].keys()), expected_pools_1)
+            if expected_pools_2:
+                self.assertEqual(set(usage['clusters']['cook2']['pools'].keys()), expected_pools_2)
+            self.assertIn(" are not valid pools in ", cli.decode(cp.stderr))
+
     def test_ssh(self):
         # Submit to cluster #2
         cp, uuids = cli.submit('ls', self.cook_url_2)
