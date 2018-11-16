@@ -59,30 +59,37 @@ class MultiCookCliTest(unittest.TestCase):
         user = 'none'
 
         half_of_the_pools = [pool['name'] for pool in pools[:len(pools)//2]]
+        expected_pools_1 = set(half_of_the_pools) & set([pool['name'] for pool in pools_1])
+        expected_pools_2 = set(half_of_the_pools) & set([pool['name'] for pool in pools_2])
 
         config = self.__two_cluster_config()
         with cli.temp_config_file(config) as path:
-
             # filter half
             cp, usage = cli.usage(user, None, ' '.join(f'--pool {pool}' for pool in half_of_the_pools), flags='--config %s' % path)
             self.assertEqual(0, cp.returncode, cp.stderr)
-            self.assertEqual(set(usage['clusters']['cook1']['pools'].keys()), set(half_of_the_pools))
-            self.assertEqual(set(usage['clusters']['cook2']['pools'].keys()), set(half_of_the_pools))
+            if expected_pools_1:
+                self.assertEqual(set(usage['clusters']['cook1']['pools'].keys()), expected_pools_1)
+            if expected_pools_2:
+                self.assertEqual(set(usage['clusters']['cook2']['pools'].keys()), expected_pools_2)
             self.assertEqual('', cli.decode(cp.stderr))
 
             # filter half with one bad pool
             cp, usage = cli.usage(user, None, '-p zzzz ' + ' '.join(f'--pool {pool}' for pool in half_of_the_pools), flags='--config %s' % path)
             self.assertEqual(0, cp.returncode, cp.stderr)
-            self.assertEqual(set(usage['clusters']['cook1']['pools'].keys()), set(half_of_the_pools))
-            self.assertEqual(set(usage['clusters']['cook2']['pools'].keys()), set(half_of_the_pools))
-            self.assertIn("WARNING: 'zzzz' is not a valid pool in clusters", cli.decode(cp.stderr))
+            if expected_pools_1:
+                self.assertEqual(set(usage['clusters']['cook1']['pools'].keys()), expected_pools_1)
+            if expected_pools_2:
+                self.assertEqual(set(usage['clusters']['cook2']['pools'].keys()), expected_pools_2)
+            self.assertIn("zzzz is not a valid pool in ", cli.decode(cp.stderr))
 
             # filter half with two bad pools
             cp, usage = cli.usage(user, None, '-p zzzz -p zzzzx ' + ' '.join(f'--pool {pool}' for pool in half_of_the_pools), flags='--config %s' % path)
             self.assertEqual(0, cp.returncode, cp.stderr)
-            self.assertEqual(set(usage['clusters']['cook1']['pools'].keys()), set(half_of_the_pools))
-            self.assertEqual(set(usage['clusters']['cook2']['pools'].keys()), set(half_of_the_pools))
-            self.assertIn(" are not valid pools in clusters", cli.decode(cp.stderr))
+            if expected_pools_1:
+                self.assertEqual(set(usage['clusters']['cook1']['pools'].keys()), expected_pools_1)
+            if expected_pools_2:
+                self.assertEqual(set(usage['clusters']['cook2']['pools'].keys()), expected_pools_2)
+            self.assertIn(" are not valid pools in ", cli.decode(cp.stderr))
 
     def test_ssh(self):
         # Submit to cluster #2

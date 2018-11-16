@@ -1874,13 +1874,13 @@ class CookCliTest(util.CookTest):
         cp, usage = cli.usage(user, self.cook_url, '-p zzzz ' + ' '.join(f'--pool {pool}' for pool in half_of_the_pools))
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(set(usage['clusters'][self.cook_url]['pools'].keys()), set(half_of_the_pools))
-        self.assertIn("WARNING: 'zzzz' is not a valid pool in cluster", cli.decode(cp.stderr))
+        self.assertIn("zzzz is not a valid pool in ", cli.decode(cp.stderr))
 
         # filter half with two bad pools
         cp, usage = cli.usage(user, self.cook_url, '-p zzzz -p zzzzx ' + ' '.join(f'--pool {pool}' for pool in half_of_the_pools))
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(set(usage['clusters'][self.cook_url]['pools'].keys()), set(half_of_the_pools))
-        self.assertIn(" are not valid pools in cluster", cli.decode(cp.stderr))
+        self.assertIn(" are not valid pools in ", cli.decode(cp.stderr))
 
 
     def test_avoid_exit_on_connection_error(self):
