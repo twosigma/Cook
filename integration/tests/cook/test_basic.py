@@ -506,13 +506,10 @@ class CookTest(util.CookTest):
 
     @pytest.mark.memlimit
     @unittest.skipUnless(util.continuous_integration(), "Doesn't work in our local test environments")
+    @unittest.skipUnless(util.is_cook_executor_in_use(), 'Test assumes the Cook Executor is in use')
     def test_memory_limit_exceeded_cook_python(self):
-        job_executor_type = util.get_job_executor_type(self.cook_url)
-        if job_executor_type == 'cook':
-            command = self.memory_limit_python_command()
-            self.memory_limit_exceeded_helper(command, 'cook')
-        else:
-            self.logger.info("Skipping test_memory_limit_exceeded_cook_python, executor={}".format(job_executor_type))
+        command = self.memory_limit_python_command()
+        self.memory_limit_exceeded_helper(command, 'cook')
 
     @pytest.mark.memlimit
     @unittest.skipUnless(util.continuous_integration(), "Doesn't work in our local test environments")
@@ -522,13 +519,10 @@ class CookTest(util.CookTest):
 
     @pytest.mark.memlimit
     @unittest.skipUnless(util.continuous_integration(), "Doesn't work in our local test environments")
+    @unittest.skipUnless(util.is_cook_executor_in_use(), 'Test assumes the Cook Executor is in use')
     def test_memory_limit_exceeded_cook_script(self):
-        job_executor_type = util.get_job_executor_type(self.cook_url)
-        if job_executor_type == 'cook':
-            command = self.memory_limit_script_command()
-            self.memory_limit_exceeded_helper(command, 'cook')
-        else:
-            self.logger.info("Skipping test_memory_limit_exceeded_cook_script, executor={}".format(job_executor_type))
+        command = self.memory_limit_script_command()
+        self.memory_limit_exceeded_helper(command, 'cook')
 
     @pytest.mark.memlimit
     @unittest.skipUnless(util.continuous_integration(), "Doesn't work in our local test environments")
