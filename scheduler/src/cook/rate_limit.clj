@@ -22,6 +22,7 @@
 ; Import from cook.rate-limit.generic some relevant functions.
 (def spend! rtg/spend!)
 (def time-until-out-of-debt-millis! rtg/time-until-out-of-debt-millis!)
+(def get-token-count! rtg/get-token-count!)
 (def enforce? rtg/enforce?)
 (def AllowAllRateLimiter rtg/AllowAllRateLimiter)
 

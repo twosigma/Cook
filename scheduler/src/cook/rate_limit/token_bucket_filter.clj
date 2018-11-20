@@ -92,3 +92,8 @@
   "Reports if the tbf is currently in debt."
   [{:keys [current-tokens]}]
   (< current-tokens 0))
+
+(defn get-token-count
+  "Reports the number of tokens in the tbf."
+  [{:keys [current-tokens]}]
+  current-tokens)

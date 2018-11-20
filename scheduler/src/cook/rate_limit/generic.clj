@@ -23,6 +23,8 @@
 (defprotocol RateLimiter
   (spend! [this key resources]
     "Request this number of resources. Does not block (or otherwise indicate we're in debt)")
+  (get-token-count! [this key]
+    "Get the number of tokens in the token bucket filter under this name. Also earns any tokens first.")
   (time-until-out-of-debt-millis! [this key]
     "Time, in milliseconds, until this rate limiter is out of debt for this key. Earns resources first.")
   (enforce? [this]
@@ -78,6 +80,12 @@
       (earn-tokens! this key)
       (tbf/time-until (get-token-bucket-filter this key))))
 
+  (get-token-count!
+    [this key]
+    (let [key (get-key key)]
+      (earn-tokens! this key)
+      (tbf/get-token-count (get-token-bucket-filter this key))))
+
   (enforce?
     [_]
     enforce?))
@@ -105,4 +113,5 @@
     RateLimiter
     (spend! [_ _ _] 0)
     (time-until-out-of-debt-millis! [_ _] 0)
+    (get-token-count! [_ _] 100000000)
     (enforce? [_] false)))

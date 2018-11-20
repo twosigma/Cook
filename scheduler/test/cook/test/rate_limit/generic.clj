@@ -89,6 +89,10 @@
       (is (= 0 (rtg/time-until-out-of-debt-millis! ratelimit "Foo2")))
       (is (= 9975 (rtg/time-until-out-of-debt-millis! ratelimit "Foo3")))
 
+      (is (= (rtg/get-token-count! ratelimit "Foo1") 20))
+      (is (= (rtg/get-token-count! ratelimit "Foo2") 15))
+      (is (= (rtg/get-token-count! ratelimit "Foo3") -9975))
+
       (is (= (.getIfPresent (:cache ratelimit nil) "Foo1") {:current-tokens 20
                                                             :last-update 1000025
                                                             :max-tokens 20
