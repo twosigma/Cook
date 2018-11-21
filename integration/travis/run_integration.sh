@@ -131,10 +131,11 @@ case "$JOB_LAUNCH_RATE_LIMIT" in
 esac
 
 pip install flask
-export DATA_LOCAL_SERVICE="http://localhost:5000"
+export DATA_LOCAL_PORT=35847
+export DATA_LOCAL_SERVICE="http://localhost:${DATA_LOCAL_PORT}"
 export DATA_LOCAL_ENDPOINT="${DATA_LOCAL_SERVICE}/retrieve-costs"
 mkdir ${SCHEDULER_DIR}/log
-FLASK_APP=${PROJECT_DIR}/src/data_locality/service.py flask run > ${SCHEDULER_DIR}/log/data-local.log 2>&1 &
+FLASK_APP=${PROJECT_DIR}/src/data_locality/service.py flask run --port=${DATA_LOCAL_PORT} > ${SCHEDULER_DIR}/log/data-local.log 2>&1 &
 
 # Seed running jobs, which are used to test the task reconciler
 cd ${SCHEDULER_DIR}
