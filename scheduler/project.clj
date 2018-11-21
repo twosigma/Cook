@@ -158,7 +158,7 @@
                    [twosigma/mesomatic "1.0.1-2018.08.28-df2c2ca"]]}
 
    :uberjar
-   {:aot [cook.components]
+   {:aot :all
     :dependencies [[com.datomic/datomic-free "0.9.5206"
                     :exclusions [com.fasterxml.jackson.core/jackson-core
                                  joda-time
