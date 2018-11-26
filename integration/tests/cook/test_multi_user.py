@@ -285,36 +285,29 @@ class MultiUserCookTest(util.CookTest):
             try:
                 jobspec = {"command": "sleep 240", 'cpus': 0.03, 'mem': 32}
 
-                self.logger.info(f'Submitting initial batch of {bucket_size+1} jobs')
-                initial_uuids, initial_response = util.submit_jobs(self.cook_url, jobspec, bucket_size + 1)
+                self.logger.info(f'Submitting initial batch of {bucket_size-1} jobs')
+                initial_uuids, initial_response = util.submit_jobs(self.cook_url, jobspec, bucket_size - 1)
                 job_uuids.extend(initial_uuids)
                 self.assertEqual(201, initial_response.status_code, msg=initial_response.content)
 
                 def submit_jobs():
-                    self.logger.info(f'Submitting subsequent batch of {bucket_size+1} jobs')
-                    subsequent_uuids, subsequent_response = util.submit_jobs(self.cook_url, jobspec, bucket_size + 1)
+                    self.logger.info(f'Submitting subsequent batch of {bucket_size-1} jobs')
+                    subsequent_uuids, subsequent_response = util.submit_jobs(self.cook_url, jobspec, bucket_size - 1)
                     job_uuids.extend(subsequent_uuids)
                     self.assertEqual(201, subsequent_response.status_code, msg=subsequent_response.content)
 
                 def is_rate_limit_triggered(_):
                     jobs1 = util.query_jobs(self.cook_url, True, uuid=job_uuids).json()
                     waiting_jobs = [j for j in jobs1 if j['status'] == 'waiting']
+                    running_jobs = [j for j in jobs1 if j['status'] == 'running']
                     self.logger.debug(f'There are {len(waiting_jobs)} waiting jobs')
-                    if len(waiting_jobs) > 0:
-                        unscheduled, _ = util.unscheduled_jobs(self.cook_url, *[j['uuid'] for j in waiting_jobs])
-                        is_job_launch_rate_limited = [
-                            any([reasons.JOB_LAUNCH_RATE_LIMIT == reason['reason'] for reason in ii['reasons']])
-                            for ii in unscheduled]
-                        num_launch_rate_limited = len([ii for ii in is_job_launch_rate_limited if ii])
-                        self.logger.debug(f'There are {num_launch_rate_limited} jobs being rate-limited')
-                        return num_launch_rate_limited > 0
-                    else:
-                        return False
+                    # We submitted just under two buckets. We should only see a bucket + some extra running. No more.
+                    return len(running_jobs) >= bucket_size and len(running_jobs) < (bucket_size + token_rate/2) and len(waiting_jobs) > 0
 
                 util.wait_until(submit_jobs, is_rate_limit_triggered)
                 jobs2 = util.query_jobs(self.cook_url, True, uuid=job_uuids).json()
                 running_jobs = [j for j in jobs2 if j['status'] == 'running']
-                self.assertGreaterEqual(len(running_jobs), bucket_size)
+                self.assertEqual(len(running_jobs), bucket_size)
             finally:
                 util.kill_jobs(self.cook_url, job_uuids)
 
