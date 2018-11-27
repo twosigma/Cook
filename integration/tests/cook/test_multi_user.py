@@ -6,7 +6,7 @@ import unittest
 
 import pytest
 
-from tests.cook import mesos, util
+from tests.cook import mesos, util, reasons
 
 
 @pytest.mark.multi_user
