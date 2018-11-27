@@ -612,10 +612,7 @@
                Long/MAX_VALUE)
            ;; prioritize on batch submission time
            (or (-> task :job/_instance :group/_job first :db/id)
-               (-> task :job/_instance :job/commit-latch :db/id)
-               (-> task :job/_instance :db/id))
-           ;; prefer longer running jobs in the same batch
-           (-> task :job/_instance :job/expected-runtime (or 0) unchecked-negate-int)
+               (-> task :job/_instance :job/commit-latch :db/id))
            ;; break ties
            (or (-> task :db/id)
                (-> task :job/_instance :db/id))])
