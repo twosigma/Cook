@@ -20,6 +20,7 @@
             [cook.mesos.quota :as quota]
             [cook.mesos.share :as share]
             [cook.mesos.util :as util]
+            [cook.rate-limit :as ratelimit]
             [clojure.edn :as edn]
             [datomic.api :as d :refer (q)]))
 
@@ -145,6 +146,18 @@
        {:jobs (->> tasks-ahead
                    (mapv #(-> % :job/_instance :job/uuid str)))}])))
 
+(defn- check-launch-rate-limit
+  "Return the appropriate error message if a user's job is unscheduled because they're over the job launch rate limit threshold"
+  [{:keys [job/user]}]
+  (let [enforcing-job-launch-rate-limit? (ratelimit/enforce? ratelimit/job-launch-rate-limiter)
+        time-until-out-of-debt (ratelimit/time-until-out-of-debt-millis! ratelimit/job-launch-rate-limiter user)
+        in-debt? (not (zero? time-until-out-of-debt))
+        {:keys [tokens-replenished-per-minute]} ratelimit/job-launch-rate-limiter]
+    (when (and enforcing-job-launch-rate-limit? in-debt?)
+      ["You have exceeded the limit of jobs launched per minute."
+       {:max-jobs-per-minute tokens-replenished-per-minute
+        :seconds-until-can-launch (-> time-until-out-of-debt (/ 1000.0) Math/ceil int)}])))
+
 (defn reasons
   "Top level function which assembles a data structure representing the list
   of possible responses to the question \"Why isn't this job being scheduled?\".
@@ -173,4 +186,3 @@
                  (check-launch-rate-limit job)
                  (check-queue-position conn job running-jobs waiting-jobs)
                  (check-fenzo-placement conn job)])))))
-
