@@ -1,8 +1,10 @@
 import json
 import sys
 
+from tabulate import tabulate
+
 from cook import http, colors
-from cook.format import format_job_memory
+from cook.format import format_job_memory, format_memory_amount
 from cook.querying import query_across_clusters, make_job_request
 from cook.util import guard_no_cluster, current_user, print_info, print_error
 
@@ -151,57 +153,35 @@ def format_usage(usage_map):
         s += f', {gpus} GPU{"s" if gpus > 1 else ""}'
     return s
 
-def format_resource(resource_map, heading):
-    """Given a "resource map" with cpus, mem, and gpus, returns a formatted resource string"""
-    cpus = resource_map['cpus']
-    mem = resource_map['mem']
-    gpus = resource_map['gpus']
-
-    if cpus == sys.float_info.max:
-        cpu_resource = 'No CPU Limit'
-    else:
-        cpu_resource = f'{cpus} CPU{"s" if cpus > 1 else ""}'
-
-    if mem == sys.float_info.max:
-        mem_resource = 'No Memory Limit'
-    else:
-        mem_resource = f'{format_job_memory(resource_map)} Memory'
-
-    if gpus == sys.float_info.max:
-        gpu_resource = 'No GPU Limit'
-    else:
-        gpu_resource = f'{gpus} GPU{"s" if gpus > 1 else ""}'
-
-    s = f'{heading}: {cpu_resource}, {mem_resource}, {gpu_resource}'
-    return s
-
-def format_share(share_map):
-    """Given a "share map" with cpus, mem, and gpus, returns a formatted share string"""
-    return format_resource(share_map, 'Non-preemptible share')
-
-def format_quota(quota_map):
-    """Given a "quota map" with cpus, mem, and gpus, returns a formatted share string"""
-    return format_resource(quota_map, 'Max quota')
-
-def format_percent(n):
-    """Formats n as a percentage"""
-    return '{:.1%}'.format(n)
-
-
 def print_formatted_cluster_or_pool_usage(cluster_or_pool, cluster_or_pool_usage):
     """Prints the query result for a cluster or pool in a cluster as a hierarchical set of bullets"""
     usage_map = cluster_or_pool_usage['usage']
     share_map = cluster_or_pool_usage['share']
     quota_map = cluster_or_pool_usage['quota']
     print_info(colors.bold(cluster_or_pool))
-    print_info(format_quota(quota_map))
-    print_info(format_share(share_map))
-    print_info(format_usage(usage_map))
+
+    format_limit = lambda limit, formatter=(lambda x: x): \
+        'Unlimited' if limit == sys.float_info.max else formatter(limit)
+
+    rows = [
+        ['Max Quota',
+         format_limit(quota_map['cpus']),
+         format_limit(quota_map['mem'], format_memory_amount),
+         format_limit(quota_map['gpus'])],
+        ['Non-preemptible Share',
+         format_limit(share_map['cpus']),
+         format_limit(share_map['mem'], format_memory_amount),
+         format_limit(share_map['gpus'])],
+        ['Current Usage',
+         usage_map['cpus'],
+         format_job_memory(usage_map),
+         usage_map['gpus']]
+    ]
+    print_info(tabulate(rows, headers=['', 'CPUs', 'Memory', 'GPUs'], tablefmt='fancy_grid'))
+
     applications = cluster_or_pool_usage['applications']
     if applications:
         print_info('Applications:')
-    else:
-        print_info(colors.waiting('Nothing Running'))
     for application, application_usage in applications.items():
         usage_map = application_usage['usage']
         print_info(f'- {colors.running(application if application else "[no application defined]")}')

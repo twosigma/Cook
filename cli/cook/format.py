@@ -66,10 +66,13 @@ def format_job_status(job):
     """Formats the job status field"""
     return format_state(job['state'])
 
+def format_memory_amount(megabytes):
+    """Formats an amount, in MB, to be human-readable"""
+    return humanfriendly.format_size(megabytes * 1000 * 1000)
 
 def format_job_memory(job):
     """Formats the job memory field"""
-    return humanfriendly.format_size(job['mem'] * 1000 * 1000)
+    return format_memory_amount(job['mem'])
 
 
 def format_job_attempts(job):
