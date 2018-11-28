@@ -592,6 +592,10 @@
                              (map job->usage)
                              (reduce (partial merge-with +))))))))
 
+
+;Shared as we use this for unscheduled too.
+(defonce pool->user->number-jobs (atom {}))
+
 (defn pending-jobs->considerable-jobs
   "Limit the pending jobs to considerable jobs based on usage and quota.
    Further limit the considerable jobs to a maximum of num-considerable jobs."
@@ -619,6 +623,7 @@
                (take num-considerable)
                ; Force this to be taken eagerly so that the log line is accurate.
                (doall))]
+    (swap! pool->user->number-jobs update pool-name (constantly @user->number-jobs))
     (log/info "Users whose job launches are rate-limited " @user->rate-limit-count)
     considerable-jobs))
 

@@ -20,6 +20,7 @@
             [cook.mesos.share :as share]
             [cook.mesos.util :as util]
             [cook.rate-limit :as ratelimit]
+            [clojure.tools.logging :as log]
             [clojure.edn :as edn]))
 
 (defn check-exhausted-retries
@@ -139,13 +140,15 @@
   "Return the appropriate error message if a user's job is unscheduled because they're over the job launch rate limit threshold"
   [{:keys [job/user]}]
   (let [enforcing-job-launch-rate-limit? (ratelimit/enforce? ratelimit/job-launch-rate-limiter)
-        time-until-out-of-debt (ratelimit/time-until-out-of-debt-millis! ratelimit/job-launch-rate-limiter user)
-        in-debt? (not (zero? time-until-out-of-debt))
+        num-ratelimited (->> @scheduler/pool->user->number-jobs
+                             vals
+                             (map #(get % user 0))
+                             (reduce + 0))
+        being-ratelimited? (not (zero? num-ratelimited))
         {:keys [tokens-replenished-per-minute]} ratelimit/job-launch-rate-limiter]
-    (when (and enforcing-job-launch-rate-limit? in-debt?)
-      ["You have exceeded the limit of jobs launched per minute."
-       {:max-jobs-per-minute tokens-replenished-per-minute
-        :seconds-until-can-launch (-> time-until-out-of-debt (/ 1000.0) Math/ceil int)}])))
+    (when (and enforcing-job-launch-rate-limit? being-ratelimited?)
+      ["You are currently limited by the maximum jobs per minute."
+       {:max-jobs-per-minute tokens-replenished-per-minute}])))
 
 (defn reasons
   "Top level function which assembles a data structure representing the list
