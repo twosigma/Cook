@@ -76,7 +76,7 @@ export MESOS_MASTER="${MASTER_IP}:5050"
 export MESOS_NATIVE_JAVA_LIBRARY="${MESOS_NATIVE_JAVA_LIBRARY}"
 export COOK_SSL_PORT="${COOK_SSL_PORT}"
 export COOK_KEYSTORE_PATH="${COOK_KEYSTORE_PATH}"
-export DATA_LOCAL_ENDPOINT="http://localhost:5000/retrieve-costs"
+export DATA_LOCAL_ENDPOINT="http://localhost:35847/retrieve-costs"
 
 echo "Starting cook..."
 lein run config.edn

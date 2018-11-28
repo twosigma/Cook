@@ -2045,3 +2045,16 @@ class CookCliTest(util.CookTest):
             self.assertEqual(label_value_2, labels['label2'])
         finally:
             util.kill_jobs(self.cook_url, uuids)
+
+
+    def test_bad_cluster_argument(self):
+        cluster_name = 'foo'
+        config = {'clusters': [{'name': cluster_name, 'url': self.cook_url}],
+                  'defaults': {'submit': {'mem': 256, 'cpus': 2, 'max-retries': 2}}}
+        with cli.temp_config_file(config) as path:
+            flags = f'--config {path} --cluster badcluster'
+            cp = cli.cli('jobs', flags=flags)
+            stderr = cli.decode(cp.stderr).strip()
+            self.assertEqual(1, cp.returncode)
+            self.assertTrue('badcluster' in stderr, stderr)
+            self.assertTrue(cluster_name in stderr, stderr)

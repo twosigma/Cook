@@ -78,7 +78,7 @@ DATA_LOCAL_IP=$(docker inspect data-local | jq -r '.[].NetworkSettings.IPAddress
 DATA_LOCAL_ENV=""
 if [ ! "${DATA_LOCAL_IP}" = "null" ];
 then
-    DATA_LOCAL_ENV="-e DATA_LOCAL_SERVICE=http://${DATA_LOCAL_IP}:5000"
+    DATA_LOCAL_ENV="-e DATA_LOCAL_SERVICE=http://${DATA_LOCAL_IP}:35847"
 fi
 
 docker create \

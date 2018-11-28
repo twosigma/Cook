@@ -196,6 +196,32 @@ def print_formatted_cluster_or_pool_usage(cluster_or_pool, cluster_or_pool_usage
             print_info('')
     print_info('')
 
+def print_formatted_cluster_or_pool_usage(cluster_or_pool, cluster_or_pool_usage):
+    """Prints the query result for a cluster or pool in a cluster as a hierarchical set of bullets"""
+    usage_map = cluster_or_pool_usage['usage']
+    share_map = cluster_or_pool_usage['share']
+    print_info(colors.bold(cluster_or_pool))
+    print_info(format_share(share_map))
+    print_info(format_usage(usage_map))
+    applications = cluster_or_pool_usage['applications']
+    if applications:
+        print_info('Applications:')
+    else:
+        print_info(colors.waiting('Nothing Running'))
+    for application, application_usage in applications.items():
+        usage_map = application_usage['usage']
+        print_info(f'- {colors.running(application if application else "[no application defined]")}')
+        print_info(f'  {format_usage(usage_map)}')
+        print_info('  Job Groups:')
+        for group, group_usage in application_usage['groups'].items():
+            usage_map = group_usage['usage']
+            jobs = group_usage['jobs']
+            print_info(f'\t- {colors.bold(group if group else "[ungrouped]")}')
+            print_info(f'\t  {format_usage(usage_map)}')
+            print_info(f'\t  Jobs: {len(jobs)}')
+            print_info('')
+    print_info('')
+
 def print_formatted(query_result):
     """Prints the query result as a hierarchical set of bullets"""
     for cluster, cluster_usage in query_result['clusters'].items():

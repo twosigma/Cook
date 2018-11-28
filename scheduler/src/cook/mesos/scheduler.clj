@@ -855,7 +855,7 @@
 (counters/defcounter [cook-mesos scheduler offer-chan-depth])
 
 (defn make-offer-handler
-  [conn driver-atom fenzo framework-id pending-jobs-atom agent-attributes-cache max-considerable scaleback
+  [conn driver-atom fenzo framework-id pool-name->pending-jobs-atom agent-attributes-cache max-considerable scaleback
    floor-iterations-before-warn floor-iterations-before-reset trigger-chan rebalancer-reservation-atom
    mesos-run-as-user pool-name]
   (let [chan-length 100
@@ -904,7 +904,7 @@
                       _ (log/debug "In" pool-name "pool, passing following offers to handle-resource-offers!" offers)
                       using-pools? (not (nil? (config/default-pool)))
                       user->quota (quota/create-user->quota-fn (d/db conn) (if using-pools? pool-name nil))
-                      matched-head? (handle-resource-offers! conn @driver-atom fenzo framework-id pending-jobs-atom
+                      matched-head? (handle-resource-offers! conn @driver-atom fenzo framework-id pool-name->pending-jobs-atom
                                                              mesos-run-as-user @user->usage-future user->quota
                                                              num-considerable offers-chan offers
                                                              rebalancer-reservation-atom pool-name)]
