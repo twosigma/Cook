@@ -50,7 +50,7 @@ def load_target_clusters(config_map, url=None, cluster=None):
             if len(clusters) == 0 and len(config_clusters) > 0:
                 config_cluster_names = ', '.join([c.get('name') for c in config_clusters])
                 raise Exception(f'You specified cluster {cluster}, which was not present in your config.' +
-                                f' You have the following clusters configured: {config_cluster_names}')
+                                f' You have the following clusters configured: {config_cluster_names}.')
         else:
             clusters = [c for c in config_clusters if 'disabled' not in c or not c['disabled']]
 
