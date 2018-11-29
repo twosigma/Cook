@@ -639,25 +639,27 @@
   (log/debug "In" pool-name "pool, there are" (count pending-jobs) "pending jobs:" pending-jobs)
   (let [enforcing-job-launch-rate-limit? (ratelimit/enforce? ratelimit/job-launch-rate-limiter)
         user->number-jobs (atom {})
-        user->max-time-until-out-of-debt (atom {})
+        user->rate-limit-count (atom {})
         user-within-launch-rate-limit?-fn
         (fn
           [{:keys [job/user]}]
-          (let [time-until-out-of-debt-millis (ratelimit/time-until-out-of-debt-millis! ratelimit/job-launch-rate-limiter user)
-                in-debt? (not (zero? time-until-out-of-debt-millis))]
-            (when in-debt?
-              (swap! user->max-time-until-out-of-debt update user #(max (or % 0) time-until-out-of-debt-millis))
-              (swap! user->number-jobs update user #(inc (or % 0))))
-            (not (and in-debt? enforcing-job-launch-rate-limit?))))
-        considerable-jobs
-        (->> pending-jobs
-             (filter-based-on-quota user->quota user->usage)
-             (filter (fn [job] (util/job-allowed-to-start? db job)))
-             (filter user-within-launch-rate-limit?-fn)
-             (take num-considerable)
-             (doall))]
-    (log/info "Users job launch rate-limit filtered and counts: " @user->number-jobs)
-    (log/info "Users job launch rate-limit filtered and max time until out of debt: " @user->max-time-until-out-of-debt)
+          ; Account for each time we see a job for a user.
+          (swap! user->number-jobs update user #(inc (or % 0)))
+          (let [tokens (ratelimit/get-token-count! ratelimit/job-launch-rate-limiter user)
+                number-jobs-for-user-so-far (@user->number-jobs user)
+                is-rate-limited? (> number-jobs-for-user-so-far tokens)]
+            (when is-rate-limited?
+              (swap! user->rate-limit-count update user #(inc (or % 0))))
+            (not (and is-rate-limited? enforcing-job-launch-rate-limit?))))
+          considerable-jobs
+          (->> pending-jobs
+               (filter-based-on-quota user->quota user->usage)
+               (filter (fn [job] (util/job-allowed-to-start? db job)))
+               (filter user-within-launch-rate-limit?-fn)
+               (take num-considerable)
+               ; Force this to be taken eagerly so that the log line is accurate.
+               (doall))]
+    (log/info "Users whose job launches are rate-limited " @user->rate-limit-count)
     considerable-jobs))
 
 

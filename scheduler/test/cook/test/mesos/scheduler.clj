@@ -1348,11 +1348,11 @@
             num-considerable 5]
         (with-redefs [rate-limit/job-launch-rate-limiter
                       (rate-limit/create-job-launch-rate-limiter job-launch-rate-limit-config-for-testing)
-                      rate-limit/time-until-out-of-debt-millis! (constantly 1)]
-          (is (= []
+                      rate-limit/get-token-count! (constantly 1)]
+          (is (= [job-1]
                  (sched/pending-jobs->considerable-jobs
                    (d/db conn) non-gpu-jobs user->quota user->usage num-considerable nil)))
-          (is (= []
+          (is (= [job-5]
                  (sched/pending-jobs->considerable-jobs
                    (d/db conn) gpu-jobs user->quota user->usage num-considerable nil))))))
 
@@ -1649,16 +1649,16 @@
 
       (with-redefs [rate-limit/job-launch-rate-limiter
                     (rate-limit/create-job-launch-rate-limiter job-launch-rate-limit-config-for-testing)
-                    rate-limit/time-until-out-of-debt-millis! (constantly 1)]
+                    rate-limit/get-token-count! (constantly 1)]
         (testing "enough offers for all normal jobs, limited by num-considerable of 2, but beyond rate limit"
           ;; We do pending filtering here, so we should filter off the excess jobs and launch nothing.
           (let [num-considerable 2
                 offers [offer-1 offer-2 offer-3]]
             (is (run-handle-resource-offers! num-considerable offers :normal))
             (is (= :end-marker (async/<!! offers-chan)))
-            (is (= 0 (count @launched-offer-ids-atom)))
-            (is (= 0 (count @launched-job-ids-atom)))
-            (is (= #{} (set @launched-job-ids-atom))))))
+            (is (= 1 (count @launched-offer-ids-atom)))
+            (is (= 1 (count @launched-job-ids-atom)))
+            (is (= #{"job-1"} (set @launched-job-ids-atom))))))
 
       (let [total-spent (atom 0)]
         (with-redefs [rate-limit/spend! (fn [_ _ tokens] (reset! total-spent (-> @total-spent (+ tokens))))]
