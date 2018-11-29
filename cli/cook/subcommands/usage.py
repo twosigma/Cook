@@ -180,7 +180,7 @@ def print_formatted_cluster_or_pool_usage(cluster_or_pool, cluster_or_pool_usage
          usage_map['gpus'],
          usage_map['jobs']]
     ]
-    print_info(tabulate(rows, headers=['', 'CPUs', 'Memory', 'GPUs', 'Jobs'], tablefmt='fancy_grid'))
+    print_info(tabulate(rows, headers=['', 'CPUs', 'Memory', 'GPUs', 'Jobs'], tablefmt='plain'))
 
     applications = cluster_or_pool_usage['applications']
     if applications:
