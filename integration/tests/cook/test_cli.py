@@ -1800,12 +1800,18 @@ class CookCliTest(util.CookTest):
             self.assertLessEqual(round(16 * 9, 1), round(total_usage['mem'], 1))
             self.assertLessEqual(0, total_usage['gpus'])
             self.assertLessEqual(9, usage['count'])
-            self.assertLessEqual(0, share['cpus'])
-            self.assertLessEqual(0, share['mem'])
-            self.assertLessEqual(0, share['gpus'])
-            self.assertLessEqual(9, quota['cpus'])
-            self.assertLessEqual(2048, quota['mem'])
-            self.assertLessEqual(0, quota['gpus'])
+
+            pool_name = default_pool if usage_data.get('using_pools', False) else None
+            actual_share = util.get_limit(self.cook_url, 'share', user, pool_name).json()
+            actual_quota = util.get_limit(self.cook_url, 'quota', user, pool_name).json()
+
+            self.assertEqual(actual_share['cpus'], share['cpus'])
+            self.assertEqual(actual_share['mem'], share['mem'])
+            self.assertEqual(actual_share['gpus'], share['gpus'])
+            self.assertEqual(actual_quota['cpus'], quota['cpus'])
+            self.assertEqual(actual_quota['mem'], quota['mem'])
+            self.assertEqual(actual_quota['gpus'], quota['gpus'])
+
             self.assertLessEqual(round(0.1 * 6, 1), round(cs_usage['cpus'], 1))
             self.assertLessEqual(round(16 * 6, 1), round(cs_usage['mem'], 1))
             self.assertLessEqual(0, cs_usage['gpus'])
@@ -1848,12 +1854,17 @@ class CookCliTest(util.CookTest):
                 self.assertLessEqual(round(32 * 2, 1), round(total_usage['mem'], 1))
                 self.assertLessEqual(0, total_usage['gpus'])
                 self.assertLessEqual(9, usage['count'])
-                self.assertLessEqual(0, share['cpus'])
-                self.assertLessEqual(0, share['mem'])
-                self.assertLessEqual(0, share['gpus'])
-                self.assertLessEqual(8, quota['cpus'])
-                self.assertLessEqual(1024, quota['mem'])
-                self.assertLessEqual(0, quota['gpus'])
+
+                actual_share = util.get_limit(self.cook_url, 'share', user, extra_pool).json()
+                actual_quota = util.get_limit(self.cook_url, 'quota', user, extra_pool).json()
+
+                self.assertEqual(actual_share['cpus'], share['cpus'])
+                self.assertEqual(actual_share['mem'], share['mem'])
+                self.assertEqual(actual_share['gpus'], share['gpus'])
+                self.assertEqual(actual_quota['cpus'], quota['cpus'])
+                self.assertEqual(actual_quota['mem'], quota['mem'])
+                self.assertEqual(actual_quota['gpus'], quota['gpus'])
+
                 self.assertLessEqual(round(0.2 * 2, 1), round(cs_usage['cpus'], 1))
                 self.assertLessEqual(round(32 * 2, 1), round(cs_usage['mem'], 1))
                 self.assertLessEqual(0, cs_usage['gpus'])

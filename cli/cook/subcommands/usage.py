@@ -167,17 +167,20 @@ def print_formatted_cluster_or_pool_usage(cluster_or_pool, cluster_or_pool_usage
         ['Max Quota',
          format_limit(quota_map['cpus']),
          format_limit(quota_map['mem'], format_memory_amount),
-         format_limit(quota_map['gpus'])],
+         format_limit(quota_map['gpus']),
+         'Unlimited' if quota_map['count'] == (2**31 - 1) else quota_map['count']],
         ['Non-preemptible Share',
          format_limit(share_map['cpus']),
          format_limit(share_map['mem'], format_memory_amount),
-         format_limit(share_map['gpus'])],
+         format_limit(share_map['gpus']),
+         'N/A'],
         ['Current Usage',
          usage_map['cpus'],
          format_job_memory(usage_map),
-         usage_map['gpus']]
+         usage_map['gpus'],
+         usage_map['jobs']]
     ]
-    print_info(tabulate(rows, headers=['', 'CPUs', 'Memory', 'GPUs'], tablefmt='fancy_grid'))
+    print_info(tabulate(rows, headers=['', 'CPUs', 'Memory', 'GPUs', 'Jobs'], tablefmt='fancy_grid'))
 
     applications = cluster_or_pool_usage['applications']
     if applications:
