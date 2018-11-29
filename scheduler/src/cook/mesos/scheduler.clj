@@ -498,19 +498,19 @@
    function that takes a group uuid and returns a set of task-ids, which correspond to the tasks that will be assigned
    during the same Fenzo scheduling cycle as the newly created TaskRequest."
   [db job & {:keys [resources task-id assigned-resources guuid->considerable-cotask-ids reserved-hosts running-cotask-cache]
-          :or {resources (util/job-ent->resources job)
-               task-id (str (d/squuid))
-               assigned-resources (atom nil)
-               guuid->considerable-cotask-ids (constantly #{})
-               running-cotask-cache (atom (cache/fifo-cache-factory {} :threshold 1))
-               reserved-hosts #{}}}]
+             :or {resources (util/job-ent->resources job)
+                  task-id (str (d/squuid))
+                  assigned-resources (atom nil)
+                  guuid->considerable-cotask-ids (constantly #{})
+                  running-cotask-cache (atom (cache/fifo-cache-factory {} :threshold 1))
+                  reserved-hosts #{}}}]
   (let [constraints (-> (constraints/make-fenzo-job-constraints job)
                         (conj (constraints/build-rebalancer-reservation-constraint reserved-hosts))
                         (into
                           (remove nil?
                                   (mapv (fn make-group-constraints [group]
                                           (constraints/make-fenzo-group-constraint
-                                           db group #(guuid->considerable-cotask-ids (:group/uuid group)) running-cotask-cache))
+                                            db group #(guuid->considerable-cotask-ids (:group/uuid group)) running-cotask-cache))
                                         (:group/_job job)))))
         needs-gpus? (constraints/job-needs-gpus? job)
         scalar-requests (reduce (fn [result resource]
@@ -601,7 +601,7 @@
   [job-ent]
   (let [{:keys [cpus gpus mem]} (util/job-ent->resources job-ent)]
     (cond-> {:count 1 :cpus cpus :mem mem}
-            gpus (assoc :gpus gpus))))
+      gpus (assoc :gpus gpus))))
 
 (defn filter-based-on-quota
   "Lazily filters jobs for which the sum of running jobs and jobs earlier in the queue exceeds one of the constraints,
@@ -661,8 +661,8 @@
   "Removes matched jobs from pool->pending-jobs."
   [pool-name->pending-jobs matched-job-uuids pool-name]
   (update-in pool-name->pending-jobs [pool-name]
-             (fn [jobs]
-               (remove #(contains? matched-job-uuids (:job/uuid %)) jobs))))
+                                     (fn [jobs]
+                                       (remove #(contains? matched-job-uuids (:job/uuid %)) jobs))))
 
 (defn- update-match-with-task-metadata-seq
   "Updates the match with an entry for the task metadata for all tasks."
@@ -1168,7 +1168,23 @@
                sort-jobs-duration
                (->> tasks
                     (group-by util/task-ent->user)
-                    (pc/map-vals (fn [task-ents] (sort task-comparator task-ents)))
+                    (pc/map-vals (fn [task-ents]
+                                   (let [sorted-task-ents (sort task-comparator task-ents)]
+                                     (when-let [user (some-> sorted-task-ents first :job/_instance :job/user)]
+                                       (when (some #(-> user str hash (mod %) zero?) [13 17 19 23 29 31])
+                                         (let [tasks (take 50 sorted-task-ents)]
+                                           (log/info "first" (count tasks) "sorted tasks for" user)
+                                           (doseq [task tasks]
+                                             (log/info (into (sorted-map)
+                                                             {:group-id (some-> task :job/_instance :group/_job first :db/id)
+                                                              :latch-id (some-> task :job/_instance :job/commit-latch :db/id)
+                                                              :job-id (some-> task :job/_instance :db/id)
+                                                              :task-id (some-> task :db/id)
+                                                              :expected-runtime (some-> task :job/_instance :job/expected-runtime)
+                                                              :submit-time (some-> task :job/_instance :job/submit-time (.getTime) str)
+                                                              :priority (some-> task :job/_instance :job/priority)
+                                                              :uuid (some-> task :job/_instance :job/uuid str)}))))))
+                                     sorted-task-ents)))
                     (sort-task-scored-task-pairs user->dru-divisors pool-name)
                     (filter (fn [[task _]] (contains? pending-task-ents-set task)))
                     (map (fn [[task _]] (:job/_instance task)))))]
