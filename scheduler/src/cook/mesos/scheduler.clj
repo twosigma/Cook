@@ -52,7 +52,7 @@
             [plumbing.core :as pc])
   (import [com.netflix.fenzo ConstraintEvaluator ConstraintEvaluator$Result
                              TaskAssignmentResult TaskRequest TaskScheduler TaskScheduler$Builder
-                             VMTaskFitnessCalculator VirtualMachineLease VirtualMachineLease$Range
+                             VirtualMachineLease VirtualMachineLease$Range
                              VirtualMachineCurrentState]
           [com.netflix.fenzo.functions Action1 Func1]))
 
@@ -436,46 +436,6 @@
                           (VirtualMachineLease$Range. begin end))
                         (offer-resource-ranges offer "ports"))))
 
-(defn novel-host-constraint
-  "This returns a Fenzo hard constraint that ensures the given job won't run on the same host again"
-  [job]
-  (reify ConstraintEvaluator
-    (getName [_] "novel_host_constraint")
-    (evaluate [_ task-request target-vm task-tracker-state]
-      (let [previous-hosts (->> (:job/instance job)
-                                (remove #(true? (:instance/preempted? %)))
-                                (mapv :instance/hostname))]
-        (ConstraintEvaluator$Result.
-          (not-any? #(= % (.getHostname target-vm))
-                    previous-hosts)
-          (str "Can't run on " (.getHostname target-vm)
-               " since we already ran on that: " previous-hosts))))))
-
-(defn gpu-host-constraint
-  "This returns a Fenzo hard constraint that ensure that if the givn job requires gpus, it will be assigned
-   to a GPU host, and if it doesn't require gpus, it will be assigned to a non-GPU host."
-  [job]
-  (let [job-needs-gpus? (fn [job]
-                          (delay (->> (:job/resource job)
-                                      (filter (fn gpu-resource? [res]
-                                                (and (= (:resource/type res) :resource.type/gpus)
-                                                     (pos? (:resource/amount res)))))
-                                      (seq)
-                                      (boolean))))
-        needs-gpus? (job-needs-gpus? job)]
-    (reify ConstraintEvaluator
-      (getName [_] (str (if @needs-gpus? "" "non_") "gpu_host_constraint"))
-      (evaluate [_ task-request target-vm task-tracker-state]
-        (let [has-gpus? (boolean (or (pos? (or (.getScalarValue (.getCurrAvailableResources target-vm) "gpus") 0.0))
-                                     (some (fn gpu-task? [req]
-                                             @(job-needs-gpus? (:job req)))
-                                           (into (vec (.getRunningTasks target-vm))
-                                                 (mapv #(.getRequest %) (.getTasksCurrentlyAssigned target-vm))))))]
-          (ConstraintEvaluator$Result.
-            (if @needs-gpus?
-              has-gpus?
-              (not has-gpus?))
-            (str "The machine " (.getHostname target-vm) (if @needs-gpus? " doesn't have" " has") " gpus")))))))
 
 (defrecord TaskRequestAdapter [job resources task-id assigned-resources guuid->considerable-cotask-ids constraints needs-gpus? scalar-requests]
   TaskRequest
