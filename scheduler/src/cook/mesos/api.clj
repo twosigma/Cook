@@ -2711,6 +2711,24 @@
           (update :body body-matchers)
           (update :response resp-matchers)))))
 
+(defn- truncate
+  "Truncates `in-str` to a maximum length of `max-len` and adds an ellipsis if truncated."
+  [in-str max-len]
+  (let [ellipsis "..."
+        ellipsis-len (count ellipsis)]
+    (if (and (string? in-str) (> (count in-str) max-len) (> max-len ellipsis-len))
+      (str (subs in-str 0 (- max-len ellipsis-len)) ellipsis)
+      in-str)))
+
+(defn- logging-exception-handler
+  "Wraps `base-handler` with an additional `log/error` call which logs the request and exception"
+  [base-handler]
+  (fn logging-exception-handler [ex data req]
+    (log/error ex "Error when processing request"
+               (-> (dissoc req ::c-mw/options :body :ctrl :request-time :servlet-request :ssl-client-cert)
+                   (update-in [:headers] (fn [headers] (pc/map-vals (fn [value] (truncate value 80)) headers)))))
+    (base-handler ex data req)))
+
 ;;
 ;; "main" - the entry point that routes to other handlers
 ;;
@@ -2729,9 +2747,11 @@
                    :data {:info {:title "Cook API"
                                  :description "How to Cook things"}
                           :tags [{:name "api", :description "some apis"}]}}
+         ; Wrap all of the default exception handlers with more logging
+         :exceptions {:handlers (pc/map-vals (fn [handler] (logging-exception-handler handler))
+                                             (get-in c-mw/api-middleware-defaults [:exceptions :handlers]))}
          :format nil
          :coercion cook-coercer}
-
         (c-api/context
           "/rawscheduler" []
           (c-api/resource
