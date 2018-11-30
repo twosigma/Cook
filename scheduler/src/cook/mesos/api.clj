@@ -2711,6 +2711,11 @@
           (update :body body-matchers)
           (update :response resp-matchers)))))
 
+(defn- logging-exception-handler [base-handler]
+  (fn logging-exception-handler [ex data req]
+    (log/error ex "Error when processing request" (dissoc req ::c-mw/options))
+    (base-handler ex data req)))
+
 ;;
 ;; "main" - the entry point that routes to other handlers
 ;;
@@ -2729,9 +2734,11 @@
                    :data {:info {:title "Cook API"
                                  :description "How to Cook things"}
                           :tags [{:name "api", :description "some apis"}]}}
+         ; Wrap all of the default exception handlers with more logging
+         :exceptions {:handlers (pc/map-vals (fn [handler] (logging-exception-handler handler))
+                                             (get-in c-mw/api-middleware-defaults [:exceptions :handlers]))}
          :format nil
          :coercion cook-coercer}
-
         (c-api/context
           "/rawscheduler" []
           (c-api/resource
