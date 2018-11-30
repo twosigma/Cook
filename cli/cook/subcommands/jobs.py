@@ -161,7 +161,11 @@ def jobs(clusters, args, _):
         end_ms = date_time_string_to_ms_since_epoch(
             submitted_before if submitted_before is not None else 'now')
     else:
-        start_ms, end_ms = lookback_hours_to_range(lookback_hours or DEFAULT_LOOKBACK_HOURS)
+        if states == ['running']:
+            default_lookback_hours = 24 * 7
+        else:
+            default_lookback_hours = DEFAULT_LOOKBACK_HOURS
+        start_ms, end_ms = lookback_hours_to_range(lookback_hours or default_lookback_hours)
 
     query_result = query(clusters, states, user, start_ms, end_ms, name, limit, include_custom_executor, pool)
     found_jobs = query_result['count'] > 0
