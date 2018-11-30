@@ -14,13 +14,15 @@
 ;; limitations under the License.
 ;;
 (ns cook.mesos.unscheduled
-  (:require [datomic.api :as d :refer (q)]
+  (:require [clj-time.coerce :as tc]
+            [clj-time.core :as t]
             [cook.mesos.scheduler :as scheduler]
             [cook.mesos.quota :as quota]
             [cook.mesos.share :as share]
             [cook.mesos.util :as util]
             [cook.rate-limit :as ratelimit]
-            [clojure.edn :as edn]))
+            [clojure.edn :as edn]
+            [datomic.api :as d :refer (q)]))
 
 (defn check-exhausted-retries
   [db job]
@@ -54,13 +56,13 @@
   This function can be used for different types of limts (quota or share);
   the function to read the user's limit as well as the error message on
   exceeding the limit are parameters."
-  [read-limit-fn err-msg db job]
+  [read-limit-fn err-msg db job running-jobs]
   (when (= (:job/state job) :job.state/waiting)
     (let [user (:job/user job)
           pool-name (-> job :job/pool :pool/name)
           ways (how-job-would-exceed-resource-limits
                 (read-limit-fn db user pool-name)
-                (util/jobs-by-user-and-state db user :job.state/running pool-name)
+                running-jobs
                 job)]
       (when (seq ways)
         [err-msg ways]))))
@@ -104,35 +106,47 @@
                    fenzo-failures-for-user)}]
     ["The job is now under investigation. Check back in a minute for more details!" {}]))
 
+(defn- get-jobs-by-user-and-state
+  "Returns the first `limit` jobs for the given `user` in `state` in `pool-name`,
+   submitted within `days-to-look-back`"
+  [db user state limit pool-name days-to-look-back]
+  (let [end (tc/to-date (t/now))
+        start (tc/to-date (t/minus (t/now) (t/days days-to-look-back)))]
+    (util/get-jobs-by-user-and-states db user [state] start end
+                                      limit (constantly true)
+                                      true pool-name)))
+
 (defn check-queue-position
   "IFF the job is not first in the user's queue, returns
   [\"You have x other jobs ahead in the queue\", {:jobs [other job uuids]]}]"
-  [conn job]
+  [conn job running-jobs]
   (let [db (d/db conn)
         user (:job/user job)
         job-uuid (:job/uuid job)
         pool-name (-> job :job/pool :pool/name)
-        running-tasks (map
-                       (fn [j] (->> j
-                                    :job/instance
-                                    (filter util/instance-running?)
-                                    last))
-                       (util/jobs-by-user-and-state db user :job.state/running pool-name))
-        pending-tasks (->> (util/jobs-by-user-and-state db user :job.state/waiting pool-name)
-                           (filter (fn [job] (-> job :job/commit-latch :commit-latch/committed?)))
+        running-tasks (->> running-jobs
+                           (map (fn [j] (->> j
+                                             :job/instance
+                                             (filter util/instance-running?)
+                                             last))))
+        limit 100
+        pending-tasks (->> (get-jobs-by-user-and-state db user "waiting" limit pool-name 7)
                            (map util/create-task-ent))
         all-tasks (into running-tasks pending-tasks)
         sorted-tasks (vec (sort (util/same-user-task-comparator) all-tasks))
-        queue-pos (first
-                   (keep-indexed
-                    (fn [i instance]
-                      (when (= (-> instance :job/_instance :job/uuid) job-uuid) i))
-                    sorted-tasks))
-        tasks-ahead (subvec sorted-tasks 0 queue-pos)]
+        queue-pos (or (first
+                       (keep-indexed
+                        (fn [i instance]
+                          (when (= (-> instance :job/_instance :job/uuid) job-uuid) i))
+                        sorted-tasks))
+                      (count all-tasks))
+        tasks-ahead (subvec sorted-tasks 0 (min queue-pos 10))
+        message (if (= (count all-tasks) queue-pos)
+                  (str "You have at least " queue-pos " other jobs ahead in the queue.")
+                  (str "You have " queue-pos " other jobs ahead in the queue."))]
     (when (seq tasks-ahead)
-      [(str "You have " queue-pos " other jobs ahead in the queue.")
+      [message
        {:jobs (->> tasks-ahead
-                   (take 10)
                    (mapv #(-> % :job/_instance :job/uuid str)))}])))
 
 (defn- check-launch-rate-limit
@@ -160,14 +174,17 @@
     (case (:job/state job)
       :job.state/running [["The job is running now." {}]]
       :job.state/completed [["The job already completed." {}]]
-      (filter some?
-              [(check-exhausted-retries db job)
-               (check-exceeds-limit quota/get-quota
-                                    "The job would cause you to exceed resource quotas."
-                                    db job)
-               (check-exceeds-limit share/get-share
-                                    "The job would cause you to exceed resource shares."
-                                    db job)
-               (check-launch-rate-limit job)
-               (check-queue-position conn job)
-               (check-fenzo-placement conn job)]))))
+      (let [user (:job/user job)
+            pool-name (-> job :job/pool :pool/name)
+            running-jobs (get-jobs-by-user-and-state db user "running" 1000000 pool-name 30)]
+        (filter some?
+                [(check-exhausted-retries db job)
+                 (check-exceeds-limit quota/get-quota
+                                      "The job would cause you to exceed resource quotas."
+                                      db job running-jobs)
+                 (check-exceeds-limit share/get-share
+                                      "The job would cause you to exceed resource shares."
+                                      db job running-jobs)
+                 (check-launch-rate-limit job)
+                 (check-queue-position conn job running-jobs)
+                 (check-fenzo-placement conn job)])))))

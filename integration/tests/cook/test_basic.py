@@ -1620,9 +1620,9 @@ class CookTest(util.CookTest):
             def check_unscheduled_reason():
                 jobs, _ = util.unscheduled_jobs(self.cook_url, job_uuid_1, job_uuid_2)
                 self.logger.info(f'Unscheduled jobs: {jobs}')
-                pattern = re.compile('^You have [0-9]+ other jobs ahead in the queue.$')
-                self.assertTrue(any([pattern.match(reason['reason']) for reason in jobs[0]['reasons']]))
-                self.assertTrue(any([pattern.match(reason['reason']) for reason in jobs[1]['reasons']]))
+                pattern = re.compile('^You have (at least )?[0-9]+ other jobs ahead in the queue.$')
+                self.assertTrue(any([pattern.match(reason['reason']) for reason in jobs[0]['reasons']]), jobs[0]['reasons'])
+                self.assertTrue(any([pattern.match(reason['reason']) for reason in jobs[1]['reasons']]), jobs[1]['reasons'])
                 self.assertEqual(job_uuid_1, jobs[0]['uuid'])
                 self.assertEqual(job_uuid_2, jobs[1]['uuid'])
 
