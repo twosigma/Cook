@@ -210,11 +210,14 @@ export COOK_SLAVE_URL=http://localhost:12323
 export COOK_MESOS_LEADER_URL=${MINIMESOS_MASTER}
 {
     echo "Using Mesos leader URL: ${COOK_MESOS_LEADER_URL}"
-    if [ "$JOB_LAUNCH_RATE_LIMIT" = off ]; then 
+    if [ "$JOB_LAUNCH_RATE_LIMIT" = on ]; then
+      pytest -n0 -v --color=no --timeout-method=thread --boxed -m multi_user tests/cook/test_multi_user.py -k test_rate_limit_launching_jobs || test_failures=true
+    else if [ "$GLOBAL_JOB_LAUNCH_RATE_LIMIT" = on ]; then
+      pytest -n0 -v --color=no --timeout-method=thread --boxed -m multi_user tests/cook/test_multi_user.py -k test_global_rate_limit_launching_jobs || test_failures=true
+    else
       pytest -n4 -v --color=no --timeout-method=thread --boxed -m "not serial" || test_failures=true
       pytest -n0 -v --color=no --timeout-method=thread --boxed -m "serial" || test_failures=true
-    else
-      pytest -n0 -v --color=no --timeout-method=thread --boxed -m multi_user tests/cook/test_multi_user.py -k test_rate_limit_launching_jobs || test_failures=true
+    fi
     fi
 } &> >(tee ./log/pytest.log)
  
