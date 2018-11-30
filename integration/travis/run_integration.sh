@@ -135,21 +135,21 @@ case "$JOB_LAUNCH_RATE_LIMIT" in
     exit 1
 esac
 
-case "$JOB_GLOBAL_LAUNCH_RATE_LIMIT" in
+case "$GLOBAL_JOB_LAUNCH_RATE_LIMIT" in
     on)
       # Note: Carefully chosen for test_global_rate_limit_launching_jobs unit test.
-      export JOB_GLOBAL_LAUNCH_RATE_LIMIT_BUCKET_SIZE=10
-      export JOB_GLOBAL_LAUNCH_RATE_LIMIT_REPLENISHED_PER_MINUTE=5
-      echo "Job global launch rate limit turned on"
+      export GLOBAL_JOB_LAUNCH_RATE_LIMIT_BUCKET_SIZE=10
+      export GLOBAL_JOB_LAUNCH_RATE_LIMIT_REPLENISHED_PER_MINUTE=5
+      echo "Global job launch rate limit turned on"
     ;;
     off)
       # Note: Wide enough that we're unlikely to hit these in testing.
-      export JOB_GLOBAL_LAUNCH_RATE_LIMIT_BUCKET_SIZE=10000
-      export JOB_GLOBAL_LAUNCH_RATE_LIMIT_REPLENISHED_PER_MINUTE=10000
-      echo "Job global launch rate limit turned off"
+      export GLOBAL_JOB_LAUNCH_RATE_LIMIT_BUCKET_SIZE=10000
+      export GLOBAL_JOB_LAUNCH_RATE_LIMIT_REPLENISHED_PER_MINUTE=10000
+      echo "Global job launch rate limit turned off"
     ;;
   *)
-    echo "Unrecognized job-global-launch-rate-limit toggle (should be on/off): $JOB_GLOBAL_LAUNCH_RATE_LIMIT"
+    echo "Unrecognized global-job-launch-rate-limit toggle (should be on/off): $GLOBAL_JOB_LAUNCH_RATE_LIMIT"
     exit 1
 esac
 
