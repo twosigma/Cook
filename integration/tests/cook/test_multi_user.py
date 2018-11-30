@@ -315,7 +315,7 @@ class MultiUserCookTest(util.CookTest):
     # passed; the subsequent run will have used up the rate limit quota and it will need time to recharge.
     def test_global_rate_limit_launching_jobs(self):
         settings = util.settings(self.cook_url)
-        if settings['rate-limit']['job-launch-global'] is None:
+        if settings['rate-limit']['global-job-launch'] is None:
             pytest.skip("Can't test job launch rate limit without launch rate limit set.")
 
         # Allow an environmental variable override.
@@ -325,7 +325,7 @@ class MultiUserCookTest(util.CookTest):
         else:
             user = self.user_factory.new_user()
 
-        if not settings['rate-limit']['job-launch-global']['enforce?']:
+        if not settings['rate-limit']['global-job-launch']['enforce?']:
             pytest.skip("Enforcing must be on for test to run")
         bucket_size = settings['rate-limit']['global-job-launch']['bucket-size']
         token_rate = settings['rate-limit']['global-job-launch']['tokens-replenished-per-minute']
