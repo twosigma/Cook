@@ -291,7 +291,7 @@
     "Given an optional config map, initializes the config state"
     [& {:keys [config], :or nil}]
     (mount/stop)
-    (mount/start-with-args (merge minimal-config config) #'cook.config/config #'cook.rate-limit/job-launch-rate-limiter)))
+    (mount/start-with-args (merge minimal-config config) #'cook.config/config #'cook.rate-limit/job-launch-rate-limiter #'cook.rate-limit/global-job-launch-rate-limiter)))
 
 (defn wait-for
   "Invoke predicate every interval (default 10) seconds until it returns true,

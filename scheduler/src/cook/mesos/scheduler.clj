@@ -702,6 +702,7 @@
                     matches)
           (throw e))))
     (log/info "Launching" (count task-txns) "tasks")
+    (ratelimit/spend! ratelimit/global-job-launch-rate-limiter ratelimit/global-job-launch-rate-limiter-key (count task-txns))
     (log/debug "Matched tasks" task-txns)
     ;; This launch-tasks MUST happen after the above transaction in
     ;; order to allow a transaction failure (due to failed preconditions)
