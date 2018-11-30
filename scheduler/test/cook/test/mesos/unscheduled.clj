@@ -22,7 +22,8 @@
             [cook.rate-limit :as rate-limit]
             [cook.test.testutil :refer (create-dummy-instance
                                         create-dummy-job
-                                        restore-fresh-database!)]
+                                        restore-fresh-database!
+                                        setup)]
             [cook.mesos.quota :as quota]))
 
 (defn resource-map->list
@@ -72,6 +73,7 @@
               {:reason "Job already ran on this host." :host_count 3}]}]))))
 
 (deftest test-reasons
+  (setup)
   (let [conn (restore-fresh-database! datomic-uri)
         _ (quota/set-quota! conn "mforsyth" nil "test-reasons" :count 2)
         running-job-id1 (-> (create-dummy-job conn :user "mforsyth"
@@ -197,3 +199,34 @@
         (is (= (nth reasons 3)
                ["The job is now under investigation. Check back in a minute for more details!"
                 {}]))))))
+
+
+(deftest test-check-queue-position
+  (let [conn (restore-fresh-database! "datomic:mem://test-check-queue-position")
+        waiting-job-ids (doall (for [x (range 0 500)]
+                                 (create-dummy-job conn :user "mforsyth"
+                                                   :ncpus 1.0 :memory 3.0
+                                                   :job-state :job.state/waiting)))
+        waiting-jobs (map #(d/entity (d/db conn) %) waiting-job-ids)
+        running-job-ids (doall (for [x (range 0 50)]
+                                 (let [job-id (create-dummy-job conn :user "mforsyth"
+                                                                :ncpus 1.0 :memory 3.0
+                                                             :job-state :job.state/running)]
+                                   (create-dummy-instance conn job-id
+                                                          :instance-status :instance.status/running)
+                                   job-id)))
+        running-jobs (map #(d/entity (d/db conn) %) running-job-ids)
+        first-running-uuid (str (:job/uuid (first running-jobs)))]
+
+    (let [reason (u/check-queue-position conn (second running-jobs) running-jobs (take 100 waiting-jobs))]
+      (is (= "You have 1 other jobs ahead in the queue."))
+      (is (= [first-running-uuid] (-> reason second :jobs))))
+    (let [reason (u/check-queue-position conn (first waiting-jobs) running-jobs (take 100 waiting-jobs))]
+      (is (= (str "You have " (count running-jobs) " other jobs ahead in the queue.")
+             (first reason)))
+      (is (= first-running-uuid (-> reason second :jobs first))))
+
+    (let [reason (u/check-queue-position conn (last waiting-jobs) running-jobs (take 100 waiting-jobs))]
+      (is (= "You have at least 150 other jobs ahead in the queue."
+             (first reason)))
+      (is (= first-running-uuid (-> reason second :jobs first))))))
