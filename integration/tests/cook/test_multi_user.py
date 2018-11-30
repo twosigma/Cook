@@ -307,7 +307,8 @@ class MultiUserCookTest(util.CookTest):
                 jobs2 = util.query_jobs(self.cook_url, True, uuid=job_uuids).json()
                 running_jobs = [j for j in jobs2 if j['status'] == 'running']
                 waiting_jobs = [j for j in jobs2 if j['status'] == 'waiting']
-                self.assertEqual(len(running_jobs), bucket_size)
+                self.assertGreaterEqual(len(running_jobs), bucket_size)
+                self.assertLessEqual(len(running_jobs), bucket_size+3)
                 self.logger.debug(f'There are {len(waiting_jobs)} waiting jobs')
 
                 unscheduled, _ = util.unscheduled_jobs(self.cook_url, *[j['uuid'] for j in waiting_jobs])
