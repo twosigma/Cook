@@ -238,13 +238,14 @@
 (defn build-launch-max-tasks-constraint
   "This returns a Fenzo hard constraint that ensures that we don't match more than a given number of tasks per cycle."
   []
-  (let [max-tasks (ratelimit/get-token-count! ratelimit/global-job-launch-rate-limiter ratelimit/global-job-launch-rate-limiter-key)]
+  (let [enforcing? (ratelimit/enforce? ratelimit/global-job-launch-rate-limiter)
+        max-tasks (ratelimit/get-token-count! ratelimit/global-job-launch-rate-limiter ratelimit/global-job-launch-rate-limiter-key)]
     (reify com.netflix.fenzo.ConstraintEvaluator
       (getName [_] "launch_max_tasks")
       (evaluate [_ _ _ task-tracker-state]
         (let [num-assigned (-> task-tracker-state .getAllCurrentlyAssignedTasks .size)]
           (com.netflix.fenzo.ConstraintEvaluator$Result.
-            (< num-assigned max-tasks)
+            (or (not enforcing?) (< num-assigned max-tasks))
             (str "Hit the global rate limit")))))))
 
 (def job-constraint-constructors [build-novel-host-constraint build-gpu-host-constraint build-user-defined-constraint build-estimated-completion-constraint build-data-locality-constraint])
