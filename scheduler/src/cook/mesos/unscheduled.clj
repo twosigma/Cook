@@ -119,18 +119,15 @@
 (defn check-queue-position
   "IFF the job is not first in the user's queue, returns
   [\"You have x other jobs ahead in the queue\", {:jobs [other job uuids]]}]"
-  [conn job running-jobs]
+  [conn job running-jobs waiting-jobs]
   (let [db (d/db conn)
-        user (:job/user job)
         job-uuid (:job/uuid job)
-        pool-name (-> job :job/pool :pool/name)
         running-tasks (->> running-jobs
                            (map (fn [j] (->> j
                                              :job/instance
                                              (filter util/instance-running?)
                                              last))))
-        limit 100
-        pending-tasks (->> (get-jobs-by-user-and-state db user "waiting" limit pool-name 7)
+        pending-tasks (->> waiting-jobs
                            (map util/create-task-ent))
         all-tasks (into running-tasks pending-tasks)
         sorted-tasks (vec (sort (util/same-user-task-comparator) all-tasks))
@@ -176,7 +173,8 @@
       :job.state/completed [["The job already completed." {}]]
       (let [user (:job/user job)
             pool-name (-> job :job/pool :pool/name)
-            running-jobs (get-jobs-by-user-and-state db user "running" 1000000 pool-name 30)]
+            running-jobs (get-jobs-by-user-and-state db user "running" 1000000 pool-name 30)
+            waiting-jobs (get-jobs-by-user-and-state db user "waiting" 100 pool-name 7)]
         (filter some?
                 [(check-exhausted-retries db job)
                  (check-exceeds-limit quota/get-quota
@@ -186,5 +184,5 @@
                                       "The job would cause you to exceed resource shares."
                                       db job running-jobs)
                  (check-launch-rate-limit job)
-                 (check-queue-position conn job running-jobs)
+                 (check-queue-position conn job running-jobs waiting-jobs)
                  (check-fenzo-placement conn job)])))))
