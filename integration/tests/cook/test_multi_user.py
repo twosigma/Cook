@@ -311,6 +311,63 @@ class MultiUserCookTest(util.CookTest):
             finally:
                 util.kill_jobs(self.cook_url, job_uuids)
 
+    # Note that subsequent runs of this test under the same user can fail if sufficient time has not
+    # passed; the subsequent run will have used up the rate limit quota and it will need time to recharge.
+    def test_global_rate_limit_launching_jobs(self):
+        settings = util.settings(self.cook_url)
+        if settings['rate-limit']['job-launch-global'] is None:
+            pytest.skip("Can't test job launch rate limit without launch rate limit set.")
+
+        # Allow an environmental variable override.
+        name = os.getenv('COOK_LAUNCH_RATE_LIMIT_NAME')
+        if name is not None:
+            user = self.user_factory.user_class(name)
+        else:
+            user = self.user_factory.new_user()
+
+        if not settings['rate-limit']['job-launch-global']['enforce?']:
+            pytest.skip("Enforcing must be on for test to run")
+        bucket_size = settings['rate-limit']['global-job-launch']['bucket-size']
+        token_rate = settings['rate-limit']['global-job-launch']['tokens-replenished-per-minute']
+        # In some environments, e.g., minimesos, we can only launch so many concurrent jobs.
+        if token_rate < 5 or token_rate > 20:
+            pytest.skip(
+                "Global job launch rate limit test is only validated to reliably work correctly with certain token rates.")
+        if bucket_size < 10 or bucket_size > 20:
+            pytest.skip(
+                "Global job launch rate limit test is only validated to reliably work correctly with certain token bucket sizes.")
+        with user:
+            job_uuids = []
+            try:
+                jobspec = {"command": "sleep 240", 'cpus': 0.03, 'mem': 32}
+
+                self.logger.info(f'Submitting initial batch of {bucket_size-1} jobs')
+                initial_uuids, initial_response = util.submit_jobs(self.cook_url, jobspec, bucket_size - 1)
+                job_uuids.extend(initial_uuids)
+                self.assertEqual(201, initial_response.status_code, msg=initial_response.content)
+
+                def submit_jobs():
+                    self.logger.info(f'Submitting subsequent batch of {bucket_size-1} jobs')
+                    subsequent_uuids, subsequent_response = util.submit_jobs(self.cook_url, jobspec, bucket_size - 1)
+                    job_uuids.extend(subsequent_uuids)
+                    self.assertEqual(201, subsequent_response.status_code, msg=subsequent_response.content)
+
+                def is_rate_limit_triggered(_):
+                    jobs1 = util.query_jobs(self.cook_url, True, uuid=job_uuids).json()
+                    running_jobs = [j for j in jobs1 if j['status'] == 'running']
+                    waiting_jobs = [j for j in jobs1 if j['status'] == 'waiting']
+                    self.logger.debug(f'There are {len(waiting_jobs)} waiting jobs')
+                    return len(waiting_jobs) > 0 and len(running_jobs) >= bucket_size
+
+                util.wait_until(submit_jobs, is_rate_limit_triggered,120000,5000)
+                jobs2 = util.query_jobs(self.cook_url, True, uuid=job_uuids).json()
+                running_jobs = [j for j in jobs2 if j['status'] == 'running']
+                self.assertGreaterEqual(len(running_jobs), bucket_size)
+                self.assertLessEqual(len(running_jobs), bucket_size+4)
+            finally:
+                util.kill_jobs(self.cook_url, job_uuids)
+
+
     def trigger_preemption(self, pool):
         """
         Triggers preemption on the provided pool (which can be None) by doing the following:
