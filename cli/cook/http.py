@@ -105,7 +105,7 @@ def make_data_request(cluster, make_request_fn):
             print_error(f'Authentication failed on {cluster["name"]} ({cluster["url"]}).')
             return []
         elif resp.status_code == 500:
-            print_error(f'Encountered server error while querying {cluser["name"]}')
+            print_error(f'Encountered server error while querying {cluser["name"]}.')
             # fall through to logging call below
 
         logging.warn(f'Unexpected response code {resp.status_code} for data request. Response body: {resp.text}')
