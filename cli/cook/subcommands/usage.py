@@ -1,8 +1,10 @@
 import json
 import sys
 
+from tabulate import tabulate
+
 from cook import http, colors
-from cook.format import format_job_memory
+from cook.format import format_job_memory, format_memory_amount
 from cook.querying import query_across_clusters, make_job_request
 from cook.util import guard_no_cluster, current_user, print_info, print_error
 
@@ -76,10 +78,27 @@ def get_usage_on_cluster(cluster, user):
                     f'has pools: {share_map["pools"].keys()}')
         return {'count': 0}
 
-    def make_query_result(using_pools, usage_map, share_map, pool_data=None):
+    quota_map = http.make_data_request(cluster, lambda: http.get(cluster, 'quota', params={'user': user}))
+    if not quota_map:
+        print_error(f'Unable to retrieve quota information on {cluster["name"]} ({cluster["url"]}).')
+        return {'count': 0}
+
+    if using_pools != ('pools' in quota_map):
+        print_error(f'Quota information on {cluster["name"]} ({cluster["url"]}) is invalid. '
+                    f'Usage information is{"" if using_pools else " not"} per pool, but quota '
+                    f'is{"" if not using_pools else " not"}')
+        return {'count': 0}
+    if pool_names != (quota_map['pools'].keys() if using_pools else []):
+        print_error(f'Quota information on {cluster["name"]} ({cluster["url"]}) is invalid. '
+                    f'Usage information has pools: {pool_names}, but quota '
+                    f'has pools: {quota_map["pools"].keys()}')
+        return {'count': 0}
+
+    def make_query_result(using_pools, usage_map, share_map, quota_map, pool_data=None):
         query_result = {'using_pools': using_pools,
                         'usage': usage_map['total_usage'],
-                        'share': share_map}
+                        'share': share_map,
+                        'quota': quota_map}
         query_result.update(get_job_data(cluster, usage_map))
         if pool_data:
             query_result.update(pool_data)
@@ -97,11 +116,12 @@ def get_usage_on_cluster(cluster, user):
                         'pools': {pool_name: make_query_result(using_pools,
                                                                usage_map['pools'][pool_name],
                                                                share_map['pools'][pool_name],
+                                                               quota_map['pools'][pool_name],
                                                                {'state': pools_dict[pool_name]['state']})
                                   for pool_name in pool_names}}
         return query_result
     else:
-        return make_query_result(using_pools, usage_map, share_map)
+        return make_query_result(using_pools, usage_map, share_map, quota_map)
 
 def query(clusters, user):
     """
@@ -133,49 +153,38 @@ def format_usage(usage_map):
         s += f', {gpus} GPU{"s" if gpus > 1 else ""}'
     return s
 
-
-def format_share(share_map):
-    """Given a "share map" with cpus, mem, and gpus, returns a formatted share string"""
-    cpus = share_map['cpus']
-    mem = share_map['mem']
-    gpus = share_map['gpus']
-
-    if cpus == sys.float_info.max:
-        cpu_share = 'No CPU Limit'
-    else:
-        cpu_share = f'{cpus} CPU{"s" if cpus > 1 else ""}'
-
-    if mem == sys.float_info.max:
-        mem_share = 'No Memory Limit'
-    else:
-        mem_share = f'{format_job_memory(share_map)} Memory'
-
-    if gpus == sys.float_info.max:
-        gpu_share = 'No GPU Limit'
-    else:
-        gpu_share = f'{gpus} GPU{"s" if gpus > 1 else ""}'
-
-    s = f'Share: {cpu_share}, {mem_share}, {gpu_share}'
-    return s
-
-
-def format_percent(n):
-    """Formats n as a percentage"""
-    return '{:.1%}'.format(n)
-
-
 def print_formatted_cluster_or_pool_usage(cluster_or_pool, cluster_or_pool_usage):
     """Prints the query result for a cluster or pool in a cluster as a hierarchical set of bullets"""
     usage_map = cluster_or_pool_usage['usage']
     share_map = cluster_or_pool_usage['share']
+    quota_map = cluster_or_pool_usage['quota']
     print_info(colors.bold(cluster_or_pool))
-    print_info(format_share(share_map))
-    print_info(format_usage(usage_map))
+
+    format_limit = lambda limit, formatter=(lambda x: x): \
+        'Unlimited' if limit == sys.float_info.max else formatter(limit)
+
+    rows = [
+        ['Max Quota',
+         format_limit(quota_map['cpus']),
+         format_limit(quota_map['mem'], format_memory_amount),
+         format_limit(quota_map['gpus']),
+         'Unlimited' if quota_map['count'] == (2**31 - 1) else quota_map['count']],
+        ['Non-preemptible Share',
+         format_limit(share_map['cpus']),
+         format_limit(share_map['mem'], format_memory_amount),
+         format_limit(share_map['gpus']),
+         'N/A'],
+        ['Current Usage',
+         usage_map['cpus'],
+         format_job_memory(usage_map),
+         usage_map['gpus'],
+         usage_map['jobs']]
+    ]
+    print_info(tabulate(rows, headers=['', 'CPUs', 'Memory', 'GPUs', 'Jobs'], tablefmt='plain'))
+
     applications = cluster_or_pool_usage['applications']
     if applications:
         print_info('Applications:')
-    else:
-        print_info(colors.waiting('Nothing Running'))
     for application, application_usage in applications.items():
         usage_map = application_usage['usage']
         print_info(f'- {colors.running(application if application else "[no application defined]")}')
