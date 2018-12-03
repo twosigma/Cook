@@ -154,7 +154,7 @@
                 {:count {:limit 2 :usage 3}}]))
 
         (is (= (nth reasons 2)
-               ["You are currently limited by the maximum jobs per minute." {:max-jobs-per-minute 100.0}]))
+               ["You are currently rate limited on how many jobs you launch per minute." {:max-jobs-per-minute 100.0}]))
 
         (is (= (nth reasons 3)
                ["You have 2 other jobs ahead in the queue."

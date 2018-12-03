@@ -158,7 +158,7 @@
         being-ratelimited? (not (zero? num-ratelimited))
         {:keys [tokens-replenished-per-minute]} ratelimit/job-launch-rate-limiter]
     (when (and enforcing-job-launch-rate-limit? being-ratelimited?)
-      ["You are currently limited by the maximum jobs per minute."
+      ["You are currently rate limited on how many jobs you launch per minute."
        {:max-jobs-per-minute tokens-replenished-per-minute}])))
 
 (defn reasons
