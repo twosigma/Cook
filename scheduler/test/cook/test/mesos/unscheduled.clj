@@ -136,7 +136,7 @@
             running-job-uuids [(-> running-job-ent1 :job/uuid str)
                                (-> running-job-ent2 :job/uuid str)]
             reasons
-            (with-redefs [rate-limit/time-until-out-of-debt-millis! (constantly 1999)
+            (with-redefs [scheduler/pool->user->number-jobs (atom {:pool0 {"mforsyth" 3}})
                           rate-limit/job-launch-rate-limiter
                           (rate-limit/create-job-launch-rate-limiter
                             {:settings {:rate-limit {:expire-minutes 180
@@ -154,7 +154,7 @@
                 {:count {:limit 2 :usage 3}}]))
 
         (is (= (nth reasons 2)
-               ["You have exceeded the limit of jobs launched per minute." {:max-jobs-per-minute 100.0, :seconds-until-can-launch 2}]))
+               ["You are currently rate limited on how many jobs you launch per minute." {:max-jobs-per-minute 100.0}]))
 
         (is (= (nth reasons 3)
                ["You have 2 other jobs ahead in the queue."

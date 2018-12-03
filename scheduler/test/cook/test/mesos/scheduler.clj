@@ -1314,6 +1314,7 @@
              (sched/filter-based-on-quota {test-user {:count 4, :cpus 20, :mem 6144}} user->usage queue))))))
 
 (deftest test-pending-jobs->considerable-jobs
+  (cook.test.testutil/setup)
   (let [uri "datomic:mem://test-pending-jobs-considerable-jobs"
         conn (restore-fresh-database! uri)
         test-db (d/db conn)
