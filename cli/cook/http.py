@@ -103,6 +103,12 @@ def make_data_request(cluster, make_request_fn):
             return resp.json()
         elif resp.status_code == 401:
             print_error(f'Authentication failed on {cluster["name"]} ({cluster["url"]}).')
+            return []
+        elif resp.status_code == 500:
+            print_error(f'Encountered server error while querying {cluser["name"]}.')
+            # fall through to logging call below
+
+        logging.warn(f'Unexpected response code {resp.status_code} for data request. Response body: {resp.text}')
     except requests.exceptions.ConnectionError as ce:
         logging.exception(ce)
         print_error(f'Encountered connection error with {cluster["name"]} ({cluster["url"]}).')
@@ -113,5 +119,4 @@ def make_data_request(cluster, make_request_fn):
         logging.exception(ioe)
     except json.decoder.JSONDecodeError as jde:
         logging.exception(jde)
-
     return []
