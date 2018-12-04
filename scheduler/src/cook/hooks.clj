@@ -123,23 +123,21 @@
 
           (ccache/put-cache! job-invocations-cache :job/uuid job
                              result)
-          (log/info (str "XYX: Miss " status " with " result " for " (:job/uuid job)))
           (= status :accepted)))))
 
 (defn filter-job-invocations
   "Run the hooks for a set of jobs at invocation time, return true if a job is ready to run now."
   [job]
   (let [{:keys [status cache-expires-at] :as result} (ccache/get-if-present
-                                            job-invocations-cache
-                                            :job/uuid
-                                            job)
+                                                       job-invocations-cache
+                                                       :job/uuid
+                                                       job)
         expired? (and cache-expires-at (t/after? (t/now) cache-expires-at))
         keep? (if (and result (not expired?))
                 (= status :accepted)
                 (filter-job-invocations-miss job))
         ]
     ; Fast path, if it has an expiration (its found), and its not expired, and it is accepted, then we're good.
-    (log/info (str "XYX: Got to here 1:" result ":" expired? ":" status "  --- " (and result (not expired?))))
     (if keep?
       job
       nil)))
