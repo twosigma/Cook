@@ -263,7 +263,7 @@ class MultiUserCookTest(util.CookTest):
             pytest.skip("Can't test job launch rate limit without launch rate limit set.")
 
         # Allow an environmental variable override.
-        name = os.getenv('COOK_LAUNCH_RATE_LIMIT_NAME')
+        name = os.getenv('COOK_LAUNCH_RATE_LIMIT_USER_NAME')
         if name is not None:
             user = self.user_factory.user_class(name)
         else:
@@ -319,7 +319,7 @@ class MultiUserCookTest(util.CookTest):
             pytest.skip("Can't test job launch rate limit without launch rate limit set.")
 
         # Allow an environmental variable override.
-        name = os.getenv('COOK_LAUNCH_RATE_LIMIT_NAME')
+        name = os.getenv('COOK_LAUNCH_RATE_LIMIT_USER_NAME')
         if name is not None:
             user = self.user_factory.user_class(name)
         else:

@@ -240,13 +240,15 @@
   []
   (let [enforcing? (ratelimit/enforce? ratelimit/global-job-launch-rate-limiter)
         max-tasks (ratelimit/get-token-count! ratelimit/global-job-launch-rate-limiter ratelimit/global-job-launch-rate-limiter-key)]
-    (reify com.netflix.fenzo.ConstraintEvaluator
-      (getName [_] "launch_max_tasks")
-      (evaluate [_ _ _ task-tracker-state]
-        (let [num-assigned (-> task-tracker-state .getAllCurrentlyAssignedTasks .size)]
-          (com.netflix.fenzo.ConstraintEvaluator$Result.
-            (or (not enforcing?) (< num-assigned max-tasks))
-            (str "Hit the global rate limit")))))))
+    (if enforcing?
+      (reify com.netflix.fenzo.ConstraintEvaluator
+        (getName [_] "launch_max_tasks")
+        (evaluate [_ _ _ task-tracker-state]
+          (let [num-assigned (-> task-tracker-state .getAllCurrentlyAssignedTasks .size)]
+            (com.netflix.fenzo.ConstraintEvaluator$Result.
+              (< num-assigned max-tasks)
+              (str "Hit the global rate limit")))))
+      nil)))
 
 (def job-constraint-constructors [build-novel-host-constraint build-gpu-host-constraint build-user-defined-constraint build-estimated-completion-constraint build-data-locality-constraint])
 
@@ -274,12 +276,12 @@
 (defn make-fenzo-job-constraints
   "Returns a sequence of all the constraints for 'job', in Fenzo-compatible format."
   [job]
-  (->
-    (->> job-constraint-constructors
-         (map (fn [constructor] (constructor job)))
-         (remove nil?)
-         (map fenzoize-job-constraint))
-    (conj (build-launch-max-tasks-constraint))))
+  (let [launch-max-tasks-constraint (build-launch-max-tasks-constraint)]
+    (cond-> (->> job-constraint-constructors
+                 (map (fn [constructor] (constructor job)))
+                 (remove nil?)
+                 (map fenzoize-job-constraint))
+            launch-max-tasks-constraint (conj (build-launch-max-tasks-constraint)))))
 
 (defn build-rebalancer-reservation-constraint
   "Constructs a rebalancer-reservation-constraint"
