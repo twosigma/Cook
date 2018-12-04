@@ -554,7 +554,8 @@
   [{:keys [count cpus mem] :as quota}
    {:keys [count cpus mem] :as usage}]
   (every? (fn [[usage-key usage-val]]
-            (<= usage-val (get quota usage-key 0)))
+            (and usage-val
+                 (<= usage-val (get quota usage-key 0))))
           (seq usage)))
 
 (defn job->usage
