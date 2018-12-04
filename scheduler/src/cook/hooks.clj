@@ -81,16 +81,62 @@
       (.expireAfterAccess 2 TimeUnit/HOURS)
       (.build)))
 
+
+(defn filter-job-invocations-miss
+  "This is the cache miss handler. It is invoked if we have a cache miss --- either the entry is expired, or
+   its not there. Only invoke on misses or expirations, because we count the number of invocations."
+  [job]
+  (let [{:keys [last-seen first-seen seen-count cache-expires-at] :as old-result} (ccache/get-if-present
+                                                                                    job-invocations-cache
+                                                                                    :uuid
+                                                                                    job)
+        not-found? (not old-result)
+        last-seen-deadline (->> 10
+                                t/minutes
+                                (t/minus- (t/now)))
+        first-seen-deadline (->> 600
+                                 t/minutes
+                                 (t/minus- (t/now)))
+        ;; If I've seen the job for at least 10 hours, at least 20 times, and once in the last 10 minutes
+        ;; Treat the job as if its aged out.
+        aged-out? (and
+                    old-result
+                    (> seen-count 20)
+                    (t/before? first-seen first-seen-deadline)
+                    (t/after? last-seen-deadline last-seen))]
+    (or aged-out? ; If aged-out, no more backend queries. Invoke it now and it sinks or swims.
+        ;; Ok. Not aging out. Query the underlying plugin as to the status.
+        (let [{:keys [status] :as raw-result} (check-job-invocation hook-object job)
+              result
+              (if (or not-found?
+                      (= status :accepted))
+                ; If not found, or we got an accepted status, store it and reset the counters.
+                (merge raw-result
+                       {:last-seen (t/now)
+                        :first-seen (t/now)
+                        :seen-count 1})
+                ; We were found, but didn't get an accepted status. Increment the counters for aging out.
+                (merge raw-result
+                       {:last-seen (t/now)
+                        :first-seen first-seen
+                        :seen-count (inc seen-count)}))]
+
+          (ccache/put-cache! job-invocations-cache :uuid job
+                             result)
+          (= status :accepted)))))
+
 (defn filter-job-invocations
   "Run the hooks for a set of jobs at invocation time, return true if a job is ready to run now."
   [job]
-  (let [{:keys [status]} (ccache/lookup-cache-with-expiration!
-                           job-invocations-cache
-                           :uuid
-                           (partial check-job-invocation hook-object) job)]
-    (if (= status :accepted)
-      job
-      nil)))
+  (let [{:keys [status cache-expires-at] :as result} (ccache/get-if-present
+                                            job-invocations-cache
+                                            :uuid
+                                            job)
+        expired? (and cache-expires-at (t/after? (t/now) cache-expires-at))]
+    ; Fast path, if it has an expiration (its found), and its not expired, and it is accepted, then we're good.
+    (if (and result (not expired?))
+      (= status :accepted)
+      (filter-job-invocations-miss job))))
 
 (defn hook-jobs-submission
   [jobs]

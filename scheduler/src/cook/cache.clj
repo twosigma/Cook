@@ -3,6 +3,25 @@
   (:import (com.google.common.cache Cache)))
 
 
+(defn get-if-present
+  "Generic cache. Caches under a key (extracted from the item with extract-key-fn. Uses miss-fn to fill
+  any misses. Caches only positive hits where both functions return non-nil"
+  [^Cache cache extract-key-fn item]
+  (if-let [key (extract-key-fn item)]
+    (.getIfPresent cache key)))
+
+
+(defn put-cache!
+  "Generic cache. Caches under a key (extracted from the item with extract-key-fn. Uses miss-fn to fill
+  any misses. Caches only positive hits where both functions return non-nil"
+  [^Cache cache extract-key-fn item new-result]
+  (if-let [key (extract-key-fn item)]
+    (do
+      ; Only cache non-nil
+      (when new-result
+        (.put cache key new-result))
+      new-result)))
+
 (defn lookup-cache!
   "Generic cache. Caches under a key (extracted from the item with extract-key-fn. Uses miss-fn to fill
   any misses. Caches only positive hits where both functions return non-nil"

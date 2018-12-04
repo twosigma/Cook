@@ -100,7 +100,7 @@
         (.put image-deployment-cache docker-image deployment))
       validity)
     (catch Exception e
-      (failed-image-validity-check odd-result-cache-timeout))))
+      (failed-image-validity-check docker-image odd-result-cache-timeout))))
 
 (def ^LoadingCache image-validity-cache
   (-> (CacheBuilder/newBuilder)
@@ -110,7 +110,6 @@
                 (reify Function
                   (apply [_ docker-image]
                     (image-validity-miss docker-image)))))))
-
 
 (defrecord DockerValidate []
   hooks/ScheduleHooks
