@@ -23,7 +23,7 @@ running = lambda s: Color.CYAN + s + Color.END
 waiting = lambda s: Color.YELLOW + s + Color.END
 reason = lambda s: Color.RED + s + Color.END
 bold = lambda s: Color.BOLD + s + Color.END
-wrap = textwrap.fill
+wrap = textwrap.wrap
 
 
 def __ls_color(s, code, fallback_fn):
