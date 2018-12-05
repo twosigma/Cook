@@ -40,12 +40,12 @@
     Process a response containing a json body with a map with two keys:
     'built' and 'deployed' and true/valse as values."
   [docker-image {:keys [status body]}]
-    (cond
-      (= 200 status) {:status :accepted
-                      :cache-expires-at (calculate-expiration body)}
-      (= 404 status) (failed-image-validity-check docker-image bad-cache-timeout)
-      ; Weird outputs: Default fail.
-      :else (failed-image-validity-check docker-image odd-result-cache-timeout)))
+  (cond
+    (= 200 status) {:status :accepted
+                    :cache-expires-at (calculate-expiration body)}
+    (= 404 status) (failed-image-validity-check docker-image bad-cache-timeout)
+    ; Weird outputs: Default fail.
+    :else (failed-image-validity-check docker-image odd-result-cache-timeout)))
 
 (defn process-response-for-image-deployment-cache
   "Process a response containing a json body with a map with two keys:
