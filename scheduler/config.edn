@@ -24,11 +24,6 @@
                   :executable false
                   :extract true
                   :value #config/env "COOK_EXECUTOR"}}
- :hook {;Jobs that are suspended longer than this are killed.
-        :job-reap-delay-minutes 480
-        ; How often do we scan the queue to reap. Should be at least 30 minutes, and less than job-reap-delay-minutes/4.
-        :job-reap-scan-interval-minutes 120}
-
  :hostname #config/env "COOK_HOSTNAME"
  :log {:file #config/env "COOK_LOG_FILE"
        :levels {"datomic.db" :warn

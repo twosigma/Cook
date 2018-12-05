@@ -123,7 +123,7 @@
       ; Expire the deployment status if it should be expired.
       (ccache/expire-key! image-deployment-cache identity docker-image)
       ; If we have a status return it, else, dispatch async work to refresh image status.
-      (if-let [result (.getIfPresent image-deployment-cache docker-image)]
+      (if-let [result (ccache/get-if-present image-deployment-cache identity docker-image)]
         result
         (do
           (future

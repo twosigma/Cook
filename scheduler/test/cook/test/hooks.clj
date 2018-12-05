@@ -1,9 +1,12 @@
-(ns cook.hooks
-  (:require [clj-time.core :as t]))
+(ns cook.test.hooks
+  (:require [clj-time.core :as t]
+            [cook.hooks :as hooks]))
 
 
-(def fake-scheduler-hooks
-  (reify SchedulerHooks
+    '(with-redefs hooks/hook-object reject-all-hook)
+
+'(def fake-scheduler-hooks
+  (reify hooks/SchedulerHooks
     (check-job-submission-default [this] {:status :rejected :message "Too slow"})
     (check-job-submission [this {:keys [name] :as job-map}]
       (if (= name "reject-submission")
@@ -16,7 +19,4 @@
             {:status :accepted :cache-expires-at (-> 5 t/seconds t/from-now)}
             (and (= name "job-a") (t/before? (-> 10 t/seconds t/from-now)))
             {:status :accepted :cache-expires-at (-> 5 t/seconds t/from-now)}
-
-
-
-                 (default-accept))))))
+                 (default-accept)))))

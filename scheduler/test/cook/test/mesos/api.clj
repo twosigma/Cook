@@ -23,6 +23,7 @@
             [clojure.walk :refer [keywordize-keys]]
             [cook.authorization :as auth]
             [cook.config :as config]
+            [cook.hooks :as hooks]
             [cook.impersonation :as imp]
             [cook.mesos.api :as api]
             [cook.mesos.data-locality :as dl]
@@ -38,7 +39,8 @@
                                         restore-fresh-database!] :as testutil]
             [datomic.api :as d :refer [q db]]
             [mesomatic.scheduler :as msched]
-            [schema.core :as s])
+            [schema.core :as s]
+            [clojure.tools.logging :as log])
   (:import clojure.lang.ExceptionInfo
            com.fasterxml.jackson.core.JsonGenerationException
            com.google.protobuf.ByteString
@@ -1898,7 +1900,27 @@
               {:keys [body status]} (handler request)]
           (is (= 400 status))
           (is (str/includes? body (str uuid)))
-          (is (not (str/includes? body (str (:uuid j3))))))))))
+          (is (not (str/includes? body (str (:uuid j3)))))))
+
+      (testing "hook-rejects-job-submission"
+        (with-redefs [api/create-jobs! (fn [in-conn _]
+                                         (is (= conn in-conn)))
+                      rate-limit/job-submission-rate-limiter rate-limit/AllowAllRateLimiter
+                      hooks/hook-object testutil/reject-reject-hook]
+          (let [handler (api/create-jobs-handler conn task-constraints gpu-enabled? is-authorized-fn)
+                {:keys [body status] :as all} (handler (new-request))]
+            (log/info (str "BODY: " body " STATUS: " status " ALL " all))
+            (is (= 400 status))
+            (is (str/includes? body "Explicit-reject by test hook")))))
+
+      (testing "hook-job-accepts-job"
+        (with-redefs [api/create-jobs! (fn [in-conn _]
+                                         (is (= conn in-conn)))
+                      rate-limit/job-submission-rate-limiter rate-limit/AllowAllRateLimiter
+                      hooks/hook-object testutil/accept-accept-hook]
+          (let [handler (api/create-jobs-handler conn task-constraints gpu-enabled? is-authorized-fn)
+                {:keys [status]} (handler (new-request))]
+            (is (= 201 status))))))))
 
 (deftest test-validate-partitions
   (is (api/validate-partitions {:dataset {"foo" "bar"}}))

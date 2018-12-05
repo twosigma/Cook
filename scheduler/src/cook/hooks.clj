@@ -72,6 +72,10 @@
 ;  :start (create-job-submission-rate-limiter config))
 
 (def submission-hook-batch-timeout-seconds 60) ; Self-imposed deadline to submit a batch.
+(def age-out-last-seen-deadline (t/minutes 10))
+(def age-out-first-seen-deadline (t/hours 10))
+(def age-out-seen-count 10)
+
 
 ; We may see up to the entire scheduler queue, so have a big cache here.
 ; This is called in the scheduler loop. If it hasn't been looked at in more than 2 hours, the job has almost assuredly long since run.
@@ -91,17 +95,15 @@
                                                                                     :job/uuid
                                                                                     job)
         not-found? (not old-result)
-        last-seen-deadline (->> 10
-                                t/minutes
+        last-seen-deadline (->> age-out-last-seen-deadline
                                 (t/minus- (t/now)))
-        first-seen-deadline (->> 600
-                                 t/minutes
+        first-seen-deadline (->> age-out-first-seen-deadline
                                  (t/minus- (t/now)))
         ;; If I've seen the job for at least 10 hours, at least 20 times, and once in the last 10 minutes
         ;; Treat the job as if its aged out.
         aged-out? (and
                     old-result
-                    (> seen-count 20)
+                    (> seen-count age-out-seen-count)
                     (t/before? first-seen first-seen-deadline)
                     (t/after? last-seen-deadline last-seen))]
     (or aged-out? ; If aged-out, no more backend queries. Invoke it now and it sinks or swims.
@@ -126,21 +128,17 @@
           (= status :accepted)))))
 
 (defn filter-job-invocations
-  "Run the hooks for a set of jobs at invocation time, return true if a job is ready to run now."
+  "Run the hooks for a set of jobs at invocation time, returns true or false on whether the job is ready to run now."
   [job]
   (let [{:keys [status cache-expires-at] :as result} (ccache/get-if-present
                                                        job-invocations-cache
                                                        :job/uuid
                                                        job)
-        expired? (and cache-expires-at (t/after? (t/now) cache-expires-at))
-        keep? (if (and result (not expired?))
-                (= status :accepted)
-                (filter-job-invocations-miss job))
-        ]
+        expired? (and cache-expires-at (t/after? (t/now) cache-expires-at))]
     ; Fast path, if it has an expiration (its found), and its not expired, and it is accepted, then we're good.
-    (if keep?
-      job
-      nil)))
+    (if (and result (not expired?))
+      (= status :accepted)
+      (filter-job-invocations-miss job))))
 
 (defn hook-jobs-submission
   [jobs]
@@ -155,6 +153,7 @@
                                     ; Running out of time, do the default.
                                     (check-job-submission-default hook-object))]
                        (or status default-accept)))
-        results (map do-one-job jobs)
+        results (apply list (map do-one-job jobs))
         an-error (some #(= :rejected (:status %)) results)]
-    (or an-error {:status :accepted})))
+    (log/info (str "Hook result: " results " ++ " an-error))
+    (if an-error (first results) {:status :accepted})))
