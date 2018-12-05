@@ -40,18 +40,17 @@
     Process a response containing a json body with a map with two keys:
     'built' and 'deployed' and true/valse as values."
   [docker-image {:keys [status body]}]
-  (let [now (t/now)]
     (cond
       (= 200 status) {:status :accepted
                       :cache-expires-at (calculate-expiration body)}
       (= 404 status) (failed-image-validity-check docker-image bad-cache-timeout)
       ; Weird outputs: Default fail.
-      :else (failed-image-validity-check docker-image odd-result-cache-timeout))))
+      :else (failed-image-validity-check docker-image odd-result-cache-timeout)))
 
 (defn process-response-for-image-deployment-cache
   "Process a response containing a json body with a map with two keys:
     'built' and 'deployed' and true/valse as values."
-  [docker-image {:keys [docker-image status body]}]
+  [docker-image {:keys [status body]}]
   (let [now (t/now)
         built? ("built" body)
         deployed? ("deployed" body)
@@ -90,8 +89,7 @@
 
 (defn image-validity-miss [docker-image]
   (try
-    (let [now (t/now)
-          url (generate-url-from-image docker-image)
+    (let [url (generate-url-from-image docker-image)
           response (do-image-status-query-http url image-validity-check-http-timeout-millis)
           validity (process-response-for-image-validity-cache docker-image response)
           {:keys [status] :as deployment} (process-response-for-image-deployment-cache docker-image response)]
