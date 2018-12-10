@@ -56,9 +56,7 @@ export MINIMESOS_ZOOKEEPER=${MINIMESOS_ZOOKEEPER%;}
 export MINIMESOS_MASTER=${MINIMESOS_MASTER%;}
 
 SCHEDULER_DIR=${TRAVIS_BUILD_DIR}/scheduler
-./datomic-free-0.9.5394/bin/transactor ${SCHEDULER_DIR}/datomic/datomic_transactor.properties &
-COOK_DATOMIC_URI_1=datomic:free://localhost:4334/cook-jobs
-COOK_DATOMIC_URI_2=datomic:mem://cook-jobs
+COOK_DATOMIC_URI_1=datomic:mem://cook-jobs
 
 # Generate SSL certificate
 COOK_KEYSTORE_PATH=${SCHEDULER_DIR}/cook.p12
@@ -101,7 +99,6 @@ case "$GLOBAL_JOB_LAUNCH_RATE_LIMIT" in
     exit 1
 esac
 
-pip install flask
 mkdir ${SCHEDULER_DIR}/log
 
 # Seed running jobs, which are used to test the task reconciler
@@ -115,9 +112,9 @@ lein exec -p datomic/data/seed_running_jobs.clj ${COOK_DATOMIC_URI_1}
 ## available for processes inside minimesos containers to connect to
 export COOK_EXECUTOR_COMMAND=${COOK_EXECUTOR_COMMAND}
 # Start one cook listening on port 12321, this will be the master of the "cook-framework-1" framework
-LIBPROCESS_IP=172.17.0.1 COOK_DATOMIC="${COOK_DATOMIC_URI_1}" COOK_PORT=12321 COOK_SSL_PORT=12322 COOK_FRAMEWORK_ID=cook-framework-1 COOK_LOGFILE="log/cook-12321.log" COOK_DEFAULT_POOL=${DEFAULT_POOL} lein run ${PROJECT_DIR}/travis/${CONFIG_FILE} &
+LIBPROCESS_IP=172.17.0.1 COOK_DATOMIC="${COOK_DATOMIC_URI_1}" COOK_PORT=12321 COOK_SSL_PORT=12322 COOK_COOKEEPER_LOCAL=true COOK_COOKEEPER_LOCAL_PORT=5291 COOK_FRAMEWORK_ID=cook-framework-1 COOK_LOGFILE="log/cook-12321.log" COOK_DEFAULT_POOL=${DEFAULT_POOL} lein run ${PROJECT_DIR}/travis/${CONFIG_FILE} &
 # Start a second cook listening on port 22321, this will be the master of the "cook-framework-2" framework
-LIBPROCESS_IP=172.17.0.1 COOK_DATOMIC="${COOK_DATOMIC_URI_2}" COOK_PORT=22321 COOK_SSL_PORT=22322 COOK_ZOOKEEPER_LOCAL=true COOK_ZOOKEEPER_LOCAL_PORT=4291 COOK_FRAMEWORK_ID=cook-framework-2 COOK_LOGFILE="log/cook-22321.log" lein run ${PROJECT_DIR}/travis/${CONFIG_FILE} &
+LIBPROCESS_IP=172.17.0.1 COOK_DATOMIC="${COOK_DATOMIC_URI_1}" COOK_PORT=22321 COOK_SSL_PORT=22322 COOK_ZOOKEEPER_LOCAL=true COOK_ZOOKEEPER_LOCAL_PORT=4291 COOK_FRAMEWORK_ID=cook-framework-2 COOK_LOGFILE="log/cook-22321.log" lein run ${PROJECT_DIR}/travis/${CONFIG_FILE} &
 
 # Wait for the cooks to be listening
 timeout 180s bash -c "wait_for_cook 12321" || curl_error=true
@@ -127,15 +124,6 @@ if [ "$curl_error" = true ]; then
   exit 1
 fi
 
-# Start a third cook listening on port 12323, this will be a slave on the "cook-framework-1" framework
-LIBPROCESS_IP=172.17.0.1 COOK_DATOMIC="${COOK_DATOMIC_URI_1}" COOK_PORT=12323 COOK_SSL_PORT=12324 COOK_FRAMEWORK_ID=cook-framework-1 COOK_LOGFILE="log/cook-12323.log" COOK_DEFAULT_POOL=${DEFAULT_POOL} lein run ${PROJECT_DIR}/travis/${CONFIG_FILE} &
-
-timeout 180s bash -c "wait_for_cook 12323" || curl_error=true
-if [ "$curl_error" = true ]; then
-  echo "$(date +%H:%M:%S) Timed out waiting for cook to start listening"
-  ${TRAVIS_BUILD_DIR}/travis/upload_logs.sh
-  exit 1
-fi
 timeout 180s bash -c "wait_for_cook 22321" || curl_error=true
 if [ "$curl_error" = true ]; then
   echo "$(date +%H:%M:%S) Timed out waiting for cook to start listening"
