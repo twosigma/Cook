@@ -1,16 +1,11 @@
 #!/bin/bash
 
 # Usage: ./run_integration [OPTIONS...]
-#   --auth={http-basic,one-user}    Use the specified authentication scheme. Default is one-user.
-#   --executor={cook,mesos}         Use the specified job executor. Default is mesos.
-#   --pools={on,off}                Use or don't use pools in the Cook under test. Default is on.
 
 set -ev
 
 export PROJECT_DIR=`pwd`
 
-COOK_AUTH=one-user
-COOK_EXECUTOR=mesos
 CONFIG_FILE=scheduler_travis_config.edn
 JOB_LAUNCH_RATE_LIMIT=off
 GLOBAL_JOB_LAUNCH_RATE_LIMIT=off
@@ -63,50 +58,11 @@ COOK_KEYSTORE_PATH=${SCHEDULER_DIR}/cook.p12
 keytool -genkeypair -keystore ${COOK_KEYSTORE_PATH} -storetype PKCS12 -storepass cookstore -dname "CN=cook, OU=Cook Developers, O=Two Sigma Investments, L=New York, ST=New York, C=US" -keyalg RSA -keysize 2048
 export COOK_KEYSTORE_PATH=${COOK_KEYSTORE_PATH}
 
-case "$JOB_LAUNCH_RATE_LIMIT" in
-    on)
-      # Note: Carefully chosen for test_rate_limit_launching_jobs unit test.
-      export JOB_LAUNCH_RATE_LIMIT_BUCKET_SIZE=10
-      export JOB_LAUNCH_RATE_LIMIT_REPLENISHED_PER_MINUTE=5
-      echo "Job launch rate limit turned on"
-    ;;
-    off)
-      # Note: Wide enough that we're unlikely to hit these in testing.
-      export JOB_LAUNCH_RATE_LIMIT_BUCKET_SIZE=10000
-      export JOB_LAUNCH_RATE_LIMIT_REPLENISHED_PER_MINUTE=10000
-      echo "Job launch rate limit turned off"
-    ;;
-  *)
-    echo "Unrecognized job-launch-rate-limit toggle (should be on/off): $JOB_LAUNCH_RATE_LIMIT"
-    exit 1
-esac
-
-case "$GLOBAL_JOB_LAUNCH_RATE_LIMIT" in
-    on)
-      # Note: Carefully chosen for test_global_rate_limit_launching_jobs unit test.
-      export GLOBAL_JOB_LAUNCH_RATE_LIMIT_BUCKET_SIZE=10
-      export GLOBAL_JOB_LAUNCH_RATE_LIMIT_REPLENISHED_PER_MINUTE=5
-      echo "Global job launch rate limit turned on"
-    ;;
-    off)
-      # Note: Wide enough that we're unlikely to hit these in testing.
-      export GLOBAL_JOB_LAUNCH_RATE_LIMIT_BUCKET_SIZE=10000
-      export GLOBAL_JOB_LAUNCH_RATE_LIMIT_REPLENISHED_PER_MINUTE=10000
-      echo "Global job launch rate limit turned off"
-    ;;
-  *)
-    echo "Unrecognized global-job-launch-rate-limit toggle (should be on/off): $GLOBAL_JOB_LAUNCH_RATE_LIMIT"
-    exit 1
-esac
-
 mkdir ${SCHEDULER_DIR}/log
 
-# Seed running jobs, which are used to test the task reconciler
 cd ${SCHEDULER_DIR}
-lein exec -p datomic/data/seed_running_jobs.clj ${COOK_DATOMIC_URI_1}
 
-# Start three cook schedulers.
-# We want one cluster with two cooks to run MasterSlaveTest, and a second cluster to run MultiClusterTest.
+# Start two cook schedulers.
 # The basic tests will run against cook-framework-1
 ## on travis, ports on 172.17.0.1 are bindable from the host OS, and are also
 ## available for processes inside minimesos containers to connect to
@@ -136,15 +92,25 @@ command -v cs
 
 # Run the integration tests
 cd ${PROJECT_DIR}
-export COOK_MULTI_CLUSTER=
-export COOK_MASTER_SLAVE=
-export COOK_SLAVE_URL=http://localhost:12323
 export COOK_MESOS_LEADER_URL=${MINIMESOS_MASTER}
+
+export JOB_LAUNCH_RATE_LIMIT_BUCKET_SIZE=10000
+export JOB_LAUNCH_RATE_LIMIT_REPLENISHED_PER_MINUTE=10000
+export GLOBAL_JOB_LAUNCH_RATE_LIMIT_BUCKET_SIZE=10000
+export GLOBAL_JOB_LAUNCH_RATE_LIMIT_REPLENISHED_PER_MINUTE=10000
+
+
 {
     echo "Using Mesos leader URL: ${COOK_MESOS_LEADER_URL}"
     if [ "$JOB_LAUNCH_RATE_LIMIT" = on ]; then
+      export COOK_SCHEDULER_URL=http://localhost:12321
+      export JOB_LAUNCH_RATE_LIMIT_BUCKET_SIZE=10
+      export JOB_LAUNCH_RATE_LIMIT_REPLENISHED_PER_MINUTE=5
       pytest -n0 -v --color=no --timeout-method=thread --boxed -m multi_user tests/cook/test_multi_user.py -k test_rate_limit_launching_jobs || test_failures=true
     else if [ "$GLOBAL_JOB_LAUNCH_RATE_LIMIT" = on ]; then
+      export COOK_SCHEDULER_URL=http://localhost:22321
+      export GLOBAL_JOB_LAUNCH_RATE_LIMIT_BUCKET_SIZE=10
+      export GLOBAL_JOB_LAUNCH_RATE_LIMIT_REPLENISHED_PER_MINUTE=5
       pytest -n0 -v --color=no --timeout-method=thread --boxed -m multi_user tests/cook/test_multi_user.py -k test_global_rate_limit_launching_jobs || test_failures=true
     fi
     fi
