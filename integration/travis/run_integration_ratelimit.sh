@@ -7,24 +7,6 @@ set -ev
 export PROJECT_DIR=`pwd`
 
 CONFIG_FILE=scheduler_travis_config.edn
-JOB_LAUNCH_RATE_LIMIT=off
-GLOBAL_JOB_LAUNCH_RATE_LIMIT=off
-
-while (( $# > 0 )); do
-  case "$1" in
-    --job-launch-rate-limit=*)
-      JOB_LAUNCH_RATE_LIMIT="${1#--job-launch-rate-limit=}"
-      shift
-      ;;
-    --global-job-launch-rate-limit=*)
-      GLOBAL_JOB_LAUNCH_RATE_LIMIT="${1#--global-job-launch-rate-limit=}"
-      shift
-      ;;
-    *)
-      echo "Unrecognized option: $1"
-      exit 1
-  esac
-done
 
 function wait_for_cook {
     COOK_PORT=${1:-12321}
@@ -58,8 +40,6 @@ export COOK_KEYSTORE_PATH=${COOK_KEYSTORE_PATH}
 mkdir ${SCHEDULER_DIR}/log
 
 cd ${SCHEDULER_DIR}
-
-
 
 # Start two cook schedulers.
 export COOK_HTTP_BASIC_AUTH=true
