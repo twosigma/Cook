@@ -2615,6 +2615,7 @@ class CookTest(util.CookTest):
 
     @unittest.skipUnless(util.data_local_service_is_set(), "Requires a data local service")
     @pytest.mark.serial
+    @pytest.mark.xfail(condition=util.continuous_integration(), reason="Sometimes fails on Travis")
     def test_data_local_debug_endpoint(self):
         job_uuid, resp = util.submit_job(self.cook_url, datasets=[{'dataset': {'foo': str(uuid.uuid4())}}])
         try:
