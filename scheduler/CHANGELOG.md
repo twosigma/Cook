@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.26.0] - 2018-12-11
+### Added
+- Global launch rate limit, from @scrosby
+### Changed
+- Made per-user rate limit more gradual, from @scrosby
+- Sped up `/unscheduled` endpoint with new query and truncating long lists, from @pschorf
+
 ## [1.25.0] - 2018-11-08
 ### Added
 - Support for job launch rate limits, from @scrosby
