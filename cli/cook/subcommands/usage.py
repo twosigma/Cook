@@ -3,7 +3,7 @@ import sys
 
 from tabulate import tabulate
 
-from cook import http, colors
+from cook import http, terminal
 from cook.format import format_job_memory, format_memory_amount
 from cook.querying import query_across_clusters, make_job_request
 from cook.util import guard_no_cluster, current_user, print_info, print_error
@@ -158,7 +158,7 @@ def print_formatted_cluster_or_pool_usage(cluster_or_pool, cluster_or_pool_usage
     usage_map = cluster_or_pool_usage['usage']
     share_map = cluster_or_pool_usage['share']
     quota_map = cluster_or_pool_usage['quota']
-    print_info(colors.bold(cluster_or_pool))
+    print_info(terminal.bold(cluster_or_pool))
 
     format_limit = lambda limit, formatter=(lambda x: x): \
         'Unlimited' if limit == sys.float_info.max else formatter(limit)
@@ -187,13 +187,13 @@ def print_formatted_cluster_or_pool_usage(cluster_or_pool, cluster_or_pool_usage
         print_info('Applications:')
     for application, application_usage in applications.items():
         usage_map = application_usage['usage']
-        print_info(f'- {colors.running(application if application else "[no application defined]")}')
+        print_info(f'- {terminal.running(application if application else "[no application defined]")}')
         print_info(f'  {format_usage(usage_map)}')
         print_info('  Job Groups:')
         for group, group_usage in application_usage['groups'].items():
             usage_map = group_usage['usage']
             jobs = group_usage['jobs']
-            print_info(f'\t- {colors.bold(group if group else "[ungrouped]")}')
+            print_info(f'\t- {terminal.bold(group if group else "[ungrouped]")}')
             print_info(f'\t  {format_usage(usage_map)}')
             print_info(f'\t  Jobs: {len(jobs)}')
             print_info('')

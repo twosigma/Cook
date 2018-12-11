@@ -7,7 +7,7 @@ from urllib.parse import urljoin
 
 from tabulate import tabulate
 
-from cook import colors, http
+from cook import terminal, http
 from cook.format import format_job_memory, format_job_attempts, format_job_status
 from cook.querying import query_across_clusters
 from cook.util import current_user, print_info, millis_to_date_string, check_positive, guard_no_cluster
@@ -26,7 +26,7 @@ def print_no_data(clusters, states, user):
         states.remove('success')
         states.append('successful')
     states_text = ' / '.join(states)
-    print(colors.failed(f'No matching {states_text} jobs for {user} found in {clusters_text}.'))
+    print(terminal.failed(f'No matching {states_text} jobs for {user} found in {clusters_text}.'))
 
 
 def list_jobs_on_cluster(cluster, state, user, start_ms, end_ms, name, limit, include_custom_executor, pool):

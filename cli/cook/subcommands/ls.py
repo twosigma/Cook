@@ -6,7 +6,7 @@ from functools import partial
 
 from tabulate import tabulate
 
-from cook import http, mesos, colors
+from cook import http, mesos, terminal
 from cook.querying import query_unique_and_run, parse_entity_refs
 from cook.util import guard_no_cluster
 
@@ -26,9 +26,9 @@ def format_path(entry):
     executable_by_user = 3
     name = basename(entry['path'])
     if is_directory(entry):
-        name = colors.directory(name)
+        name = terminal.directory(name)
     elif entry['mode'][executable_by_user] == 'x':
-        name = colors.executable(name)
+        name = terminal.executable(name)
     return name
 
 
@@ -95,7 +95,7 @@ def ls_for_instance(instance, sandbox_dir, path, long_format, as_json):
                 table = tabulate(rows, tablefmt='plain')
                 print(table)
             else:
-                print('\n'.join(colors.wrap('  '.join([format_path(e) for e in entries]))))
+                print('\n'.join(terminal.wrap('  '.join([format_path(e) for e in entries]))))
         else:
             logging.info('the directory is empty')
 
@@ -115,13 +115,13 @@ def ls(clusters, args, _):
 
     if path and not literal and any(c in path for c in '*?[]{}'):
         message = 'It looks like you are trying to glob, but ls does not support globbing. ' \
-                  f'You can use the {colors.bold("ssh")} command instead:\n' \
+                  f'You can use the {terminal.bold("ssh")} command instead:\n' \
                   '\n' \
                   f'  cs ssh {entity_refs[0]}\n' \
                   '\n' \
-                  f'Or, if you want the literal path {colors.bold(path)}, add {colors.bold("--literal")}:\n' \
+                  f'Or, if you want the literal path {terminal.bold(path)}, add {terminal.bold("--literal")}:\n' \
                   '\n' \
-                  f'  cs ls {colors.bold("--literal")} {entity_refs[0]} {path}'
+                  f'  cs ls {terminal.bold("--literal")} {entity_refs[0]} {path}'
         print(message)
         return 1
 

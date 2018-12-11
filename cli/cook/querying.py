@@ -8,7 +8,7 @@ from functools import partial
 from operator import itemgetter
 from urllib.parse import urlparse, parse_qs
 
-from cook import http, colors, mesos, progress
+from cook import http, terminal, mesos, progress
 from cook.exceptions import CookRetriableException
 from cook.util import is_valid_uuid, wait_until, print_info, distinct, partition
 
@@ -37,7 +37,7 @@ def __query_cluster(cluster, uuids, pred, timeout, interval, make_request_fn, en
     num_entities = len(entities)
     if pred and num_entities > 0:
         s = 's' if num_entities > 1 else ''
-        num_string = colors.bold(str(num_entities))
+        num_string = terminal.bold(str(num_entities))
         if entity_type == Types.JOB:
             wait_text = f'Waiting for {num_string} job{s}'
         elif entity_type == Types.INSTANCE:
@@ -47,14 +47,14 @@ def __query_cluster(cluster, uuids, pred, timeout, interval, make_request_fn, en
         else:
             raise Exception(f'Invalid entity type {entity_type}.')
 
-        wait_text = f'{wait_text} on {colors.bold(cluster["name"])}'
+        wait_text = f'{wait_text} on {terminal.bold(cluster["name"])}'
         index = progress.add(wait_text)
         if pred(entities):
-            progress.update(index, colors.bold('Done'))
+            progress.update(index, terminal.bold('Done'))
         else:
             entities = wait_until(satisfy_pred, timeout, interval)
             if entities:
-                progress.update(index, colors.bold('Done'))
+                progress.update(index, terminal.bold('Done'))
             else:
                 raise TimeoutError('Timeout waiting for response.')
     return entities
@@ -184,7 +184,7 @@ def query(clusters, entity_refs, pred_jobs=None, pred_instances=None, pred_group
 def no_data_message(clusters):
     """Returns a message indicating that no data was found in the given clusters"""
     clusters_text = ' / '.join([c['name'] for c in clusters])
-    message = colors.failed(f'No matching data found in {clusters_text}.')
+    message = terminal.failed(f'No matching data found in {clusters_text}.')
     message = f'{message}\nDo you need to add another cluster to your configuration?'
     return message
 
