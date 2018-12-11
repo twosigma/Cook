@@ -204,10 +204,11 @@
                                      ((util/lazy-load-var 'cook.impersonation/create-impersonation-middleware) impersonators)
                                      {:json-value "config-impersonation"})))
      :rate-limit (fnk [[:config {rate-limit nil}]]
-                   (let [{:keys [expire-minutes user-limit-per-m job-submission job-launch]
+                   (let [{:keys [expire-minutes user-limit-per-m global-job-launch job-submission job-launch]
                           :or {expire-minutes 120
                                user-limit-per-m 600}} rate-limit]
                      {:expire-minutes expire-minutes
+                      :global-job-launch global-job-launch
                       :job-submission job-submission
                       :job-launch job-launch
                       :user-limit (->UserRateLimit :user-limit user-limit-per-m (t/minutes 1))}))

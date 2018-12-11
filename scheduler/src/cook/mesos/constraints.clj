@@ -23,6 +23,7 @@
             [cook.mesos.data-locality :as dl]
             [cook.mesos.group :as group]
             [cook.mesos.util :as util]
+            [cook.rate-limit :as ratelimit]
             [swiss.arrows :refer :all])
   (:import com.netflix.fenzo.VirtualMachineLease
            java.util.Date))
@@ -234,6 +235,21 @@
         (when (< 0 max-expected-runtime)
           (->estimated-completion-constraint expected-end-time host-lifetime-mins))))))
 
+(defn build-launch-max-tasks-constraint
+  "This returns a Fenzo hard constraint that ensures that we don't match more than a given number of tasks per cycle."
+  []
+  (let [enforcing? (ratelimit/enforce? ratelimit/global-job-launch-rate-limiter)
+        max-tasks (ratelimit/get-token-count! ratelimit/global-job-launch-rate-limiter ratelimit/global-job-launch-rate-limiter-key)]
+    (if enforcing?
+      (reify com.netflix.fenzo.ConstraintEvaluator
+        (getName [_] "launch_max_tasks")
+        (evaluate [_ _ _ task-tracker-state]
+          (let [num-assigned (-> task-tracker-state .getAllCurrentlyAssignedTasks .size)]
+            (com.netflix.fenzo.ConstraintEvaluator$Result.
+              (< num-assigned max-tasks)
+              (str "Hit the global rate limit")))))
+      nil)))
+
 (def job-constraint-constructors [build-novel-host-constraint build-gpu-host-constraint build-user-defined-constraint build-estimated-completion-constraint build-data-locality-constraint])
 
 (defn fenzoize-job-constraint
@@ -260,10 +276,12 @@
 (defn make-fenzo-job-constraints
   "Returns a sequence of all the constraints for 'job', in Fenzo-compatible format."
   [job]
-  (->> job-constraint-constructors
-       (map (fn [constructor] (constructor job)))
-       (remove nil?)
-       (map fenzoize-job-constraint)))
+  (let [launch-max-tasks-constraint (build-launch-max-tasks-constraint)]
+    (cond-> (->> job-constraint-constructors
+                 (map (fn [constructor] (constructor job)))
+                 (remove nil?)
+                 (map fenzoize-job-constraint))
+            launch-max-tasks-constraint (conj (build-launch-max-tasks-constraint)))))
 
 (defn build-rebalancer-reservation-constraint
   "Constructs a rebalancer-reservation-constraint"

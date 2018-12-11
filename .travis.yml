@@ -60,7 +60,7 @@ matrix:
       services: docker
       install: sudo ./travis/install_mesos.sh
       before_script: cd integration && ./travis/prepare_integration.sh
-      script: ./travis/run_integration.sh --pools=off --auth=http-basic --job-launch-rate-limit=on
+      script: ./travis/run_integration_ratelimit.sh
 
     - name: 'Cook Scheduler Simulator tests'
       services: docker

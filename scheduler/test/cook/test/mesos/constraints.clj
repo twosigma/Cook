@@ -54,6 +54,7 @@
 
 
 (deftest test-gpu-constraint
+  (cook.test.testutil/setup)
   (let [framework-id #mesomatic.types.FrameworkID{:value "my-framework-id"}
         gpu-offer #mesomatic.types.Offer{:id #mesomatic.types.OfferID {:value "my-offer-id"}
                                          :framework-id framework-id

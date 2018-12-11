@@ -343,6 +343,7 @@
     (is (= 1000.0 (:mem resources)))))
 
 (deftest test-match-offer-to-schedule
+  (setup)
   (let [schedule (map #(d/entity (db c) %) [j1 j2 j3 j4]) ; all 1gb 1 cpu
         offer-maker (fn [cpus mem]
                       [{:resources [{:name "cpus" :type :value-scalar :scalar cpus}
@@ -766,6 +767,7 @@
                                   distinct))))))))
 
 (deftest test-attr-equals-host-placement-constraint
+  (setup)
   (let [uri "datomic:mem://test-attr-equals-host-placement-constraint"
         conn (restore-fresh-database! uri)
         framework-id #mesomatic.types.FrameworkID{:value "my-original-framework-id"}
@@ -1661,6 +1663,19 @@
             (is (= 1 (count @launched-job-ids-atom)))
             (is (= #{"job-1"} (set @launched-job-ids-atom))))))
 
+      (with-redefs [rate-limit/job-launch-rate-limiter
+                    (rate-limit/create-job-launch-rate-limiter job-launch-rate-limit-config-for-testing)
+                    rate-limit/get-token-count! (constantly 1)]
+        (testing "enough offers for all normal jobs, limited by num-considerable of 2, but only one token in global rate limit for one job"
+          ;; We filter so that fenzo only matches one job, so we should only launch the one job.
+          (let [num-considerable 2
+                offers [offer-1 offer-2 offer-3]]
+            (is (run-handle-resource-offers! num-considerable offers :normal))
+            (is (= :end-marker (async/<!! offers-chan)))
+            (is (= 1 (count @launched-offer-ids-atom)))
+            (is (= 1 (count @launched-job-ids-atom)))
+            (is (= #{"job-1"} (set @launched-job-ids-atom))))))
+
       (let [total-spent (atom 0)]
         (with-redefs [rate-limit/spend! (fn [_ _ tokens] (reset! total-spent (-> @total-spent (+ tokens))))]
           (testing "enough offers for all normal jobs, limited by num-considerable of 2. Make sure we spend the tokens."
@@ -1671,7 +1686,8 @@
               (is (= 2 (count @launched-offer-ids-atom)))
               (is (= 2 (count @launched-job-ids-atom)))
               (is (= #{"job-1" "job-2"} (set @launched-job-ids-atom)))
-              (is (= 2 @total-spent))))))
+              ; We launch two jobs, this involves spending two tokens on per-user rate limiter and 2 on the global launch rate limiter.
+              (is (= 4 @total-spent))))))
 
       (testing "enough offers for all normal jobs, limited by quota"
         (let [num-considerable 1

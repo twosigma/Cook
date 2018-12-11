@@ -92,6 +92,7 @@
 
 
 (deftest test-record-placement-failures
+  (cook.test.testutil/setup)
   (let [uri "datomic:mem://test-record-placement-failures"
         conn (restore-fresh-database! uri)
         job-id (create-dummy-job conn :under-investigation true)
