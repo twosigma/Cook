@@ -493,11 +493,14 @@ class CookTest(util.CookTest):
             if 2002 == instance['reason_code']:
                 self.assertEqual('Container memory limit exceeded', instance['reason_string'], instance_details)
             elif 99003 == instance['reason_code']:
-                # If the command was killed, it will have exited with 137 (Fatal error signal of 128 + SIGKILL)
+                # If the command was killed, it will have exited with either:
+                # 137 (Fatal error signal of 128 + SIGKILL)
+                # -9 (Negative return values are the signal number which was used to kill the process)
                 self.assertEqual('Command exited non-zero', instance['reason_string'], instance_details)
                 if executor_type == 'cook':
                     instance = util.wait_for_exit_code(self.cook_url, job_uuid)
-                    self.assertEqual(137, instance['exit_code'], instance_details)
+                    self.logger.info(f'Exit code: {instance["exit_code"]}')
+                    self.assertIn(instance['exit_code'], [137, -9], instance_details)
             else:
                 self.fail('Unknown reason code {}, details {}'.format(instance['reason_code'], instance_details))
         finally:
@@ -518,7 +521,6 @@ class CookTest(util.CookTest):
         self.memory_limit_exceeded_helper(command, 'mesos')
 
     @pytest.mark.memlimit
-    @unittest.skipUnless(util.continuous_integration(), "Doesn't work in our local test environments")
     @unittest.skipUnless(util.is_cook_executor_in_use(), 'Test assumes the Cook Executor is in use')
     def test_memory_limit_exceeded_cook_script(self):
         command = self.memory_limit_script_command()
