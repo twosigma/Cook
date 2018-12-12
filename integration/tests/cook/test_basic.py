@@ -1451,6 +1451,7 @@ class CookTest(util.CookTest):
             # ensure that we don't leave a bunch of jobs running/waiting
             util.kill_groups(self.cook_url, [group_uuid])
 
+    @pytest.mark.xfail(reason="Test can fail if one of the 5 jobs fails, e.g. due to 'Invalid task'")
     def test_group_failed_only_change_retries_all_active(self):
         statuses = ['running', 'waiting']
         jobs = util.group_submit_retry(self.cook_url, command='sleep 120', predicate_statuses=statuses)
