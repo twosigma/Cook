@@ -506,7 +506,10 @@ def __get(cook_url, endpoint, assert_response=False, **kwargs):
         kwargs['partial'] = 'true' if to_bool(kwargs['partial']) else 'false'
     response = session.get(f'{cook_url}/{endpoint}', params=kwargs)
     if assert_response:
-        assert 200 == response.status_code
+        response_info = {'code': response.status_code, 'msg': response.content}
+        if 200 != response.status_code:
+            logging.info(f'Got a non-200 response: {response_info}')
+        assert 200 == response.status_code, response_info
     return response
 
 
