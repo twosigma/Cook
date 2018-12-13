@@ -45,7 +45,7 @@ EPHEMERAL_HOSTS_SKIP_REASON = 'If the cluster under test has ephemeral hosts, th
 
 def continuous_integration():
     """Returns true if the CONTINUOUS_INTEGRATION environment variable is set, as done by Travis-CI."""
-    return os.getenv('CONTINUOUS_INTEGRATION')
+    return to_bool(os.getenv('CONTINUOUS_INTEGRATION'))
 
 
 def has_docker_service():
