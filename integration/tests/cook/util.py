@@ -639,7 +639,7 @@ def group_some_job_started(group_response):
     """
     group = group_response.json()[0]
     running_count = group['running']
-    logger.info(f"Currently {running_count} jobs running in group {group['uuid']}")
+    logger.info(f"Currently {running_count} jobs running in group {group}")
     return running_count > 0
 
 
@@ -916,7 +916,7 @@ def group_submit_kill_retry(cook_url, retry_failed_jobs_only):
     """
     group_spec = minimal_group()
     group_uuid = group_spec['uuid']
-    job_spec = {'group': group_uuid, 'command': f'sleep 1'}
+    job_spec = {'group': group_uuid, 'command': f'sleep 600'}
     try:
         jobs, resp = submit_jobs(cook_url, job_spec, 10, groups=[group_spec])
         assert resp.status_code == 201, resp
