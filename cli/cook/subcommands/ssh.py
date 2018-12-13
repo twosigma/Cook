@@ -1,18 +1,18 @@
 import logging
 import os
 
-from cook import colors
+from cook import terminal
 from cook.querying import query_unique_and_run, parse_entity_refs
 from cook.util import print_info, guard_no_cluster
 
 
 def ssh_to_instance(instance, sandbox_dir):
     """Attempts to ssh (using os.execlp) to the Mesos agent corresponding to the given instance."""
-    print_info(f'Attempting ssh for job instance {colors.bold(instance["task_id"])}...')
+    print_info(f'Attempting ssh for job instance {terminal.bold(instance["task_id"])}...')
     command = os.environ.get('CS_SSH', 'ssh')
     logging.info(f'using ssh command: {command}')
     hostname = instance['hostname']
-    print_info(f'Executing ssh to {colors.bold(hostname)}.')
+    print_info(f'Executing ssh to {terminal.bold(hostname)}.')
     os.execlp(command, 'ssh', '-t', hostname, f'cd "{sandbox_dir}" ; bash')
 
 

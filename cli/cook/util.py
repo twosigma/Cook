@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 import arrow
 import humanfriendly
 
-from cook import colors
+from cook import terminal
 
 quit_running = False
 
@@ -97,7 +97,7 @@ def print_info(text, silent_mode_text=None, end='\n'):
 
 def print_error(text):
     """Prints text to stderr, colored as a failure"""
-    print(colors.failed(text), file=sys.stderr)
+    print(terminal.failed(text), file=sys.stderr)
 
 
 def seconds_to_timedelta(s):

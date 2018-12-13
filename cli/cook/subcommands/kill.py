@@ -1,6 +1,6 @@
 from collections import defaultdict
 
-from cook import http, colors
+from cook import http, terminal
 from cook.querying import print_no_data, parse_entity_refs, query_with_stdin_support
 from cook.util import print_info, guard_no_cluster, partition
 
@@ -93,9 +93,9 @@ def kill_entities(query_result, clusters):
         __kill(cluster, group_uuids, kill_groups, 'job group')
 
     for item in succeeded:
-        print_info(f'Killed {item["type"]} {colors.bold(item["uuid"])} on {colors.bold(item["cluster"]["name"])}.')
+        print_info(f'Killed {item["type"]} {terminal.bold(item["uuid"])} on {terminal.bold(item["cluster"]["name"])}.')
     for item in failed:
-        print(colors.failed(f'Failed to kill {item["type"]} {item["uuid"]} on {item["cluster"]["name"]}.'))
+        print(terminal.failed(f'Failed to kill {item["type"]} {item["uuid"]} on {item["cluster"]["name"]}.'))
     num_succeeded = len(succeeded)
     num_failed = len(failed)
     print_info(f'Successful: {num_succeeded}, Failed: {num_failed}')

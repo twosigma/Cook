@@ -1,6 +1,6 @@
 from cook.util import print_info
 
-from cook import configuration, colors
+from cook import configuration, terminal
 from cook.configuration import load_config
 
 
@@ -74,7 +74,7 @@ def set_config_value(config_map, keys, value, config_path):
         value = False
 
     set_in(config_map, keys, value)
-    print_info(f'Updating configuration in {colors.bold(config_path)}.')
+    print_info(f'Updating configuration in {terminal.bold(config_path)}.')
     configuration.save_config(config_path, config_map)
     return 0
 

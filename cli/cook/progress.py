@@ -1,10 +1,8 @@
 import threading
 
-from blessed import Terminal
-
+from cook import terminal
 from cook.util import print_info
 
-term = Terminal()
 data = []
 lock = threading.Lock()
 
@@ -15,7 +13,7 @@ def __print_state(lines_to_move_up):
     lines_to_move_up lines and then printing the current state of the data
     list, which contains [item, status] pairs.
     """
-    print_info(term.move_up * lines_to_move_up, end='')
+    print_info(terminal.MOVE_UP * lines_to_move_up, end='')
     print_info('\n'.join([f'{item} ... {state}' for [item, state] in data]))
 
 

@@ -7,7 +7,7 @@ import uuid
 
 import requests
 
-from cook import colors, http, metrics, version
+from cook import terminal, http, metrics, version
 from cook.util import deep_merge, is_valid_uuid, read_lines, print_info, current_user, guard_no_cluster, check_positive
 
 
@@ -36,15 +36,15 @@ def submit_succeeded_message(cluster_name, uuids):
     """Generates a successful submission message with the given cluster and uuid(s)"""
     if len(uuids) == 1:
         return 'Job submission %s on %s. Your job UUID is:\n%s' % \
-               (colors.success('succeeded'), cluster_name, uuids[0])
+               (terminal.success('succeeded'), cluster_name, uuids[0])
     else:
         return 'Job submission %s on %s. Your job UUIDs are:\n%s' % \
-               (colors.success('succeeded'), cluster_name, '\n'.join(uuids))
+               (terminal.success('succeeded'), cluster_name, '\n'.join(uuids))
 
 
 def submit_failed_message(cluster_name, reason):
     """Generates a failed submission message with the given cluster name and reason"""
-    return 'Job submission %s on %s:\n%s' % (colors.failed('failed'), cluster_name, colors.reason(reason))
+    return 'Job submission %s on %s:\n%s' % (terminal.failed('failed'), cluster_name, terminal.reason(reason))
 
 
 def print_submit_result(cluster, response):
@@ -84,7 +84,7 @@ def submit_federated(clusters, jobs, group, pool):
         cluster_name = cluster['name']
         cluster_url = cluster['url']
         try:
-            print_info('Attempting to submit on %s cluster...' % colors.bold(cluster_name))
+            print_info('Attempting to submit on %s cluster...' % terminal.bold(cluster_name))
 
             json_body = {'jobs': jobs}
             if group:
@@ -99,7 +99,7 @@ def submit_federated(clusters, jobs, group, pool):
                 return 0
         except requests.exceptions.ReadTimeout as rt:
             logging.exception(rt)
-            print_info(colors.failed(
+            print_info(terminal.failed(
                 f'Encountered read timeout with {cluster_name} ({cluster_url}). Your submission may have completed.'))
             return 1
         except IOError as ioe:
@@ -107,7 +107,7 @@ def submit_federated(clusters, jobs, group, pool):
             reason = f'Cannot connect to {cluster_name} ({cluster_url})'
             message = submit_failed_message(cluster_name, reason)
             print_info(f'{message}\n')
-    raise Exception(colors.failed('Job submission failed on all of your configured clusters.'))
+    raise Exception(terminal.failed('Job submission failed on all of your configured clusters.'))
 
 
 def read_commands_from_stdin():

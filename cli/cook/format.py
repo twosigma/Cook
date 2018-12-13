@@ -2,7 +2,7 @@ import time
 
 import humanfriendly
 
-from cook import colors
+from cook import terminal
 from cook.util import millis_to_timedelta, millis_to_date_string
 
 
@@ -20,13 +20,13 @@ def format_state(state):
     """Capitalizes and colorizes the given state"""
     state = state.capitalize()
     if state == 'Running':
-        text = colors.running(state)
+        text = terminal.running(state)
     elif state == 'Waiting':
-        text = colors.waiting(state)
+        text = terminal.waiting(state)
     elif state == 'Failed':
-        text = colors.failed(state)
+        text = terminal.failed(state)
     elif state == 'Success':
-        text = colors.success(state)
+        text = terminal.success(state)
     else:
         text = state
     return text
@@ -37,13 +37,13 @@ def format_instance_status(instance):
     status_text = format_state(instance['status'])
 
     if 'reason_string' in instance:
-        reason_text = f' ({colors.reason(instance["reason_string"])})'
+        reason_text = f' ({terminal.reason(instance["reason_string"])})'
     else:
         reason_text = ''
 
     if 'progress' in instance and instance['progress'] > 0:
         if 'progress_message' in instance:
-            progress_text = f' ({instance["progress"]}% {colors.bold(instance["progress_message"])})'
+            progress_text = f' ({instance["progress"]}% {terminal.bold(instance["progress_message"])})'
         else:
             progress_text = f' ({instance["progress"]}%)'
     else:
