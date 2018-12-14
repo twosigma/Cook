@@ -1912,7 +1912,7 @@
             (is (= 400 status))
             (is (str/includes? body "Explicit-reject by test hook")))))
 
-      (testing "hook-rejects-multi-submission"
+      (testing "hook-rejects-multi-submission-1"
         (with-redefs [api/create-jobs! (fn [in-conn _]
                                          (is (= conn in-conn)))
                       rate-limit/job-submission-rate-limiter rate-limit/AllowAllRateLimiter
@@ -1926,6 +1926,35 @@
             (log/info (str "BODY: " body " STATUS: " status " ALL " all))
             (is (= 400 status))
             (is (str/includes? body "Explicitly rejected by hook")))))
+
+      (testing "hook-rejects-multi-submission-2"
+        (with-redefs [api/create-jobs! (fn [in-conn _]
+                                         (is (= conn in-conn)))
+                      rate-limit/job-submission-rate-limiter rate-limit/AllowAllRateLimiter
+                      hooks/hook-object testutil/fake-scheduler-hooks]
+          (log/info (str "INIT"))
+          (let [j1 (assoc (minimal-job) :name "reject3")
+                j2 (assoc (minimal-job) :name "accept4")
+                request (assoc-in (new-request) [:body-params :jobs] [j1 j2])
+                handler (api/create-jobs-handler conn task-constraints gpu-enabled? is-authorized-fn)
+                {:keys [body status] :as all} (handler request)]
+            (log/info (str "BODY: " body " STATUS: " status " ALL " all))
+            (is (= 400 status))
+            (is (str/includes? body "Explicitly rejected by hook")))))
+
+      (testing "hook-rejects-multi-submission-3"
+        (with-redefs [api/create-jobs! (fn [in-conn _]
+                                         (is (= conn in-conn)))
+                      rate-limit/job-submission-rate-limiter rate-limit/AllowAllRateLimiter
+                      hooks/hook-object testutil/fake-scheduler-hooks]
+          (log/info (str "INIT"))
+          (let [j1 (assoc (minimal-job) :name "accept5")
+                j2 (assoc (minimal-job) :name "accept6")
+                request (assoc-in (new-request) [:body-params :jobs] [j1 j2])
+                handler (api/create-jobs-handler conn task-constraints gpu-enabled? is-authorized-fn)
+                {:keys [body status] :as all} (handler request)]
+            (log/info (str "BODY: " body " STATUS: " status " ALL " all))
+            (is (= 201 status)))))
 
       (testing "hook-job-accepts-job"
         (with-redefs [api/create-jobs! (fn [in-conn _]
