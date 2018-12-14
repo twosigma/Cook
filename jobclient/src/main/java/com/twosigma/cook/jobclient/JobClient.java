@@ -710,10 +710,16 @@ public class JobClient implements Closeable, JobClientInterface {
             } catch (IOException e) {
             }
         }
-        if (null != cause) {
-            return new JobClientException(newMsg.toString(), cause, httpResponse.getStatusLine().getStatusCode());
+        final Integer responseStatusCode;
+        if (httpResponse != null && httpResponse.getStatusLine() != null) {
+            responseStatusCode = httpResponse.getStatusLine().getStatusCode();
         } else {
-            return new JobClientException(newMsg.toString(), httpResponse.getStatusLine().getStatusCode());
+            responseStatusCode = null;
+        }
+        if (null != cause) {
+            return new JobClientException(newMsg.toString(), cause, responseStatusCode);
+        } else {
+            return new JobClientException(newMsg.toString(), responseStatusCode);
         }
     }
 

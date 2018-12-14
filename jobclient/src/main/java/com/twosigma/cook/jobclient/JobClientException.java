@@ -37,13 +37,13 @@ public class JobClientException extends Exception {
         this(msg, cause, null);
     }
 
-    JobClientException(final String msg, Integer httpResponseCode) {
+    JobClientException(final String msg, final Integer httpResponseCode) {
         super(msg);
         this.httpResponseCode = httpResponseCode;
     }
 
 
-    JobClientException(final String msg, final Throwable cause, Integer httpResponseCode) {
+    JobClientException(final String msg, final Throwable cause, final Integer httpResponseCode) {
         super(msg, cause);
         this.httpResponseCode = httpResponseCode;
     }
