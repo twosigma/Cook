@@ -711,9 +711,9 @@ public class JobClient implements Closeable, JobClientInterface {
             }
         }
         if (null != cause) {
-            return new JobClientException(newMsg.toString(), cause);
+            return new JobClientException(newMsg.toString(), cause, httpResponse.getStatusLine().getStatusCode());
         } else {
-            return new JobClientException(newMsg.toString());
+            return new JobClientException(newMsg.toString(), httpResponse.getStatusLine().getStatusCode());
         }
     }
 
@@ -873,7 +873,8 @@ public class JobClient implements Closeable, JobClientInterface {
         } else {
             _log.error("Failed to submit jobs " + json.toString());
             throw new JobClientException("The response of POST request " + json + " via uri " + _jobURI + ": "
-                    + statusLine.getReasonPhrase() + ", " + statusLine.getStatusCode() + ", response is: " + response);
+                    + statusLine.getReasonPhrase() + ", " + statusLine.getStatusCode() + ", response is: " + response,
+                    statusLine.getStatusCode());
         }
     }
 

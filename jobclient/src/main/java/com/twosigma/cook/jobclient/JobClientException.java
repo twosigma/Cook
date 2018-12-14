@@ -27,15 +27,28 @@ package com.twosigma.cook.jobclient;
 public class JobClientException extends Exception {
     private static final long serialVersionUID = 1L;
 
-    JobClientException() {
-        super();
-    }
+    private final Integer httpResponseCode;
 
     JobClientException(final String msg) {
-        super(msg);
+        this(msg, (Integer) null);
     }
 
     JobClientException(final String msg, final Throwable cause) {
+        this(msg, cause, null);
+    }
+
+    JobClientException(final String msg, Integer httpResponseCode) {
+        super(msg);
+        this.httpResponseCode = httpResponseCode;
+    }
+
+
+    JobClientException(final String msg, final Throwable cause, Integer httpResponseCode) {
         super(msg, cause);
+        this.httpResponseCode = httpResponseCode;
+    }
+
+    public Integer getHttpResponseCode() {
+        return httpResponseCode;
     }
 }
