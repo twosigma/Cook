@@ -155,5 +155,4 @@
                        (or status default-accept)))
         results (apply list (map do-one-job jobs))
         errors (apply list (filter #(= :rejected (:status %)) results))]
-    (log/info (str "Hook result: " results " ++ " errors " ++ "))
     (if (zero? (count errors)) {:status :accepted} (first errors))))
