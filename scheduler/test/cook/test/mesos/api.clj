@@ -1909,9 +1909,23 @@
                       hooks/hook-object testutil/reject-reject-hook]
           (let [handler (api/create-jobs-handler conn task-constraints gpu-enabled? is-authorized-fn)
                 {:keys [body status] :as all} (handler (new-request))]
-            (log/info (str "BODY: " body " STATUS: " status " ALL " all))
             (is (= 400 status))
             (is (str/includes? body "Explicit-reject by test hook")))))
+
+      (testing "hook-rejects-multi-submission"
+        (with-redefs [api/create-jobs! (fn [in-conn _]
+                                         (is (= conn in-conn)))
+                      rate-limit/job-submission-rate-limiter rate-limit/AllowAllRateLimiter
+                      hooks/hook-object testutil/fake-scheduler-hooks]
+          (log/info (str "INIT"))
+          (let [j1 (assoc (minimal-job) :name "accept1")
+                j2 (assoc (minimal-job) :name "reject2")
+                request (assoc-in (new-request) [:body-params :jobs] [j1 j2])
+                handler (api/create-jobs-handler conn task-constraints gpu-enabled? is-authorized-fn)
+                {:keys [body status] :as all} (handler request)]
+            (log/info (str "BODY: " body " STATUS: " status " ALL " all))
+            (is (= 400 status))
+            (is (str/includes? body "Explicitly rejected by hook")))))
 
       (testing "hook-job-accepts-job"
         (with-redefs [api/create-jobs! (fn [in-conn _]

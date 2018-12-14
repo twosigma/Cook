@@ -20,6 +20,7 @@
             [clj-time.core :as t]
             [clojure.core.async :as async]
             [clojure.core.cache :as cache]
+            [clojure.string :as str]
             [clojure.tools.logging :as log]
             [cook.hooks :refer (SchedulerHooks)]
             [cook.impersonation :refer (create-impersonation-middleware)]
@@ -331,6 +332,20 @@
     [rate-limit/job-submission-rate-limiter rate-limit/AllowAllRateLimiter]
     (api/create-jobs! conn context)))
 
+(def fake-scheduler-hooks
+  (reify SchedulerHooks
+    (check-job-submission-default [this] {:status :rejected :message "Too slow"})
+    (check-job-submission [this {:keys [name] :as job-map}]
+      (if (str/starts-with? name "accept")
+        {:status :accepted :cache-expires-at (-> 1 t/seconds t/from-now)}
+        {:status :rejected :cache-expires-at (-> 1 t/seconds t/from-now) :message "Explicitly rejected by hook"}))
+    (check-job-invocation [this {:keys [name] :as job-map}]
+      (cond
+        ; job-a is accepted for 5 seconds, rejected for 5 seconds, valid for 5 seconds.
+        (str/starts-with? name "accept")
+        {:status :accepted :cache-expires-at (-> 1 t/seconds t/from-now)}
+        (str/starts-with? name "defer")
+        {:status :deferred :cache-expires-at (-> 1 t/seconds t/from-now)}))))
 
 (def reject-reject-hook
   (reify SchedulerHooks
