@@ -831,6 +831,7 @@
                        (reduce #(+ %1 (count (.getTasksAssigned %2))) 0))))))))
 
 (deftest ^:benchmark stress-test-constraint
+  (setup)
   (let [framework-id #mesomatic.types.FrameworkID{:value "my-original-framework-id"}
         uri "datomic:mem://stress-test-constraint"
         conn (restore-fresh-database! uri)
