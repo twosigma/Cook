@@ -1858,11 +1858,11 @@
                        :authorization/user "user"
                        :headers {"Content-Type" "application/json"}
                        :body-params {:jobs [(minimal-job)]}})]
-    (with-redefs [api/no-job-exceeds-quota? (constantly true)]
+    (with-redefs [api/no-job-exceeds-quota? (constantly true)
+                  rate-limit/job-submission-rate-limiter rate-limit/AllowAllRateLimiter]
       (testing "successful-job-creation-response"
         (with-redefs [api/create-jobs! (fn [in-conn _]
-                                         (is (= conn in-conn)))
-                      rate-limit/job-submission-rate-limiter rate-limit/AllowAllRateLimiter]
+                                         (is (= conn in-conn)))]
           (let [handler (api/create-jobs-handler conn task-constraints gpu-enabled? is-authorized-fn)
                 {:keys [status]} (handler (new-request))]
             (is (= 201 status)))))
@@ -1871,8 +1871,7 @@
         (with-redefs [api/create-jobs! (fn [in-conn _]
                                          (is (= conn in-conn))
                                          (throw (ex-info "Transaction timed out."
-                                                         {:db.error :db.error/transaction-timeout})))
-                      rate-limit/job-submission-rate-limiter rate-limit/AllowAllRateLimiter]
+                                                         {:db.error :db.error/transaction-timeout})))]
 
           (let [handler (api/create-jobs-handler conn task-constraints gpu-enabled? is-authorized-fn)
                 {:keys [body status]} (handler (new-request))]
@@ -1882,25 +1881,23 @@
       (testing "generic-exception-job-creation-response"
         (with-redefs [api/create-jobs! (fn [in-conn _]
                                          (is (= conn in-conn))
-                                         (throw (Exception. "Thrown from test")))
-                      rate-limit/job-submission-rate-limiter rate-limit/AllowAllRateLimiter]
+                                         (throw (Exception. "Thrown from test")))]
           (let [handler (api/create-jobs-handler conn task-constraints gpu-enabled? is-authorized-fn)
                 {:keys [body status]} (handler (new-request))]
             (is (= 500 status))
             (is (str/includes? body "Exception occurred while creating job - Thrown from test")))))
 
       (testing "should fail with duplicate uuids"
-        (with-redefs [rate-limit/job-submission-rate-limiter rate-limit/AllowAllRateLimiter]
-          (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
-                {:keys [uuid] :as j1} (minimal-job)
-                j2 (assoc (minimal-job) :uuid uuid)
-                j3 (minimal-job)
-                request (assoc-in (new-request) [:body-params :jobs] [j1 j2 j3])
-                handler (api/create-jobs-handler conn task-constraints gpu-enabled? is-authorized-fn)
-                {:keys [body status]} (handler request)]
-            (is (= 400 status))
-            (is (str/includes? body (str uuid)))
-            (is (not (str/includes? body (str (:uuid j3)))))))))))
+        (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
+              {:keys [uuid] :as j1} (minimal-job)
+              j2 (assoc (minimal-job) :uuid uuid)
+              j3 (minimal-job)
+              request (assoc-in (new-request) [:body-params :jobs] [j1 j2 j3])
+              handler (api/create-jobs-handler conn task-constraints gpu-enabled? is-authorized-fn)
+              {:keys [body status]} (handler request)]
+          (is (= 400 status))
+          (is (str/includes? body (str uuid)))
+          (is (not (str/includes? body (str (:uuid j3))))))))))
 
 (deftest test-validate-partitions
   (is (api/validate-partitions {:dataset {"foo" "bar"}}))
