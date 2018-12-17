@@ -1905,17 +1905,23 @@
       (testing "hook-rejects-job-submission"
         (with-redefs [api/create-jobs! (fn [in-conn _]
                                          (is (= conn in-conn)))
-                      rate-limit/job-submission-rate-limiter rate-limit/AllowAllRateLimiter
                       hooks/hook-object testutil/reject-reject-hook]
           (let [handler (api/create-jobs-handler conn task-constraints gpu-enabled? is-authorized-fn)
                 {:keys [body status] :as all} (handler (new-request))]
             (is (= 400 status))
             (is (str/includes? body "Explicit-reject by test hook")))))
 
-      (testing "hook-rejects-multi-submission-1"
+      (testing "hook-job-accepts-job"
         (with-redefs [api/create-jobs! (fn [in-conn _]
                                          (is (= conn in-conn)))
-                      rate-limit/job-submission-rate-limiter rate-limit/AllowAllRateLimiter
+                      hooks/hook-object testutil/accept-accept-hook]
+          (let [handler (api/create-jobs-handler conn task-constraints gpu-enabled? is-authorized-fn)
+                {:keys [status]} (handler (new-request))]
+            (is (= 201 status)))))
+
+      (testing "hook-rejects-multi-submission-two-jobs-accept-reject"
+        (with-redefs [api/create-jobs! (fn [in-conn _]
+                                         (is (= conn in-conn)))
                       hooks/hook-object testutil/fake-scheduler-hooks]
           (let [j1 (assoc (minimal-job) :name "accept1")
                 j2 (assoc (minimal-job) :name "reject2")
@@ -1925,10 +1931,9 @@
             (is (= 400 status))
             (is (str/includes? body "Explicitly rejected by hook")))))
 
-      (testing "hook-rejects-multi-submission-2"
+      (testing "hook-rejects-multi-submission-two-jobs-reject-accept"
         (with-redefs [api/create-jobs! (fn [in-conn _]
                                          (is (= conn in-conn)))
-                      rate-limit/job-submission-rate-limiter rate-limit/AllowAllRateLimiter
                       hooks/hook-object testutil/fake-scheduler-hooks]
           (let [j1 (assoc (minimal-job) :name "reject3")
                 j2 (assoc (minimal-job) :name "accept4")
@@ -1938,10 +1943,9 @@
             (is (= 400 status))
             (is (str/includes? body "Explicitly rejected by hook")))))
 
-      (testing "hook-rejects-multi-submission-3"
+      (testing "hook-rejects-multi-submission-two-jobs-accept-accept"
         (with-redefs [api/create-jobs! (fn [in-conn _]
                                          (is (= conn in-conn)))
-                      rate-limit/job-submission-rate-limiter rate-limit/AllowAllRateLimiter
                       hooks/hook-object testutil/fake-scheduler-hooks]
           (let [j1 (assoc (minimal-job) :name "accept5")
                 j2 (assoc (minimal-job) :name "accept6")
@@ -1950,14 +1954,29 @@
                 {:keys [body status] :as all} (handler request)]
             (is (= 201 status)))))
 
-      (testing "hook-job-accepts-job"
-        (with-redefs [api/create-jobs! (fn [in-conn _]
-                                         (is (= conn in-conn)))
-                      rate-limit/job-submission-rate-limiter rate-limit/AllowAllRateLimiter
-                      hooks/hook-object testutil/accept-accept-hook]
-          (let [handler (api/create-jobs-handler conn task-constraints gpu-enabled? is-authorized-fn)
-                {:keys [status]} (handler (new-request))]
-            (is (= 201 status))))))))
+      (testing "hook-hits-timeout"
+        (let [now (t/now)
+              counter (atom 0)
+              jobs (->> (range 10)
+                        (map (fn [_] (minimal-job))))
+              request (assoc-in (new-request) [:body-params :jobs] jobs)
+              handler (api/create-jobs-handler conn task-constraints gpu-enabled? is-authorized-fn)]
+          ; Each invocation of t/now is 7 seconds later.
+          (with-redefs [api/create-jobs! (fn [in-conn _]
+                                           (is (= conn in-conn)))
+                        hooks/hook-object testutil/accept-accept-hook
+                        hooks/submission-hook-batch-timeout-seconds 40
+                        t/now (fn []
+                                (let [out
+                                      (->> @counter
+                                           (* 7)
+                                           t/seconds
+                                           (t/plus- now))]
+                                  (swap! counter inc)
+                                  out))]
+            (let [{:keys [body status] :as all} (handler request)]
+              (log/info (str "Result: " body))
+              )))))))
 
 (deftest test-validate-partitions
   (is (api/validate-partitions {:dataset {"foo" "bar"}}))

@@ -71,7 +71,7 @@
 ;(mount/defstate hook-object
 ;  :start (create-job-submission-rate-limiter config))
 
-(def submission-hook-batch-timeout-seconds 60) ; Self-imposed deadline to submit a batch.
+(def submission-hook-batch-timeout-seconds 40) ; Self-imposed deadline to submit a batch.
 (def age-out-last-seen-deadline (t/minutes 10))
 (def age-out-first-seen-deadline (t/hours 10))
 (def age-out-seen-count 10)
