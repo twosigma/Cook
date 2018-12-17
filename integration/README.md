@@ -11,7 +11,7 @@ $ pip install -r requirements.txt
 Before running these tests, please make sure you've followed the instructions in the [Cook Readme](../README.md) Quickstart section.
 In particular, to run the integration tests in docker, you need to have minimesos running, and the Cook Scheduler running within docker. You also need to have `jq` installed.
 
-To run the tests on a local Cook install, run
+To run the tests on a local Cook install, run:
 
 ```bash
 $ pytest
@@ -35,7 +35,8 @@ $ pytest -v -n0 --capture=no tests/cook/test_basic.py::CookTest::test_basic_subm
 ## Memory limit tests
 
 There are a few tests marked as `memlimit` which test how Cook Scheduler behaves when a task exceeds its memory limit.
-Unfortunately, if you're running on macos and you're not using minimesos, these tests will fail, because the Mesos agent flags that dictate this behavior are not available. To avoid this, simply run:
+Unfortunately, if you're running on macos and you're not using minimesos, these tests will fail, because the Mesos agent flags that dictate this behavior are not available (specifically, `isolation` cannot be set to `cgroups/mem`).
+To skip these tests, simply run:
 
 ```bash
 $ pytest -m 'not memlimit'
