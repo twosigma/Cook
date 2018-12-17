@@ -483,9 +483,10 @@ class CookTest(util.CookTest):
             job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
             job_details = f"Job details: {json.dumps(job, sort_keys=True)}"
             self.assertEqual('failed', job['state'], job_details)
-            self.assertEqual(1, len(job['instances']), job_details)
-            instance = job['instances'][0]
+            self.assertLessEqual(1, len(job['instances']), job_details)
+            instance = job['instances'][-1]
             instance_details = json.dumps(instance, sort_keys=True)
+            self.logger.debug('instance: %s' % instance)
             # did the job fail as expected?
             self.assertEqual(executor_type, instance['executor'], instance_details)
             self.assertEqual('failed', instance['status'], instance_details)
@@ -508,14 +509,12 @@ class CookTest(util.CookTest):
             util.kill_jobs(self.cook_url, [job_uuid])
 
     @pytest.mark.memlimit
-    @unittest.skipUnless(util.continuous_integration(), "Doesn't work in our local test environments")
     @unittest.skipUnless(util.is_cook_executor_in_use(), 'Test assumes the Cook Executor is in use')
     def test_memory_limit_exceeded_cook_python(self):
         command = self.memory_limit_python_command()
         self.memory_limit_exceeded_helper(command, 'cook')
 
     @pytest.mark.memlimit
-    @unittest.skipUnless(util.continuous_integration(), "Doesn't work in our local test environments")
     def test_memory_limit_exceeded_mesos_python(self):
         command = self.memory_limit_python_command()
         self.memory_limit_exceeded_helper(command, 'mesos')
@@ -527,7 +526,6 @@ class CookTest(util.CookTest):
         self.memory_limit_exceeded_helper(command, 'cook')
 
     @pytest.mark.memlimit
-    @unittest.skipUnless(util.continuous_integration(), "Doesn't work in our local test environments")
     def test_memory_limit_exceeded_mesos_script(self):
         command = self.memory_limit_script_command()
         self.memory_limit_exceeded_helper(command, 'mesos')

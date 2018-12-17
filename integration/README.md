@@ -4,18 +4,14 @@ Our integration tests currently require Python 3.6.
 All dependencies are specified in [`requirements.txt`](./requirements.txt),
 and can be installed automatically via `pip`:
 
-Before running these tests, please make sure you've followed the instructions
-in the [Cook Readme](../README.md) Quickstart section. In particular, to run
-the integration tests in docker, you need to have minimesos running, and the
-cook scheduler running within docker. You also need to have 'jq' installed
-for json queries.
-
-
 ```bash
 $ pip install -r requirements.txt
 ```
 
-To run the tests on a local cook install, run
+Before running these tests, please make sure you've followed the instructions in the [Cook Readme](../README.md) Quickstart section.
+In particular, to run the integration tests in docker, you need to have minimesos running, and the Cook Scheduler running within docker. You also need to have `jq` installed.
+
+To run the tests on a local Cook install, run:
 
 ```bash
 $ pytest
@@ -29,11 +25,21 @@ If you want to run a single test and see the log messages as they occur, you can
 $ ./bin/only-run test_basic_submit
 ```
 
-The `./bin/only-run` helper script invokes pytest internally.
+The `./bin/only-run` helper script invokes `pytest` internally.
 The above command is roughly equivalent to the following pytest invocation:
 
 ```bash
 $ pytest -v -n0 --capture=no tests/cook/test_basic.py::CookTest::test_basic_submit
+```
+
+## Memory limit tests
+
+There are a few tests marked as `memlimit` which test how Cook Scheduler behaves when a task exceeds its memory limit.
+Unfortunately, if you're running on macos and you're not using minimesos, these tests will fail, because the Mesos agent flags that dictate this behavior are not available (specifically, `isolation` cannot be set to `cgroups/mem`).
+To skip these tests, simply run:
+
+```bash
+$ pytest -m 'not memlimit'
 ```
 
 ## Multi-scheduler tests
