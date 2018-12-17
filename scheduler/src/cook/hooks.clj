@@ -154,5 +154,9 @@
                                     (check-job-submission-default hook-object))]
                        (or status default-accept)))
         results (apply list (map do-one-job jobs))
-        errors (apply list (filter #(= :rejected (:status %)) results))]
-    (if (zero? (count errors)) {:status :accepted} (first errors))))
+        errors (apply list (filter #(= :rejected (:status %)) results))
+        error-count (count errors)
+        error-samples (apply list (take 3 errors))]
+    (if (zero? error-count)
+      {:status :accepted}
+      {:status :rejected :message (str "Total of " error-count " errors. First 3 are: " error-samples)})))

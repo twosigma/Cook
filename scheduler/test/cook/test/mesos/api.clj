@@ -1954,10 +1954,11 @@
                 {:keys [body status] :as all} (handler request)]
             (is (= 201 status)))))
 
+      ;; If hook validation is too slow, we switch to this at 40 seconds so that we meet the 60 second http API timeout.
       (testing "hook-hits-timeout"
         (let [now (t/now)
               counter (atom 0)
-              jobs (->> (range 10)
+              jobs (->> (range 11)
                         (map (fn [_] (minimal-job))))
               request (assoc-in (new-request) [:body-params :jobs] jobs)
               handler (api/create-jobs-handler conn task-constraints gpu-enabled? is-authorized-fn)]
@@ -1974,9 +1975,13 @@
                                            (t/plus- now))]
                                   (swap! counter inc)
                                   out))]
-            (let [{:keys [body status] :as all} (handler request)]
-              (log/info (str "Result: " body))
-              )))))))
+            (let [{:keys [body status error] :as all} (handler request)]
+              ; We submit 10 jobs, with a submit timeout of 40 seconds.
+              ; First invocation of t/now computes deadline, so the
+              ; submission times are 7, 14, 21, 28, 35. ...
+              ; We thus expect 5 to submit, and 5 to fail and get rejected for out-of-timeout.
+              (is true (str/starts-with? "Total of 5 errors. First 3 are " (:error body)))
+              (is (str/includes? body "Default Rejected")))))))))
 
 (deftest test-validate-partitions
   (is (api/validate-partitions {:dataset {"foo" "bar"}}))
