@@ -86,27 +86,34 @@
       (.build)))
 
 
+(defn aged-out?
+  [{:keys [last-seen first-seen seen-count] :as old-result}]
+  (let [last-seen-deadline (->> age-out-last-seen-deadline
+                                (t/minus- (t/now)))
+        first-seen-deadline (->> age-out-first-seen-deadline
+                                 (t/minus- (t/now)))]
+    ;; If I've seen the job for at least 10 hours, at least 20 times, and once in the last 10 minutes
+    ;; Treat the job as if its aged out.
+    (and
+      old-result
+      (> seen-count age-out-seen-count)
+      (t/before? first-seen first-seen-deadline)
+      (t/before? last-seen-deadline last-seen))))
+
+
 (defn filter-job-invocations-miss
   "This is the cache miss handler. It is invoked if we have a cache miss --- either the entry is expired, or
    its not there. Only invoke on misses or expirations, because we count the number of invocations."
   [job]
-  (let [{:keys [last-seen first-seen seen-count cache-expires-at] :as old-result} (ccache/get-if-present
-                                                                                    job-invocations-cache
-                                                                                    :job/uuid
-                                                                                    job)
+  (let [{:keys [first-seen seen-count] :as old-result} (ccache/get-if-present
+                                                         job-invocations-cache
+                                                         :job/uuid
+                                                         job)
         not-found? (not old-result)
-        last-seen-deadline (->> age-out-last-seen-deadline
-                                (t/minus- (t/now)))
-        first-seen-deadline (->> age-out-first-seen-deadline
-                                 (t/minus- (t/now)))
-        ;; If I've seen the job for at least 10 hours, at least 20 times, and once in the last 10 minutes
-        ;; Treat the job as if its aged out.
-        aged-out? (and
-                    old-result
-                    (> seen-count age-out-seen-count)
-                    (t/before? first-seen first-seen-deadline)
-                    (t/after? last-seen-deadline last-seen))]
-    (or aged-out? ; If aged-out, no more backend queries. Invoke it now and it sinks or swims.
+        is-aged-out? (aged-out? old-result)]
+    ; If aged-out, no more backend queries. Return true so the job is kept and
+    ; invoked and it sinks or swims. Short circuits the evaluation, done below.
+    (or is-aged-out?
         ;; Ok. Not aging out. Query the underlying plugin as to the status.
         (let [{:keys [status] :as raw-result} (check-job-invocation hook-object job)
               result
@@ -125,6 +132,7 @@
 
           (ccache/put-cache! job-invocations-cache :job/uuid job
                              result)
+          ; Did the query, If the status was accepted, then we're keeping it.
           (= status :accepted)))))
 
 (defn filter-job-invocations
