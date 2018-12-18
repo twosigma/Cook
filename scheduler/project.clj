@@ -187,7 +187,7 @@
    {:dependencies [[criterium "0.4.4"]
                    [org.clojure/test.check "0.6.1"]
                    [org.mockito/mockito-core "1.10.19"]
-                   [twosigma/cook-jobclient "0.2.1-SNAPSHOT"]]}
+                   [twosigma/cook-jobclient "0.3.1-SNAPSHOT"]]}
 
    :test-console
    [:test {:jvm-opts ["-Dcook.test.logging.console"]}]
