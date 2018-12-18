@@ -52,21 +52,25 @@
   "A default accept object with an expiration at infinity"
   {:status :accepted :cache-expires-at (t/date-time 2783 12 03)})
 
-(defn create-job-submission-rate-limiter
+(def accept-all-hook
+  "A hook object that accepts everything. Available for use as a default hook and unit testing."
+  (reify SchedulerHooks
+    (check-job-submission-default [_] default-accept)
+    (check-job-submission [_ _] default-accept)
+    (check-job-invocation [_ _] default-accept)))
+
+(defn create-default-hook-object
   "Returns the hook object that matches to a given job map. Returns an always-accept Hook object if nothing is defined."
   [config]
   (let [{:keys [settings]} config
         {:keys [hook-factory-function]} settings]
     (if-let [factory (seq hook-factory-function)]
       (factory)
-      (reify SchedulerHooks
-        (check-job-submission-default [_] default-accept)
-        (check-job-submission [_ _] default-accept)
-        (check-job-invocation [_ _] default-accept)))))
+      accept-all-hook)))
 
 ;  Contains the hook object that matches to a given job map. This code may create a new hook object or re-use an existing one.
 ;  Assume nothing about the lifespan of a hook object. Never returns nil. Returns an always-accept Hook object if nothing is defined."
-(def hook-object (create-job-submission-rate-limiter {}))
+(def hook-object (create-default-hook-object {}))
 ; TODO: Mount isn't initializing... :(
 ;(mount/defstate hook-object
 ;  :start (create-job-submission-rate-limiter config))
@@ -115,25 +119,26 @@
     ; invoked and it sinks or swims. Short circuits the evaluation, done below.
     (or is-aged-out?
         ;; Ok. Not aging out. Query the underlying plugin as to the status.
-        (let [{:keys [status] :as raw-result} (check-job-invocation hook-object job)
-              result
-              (if (or not-found?
-                      (= status :accepted))
-                ; If not found, or we got an accepted status, store it and reset the counters.
-                (merge raw-result
-                       {:last-seen (t/now)
-                        :first-seen (t/now)
-                        :seen-count 1})
-                ; We were found, but didn't get an accepted status. Increment the counters for aging out.
-                (merge raw-result
-                       {:last-seen (t/now)
-                        :first-seen first-seen
-                        :seen-count (inc seen-count)}))]
+        (do (log/info "WHy is it being chatty here?" (str old-result))
+            (let [{:keys [status] :as raw-result} (check-job-invocation hook-object job)
+                  result
+                  (if (or not-found?
+                          (= status :accepted))
+                    ; If not found, or we got an accepted status, store it and reset the counters.
+                    (merge raw-result
+                           {:last-seen (t/now)
+                            :first-seen (t/now)
+                            :seen-count 1})
+                    ; We were found, but didn't get an accepted status. Increment the counters for aging out.
+                    (merge raw-result
+                           {:last-seen (t/now)
+                            :first-seen first-seen
+                            :seen-count (inc seen-count)}))]
 
-          (ccache/put-cache! job-invocations-cache :job/uuid job
-                             result)
-          ; Did the query, If the status was accepted, then we're keeping it.
-          (= status :accepted)))))
+              (ccache/put-cache! job-invocations-cache :job/uuid job
+                                 result)
+              ; Did the query, If the status was accepted, then we're keeping it.
+              (= status :accepted))))))
 
 (defn filter-job-invocations
   "Run the hooks for a set of jobs at invocation time, returns true or false on whether the job is ready to run now."

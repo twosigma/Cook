@@ -38,10 +38,21 @@
                                     :first-seen t-10h5m
                                     :seen-count 12})) "Not last seen recently enough"))))
 
+(deftest filter-job-invocation-miss
+  (let [uri "datomic:mem://test-filter-job-invocation-miss"
+        conn (restore-fresh-database! uri)]
+    (testing "When aged out, we keep the job."
+      (with-redefs [hooks/aged-out? (constantly true)
+                    hooks/hook-object
+                    (reify hooks/SchedulerHooks
+                      (check-job-submission-default [_])
+                      (check-job-submission [_ _])
+                      (check-job-invocation [_ _] (is false "Shouldn't be invoked.")))]
+        (is (true? (hooks/filter-job-invocations-miss (testutil/create-dummy-job conn))))))))
+
 
 
 (deftest test-filter-job-invocations
-
   (testing "empty matched jobs"
     (let [uri "datomic:mem://test-filter-job-invocations"
           conn (restore-fresh-database! uri)
