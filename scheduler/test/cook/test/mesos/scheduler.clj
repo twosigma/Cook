@@ -732,7 +732,6 @@
         (is (= 1 (count (:scheduled (schedule-and-run-jobs conn framework-id scheduler (make-offers) [isolated-job-id1])))))
         (is (= 1 (count (:scheduled (schedule-and-run-jobs conn framework-id scheduler (make-offers) [isolated-job-id2])))))))))
 
-
 (deftest test-balanced-host-placement-constraint
   (let [uri "datomic:mem://test-balanced-host-placement-constraint"
         conn (restore-fresh-database! uri)
@@ -893,7 +892,6 @@
             killable (sched/killable-cancelled-tasks db)]
         (is (= 1 (count killable)))
         (is (= (-> killable first :db/id) inst-cancelled))))))
-
 
 (deftest test-handle-status-update
   (let [uri "datomic:mem://test-handle-status-update"
@@ -1212,7 +1210,6 @@
                       (is (= task straggler-task)))]
         ;; Check that group with straggler handling configured has instance killed
         (sched/handle-stragglers conn kill-fn)))))
-
 
 (deftest test-receive-offers
   (let [declined-offer-ids-atom (atom [])
@@ -1651,10 +1648,10 @@
           (is (= 2 (count @launched-job-ids-atom)))
           (is (= #{"job-1" "job-2"} (set @launched-job-ids-atom)))))
 
-      (with-redefs [rate-limit/job-launch-rate-limiter
-                    (rate-limit/create-job-launch-rate-limiter job-launch-rate-limit-config-for-testing)
-                    rate-limit/get-token-count! (constantly 1)]
-        (testing "enough offers for all normal jobs, limited by num-considerable of 2, but beyond rate limit"
+      (testing "enough offers for all normal jobs, limited by num-considerable of 2, but beyond rate limit"
+        (with-redefs [rate-limit/job-launch-rate-limiter
+                      (rate-limit/create-job-launch-rate-limiter job-launch-rate-limit-config-for-testing)
+                      rate-limit/get-token-count! (constantly 1)]
           ;; We do pending filtering here, so we should filter off the excess jobs and launch nothing.
           (let [num-considerable 2
                 offers [offer-1 offer-2 offer-3]]
@@ -2097,7 +2094,6 @@
           (is (= :instance.status/running (:instance/status instance-ent)))
           (is (= :executor/cook (:instance/executor instance-ent)))
           (is (nil? (:instance/sandbox-directory instance-ent))))))))
-
 
 (deftest test-monitor-tx-report-queue
   (let [conn (restore-fresh-database! "datomic:mem://test-monitor-tx-report-queue")
