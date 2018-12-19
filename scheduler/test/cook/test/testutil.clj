@@ -353,7 +353,7 @@
     (check-job-submission [this _]
       {:status :rejected :message "Explicit-reject by test hook"})
     (check-job-invocation [this _]
-      {:status :rejected :message "Explicit-reject by test hook"} :cache-expires-at (-> -1 t/seconds t/from-now))))
+      {:status :rejected :message "Explicit-reject by test hook" :cache-expires-at (-> -1 t/seconds t/from-now)})))
 
 (def accept-defer-hook
   (reify SchedulerHooks
@@ -361,7 +361,7 @@
     (check-job-submission [this _]
       {:status :accepted :message "Explicit-accept by test hook"})
     (check-job-invocation [this _]
-      {:status :deferred :message "Explicit-deferred by test hook"} :cache-expires-at (-> -1 t/seconds t/from-now))))
+      {:status :deferred :message "Explicit-deferred by test hook" :cache-expires-at (-> -1 t/seconds t/from-now)})))
 
 (def accept-accept-hook
   (reify SchedulerHooks
@@ -369,4 +369,4 @@
     (check-job-submission [this _]
       {:status :accepted :message "Explicit-accept by test hook"})
     (check-job-invocation [this _]
-      {:status :accepted :message "Explicit-accept by test hook"} :cache-expires-at (-> -1 t/seconds t/from-now))))
+      {:status :accepted :message "Explicit-accept by test hook" :cache-expires-at (-> -1 t/seconds t/from-now)})))

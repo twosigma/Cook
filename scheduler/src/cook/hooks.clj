@@ -92,6 +92,7 @@
 
 (defn aged-out?
   [{:keys [last-seen first-seen seen-count] :as old-result}]
+  {:post [(or (true? %) (false? %))]}
   (let [last-seen-deadline (->> age-out-last-seen-deadline
                                 (t/minus- (t/now)))
         first-seen-deadline (->> age-out-first-seen-deadline
@@ -99,7 +100,7 @@
     ;; If I've seen the job for at least 10 hours, at least 20 times, and once in the last 10 minutes
     ;; Treat the job as if its aged out.
     (and
-      old-result
+      (boolean old-result)
       (> seen-count age-out-seen-count)
       (t/before? first-seen first-seen-deadline)
       (t/before? last-seen-deadline last-seen))))
@@ -109,6 +110,7 @@
   "This is the cache miss handler. It is invoked if we have a cache miss --- either the entry is expired, or
    its not there. Only invoke on misses or expirations, because we count the number of invocations."
   [job]
+  {:post [(or (true? %) (false? %))]}
   (let [{:keys [first-seen seen-count] :as old-result} (ccache/get-if-present
                                                          job-invocations-cache
                                                          :job/uuid
@@ -119,30 +121,31 @@
     ; invoked and it sinks or swims. Short circuits the evaluation, done below.
     (or is-aged-out?
         ;; Ok. Not aging out. Query the underlying plugin as to the status.
-        (do (log/info "WHy is it being chatty here?" (str old-result))
-            (let [{:keys [status] :as raw-result} (check-job-invocation hook-object job)
-                  result
-                  (if (or not-found?
-                          (= status :accepted))
-                    ; If not found, or we got an accepted status, store it and reset the counters.
-                    (merge raw-result
-                           {:last-seen (t/now)
-                            :first-seen (t/now)
-                            :seen-count 1})
-                    ; We were found, but didn't get an accepted status. Increment the counters for aging out.
-                    (merge raw-result
-                           {:last-seen (t/now)
-                            :first-seen first-seen
-                            :seen-count (inc seen-count)}))]
+        (let [{:keys [status] :as raw-result} (check-job-invocation hook-object job)
+              result
+              (if (or not-found?
+                      (= status :accepted))
+                ; If not found, or we got an accepted status, store it and reset the counters.
+                (merge raw-result
+                       {:last-seen (t/now)
+                        :first-seen (t/now)
+                        :seen-count 1})
+                ; We were found, but didn't get an accepted status. Increment the counters for aging out.
+                (merge raw-result
+                       {:last-seen (t/now)
+                        :first-seen first-seen
+                        :seen-count (inc seen-count)}))]
+          (assert (#{:accepted :deferred} status) (str "Plugin must return a status of :accepted or :deferred. Got " status))
 
-              (ccache/put-cache! job-invocations-cache :job/uuid job
-                                 result)
-              ; Did the query, If the status was accepted, then we're keeping it.
-              (= status :accepted))))))
+          (ccache/put-cache! job-invocations-cache :job/uuid job
+                             result)
+          ; Did the query, If the status was accepted, then we're keeping it.
+          (= status :accepted)))))
 
 (defn filter-job-invocations
   "Run the hooks for a set of jobs at invocation time, returns true or false on whether the job is ready to run now."
   [job]
+  {:post [(or (true? %) (false? %))]}
   (let [{:keys [status cache-expires-at] :as result} (ccache/get-if-present
                                                        job-invocations-cache
                                                        :job/uuid
