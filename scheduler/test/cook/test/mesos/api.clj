@@ -1395,6 +1395,7 @@
     (is (cheshire/generate-string (api/stringify settings)))))
 
 (deftest unscheduled-api
+  (testutil/setup)
   (let [conn (restore-fresh-database! "datomic:mem://unscheduled-api-test")
         h (basic-handler conn)
         uuid (java.util.UUID/randomUUID)
