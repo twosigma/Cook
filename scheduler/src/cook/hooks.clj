@@ -50,7 +50,7 @@
 
 (def default-accept
   "A default accept object with an expiration at infinity"
-  {:status :accepted :cache-expires-at (t/date-time 2783 12 03)})
+  {:status :accepted :message "No hook object defined" :cache-expires-at (t/date-time 2783 12 03)})
 
 (def accept-all-hook
   "A hook object that accepts everything. Available for use as a default hook and unit testing."

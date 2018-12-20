@@ -139,5 +139,3 @@
         (reset! visited false)
         (is (false? (hooks/filter-job-invocations job)))
         (is (false? @visited))))))
-
-
