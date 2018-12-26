@@ -20,6 +20,7 @@
             [cook.cache :as ccache]
             [cook.config :refer [config]]
             [cook.datomic :as datomic]
+            [cook.demo-plugin]
             [mount.core :as mount]
             [clojure.tools.logging :as log])
   (:import (com.google.common.cache Cache CacheBuilder)
@@ -70,7 +71,9 @@
 
 ;  Contains the hook object that matches to a given job map. This code may create a new hook object or re-use an existing one.
 ;  Assume nothing about the lifespan of a hook object. Never returns nil. Returns an always-accept Hook object if nothing is defined."
-(def hook-object (create-default-hook-object {}))
+;(def hook-object (create-default-hook-object {}))
+(def hook-object (cook.demo-plugin/->DemoValidate))
+
 ; TODO: Mount isn't initializing... :(
 ;(mount/defstate hook-object
 ;  :start (create-job-submission-rate-limiter config))
