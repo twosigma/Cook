@@ -6,6 +6,7 @@
 
             [cook.cache :as ccache]
             [cook.hooks :as hooks]
+            [cook.hooks-definitions :as chd]
             [cook.mesos.util :as util]
 
             [cook.test.testutil :refer [create-dummy-job
@@ -49,10 +50,10 @@
     (testing "When aged out, we keep the job and don't call the backend."
       (with-redefs [hooks/aged-out? (constantly true)
                     hooks/hook-object
-                    (reify hooks/SchedulerHooks
-                      (check-job-submission-default [_])
-                      (check-job-submission [_ _])
-                      (check-job-invocation [_ _] (is false "Shouldn't be invoked.")))]
+                    (reify chd/SchedulerHooks
+                      (chd/check-job-submission-default [_])
+                      (chd/check-job-submission [_ _])
+                      (chd/check-job-invocation [_ _] (is false "Shouldn't be invoked.")))]
         (is (true? (hooks/filter-job-invocations-miss (testutil/create-dummy-job conn))))))
 
     (let [job-entid (create-dummy-job conn)
@@ -128,10 +129,10 @@
 
 
     (testing "Use the cache integration, run twice, putting it in the real cache."
-      (with-redefs [hooks/hook-object (reify hooks/SchedulerHooks
-                                        (check-job-submission-default [_])
-                                        (check-job-submission [_ _])
-                                        (check-job-invocation [_ _]
+      (with-redefs [hooks/hook-object (reify chd/SchedulerHooks
+                                        (chd/check-job-submission-default [_])
+                                        (chd/check-job-submission [_ _])
+                                        (chd/check-job-invocation [_ _]
                                           (reset! visited true)
                                           {:status :deferred :cache-expires-at (-> 10 t/seconds t/from-now)}))]
         (is (false? (hooks/filter-job-invocations job)))

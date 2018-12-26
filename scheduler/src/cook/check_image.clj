@@ -3,7 +3,7 @@
             [clj-http.client :as http]
             [clj-time.core :as t]
             [cook.cache :as ccache]
-            [cook.hooks :as hooks])
+            [cook.hooks-definitions :refer [SchedulerHooks]])
   (:import (com.google.common.cache CacheLoader Cache LoadingCache CacheBuilder))
   (:import (com.google.common.base Function)
            (java.util.concurrent TimeUnit)))
