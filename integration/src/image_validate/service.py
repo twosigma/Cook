@@ -3,25 +3,28 @@ import json
 
 app = Flask(__name__)
 
-costs = {}
+submit_status = {'status': 'rejected', 'message': 'A message'}
+launch_status = {'status': 'accepted', 'message': 'A message'}
 
-@app.route('/retrieve-costs', methods=['POST'])
-def get_costs():
-    request_data = json.loads(request.data)
-    batch = request_data['batch']
-    tasks = request_data['tasks']
+@app.route('/get-submit-status', methods=['GET'])
+def get_submit_status():
+    return make_response(json.dumps(submit_status))
 
-    response = {'batch': batch, 'costs': []}
-    for task in tasks:
-        if task['task_id'] in costs:
-            response['costs'].append({'task_id': task['task_id'], 'costs': costs[task['task_id']]})
-
-    return make_response(json.dumps(response))
-
-@app.route('/set-costs', methods=['POST'])
-def set_costs():
-    global costs
+@app.route('/set-submit-status', methods=['POST'])
+def set_submit_status():
+    global submit_status
     payload = json.loads(request.data)
-    costs = payload
-
+    submit_status = payload
     return make_response('Updated cost data')
+
+@app.route('/get-launch-status', methods=['GET'])
+def get_launch_status():
+    return make_response(json.dumps(launch_status))
+
+@app.route('/set-launch-status', methods=['POST'])
+def set_launch_status():
+    global launch_status
+    payload = json.loads(request.data)
+    launch_status = payload
+    return make_response('Updated cost data')
+
