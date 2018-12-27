@@ -58,7 +58,7 @@
 
 (def submission-hook-batch-timeout-seconds 40) ; Self-imposed deadline to submit a batch.
 (def age-out-last-seen-deadline-minutes (t/minutes 10))
-(def age-out-first-seen-deadline-minutes (-> (t/hours 10) t/in-minutes))
+(def age-out-first-seen-deadline-minutes (t/hours 10))
 (def age-out-seen-count 10)
 
 ; We may see up to the entire scheduler queue, so have a big cache here.
