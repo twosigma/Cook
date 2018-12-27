@@ -57,16 +57,15 @@
 ;  :start (create-job-submission-rate-limiter config))
 
 (def submission-hook-batch-timeout-seconds 40) ; Self-imposed deadline to submit a batch.
-(def age-out-last-seen-deadline (t/minutes 10))
-(def age-out-first-seen-deadline (t/hours 10))
+(def age-out-last-seen-deadline-minutes (t/minutes 10))
+(def age-out-first-seen-deadline-minutes (-> (t/hours 10) t/in-minutes))
 (def age-out-seen-count 10)
-
 
 ; We may see up to the entire scheduler queue, so have a big cache here.
 ; This is called in the scheduler loop. If it hasn't been looked at in more than 2 hours, the job has almost assuredly long since run.
 (def ^Cache job-invocations-cache
   (-> (CacheBuilder/newBuilder)
-      (.maximumSize 1000000)
+      (.maximumSize 100000)
       (.expireAfterAccess 2 TimeUnit/HOURS)
       (.build)))
 
@@ -74,9 +73,9 @@
 (defn aged-out?
   [{:keys [last-seen first-seen seen-count] :as old-result}]
   {:post [(or (true? %) (false? %))]}
-  (let [last-seen-deadline (->> age-out-last-seen-deadline
+  (let [last-seen-deadline (->> age-out-last-seen-deadline-minutes
                                 (t/minus- (t/now)))
-        first-seen-deadline (->> age-out-first-seen-deadline
+        first-seen-deadline (->> age-out-first-seen-deadline-minutes
                                  (t/minus- (t/now)))]
     ;; If I've seen the job for at least 10 hours, at least 20 times, and once in the last 10 minutes
     ;; Treat the job as if its aged out.

@@ -17,8 +17,8 @@
 (deftest test-aged-out?
   (with-redefs
     [hooks/submission-hook-batch-timeout-seconds 40 ; Self-imposed deadline to submit a batch.
-     hooks/age-out-last-seen-deadline (t/minutes 10)
-     hooks/age-out-first-seen-deadline (t/hours 10)
+     hooks/age-out-last-seen-deadline-minutes (t/minutes 10)
+     hooks/age-out-first-seen-deadline-minutes (t/hours 10)
      hooks/age-out-seen-count 10
      t/now (constantly (t/date-time 2018 12 20 23 10))]
     (let
