@@ -26,10 +26,13 @@
                  :as :json-string-keys :content-type :json}]
     (http/get url reqdict)))
 
+
 (defn calculate-expiration
+  "Given a body dictionary from a response with an 'expires-timestamp' key, extract the key in the
+  form of a seconds-after-1970 value."
   [body]
-  ; TODO: Is customized from plugin.
-  (t/plus now (t/minutes 240)))
+  (when-let [expire-timestamp (get body "expires-timestamp")]
+    (->> expire-timestamp t/seconds (t/plus (t/epoch)))))
 
 (defn generate-url-from-image
   [docker-image]
@@ -39,13 +42,13 @@
   "Determine if an image is valid from the http response body.
     Process a response containing a json body with a map with two keys:
     'built' and 'deployed' and true/valse as values."
-  [docker-image {:keys [status body]}]
-  (cond
-    (= 200 status) {:status :accepted
-                    :cache-expires-at (calculate-expiration body)}
-    (= 404 status) (failed-image-validity-check docker-image bad-cache-timeout)
+  [docker-image {:keys [body] http-status :status :as response}]
+  (case http-status
+    200 {:status :accepted
+         :cache-expires-at (calculate-expiration body)}
+    404 (failed-image-validity-check docker-image bad-cache-timeout)
     ; Weird outputs: Default fail.
-    :else (failed-image-validity-check docker-image odd-result-cache-timeout)))
+    (failed-image-validity-check docker-image odd-result-cache-timeout)))
 
 (defn process-response-for-image-deployment-cache
   "Process a response containing a json body with a map with two keys:
@@ -63,12 +66,12 @@
       ; This can't happen, but if it does, lets flush the job out by executing it.
       (= 404 status) {:status :accepted
                       :cache-expires-at (t/plus now bad-cache-timeout)}
-      ; Try again later..
+      ; Try again later.
       :else {:status :deferred
              :cache-expires-at (t/plus now odd-result-cache-timeout)})))
 
 (defn image-deployment-miss
-  "Is the image deployed? Do the HTTP and return the response."
+  "Is the image deployed? Miss handler if we don't have an entry in the cache."
   [docker-image]
   (let [now (t/now)]
     (try
