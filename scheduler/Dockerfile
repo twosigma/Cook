@@ -35,11 +35,12 @@ WORKDIR /opt/cook
 ## with fetched dependencies as long as project.clj isn't modified
 RUN lein deps
 
+# Datomic setup
+COPY datomic /opt/cook/datomic
+RUN unzip -uo /opt/cook/datomic/datomic-free-0.9.5394.zip
+
 # Copy the whole scheduler into the container
 COPY . /opt/cook/
-
-# Datomic setup
-RUN unzip -uo /opt/cook/datomic/datomic-free-0.9.5394.zip
 RUN lein uberjar
 RUN cp "target/cook-$(lein print :version | tr -d '"').jar" datomic-free-0.9.5394/lib/cook-$(lein print :version | tr -d '"').jar
 
