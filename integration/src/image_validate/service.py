@@ -3,7 +3,7 @@ import json
 
 app = Flask(__name__)
 
-submit_status = {'status': 'rejected', 'message': 'A message'}
+submit_status = {'status': 'accepted', 'message': 'A message'}
 launch_status = {'status': 'accepted', 'message': 'A message'}
 
 @app.route('/get-submit-status', methods=['GET'])
