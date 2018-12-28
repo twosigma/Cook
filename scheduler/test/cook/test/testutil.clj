@@ -282,6 +282,7 @@
 
 (let [minimal-config {:authorization {:one-user ""}
                       :database {:datomic-uri ""}
+                      :hooks {}
                       :log {}
                       :mesos {:leader-path "", :master ""}
                       :metrics {}
