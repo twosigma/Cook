@@ -1,6 +1,8 @@
-*pyc
+*.pyc
 __pycache__
 *.egg-info
 *.egg*
 .cache
 venv/
+virtualenv-integrationtest*
+.pytest_cache
