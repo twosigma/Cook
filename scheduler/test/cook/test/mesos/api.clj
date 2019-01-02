@@ -1372,6 +1372,7 @@
             :mesos {:master "MESOS_MASTER"
                     :leader-path "/cook-scheduler"}
             :authorization {:one-user "root"}
+            :hooks {}
             :scheduler {}
             :zookeeper {:local? true}
             :port 10000
@@ -1861,6 +1862,7 @@
                        :authorization/user "user"
                        :headers {"Content-Type" "application/json"}
                        :body-params {:jobs [(minimal-job)]}})]
+    (testutil/setup)
     (with-redefs [api/no-job-exceeds-quota? (constantly true)
                   rate-limit/job-submission-rate-limiter rate-limit/AllowAllRateLimiter]
       (testing "successful-job-creation-response"
@@ -1966,7 +1968,7 @@
           (with-redefs [api/create-jobs! (fn [in-conn _]
                                            (is (= conn in-conn)))
                         hooks/hook-object testutil/accept-accept-hook
-                        hooks/submission-hook-batch-timeout-seconds 40
+                        hooks/submission-hook-batch-timeout-seconds (t/seconds 40)
                         t/now (fn []
                                 (let [out
                                       (->> @counter

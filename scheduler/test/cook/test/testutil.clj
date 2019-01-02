@@ -282,7 +282,10 @@
 
 (let [minimal-config {:authorization {:one-user ""}
                       :database {:datomic-uri ""}
-                      :hooks {}
+                      :hooks {:age-out-last-seen-deadline-minutes 10
+                              :age-out-first-seen-deadline-minutes 600
+                              :age-out-seen-count 10
+                              :submission-hook-batch-timeout-seconds 40}
                       :log {}
                       :mesos {:leader-path "", :master ""}
                       :metrics {}
@@ -295,7 +298,13 @@
     "Given an optional config map, initializes the config state"
     [& {:keys [config], :or nil}]
     (mount/stop)
-    (mount/start-with-args (merge minimal-config config) #'cook.config/config #'cook.rate-limit/job-launch-rate-limiter #'cook.rate-limit/global-job-launch-rate-limiter)))
+    (mount/start-with-args (merge minimal-config config)
+                           #'cook.config/config
+                           #'cook.rate-limit/job-launch-rate-limiter #'cook.rate-limit/global-job-launch-rate-limiter
+                           #'cook.hooks/age-out-first-seen-deadline-minutes
+                           #'cook.hooks/age-out-last-seen-deadline-minutes
+                           #'cook.hooks/age-out-seen-count
+                           #'cook.hooks/submission-hook-batch-timeout-seconds)))
 
 (defn wait-for
   "Invoke predicate every interval (default 10) seconds until it returns true,

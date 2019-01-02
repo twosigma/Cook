@@ -53,10 +53,15 @@
 ;(mount/defstate hook-object
 ;  :start (create-job-submission-rate-limiter config))
 
-(def submission-hook-batch-timeout-seconds 40) ; Self-imposed deadline to submit a batch.
-(def age-out-last-seen-deadline-minutes (t/minutes 10))
-(def age-out-first-seen-deadline-minutes (t/hours 10))
-(def age-out-seen-count 10)
+(mount/defstate submission-hook-batch-timeout-seconds
+  :start (-> config :settings :hooks :submission-hook-batch-timeout-seconds t/seconds))
+(mount/defstate age-out-last-seen-deadline-minutes
+  :start (-> config :settings :hooks :age-out-last-seen-deadline-minutes t/minutes))
+(mount/defstate age-out-first-seen-deadline-minutes
+  :start (-> config :settings :hooks :age-out-first-seen-deadline-minutes t/minutes))
+
+(mount/defstate age-out-seen-count
+  :start (-> config :settings :hooks :age-out-seen-count))
 
 ; We may see up to the entire scheduler queue, so have a big cache here.
 ; This is called in the scheduler loop. If it hasn't been looked at in more than 2 hours, the job has almost assuredly long since run.
@@ -137,7 +142,6 @@
   [jobs]
   "Run the hooks for a set of jobs at submission time."
   (let [deadline (->> submission-hook-batch-timeout-seconds ; Self-imposed deadline to submit a batch.
-                      t/seconds
                       (t/plus- (t/now)))
         do-one-job (fn do-one-job [job-map]
                      (let [now (t/now)
