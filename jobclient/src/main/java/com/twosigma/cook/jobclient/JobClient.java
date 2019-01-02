@@ -111,6 +111,8 @@ public class JobClient implements Closeable, JobClientInterface {
 
         private String _groupEndpoint;
 
+        private String _deleteEndpoint;
+
         private Integer _port;
 
         public static final int DEFAULT_STATUS_UPDATE_INTERVAL_SECONDS = 10;
@@ -120,6 +122,8 @@ public class JobClient implements Closeable, JobClientInterface {
         public static final int DEFAULT_REQUEST_TIMEOUT_SECONDS = 60;
 
         public static final int DEFAULT_SUBMIT_RETRY_INTERVAL_SECONDS = 10;
+
+        public static final String DEFAULT_DELETE_ENDPOINT = "/rawscheduler";
 
         /**
          * An interval in seconds which will be used to query job status update periodically.
@@ -169,6 +173,9 @@ public class JobClient implements Closeable, JobClientInterface {
             if (_requestTimeoutSeconds == null) {
                 _requestTimeoutSeconds = DEFAULT_REQUEST_TIMEOUT_SECONDS;
             }
+            if (_deleteEndpoint == null) {
+                _deleteEndpoint = DEFAULT_DELETE_ENDPOINT;
+            }
             RequestConfig requestConfig = RequestConfig.custom()
                 .setSocketTimeout(_requestTimeoutSeconds * 1000)
                 .setConnectTimeout(_requestTimeoutSeconds * 1000)
@@ -181,6 +188,7 @@ public class JobClient implements Closeable, JobClientInterface {
                     Preconditions.checkNotNull(_port, "port must be set"),
                     Preconditions.checkNotNull(_jobEndpoint, "jobEndpoint must be set"),
                     _groupEndpoint,
+                    Preconditions.checkNotNull(_deleteEndpoint, "deleteEndpoint must be set"),
                     _statusUpdateIntervalSeconds,
                     _submitRetryIntervalSeconds,
                     _batchRequestSize,
@@ -297,6 +305,20 @@ public class JobClient implements Closeable, JobClientInterface {
             return this;
         }
 
+        /**
+         * Set the Cook scheduler endpoint which accepts DELETE requests for jobs
+         * @param deleteEndpoint the path to use
+         * @return this builder
+         */
+        public Builder setDeleteEndpoint(String deleteEndpoint) {
+            if (!deleteEndpoint.startsWith("/")) {
+                _deleteEndpoint = "/" + deleteEndpoint;
+            } else {
+                _deleteEndpoint = deleteEndpoint;
+            }
+            return this;
+        }
+
         public String getEndpoint() {
             return _jobEndpoint;
         }
@@ -307,6 +329,10 @@ public class JobClient implements Closeable, JobClientInterface {
 
         public String getGroupEndpoint() {
             return _groupEndpoint;
+        }
+
+        public String getDeleteEndpoint() {
+            return _deleteEndpoint;
         }
 
         /**
@@ -402,6 +428,11 @@ public class JobClient implements Closeable, JobClientInterface {
     private final URI _groupURI;
 
     /**
+     * The URI for Cook scheduler job DELETE requests
+     */
+    private final URI _deleteURI;
+
+    /**
      * A kerberized HTTP client.
      */
     private final CloseableHttpClient _httpClient;
@@ -461,9 +492,9 @@ public class JobClient implements Closeable, JobClientInterface {
      */
     private InstanceDecorator _instanceDecorator;
 
-    private JobClient(String host, int port, String jobEndpoint, String groupEndpoint, int statusUpdateInterval,
-                      int submitRetryInterval, int batchSubmissionLimit, InstanceDecorator instanceDecorator,
-                      CloseableHttpClient httpClient) throws URISyntaxException {
+    private JobClient(String host, int port, String jobEndpoint, String groupEndpoint, String deleteEndpoint,
+                      int statusUpdateInterval, int submitRetryInterval, int batchSubmissionLimit,
+                      InstanceDecorator instanceDecorator, CloseableHttpClient httpClient) throws URISyntaxException {
         _statusUpdateInterval = statusUpdateInterval;
         _submitRetryInterval = submitRetryInterval;
         _batchRequestSize = batchSubmissionLimit;
@@ -472,6 +503,7 @@ public class JobClient implements Closeable, JobClientInterface {
         _activeUUIDToGroup = new ConcurrentHashMap<>();
         _groupUUIDToListener = new ConcurrentHashMap<>();
         _jobURI = new URIBuilder().setScheme("http").setHost(host).setPort(port).setPath(jobEndpoint).build();
+        _deleteURI = new URIBuilder().setScheme("http").setHost(host).setPort(port).setPath(deleteEndpoint).build();
         if (groupEndpoint != null) {
             _groupURI = new URIBuilder().setScheme("http").setHost(host).setPort(port).setPath(groupEndpoint).build();
         } else {
@@ -1079,18 +1111,18 @@ public class JobClient implements Closeable, JobClientInterface {
         for (final List<NameValuePair> params : Lists.partition(allParams, _batchRequestSize)) {
             HttpRequestBase httpRequest;
             try {
-                URIBuilder uriBuilder = new URIBuilder(_jobURI);
+                URIBuilder uriBuilder = new URIBuilder(_deleteURI);
                 uriBuilder.addParameters(params);
                 httpRequest =  new HttpDelete(uriBuilder.build());
                 addImpersonation(httpRequest, impersonatedUser);
             } catch (URISyntaxException e) {
-                throw releaseAndCreateException(null, null, "Can not submit DELETE request " + params + " via uri " + _jobURI, e);
+                throw releaseAndCreateException(null, null, "Can not submit DELETE request " + params + " via uri " + _deleteURI, e);
             }
             HttpResponse httpResponse;
             try {
                 httpResponse = executeWithRetries(httpRequest, 5, 10);
             } catch (IOException e) {
-                throw releaseAndCreateException(httpRequest, null, "Can not submit DELETE request " + params + " via uri " + _jobURI, e);
+                throw releaseAndCreateException(httpRequest, null, "Can not submit DELETE request " + params + " via uri " + _deleteURI, e);
             }
             // Check status code.
             final StatusLine statusLine = httpResponse.getStatusLine();
@@ -1113,7 +1145,7 @@ public class JobClient implements Closeable, JobClientInterface {
                 }
             } catch (ParseException | IOException e) {
                 throw new JobClientException("Can not parse the response for DELETE request " + params + " via uri "
-                        + _jobURI, e);
+                        + _deleteURI, e);
             } finally {
                 httpRequest.releaseConnection();
             }

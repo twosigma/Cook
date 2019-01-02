@@ -25,12 +25,14 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import com.google.common.collect.ImmutableList;
 import mockit.Mock;
 import mockit.MockUp;
 import mockit.integration.junit4.JMockit;
 
 import org.apache.commons.io.IOUtils;
 import org.apache.http.Header;
+import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
 import org.apache.http.ProtocolVersion;
 import org.apache.http.client.methods.HttpDelete;
@@ -126,6 +128,25 @@ public class JobClientTest {
         _client.submit(Lists.newArrayList(_initializedJob), _listener);
         // assert
         Assert.assertEquals(1, postCounter.get());
+    }
+
+    @Test
+    public void testJobDelete() throws JobClientException {
+        final AtomicInteger deleteCounter = new AtomicInteger(0);
+        new MockUp<JobClient>() {
+            @Mock
+            public HttpResponse executeWithRetries(HttpRequestBase request, int ignore1, long ignore2) {
+                deleteCounter.incrementAndGet();
+                Assert.assertEquals("/rawscheduler", request.getURI().getPath());
+                Assert.assertTrue("Should be a delete request", request instanceof HttpDelete);
+                final ProtocolVersion version = new ProtocolVersion("HTTP", 1, 1);
+                final BasicStatusLine status = new BasicStatusLine(version, 204, "deleted");
+                return new BasicHttpResponse(status);
+            }
+        };
+
+        _client.abort(ImmutableList.of(_initializedJob.getUUID()));
+        Assert.assertEquals(1, deleteCounter.get());
     }
 
     private HttpResponse executeAndReturnTransactionTimedOutError(HttpRequestBase request, AtomicInteger postCounter) throws IOException {
