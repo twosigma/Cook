@@ -25,9 +25,12 @@
                   :extract true
                   :value #config/env "COOK_EXECUTOR"}}
  :hooks {:age-out-last-seen-deadline-minutes 10
-         :age-out-first-seen-deadline-minutes 600 ; It sits in the queue no longer than this.
+         :age-out-first-seen-deadline-minutes 600
          :age-out-seen-count 10
          :submission-hook-batch-timeout-seconds 40}
+ ;; To configure a hook, define a factory function and its arguments.
+ ; :hook-factory {:factory-fn 'cook.demo-plugin/factory
+ ;                :arguments {}}
  :hostname #config/env "COOK_HOSTNAME"
  :log {:file #config/env "COOK_LOG_FILE"
        :levels {"datomic.db" :warn

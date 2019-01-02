@@ -1373,6 +1373,7 @@
                     :leader-path "/cook-scheduler"}
             :authorization {:one-user "root"}
             :hooks {}
+            :hook-factory {}
             :scheduler {}
             :zookeeper {:local? true}
             :port 10000

@@ -407,15 +407,14 @@
                                             :data-locality-weight (get fitness-calculator :data-locality-weight 0.95)
                                             :launch-wait-seconds (get fitness-calculator :launch-wait-seconds 60)
                                             :update-interval-ms (get fitness-calculator :update-interval-ms nil)}))
-     :hooks (fnk [[:config [:hooks
-                            {age-out-last-seen-deadline-minutes 10}
-                            {age-out-first-seen-deadline-minutes 600}
-                            {age-out-seen-count 10}
-                            {submission-hook-batch-timeout-seconds 40}]]]
-              {:age-out-last-seen-deadline-minutes age-out-last-seen-deadline-minutes
-               :age-out-first-seen-deadline-minutes age-out-first-seen-deadline-minutes
-               :age-out-seen-count age-out-seen-count
-               :submission-hook-batch-timeout-seconds submission-hook-batch-timeout-seconds})
+     :hooks (fnk [[:config {hooks
+                            {:age-out-last-seen-deadline-minutes 10
+                             :age-out-first-seen-deadline-minutes 600
+                             :age-out-seen-count 10
+                             :submission-hook-batch-timeout-seconds 40}}]]
+              hooks)
+     :hook-factory (fnk [[:config {hook-factory {}}]]
+                     hook-factory)
      }))
 
 (defn read-config

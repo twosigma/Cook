@@ -46,3 +46,4 @@
         404 (generate-result :rejected  (str "Got 404 accessing " launch-url))
         (generate-result :rejected (str "Got nothing " response))))))
 
+(defn factory [_] (->DemoValidate))

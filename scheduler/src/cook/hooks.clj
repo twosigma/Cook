@@ -37,21 +37,30 @@
     (check-job-submission [_ _] default-accept)
     (check-job-invocation [_ _] default-accept)))
 
+(defn resolve-symbol
+  "Resolve the given symbol to the corresponding Var."
+  [sym]
+  (resolve (some-> sym namespace symbol use) sym))
+
 (defn create-default-hook-object
   "Returns the hook object that matches to a given job map. Returns an always-accept Hook object if nothing is defined."
   [config]
   (let [{:keys [settings]} config
-        {:keys [hook-factory-function]} settings]
-    (if-let [factory (seq hook-factory-function)]
-      (factory)
+        {:keys [hook-factory]} settings
+        {:keys [factory-fn arguments]} hook-factory]
+    (log/info (str "Setting up hooks with factory config: " hook-factory " and factory-fn " factory-fn))
+    (if factory-fn
+      (do
+        (if-let [resolved-fn (resolve-symbol factory-fn)]
+          (do
+            (log/info (str "Resolved as " resolved-fn " with " arguments))
+            (resolved-fn arguments))
+          (throw (ex-info "Unable to resolve factory function" (assoc hook-factory :ns (namespace factory-fn))))))
       accept-all-hook)))
 
 ;  Contains the hook object that matches to a given job map. This code may create a new hook object or re-use an existing one.
-;  Assume nothing about the lifespan of a hook object. Never returns nil. Returns an always-accept Hook object if nothing is defined."
-(def hook-object (create-default-hook-object {}))
-; TODO: Mount isn't initializing... :(
-;(mount/defstate hook-object
-;  :start (create-job-submission-rate-limiter config))
+(mount/defstate hook-object
+  :start (create-default-hook-object config))
 
 (mount/defstate submission-hook-batch-timeout-seconds
   :start (-> config :settings :hooks :submission-hook-batch-timeout-seconds t/seconds))
