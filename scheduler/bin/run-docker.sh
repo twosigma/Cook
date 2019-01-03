@@ -180,7 +180,8 @@ docker create \
     -e "COOK_EXECUTOR_PORTION=${COOK_EXECUTOR_PORTION:-0}" \
     -e "COOK_KEYSTORE_PATH=/opt/ssl/cook.p12" \
     -e "DATA_LOCAL_ENDPOINT=http://${DATA_LOCAL_IP}:35847/retrieve-costs" \
-    -e "DEMO_HOOK_SERVER_URL=http://${DEMO_HOOK_SERVER_IP}:5131" \
+    -e "COOK_DEMO_HOOKS_SUBMIT_URL=http://${DEMO_HOOK_SERVER_IP}:5131/get-submit-status" \
+    -e "COOK_DEMO_HOOKS_LAUNCH_URL=http://${DEMO_HOOK_SERVER_IP}:5131/get-launch-status" \
     -v ${DIR}/../log:/opt/cook/log \
     cook-scheduler:latest ${COOK_CONFIG:-}
 

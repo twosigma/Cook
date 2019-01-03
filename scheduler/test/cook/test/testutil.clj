@@ -284,7 +284,7 @@
                       :database {:datomic-uri ""}
                       :log {}
                       :mesos {:leader-path "", :master ""}
-                      :hook-factory {:factory-fn 'cook.demo-plugin/factory
+                      :hook-factory {:factory-fn "cook.demo-plugin/factory"
                                      :arguments {}}
                       :metrics {}
                       :nrepl {}

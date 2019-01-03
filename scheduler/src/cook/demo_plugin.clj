@@ -6,8 +6,6 @@
 
 
 (def http-timeout-millis 2000)
-(def submit-url "http://localhost:5131/get-submit-status")
-(def launch-url "http://localhost:5131/get-launch-status")
 (def reqdict {:socket-timeout http-timeout-millis :conn-timeout http-timeout-millis
                :as :json-string-keys :content-type :json})
 
@@ -15,7 +13,7 @@
        [result message]
        {:status result :message message :cache-expires-at (-> 1 t/seconds t/from-now)})
 
-(defrecord DemoValidate []
+(defrecord DemoValidate [submit-url launch-url]
   chd/SchedulerHooks
   (chd/check-job-submission
     [this job-map]
@@ -46,4 +44,4 @@
         404 (generate-result :rejected  (str "Got 404 accessing " launch-url))
         (generate-result :rejected (str "Got nothing " response))))))
 
-(defn factory [_] (->DemoValidate))
+(defn factory [{:keys [submit-url launch-url]}] (->DemoValidate submit-url launch-url))

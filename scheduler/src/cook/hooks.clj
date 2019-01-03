@@ -51,7 +51,7 @@
     (log/info (str "Setting up hooks with factory config: " hook-factory " and factory-fn " factory-fn))
     (if factory-fn
       (do
-        (if-let [resolved-fn (resolve-symbol factory-fn)]
+        (if-let [resolved-fn (resolve-symbol (symbol factory-fn))]
           (do
             (log/info (str "Resolved as " resolved-fn " with " arguments))
             (resolved-fn arguments))
