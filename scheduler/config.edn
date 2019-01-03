@@ -29,8 +29,8 @@
          :age-out-seen-count 10
          :submission-hook-batch-timeout-seconds 40}
  ;; To configure a hook, define a factory function and its arguments.
- ; :hook-factory {:factory-fn 'cook.demo-plugin/factory
- ;                :arguments {}}
+ ; :hook-factory {:factory-fn "cook.demo-plugin/factory"
+                  :arguments {}}
  :hostname #config/env "COOK_HOSTNAME"
  :log {:file #config/env "COOK_LOG_FILE"
        :levels {"datomic.db" :warn

@@ -24,6 +24,7 @@
             [cook.cors :as cors]
             [cook.curator :as curator]
             [cook.datomic :as datomic]
+            [cook.hooks]
             [cook.impersonation :refer (impersonation-authorized-wrapper)]
             [cook.mesos.pool :as pool]
             ; This explicit require is needed so that mount can see the defstate defined in this namespace.
