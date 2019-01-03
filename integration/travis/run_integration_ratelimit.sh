@@ -39,6 +39,14 @@ export COOK_KEYSTORE_PATH=${COOK_KEYSTORE_PATH}
 
 mkdir ${SCHEDULER_DIR}/log
 
+# Launch the demo hook manager.
+export DEMO_HOOKS_PORT=5131
+export DEMO_HOOKS_SERVICE="http://localhost:${DEMO_HOOKS_PORT}"
+export COOK_DEMO_HOOKS_SUBMIT_URL="${DEMO_HOOKS_SERVICE}/get-submit-status"
+export COOK_DEMO_HOOKS_LAUNCH_URL="${DEMO_HOOKS_SERVICE}/get-launch-status"
+FLASK_APP=${PROJECT_DIR}/src/demo_hook_service/service.py flask run --port=${DEMO_HOOKS_PORT} > ${SCHEDULER_DIR}/log/demo-hooks.log 2>&1 &
+
+
 cd ${SCHEDULER_DIR}
 
 # Start two cook schedulers.
