@@ -2564,6 +2564,31 @@ class CookTest(util.CookTest):
                 resp = util.get_limit(self.cook_url, limit, user)
                 self.assertFalse('pools' in resp.json())
 
+    @pytest.mark.serial
+    def test_basic_submit_with_hook_rejecting(self):
+        job_executor_type = util.get_job_executor_type(self.cook_url)
+
+        # Should succeed.
+        job_uuid, resp = util.submit_job(self.cook_url, executor=job_executor_type)
+        self.assertEqual(resp.status_code, 201, msg=resp.content)
+        self.assertEqual(resp.content, str.encode(f"submitted jobs {job_uuid}"))
+        job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
+        self.assertIn('success', [i['status'] for i in job['instances']], json.dumps(job, indent=2))
+        self.assertEqual(False, job['disable_mea_culpa_retries'])
+        self.assertTrue(len(util.wait_for_output_url(self.cook_url, job_uuid)['output_url']) > 0)
+
+        # Should fail
+        fail = {'status': 'rejected', 'message': 'A message'}
+        demo_hook_plugin = os.getenv('DEMO_HOOKS_SERVICE')
+        util.session.post(f'{demo_hook_plugin}/set-submit-status', json=fail)
+
+        job_uuid, resp = util.submit_job(self.cook_url, executor=job_executor_type)
+        self.assertEqual(resp.status_code, 400, msg=resp.content)
+
+        success = {'status': 'accepted', 'message': 'A message'}
+        util.session.post(f'{demo_hook_plugin}/set-submit-status', json=success)
+
+
 
     @unittest.skipIf(os.getenv('COOK_TEST_SKIP_RECONCILE') is not None,
                      'Requires not setting the COOK_TEST_SKIP_RECONCILE environment variable')

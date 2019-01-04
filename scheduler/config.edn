@@ -31,8 +31,8 @@
  ;; To configure a hook, define a factory function and its arguments.
  ;; Can leave out. We have this for unit tests.
  :hook-factory {:factory-fn "cook.demo-plugin/factory"
-                :arguments {:launch-url #config/env "COOK_DEMO_HOOKS_SUBMIT_URL"
-                            :submit-url #config/env "COOK_DEMO_HOOKS_LAUNCH_URL"}}
+                :arguments {:launch-url #config/env "COOK_DEMO_HOOKS_LAUNCH_URL"
+                            :submit-url #config/env "COOK_DEMO_HOOKS_SUBMIT_URL"}}
  :hostname #config/env "COOK_HOSTNAME"
  :log {:file #config/env "COOK_LOG_FILE"
        :levels {"datomic.db" :warn

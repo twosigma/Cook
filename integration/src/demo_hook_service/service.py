@@ -15,6 +15,7 @@ def set_submit_status():
     global submit_status
     payload = json.loads(request.data)
     submit_status = payload
+    print (f"Reset submit status to '{payload}'")
     return make_response('Updated cost data')
 
 @app.route('/get-launch-status', methods=['GET'])

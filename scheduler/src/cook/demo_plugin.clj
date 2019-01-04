@@ -25,7 +25,7 @@
               (case status
                 "accepted" (generate-result :accepted message)
                 "rejected" (generate-result :rejected message)
-                (generate-result :rejected (str "Bad contents, illegal status message " body))))
+                (generate-result :rejected (str "Bad contents[1], illegal status message " body))))
 
         404 (generate-result :rejected  (str "Got 404 accessing " submit-url))
         :rejected  (str "Got nothing " response))))
@@ -38,8 +38,8 @@
                   message (or (get body "message") "No message sent.")]
               (case status
                 "accepted" (generate-result :accepted message)
-                "rejected" (generate-result :rejected message)
-                (generate-result :rejected (str "Bad contents, illegal status message " body))))
+                "deferred" (generate-result :rejected message)
+                (generate-result :rejected (str "Bad contents[2], illegal status message " body))))
 
         404 (generate-result :rejected  (str "Got 404 accessing " launch-url))
         (generate-result :rejected (str "Got nothing " response))))))
