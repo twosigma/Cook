@@ -13,10 +13,9 @@ def get_submit_status():
 @app.route('/set-submit-status', methods=['POST'])
 def set_submit_status():
     global submit_status
-    payload = json.loads(request.data)
-    submit_status = payload
-    print (f"Reset submit status to '{payload}'")
-    return make_response('Updated cost data')
+    submit_status = json.loads(request.data)
+    print (f"Reset submit status to '{submit_status}'")
+    return make_response('Updated submit status')
 
 @app.route('/get-launch-status', methods=['GET'])
 def get_launch_status():
@@ -25,8 +24,7 @@ def get_launch_status():
 @app.route('/set-launch-status', methods=['POST'])
 def set_launch_status():
     global launch_status
-    payload = json.loads(request.data)
-    launch_status = payload
-    print (f"Reset submit status to '{payload}'")
-    return make_response('Updated cost data')
+    launch_status = json.loads(request.data)
+    print (f"Reset launch status to '{launch_status}'")
+    return make_response('Updated launch status')
 
