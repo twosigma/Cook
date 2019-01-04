@@ -40,6 +40,7 @@ export COOK_KEYSTORE_PATH=${COOK_KEYSTORE_PATH}
 mkdir ${SCHEDULER_DIR}/log
 
 # Launch the demo hook manager.
+pip install flask
 export DEMO_HOOKS_PORT=5131
 export DEMO_HOOKS_SERVICE="http://localhost:${DEMO_HOOKS_PORT}"
 export COOK_DEMO_HOOKS_SUBMIT_URL="${DEMO_HOOKS_SERVICE}/get-submit-status"
