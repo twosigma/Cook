@@ -27,5 +27,6 @@ def set_launch_status():
     global launch_status
     payload = json.loads(request.data)
     launch_status = payload
+    print (f"Reset submit status to '{payload}'")
     return make_response('Updated cost data')
 

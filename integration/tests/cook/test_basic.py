@@ -2588,6 +2588,34 @@ class CookTest(util.CookTest):
         success = {'status': 'accepted', 'message': 'A message'}
         util.session.post(f'{demo_hook_plugin}/set-submit-status', json=success)
 
+    @pytest.mark.serial
+    def test_basic_submit_with_hook_deferred(self):
+        job_executor_type = util.get_job_executor_type(self.cook_url)
+
+        # Make the job be deferred
+        deferred = {'status': 'deferred', 'message': 'A message'}
+        demo_hook_plugin = os.getenv('DEMO_HOOKS_SERVICE')
+        util.session.post(f'{demo_hook_plugin}/set-launch-status', json=deferred)
+
+        job_uuid, resp = util.submit_job(self.cook_url, executor=job_executor_type)
+        self.assertEqual(resp.status_code, 201, msg=resp.content)
+        self.assertEqual(resp.content, str.encode(f"submitted jobs {job_uuid}"))
+
+        # Validate its still waiting after a bit.
+        time.sleep(15)
+        job = util.load_job(self.cook_url, job_uuid)
+        details = f"Job details: {json.dumps(job, sort_keys=True)}"
+        self.assertEquals(job['status'], 'waiting', details)
+
+        # Now mark it as good.
+        success = {'status': 'accepted', 'message': 'A message'}
+        util.session.post(f'{demo_hook_plugin}/set-launch-status', json=success)
+
+        # Wait a bit and see if it is now running or completed.
+        job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
+        details = f"Job details: {json.dumps(job, sort_keys=True)}"
+        self.assertIn(job['status'], ['completed'], details)
+        self.assertIn('success', [i['status'] for i in job['instances']], json.dumps(job, indent=2))
 
 
     @unittest.skipIf(os.getenv('COOK_TEST_SKIP_RECONCILE') is not None,
