@@ -1678,6 +1678,7 @@
                                              :override-group-immutability?
                                              override-group-immutability?) jobs)
                                {:keys [status message]} (hooks/hook-jobs-submission jobs)]
+                           ; Does the hook accept the submission?
                            (if (= :accepted status)
                              [false {::groups groups
                                      ::jobs jobs

@@ -97,7 +97,6 @@
 (deftest test-cache-expiration
   (let [^Cache cache (new-cache)
         epoch (t/epoch)
-        extract-fn identity
         make-fn (fn [key offset]
                   {:val (* key 2) :cache-expires-at (->> offset t/millis (t/plus epoch))})
         miss-fn (fn [key] (make-fn key (-> key (* 1000))))
@@ -130,11 +129,9 @@
 (deftest test-cache-not-expiring
   (let [^Cache cache (new-cache)
         epoch (t/epoch)
-        extract-fn identity
-        make-fn (fn [key offset]
+        make-fn (fn [key _]
                   {:val (* key 2)})
-        miss-fn (fn [key] (make-fn key (-> key (* 1000))))
-        miss-fn2 (fn [key] (make-fn key (-> key (* 1000) (+ 10000))))]
+        miss-fn (fn [key] {:val (* key 2)})]
     ;; These do not have the :cache-expires-at and should not expire.
     (with-redefs [t/now (fn [] epoch)]
       (ccache/lookup-cache-with-expiration! cache identity miss-fn 1)
@@ -143,12 +140,12 @@
 
     ;; None of these should be expired.
     (with-redefs [t/now (fn [] (t/plus epoch (t/millis 999)))]
-      (is (= (make-fn 1 1000) (ccache/lookup-cache-with-expiration! cache identity miss-fn2 1)))
-      (is (= (make-fn 2 2000) (ccache/lookup-cache-with-expiration! cache identity miss-fn2 2)))
-      (is (= (make-fn 3 3000) (ccache/lookup-cache-with-expiration! cache identity miss-fn2 3))))
+      (is (= (make-fn 1 1000) (ccache/lookup-cache-with-expiration! cache identity miss-fn 1)))
+      (is (= (make-fn 2 2000) (ccache/lookup-cache-with-expiration! cache identity miss-fn 2)))
+      (is (= (make-fn 3 3000) (ccache/lookup-cache-with-expiration! cache identity miss-fn 3))))
 
     ;; None of these should be expired.
     (with-redefs [t/now (fn [] (t/plus epoch (t/millis 2000001)))]
-      (is (= (make-fn 1 11000) (ccache/lookup-cache-with-expiration! cache identity miss-fn2 1)))
-      (is (= (make-fn 2 12000) (ccache/lookup-cache-with-expiration! cache identity miss-fn2 2)))
-      (is (= (make-fn 3 3000) (ccache/lookup-cache-with-expiration! cache identity miss-fn2 3))))))
+      (is (= (make-fn 1 11000) (ccache/lookup-cache-with-expiration! cache identity miss-fn 1)))
+      (is (= (make-fn 2 12000) (ccache/lookup-cache-with-expiration! cache identity miss-fn 2)))
+      (is (= (make-fn 3 3000) (ccache/lookup-cache-with-expiration! cache identity miss-fn 3))))))

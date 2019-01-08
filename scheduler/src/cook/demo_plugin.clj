@@ -20,6 +20,11 @@
             [cook.hooks-definitions :as chd]))
 
 
+
+;; Cook hooks is a plugin API that lets job submission and job launch be controlled via a
+;; plugin. cook.demo-plugin is a demo plugin that queries a remote service to ask about the
+;; submission and launch status of a job. We use it in integration tests.
+
 (def http-timeout-millis 2000)
 (def reqdict {:socket-timeout http-timeout-millis :conn-timeout http-timeout-millis
                :as :json-string-keys :content-type :json})
@@ -28,6 +33,7 @@
        [result message]
        {:status result :message message :cache-expires-at (-> 1 t/seconds t/from-now)})
 
+; Demo validation plugin, implements SchedulerHooks, pinging the status service on the two given URL's.
 (defrecord DemoValidate [submit-url launch-url]
   chd/SchedulerHooks
   (chd/check-job-submission
@@ -43,7 +49,7 @@
                 (generate-result :rejected (str "Bad contents[1], illegal status message " body))))
 
         404 (generate-result :rejected  (str "Got 404 accessing " submit-url))
-        :rejected  (str "Got nothing " response))))
+        :rejected  (str "Got nothing[1] " response))))
   (chd/check-job-invocation
     [this job-map]
     (let [{:keys [body] http-status :status :as response} (http/get launch-url reqdict)]
@@ -57,6 +63,8 @@
                 (generate-result :accepted (str "Bad contents[2], illegal status message " body))))
 
         404 (generate-result :rejected  (str "Got 404 accessing " launch-url))
-        (generate-result :rejected (str "Got nothing " response))))))
+        (generate-result :rejected (str "Got nothing[2] " response))))))
 
-(defn factory [{:keys [submit-url launch-url]}] (->DemoValidate submit-url launch-url))
+(defn factory
+  "Factory method for these hooks to be used in config.edn"
+  [{:keys [launch-url submit-url]}] (->DemoValidate submit-url launch-url))

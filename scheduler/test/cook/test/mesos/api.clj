@@ -39,8 +39,7 @@
                                         restore-fresh-database!] :as testutil]
             [datomic.api :as d :refer [q db]]
             [mesomatic.scheduler :as msched]
-            [schema.core :as s]
-            [clojure.tools.logging :as log])
+            [schema.core :as s])
   (:import clojure.lang.ExceptionInfo
            com.fasterxml.jackson.core.JsonGenerationException
            com.google.protobuf.ByteString
@@ -1922,6 +1921,7 @@
                 {:keys [status]} (handler (new-request))]
             (is (= 201 status)))))
 
+      ;;; These next tests test if we handle multiple jobs with several states.
       (testing "hook-rejects-multi-submission-two-jobs-accept-reject"
         (with-redefs [api/create-jobs! (fn [in-conn _]
                                          (is (= conn in-conn)))
@@ -1957,7 +1957,8 @@
                 {:keys [body status] :as all} (handler request)]
             (is (= 201 status)))))
 
-      ;; If hook validation is too slow, we switch to this at 40 seconds so that we meet the 60 second http API timeout.
+      ;; If hook validation is too slow, it should switch to the default status response
+      ;; so that we meet the 60 second http API timeout.
       (testing "hook-hits-timeout"
         (let [now (t/now)
               counter (atom 0)
@@ -1965,7 +1966,7 @@
                         (map (fn [_] (minimal-job))))
               request (assoc-in (new-request) [:body-params :jobs] jobs)
               handler (api/create-jobs-handler conn task-constraints gpu-enabled? is-authorized-fn)]
-          ; Each invocation of t/now is 7 seconds later.
+          ; Each invocation of t/now returns a time 7 seconds later than the last one.
           (with-redefs [api/create-jobs! (fn [in-conn _]
                                            (is (= conn in-conn)))
                         hooks/hook-object testutil/accept-accept-hook
@@ -1982,7 +1983,9 @@
               ; We submit 10 jobs, with a submit timeout of 40 seconds.
               ; First invocation of t/now computes deadline, so the
               ; submission times are 7, 14, 21, 28, 35. ...
-              ; We thus expect 5 to submit, and 5 to fail and get rejected for out-of-timeout.
+              ; We thus expect 5 to submit, and 5 to fail and get rejected by
+              ; out-of-timeout by the check-job-submission-default which returns
+              ; Reject for accept-accept-hook.
               (is true (str/starts-with? "Total of 5 errors. First 3 are " (:error body)))
               (is (str/includes? body "Default Rejected")))))))))
 

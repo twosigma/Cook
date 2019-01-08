@@ -617,12 +617,10 @@
         offensive-jobs-ch (sched/make-offensive-job-stifler conn)
         offensive-job-filter (partial sched/filter-offensive-jobs constraints offensive-jobs-ch)]
     (testing "enough offers for all normal jobs, except that all jobs are deferred by hook and none launch."
-        ; We defer it the first time we see it, (with a cache timeout of -1 second, so the cache entry won't linger.)
-        (with-redefs [hooks/hook-object cook.test.testutil/accept-defer-hook
-                      ;hooks/filter-job-invocations (constantly nil)
-                      ]
-          (is (= {"no-pool" (list)}
-                 (sched/rank-jobs test-db offensive-job-filter)))))
+      ; We defer it the first time we see it, (with a cache timeout of -1 second, so the cache entry won't linger.)
+      (with-redefs [hooks/hook-object cook.test.testutil/accept-defer-hook]
+        (is (= {"no-pool" (list)}
+               (sched/rank-jobs test-db offensive-job-filter)))))
     ;; Cache expired, so when we run this time, it's found.
     (testing "enough offers for all normal jobs."
       (is (= {"no-pool" (list (util/job-ent->map job-entity))}

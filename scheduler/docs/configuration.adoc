@@ -77,6 +77,12 @@ If need it to bind to another port, you can specify that with the `:local-port` 
 `:admins`::
   The value of this key is a set of usernames who should be considered administrators when using the `configfile-admins-auth` authorization-fn.
 
+`:hook-factory`::  Cook hooks is a plugin API that lets job submission and job launch be controlled via a plugin. The plugin can reject jobs at job submission time as well as accept or defer the launching of jobs. The plugin must implment the SchedulerHooks protocol. The value for this key is a dictionary with two entries:
+
+ * `:factory-fn` contains a string with a namespace-qualified path of a function for creating a hook object.
+
+ * `:arguments` contains a dictionary that is passed to the factory-fn to initialize the hook object.
+
 `:rate-limit`::
   Configure rate limits for the scheduler. `rate-limit` is a map with three possible keys: `:user-limit-per-m` , `:job-submission`, `:expire-minutes`. These keys control rate limits.
 

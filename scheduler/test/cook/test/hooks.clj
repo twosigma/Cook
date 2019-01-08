@@ -16,14 +16,10 @@
 (ns cook.test.hooks
   (:use clojure.test)
   (:require [clj-time.core :as t]
-            [clojure.string :as str]
-            [clojure.tools.logging :as log]
-
             [cook.cache :as ccache]
             [cook.hooks :as hooks]
             [cook.hooks-definitions :as chd]
             [cook.mesos.util :as util]
-
             [cook.test.testutil :refer [create-dummy-job
                                         restore-fresh-database!] :as testutil]
             [datomic.api :as d]))
@@ -36,13 +32,10 @@
      hooks/age-out-first-seen-deadline-minutes (t/hours 10)
      hooks/age-out-seen-count 10
      t/now (constantly (t/date-time 2018 12 20 23 10))]
-    (let
-
-      [t-5m  (t/date-time 2018 12 20 23 5)
-       t-1h  (t/date-time 2018 12 20 22 10)
-       t-9h  (t/date-time 2018 12 20 14 10)
-       t-10h5m  (t/date-time 2018 12 20 13 5)]
-
+    (let [t-5m  (t/date-time 2018 12 20 23 5)
+          t-1h  (t/date-time 2018 12 20 22 10)
+          t-9h  (t/date-time 2018 12 20 14 10)
+          t-10h5m  (t/date-time 2018 12 20 13 5)]
       ; Meets all of the thresholds to be aged out:
       (is (true? (hooks/aged-out? {:last-seen t-5m
                                    :first-seen t-10h5m
@@ -75,20 +68,28 @@
           job-entity (d/entity (d/db conn) job-entid)
           job (util/job-ent->map job-entity)]
       (with-redefs [hooks/aged-out? (constantly false)]
+
+        ;; Make the job miss in the cache 3 times.
         (with-redefs [hooks/hook-object testutil/accept-defer-hook
                       t/now (constantly (t/date-time 2018 12 20 13 5))]
           (is false (hooks/filter-job-invocations-miss job))
           (is false (hooks/filter-job-invocations-miss job))
-          (is false (hooks/filter-job-invocations-miss job))
-          (with-redefs [hooks/hook-object testutil/accept-defer-hook
-                        t/now (constantly (t/date-time 2018 12 20 15 5))]
-            (is false (:state (hooks/filter-job-invocations-miss job))))
-          ;; Now, we should see this job in the cache with 4 visits, and last-seen and most recently seen updated appropriately.
-          (testing "Submit job several times, correctly updates timestamps as long as its found."
-            (let [{:keys [first-seen last-seen seen-count]} (ccache/get-if-present hooks/job-invocations-cache :job/uuid job)]
-              (is (= last-seen (t/date-time 2018 12 20 15 5)))
-              (is (= first-seen (t/date-time 2018 12 20 13 5)))
-              (is (= seen-count 4)))))
+          (is false (hooks/filter-job-invocations-miss job)))
+
+        ;; Make it miss one more time,
+        (with-redefs [hooks/hook-object testutil/accept-defer-hook
+                      t/now (constantly (t/date-time 2018 12 20 15 5))]
+          (is false (:state (hooks/filter-job-invocations-miss job))))
+
+        ;; Now, we should see this job in the cache with 4 visits.
+        ;; last-seen and most recently seen updated appropriately.
+        (testing "Submit job several times, correctly updates timestamps as long as its found."
+          (let [{:keys [first-seen last-seen seen-count]} (ccache/get-if-present hooks/job-invocations-cache :job/uuid job)]
+            (is (= last-seen (t/date-time 2018 12 20 15 5)))
+            (is (= first-seen (t/date-time 2018 12 20 13 5)))
+            (is (= seen-count 4))))
+
+        ;; Now, run again a bit later, and we should see the job go into the accept state
         (with-redefs [hooks/hook-object testutil/accept-accept-hook
                       t/now (constantly (t/date-time 2018 12 20 23 10))]
           (testing "Job moves into the accepted state as appropriate."
@@ -141,7 +142,6 @@
         (is (true? (hooks/filter-job-invocations job)))
         (is (false? @visited)))
       (reset! visited false))
-
 
     (testing "Use the cache integration, run twice, putting it in the real cache."
       (with-redefs [hooks/hook-object (reify chd/SchedulerHooks

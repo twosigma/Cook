@@ -2565,10 +2565,10 @@ class CookTest(util.CookTest):
                 self.assertFalse('pools' in resp.json())
 
     @pytest.mark.serial
-    def test_basic_submit_with_hook_rejecting(self):
+    def test_submit_hook(self):
         job_executor_type = util.get_job_executor_type(self.cook_url)
 
-        # Should succeed.
+        # Should succeed, demo-plugin accepts jobs by default.
         job_uuid, resp = util.submit_job(self.cook_url, executor=job_executor_type)
         self.assertEqual(resp.status_code, 201, msg=resp.content)
         self.assertEqual(resp.content, str.encode(f"submitted jobs {job_uuid}"))
@@ -2577,11 +2577,12 @@ class CookTest(util.CookTest):
         self.assertEqual(False, job['disable_mea_culpa_retries'])
         self.assertTrue(len(util.wait_for_output_url(self.cook_url, job_uuid)['output_url']) > 0)
 
-        # Should fail
+        # Tell demo plugin server to reject jobs.
         fail = {'status': 'rejected', 'message': 'A message'}
         demo_hook_plugin = os.getenv('DEMO_HOOKS_SERVICE')
         util.session.post(f'{demo_hook_plugin}/set-submit-status', json=fail)
 
+        # This should now fail to submit.
         job_uuid, resp = util.submit_job(self.cook_url, executor=job_executor_type)
         self.assertEqual(resp.status_code, 400, msg=resp.content)
 
@@ -2589,10 +2590,10 @@ class CookTest(util.CookTest):
         util.session.post(f'{demo_hook_plugin}/set-submit-status', json=success)
 
     @pytest.mark.serial
-    def test_basic_submit_with_hook_deferred(self):
+    def test_launch hook(self):
         job_executor_type = util.get_job_executor_type(self.cook_url)
 
-        # Make the job be deferred
+        # Tell demo plugin server to defer launching jobs.
         deferred = {'status': 'deferred', 'message': 'A message'}
         demo_hook_plugin = os.getenv('DEMO_HOOKS_SERVICE')
         util.session.post(f'{demo_hook_plugin}/set-launch-status', json=deferred)
@@ -2601,13 +2602,13 @@ class CookTest(util.CookTest):
         self.assertEqual(resp.status_code, 201, msg=resp.content)
         self.assertEqual(resp.content, str.encode(f"submitted jobs {job_uuid}"))
 
-        # Validate its still waiting after a bit.
+        # Validate job is still waiting after a bit.
         time.sleep(15)
         job = util.load_job(self.cook_url, job_uuid)
         details = f"Job details: {json.dumps(job, sort_keys=True)}"
         self.assertEquals(job['status'], 'waiting', details)
 
-        # Now mark it as good.
+        # Now mark it as able to launch immediately.
         success = {'status': 'accepted', 'message': 'A message'}
         util.session.post(f'{demo_hook_plugin}/set-launch-status', json=success)
 

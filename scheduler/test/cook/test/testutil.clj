@@ -339,6 +339,7 @@
     [rate-limit/job-submission-rate-limiter rate-limit/AllowAllRateLimiter]
     (api/create-jobs! conn context)))
 
+;; Accept or reject based on the name of the job.
 (def fake-scheduler-hooks
   (reify SchedulerHooks
     (check-job-submission-default [this] {:status :rejected :message "Too slow"})

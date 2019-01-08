@@ -43,7 +43,7 @@
   (resolve (some-> sym namespace symbol use) sym))
 
 (defn create-default-hook-object
-  "Returns the hook object that matches to a given job map. Returns an always-accept Hook object if nothing is defined."
+  "Returns the hook object. If no hook factory defined, returns an always-accept hook object."
   [config]
   (let [{:keys [settings]} config
         {:keys [hook-factory]} settings
@@ -68,7 +68,6 @@
   :start (-> config :settings :hooks :age-out-last-seen-deadline-minutes t/minutes))
 (mount/defstate age-out-first-seen-deadline-minutes
   :start (-> config :settings :hooks :age-out-first-seen-deadline-minutes t/minutes))
-
 (mount/defstate age-out-seen-count
   :start (-> config :settings :hooks :age-out-seen-count))
 
@@ -82,14 +81,16 @@
 
 
 (defn aged-out?
+  "Looking at the cached dictionary, Has this job been in the queue long enough that we should force it to run and get it done. This includes:
+  1. Being in the queue for a long time (hours)
+  2. Attempting to launch the job fairly recently (seen in last several minutess)
+  3. Tried multiple times to get the job to launch."
   [{:keys [last-seen first-seen seen-count] :as old-result}]
   {:post [(or (true? %) (false? %))]}
   (let [last-seen-deadline (->> age-out-last-seen-deadline-minutes
                                 (t/minus- (t/now)))
         first-seen-deadline (->> age-out-first-seen-deadline-minutes
                                  (t/minus- (t/now)))]
-    ;; If I've seen the job for at least 10 hours, at least 20 times, and once in the last 10 minutes
-    ;; Treat the job as if its aged out.
     (and
       (boolean old-result)
       (> seen-count age-out-seen-count)
@@ -98,8 +99,9 @@
 
 
 (defn filter-job-invocations-miss
-  "This is the cache miss handler. It is invoked if we have a cache miss --- either the entry is expired, or
-   its not there. Only invoke on misses or expirations, because we count the number of invocations."
+  "This is the cache miss handler. It is invoked if we have a cache miss --- either the
+  entry is expired, or its not there. Only invoke on misses or expirations, because we
+  count the number of invocations."
   [job]
   {:post [(or (true? %) (false? %))]}
   (let [{:keys [first-seen seen-count] :as old-result} (ccache/get-if-present
@@ -142,7 +144,8 @@
                                                        :job/uuid
                                                        job)
         expired? (and cache-expires-at (t/after? (t/now) cache-expires-at))]
-    ; Fast path, if it has an expiration (its found), and its not expired, and it is accepted, then we're good.
+    ; Fast path, if it cached, has an expiration (i.e., it was found), and its not
+    ; expired, and it is accepted, then we're done.
     (if (and result (not expired?))
       (= status :accepted)
       (filter-job-invocations-miss job))))
@@ -150,7 +153,9 @@
 (defn hook-jobs-submission
   [jobs]
   "Run the hooks for a set of jobs at submission time."
-  (let [deadline (->> submission-hook-batch-timeout-seconds ; Self-imposed deadline to submit a batch.
+  (let [deadline (->> submission-hook-batch-timeout-seconds
+                      ; One submission can include multiple jobs that must all be checked.
+                      ; Self-imposed deadline to get them all checked.
                       (t/plus- (t/now)))
         do-one-job (fn do-one-job [job-map]
                      (let [now (t/now)
@@ -162,6 +167,7 @@
         results (apply list (map do-one-job jobs))
         errors (apply list (filter #(= :rejected (:status %)) results))
         error-count (count errors)
+        ; Collect a few errors to show in the response. (not every error)
         error-samples (apply list (take 3 errors))]
     (if (zero? error-count)
       {:status :accepted}
