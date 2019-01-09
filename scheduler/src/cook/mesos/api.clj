@@ -29,6 +29,7 @@
             [cook.config :as config]
             [cook.cors :as cors]
             [cook.datomic :as datomic]
+            [cook.hooks :as hooks]
             [cook.mesos.data-locality :as dl]
             [cook.mesos.pool :as pool]
             [cook.mesos.quota :as quota]
@@ -1675,10 +1676,14 @@
                                              (set (map :uuid groups))
                                              %
                                              :override-group-immutability?
-                                             override-group-immutability?) jobs)]
-                           [false {::groups groups
-                                   ::jobs jobs
-                                   ::pool pool}]))
+                                             override-group-immutability?) jobs)
+                               {:keys [status message]} (hooks/hook-jobs-submission jobs)]
+                           ; Does the hook accept the submission?
+                           (if (= :accepted status)
+                             [false {::groups groups
+                                     ::jobs jobs
+                                     ::pool pool}]
+                             [true {::error message}])))
                        (catch Exception e
                          (log/warn e "Malformed raw api request")
                          [true {::error (.getMessage e)}]))))

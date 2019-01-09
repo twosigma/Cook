@@ -25,6 +25,7 @@
             [clojure.tools.logging :as log]
             [clojure.walk :as walk]
             [cook.config :as config]
+            [cook.hooks :as hooks]
             [cook.mesos.data-locality :as dl]
             [cook.mesos.heartbeat :as heartbeat]
             [cook.mesos.sandbox :as sandbox]
@@ -606,7 +607,7 @@
         conn (restore-fresh-database! uri)
         constraints {:memory-gb 10.0
                      :cpus 5.0}
-        ;; a job which follows all constraints
+        ;; A job which follows all constraints.
         job-id (create-dummy-job conn :user "tsram"
                                  :job-state :job.state/waiting
                                  :memory (* 1024 (- (:memory-gb constraints) 2.0))
@@ -615,8 +616,15 @@
         job-entity (d/entity test-db job-id)
         offensive-jobs-ch (sched/make-offensive-job-stifler conn)
         offensive-job-filter (partial sched/filter-offensive-jobs constraints offensive-jobs-ch)]
-    (is (= {"no-pool" (list (util/job-ent->map job-entity))}
-           (sched/rank-jobs test-db offensive-job-filter)))))
+    (testing "enough offers for all normal jobs, except that all jobs are deferred by hook and none launch."
+      ; We defer it the first time we see it, (with a cache timeout of -1 second, so the cache entry won't linger.)
+      (with-redefs [hooks/hook-object cook.test.testutil/accept-defer-hook]
+        (is (= {"no-pool" (list)}
+               (sched/rank-jobs test-db offensive-job-filter)))))
+    ;; Cache expired, so when we run this time, it's found.
+    (testing "enough offers for all normal jobs."
+      (is (= {"no-pool" (list (util/job-ent->map job-entity))}
+             (sched/rank-jobs test-db offensive-job-filter))))))
 
 (deftest test-virtual-machine-lease-adapter
   ;; ensure that the VirtualMachineLeaseAdapter can successfully handle an offer from Mesomatic.

@@ -107,12 +107,19 @@ case "$COOK_POOLS" in
     exit 1
 esac
 
+mkdir ${SCHEDULER_DIR}/log
+
 pip install flask
 export DATA_LOCAL_PORT=35847
 export DATA_LOCAL_SERVICE="http://localhost:${DATA_LOCAL_PORT}"
 export DATA_LOCAL_ENDPOINT="${DATA_LOCAL_SERVICE}/retrieve-costs"
-mkdir ${SCHEDULER_DIR}/log
 FLASK_APP=${PROJECT_DIR}/src/data_locality/service.py flask run --port=${DATA_LOCAL_PORT} > ${SCHEDULER_DIR}/log/data-local.log 2>&1 &
+
+export DEMO_HOOKS_PORT=5131
+export DEMO_HOOKS_SERVICE="http://localhost:${DEMO_HOOKS_PORT}"
+export COOK_DEMO_HOOKS_SUBMIT_URL="${DEMO_HOOKS_SERVICE}/get-submit-status"
+export COOK_DEMO_HOOKS_LAUNCH_URL="${DEMO_HOOKS_SERVICE}/get-launch-status"
+FLASK_APP=${PROJECT_DIR}/src/demo_hook_service/service.py flask run --port=${DEMO_HOOKS_PORT} > ${SCHEDULER_DIR}/log/demo-hooks.log 2>&1 &
 
 # Seed running jobs, which are used to test the task reconciler
 cd ${SCHEDULER_DIR}
