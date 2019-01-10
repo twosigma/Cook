@@ -85,7 +85,8 @@
                                                             org.clojure/clojure io.netty/netty]]
                  [metrics-clojure-jvm "2.6.1"]
                  [io.dropwizard.metrics/metrics-graphite "3.1.2"]
-                 [com.aphyr/metrics3-riemann-reporter "0.4.0"]
+                 [com.aphyr/metrics3-riemann-reporter "0.4.0"
+                  :exclusions [com.google.protobuf/protobuf-java]]
 
                  ;;External system integrations
                  [me.raynes/conch "0.5.2"]
@@ -155,7 +156,7 @@
                                  org.slf4j/slf4j-nop]]
                    ; Similarly, one could use an older version of the
                    ; mesomatic library in environments that require it
-                   [twosigma/mesomatic "1.0.1-2018.08.28-df2c2ca"]]}
+                   [pschorf/mesomatic "1.5.0-r4"]]}
 
    :uberjar
    {:aot [cook.components]

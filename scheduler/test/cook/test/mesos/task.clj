@@ -271,7 +271,8 @@
                                    (assoc-in [:docker :port-mappings 1 :host-port]
                                              (second (:ports-assigned task)))
                                    (assoc :type :container-type-docker)
-                                   (update-in [:volumes 0] assoc :mode :volume-rw))]
+                                   (update-in [:volumes 0] assoc :mode :volume-rw)
+                                   (assoc :mesos nil))]
 
         (testing "container-command"
           (let [container-executor-task (assoc task :container container

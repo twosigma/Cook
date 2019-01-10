@@ -2655,3 +2655,26 @@ class CookTest(util.CookTest):
             self.assertEqual(404, missing_resp.status_code, missing_resp.text)
         finally:
             util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
+
+
+    @unittest.skipUnless(util.supports_mesos_containerizer_images(), "Requires support for docker images in mesos containerizer")
+    def test_mesos_containerizer_image_support(self):
+        job_uuid, resp = util.submit_job(self.cook_url, container={'type': 'mesos', 'mesos': {'image': 'alpine'}})
+        try:
+            self.assertEqual(201, resp.status_code, resp.text)
+            job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
+            slave_host = job['instances'][0]['hostname']
+            slave_state = util.session.get(f'http://{slave_host}:5051/state.json').json()
+
+            executor = util.get_executor(slave_state, job['instances'][0]['executor_id'], True)
+
+            self.logger.info(f'Executor id: {job["instances"][0]["executor_id"]}')
+            self.assertTrue(executor is not None, slave_state)
+            container = executor['completed_tasks'][0]['container']
+            self.assertEqual('MESOS', container['type'], container)
+            self.assertEqual('DOCKER', container['mesos']['image']['type'], container)
+            self.assertEqual('alpine', container['mesos']['image']['docker']['name'], container)
+
+        finally:
+            util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
+

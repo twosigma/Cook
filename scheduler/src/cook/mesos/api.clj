@@ -141,6 +141,10 @@
    (s/optional-key :parameters) [{:key s/Str :value s/Str}]
    (s/optional-key :port-mapping) [PortMapping]})
 
+(def MesosInfo
+  "Schema for mesos container info"
+  {:image s/Str})
+
 (def Volume
   "Schema for a Volume"
   {(s/optional-key :container-path) s/Str
@@ -151,6 +155,7 @@
   "Schema for a Mesos Container"
   {:type s/Str
    (s/optional-key :docker) DockerInfo
+   (s/optional-key :mesos) MesosInfo
    (s/optional-key :volumes) [Volume]})
 
 (def Uri
@@ -519,35 +524,53 @@
                           ports)]
       {:docker/port-mapping port-maps})))
 
-(defn- build-container
-  "Helper for submit-jobs, deal with container structure."
+(defn- build-docker-container
   [user id container]
   (let [container-id (d/tempid :db.part/user)
         docker-id (d/tempid :db.part/user)
-        ctype (:type container)
+        volumes (or (:volumes container) [])
+        docker (:docker container)
+        params (or (:parameters docker) [])
+        port-mappings (or (:port-mapping docker) [])
+        user-params (filter #(= (:key %) "user") params)
+        expected-user-param (str (uid user) ":" (gid user))]
+    (when (some #(not= expected-user-param (:value %)) user-params)
+      (throw (ex-info "user parameter must match uid and gid of user submitting."
+                      {:expected-user-param expected-user-param
+                       :user-params-submitted user-params})))
+    [[:db/add id :job/container container-id]
+     (merge {:db/id container-id
+             :container/type "DOCKER"}
+            (mkvolumes container-id volumes))
+     [:db/add container-id :container/docker docker-id]
+     (merge {:db/id docker-id
+             :docker/image (:image docker)
+             :docker/force-pull-image (:force-pull-image docker false)}
+            (when (:network docker) {:docker/network (:network docker)})
+            (mk-container-params docker-id params)
+            (mk-docker-ports docker-id port-mappings))]))
+
+(defn- build-mesos-container
+  [user id container]
+  (let [container-id (d/tempid :db.part/user)
+        mesos-id (d/tempid :db.part/user)
+        mesos (:mesos container)
         volumes (or (:volumes container) [])]
-    (if (= (str/lower-case ctype) "docker")
-      (let [docker (:docker container)
-            params (or (:parameters docker) [])
-            port-mappings (or (:port-mapping docker) [])
-            user-params (filter #(= (:key %) "user") params)
-            expected-user-param (str (uid user) ":" (gid user))]
-        (when (some #(not= expected-user-param (:value %)) user-params)
-          (throw (ex-info "user parameter must match uid and gid of user submitting."
-                          {:expected-user-param expected-user-param
-                           :user-params-submitted user-params})))
-        [[:db/add id :job/container container-id]
-         (merge {:db/id container-id
-                 :container/type "DOCKER"}
-                (mkvolumes container-id volumes))
-         [:db/add container-id :container/docker docker-id]
-         (merge {:db/id docker-id
-                 :docker/image (:image docker)
-                 :docker/force-pull-image (:force-pull-image docker false)}
-                (when (:network docker) {:docker/network (:network docker)})
-                (mk-container-params docker-id params)
-                (mk-docker-ports docker-id port-mappings))])
-      {})))
+    [[:db/add id :job/container container-id]
+     (merge {:db/id container-id
+             :container/type "MESOS"}
+            (mkvolumes container-id volumes))
+     [:db/add container-id :container/mesos mesos-id]
+     {:db/id mesos-id
+      :mesos/image (:image mesos)}]))
+
+(defn- build-container
+  "Helper for submit-jobs, deal with container structure."
+  [user id {:keys [type] :as container}]
+  (case (str/lower-case type)
+    "docker" (build-docker-container user id container)
+    "mesos" (build-mesos-container user id container)
+    {}))
 
 (defn- str->executor-enum
   "Converts an executor string to the corresponding executor option enum.
@@ -958,6 +981,10 @@
           network (assoc :network network)
           (some? force-pull-image) (assoc :force-pull-image force-pull-image)))
 
+(defn- mesos->response-map
+  [{:keys [mesos/image]}]
+  {:image image})
+
 (defn- container-volume->response-map
   [{:keys [container.volume/mode container.volume/host-path container.volume/container-path]}]
   (cond-> {:host-path host-path}
@@ -965,9 +992,10 @@
           container-path (assoc :container-path container-path)))
 
 (defn- container->response-map
-  [{:keys [container/type container/docker container/volumes]}]
+  [{:keys [container/type container/docker container/mesos container/volumes]}]
   (cond-> {:type type}
           docker (assoc :docker (docker->response-map docker))
+          mesos (assoc :mesos (mesos->response-map mesos))
           volumes (assoc :volumes (map container-volume->response-map volumes))))
 
 (defn fetch-job-map

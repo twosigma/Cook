@@ -846,12 +846,18 @@ def contains_job_uuid(jobs, job_uuid):
     return any(job for job in jobs if job['uuid'] == job_uuid)
 
 
-def get_executor(agent_state, executor_id):
+def get_executor(agent_state, executor_id, include_completed=False):
     """Returns the executor with id executor_id from agent_state"""
     for framework in agent_state['frameworks']:
         for executor in framework['executors']:
             if executor['id'] == executor_id:
                 return executor
+    if include_completed:
+        for framework in agent_state['frameworks'] + agent_state['completed_frameworks']:
+            for executor in framework['completed_executors']:
+                if executor['id'] == executor_id:
+                    return executor
+    return None
 
 
 def get_user(cook_url, job_uuid):
@@ -1264,3 +1270,16 @@ def _fenzo_fitness_calculator():
 
 def using_data_local_fitness_calculator():
     return _fenzo_fitness_calculator() == 'cook.mesos.data-locality/make-data-local-fitness-calculator'
+
+
+@functools.lru_cache()
+def _supported_isolators():
+    mesos_url = retrieve_mesos_url()
+    slaves = get_mesos_state(mesos_url)['slaves']
+    slave_endpoint = f'http://{slaves[0]["hostname"]}:5051/state.json'
+    return set(session.get(slave_endpoint).json()['flags']['isolation'].split(','))
+
+
+def supports_mesos_containerizer_images():
+    isolators = _supported_isolators()
+    return 'filesystem/linux' in isolators and 'docker/runtime' in isolators

@@ -307,6 +307,11 @@
            port-mapping))
        port-mappings))
 
+(defn- cook-mesos-container->mesomatic-mesos-container
+  [{:keys [image]}]
+  {:image {:type :image-type-docker
+           :docker {:name image}}})
+
 (defn task-info->mesos-message
   "Given a clojure data structure (based on Cook's internal data format for jobs),
    which has already been decorated with everything we need to know about
@@ -326,8 +331,15 @@
                                     docker)))
                         (update :docker
                                 #(set/rename-keys % {:port-mapping :port-mappings}))
-                        (update-in [:docker :port-mappings]
-                                   #(assign-port-mappings % ports-assigned))
+                        (update :docker
+                                (fn [docker]
+                                  (if (:port-mappings docker)
+                                    (update docker :port-mappings #(assign-port-mappings % ports-assigned))
+                                    docker)))
+                        (update :mesos
+                                (fn [mesos]
+                                  (when mesos
+                                    (cook-mesos-container->mesomatic-mesos-container mesos))))
                         (update :volumes
                                 (fn [volumes]
                                   (map #(update % :mode cook-volume-mode->mesomatic-volume-mode)
