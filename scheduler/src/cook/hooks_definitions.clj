@@ -27,7 +27,7 @@
       This check is run synchronously with jobs submisison and MUST respond within 2 seconds, and should ideally return within
       100ms, or less. Furthermore, if multiple jobs are submitted in a batch (which may contain tens to hundreds to
       thousands of jobs), the whole batch of responeses MUST complete within a different timeout seconds.")
-  (check-job-invocation [this job-map]
+  (check-job-launch [this job-map]
     "Check a job submission for if we can run it now. Returns a map with one of two possibilities:
       {:status :accepted :cache-expires-at <DateTime to expire>}
       {:status :deferred :cache-expires-at <DateTime to expire>}

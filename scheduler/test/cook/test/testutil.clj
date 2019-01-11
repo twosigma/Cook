@@ -347,7 +347,7 @@
       (if (str/starts-with? name "accept")
         {:status :accepted :cache-expires-at (-> 1 t/seconds t/from-now)}
         {:status :rejected :cache-expires-at (-> 1 t/seconds t/from-now) :message "Explicitly rejected by hook"}))
-    (check-job-invocation [this {:keys [name] :as job-map}]
+    (check-job-launch [this {:keys [name] :as job-map}]
       (cond
         ; job-a is accepted for 5 seconds, rejected for 5 seconds, valid for 5 seconds.
         (str/starts-with? name "accept")
@@ -360,7 +360,7 @@
     (check-job-submission-default [this] {:status :rejected :message "Default Rejected"})
     (check-job-submission [this _]
       {:status :rejected :message "Explicit-reject by test hook"})
-    (check-job-invocation [this _]
+    (check-job-launch [this _]
       {:status :rejected :message "Explicit-reject by test hook" :cache-expires-at (-> -1 t/seconds t/from-now)})))
 
 (def accept-defer-hook
@@ -368,7 +368,7 @@
     (check-job-submission-default [this] {:status :rejected :message "Default Rejected"})
     (check-job-submission [this _]
       {:status :accepted :message "Explicit-accept by test hook"})
-    (check-job-invocation [this _]
+    (check-job-launch [this _]
       {:status :deferred :message "Explicit-deferred by test hook" :cache-expires-at (-> -1 t/seconds t/from-now)})))
 
 (def accept-accept-hook
@@ -376,5 +376,5 @@
     (check-job-submission-default [this] {:status :rejected :message "Default Rejected"})
     (check-job-submission [this _]
       {:status :accepted :message "Explicit-accept by test hook"})
-    (check-job-invocation [this _]
+    (check-job-launch [this _]
       {:status :accepted :message "Explicit-accept by test hook" :cache-expires-at (-> -1 t/seconds t/from-now)})))

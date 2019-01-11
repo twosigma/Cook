@@ -1295,7 +1295,7 @@
            ;; Apply the offensive job filter first before taking.
            (pc/map-vals offensive-job-filter)
            (pc/map-vals #(map util/job-ent->map %))
-           (pc/map-vals #(filter hooks/filter-job-invocations %))
+           (pc/map-vals #(filter hooks/filter-job-launchs %))
            (pc/map-vals #(remove nil? %)))
       (catch Throwable t
         (log/error t "Failed to rank jobs")

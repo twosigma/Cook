@@ -20,7 +20,6 @@
             [cook.hooks-definitions :as chd]))
 
 
-
 ;; Cook hooks is a plugin API that lets job submission and job launch be controlled via a
 ;; plugin. cook.demo-plugin is a demo plugin that queries a remote service to ask about the
 ;; submission and launch status of a job. We use it in integration tests.
@@ -50,7 +49,7 @@
 
         404 (generate-result :rejected  (str "Got 404 accessing " submit-url))
         :rejected  (str "Got nothing[1] " response))))
-  (chd/check-job-invocation
+  (chd/check-job-launch
     [this job-map]
     (let [{:keys [body] http-status :status :as response} (http/get launch-url reqdict)]
 

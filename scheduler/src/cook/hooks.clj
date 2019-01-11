@@ -20,7 +20,7 @@
             [cook.cache :as ccache]
             [cook.config :refer [config]]
             [cook.datomic :as datomic]
-            [cook.hooks-definitions :refer [SchedulerHooks check-job-invocation check-job-submission check-job-submission-default]]
+            [cook.hooks-definitions :refer [SchedulerHooks check-job-launch check-job-submission check-job-submission-default]]
             [mount.core :as mount]
             [clojure.tools.logging :as log])
   (:import (com.google.common.cache Cache CacheBuilder)
@@ -35,7 +35,7 @@
   (reify SchedulerHooks
     (check-job-submission-default [_] default-accept)
     (check-job-submission [_ _] default-accept)
-    (check-job-invocation [_ _] default-accept)))
+    (check-job-launch [_ _] default-accept)))
 
 (defn resolve-symbol
   "Resolve the given symbol to the corresponding Var."
@@ -73,7 +73,7 @@
 
 ; We may see up to the entire scheduler queue, so have a big cache here.
 ; This is called in the scheduler loop. If it hasn't been looked at in more than 2 hours, the job has almost assuredly long since run.
-(def ^Cache job-invocations-cache
+(def ^Cache job-launch-cache
   (-> (CacheBuilder/newBuilder)
       (.maximumSize 100000)
       (.expireAfterAccess 2 TimeUnit/HOURS)
@@ -92,55 +92,56 @@
         first-seen-deadline (->> age-out-first-seen-deadline-minutes
                                  (t/minus- (t/now)))]
     (and
-      (boolean old-result)
+      (not (nil? old-result))
       (> seen-count age-out-seen-count)
       (t/before? first-seen first-seen-deadline)
       (t/before? last-seen-deadline last-seen))))
 
 
-(defn filter-job-invocations-miss
+(defn filter-job-launchs-miss
   "This is the cache miss handler. It is invoked if we have a cache miss --- either the
   entry is expired, or its not there. Only invoke on misses or expirations, because we
   count the number of invocations."
   [job]
   {:post [(or (true? %) (false? %))]}
   (let [{:keys [first-seen seen-count] :as old-result} (ccache/get-if-present
-                                                         job-invocations-cache
+                                                         job-launch-cache
                                                          :job/uuid
                                                          job)
-        not-found? (not old-result)
         is-aged-out? (aged-out? old-result)]
-    ; If aged-out, no more backend queries. Return true so the job is kept and
-    ; invoked and it sinks or swims. Short circuits the evaluation, done below.
-    (or is-aged-out?
-        ;; Ok. Not aging out. Query the underlying plugin as to the status.
-        (let [{:keys [status] :as raw-result} (check-job-invocation hook-object job)
-              result
-              (if (or not-found?
-                      (= status :accepted))
-                ; If not found, or we got an accepted status, store it and reset the counters.
-                (merge raw-result
-                       {:last-seen (t/now)
-                        :first-seen (t/now)
-                        :seen-count 1})
-                ; We were found, but didn't get an accepted status. Increment the counters for aging out.
-                (merge raw-result
-                       {:last-seen (t/now)
-                        :first-seen first-seen
-                        :seen-count (inc seen-count)}))]
-          (assert (#{:accepted :deferred} status) (str "Plugin must return a status of :accepted or :deferred. Got " status))
+    ; If aged-out, we're not going to do any more backend queries. Return true so the
+    ; job is kept and  invoked and it sinks or swims.
+    (if is-aged-out?
+      true
+      ;; Ok. Not aging out. Query the underlying plugin as to the status.
+      (let [{:keys [status] :as raw-result} (check-job-launch hook-object job)
+            result
+            ; If the job is accepted or wasn't found, reset or create timestamps for tracking the age.
+            (if (or (not old-result)
+                    (= status :accepted))
+              ; If not found, or we got an accepted status, store it and reset the counters.
+              (merge raw-result
+                     {:last-seen (t/now)
+                      :first-seen (t/now)
+                      :seen-count 1})
+              ; We were found, but didn't get an accepted status. Increment the counters for aging out.
+              (merge raw-result
+                     {:last-seen (t/now)
+                      :first-seen first-seen
+                      :seen-count (inc seen-count)}))]
+        (assert (#{:accepted :deferred} status) (str "Plugin must return a status of :accepted or :deferred. Got " status))
 
-          (ccache/put-cache! job-invocations-cache :job/uuid job
-                             result)
-          ; Did the query, If the status was accepted, then we're keeping it.
-          (= status :accepted)))))
+        (ccache/put-cache! job-launch-cache :job/uuid job
+                           result)
+        ; Did the query, If the status was accepted, then we're keeping it.
+        (= status :accepted)))))
 
-(defn filter-job-invocations
-  "Run the hooks for a set of jobs at invocation time, returns true or false on whether the job is ready to run now."
+(defn filter-job-launchs
+  "Run the hooks for a set of jobs at launch time, returns true or false on whether the job is ready to run now."
   [job]
   {:post [(or (true? %) (false? %))]}
   (let [{:keys [status cache-expires-at] :as result} (ccache/get-if-present
-                                                       job-invocations-cache
+                                                       job-launch-cache
                                                        :job/uuid
                                                        job)
         expired? (and cache-expires-at (t/after? (t/now) cache-expires-at))]
@@ -148,7 +149,7 @@
     ; expired, and it is accepted, then we're done.
     (if (and result (not expired?))
       (= status :accepted)
-      (filter-job-invocations-miss job))))
+      (filter-job-launchs-miss job))))
 
 (defn hook-jobs-submission
   [jobs]
