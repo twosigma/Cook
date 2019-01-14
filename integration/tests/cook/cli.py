@@ -248,10 +248,10 @@ def tail(uuid, path, cook_url, tail_flags=None, wait_for_exit=True):
     return cp
 
 
-def ls(uuid, cook_url, path=None, parse_json=True):
+def ls(uuid, cook_url, path=None, parse_json=True, flags=None):
     """Invokes the ls subcommand"""
     args = f'ls --json {uuid} {path}' if path else f'ls --json {uuid}'
-    cp = cli(args, cook_url)
+    cp = cli(args, cook_url, flags=flags)
     out = stdout(cp)
     try:
         entries = json.loads(out) if parse_json else None

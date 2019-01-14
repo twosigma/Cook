@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import tempfile
 
 import nbformat
 import pytest
@@ -1011,6 +1012,51 @@ class CookCliTest(util.CookTest):
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(0, len(entries))
 
+    def test_ls_with_plugin(self):
+
+        def entry(name):
+            return cli.ls_entry_by_name(entries, name)
+
+        # Submit a job that clears the sandbox
+        cp, uuids = cli.submit("'rm -r * && rm -r .*'", self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        util.wait_for_job(self.cook_url, uuids[0], 'completed')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+
+        # User-defined plugin to produce dummy files in the sandbox
+        with tempfile.NamedTemporaryFile(suffix='.py', delete=True) as temp:
+            path1 = str(uuid.uuid4())
+            path2 = str(uuid.uuid4())
+            plugin_code = f"""
+def dummy_ls_entries(_, __, ___):
+    return [
+        {{'path': '{path1}', 'nlink': 1, 'mode': '-rw-r--r--', 'size': 0}},
+        {{'path': '{path2}', 'nlink': 2, 'mode': 'drwxr-xr-x', 'size': 1}}
+    ]"""
+            temp.write(plugin_code.encode())
+            temp.flush()
+            config = {
+                'plugins': {
+                    "retrieve-ls-entries": {
+                        "module-name": "does_not_matter",
+                        "path": temp.name,
+                        "function-name": "dummy_ls_entries"
+                    }
+                }}
+            with cli.temp_config_file(config) as path:
+                flags = f'--config {path} --verbose'
+                cp, entries = cli.ls(uuids[0], self.cook_url, flags=flags)
+                self.assertEqual(0, cp.returncode, cp.stderr)
+                self.assertEqual(2, len(entries))
+                entry1 = entry(path1)
+                self.assertEqual('-rw-r--r--', entry1['mode'])
+                self.assertEqual(1, entry1['nlink'])
+                self.assertEqual(0, entry1['size'])
+                entry2 = entry(path2)
+                self.assertEqual('drwxr-xr-x', entry2['mode'])
+                self.assertEqual(2, entry2['nlink'])
+                self.assertEqual(1, entry2['size'])
+
     def __wait_for_progress_message(self, uuids):
         return util.wait_until(lambda: cli.show_jobs(uuids, self.cook_url)[1][0]['instances'][0],
                                lambda i: 'progress' in i and 'progress_message' in i)
@@ -1756,6 +1802,8 @@ class CookCliTest(util.CookTest):
         extra_pool = None
 
         # If using pools, submit jobs to another pool
+        uuid_10 = None
+        uuid_11 = None
         if len(active_pools) > 1:
             extra_pool = next(pool['name'] for pool in active_pools if pool['name'] != default_pool)
             cp, uuids = cli.submit(command, self.cook_url, submit_flags=f'--cpus 0.2 --mem 32 --pool {extra_pool}')
@@ -1882,7 +1930,7 @@ class CookCliTest(util.CookTest):
         pools, _ = util.all_pools(self.cook_url)
         user = 'none'
 
-        half_of_the_pools = [pool['name'] for pool in pools[:len(pools)//2]]
+        half_of_the_pools = [pool['name'] for pool in pools[:len(pools) // 2]]
         # filter half
         cp, usage = cli.usage(user, self.cook_url, ' '.join(f'--pool {pool}' for pool in half_of_the_pools))
         self.assertEqual(0, cp.returncode, cp.stderr)
@@ -1890,17 +1938,18 @@ class CookCliTest(util.CookTest):
         self.assertEqual('', cli.decode(cp.stderr))
 
         # filter half with one bad pool
-        cp, usage = cli.usage(user, self.cook_url, '-p zzzz ' + ' '.join(f'--pool {pool}' for pool in half_of_the_pools))
+        cp, usage = cli.usage(user, self.cook_url,
+                              '-p zzzz ' + ' '.join(f'--pool {pool}' for pool in half_of_the_pools))
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(set(usage['clusters'][self.cook_url]['pools'].keys()), set(half_of_the_pools))
         self.assertIn("zzzz is not a valid pool in ", cli.decode(cp.stderr))
 
         # filter half with two bad pools
-        cp, usage = cli.usage(user, self.cook_url, '-p zzzz -p zzzzx ' + ' '.join(f'--pool {pool}' for pool in half_of_the_pools))
+        cp, usage = cli.usage(user, self.cook_url,
+                              '-p zzzz -p zzzzx ' + ' '.join(f'--pool {pool}' for pool in half_of_the_pools))
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(set(usage['clusters'][self.cook_url]['pools'].keys()), set(half_of_the_pools))
         self.assertIn(" are not valid pools in ", cli.decode(cp.stderr))
-
 
     def test_avoid_exit_on_connection_error(self):
         name = uuid.uuid4()
@@ -2056,7 +2105,6 @@ class CookCliTest(util.CookTest):
             self.assertEqual(label_value_2, labels['label2'])
         finally:
             util.kill_jobs(self.cook_url, uuids)
-
 
     def test_bad_cluster_argument(self):
         cluster_name = 'foo'
