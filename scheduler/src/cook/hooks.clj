@@ -137,7 +137,7 @@
         (= status :accepted)))))
 
 (defn filter-job-launchs
-  "Run the hooks for a set of jobs at launch time, returns true or false on whether the job is ready to run now."
+  "Run the hooks for a set of jobs at launch time, returns true if the job is ready to run now."
   [job]
   {:post [(or (true? %) (false? %))]}
   (let [{:keys [status cache-expires-at] :as result} (ccache/get-if-present

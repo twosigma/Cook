@@ -16,6 +16,7 @@
 (ns cook.mesos.unscheduled
   (:require [clj-time.coerce :as tc]
             [clj-time.core :as t]
+            [cook.hooks :as hooks]
             [cook.mesos.scheduler :as scheduler]
             [cook.mesos.quota :as quota]
             [cook.mesos.share :as share]
@@ -161,6 +162,12 @@
       ["You are currently rate limited on how many jobs you launch per minute."
        {:max-jobs-per-minute tokens-replenished-per-minute}])))
 
+(defn- check-hook-filter
+  "Return the appropriate error message if a user's job is unscheduled because they're over the job launch rate limit threshold"
+  [job]
+  (when-not (hooks/filter-job-launchs job)
+      ["The hook plugin is blocking the job launch." {:plugin (str (type hooks/hook-object))}]))
+
 (defn reasons
   "Top level function which assembles a data structure representing the list
   of possible responses to the question \"Why isn't this job being scheduled?\".
@@ -187,5 +194,6 @@
                                       "The job would cause you to exceed resource shares."
                                       db job running-jobs)
                  (check-launch-rate-limit job)
+                 (check-hook-filter job)
                  (check-queue-position conn job running-jobs waiting-jobs)
                  (check-fenzo-placement conn job)])))))

@@ -2565,58 +2565,75 @@ class CookTest(util.CookTest):
                 self.assertFalse('pools' in resp.json())
 
     @pytest.mark.serial
+    # If it fails, running locally, link it to the scheduler/bin/run-docker.sh instance.
+    # export DEMO_HOOKS_SERVICE=http://localhost:5131
     def test_submit_hook(self):
         job_executor_type = util.get_job_executor_type(self.cook_url)
 
-        # Should succeed, demo-plugin accepts jobs by default.
-        job_uuid, resp = util.submit_job(self.cook_url, executor=job_executor_type)
-        self.assertEqual(resp.status_code, 201, msg=resp.content)
-        self.assertEqual(resp.content, str.encode(f"submitted jobs {job_uuid}"))
-        job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
-        self.assertIn('success', [i['status'] for i in job['instances']], json.dumps(job, indent=2))
-        self.assertEqual(False, job['disable_mea_culpa_retries'])
-        self.assertTrue(len(util.wait_for_output_url(self.cook_url, job_uuid)['output_url']) > 0)
+        try:
+            # Should succeed, demo-plugin accepts jobs by default.
+            job_uuid, resp = util.submit_job(self.cook_url, executor=job_executor_type)
+            self.assertEqual(resp.status_code, 201, msg=resp.content)
+            self.assertEqual(resp.content, str.encode(f"submitted jobs {job_uuid}"))
+            job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
+            self.assertIn('success', [i['status'] for i in job['instances']], json.dumps(job, indent=2))
+            self.assertEqual(False, job['disable_mea_culpa_retries'])
+            self.assertTrue(len(util.wait_for_output_url(self.cook_url, job_uuid)['output_url']) > 0)
 
-        # Tell demo plugin server to reject jobs.
-        fail = {'status': 'rejected', 'message': 'A message'}
-        demo_hook_plugin = os.getenv('DEMO_HOOKS_SERVICE')
-        util.session.post(f'{demo_hook_plugin}/set-submit-status', json=fail)
+            # Tell demo plugin server to reject jobs.
+            fail = {'status': 'rejected', 'message': 'A message'}
+            demo_hook_plugin = os.getenv('DEMO_HOOKS_SERVICE')
+            util.session.post(f'{demo_hook_plugin}/set-submit-status', json=fail)
 
-        # This should now fail to submit.
-        job_uuid, resp = util.submit_job(self.cook_url, executor=job_executor_type)
-        self.assertEqual(resp.status_code, 400, msg=resp.content)
+            # This should now fail to submit.
+            job_uuid, resp = util.submit_job(self.cook_url, executor=job_executor_type)
+            self.assertEqual(resp.status_code, 400, msg=resp.content)
 
-        success = {'status': 'accepted', 'message': 'A message'}
-        util.session.post(f'{demo_hook_plugin}/set-submit-status', json=success)
+        finally:
+            success = {'status': 'accepted', 'message': 'A message'}
+            util.session.post(f'{demo_hook_plugin}/set-submit-status', json=success)
 
     @pytest.mark.serial
+    # If it fails, running locally, link it to the scheduler/bin/run-docker.sh instance.
+    # export DEMO_HOOKS_SERVICE=http://localhost:5131
     def test_launch_hook(self):
         job_executor_type = util.get_job_executor_type(self.cook_url)
 
-        # Tell demo plugin server to defer launching jobs.
-        deferred = {'status': 'deferred', 'message': 'A message'}
-        demo_hook_plugin = os.getenv('DEMO_HOOKS_SERVICE')
-        util.session.post(f'{demo_hook_plugin}/set-launch-status', json=deferred)
+        try:
+            # Tell demo plugin server to defer launching jobs.
+            deferred = {'status': 'deferred', 'message': 'A message'}
+            demo_hook_plugin = os.getenv('DEMO_HOOKS_SERVICE')
+            util.session.post(f'{demo_hook_plugin}/set-launch-status', json=deferred)
 
-        job_uuid, resp = util.submit_job(self.cook_url, executor=job_executor_type)
-        self.assertEqual(resp.status_code, 201, msg=resp.content)
-        self.assertEqual(resp.content, str.encode(f"submitted jobs {job_uuid}"))
+            job_uuid, resp = util.submit_job(self.cook_url, executor=job_executor_type)
+            self.assertEqual(resp.status_code, 201, msg=resp.content)
+            self.assertEqual(resp.content, str.encode(f"submitted jobs {job_uuid}"))
 
-        # Validate job is still waiting after a bit.
-        time.sleep(15)
-        job = util.load_job(self.cook_url, job_uuid)
-        details = f"Job details: {json.dumps(job, sort_keys=True)}"
-        self.assertEquals(job['status'], 'waiting', details)
+            # Validate job is still waiting and unscheduled.
+            def query_unscheduled():
+                resp = util.unscheduled_jobs(self.cook_url, job_uuid)[0][0]
+                self.logger.info(f"unscheduled_jobs response: {resp}")
+                return any([r['reason'] == reasons.HOOK_PLUGIN
+                            for r in resp['reasons']])
 
-        # Now mark it as able to launch immediately.
-        success = {'status': 'accepted', 'message': 'A message'}
-        util.session.post(f'{demo_hook_plugin}/set-launch-status', json=success)
+            util.wait_until(query_unscheduled, lambda r: r, 30000)
+            job = util.load_job(self.cook_url, job_uuid)
+            details = f"Job details: {json.dumps(job, sort_keys=True)}"
+            self.assertEquals(job['status'], 'waiting', details)
 
-        # Wait a bit and see if it is now running or completed.
-        job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
-        details = f"Job details: {json.dumps(job, sort_keys=True)}"
-        self.assertIn(job['status'], ['completed'], details)
-        self.assertIn('success', [i['status'] for i in job['instances']], json.dumps(job, indent=2))
+            # Now mark it as able to launch immediately.
+            success = {'status': 'accepted', 'message': 'A message'}
+            util.session.post(f'{demo_hook_plugin}/set-launch-status', json=success)
+
+            # Wait a bit and see if it is now running or completed.
+            job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
+            details = f"Job details: {json.dumps(job, sort_keys=True)}"
+            self.assertIn(job['status'], ['completed'], details)
+            self.assertIn('success', [i['status'] for i in job['instances']], json.dumps(job, indent=2))
+
+        finally:
+            success = {'status': 'accepted', 'message': 'A message'}
+            util.session.post(f'{demo_hook_plugin}/set-launch-status', json=success)
 
 
     @unittest.skipIf(os.getenv('COOK_TEST_SKIP_RECONCILE') is not None,
