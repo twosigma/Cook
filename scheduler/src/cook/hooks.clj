@@ -20,7 +20,7 @@
             [cook.cache :as ccache]
             [cook.config :refer [config]]
             [cook.datomic :as datomic]
-            [cook.hooks-definitions :refer [SchedulerHooks check-job-launch check-job-submission check-job-submission-default]]
+            [cook.hook-definitions :refer [SchedulerHooks check-job-launch check-job-submission check-job-submission-default]]
             [mount.core :as mount]
             [clojure.tools.logging :as log])
   (:import (com.google.common.cache Cache CacheBuilder)

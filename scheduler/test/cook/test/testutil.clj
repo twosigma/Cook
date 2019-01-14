@@ -22,7 +22,7 @@
             [clojure.core.cache :as cache]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
-            [cook.hooks-definitions :refer (SchedulerHooks)]
+            [cook.hook-definitions :refer (SchedulerHooks)]
             [cook.impersonation :refer (create-impersonation-middleware)]
             [cook.mesos.api :as api]
             [cook.mesos.schema :as schema]

@@ -17,7 +17,7 @@
   (:require [clj-http.client :as http]
             [clj-time.core :as t]
             [cook.cache :as ccache]
-            [cook.hooks-definitions :as chd]))
+            [cook.hook-definitions :as chd]))
 
 
 ;; Cook hooks is a plugin API that lets job submission and job launch be controlled via a

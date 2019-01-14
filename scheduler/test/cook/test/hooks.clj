@@ -18,7 +18,7 @@
   (:require [clj-time.core :as t]
             [cook.cache :as ccache]
             [cook.hooks :as hooks]
-            [cook.hooks-definitions :as chd]
+            [cook.hook-definitions :as chd]
             [cook.mesos.util :as util]
             [cook.test.testutil :refer [create-dummy-job
                                         restore-fresh-database!] :as testutil]
