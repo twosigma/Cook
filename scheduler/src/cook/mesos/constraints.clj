@@ -412,6 +412,10 @@
                                         attr-name
                                         target-attr-val
                                         (:group/uuid group)))]
+      (log/info "balanced-host-placement-group-constraint attribute frequency map:" attr-freq-map)
+      (log/info "balanced-host-placement-group-constraint target frequency:" target-freq)
+      (log/info "balanced-host-placement-group-constraint min:" minim "max:" maxim)
+      (log/info "balanced-host-placement-group-constraint passes?:" passes?)
       [passes? reason])))
 
 (defrecord attribute-equals-host-placement-group-constraint [group]
