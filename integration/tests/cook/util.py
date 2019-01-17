@@ -1272,11 +1272,25 @@ def using_data_local_fitness_calculator():
     return _fenzo_fitness_calculator() == 'cook.mesos.data-locality/make-data-local-fitness-calculator'
 
 
+def get_agent_endpoint(master_state, agent_hostname):
+    agent = [agent for agent in master_state['slaves']
+             if agent['hostname'] == agent_hostname][0]
+    if agent is None:
+        self.logger.warning(f"Could not find agent for hostname {instance['hostname']}")
+        self.logger.warning(f"slaves: {state['slaves']}")
+        return None
+    else:
+        # Get the host and port of the agent API.
+        # Example pid: "slave(1)@172.17.0.7:5051"
+        agent_hostport = agent['pid'].split('@')[1]
+        return f'http://{agent_hostport}/state.json'
+
+
 @functools.lru_cache()
 def _supported_isolators():
     mesos_url = retrieve_mesos_url()
-    slaves = get_mesos_state(mesos_url)['slaves']
-    slave_endpoint = f'http://{slaves[0]["hostname"]}:5051/state.json'
+    mesos_state = get_mesos_state(mesos_url)
+    slave_endpoint = get_agent_endpoint(mesos_state, mesos_state['slaves'][0]['hostname'])
     return set(session.get(slave_endpoint).json()['flags']['isolation'].split(','))
 
 

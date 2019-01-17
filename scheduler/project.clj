@@ -156,7 +156,7 @@
                                  org.slf4j/slf4j-nop]]
                    ; Similarly, one could use an older version of the
                    ; mesomatic library in environments that require it
-                   [pschorf/mesomatic "1.5.0-r4"]]}
+                   [twosigma/mesomatic "1.5.0-r4"]]}
 
    :uberjar
    {:aot [cook.components]

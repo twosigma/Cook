@@ -1545,17 +1545,11 @@ class CookTest(util.CookTest):
             # Get agent host/port
             state = util.get_mesos_state(self.mesos_url)
             agent = [agent for agent in state['slaves']
-                     if agent['hostname'] == instance['hostname']][0]
-            if agent is None:
-                self.logger.warning(f"Could not find agent for hostname {instance['hostname']}")
-                self.logger.warning(f"slaves: {state['slaves']}")
-            # Get the host and port of the agent API.
-            # Example pid: "slave(1)@172.17.0.7:5051"
-            agent_hostport = agent['pid'].split('@')[1]
+                       if agent['hostname'] == instance['hostname']][0]
 
             # Get container ID from agent
             def agent_query():
-                return util.session.get('http://%s/state.json' % agent_hostport)
+                return util.session.get(util.get_agent_endpoint(state, instance['hostname']))
 
             def contains_executor_predicate(agent_response):
                 agent_state = agent_response.json()
@@ -2663,8 +2657,10 @@ class CookTest(util.CookTest):
         try:
             self.assertEqual(201, resp.status_code, resp.text)
             job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
+            self.assertEqual('success', job['state'])
             slave_host = job['instances'][0]['hostname']
-            slave_state = util.session.get(f'http://{slave_host}:5051/state.json').json()
+            master_state = util.get_mesos_state(util.retrieve_mesos_url())
+            slave_state = util.session.get(util.get_agent_endpoint(master_state, slave_host)).json()
 
             executor = util.get_executor(slave_state, job['instances'][0]['executor_id'], True)
 
@@ -2674,7 +2670,5 @@ class CookTest(util.CookTest):
             self.assertEqual('MESOS', container['type'], container)
             self.assertEqual('DOCKER', container['mesos']['image']['type'], container)
             self.assertEqual('alpine', container['mesos']['image']['docker']['name'], container)
-
         finally:
             util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
-
