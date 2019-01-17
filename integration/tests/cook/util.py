@@ -1283,7 +1283,8 @@ def get_agent_endpoint(master_state, agent_hostname):
         # Get the host and port of the agent API.
         # Example pid: "slave(1)@172.17.0.7:5051"
         agent_hostport = agent['pid'].split('@')[1]
-        return f'http://{agent_hostport}/state.json'
+        agent_port = agent_hostport.split(':')[1]
+        return f'http://{agent_hostname}:{agent_port}/state.json'
 
 
 @functools.lru_cache()
