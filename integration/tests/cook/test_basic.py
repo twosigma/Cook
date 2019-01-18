@@ -2656,15 +2656,14 @@ class CookTest(util.CookTest):
         job_uuid, resp = util.submit_job(self.cook_url, container={'type': 'mesos', 'mesos': {'image': 'alpine'}})
         try:
             self.assertEqual(201, resp.status_code, resp.text)
-            job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
-            self.assertEqual('success', job['state'])
-            slave_host = job['instances'][0]['hostname']
+            instance = util.wait_for_instance(self.cook_url, job_uuid, status='success')
+            slave_host = instance['hostname']
             master_state = util.get_mesos_state(util.retrieve_mesos_url())
             slave_state = util.session.get(util.get_agent_endpoint(master_state, slave_host)).json()
 
-            executor = util.get_executor(slave_state, job['instances'][0]['executor_id'], True)
+            executor = util.get_executor(slave_state, instance['executor_id'], True)
 
-            self.logger.info(f'Executor id: {job["instances"][0]["executor_id"]}')
+            self.logger.info(f'Executor id: {instance["executor_id"]}')
             self.assertTrue(executor is not None, slave_state)
             container = executor['completed_tasks'][0]['container']
             self.assertEqual('MESOS', container['type'], container)
