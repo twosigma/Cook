@@ -1013,10 +1013,6 @@ class CookCliTest(util.CookTest):
         self.assertEqual(0, len(entries))
 
     def test_ls_with_plugin(self):
-
-        def entry(name):
-            return cli.ls_entry_by_name(entries, name)
-
         # Submit a job that clears the sandbox
         cp, uuids = cli.submit("'rm -r * && rm -r .*'", self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
@@ -1048,11 +1044,11 @@ def dummy_ls_entries(_, __, ___):
                 cp, entries = cli.ls(uuids[0], self.cook_url, flags=flags)
                 self.assertEqual(0, cp.returncode, cp.stderr)
                 self.assertEqual(2, len(entries))
-                entry1 = entry(path1)
+                entry1 = cli.ls_entry_by_name(entries, path1)
                 self.assertEqual('-rw-r--r--', entry1['mode'])
                 self.assertEqual(1, entry1['nlink'])
                 self.assertEqual(0, entry1['size'])
-                entry2 = entry(path2)
+                entry2 = cli.ls_entry_by_name(entries, path2)
                 self.assertEqual('drwxr-xr-x', entry2['mode'])
                 self.assertEqual(2, entry2['nlink'])
                 self.assertEqual(1, entry2['size'])
