@@ -6,7 +6,7 @@ from functools import partial
 
 from tabulate import tabulate
 
-from cook import http, mesos, terminal
+from cook import http, mesos, terminal, plugins
 from cook.querying import query_unique_and_run, parse_entity_refs
 from cook.util import guard_no_cluster
 
@@ -73,8 +73,8 @@ def browse_files(instance, sandbox_dir, path):
     return resp.json()
 
 
-def ls_for_instance(instance, sandbox_dir, path, long_format, as_json):
-    """Lists contents of the Mesos sandbox path for the given instance"""
+def retrieve_entries_from_mesos(instance, sandbox_dir, path):
+    """Retrieves the contents of the Mesos sandbox path for the given instance"""
     entries = browse_files(instance, sandbox_dir, path)
     if len(entries) == 0 and path:
         # Mesos will return 200 with an empty list in two cases:
@@ -86,6 +86,13 @@ def ls_for_instance(instance, sandbox_dir, path, long_format, as_json):
         if len(child_entries) > 0 and not is_directory(child_entries[0]):
             entries = child_entries
 
+    return entries
+
+
+def ls_for_instance(instance, sandbox_dir, path, long_format, as_json):
+    """Lists contents of the Mesos sandbox path for the given instance"""
+    retrieve_fn = plugins.get_fn('retrieve-ls-entries', retrieve_entries_from_mesos)
+    entries = retrieve_fn(instance, sandbox_dir, path)
     if as_json:
         print(json.dumps(entries))
     else:
