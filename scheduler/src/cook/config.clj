@@ -414,8 +414,7 @@
                              :submission-hook-batch-timeout-seconds 40}}]]
               hooks)
      :hook-factory (fnk [[:config {hook-factory {}}]]
-                     hook-factory)
-     }))
+                     hook-factory)}))
 
 (defn read-config
   "Given a config file path, reads the config and returns the map"

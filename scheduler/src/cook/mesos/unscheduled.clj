@@ -163,7 +163,8 @@
        {:max-jobs-per-minute tokens-replenished-per-minute}])))
 
 (defn- check-hook-filter
-  "Return the appropriate error message if a user's job is unscheduled because they're over the job launch rate limit threshold"
+  "Return the appropriate error message if a user's job is unscheduled because the hook plugin
+  has blocked the launch."
   [job]
   (when-not (hooks/filter-job-launchs job)
       ["The hook plugin is blocking the job launch." {:plugin (str (type hooks/hook-object))}]))

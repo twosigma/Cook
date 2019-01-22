@@ -5,8 +5,8 @@ app = Flask(__name__)
 
 # Cook hooks is a plugin API that lets job submission and job launch be controlled via a
 # plugin. cook.demo-plugin is a demo plugin that queries a remote service to ask about the
-# submission and launch status of a job. We use it in integration tests. This is corresponding
-# sample server used by that plugin.
+# submission and launch status of a job. We use it in integration tests. This is the
+# corresponding sample server used by that plugin.
 
 submit_status = {'status': 'accepted', 'message': 'A message'}
 launch_status = {'status': 'accepted', 'message': 'A message'}

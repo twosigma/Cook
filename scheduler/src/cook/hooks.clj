@@ -165,8 +165,8 @@
                                     ; Running out of time, do the default.
                                     (check-job-submission-default hook-object))]
                        (or status default-accept)))
-        results (apply list (map do-one-job jobs))
-        errors (apply list (filter #(= :rejected (:status %)) results))
+        results (map do-one-job jobs)
+        errors (filter #(= :rejected (:status %)) results)
         error-count (count errors)
         ; Collect a few errors to show in the response. (not every error)
         error-samples (apply list (take 3 errors))]

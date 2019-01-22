@@ -2565,7 +2565,8 @@ class CookTest(util.CookTest):
                 self.assertFalse('pools' in resp.json())
 
     @pytest.mark.serial
-    # If it fails, running locally, link it to the scheduler/bin/run-docker.sh instance.
+    # If this test fails when running locally, it may be because this test cannot find the demo hook service.
+    # To make it work, link the test to the service launched by scheduler/bin/run-docker.sh with the following:
     # export DEMO_HOOKS_SERVICE=http://localhost:5131
     def test_submit_hook(self):
         job_executor_type = util.get_job_executor_type(self.cook_url)
@@ -2594,7 +2595,8 @@ class CookTest(util.CookTest):
             util.session.post(f'{demo_hook_plugin}/set-submit-status', json=success)
 
     @pytest.mark.serial
-    # If it fails, running locally, link it to the scheduler/bin/run-docker.sh instance.
+    # If this test fails when running locally, it may be because this test cannot find the demo hook service.
+    # To make it work, link the test to the service launched by scheduler/bin/run-docker.sh with the following:
     # export DEMO_HOOKS_SERVICE=http://localhost:5131
     def test_launch_hook(self):
         job_executor_type = util.get_job_executor_type(self.cook_url)
