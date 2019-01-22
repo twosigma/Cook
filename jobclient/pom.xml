@@ -98,4 +98,11 @@
       <version>2.4</version>
     </dependency>
   </dependencies>
+  <distributionManagement>
+   <repository>
+    <id>clojars</id>
+    <name>Clojars repository</name>
+    <url>https://clojars.org/repo</url>
+  </repository>
+ </distributionManagement>
 </project>
