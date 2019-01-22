@@ -664,22 +664,28 @@ def group_detail_query(cook_url, group_uuid, assert_response=True):
 
 def wait_for_job(cook_url, job_id, status, max_wait_ms=DEFAULT_TIMEOUT_MS):
     """Wait for the given job's status to change to the specified value."""
-    return wait_for_jobs(cook_url, [job_id], status, max_wait_ms)[0]
-
+    return wait_for_jobs_in_statuses(cook_url,[job_id], [status], max_wait_ms)[0]
 
 def wait_for_jobs(cook_url, job_ids, status, max_wait_ms=DEFAULT_TIMEOUT_MS):
+    return wait_for_jobs_in_statuses(cook_url, job_ids, [status], max_wait_ms)
+
+def wait_for_job_in_statuses(cook_url, job_id, statuses, max_wait_ms=DEFAULT_TIMEOUT_MS):
+    """Wait for the given job's status to change to one of the specified statuses."""
+    return wait_for_jobs_in_statuses(cook_url, [job_id], statuses, max_wait_ms)[0]
+
+def wait_for_jobs_in_statuses(cook_url, job_ids, statuses, max_wait_ms=DEFAULT_TIMEOUT_MS):
+    """Wait for the given job's status to change to one of the specified statuses."""
     def query():
         return query_jobs(cook_url, True, uuid=job_ids)
 
     def predicate(resp):
         jobs = resp.json()
         for job in jobs:
-            logger.info(f"Job {job['uuid']} has status {job['status']}, expecting {status}.")
-        return all([job['status'] == status for job in jobs])
+            logger.info(f"Job {job['uuid']} has status {job['status']}, expecting {statuses}.")
+        return all([job['status'] in statuses for job in jobs])
 
     response = wait_until(query, predicate, max_wait_ms=max_wait_ms, wait_interval_ms=DEFAULT_WAIT_INTERVAL_MS * 2)
     return response.json()
-
 
 def wait_for_exit_code(cook_url, job_id, max_wait_ms=DEFAULT_TIMEOUT_MS):
     """

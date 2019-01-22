@@ -2570,29 +2570,28 @@ class CookTest(util.CookTest):
     # export DEMO_HOOKS_SERVICE=http://localhost:5131
     def test_submit_hook(self):
         job_executor_type = util.get_job_executor_type(self.cook_url)
-
+        demo_hook_plugin = os.getenv('DEMO_HOOKS_SERVICE')
+        job_uuids = []
         try:
             # Should succeed, demo-plugin accepts jobs by default.
-            job_uuid, resp = util.submit_job(self.cook_url, executor=job_executor_type)
+            job_uuid1, resp = util.submit_job(self.cook_url, executor=job_executor_type)
+            job_uuids.append(job_uuid1)
             self.assertEqual(resp.status_code, 201, msg=resp.content)
-            self.assertEqual(resp.content, str.encode(f"submitted jobs {job_uuid}"))
-            job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
-            self.assertIn('success', [i['status'] for i in job['instances']], json.dumps(job, indent=2))
-            self.assertEqual(False, job['disable_mea_culpa_retries'])
-            self.assertTrue(len(util.wait_for_output_url(self.cook_url, job_uuid)['output_url']) > 0)
+            self.assertEqual(resp.content, str.encode(f"submitted jobs {job_uuid1}"))
+            job = util.wait_for_job_in_statuses(self.cook_url, job_uuid1, ['completed', 'running'])
 
             # Tell demo plugin server to reject jobs.
             fail = {'status': 'rejected', 'message': 'A message'}
-            demo_hook_plugin = os.getenv('DEMO_HOOKS_SERVICE')
             util.session.post(f'{demo_hook_plugin}/set-submit-status', json=fail)
 
             # This should now fail to submit.
-            job_uuid, resp = util.submit_job(self.cook_url, executor=job_executor_type)
+            job_uuid2, resp = util.submit_job(self.cook_url, executor=job_executor_type)
+            job_uuids.append(job_uuid2)
             self.assertEqual(resp.status_code, 400, msg=resp.content)
-
         finally:
             success = {'status': 'accepted', 'message': 'A message'}
             util.session.post(f'{demo_hook_plugin}/set-submit-status', json=success)
+            util.kill_jobs(self.cook_url, [job_uuids], assert_response=False)
 
     @pytest.mark.serial
     # If this test fails when running locally, it may be because this test cannot find the demo hook service.
@@ -2600,14 +2599,15 @@ class CookTest(util.CookTest):
     # export DEMO_HOOKS_SERVICE=http://localhost:5131
     def test_launch_hook(self):
         job_executor_type = util.get_job_executor_type(self.cook_url)
-
+        demo_hook_plugin = os.getenv('DEMO_HOOKS_SERVICE')
+        job_uuids = []
         try:
             # Tell demo plugin server to defer launching jobs.
             deferred = {'status': 'deferred', 'message': 'A message'}
-            demo_hook_plugin = os.getenv('DEMO_HOOKS_SERVICE')
             util.session.post(f'{demo_hook_plugin}/set-launch-status', json=deferred)
 
             job_uuid, resp = util.submit_job(self.cook_url, executor=job_executor_type)
+            job_uuids.append(job_uuid)
             self.assertEqual(resp.status_code, 201, msg=resp.content)
             self.assertEqual(resp.content, str.encode(f"submitted jobs {job_uuid}"))
 
@@ -2628,14 +2628,15 @@ class CookTest(util.CookTest):
             util.session.post(f'{demo_hook_plugin}/set-launch-status', json=success)
 
             # Wait a bit and see if it is now running or completed.
-            job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
+            job = util.wait_for_job_in_statuses(self.cook_url, job_uuid, ['completed','running'])
             details = f"Job details: {json.dumps(job, sort_keys=True)}"
-            self.assertIn(job['status'], ['completed'], details)
+            self.assertIn(job['status'], ['completed', 'running'], details)
             self.assertIn('success', [i['status'] for i in job['instances']], json.dumps(job, indent=2))
 
         finally:
             success = {'status': 'accepted', 'message': 'A message'}
             util.session.post(f'{demo_hook_plugin}/set-launch-status', json=success)
+            util.kill_jobs(self.cook_url,job_uuids, assert_response=False)
 
 
     @unittest.skipIf(os.getenv('COOK_TEST_SKIP_RECONCILE') is not None,
