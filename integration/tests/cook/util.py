@@ -846,12 +846,18 @@ def contains_job_uuid(jobs, job_uuid):
     return any(job for job in jobs if job['uuid'] == job_uuid)
 
 
-def get_executor(agent_state, executor_id):
+def get_executor(agent_state, executor_id, include_completed=False):
     """Returns the executor with id executor_id from agent_state"""
     for framework in agent_state['frameworks']:
         for executor in framework['executors']:
             if executor['id'] == executor_id:
                 return executor
+    if include_completed:
+        for framework in agent_state['frameworks'] + agent_state['completed_frameworks']:
+            for executor in framework['completed_executors']:
+                if executor['id'] == executor_id:
+                    return executor
+    return None
 
 
 def get_user(cook_url, job_uuid):
@@ -869,9 +875,14 @@ def unscheduled_jobs(cook_url, *job_uuids, partial=None):
     return job_reasons, resp
 
 
-def wait_for_instance(cook_url, job_uuid, max_wait_ms=DEFAULT_TIMEOUT_MS, wait_interval_ms=1000):
-    """Waits for the job with the given job_uuid to have a single instance, and returns the instance uuid"""
-    job = wait_until(lambda: load_job(cook_url, job_uuid), lambda j: len(j['instances']) == 1,
+def wait_for_instance(cook_url, job_uuid, max_wait_ms=DEFAULT_TIMEOUT_MS, wait_interval_ms=1000, status=None):
+    """Waits for the job with the given job_uuid to have at least one instance, and returns the first instance uuid"""
+    def instances_with_status(job):
+        if status is None:
+            return job['instances']
+        else:
+            return [i for i in job['instances'] if i['status'] == status]
+    job = wait_until(lambda: load_job(cook_url, job_uuid), lambda j: len(instances_with_status(j)) >= 1,
                      max_wait_ms=max_wait_ms, wait_interval_ms=wait_interval_ms)
     instance = job['instances'][0]
     instance['parent'] = job
@@ -1264,3 +1275,31 @@ def _fenzo_fitness_calculator():
 
 def using_data_local_fitness_calculator():
     return _fenzo_fitness_calculator() == 'cook.mesos.data-locality/make-data-local-fitness-calculator'
+
+
+def get_agent_endpoint(master_state, agent_hostname):
+    agent = [agent for agent in master_state['slaves']
+             if agent['hostname'] == agent_hostname][0]
+    if agent is None:
+        self.logger.warning(f"Could not find agent for hostname {instance['hostname']}")
+        self.logger.warning(f"slaves: {state['slaves']}")
+        return None
+    else:
+        # Get the host and port of the agent API.
+        # Example pid: "slave(1)@172.17.0.7:5051"
+        agent_hostport = agent['pid'].split('@')[1]
+        agent_port = agent_hostport.split(':')[1]
+        return f'http://{agent_hostname}:{agent_port}/state.json'
+
+
+@functools.lru_cache()
+def _supported_isolators():
+    mesos_url = retrieve_mesos_url()
+    mesos_state = get_mesos_state(mesos_url)
+    slave_endpoint = get_agent_endpoint(mesos_state, mesos_state['slaves'][0]['hostname'])
+    return set(session.get(slave_endpoint).json()['flags']['isolation'].split(','))
+
+
+def supports_mesos_containerizer_images():
+    isolators = _supported_isolators()
+    return 'filesystem/linux' in isolators and 'docker/runtime' in isolators
