@@ -398,8 +398,9 @@ class MultiUserCookTest(util.CookTest):
             small_cpus = 0.1
             large_cpus = small_cpus * 10
             with admin:
-                # Lower the user's cpu share and quota
-                util.set_limit(self.cook_url, 'share', user.name, cpus=small_cpus, pool=pool)
+                # Set a relatively high share for the first job to run
+                util.set_limit(self.cook_url, 'share', user.name, cpus=large_cpus * 100, pool=pool)
+                # Lower the user's cpu quota
                 util.set_limit(self.cook_url, 'quota', user.name, cpus=large_cpus, pool=pool)
 
             with user:
@@ -411,6 +412,11 @@ class MultiUserCookTest(util.CookTest):
                 all_job_uuids.append(uuid_large)
                 util.wait_for_running_instance(self.cook_url, uuid_large)
 
+            with admin:
+                # Lower the user's share
+                util.set_limit(self.cook_url, 'share', user.name, cpus=small_cpus, pool=pool)
+
+            with user:
                 # Submit a higher-priority job that should trigger preemption
                 uuid_high_priority, _ = util.submit_job(self.cook_url, priority=base_priority + 1,
                                                         cpus=small_cpus, command=command,

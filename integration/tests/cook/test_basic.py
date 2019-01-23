@@ -1195,10 +1195,33 @@ class CookTest(util.CookTest):
 
             try:
                 for hostname, job_uuid in host_to_job_uuid.items():
+                    def job_completed_or_waiting_for_resources(unscheduled_jobs):
+                        reasons = unscheduled_jobs[0]['reasons']
+                        # The job already ran
+                        if len(reasons) == 1 and reasons[0]['reason'] == 'The job already completed.':
+                            self.logger.debug(f'Job {job_uuid} already completed')
+                            return True
+                        else:
+                            self.logger.debug(f'Job {job_uuid} has not completed: {reasons}')
+
+                        cannot_place_reasons = [r for r in reasons if r['reason'] == "The job couldn't be placed on any available hosts."]
+                        if len(cannot_place_reasons) == 1:
+                            subreasons = cannot_place_reasons[0]['data']['reasons']
+                            not_enough_resources = [r for r in subreasons if 'Not enough' in r['reason'] and r['host_count'] == 1]
+                            user_defined = [r for r in subreasons if 'user-defined-constraint' == r['reason'] and r['host_count'] > 0]
+                            target_is_full = len(not_enough_resources) == 1 and len(user_defined) == 1
+                            if target_is_full:
+                                self.logger.debug(f'Job {job_uuid} is waiting for resources on the target host')
+                                return True
+                            else:
+                                self.logger.debug(f'Job {job_uuid} is not waiting on resources for the target host: {cannot_place_reasons}')
+                        return False
                     self.logger.info(f'Waiting for job {job_uuid} to complete')
-                    job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
-                    hostname_constrained = job['instances'][0]['hostname']
-                    self.assertEqual(hostname, hostname_constrained)
+                    util.wait_until(lambda: util.unscheduled_jobs(self.cook_url, job_uuid)[0], job_completed_or_waiting_for_resources)
+                    job = util.load_job(self.cook_url, job_uuid)
+                    if job['status'] == 'completed':
+                        hostname_constrained = job['instances'][0]['hostname']
+                        self.assertEqual(hostname, hostname_constrained)
                     self.assertEqual([["HOSTNAME", "EQUALS", hostname]], job['constraints'])
                 # This job should have been scheduled since the job submitted after it has completed
                 # however, its constraint means it won't get scheduled
