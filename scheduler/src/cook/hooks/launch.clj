@@ -90,12 +90,11 @@
       (t/before? last-seen-deadline last-seen))))
 
 
-(defn filter-job-launchs-miss
+(defn get-filter-status-miss
   "This is the cache miss handler. It is invoked if we have a cache miss --- either the
   entry is expired, or its not there. Only invoke on misses or expirations, because we
   count the number of invocations."
   [job]
-  {:post [(or (true? %) (false? %))]}
   (let [{:keys [first-seen seen-count] :as old-result} (ccache/get-if-present
                                                          job-launch-cache
                                                          :job/uuid
@@ -104,7 +103,7 @@
     ; If aged-out, we're not going to do any more backend queries. Return true so the
     ; job is kept and  invoked and it sinks or swims.
     (if is-aged-out?
-      true
+      {:status :accepted :message "Was aged out." :cache-expires-at (-> 10 t/minutes t/from-now)}
       ;; Ok. Not aging out. Query the underlying plugin as to the status.
       (let [{:keys [status] :as raw-result} (check-job-launch hook-object job)
             result
@@ -125,13 +124,12 @@
 
         (ccache/put-cache! job-launch-cache :job/uuid job
                            result)
-        ; Did the query, If the status was accepted, then we're keeping it.
-        (= status :accepted)))))
+        result))))
 
-(defn filter-job-launchs
-  "Run the hooks for a set of jobs at launch time, returns true if the job is ready to run now."
+(defn get-filter-status
+  "Run the hook for a job at launch time, returns the status dictionary (with status,
+  message, and expiration)"
   [job]
-  {:post [(or (true? %) (false? %))]}
   (let [{:keys [status cache-expires-at] :as result} (ccache/get-if-present
                                                        job-launch-cache
                                                        :job/uuid
@@ -140,5 +138,12 @@
     ; Fast path, if it cached, has an expiration (i.e., it was found), and its not
     ; expired, and it is accepted, then we're done.
     (if (and result (not expired?))
-      (= status :accepted)
-      (filter-job-launchs-miss job))))
+      result
+      (get-filter-status-miss job))))
+
+(defn filter-job-launches
+  "Run the hooks for a job at launch time, returns true if the job is ready to run now."
+  [job]
+  {:post [(or (true? %) (false? %))]}
+  (let [{:keys [status]} (get-filter-status job)]
+    (= status :accepted)))

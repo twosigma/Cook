@@ -166,8 +166,11 @@
   "Return the appropriate error message if a user's job is unscheduled because the hook plugin
   has blocked the launch."
   [job]
-  (when-not (launch-hooks/filter-job-launchs job)
-      ["The hook plugin is blocking the job launch." {:plugin (str (type launch-hooks/hook-object))}]))
+  (let [{:keys [status message]} (launch-hooks/get-filter-status job)]
+    (when (= status :deferred)
+      ["The hook plugin is blocking the job launch."
+       {:plugin (str (type launch-hooks/hook-object))
+        :message message}])))
 
 (defn reasons
   "Top level function which assembles a data structure representing the list

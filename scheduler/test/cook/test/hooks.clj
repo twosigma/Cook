@@ -60,7 +60,7 @@
                     launch-hooks/hook-object
                     (reify chd/JobLaunchFilter
                       (chd/check-job-launch [_ _] (is false "Shouldn't be invoked.")))]
-        (is (true? (launch-hooks/filter-job-launchs-miss (testutil/create-dummy-job conn))))))
+        (is :accepted (:status launch-hooks/get-filter-status-miss (testutil/create-dummy-job conn)))))
 
     (let [job-entid (create-dummy-job conn)
           job-entity (d/entity (d/db conn) job-entid)
@@ -70,14 +70,14 @@
         ;; Make the job miss in the cache 3 times.
         (with-redefs [launch-hooks/hook-object testutil/defer-launch-hook
                       t/now (constantly (t/date-time 2018 12 20 13 5))]
-          (is false (launch-hooks/filter-job-launchs-miss job))
-          (is false (launch-hooks/filter-job-launchs-miss job))
-          (is false (launch-hooks/filter-job-launchs-miss job)))
+          (is :deferred (:status (launch-hooks/get-filter-status-miss job)))
+          (is :deferred (:status (launch-hooks/get-filter-status-miss job)))
+          (is :deferred (:status (launch-hooks/get-filter-status-miss job))))
 
         ;; Make it miss one more time,
         (with-redefs [launch-hooks/hook-object testutil/defer-launch-hook
                       t/now (constantly (t/date-time 2018 12 20 15 5))]
-          (is false (:state (launch-hooks/filter-job-launchs-miss job))))
+          (is :deferred (:status (launch-hooks/get-filter-status-miss job))))
 
         ;; Now, we should see this job in the cache with 4 visits.
         ;; last-seen and most recently seen updated appropriately.
@@ -91,7 +91,7 @@
         (with-redefs [launch-hooks/hook-object testutil/accept-launch-hook
                       t/now (constantly (t/date-time 2018 12 20 23 10))]
           (testing "Job moves into the accepted state as appropriate."
-            (is true (:state (launch-hooks/filter-job-launchs-miss job)))))))))
+            (is :accepted (:status (launch-hooks/get-filter-status-miss job)))))))))
 
 (deftest filter-job-launch-miss
   (let [uri "datomic:mem://test-filter-job-launch"
@@ -102,42 +102,42 @@
         job (util/job-ent->map job-entity)]
     (testing "On a cache miss, we always query, and also return true if the status is accepted."
       (with-redefs [ccache/get-if-present (constantly nil)
-                    launch-hooks/filter-job-launchs-miss
+                    launch-hooks/get-filter-status-miss
                     (fn [_]
                       (reset! visited true)
-                      true)]
-        (is (true? (launch-hooks/filter-job-launchs job)))
+                      {:status :accepted})]
+        (is (true? (launch-hooks/filter-job-launches job)))
         (is (true? @visited)))
       (reset! visited false))
     ;; Now, the old entry expires a second ago, so we can re-use the existing job!
 
     (testing "On a cache miss, we always query, and also return true if the status is rejected"
       (with-redefs [ccache/get-if-present (constantly nil)
-                    launch-hooks/filter-job-launchs-miss
+                    launch-hooks/get-filter-status-miss
                     (fn [_]
                       (reset! visited true)
-                      false)]
-        (is (false? (launch-hooks/filter-job-launchs job)))
+                      {:status :deferred})]
+        (is (false? (launch-hooks/filter-job-launches job)))
         (is (true? @visited)))
       (reset! visited false))
 
     (testing "On an expired cache hit, we always query."
       (with-redefs [ccache/get-if-present (constantly {:status :accepted :cache-expires-at (-> -1 t/seconds t/from-now)})
-                    launch-hooks/filter-job-launchs-miss
+                    launch-hooks/get-filter-status-miss
                     (fn [_]
                       (reset! visited true)
-                      false)]
-        (is (false? (launch-hooks/filter-job-launchs job)))
+                      {:status :deferred})]
+        (is (false? (launch-hooks/filter-job-launches job)))
         (is (true? @visited)))
       (reset! visited false))
 
     (testing "On an good cache hit, we don't query."
       (with-redefs [ccache/get-if-present (constantly {:status :accepted :cache-expires-at (-> 10 t/seconds t/from-now)})
-                    launch-hooks/filter-job-launchs-miss
+                    launch-hooks/get-filter-status-miss
                     (fn [_]
                       (reset! visited true)
-                      false)]
-        (is (true? (launch-hooks/filter-job-launchs job)))
+                      {:status :deferred})]
+        (is (true? (launch-hooks/filter-job-launches job)))
         (is (false? @visited)))
       (reset! visited false))
 
@@ -148,8 +148,8 @@
                                         (chd/check-job-launch [_ _]
                                           (reset! visited true)
                                           {:status :deferred :cache-expires-at (-> 10 t/seconds t/from-now)}))]
-        (is (false? (launch-hooks/filter-job-launchs job)))
+        (is (false? (launch-hooks/filter-job-launches job)))
         (is (true? @visited))
         (reset! visited false)
-        (is (false? (launch-hooks/filter-job-launchs job)))
+        (is (false? (launch-hooks/filter-job-launches job)))
         (is (false? @visited))))))
