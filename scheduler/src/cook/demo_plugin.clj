@@ -17,7 +17,7 @@
   (:require [clj-http.client :as http]
             [clj-time.core :as t]
             [cook.cache :as ccache]
-            [cook.hook-definitions :as chd]))
+            [cook.hooks.definitions :as chd]))
 
 
 ;; Cook hooks is a plugin API that lets job submission and job launch be controlled via a
@@ -33,12 +33,11 @@
        {:status result :message message :cache-expires-at (-> 1 t/seconds t/from-now)})
 
 ; Demo validation plugin, implements SchedulerHooks, pinging the status service on the two given URL's.
-(defrecord DemoValidate [submit-url launch-url]
-  chd/SchedulerHooks
+(defrecord DemoValidateSubmission [submit-url launch-url]
+  chd/JobSubmissionValidator
   (chd/check-job-submission
     [this job-map]
     (let [{:keys [body] http-status :status :as response} (http/get submit-url reqdict)]
-
       (case http-status
         200 (let [status (get body "status")
                   message (or (get body "message") "No message sent.")]
@@ -49,6 +48,13 @@
 
         404 (generate-result :rejected  (str "Got 404 accessing " submit-url))
         :rejected  (str "Got nothing[1] " response))))
+  (chd/check-job-submission-default
+    [this]
+    (generate-result :accepted "Default accept result")))
+
+
+(defrecord DemoFilterLaunch [submit-url launch-url]
+  chd/JobLaunchFilter
   (chd/check-job-launch
     [this job-map]
     (let [{:keys [body] http-status :status :as response} (http/get launch-url reqdict)]
@@ -64,6 +70,10 @@
         404 (generate-result :rejected  (str "Got 404 accessing " launch-url))
         (generate-result :rejected (str "Got nothing[2] " response))))))
 
-(defn factory
-  "Factory method for these hooks to be used in config.edn"
-  [{:keys [launch-url submit-url]}] (->DemoValidate submit-url launch-url))
+(defn launch-factory
+  "Factory method for the launch-hook to be used in config.edn"
+  [{:keys [launch-url submit-url]}] (->DemoFilterLaunch submit-url launch-url))
+
+(defn submission-factory
+  "Factory method for the submission hook to be used in config.edn"
+  [{:keys [launch-url submit-url]}] (->DemoValidateSubmission submit-url launch-url))

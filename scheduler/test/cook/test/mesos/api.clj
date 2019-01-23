@@ -1970,7 +1970,7 @@
           (with-redefs [api/create-jobs! (fn [in-conn _]
                                            (is (= conn in-conn)))
                         submission-hooks/hook-object testutil/accept-submission-hook
-                        submission-hooks/submission-hook-batch-timeout-seconds (t/seconds 40)
+                        submission-hooks/batch-timeout-seconds (t/seconds 40)
                         t/now (fn []
                                 (let [out
                                       (->> @counter

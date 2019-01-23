@@ -302,7 +302,7 @@
                            #'cook.hooks.launch/age-out-first-seen-deadline-minutes
                            #'cook.hooks.launch/age-out-last-seen-deadline-minutes
                            #'cook.hooks.launch/age-out-seen-count
-                           #'cook.hooks.submission/submission-hook-batch-timeout-seconds)))
+                           #'cook.hooks.submission/batch-timeout-seconds)))
 
 (defn wait-for
   "Invoke predicate every interval (default 10) seconds until it returns true,

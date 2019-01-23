@@ -40,16 +40,16 @@
   "Returns the hook object. If no launch hook factory defined, returns an always-accept hook object."
   [config]
   (let [{:keys [settings]} config
-        {:keys [launch-hook-factory]} settings
-        {:keys [factory-fn arguments]} launch-hook-factory]
-    (log/info (str "Setting up launch hooks with factory config: " launch-hook-factory " and factory-fn " factory-fn))
+        {:keys [launch-hook]} settings
+        {:keys [factory-fn arguments]} launch-hook]
+    (log/info (str "Setting up launch hooks with factory config: " launch-hook " and factory-fn " factory-fn))
     (if factory-fn
       (do
         (if-let [resolved-fn (cook.hooks.util/resolve-symbol (symbol factory-fn))]
           (do
             (log/info (str "Resolved as " resolved-fn " with " arguments))
             (resolved-fn arguments))
-          (throw (ex-info "Unable to resolve factory function" (assoc launch-hook-factory :ns (namespace factory-fn))))))
+          (throw (ex-info "Unable to resolve factory function" (assoc launch-hook :ns (namespace factory-fn))))))
       accept-all-hook)))
 
 ;  Contains the hook object that matches to a given job map. This code may create a new hook object or re-use an existing one.
@@ -57,11 +57,11 @@
   :start (create-default-hook-object config))
 
 (mount/defstate age-out-last-seen-deadline-minutes
-  :start (-> config :settings :hooks :age-out-last-seen-deadline-minutes t/minutes))
+  :start (-> config :settings :launch-hook :age-out-last-seen-deadline-minutes t/minutes))
 (mount/defstate age-out-first-seen-deadline-minutes
-  :start (-> config :settings :hooks :age-out-first-seen-deadline-minutes t/minutes))
+  :start (-> config :settings :launch-hook :age-out-first-seen-deadline-minutes t/minutes))
 (mount/defstate age-out-seen-count
-  :start (-> config :settings :hooks :age-out-seen-count))
+  :start (-> config :settings :launch-hook :age-out-seen-count))
 
 ; We may see up to the entire scheduler queue, so have a big cache here.
 ; This is called in the scheduler loop. If it hasn't been looked at in more than 2 hours, the job has almost assuredly long since run.

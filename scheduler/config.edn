@@ -24,15 +24,20 @@
                   :executable false
                   :extract true
                   :value #config/env "COOK_EXECUTOR"}}
- :hooks {:age-out-last-seen-deadline-minutes 10
-         :age-out-first-seen-deadline-minutes 600
-         :age-out-seen-count 10
-         :submission-hook-batch-timeout-seconds 40}
  ;; To configure a hook, define a factory function and its arguments.
  ;; Needed for running hook integration tests outside of travis environment.
- :hook-factory {:factory-fn "cook.demo-plugin/factory"
-                :arguments {:launch-url #config/env "COOK_DEMO_HOOKS_LAUNCH_URL"
-                            :submit-url #config/env "COOK_DEMO_HOOKS_SUBMIT_URL"}}
+ :submission-hook {:batch-timeout-seconds 40
+                   :factory-fn "cook.demo-plugin/submission-factory"
+                   :arguments {:launch-url #config/env "COOK_DEMO_HOOKS_LAUNCH_URL"
+                               :submit-url #config/env "COOK_DEMO_HOOKS_SUBMIT_URL"}}
+ ;; To configure a hook, define a factory function and its arguments.
+ ;; Needed for running hook integration tests outside of travis environment.
+ :launch-hook {:age-out-last-seen-deadline-minutes 10
+               :age-out-first-seen-deadline-minutes 600
+               :age-out-seen-count 10
+               :factory-fn "cook.demo-plugin/launch-factory"
+               :arguments {:launch-url #config/env "COOK_DEMO_HOOKS_LAUNCH_URL"
+                           :submit-url #config/env "COOK_DEMO_HOOKS_SUBMIT_URL"}}
  :hostname #config/env "COOK_HOSTNAME"
  :log {:file #config/env "COOK_LOG_FILE"
        :levels {"datomic.db" :warn

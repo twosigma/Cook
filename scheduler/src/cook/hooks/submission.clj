@@ -41,26 +41,25 @@
   "Returns the hook object. If no submission hook factory defined, returns an always-accept hook object."
   [config]
   (let [{:keys [settings]} config
-        {:keys [submission-hook-factory]} settings
-        {:keys [factory-fn arguments]} submission-hook-factory]
-    (log/info (str "Setting up submission hooks with factory config: " submission-hook-factory " and factory-fn " factory-fn))
+        {:keys [submission-hook]} settings
+        {:keys [factory-fn arguments]} submission-hook]
+    (log/info (str "Setting up submission hooks with factory config: " submission-hook " and factory-fn " factory-fn))
     (if factory-fn
       (do
         (if-let [resolved-fn (cook.hooks.util/resolve-symbol (symbol factory-fn))]
           (do
             (log/info (str "Resolved as " resolved-fn " with " arguments))
             (resolved-fn arguments))
-          (throw (ex-info "Unable to resolve factory function" (assoc submission-hook-factory :ns (namespace factory-fn))))))
+          (throw (ex-info "Unable to resolve factory function" (assoc submission-hook :ns (namespace factory-fn))))))
       accept-all-hook)))
 
 ;  Contains the hook object that matches to a given job map. This code may create a new hook object or re-use an existing one.
 (mount/defstate hook-object
   :start (create-default-hook-object config))
 
-(mount/defstate submission-hook-batch-timeout-seconds
-  :start (-> config :settings :hooks :submission-hook-batch-timeout-seconds t/seconds))
-(mount/defstate age-out-seen-count
-  :start (-> config :settings :hooks :age-out-seen-count))
+(mount/defstate batch-timeout-seconds
+  :start (-> config :settings :submission-hook :batch-timeout-seconds t/seconds))
+
 
 ; We may see up to the entire scheduler queue, so have a big cache here.
 ; This is called in the scheduler loop. If it hasn't been looked at in more than 2 hours, the job has almost assuredly long since run.
@@ -73,7 +72,7 @@
 (defn hook-jobs-submission
   [jobs]
   "Run the hooks for a set of jobs at submission time."
-  (let [deadline (->> submission-hook-batch-timeout-seconds
+  (let [deadline (->> batch-timeout-seconds
                       ; One submission can include multiple jobs that must all be checked.
                       ; Self-imposed deadline to get them all checked.
                       (t/plus- (t/now)))
