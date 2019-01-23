@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.27.0] - 2019-01-23
+### Added
+- Support for docker images in mesos containerizer, from @pschorf
+
 ## [1.26.0] - 2018-12-11
 ### Added
 - Global launch rate limit, from @scrosby
