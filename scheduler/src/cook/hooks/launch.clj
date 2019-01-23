@@ -13,14 +13,15 @@
 ;; See the License for the specific language governing permissions and
 ;; limitations under the License.
 ;;
-(ns cook.hooks
+(ns cook.hooks.launch
   (:require [clj-time.core :as t]
             [clj-time.periodic]
             [chime :as chime]
             [cook.cache :as ccache]
             [cook.config :refer [config]]
             [cook.datomic :as datomic]
-            [cook.hook-definitions :refer [SchedulerHooks check-job-launch check-job-submission check-job-submission-default]]
+            [cook.hooks.definitions :refer [JobLaunchFilter check-job-launch]]
+            [cook.hooks.util]
             [mount.core :as mount]
             [clojure.tools.logging :as log])
   (:import (com.google.common.cache Cache CacheBuilder)
@@ -32,38 +33,29 @@
 
 (def accept-all-hook
   "A hook object that accepts everything. Available for use as a default hook and unit testing."
-  (reify SchedulerHooks
-    (check-job-submission-default [_] default-accept)
-    (check-job-submission [_ _] default-accept)
+  (reify JobLaunchFilter
     (check-job-launch [_ _] default-accept)))
 
-(defn resolve-symbol
-  "Resolve the given symbol to the corresponding Var."
-  [sym]
-  (resolve (some-> sym namespace symbol use) sym))
-
 (defn create-default-hook-object
-  "Returns the hook object. If no hook factory defined, returns an always-accept hook object."
+  "Returns the hook object. If no launch hook factory defined, returns an always-accept hook object."
   [config]
   (let [{:keys [settings]} config
-        {:keys [hook-factory]} settings
-        {:keys [factory-fn arguments]} hook-factory]
-    (log/info (str "Setting up hooks with factory config: " hook-factory " and factory-fn " factory-fn))
+        {:keys [launch-hook-factory]} settings
+        {:keys [factory-fn arguments]} launch-hook-factory]
+    (log/info (str "Setting up launch hooks with factory config: " launch-hook-factory " and factory-fn " factory-fn))
     (if factory-fn
       (do
-        (if-let [resolved-fn (resolve-symbol (symbol factory-fn))]
+        (if-let [resolved-fn (cook.hooks.util/resolve-symbol (symbol factory-fn))]
           (do
             (log/info (str "Resolved as " resolved-fn " with " arguments))
             (resolved-fn arguments))
-          (throw (ex-info "Unable to resolve factory function" (assoc hook-factory :ns (namespace factory-fn))))))
+          (throw (ex-info "Unable to resolve factory function" (assoc launch-hook-factory :ns (namespace factory-fn))))))
       accept-all-hook)))
 
 ;  Contains the hook object that matches to a given job map. This code may create a new hook object or re-use an existing one.
 (mount/defstate hook-object
   :start (create-default-hook-object config))
 
-(mount/defstate submission-hook-batch-timeout-seconds
-  :start (-> config :settings :hooks :submission-hook-batch-timeout-seconds t/seconds))
 (mount/defstate age-out-last-seen-deadline-minutes
   :start (-> config :settings :hooks :age-out-last-seen-deadline-minutes t/minutes))
 (mount/defstate age-out-first-seen-deadline-minutes
@@ -150,26 +142,3 @@
     (if (and result (not expired?))
       (= status :accepted)
       (filter-job-launchs-miss job))))
-
-(defn hook-jobs-submission
-  [jobs]
-  "Run the hooks for a set of jobs at submission time."
-  (let [deadline (->> submission-hook-batch-timeout-seconds
-                      ; One submission can include multiple jobs that must all be checked.
-                      ; Self-imposed deadline to get them all checked.
-                      (t/plus- (t/now)))
-        do-one-job (fn do-one-job [job-map]
-                     (let [now (t/now)
-                           status (if (t/before? now deadline)
-                                    (check-job-submission hook-object job-map)
-                                    ; Running out of time, do the default.
-                                    (check-job-submission-default hook-object))]
-                       (or status default-accept)))
-        results (map do-one-job jobs)
-        errors (filter #(= :rejected (:status %)) results)
-        error-count (count errors)
-        ; Collect a few errors to show in the response. (not every error)
-        error-samples (apply list (take 3 errors))]
-    (if (zero? error-count)
-      {:status :accepted}
-      {:status :rejected :message (str "Total of " error-count " errors. First 3 are: " error-samples)})))

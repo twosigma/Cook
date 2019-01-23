@@ -16,7 +16,7 @@
 (ns cook.mesos.unscheduled
   (:require [clj-time.coerce :as tc]
             [clj-time.core :as t]
-            [cook.hooks :as hooks]
+            [cook.hooks.launch :as launch-hooks]
             [cook.mesos.scheduler :as scheduler]
             [cook.mesos.quota :as quota]
             [cook.mesos.share :as share]
@@ -166,8 +166,8 @@
   "Return the appropriate error message if a user's job is unscheduled because the hook plugin
   has blocked the launch."
   [job]
-  (when-not (hooks/filter-job-launchs job)
-      ["The hook plugin is blocking the job launch." {:plugin (str (type hooks/hook-object))}]))
+  (when-not (launch-hooks/filter-job-launchs job)
+      ["The hook plugin is blocking the job launch." {:plugin (str (type launch-hooks/hook-object))}]))
 
 (defn reasons
   "Top level function which assembles a data structure representing the list

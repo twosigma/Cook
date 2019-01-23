@@ -23,7 +23,7 @@
             [clojure.walk :refer [keywordize-keys]]
             [cook.authorization :as auth]
             [cook.config :as config]
-            [cook.hooks :as hooks]
+            [cook.hooks.submission :as submission-hooks]
             [cook.impersonation :as imp]
             [cook.mesos.api :as api]
             [cook.mesos.data-locality :as dl]
@@ -1907,7 +1907,7 @@
       (testing "hook-rejects-job-submission"
         (with-redefs [api/create-jobs! (fn [in-conn _]
                                          (is (= conn in-conn)))
-                      hooks/hook-object testutil/reject-reject-hook]
+                      submission-hooks/hook-object testutil/reject-submission-hook]
           (let [handler (api/create-jobs-handler conn task-constraints gpu-enabled? is-authorized-fn)
                 {:keys [body status] :as all} (handler (new-request))]
             (is (= 400 status))
@@ -1916,7 +1916,7 @@
       (testing "hook-job-accepts-job"
         (with-redefs [api/create-jobs! (fn [in-conn _]
                                          (is (= conn in-conn)))
-                      hooks/hook-object testutil/accept-accept-hook]
+                      submission-hooks/hook-object testutil/accept-submission-hook]
           (let [handler (api/create-jobs-handler conn task-constraints gpu-enabled? is-authorized-fn)
                 {:keys [status]} (handler (new-request))]
             (is (= 201 status)))))
@@ -1925,7 +1925,7 @@
       (testing "hook-rejects-multi-submission-two-jobs-accept-reject"
         (with-redefs [api/create-jobs! (fn [in-conn _]
                                          (is (= conn in-conn)))
-                      hooks/hook-object testutil/fake-scheduler-hooks]
+                      submission-hooks/hook-object testutil/fake-submission-hooks]
           (let [j1 (assoc (minimal-job) :name "accept1")
                 j2 (assoc (minimal-job) :name "reject2")
                 request (assoc-in (new-request) [:body-params :jobs] [j1 j2])
@@ -1937,7 +1937,7 @@
       (testing "hook-rejects-multi-submission-two-jobs-reject-accept"
         (with-redefs [api/create-jobs! (fn [in-conn _]
                                          (is (= conn in-conn)))
-                      hooks/hook-object testutil/fake-scheduler-hooks]
+                      submission-hooks/hook-object testutil/fake-submission-hooks]
           (let [j1 (assoc (minimal-job) :name "reject3")
                 j2 (assoc (minimal-job) :name "accept4")
                 request (assoc-in (new-request) [:body-params :jobs] [j1 j2])
@@ -1949,7 +1949,7 @@
       (testing "hook-rejects-multi-submission-two-jobs-accept-accept"
         (with-redefs [api/create-jobs! (fn [in-conn _]
                                          (is (= conn in-conn)))
-                      hooks/hook-object testutil/fake-scheduler-hooks]
+                      submission-hooks/hook-object testutil/fake-submission-hooks]
           (let [j1 (assoc (minimal-job) :name "accept5")
                 j2 (assoc (minimal-job) :name "accept6")
                 request (assoc-in (new-request) [:body-params :jobs] [j1 j2])
@@ -1969,8 +1969,8 @@
           ; Each invocation of t/now returns a time 7 seconds later than the last one.
           (with-redefs [api/create-jobs! (fn [in-conn _]
                                            (is (= conn in-conn)))
-                        hooks/hook-object testutil/accept-accept-hook
-                        hooks/submission-hook-batch-timeout-seconds (t/seconds 40)
+                        submission-hooks/hook-object testutil/accept-submission-hook
+                        submission-hooks/submission-hook-batch-timeout-seconds (t/seconds 40)
                         t/now (fn []
                                 (let [out
                                       (->> @counter

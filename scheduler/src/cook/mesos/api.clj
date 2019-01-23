@@ -29,7 +29,7 @@
             [cook.config :as config]
             [cook.cors :as cors]
             [cook.datomic :as datomic]
-            [cook.hooks :as hooks]
+            [cook.hooks.submission :as submission-hooks]
             [cook.mesos.data-locality :as dl]
             [cook.mesos.pool :as pool]
             [cook.mesos.quota :as quota]
@@ -1677,7 +1677,7 @@
                                              %
                                              :override-group-immutability?
                                              override-group-immutability?) jobs)
-                               {:keys [status message]} (hooks/hook-jobs-submission jobs)]
+                               {:keys [status message]} (submission-hooks/hook-jobs-submission jobs)]
                            ; Does the hook accept the submission?
                            (if (= :accepted status)
                              [false {::groups groups

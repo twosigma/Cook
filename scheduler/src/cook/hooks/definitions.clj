@@ -13,9 +13,9 @@
 ;; See the License for the specific language governing permissions and
 ;; limitations under the License.
 ;;
-(ns cook.hook-definitions)
+(ns cook.hooks.definitions)
 
-(defprotocol SchedulerHooks
+(defprotocol JobSubmissionValidator
   (check-job-submission-default [this]
     "The default return value to use if check-job-submission if we've run out of time.")
 
@@ -26,11 +26,14 @@
 
       This check is run synchronously with jobs submisison and MUST respond within 2 seconds, and should ideally return within
       100ms, or less. Furthermore, if multiple jobs are submitted in a batch (which may contain tens to hundreds to
-      thousands of jobs), the whole batch of responeses MUST complete within a different timeout seconds.")
+      thousands of jobs), the whole batch of responeses MUST complete within a different timeout seconds."))
+
+
+(defprotocol JobLaunchFilter
   (check-job-launch [this job-map]
     "Check a job submission for if we can run it now. Returns a map with one of two possibilities:
       {:status :accepted :cache-expires-at <DateTime to expire>}
-      {:status :deferred :cache-expires-at <DateTime to expire>}
+      {:status :deferred :cache-expires-at <DateTime to expire> :message 'reason'}
 
       This check is run just before a job is about to launch, and MUST return within milliseconds, without blocking
       (If you don't have have a definitive result, return a retry a few tens of milliseconds later)

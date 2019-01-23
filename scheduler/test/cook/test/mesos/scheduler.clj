@@ -25,7 +25,7 @@
             [clojure.tools.logging :as log]
             [clojure.walk :as walk]
             [cook.config :as config]
-            [cook.hooks :as hooks]
+            [cook.hooks.launch :as launch-hooks]
             [cook.mesos.data-locality :as dl]
             [cook.mesos.heartbeat :as heartbeat]
             [cook.mesos.sandbox :as sandbox]
@@ -618,7 +618,7 @@
         offensive-job-filter (partial sched/filter-offensive-jobs constraints offensive-jobs-ch)]
     (testing "enough offers for all normal jobs, except that all jobs are deferred by hook and none launch."
       ; We defer it the first time we see it, (with a cache timeout of -1 second, so the cache entry won't linger.)
-      (with-redefs [hooks/hook-object cook.test.testutil/accept-defer-hook]
+      (with-redefs [launch-hooks/hook-object cook.test.testutil/defer-launch-hook]
         (is (= {"no-pool" (list)}
                (sched/rank-jobs test-db offensive-job-filter)))))
     ;; Cache expired, so when we run this time, it's found.

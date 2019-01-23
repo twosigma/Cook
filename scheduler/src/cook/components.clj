@@ -24,8 +24,10 @@
             [cook.cors :as cors]
             [cook.curator :as curator]
             [cook.datomic :as datomic]
-            ; This explicit require is needed so that mount can see the defstate defined in the cook.hooks namespace.
-            [cook.hooks]
+            ; This explicit require is needed so that mount can see the defstate defined in the cook.hooks.submission namespace.
+            [cook.hooks.submission]
+            ; This explicit require is needed so that mount can see the defstate defined in the cook.hooks.launch namespace.
+            [cook.hooks.launch]
             [cook.impersonation :refer (impersonation-authorized-wrapper)]
             [cook.mesos.pool :as pool]
             ; This explicit require is needed so that mount can see the defstate defined in the cook.rate-limit namespace.
