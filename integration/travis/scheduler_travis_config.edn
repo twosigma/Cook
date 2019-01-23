@@ -44,9 +44,16 @@
                                :enforce? true
                                :tokens-replenished-per-minute 600}
               :user-limit-per-m 1000000}
- :hook-factory {:factory-fn "cook.demo-plugin/factory"
-                :arguments {:launch-url #config/env "COOK_DEMO_HOOKS_LAUNCH_URL"
-                            :submit-url #config/env "COOK_DEMO_HOOKS_SUBMIT_URL"}}
+ :submission-hook {:batch-timeout-seconds 40
+                   :factory-fn "cook.demo-plugin/submission-factory"
+                   :arguments {:launch-url #config/env "COOK_DEMO_HOOKS_LAUNCH_URL"
+                               :submit-url #config/env "COOK_DEMO_HOOKS_SUBMIT_URL"}}
+ :launch-hook {:age-out-last-seen-deadline-minutes 10
+               :age-out-first-seen-deadline-minutes 600
+               :age-out-seen-count 10
+               :factory-fn "cook.demo-plugin/launch-factory"
+               :arguments {:launch-url #config/env "COOK_DEMO_HOOKS_LAUNCH_URL"
+                           :submit-url #config/env "COOK_DEMO_HOOKS_SUBMIT_URL"}}
  :rebalancer {:dru-scale 1
               :interval-seconds 30
               :max-preemption 500.0
