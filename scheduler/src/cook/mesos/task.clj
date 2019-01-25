@@ -44,7 +44,7 @@
   (let [{:keys [portion retry-limit]} (config/executor-config)]
     (and (nil? (:job/executor job-ent))
          (number? retry-limit)
-         (> retry-limit (count (:job/instance job-ent)))
+         (or (= 0 retry-limit) (> retry-limit (count (:job/instance job-ent))))
          (number? portion)
          (> (* portion 100) (-> job-ent :job/uuid hash (mod 100))))))
 

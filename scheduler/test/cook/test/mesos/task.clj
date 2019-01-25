@@ -690,7 +690,7 @@
         (with-redefs [cook.config/executor-config (constantly {:command "cook-executor"
                                                                :portion 0.25
                                                                :retry-limit 0})]
-          (is (not (task/use-cook-executor? job-ent))))
+          (is (task/use-cook-executor? job-ent)))
         (with-redefs [cook.config/executor-config (constantly {:command "cook-executor"
                                                                :portion 0.25
                                                                :retry-limit 1})]
