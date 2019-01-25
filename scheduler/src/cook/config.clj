@@ -407,14 +407,15 @@
                                             :data-locality-weight (get fitness-calculator :data-locality-weight 0.95)
                                             :launch-wait-seconds (get fitness-calculator :launch-wait-seconds 60)
                                             :update-interval-ms (get fitness-calculator :update-interval-ms nil)}))
-     :launch-hook (fnk [[:config {launch-hook
-                                  {:age-out-last-seen-deadline-minutes 10
-                                   :age-out-first-seen-deadline-minutes 600
-                                   :age-out-seen-count 10}}]]
-                    launch-hook)
-     :submission-hook (fnk [[:config {submission-hook
-                                      {:batch-timeout-seconds 40}}]]
-                        submission-hook)}))
+     :plugins (fnk [[:config {plugins {}}]]
+                (let [{:keys [launch-hook submission-hook]} plugins]
+                  {:launch-hook
+                   (merge
+                     {:age-out-last-seen-deadline-minutes 10
+                      :age-out-first-seen-deadline-minutes 600
+                      :age-out-seen-count 10} launch-hook)
+                   :submission-hook
+                   (merge {:batch-timeout-seconds 40} submission-hook)}))}))
 
 (defn read-config
   "Given a config file path, reads the config and returns the map"

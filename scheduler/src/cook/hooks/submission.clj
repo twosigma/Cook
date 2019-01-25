@@ -41,7 +41,8 @@
   "Returns the hook object. If no submission hook factory defined, returns an always-accept hook object."
   [config]
   (let [{:keys [settings]} config
-        {:keys [submission-hook]} settings
+        {:keys [plugins]} settings
+        {:keys [submission-hook]} plugins
         {:keys [factory-fn arguments]} submission-hook]
     (log/info (str "Setting up submission hooks with factory config: " submission-hook " and factory-fn " factory-fn))
     (if factory-fn
@@ -58,7 +59,7 @@
   :start (create-default-hook-object config))
 
 (mount/defstate batch-timeout-seconds
-  :start (-> config :settings :submission-hook :batch-timeout-seconds t/seconds))
+  :start (-> config :settings :plugins :submission-hook :batch-timeout-seconds t/seconds))
 
 
 ; We may see up to the entire scheduler queue, so have a big cache here.

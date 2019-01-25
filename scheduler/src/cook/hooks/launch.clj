@@ -40,7 +40,8 @@
   "Returns the hook object. If no launch hook factory defined, returns an always-accept hook object."
   [config]
   (let [{:keys [settings]} config
-        {:keys [launch-hook]} settings
+        {:keys [plugins]} settings
+        {:keys [launch-hook]} plugins
         {:keys [factory-fn arguments]} launch-hook]
     (log/info (str "Setting up launch hooks with factory config: " launch-hook " and factory-fn " factory-fn))
     (if factory-fn
@@ -57,11 +58,11 @@
   :start (create-default-hook-object config))
 
 (mount/defstate age-out-last-seen-deadline-minutes
-  :start (-> config :settings :launch-hook :age-out-last-seen-deadline-minutes t/minutes))
+  :start (-> config :settings :plugins :launch-hook :age-out-last-seen-deadline-minutes t/minutes))
 (mount/defstate age-out-first-seen-deadline-minutes
-  :start (-> config :settings :launch-hook :age-out-first-seen-deadline-minutes t/minutes))
+  :start (-> config :settings :plugins :launch-hook :age-out-first-seen-deadline-minutes t/minutes))
 (mount/defstate age-out-seen-count
-  :start (-> config :settings :launch-hook :age-out-seen-count))
+  :start (-> config :settings :plugins :launch-hook :age-out-seen-count))
 
 ; We may see up to the entire scheduler queue, so have a big cache here.
 ; This is called in the scheduler loop. If it hasn't been looked at in more than 2 hours, the job has almost assuredly long since run.
