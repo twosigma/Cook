@@ -14,66 +14,42 @@
 ;; limitations under the License.
 ;;
 (ns cook.demo-plugin
-  (:require [clj-http.client :as http]
-            [clj-time.core :as t]
-            [cook.cache :as ccache]
+  (:require [clj-time.core :as t]
+            [clojure.string :as str]
+            [clojure.tools.logging :as log]
             [cook.hooks.definitions :as chd]))
 
-
-;; Cook hooks is a plugin API that lets job submission and job launch be controlled via a
-;; plugin. cook.demo-plugin is a demo plugin that queries a remote service to ask about the
-;; submission and launch status of a job. We use it in integration tests.
-
-(def http-timeout-millis 2000)
-(def reqdict {:socket-timeout http-timeout-millis :conn-timeout http-timeout-millis
-               :as :json-string-keys :content-type :json})
+(def uuid-seen-counts (atom {}))
 
 (defn- generate-result
        [result message]
        {:status result :message message :cache-expires-at (-> 1 t/seconds t/from-now)})
 
 ; Demo validation plugin, implements SchedulerHooks, pinging the status service on the two given URL's.
-(defrecord DemoValidateSubmission [submit-url launch-url]
+(defrecord DemoValidateSubmission []
   chd/JobSubmissionValidator
   (chd/check-job-submission
-    [this job-map]
-    (let [{:keys [body] http-status :status :as response} (http/get submit-url reqdict)]
-      (case http-status
-        200 (let [status (get body "status")
-                  message (or (get body "message") "No message sent.")]
-              (case status
-                "accepted" (generate-result :accepted message)
-                "rejected" (generate-result :rejected message)
-                (generate-result :rejected (str "Bad contents[1], illegal status message " body))))
+    [this {:keys [name] :as job-map}]
+    (if (and name (str/starts-with? name "submit_fail"))
+      (generate-result :rejected "Message1")
+      (generate-result :accepted "Message2"))))
 
-        404 (generate-result :rejected  (str "Got 404 accessing " submit-url))
-        :rejected  (str "Got nothing[1] " response))))
-  (chd/check-job-submission-default
-    [this]
-    (generate-result :accepted "Default accept result")))
-
-
-(defrecord DemoFilterLaunch [submit-url launch-url]
+(defrecord DemoFilterLaunch []
   chd/JobLaunchFilter
   (chd/check-job-launch
-    [this job-map]
-    (let [{:keys [body] http-status :status :as response} (http/get launch-url reqdict)]
-
-      (case http-status
-        200 (let [status (get body "status")
-                  message (or (get body "message") "No message sent.")]
-              (case status
-                "accepted" (generate-result :accepted message)
-                "deferred" (generate-result :deferred message)
-                (generate-result :accepted (str "Bad contents[2], illegal status message " body))))
-
-        404 (generate-result :rejected  (str "Got 404 accessing " launch-url))
-        (generate-result :rejected (str "Got nothing[2] " response))))))
+    [this {:keys [:job/name :job/uuid] :as job-map}]
+    (let [newdict (swap! uuid-seen-counts update-in [uuid] (fnil inc 0))
+          seen (get newdict uuid)]
+      (if (and name
+               (str/starts-with? name "launch_defer")
+               (<= seen 3))
+        (generate-result :deferred "Message3")
+        (generate-result :accepted "Message4")))))
 
 (defn launch-factory
   "Factory method for the launch-hook to be used in config.edn"
-  [{:keys [launch-url submit-url]}] (->DemoFilterLaunch submit-url launch-url))
+  [{:keys [launch-url]}] (->DemoFilterLaunch))
 
 (defn submission-factory
   "Factory method for the submission hook to be used in config.edn"
-  [{:keys [launch-url submit-url]}] (->DemoValidateSubmission submit-url launch-url))
+  [{:keys [submit-url]}] (->DemoValidateSubmission))
