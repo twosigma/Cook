@@ -77,7 +77,7 @@ If need it to bind to another port, you can specify that with the `:local-port` 
 `:admins`::
   The value of this key is a set of usernames who should be considered administrators when using the `configfile-admins-auth` authorization-fn.
 
-`:launch-hook` and `:submission-hook`::  Cook has two hooks that let plugins reject jobs at job submission time as well as accept or defer the launching of jobs. The plugins for controlling job launch must implment the `JobLaunchFilter` and be specified under `:launch-hook`. THe plugin for controlling job submission must implement the `JobSubmissionValidator` protocol and be specified under `:submission-hook`. The value for these keys is a dictionary with some configuration settings as well as:
+`:job-launch-filter` and `:job-submission-valiator`::  Cook has two hooks that let plugins reject jobs at job submission time as well as accept or defer the launching of jobs. The plugins for controlling job launch must implment the `JobLaunchFilter` and be specified under `:job-launch-filter`. THe plugin for controlling job submission must implement the `JobSubmissionValidator` protocol and be specified under `:job-submission-valiator`. The value for these keys is a dictionary with some configuration settings as well as:
 
  * `:factory-fn` contains a string with a namespace-qualified path of a function for creating either a `JobLaunchFilter` or `JobSubmissionValidator`
 

@@ -41,16 +41,16 @@
   [config]
   (let [{:keys [settings]} config
         {:keys [plugins]} settings
-        {:keys [launch-hook]} plugins
-        {:keys [factory-fn arguments]} launch-hook]
-    (log/info (str "Setting up launch hooks with factory config: " launch-hook " and factory-fn " factory-fn))
+        {:keys [job-launch-filter]} plugins
+        {:keys [factory-fn arguments]} job-launch-filter]
+    (log/info (str "Setting up launch hooks with factory config: " job-launch-filter " and factory-fn " factory-fn))
     (if factory-fn
       (do
         (if-let [resolved-fn (cook.hooks.util/resolve-symbol (symbol factory-fn))]
           (do
             (log/info (str "Resolved as " resolved-fn " with " arguments))
             (resolved-fn arguments))
-          (throw (ex-info "Unable to resolve factory function" (assoc launch-hook :ns (namespace factory-fn))))))
+          (throw (ex-info "Unable to resolve factory function" (assoc job-launch-filter :ns (namespace factory-fn))))))
       accept-all-hook)))
 
 ;  Contains the hook object that matches to a given job map. This code may create a new hook object or re-use an existing one.
@@ -58,11 +58,11 @@
   :start (create-default-hook-object config))
 
 (mount/defstate age-out-last-seen-deadline-minutes
-  :start (-> config :settings :plugins :launch-hook :age-out-last-seen-deadline-minutes t/minutes))
+  :start (-> config :settings :plugins :job-launch-filter :age-out-last-seen-deadline-minutes t/minutes))
 (mount/defstate age-out-first-seen-deadline-minutes
-  :start (-> config :settings :plugins :launch-hook :age-out-first-seen-deadline-minutes t/minutes))
+  :start (-> config :settings :plugins :job-launch-filter :age-out-first-seen-deadline-minutes t/minutes))
 (mount/defstate age-out-seen-count
-  :start (-> config :settings :plugins :launch-hook :age-out-seen-count))
+  :start (-> config :settings :plugins :job-launch-filter :age-out-seen-count))
 
 ; We may see up to the entire scheduler queue, so have a big cache here.
 ; This is called in the scheduler loop. If it hasn't been looked at in more than 2 hours, the job has almost assuredly long since run.

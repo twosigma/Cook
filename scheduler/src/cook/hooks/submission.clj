@@ -42,16 +42,16 @@
   [config]
   (let [{:keys [settings]} config
         {:keys [plugins]} settings
-        {:keys [submission-hook]} plugins
-        {:keys [factory-fn arguments]} submission-hook]
-    (log/info (str "Setting up submission hooks with factory config: " submission-hook " and factory-fn " factory-fn))
+        {:keys [job-submission-valiator]} plugins
+        {:keys [factory-fn arguments]} job-submission-valiator]
+    (log/info (str "Setting up submission hooks with factory config: " job-submission-valiator " and factory-fn " factory-fn))
     (if factory-fn
       (do
         (if-let [resolved-fn (cook.hooks.util/resolve-symbol (symbol factory-fn))]
           (do
             (log/info (str "Resolved as " resolved-fn " with " arguments))
             (resolved-fn arguments))
-          (throw (ex-info "Unable to resolve factory function" (assoc submission-hook :ns (namespace factory-fn))))))
+          (throw (ex-info "Unable to resolve factory function" (assoc job-submission-valiator :ns (namespace factory-fn))))))
       accept-all-hook)))
 
 ;  Contains the hook object that matches to a given job map. This code may create a new hook object or re-use an existing one.
@@ -59,7 +59,7 @@
   :start (create-default-hook-object config))
 
 (mount/defstate batch-timeout-seconds
-  :start (-> config :settings :plugins :submission-hook :batch-timeout-seconds t/seconds))
+  :start (-> config :settings :plugins :job-submission-valiator :batch-timeout-seconds t/seconds))
 
 
 ; We may see up to the entire scheduler queue, so have a big cache here.

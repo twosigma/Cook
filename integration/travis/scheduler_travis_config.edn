@@ -45,10 +45,10 @@
                                :tokens-replenished-per-minute 600}
               :user-limit-per-m 1000000}
  :plugins {
-           :submission-hook {:batch-timeout-seconds 40
+           :job-submission-valiator {:batch-timeout-seconds 40
                              :factory-fn "cook.demo-plugin/submission-factory"
                              :arguments {:submit-url #config/env "COOK_DEMO_HOOKS_SUBMIT_URL"}}
-           :launch-hook {:age-out-last-seen-deadline-minutes 10
+           :job-launch-filter {:age-out-last-seen-deadline-minutes 10
                          :age-out-first-seen-deadline-minutes 600
                          :age-out-seen-count 10
                          :factory-fn "cook.demo-plugin/launch-factory"
