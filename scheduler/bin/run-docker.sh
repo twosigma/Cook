@@ -125,29 +125,8 @@ then
     fi
 fi
 
-echo "About to: Setup demo hook service"
-DEMO_HOOK_SERVER_IP=$(docker inspect demo-hook-service | jq -r '.[].NetworkSettings.IPAddress // empty')
-if [[ -z "${DEMO_HOOK_SERVER_IP}" ]];
-then
-    echo "Starting demo hook service"
-    PROJECT_ROOT="$( dirname ${SCHEDULER_DIR} )"
-    ${PROJECT_ROOT}/integration/bin/run-demo-hook-service.sh &
-    ITERATIONS=0
-    while [[ -z "${DEMO_HOOK_SERVER_IP}" && $ITERATIONS -lt 10 ]];
-    do
-        sleep 1
-        DEMO_HOOK_SERVER_IP=$(docker inspect demo-hook-service | jq -r '.[].NetworkSettings.IPAddress // empty')
-        ((ITERATIONS++))
-    done
-    if [[ -z "${DEMO_HOOK_SERVER_IP}" ]];
-    then
-        echo "Unable to start demo hook server"
-        exit 1
-    fi
-fi
+echo "Starting cook..."
 
-
-echo "About to: Docker create cook"
 # NOTE: since the cook scheduler directory is mounted as a volume
 # by the minimesos agents, they have access to the cook-executor binary
 # using the absolute file path URI given for COOK_EXECUTOR below.
@@ -180,8 +159,6 @@ docker create \
     -e "COOK_EXECUTOR_PORTION=${COOK_EXECUTOR_PORTION:-0}" \
     -e "COOK_KEYSTORE_PATH=/opt/ssl/cook.p12" \
     -e "DATA_LOCAL_ENDPOINT=http://${DATA_LOCAL_IP}:35847/retrieve-costs" \
-    -e "COOK_DEMO_HOOKS_SUBMIT_URL=http://${DEMO_HOOK_SERVER_IP}:5131/get-submit-status" \
-    -e "COOK_DEMO_HOOKS_LAUNCH_URL=http://${DEMO_HOOK_SERVER_IP}:5131/get-launch-status" \
     -v ${DIR}/../log:/opt/cook/log \
     cook-scheduler:latest ${COOK_CONFIG:-}
 
