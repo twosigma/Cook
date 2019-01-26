@@ -43,14 +43,14 @@
   (let [{:keys [settings]} config
         {:keys [plugins]} settings
         {:keys [job-submission-valiator]} plugins
-        {:keys [factory-fn arguments]} job-submission-valiator]
+        {:keys [factory-fn]} job-submission-valiator]
     (log/info (str "Setting up submission hooks with factory config: " job-submission-valiator " and factory-fn " factory-fn))
     (if factory-fn
       (do
         (if-let [resolved-fn (cook.hooks.util/resolve-symbol (symbol factory-fn))]
           (do
-            (log/info (str "Resolved as " resolved-fn " with " arguments))
-            (resolved-fn arguments))
+            (log/info (str "Resolved as " resolved-fn))
+            (resolved-fn))
           (throw (ex-info "Unable to resolve factory function" (assoc job-submission-valiator :ns (namespace factory-fn))))))
       accept-all-hook)))
 

@@ -48,8 +48,8 @@
 
 (defn launch-factory
   "Factory method for the launch-hook to be used in config.edn"
-  [{:keys [launch-url]}] (->DemoFilterLaunch))
+  [] (->DemoFilterLaunch))
 
 (defn submission-factory
   "Factory method for the submission hook to be used in config.edn"
-  [{:keys [submit-url]}] (->DemoValidateSubmission))
+  [] (->DemoValidateSubmission))

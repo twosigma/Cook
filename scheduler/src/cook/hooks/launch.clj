@@ -42,14 +42,14 @@
   (let [{:keys [settings]} config
         {:keys [plugins]} settings
         {:keys [job-launch-filter]} plugins
-        {:keys [factory-fn arguments]} job-launch-filter]
+        {:keys [factory-fn]} job-launch-filter]
     (log/info (str "Setting up launch hooks with factory config: " job-launch-filter " and factory-fn " factory-fn))
     (if factory-fn
       (do
         (if-let [resolved-fn (cook.hooks.util/resolve-symbol (symbol factory-fn))]
           (do
-            (log/info (str "Resolved as " resolved-fn " with " arguments))
-            (resolved-fn arguments))
+            (log/info (str "Resolved as " resolved-fn))
+            (resolved-fn))
           (throw (ex-info "Unable to resolve factory function" (assoc job-launch-filter :ns (namespace factory-fn))))))
       accept-all-hook)))
 
