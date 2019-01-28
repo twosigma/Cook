@@ -17,7 +17,7 @@
   (:require [clj-time.core :as t]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
-            [cook.hooks.definitions :as chd]))
+            [cook.plugins.definitions :as chd]))
 
 (def uuid-seen-counts (atom {}))
 
@@ -25,7 +25,7 @@
        [result message]
        {:status result :message message :cache-expires-at (-> 1 t/seconds t/from-now)})
 
-; Demo validation plugin, implements SchedulerHooks, pinging the status service on the two given URL's.
+; Demo validation plugin, designed to match with the integration tests.
 (defrecord DemoValidateSubmission []
   chd/JobSubmissionValidator
   (chd/check-job-submission
@@ -47,9 +47,9 @@
         (generate-result :accepted "Message4")))))
 
 (defn launch-factory
-  "Factory method for the launch-hook to be used in config.edn"
+  "Factory method for the launch-plugin to be used in config.edn"
   [] (->DemoFilterLaunch))
 
 (defn submission-factory
-  "Factory method for the submission hook to be used in config.edn"
+  "Factory method for the submission plugin to be used in config.edn"
   [] (->DemoValidateSubmission))

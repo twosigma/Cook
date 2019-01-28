@@ -13,15 +13,15 @@
 ;; See the License for the specific language governing permissions and
 ;; limitations under the License.
 ;;
-(ns cook.hooks.launch
+(ns cook.plugins.launch
   (:require [clj-time.core :as t]
             [clj-time.periodic]
             [chime :as chime]
             [cook.cache :as ccache]
             [cook.config :refer [config]]
             [cook.datomic :as datomic]
-            [cook.hooks.definitions :refer [JobLaunchFilter check-job-launch]]
-            [cook.hooks.util]
+            [cook.plugins.definitions :refer [JobLaunchFilter check-job-launch]]
+            [cook.plugins.util]
             [mount.core :as mount]
             [clojure.tools.logging :as log])
   (:import (com.google.common.cache Cache CacheBuilder)
@@ -29,33 +29,33 @@
 
 (def default-accept
   "A default accept object with an expiration at infinity"
-  {:status :accepted :message "No hook object defined" :cache-expires-at (t/date-time 2783 12 03)})
+  {:status :accepted :message "No plugin object defined" :cache-expires-at (t/date-time 2783 12 03)})
 
-(def accept-all-hook
-  "A hook object that accepts everything. Available for use as a default hook and unit testing."
+(def accept-all-plugin
+  "A plugin object that accepts everything. Available for use as a default plugin and unit testing."
   (reify JobLaunchFilter
     (check-job-launch [_ _] default-accept)))
 
-(defn create-default-hook-object
-  "Returns the hook object. If no launch hook factory defined, returns an always-accept hook object."
+(defn create-default-plugin-object
+  "Returns the plugin object. If no launch plugin factory defined, returns an always-accept plugin object."
   [config]
   (let [{:keys [settings]} config
         {:keys [plugins]} settings
         {:keys [job-launch-filter]} plugins
         {:keys [factory-fn]} job-launch-filter]
-    (log/info (str "Setting up launch hooks with factory config: " job-launch-filter " and factory-fn " factory-fn))
+    (log/info (str "Setting up launch plugins with factory config: " job-launch-filter " and factory-fn " factory-fn))
     (if factory-fn
       (do
-        (if-let [resolved-fn (cook.hooks.util/resolve-symbol (symbol factory-fn))]
+        (if-let [resolved-fn (cook.plugins.util/resolve-symbol (symbol factory-fn))]
           (do
             (log/info (str "Resolved as " resolved-fn))
             (resolved-fn))
           (throw (ex-info "Unable to resolve factory function" (assoc job-launch-filter :ns (namespace factory-fn))))))
-      accept-all-hook)))
+      accept-all-plugin)))
 
-;  Contains the hook object that matches to a given job map. This code may create a new hook object or re-use an existing one.
-(mount/defstate hook-object
-  :start (create-default-hook-object config))
+;  Contains the plugin object that matches to a given job map. This code may create a new plugin object or re-use an existing one.
+(mount/defstate plugin-object
+  :start (create-default-plugin-object config))
 
 (mount/defstate age-out-last-seen-deadline-minutes
   :start (-> config :settings :plugins :job-launch-filter :age-out-last-seen-deadline-minutes t/minutes))
@@ -106,7 +106,7 @@
     (if is-aged-out?
       {:status :accepted :message "Was aged out." :cache-expires-at (-> 10 t/minutes t/from-now)}
       ;; Ok. Not aging out. Query the underlying plugin as to the status.
-      (let [{:keys [status] :as raw-result} (check-job-launch hook-object job)
+      (let [{:keys [status] :as raw-result} (check-job-launch plugin-object job)
             result
             ; If the job is accepted or wasn't found, reset or create timestamps for tracking the age.
             (if (or (not old-result)
@@ -128,7 +128,7 @@
         result))))
 
 (defn get-filter-status
-  "Run the hook for a job at launch time, returns the status dictionary (with status,
+  "Run the plugin for a job at launch time, returns the status dictionary (with status,
   message, and expiration)"
   [job]
   (let [{:keys [status cache-expires-at] :as result} (ccache/get-if-present
@@ -143,7 +143,7 @@
       (get-filter-status-miss job))))
 
 (defn filter-job-launches
-  "Run the hooks for a job at launch time, returns true if the job is ready to run now."
+  "Run the plugins for a job at launch time, returns true if the job is ready to run now."
   [job]
   {:post [(or (true? %) (false? %))]}
   (let [{:keys [status]} (get-filter-status job)]

@@ -23,7 +23,7 @@
             [clojure.walk :refer [keywordize-keys]]
             [cook.authorization :as auth]
             [cook.config :as config]
-            [cook.hooks.submission :as submission-hooks]
+            [cook.plugins.submission :as submission-plugin]
             [cook.impersonation :as imp]
             [cook.mesos.api :as api]
             [cook.mesos.data-locality :as dl]
@@ -1371,8 +1371,8 @@
             :mesos {:master "MESOS_MASTER"
                     :leader-path "/cook-scheduler"}
             :authorization {:one-user "root"}
-            :hooks {}
-            :hook-factory {}
+            :plugins {}
+            :plugin-factory {}
             :scheduler {}
             :zookeeper {:local? true}
             :port 10000
@@ -1904,52 +1904,52 @@
           (is (str/includes? body (str uuid)))
           (is (not (str/includes? body (str (:uuid j3)))))))
 
-      (testing "hook-rejects-job-submission"
+      (testing "plugin-rejects-job-submission"
         (with-redefs [api/create-jobs! (fn [in-conn _]
                                          (is (= conn in-conn)))
-                      submission-hooks/hook-object testutil/reject-submission-hook]
+                      submission-plugin/plugin-object testutil/reject-submission-plugin]
           (let [handler (api/create-jobs-handler conn task-constraints gpu-enabled? is-authorized-fn)
                 {:keys [body status] :as all} (handler (new-request))]
             (is (= 400 status))
-            (is (str/includes? body "Explicit-reject by test hook")))))
+            (is (str/includes? body "Explicit-reject by test plugin")))))
 
-      (testing "hook-job-accepts-job"
+      (testing "plugin-job-accepts-job"
         (with-redefs [api/create-jobs! (fn [in-conn _]
                                          (is (= conn in-conn)))
-                      submission-hooks/hook-object testutil/accept-submission-hook]
+                      submission-plugin/plugin-object testutil/accept-submission-plugin]
           (let [handler (api/create-jobs-handler conn task-constraints gpu-enabled? is-authorized-fn)
                 {:keys [status]} (handler (new-request))]
             (is (= 201 status)))))
 
       ;;; These next tests test if we handle multiple jobs with several states.
-      (testing "hook-rejects-multi-submission-two-jobs-accept-reject"
+      (testing "plugin-rejects-multi-submission-two-jobs-accept-reject"
         (with-redefs [api/create-jobs! (fn [in-conn _]
                                          (is (= conn in-conn)))
-                      submission-hooks/hook-object testutil/fake-submission-hooks]
+                      submission-plugin/plugin-object testutil/fake-submission-plugin]
           (let [j1 (assoc (minimal-job) :name "accept1")
                 j2 (assoc (minimal-job) :name "reject2")
                 request (assoc-in (new-request) [:body-params :jobs] [j1 j2])
                 handler (api/create-jobs-handler conn task-constraints gpu-enabled? is-authorized-fn)
                 {:keys [body status] :as all} (handler request)]
             (is (= 400 status))
-            (is (str/includes? body "Explicitly rejected by hook")))))
+            (is (str/includes? body "Explicitly rejected by plugin")))))
 
-      (testing "hook-rejects-multi-submission-two-jobs-reject-accept"
+      (testing "plugin-rejects-multi-submission-two-jobs-reject-accept"
         (with-redefs [api/create-jobs! (fn [in-conn _]
                                          (is (= conn in-conn)))
-                      submission-hooks/hook-object testutil/fake-submission-hooks]
+                      submission-plugin/plugin-object testutil/fake-submission-plugin]
           (let [j1 (assoc (minimal-job) :name "reject3")
                 j2 (assoc (minimal-job) :name "accept4")
                 request (assoc-in (new-request) [:body-params :jobs] [j1 j2])
                 handler (api/create-jobs-handler conn task-constraints gpu-enabled? is-authorized-fn)
                 {:keys [body status] :as all} (handler request)]
             (is (= 400 status))
-            (is (str/includes? body "Explicitly rejected by hook")))))
+            (is (str/includes? body "Explicitly rejected by plugin")))))
 
-      (testing "hook-rejects-multi-submission-two-jobs-accept-accept"
+      (testing "plugin-rejects-multi-submission-two-jobs-accept-accept"
         (with-redefs [api/create-jobs! (fn [in-conn _]
                                          (is (= conn in-conn)))
-                      submission-hooks/hook-object testutil/fake-submission-hooks]
+                      submission-plugin/plugin-object testutil/fake-submission-plugin]
           (let [j1 (assoc (minimal-job) :name "accept5")
                 j2 (assoc (minimal-job) :name "accept6")
                 request (assoc-in (new-request) [:body-params :jobs] [j1 j2])
@@ -1957,9 +1957,9 @@
                 {:keys [body status] :as all} (handler request)]
             (is (= 201 status)))))
 
-      ;; If hook validation is too slow, it should switch to the default status response
+      ;; If plugin validation is too slow, it should switch to the default status response
       ;; so that we meet the 60 second http API timeout.
-      (testing "hook-hits-timeout"
+      (testing "plugin-hits-timeout"
         (let [now (t/now)
               counter (atom 0)
               jobs (->> (range 11)
@@ -1969,8 +1969,8 @@
           ; Each invocation of t/now returns a time 7 seconds later than the last one.
           (with-redefs [api/create-jobs! (fn [in-conn _]
                                            (is (= conn in-conn)))
-                        submission-hooks/hook-object testutil/accept-submission-hook
-                        submission-hooks/batch-timeout-seconds (t/seconds 40)
+                        submission-plugin/plugin-object testutil/accept-submission-plugin
+                        submission-plugin/batch-timeout-seconds (t/seconds 40)
                         t/now (fn []
                                 (let [out
                                       (->> @counter
@@ -1985,7 +1985,7 @@
               ; submission times are 7, 14, 21, 28, 35. ...
               ; We thus expect 5 to submit, and 5 to fail and get rejected by
               ; out-of-timeout by the check-job-submission-default which returns
-              ; Reject for accept-accept-hook.
+              ; Reject for accept-accept-plugin.
               (is true (str/starts-with? "Total of 5 errors. First 3 are " (:error body)))
               (is (str/includes? body "Default Rejected")))))))))
 

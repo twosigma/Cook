@@ -13,7 +13,7 @@
 ;; See the License for the specific language governing permissions and
 ;; limitations under the License.
 ;;
-(ns cook.hooks.util)
+(ns cook.plugins.util)
 
 (defn resolve-symbol
   "Resolve the given symbol to the corresponding Var."

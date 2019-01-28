@@ -13,7 +13,7 @@
 ;; See the License for the specific language governing permissions and
 ;; limitations under the License.
 ;;
-(ns cook.hooks.definitions)
+(ns cook.plugins.definitions)
 
 (defprotocol JobSubmissionValidator
   (check-job-submission-default [this]

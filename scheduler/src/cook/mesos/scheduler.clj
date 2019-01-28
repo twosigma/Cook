@@ -26,7 +26,7 @@
             [clojure.tools.logging :as log]
             [cook.config :as config]
             [cook.datomic :as datomic]
-            [cook.hooks.launch :as launch-hooks]
+            [cook.plugins.launch :as launch-plugin]
             [cook.mesos.constraints :as constraints]
             [cook.mesos.data-locality :as dl]
             [cook.mesos.dru :as dru]
@@ -1295,7 +1295,7 @@
            ;; Apply the offensive job filter first before taking.
            (pc/map-vals offensive-job-filter)
            (pc/map-vals #(map util/job-ent->map %))
-           (pc/map-vals #(filter launch-hooks/filter-job-launches %))
+           (pc/map-vals #(filter launch-plugin/filter-job-launches %))
            (pc/map-vals #(remove nil? %)))
       (catch Throwable t
         (log/error t "Failed to rank jobs")

@@ -2564,9 +2564,8 @@ class CookTest(util.CookTest):
                 resp = util.get_limit(self.cook_url, limit, user)
                 self.assertFalse('pools' in resp.json())
 
-    def test_submit_hook(self):
+    def test_submit_plugin(self):
         job_executor_type = util.get_job_executor_type(self.cook_url)
-        demo_hook_plugin = os.getenv('DEMO_HOOKS_SERVICE')
         job_uuids = []
         try:
             # Should succeed, demo-plugin accepts jobs by default.
@@ -2583,9 +2582,8 @@ class CookTest(util.CookTest):
         finally:
             util.kill_jobs(self.cook_url, [job_uuids], assert_response=False)
 
-    def test_launch_hook(self):
+    def test_launch_plugin(self):
         job_executor_type = util.get_job_executor_type(self.cook_url)
-        demo_hook_plugin = os.getenv('DEMO_HOOKS_SERVICE')
         job_uuids = []
         try:
             # Tell demo plugin server to defer launching jobs (special logic matches based on job name)
@@ -2598,7 +2596,7 @@ class CookTest(util.CookTest):
             def query_unscheduled():
                 resp = util.unscheduled_jobs(self.cook_url, job_uuid)[0][0]
                 self.logger.info(f"unscheduled_jobs response: {resp}")
-                return any([r['reason'] == reasons.HOOK_PLUGIN
+                return any([r['reason'] == reasons.PLUGIN_IS_BLOCKING
                             for r in resp['reasons']])
 
             util.wait_until(query_unscheduled, lambda r: r, 30000)
@@ -2612,8 +2610,6 @@ class CookTest(util.CookTest):
             details = f"Job details: {json.dumps(job, sort_keys=True)}"
             self.assertIn(job['status'], ['completed', 'running'], details)
         finally:
-            success = {'status': 'accepted', 'message': 'A message'}
-            util.session.post(f'{demo_hook_plugin}/set-launch-status', json=success)
             util.kill_jobs(self.cook_url,job_uuids, assert_response=False)
 
 

@@ -22,7 +22,7 @@
             [clojure.core.cache :as cache]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
-            [cook.hooks.definitions :refer (JobSubmissionValidator JobLaunchFilter)]
+            [cook.plugins.definitions :refer (JobSubmissionValidator JobLaunchFilter)]
             [cook.impersonation :refer (create-impersonation-middleware)]
             [cook.mesos.api :as api]
             [cook.mesos.schema :as schema]
@@ -297,12 +297,12 @@
     (mount/start-with-args (merge minimal-config config)
                            #'cook.config/config
                            #'cook.rate-limit/job-launch-rate-limiter #'cook.rate-limit/global-job-launch-rate-limiter
-                           #'cook.hooks.launch/hook-object
-                           #'cook.hooks.submission/hook-object
-                           #'cook.hooks.launch/age-out-first-seen-deadline-minutes
-                           #'cook.hooks.launch/age-out-last-seen-deadline-minutes
-                           #'cook.hooks.launch/age-out-seen-count
-                           #'cook.hooks.submission/batch-timeout-seconds)))
+                           #'cook.plugins.launch/plugin-object
+                           #'cook.plugins.submission/plugin-object
+                           #'cook.plugins.launch/age-out-first-seen-deadline-minutes
+                           #'cook.plugins.launch/age-out-last-seen-deadline-minutes
+                           #'cook.plugins.launch/age-out-seen-count
+                           #'cook.plugins.submission/batch-timeout-seconds)))
 
 (defn wait-for
   "Invoke predicate every interval (default 10) seconds until it returns true,
@@ -341,33 +341,33 @@
     (api/create-jobs! conn context)))
 
 ;; Accept or reject based on the name of the job.
-(def fake-submission-hooks
+(def fake-submission-plugin
   (reify JobSubmissionValidator
     (check-job-submission-default [this] {:status :rejected :message "Too slow"})
     (check-job-submission [this {:keys [name] :as job-map}]
       (if (str/starts-with? name "accept")
         {:status :accepted :cache-expires-at (-> 1 t/seconds t/from-now)}
-        {:status :rejected :cache-expires-at (-> 1 t/seconds t/from-now) :message "Explicitly rejected by hook"}))))
+        {:status :rejected :cache-expires-at (-> 1 t/seconds t/from-now) :message "Explicitly rejected by plugin"}))))
 
 
-(def reject-submission-hook
+(def reject-submission-plugin
   (reify JobSubmissionValidator
     (check-job-submission-default [this] {:status :rejected :message "Default Rejected"})
     (check-job-submission [this _]
-      {:status :rejected :message "Explicit-reject by test hook"})))
+      {:status :rejected :message "Explicit-reject by test plugin"})))
 
-(def accept-submission-hook
+(def accept-submission-plugin
   (reify JobSubmissionValidator
     (check-job-submission-default [this] {:status :rejected :message "Default Rejected"})
     (check-job-submission [this _]
-      {:status :accepted :message "Explicit-accept by test hook"})))
+      {:status :accepted :message "Explicit-accept by test plugin"})))
 
-(def defer-launch-hook
+(def defer-launch-plugin
   (reify JobLaunchFilter
     (check-job-launch [this _]
-      {:status :deferred :message "Explicit-deferred by test hook" :cache-expires-at (-> -1 t/seconds t/from-now)})))
+      {:status :deferred :message "Explicit-deferred by test plugin" :cache-expires-at (-> -1 t/seconds t/from-now)})))
 
-(def accept-launch-hook
+(def accept-launch-plugin
   (reify JobLaunchFilter
     (check-job-launch [this _]
-      {:status :accepted :message "Explicit-accept by test hook" :cache-expires-at (-> -1 t/seconds t/from-now)})))
+      {:status :accepted :message "Explicit-accept by test plugin" :cache-expires-at (-> -1 t/seconds t/from-now)})))
