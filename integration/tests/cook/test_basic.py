@@ -2569,16 +2569,17 @@ class CookTest(util.CookTest):
         job_uuids = []
         try:
             # Should succeed, demo-plugin accepts jobs by default.
-            job_uuid1, resp = util.submit_job(self.cook_url, executor=job_executor_type)
+            job_uuid1, resp = util.submit_job(self.cook_url)
             job_uuids.append(job_uuid1)
             self.assertEqual(resp.status_code, 201, msg=resp.content)
             self.assertEqual(resp.content, str.encode(f"submitted jobs {job_uuid1}"))
             job = util.wait_for_job_in_statuses(self.cook_url, job_uuid1, ['completed', 'running'])
 
             # This should now fail to submit (demo plugin looks at job name)
-            job_uuid2, resp = util.submit_job(self.cook_url, executor=job_executor_type,name='submit_fail')
+            job_uuid2, resp = util.submit_job(self.cook_url, name='plugin_test.submit_fail')
             job_uuids.append(job_uuid2)
             self.assertEqual(resp.status_code, 400, msg=resp.content)
+            self.assertEqual(resp.content, "Message1- Fail to submit", msg=resp.content)
         finally:
             util.kill_jobs(self.cook_url, [job_uuids], assert_response=False)
 
@@ -2587,7 +2588,7 @@ class CookTest(util.CookTest):
         job_uuids = []
         try:
             # Tell demo plugin server to defer launching jobs (special logic matches based on job name)
-            job_uuid, resp = util.submit_job(self.cook_url, executor=job_executor_type, name='launch_defer')
+            job_uuid, resp = util.submit_job(self.cook_url, name='plugin_test.launch_defer')
             job_uuids.append(job_uuid)
             self.assertEqual(resp.status_code, 201, msg=resp.content)
             self.assertEqual(resp.content, str.encode(f"submitted jobs {job_uuid}"))
@@ -2606,11 +2607,11 @@ class CookTest(util.CookTest):
 
             # Wait a bit and the demo plugin will mark it as launchable.
             # So, see if it is now running or completed.
-            job = util.wait_for_job_in_statuses(self.cook_url, job_uuid, ['completed','running'])
+            job = util.wait_for_job_in_statuses(self.cook_url, job_uuid, ['completed', 'running'])
             details = f"Job details: {json.dumps(job, sort_keys=True)}"
             self.assertIn(job['status'], ['completed', 'running'], details)
         finally:
-            util.kill_jobs(self.cook_url,job_uuids, assert_response=False)
+            util.kill_jobs(self.cook_url, job_uuids, assert_response=False)
 
 
     @unittest.skipIf(os.getenv('COOK_TEST_SKIP_RECONCILE') is not None,

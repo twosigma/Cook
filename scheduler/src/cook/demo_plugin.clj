@@ -30,8 +30,8 @@
   chd/JobSubmissionValidator
   (chd/check-job-submission
     [this {:keys [name] :as job-map}]
-    (if (and name (str/starts-with? name "submit_fail"))
-      (generate-result :rejected "Message1")
+    (if (and name (str/starts-with? name "plugin_test.submit_fail"))
+      (generate-result :rejected "Message1- Fail to submit")
       (generate-result :accepted "Message2"))))
 
 (defrecord DemoFilterLaunch []
@@ -41,7 +41,7 @@
     (let [newdict (swap! uuid-seen-counts update-in [uuid] (fnil inc 0))
           seen (get newdict uuid)]
       (if (and name
-               (str/starts-with? name "launch_defer")
+               (str/starts-with? name "plugin_test.launch_defer")
                (<= seen 3))
         (generate-result :deferred "Message3")
         (generate-result :accepted "Message4")))))
