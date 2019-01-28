@@ -621,6 +621,7 @@
                (filter-based-on-quota user->quota user->usage)
                (filter (fn [job] (util/job-allowed-to-start? db job)))
                (filter user-within-launch-rate-limit?-fn)
+               (filter launch-plugin/filter-job-launches)
                (take num-considerable)
                ; Force this to be taken eagerly so that the log line is accurate.
                (doall))]
@@ -1295,7 +1296,6 @@
            ;; Apply the offensive job filter first before taking.
            (pc/map-vals offensive-job-filter)
            (pc/map-vals #(map util/job-ent->map %))
-           (pc/map-vals #(filter launch-plugin/filter-job-launches %))
            (pc/map-vals #(remove nil? %)))
       (catch Throwable t
         (log/error t "Failed to rank jobs")

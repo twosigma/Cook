@@ -616,12 +616,6 @@
         job-entity (d/entity test-db job-id)
         offensive-jobs-ch (sched/make-offensive-job-stifler conn)
         offensive-job-filter (partial sched/filter-offensive-jobs constraints offensive-jobs-ch)]
-    (testing "enough offers for all normal jobs, except that all jobs are deferred by plugin and none launch."
-      ; We defer it the first time we see it, (with a cache timeout of -1 second, so the cache entry won't linger.)
-      (with-redefs [launch-plugin/plugin-object cook.test.testutil/defer-launch-plugin]
-        (is (= {"no-pool" (list)}
-               (sched/rank-jobs test-db offensive-job-filter)))))
-    ;; Cache expired, so when we run this time, it's found.
     (testing "enough offers for all normal jobs."
       (is (= {"no-pool" (list (util/job-ent->map job-entity))}
              (sched/rank-jobs test-db offensive-job-filter))))))
@@ -1339,6 +1333,18 @@
         non-gpu-jobs [job-1 job-2 job-3 job-4]
         gpu-jobs [job-5 job-6]]
 
+    ;; Needs to be first test, otherwise we cache the accepted state.
+    (testing "enough offers for all normal jobs, except that all jobs are deferred by plugin and none launch."
+      ; We defer it the first time we see it, (with a cache timeout of -1 second, so the cache entry won't linger.)
+      (let [user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}}
+            user->quota {test-user {:count 10, :cpus 50, :mem 32768, :gpus 10}}
+            num-considerable 5]
+        (with-redefs [launch-plugin/plugin-object cook.test.testutil/defer-launch-plugin]
+          (is (= [] ; Everything should be deferred
+                 (sched/pending-jobs->considerable-jobs
+                   (d/db conn) non-gpu-jobs user->quota user->usage num-considerable nil))))))
+
+    ;; Cache expired, so when we run this time, it's found (and will be cached as 'accepted'
     (testing "jobs inside usage quota"
       (let [user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}}
             user->quota {test-user {:count 10, :cpus 50, :mem 32768, :gpus 10}}

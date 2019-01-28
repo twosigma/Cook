@@ -77,10 +77,16 @@ If need it to bind to another port, you can specify that with the `:local-port` 
 `:admins`::
   The value of this key is a set of usernames who should be considered administrators when using the `configfile-admins-auth` authorization-fn.
 
-`:job-launch-filter` and `:job-submission-valiator`::  Cook has two extension points that let plugins reject jobs at job submission time as well as accept or defer the launching of jobs. The plugins for controlling job launch must implment the `JobLaunchFilter` and be specified under `:job-launch-filter`. The plugin for controlling job submission must implement the `JobSubmissionValidator` protocol and be specified under `:job-submission-valiator`. The value for these keys is a dictionary with some configuration settings as well as:
+`:plugins`:: Cook has two extension points that let plugins reject jobs at job submission time as well as accept or defer the launching of jobs via `:job-launch-filter` and `:job-submission-valiator`.
 
- * `:factory-fn` contains a string with a namespace-qualified path of a function for creating either a `JobLaunchFilter` or `JobSubmissionValidator`. The factory function can fetch the current configuration out of the config defstate in `cook.config/config`
-
+* `:job-launch-filter` configures the entrypoint for filtering job launches. It has several keys:
+** `:factory-fn` contains a string with a namespace-qualified path of a function for creating either a `JobLaunchFilter`. The factory function can fetch the current configuration out of the config defstate in `cook.config/config`
+** `:age-out-first-seen-deadline-minutes` controls how we get rid of jobs whose launch is perpetually deferred by a plugin. When a job 'ages out', we force it to launch now, to keep the queue from being cluttered with always deferred jobs. The clock for aging out starts when a job is near enough to the front of the queue to be eligible to run, not when it is added to the queue. A job is eligible for aging out when it was first seen in the scheudler queue at least this long ago. If you want jobs to sit longer in the queue than the default 10 hours before being aged out, increase this number.
+** `:age-out-last-seen-deadline-minutes` A job is eligible for aging out when it has been seen in the launch queue at least this recently.
+** `:age-out-seen-count` We must have attempted to schedule the job at least this many times before we age it out.
+* `:job-submission-valiator`  configures the entrypoint for filtering job submissions. It has several keys:
+** `:factory-fn` contains a string with a namespace-qualified path of a function for creating a`JobSubmissionValidator`. The factory function can fetch the current configuration out of the config defstate in `cook.config/config`
+** `:batch-timeout-seconds`: This includes a critical timeout value. We check job launches synchronously, so the plugin has to respond fast. In particular, we must complete all of the launch checks before the HTTP timeout. To do this we implement another timeout, defaulting to 40 seconds. One we cross this soft timeout, a default acccept/reject policy is implemented for submitted jobs. One that cannot look at jobs individually.
 
 `:rate-limit`::
   Configure rate limits for the scheduler. `rate-limit` is a map with three possible keys: `:user-limit-per-m` , `:job-submission`, `:expire-minutes`. These keys control rate limits.

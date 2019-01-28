@@ -31,7 +31,7 @@
            ;; To configure a plugin, define a factory function.
            ;; Needed for running plugin integration tests outside of travis environment.
            :job-launch-filter {:age-out-last-seen-deadline-minutes 10
-                               :age-out-first-seen-deadline-minutes 600
+                               :age-out-first-seen-deadline-minutes 10000
                                :age-out-seen-count 10
                                :factory-fn "cook.demo-plugin/launch-factory"}}
  :hostname #config/env "COOK_HOSTNAME"
