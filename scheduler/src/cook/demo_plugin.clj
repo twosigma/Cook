@@ -48,8 +48,10 @@
 
 (defn launch-factory
   "Factory method for the launch-plugin to be used in config.edn"
-  [] (->DemoFilterLaunch))
+  []
+  (->DemoFilterLaunch))
 
 (defn submission-factory
   "Factory method for the submission plugin to be used in config.edn"
-  [] (->DemoValidateSubmission))
+  []
+  (->DemoValidateSubmission))

@@ -349,7 +349,6 @@
         {:status :accepted :cache-expires-at (-> 1 t/seconds t/from-now)}
         {:status :rejected :cache-expires-at (-> 1 t/seconds t/from-now) :message "Explicitly rejected by plugin"}))))
 
-
 (def reject-submission-plugin
   (reify JobSubmissionValidator
     (check-job-submission-default [this] {:status :rejected :message "Default Rejected"})

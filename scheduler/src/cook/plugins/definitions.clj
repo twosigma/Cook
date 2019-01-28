@@ -26,7 +26,8 @@
 
       This check is run synchronously with jobs submisison and MUST respond within 2 seconds, and should ideally return within
       100ms, or less. Furthermore, if multiple jobs are submitted in a batch (which may contain tens to hundreds to
-      thousands of jobs), the whole batch of responeses MUST complete within a different timeout seconds."))
+      thousands of jobs), the whole batch of responeses MUST complete within the HTTP timeout. We set ourselves a lower timeout;
+      (see documentation for `:batch-timeout-seconds`) before switching to the default."))
 
 
 (defprotocol JobLaunchFilter

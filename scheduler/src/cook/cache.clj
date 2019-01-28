@@ -64,7 +64,7 @@
   is a map with the key :cache-expires-at."
   [^Cache cache extract-key-fn item]
   (if-let [key (extract-key-fn item)]
-    (locking cache ; TOOD: Consider lock striping based on hashcode of the key to allow concurrent loads.
+    (locking cache ; TODO: Consider lock striping based on hashcode of the key to allow concurrent loads.
       ; If it has a timed expiration, expire it.
       (expire-key-helper cache key))))
 
@@ -75,7 +75,7 @@
   is a map with the key :cache-expires-at."
   [^Cache cache extract-key-fn miss-fn item]
   (if-let [key (extract-key-fn item)]
-    (locking cache ; TOOD: Consider lock striping based on hashcode of the key to allow concurrent loads.
+    (locking cache ; TODO: Consider lock striping based on hashcode of the key to allow concurrent loads.
       ; If it has a timed expiration, expire it.
       (expire-key-helper cache key)
       ; And then fetch it.
