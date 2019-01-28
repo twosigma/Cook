@@ -2565,6 +2565,8 @@ class CookTest(util.CookTest):
                 self.assertFalse('pools' in resp.json())
 
     def test_submit_plugin(self):
+        if not util.demo_plugin_is_configured(self.cook_url):
+            self.skipTest("Requires demo plugin to be configured")
         job_executor_type = util.get_job_executor_type(self.cook_url)
         job_uuids = []
         try:
@@ -2579,11 +2581,13 @@ class CookTest(util.CookTest):
             job_uuid2, resp = util.submit_job(self.cook_url, name='plugin_test.submit_fail')
             job_uuids.append(job_uuid2)
             self.assertEqual(resp.status_code, 400, msg=resp.content)
-            self.assertEqual(resp.content, "Message1- Fail to submit", msg=resp.content)
+            self.assertTrue(b"Message1- Fail to submit" in resp.content, msg=resp.content)
         finally:
             util.kill_jobs(self.cook_url, [job_uuids], assert_response=False)
 
     def test_launch_plugin(self):
+        if not util.demo_plugin_is_configured(self.cook_url):
+            self.skipTest("Requires demo plugin to be configured")
         job_executor_type = util.get_job_executor_type(self.cook_url)
         job_uuids = []
         try:
@@ -2608,8 +2612,6 @@ class CookTest(util.CookTest):
             # Wait a bit and the demo plugin will mark it as launchable.
             # So, see if it is now running or completed.
             job = util.wait_for_job_in_statuses(self.cook_url, job_uuid, ['completed', 'running'])
-            details = f"Job details: {json.dumps(job, sort_keys=True)}"
-            self.assertIn(job['status'], ['completed', 'running'], details)
         finally:
             util.kill_jobs(self.cook_url, job_uuids, assert_response=False)
 

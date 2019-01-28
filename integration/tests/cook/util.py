@@ -1256,6 +1256,13 @@ def should_expect_sandbox_directory_for_job(job):
 def data_local_service_is_set():
     return os.getenv('DATA_LOCAL_SERVICE', None) is not None
 
+def demo_plugin_is_configured(cook_url):
+    settings_dict = settings(cook_url)
+    if settings_dict['plugins']['job-submission-valiator']['factory-fn'] != "cook.demo-plugin/submission-factory":
+        return False
+    if settings_dict['plugins']['job-launch-filter']['factory-fn'] != "cook.demo-plugin/launch-factory":
+        return False
+    return True
 
 @functools.lru_cache()
 def _fenzo_fitness_calculator():
