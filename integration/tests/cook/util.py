@@ -1258,6 +1258,8 @@ def data_local_service_is_set():
 
 def demo_plugin_is_configured(cook_url):
     settings_dict = settings(cook_url)
+    if settings_dict['plugins'] is None:
+        return False
     if settings_dict['plugins']['job-submission-valiator']['factory-fn'] != "cook.demo-plugin/submission-factory":
         return False
     if settings_dict['plugins']['job-launch-filter']['factory-fn'] != "cook.demo-plugin/launch-factory":
