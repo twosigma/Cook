@@ -1854,12 +1854,18 @@
                                                                                             :ncpus 13
                                                                                             :memory 1024
                                                                                             :datasets d2))
-                                              _ (dl/update-data-local-costs {d1 {(:hostname offer-1) 0.0
-                                                                                 (:hostname offer-2) 0.0
-                                                                                 (:hostname offer-3) 100.0}
-                                                                             d2 {(:hostname offer-1) 0.0
-                                                                                 (:hostname offer-2) 0.0
-                                                                                 (:hostname offer-3) 0.0}}
+                                              _ (dl/update-data-local-costs {d1 {(:hostname offer-1) {:cost 0.0
+                                                                                                      :suitable true}
+                                                                                 (:hostname offer-2) {:cost 0.0
+                                                                                                      :suitable true}
+                                                                                 (:hostname offer-3) {:cost 100.0
+                                                                                                      :suitable true}}
+                                                                             d2 {(:hostname offer-1) {:cost 0.0
+                                                                                                      :suitable true}
+                                                                                 (:hostname offer-2) {:cost 0.0
+                                                                                                      :suitable true}
+                                                                                 (:hostname offer-3) {:cost 0.0
+                                                                                                      :suitable true}}}
                                                                             [])
                                               entity->map (fn [entity]
                                                             (util/job-ent->map entity (d/db conn)))

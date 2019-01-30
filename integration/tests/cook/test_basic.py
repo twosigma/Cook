@@ -2588,7 +2588,7 @@ class CookTest(util.CookTest):
 
 
     @unittest.skipUnless(util.using_data_local_fitness_calculator(), "Requires the data local fitness calculator")
-    def test_data_local_constraint(self):
+    def test_data_local_constraint_missing_data(self):
         job_uuid, resp = util.submit_job(self.cook_url, datasets=[{'dataset': {'uuid': str(uuid.uuid4())}}])
         self.assertEqual(201, resp.status_code, resp.text)
 
@@ -2606,6 +2606,26 @@ class CookTest(util.CookTest):
         data_locality_reasons = [r for r in reason['data']['reasons']
                                  if r['reason'] == 'data-locality-constraint']
         self.assertEqual(1, len(data_locality_reasons))
+
+    @unittest.skipUnless(util.using_data_local_fitness_calculator() and util.data_local_service_is_set(), 'Requires the data local fitness calculator')
+    @pytest.mark.serial
+    def test_data_local_constrait_not_suitable(self):
+        job_uuid, resp = util.submit_job(self.cook_url, datasets=[{'dataset': {'foo': str(uuid.uuid4())}}])
+        try:
+            self.assertEqual(201, resp.status_code, resp.text)
+            hosts_to_consider = util.hosts_to_consider(self.cook_url, self.mesos_url)
+            target = hosts_to_consider[0]
+            costs = [{'node': target['hostname'], 'cost': 0.1, 'suitable': True}]
+            for host in hosts_to_consider[1:]:
+                costs.append({'node': host['hostname'], 'cost': 0.1, 'suitable': False})
+            self.logger.info(f'Updating costs: {costs}')
+            data_local_service = os.getenv('DATA_LOCAL_SERVICE')
+            util.session.post(f'{data_local_service}/set-costs', json={str(job_uuid): costs})
+            instance = util.wait_for_instance(self.cook_url, job_uuid)
+            self.logger.info(f'Scheduled instance: {instance}')
+            self.assertEqual(instance['hostname'], target['hostname'])
+        finally:
+            util.kill_jobs(self.cook_url, [job_uuid])
 
 
     @unittest.skipUnless(util.data_local_service_is_set(), "Requires a data local service")
@@ -2634,7 +2654,7 @@ class CookTest(util.CookTest):
             self.assertEqual(200, cost_resp.status_code)
             expected_costs = {}
             for slave in slaves:
-                expected_costs[slave['hostname']] = 0.1
+                expected_costs[slave['hostname']] = {'cost': 0.1, 'suitable': True}
             self.assertEqual(expected_costs, cost_resp.json())
 
             util.wait_for_jobs(self.cook_url, [job_uuid], 'completed')

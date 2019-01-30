@@ -2645,7 +2645,8 @@
   {s/Uuid (s/maybe s/Str)})
 
 (def DataLocalCostResponse
-  {s/Str s/Num})
+  {s/Str {:cost s/Num
+          :suitable s/Bool}})
 
 (defn data-local-update-time-handler
   "Handler for return the last update time of data locality"

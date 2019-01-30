@@ -78,7 +78,7 @@
                                             (t/in-millis (t/interval update-time current-time)))))
                                      stale-datasets)
           clean-datasets->host->cost (pc/map-vals (fn [host->cost]
-                                                    (pc/map-vals (fn [cost] (-> cost (min 1.0) (max 0)))
+                                                    (pc/map-vals (fn [cost] (update cost :cost #(-> % (min 1.0) (max 0))))
                                                                  host->cost))
                                                   datasets->host->cost)]
       (run! (fn [[_ update-time]] (histograms/update! cost-update-staleness (t/in-millis (t/interval update-time current-time))))
@@ -162,7 +162,9 @@
         _ (log/debug "Got response:" body)]
     (pc/for-map [{:strs [task_id costs]} (body "costs")]
        (job-uuid->datasets task_id)
-       (pc/for-map [{:strs [node cost]} costs] node cost))))
+       (pc/for-map [{:strs [node cost suitable]
+                     :or {suitable true}} costs] node {:cost cost
+                                                       :suitable suitable}))))
 
 (defn fetch-and-update-data-local-costs
   "Determine the datasets which need to be updated, fetch the costs, and update the cache with the
@@ -198,8 +200,10 @@
           {:keys [job/uuid] :as job} (:job task-request)
           datasets (get-dataset-maps job)]
       (if-not (empty? (or datasets []))
-        (let [normalized-fitness (- 1.0
-                                    (get-in (get-data-local-costs) [datasets (.getHostname target-vm)] 1.0))
+        (let [{:keys [cost suitable]}(get-in (get-data-local-costs) [datasets (.getHostname target-vm)] {:cost 1.0
+                                                                                                         :suitable true})
+              suitability-adjusted-cost (if suitable cost 1.0)
+              normalized-fitness (- 1.0 suitability-adjusted-cost)
               data-local-fitness (* data-locality-weight normalized-fitness)
               fitness (+ data-local-fitness (* (- 1 data-locality-weight) base-fitness))]
           (log/debug "Computed data local fitness:" {:hostname (.getHostname target-vm)
