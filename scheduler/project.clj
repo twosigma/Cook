@@ -192,6 +192,8 @@
    :test-console
    [:test {:jvm-opts ["-Dcook.test.logging.console"]}]
 
+   :override-maven {:local-repo ~(System/getenv "COOK_SCHEDULER_MAVEN_LOCAL_REPO")}
+
    :docker
    ; avoid calling javac in docker
    ; (.java sources are only used for unit test support)
