@@ -143,7 +143,7 @@
           launch-after-age (t/plus (tc/from-date submit-time) (t/seconds launch-wait-seconds))
           launch-without-data? (t/after? (t/now) launch-after-age)]
       (if (contains? data-locality-costs datasets)
-        (let [{:keys [suitable]} (get-in data-locality-costs [datasets (get vm-attributes "HOSTNAME")] {:suitable true})]
+        (let [{:keys [suitable] :or {suitable true}} (get-in data-locality-costs [datasets (get vm-attributes "HOSTNAME")])]
           (if suitable
             [true nil]
             [false "Host is not suitable for datasets"]))

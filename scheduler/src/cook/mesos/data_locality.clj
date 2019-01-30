@@ -200,8 +200,7 @@
           {:keys [job/uuid] :as job} (:job task-request)
           datasets (get-dataset-maps job)]
       (if-not (empty? (or datasets []))
-        (let [{:keys [cost suitable]}(get-in (get-data-local-costs) [datasets (.getHostname target-vm)] {:cost 1.0
-                                                                                                         :suitable true})
+        (let [{:keys [cost suitable] :or {cost 1.0 suitable true}} (get-in (get-data-local-costs) [datasets (.getHostname target-vm)])
               suitability-adjusted-cost (if suitable cost 1.0)
               normalized-fitness (- 1.0 suitability-adjusted-cost)
               data-local-fitness (* data-locality-weight normalized-fitness)
