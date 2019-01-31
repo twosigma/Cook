@@ -23,7 +23,7 @@
             [cook.mesos.data-locality :as dl]
             [cook.mesos.scheduler :as sched]
             [cook.mesos.util :as util]
-            [cook.test.testutil :refer (restore-fresh-database! create-dummy-group create-dummy-job create-dummy-instance create-dummy-job-with-instances)]
+            [cook.test.testutil :refer (restore-fresh-database! create-dummy-group create-dummy-job create-dummy-instance create-dummy-job-with-instances setup)]
             [datomic.api :as d :refer (db)])
   (:import [java.util Date UUID]
            org.joda.time.DateTime
@@ -142,6 +142,7 @@
 
 
 (deftest test-rebalancer-reservation-constraint
+  (setup)
   (let [framework-id #mesomatic.types.FrameworkID{:value "my-framework-id"}
         uri "datomic:mem://test-rebalancer-reservation-constraint"
         conn (restore-fresh-database! uri)
@@ -313,7 +314,8 @@
       (with-redefs [config/fitness-calculator-config (constantly dl/data-local-fitness-calculator)
                     config/data-local-fitness-config (constantly {:launch-wait-seconds 60})]
         (let [with-data-datasets #{{:dataset {"a" "a"}}}
-              _ (dl/update-data-local-costs {with-data-datasets {"hostA" 0}} [])
+              _ (dl/update-data-local-costs {with-data-datasets {"hostA" {:cost 0
+                                                                          :suitable true}}} [])
               with-data-constraint (constraints/build-data-locality-constraint {:job/uuid (UUID/randomUUID)
                                                                                 :job/datasets #{{:dataset/parameters #{{:dataset.parameter/key "a" :dataset.parameter/value "a"}}}}
                                                                                 :job/submit-time (tc/to-date (t/now))})
@@ -321,6 +323,27 @@
                                                                                    :job/datasets #{{:datasets {"b" "b"}}}
                                                                                    :job/submit-time (tc/to-date (t/now))})
               [with-data-result _] (constraints/job-constraint-evaluate with-data-constraint nil nil)
-              [without-data-result _] (constraints/job-constraint-evaluate without-data-constraint nil nil)]
+              [without-data-result msg] (constraints/job-constraint-evaluate without-data-constraint nil nil)]
           (is with-data-result)
-          (is (not without-data-result)))))))
+          (is (not without-data-result))
+          (is (= "No data locality costs available" msg)))))
+
+    (testing "fails for unsuitable hosts"
+      (dl/reset-data-local-costs!)
+      (with-redefs [config/fitness-calculator-config (constantly dl/data-local-fitness-calculator)
+                    config/data-local-fitness-config (constantly {:launch-wait-seconds 60})]
+        (let [datasets #{{:dataset {"a" "a"}}}
+              _ (dl/update-data-local-costs {datasets {"hostA" {:cost 0
+                                                                :suitable true}
+                                                       "hostB" {:cost 1.0
+                                                                :suitable false}}} [])
+              constraint (constraints/build-data-locality-constraint {:job/uuid (UUID/randomUUID)
+                                                                      :job/datasets #{{:dataset/parameters #{{:dataset.parameter/key "a" :dataset.parameter/value "a"}}}}
+                                                                      :job/submit-time (tc/to-date (t/now))})]
+
+          ;; suitable
+          (is (= [true nil] (constraints/job-constraint-evaluate constraint nil {"HOSTNAME" "hostA"})))
+          ;; default allow
+          (is (= [true nil] (constraints/job-constraint-evaluate constraint nil {"HOSTNAME" "hostC"})))
+          ;; unsuitable
+          (is (= [false "Host is not suitable for datasets"] (constraints/job-constraint-evaluate constraint nil {"HOSTNAME" "hostB"}))))))))

@@ -136,18 +136,22 @@
 (defrecord data-locality-constraint [job launch-wait-seconds]
   JobConstraint
   (job-constraint-name [this] (get-class-name this))
-  (job-constraint-evaluate [_ _ _]
+  (job-constraint-evaluate [this _ vm-attributes]
     (let [{:keys [job/submit-time]} job
           datasets (dl/get-dataset-maps job)
           data-locality-costs (dl/get-data-local-costs)
           launch-after-age (t/plus (tc/from-date submit-time) (t/seconds launch-wait-seconds))
           launch-without-data? (t/after? (t/now) launch-after-age)]
-      (if (or launch-without-data?
-              (contains? data-locality-costs datasets))
-        [true nil]
-        [false "No data locality costs available"])))
-  (job-constraint-evaluate [this _ _ _]
-    (job-constraint-evaluate this _ _)))
+      (if (contains? data-locality-costs datasets)
+        (let [{:keys [suitable] :or {suitable true}} (get-in data-locality-costs [datasets (get vm-attributes "HOSTNAME")])]
+          (if suitable
+            [true nil]
+            [false "Host is not suitable for datasets"]))
+        (if launch-without-data?
+          [true nil]
+          [false "No data locality costs available"]))))
+  (job-constraint-evaluate [this _ vm-attributes _]
+    (job-constraint-evaluate this _ vm-attributes)))
 
 (defn build-data-locality-constraint
   "If the job supports data local and the data local fitness calculator is in use,
