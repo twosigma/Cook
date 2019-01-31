@@ -1970,7 +1970,7 @@
           (with-redefs [api/create-jobs! (fn [in-conn _]
                                            (is (= conn in-conn)))
                         submission-plugin/plugin-object testutil/accept-submission-plugin
-                        submission-plugin/batch-timeout-seconds (t/seconds 40)
+                        config/batch-timeout-seconds-config (constantly (t/seconds 40))
                         t/now (fn []
                                 (let [out
                                       (->> @counter

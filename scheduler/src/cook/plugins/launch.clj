@@ -18,7 +18,7 @@
             [clj-time.periodic]
             [chime :as chime]
             [cook.cache :as ccache]
-            [cook.config :refer [config]]
+            [cook.config :as config]
             [cook.datomic :as datomic]
             [cook.plugins.definitions :refer [JobLaunchFilter check-job-launch]]
             [cook.plugins.util]
@@ -55,14 +55,7 @@
 
 ;  Contains the plugin object that matches to a given job map. This code may create a new plugin object or re-use an existing one.
 (mount/defstate plugin-object
-  :start (create-default-plugin-object config))
-
-(mount/defstate age-out-last-seen-deadline-minutes
-  :start (-> config :settings :plugins :job-launch-filter :age-out-last-seen-deadline-minutes t/minutes))
-(mount/defstate age-out-first-seen-deadline-minutes
-  :start (-> config :settings :plugins :job-launch-filter :age-out-first-seen-deadline-minutes t/minutes))
-(mount/defstate age-out-seen-count
-  :start (-> config :settings :plugins :job-launch-filter :age-out-seen-count))
+  :start (create-default-plugin-object config/config))
 
 ; We may see up to the entire scheduler queue, so have a big cache here.
 ; This is called in the scheduler loop. If it hasn't been looked at in more than 2 hours, the job has almost assuredly long since run.
@@ -80,16 +73,15 @@
   3. Tried multiple times to get the job to launch."
   [{:keys [last-seen first-seen seen-count] :as old-result}]
   {:post [(or (true? %) (false? %))]}
-  (let [last-seen-deadline (->> age-out-last-seen-deadline-minutes
+  (let [last-seen-deadline (->> (config/age-out-last-seen-deadline-minutes-config)
                                 (t/minus- (t/now)))
-        first-seen-deadline (->> age-out-first-seen-deadline-minutes
+        first-seen-deadline (->> (config/age-out-first-seen-deadline-minutes-config)
                                  (t/minus- (t/now)))]
     (and
       (not (nil? old-result))
-      (> seen-count age-out-seen-count)
+      (> seen-count (config/age-out-seen-count-config))
       (t/before? first-seen first-seen-deadline)
       (t/before? last-seen-deadline last-seen))))
-
 
 (defn get-filter-status-miss
   "This is the cache miss handler. It is invoked if we have a cache miss --- either the

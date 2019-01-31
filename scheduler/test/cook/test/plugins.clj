@@ -17,6 +17,7 @@
   (:use clojure.test)
   (:require [clj-time.core :as t]
             [cook.cache :as ccache]
+            [cook.config :as config]
             [cook.plugins.submission :as submission-plugin]
             [cook.plugins.launch :as launch-plugin]
             [cook.plugins.definitions :as chd]
@@ -28,9 +29,9 @@
 
 (deftest test-aged-out?
   (with-redefs
-    [launch-plugin/age-out-last-seen-deadline-minutes (t/minutes 10)
-     launch-plugin/age-out-first-seen-deadline-minutes (t/hours 10)
-     launch-plugin/age-out-seen-count 10
+    [config/age-out-last-seen-deadline-minutes-config (constantly (t/minutes 10))
+     config/age-out-first-seen-deadline-minutes-config (constantly (t/hours 10))
+     config/age-out-seen-count-config (constantly 10)
      t/now (constantly (t/date-time 2018 12 20 23 10))]
     (let [t-5m  (t/date-time 2018 12 20 23 5)
           t-1h  (t/date-time 2018 12 20 22 10)

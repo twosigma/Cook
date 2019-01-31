@@ -18,7 +18,7 @@
             [clj-time.periodic]
             [chime :as chime]
             [cook.cache :as ccache]
-            [cook.config :refer [config]]
+            [cook.config :as config]
             [cook.datomic :as datomic]
             [cook.plugins.definitions :refer [JobSubmissionValidator check-job-submission check-job-submission-default]]
             [cook.plugins.util]
@@ -56,11 +56,7 @@
 
 ;  Contains the plugin object that matches to a given job map. This code may create a new plugin object or re-use an existing one.
 (mount/defstate plugin-object
-  :start (create-default-plugin-object config))
-
-(mount/defstate batch-timeout-seconds
-  :start (-> config :settings :plugins :job-submission-validator :batch-timeout-seconds t/seconds))
-
+  :start (create-default-plugin-object config/config))
 
 ; We may see up to the entire scheduler queue, so have a big cache here.
 ; This is called in the scheduler loop. If it hasn't been looked at in more than 2 hours, the job has almost assuredly long since run.
@@ -73,7 +69,7 @@
 (defn plugin-jobs-submission
   [jobs]
   "Run the plugins for a set of jobs at submission time."
-  (let [deadline (->> batch-timeout-seconds
+  (let [deadline (->> (config/batch-timeout-seconds-config)
                       ; One submission can include multiple jobs that must all be checked.
                       ; Self-imposed deadline to get them all checked.
                       (t/plus- (t/now)))

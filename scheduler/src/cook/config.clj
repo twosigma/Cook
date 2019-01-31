@@ -495,3 +495,23 @@
   "Returns the fitness calculator specified by fitness-calculator, or the default if nil"
   [fitness-calculator]
   (config-string->fitness-calculator (or fitness-calculator default-fitness-calculator)))
+
+(defn batch-timeout-seconds-config
+  "Used by job submission plugin."
+  []
+  (-> config :settings :plugins :job-submission-validator :batch-timeout-seconds t/seconds))
+
+(defn age-out-last-seen-deadline-minutes-config
+  "Used by job launch plugin."
+  []
+  (-> config :settings :plugins :job-launch-filter :age-out-last-seen-deadline-minutes t/minutes))
+
+(defn age-out-first-seen-deadline-minutes-config
+  "Used by job launch plugin."
+  []
+  (-> config :settings :plugins :job-launch-filter :age-out-first-seen-deadline-minutes t/minutes))
+
+(defn age-out-seen-count-config
+  "Used by job launch plugin."
+  []
+  (-> config :settings :plugins :job-launch-filter :age-out-seen-count))

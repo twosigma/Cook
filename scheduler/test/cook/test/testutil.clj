@@ -299,11 +299,7 @@
                            #'cook.rate-limit/job-launch-rate-limiter
                            #'cook.rate-limit/global-job-launch-rate-limiter
                            #'cook.plugins.launch/plugin-object
-                           #'cook.plugins.submission/plugin-object
-                           #'cook.plugins.launch/age-out-first-seen-deadline-minutes
-                           #'cook.plugins.launch/age-out-last-seen-deadline-minutes
-                           #'cook.plugins.launch/age-out-seen-count
-                           #'cook.plugins.submission/batch-timeout-seconds)))
+                           #'cook.plugins.submission/plugin-object)))
 
 (defn wait-for
   "Invoke predicate every interval (default 10) seconds until it returns true,
