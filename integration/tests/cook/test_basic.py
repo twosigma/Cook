@@ -2567,7 +2567,6 @@ class CookTest(util.CookTest):
     def test_submit_plugin(self):
         if not util.demo_plugin_is_configured(self.cook_url):
             self.skipTest("Requires demo plugin to be configured")
-        job_executor_type = util.get_job_executor_type(self.cook_url)
         job_uuids = []
         try:
             # Should succeed, demo-plugin accepts jobs by default.
@@ -2588,12 +2587,10 @@ class CookTest(util.CookTest):
     def test_launch_plugin(self):
         if not util.demo_plugin_is_configured(self.cook_url):
             self.skipTest("Requires demo plugin to be configured")
-        job_executor_type = util.get_job_executor_type(self.cook_url)
-        job_uuids = []
+        job_uuid = None
         try:
             # Tell demo plugin server to defer launching jobs (special logic matches based on job name)
             job_uuid, resp = util.submit_job(self.cook_url, name='plugin_test.launch_defer')
-            job_uuids.append(job_uuid)
             self.assertEqual(resp.status_code, 201, msg=resp.content)
             self.assertEqual(resp.content, str.encode(f"submitted jobs {job_uuid}"))
 
@@ -2613,7 +2610,7 @@ class CookTest(util.CookTest):
             # So, see if it is now running or completed.
             job = util.wait_for_job_in_statuses(self.cook_url, job_uuid, ['completed', 'running'])
         finally:
-            util.kill_jobs(self.cook_url, job_uuids, assert_response=False)
+            util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
 
 
     @unittest.skipIf(os.getenv('COOK_TEST_SKIP_RECONCILE') is not None,

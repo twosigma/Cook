@@ -93,7 +93,7 @@
 
 (defn get-filter-status-miss
   "This is the cache miss handler. It is invoked if we have a cache miss --- either the
-  entry is expired, or its not there. Only invoke on misses or expirations, because we
+  entry is expired, or it's not there. Only invoke on misses or expirations, because we
   count the number of invocations."
   [job]
   (let [{:keys [first-seen seen-count] :as old-result} (ccache/get-if-present
@@ -102,7 +102,7 @@
                                                          job)
         is-aged-out? (aged-out? old-result)]
     ; If aged-out, we're not going to do any more backend queries. Return true so the
-    ; job is kept and  invoked and it sinks or swims.
+    ; job is kept and invoked and it sinks or swims.
     (if is-aged-out?
       {:status :accepted :message "Was aged out." :cache-expires-at (-> 10 t/minutes t/from-now)}
       ;; Ok. Not aging out. Query the underlying plugin as to the status.

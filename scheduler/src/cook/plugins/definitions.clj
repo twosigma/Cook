@@ -17,7 +17,7 @@
 
 (defprotocol JobSubmissionValidator
   (check-job-submission-default [this]
-    "The default return value to use if check-job-submission if we've run out of time.")
+    "The default return value to use in check-job-submission if we've run out of time.")
 
   (check-job-submission [this job-map]
     "Check a job submission for correctness at the time of submission. Returns a map with one of two possibilities:

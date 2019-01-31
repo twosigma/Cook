@@ -24,12 +24,8 @@
                   :executable false
                   :extract true
                   :value #config/env "COOK_EXECUTOR"}}
- :plugins {;; To configure a plugin, define a factory function.
-           ;; Needed for running plugin integration tests outside of travis environment.
-           :job-submission-valiator {:batch-timeout-seconds 40
+ :plugins {:job-submission-validator {:batch-timeout-seconds 40
                                      :factory-fn "cook.demo-plugin/submission-factory"}
-           ;; To configure a plugin, define a factory function.
-           ;; Needed for running plugin integration tests outside of travis environment.
            :job-launch-filter {:age-out-last-seen-deadline-minutes 10
                                :age-out-first-seen-deadline-minutes 10000
                                :age-out-seen-count 10

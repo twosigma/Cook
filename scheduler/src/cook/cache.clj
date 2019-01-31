@@ -25,7 +25,6 @@
   (if-let [key (extract-key-fn item)]
     (.getIfPresent cache key)))
 
-
 (defn put-cache!
   "Generic cache. Caches under a key (extracted from the item with extract-key-fn. Uses miss-fn to fill
   any misses. Caches only positive hits where both functions return non-nil"
@@ -67,7 +66,6 @@
     (locking cache ; TODO: Consider lock striping based on hashcode of the key to allow concurrent loads.
       ; If it has a timed expiration, expire it.
       (expire-key-helper cache key))))
-
 
 (defn lookup-cache-with-expiration!
   "Generic cache. Caches under a key (extracted from the item with extract-key-fn. Uses miss-fn to fill

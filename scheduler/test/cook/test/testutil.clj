@@ -296,7 +296,8 @@
     (mount/stop)
     (mount/start-with-args (merge minimal-config config)
                            #'cook.config/config
-                           #'cook.rate-limit/job-launch-rate-limiter #'cook.rate-limit/global-job-launch-rate-limiter
+                           #'cook.rate-limit/job-launch-rate-limiter
+                           #'cook.rate-limit/global-job-launch-rate-limiter
                            #'cook.plugins.launch/plugin-object
                            #'cook.plugins.submission/plugin-object
                            #'cook.plugins.launch/age-out-first-seen-deadline-minutes

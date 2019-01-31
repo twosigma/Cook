@@ -408,14 +408,16 @@
                                             :launch-wait-seconds (get fitness-calculator :launch-wait-seconds 60)
                                             :update-interval-ms (get fitness-calculator :update-interval-ms nil)}))
      :plugins (fnk [[:config {plugins {}}]]
-                (let [{:keys [job-launch-filter job-submission-valiator]} plugins]
+                (let [{:keys [job-launch-filter job-submission-validator]} plugins]
                   {:job-launch-filter
                    (merge
                      {:age-out-last-seen-deadline-minutes 10
                       :age-out-first-seen-deadline-minutes 600
-                      :age-out-seen-count 10} job-launch-filter)
-                   :job-submission-valiator
-                   (merge {:batch-timeout-seconds 40} job-submission-valiator)}))}))
+                      :age-out-seen-count 10}
+                     job-launch-filter)
+                   :job-submission-validator
+                   (merge {:batch-timeout-seconds 40}
+                          job-submission-validator)}))}))
 
 (defn read-config
   "Given a config file path, reads the config and returns the map"
