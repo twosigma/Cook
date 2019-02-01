@@ -22,8 +22,8 @@
 (def uuid-seen-counts (atom {}))
 
 (defn- generate-result
-       [result message]
-       {:status result :message message :cache-expires-at (-> 1 t/seconds t/from-now)})
+  [result message]
+  {:status result :message message :cache-expires-at (-> 1 t/seconds t/from-now)})
 
 ; Demo validation plugin, designed to match with the integration tests.
 (defrecord DemoValidateSubmission []
