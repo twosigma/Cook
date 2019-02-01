@@ -664,7 +664,7 @@ def group_detail_query(cook_url, group_uuid, assert_response=True):
 
 def wait_for_job(cook_url, job_id, status, max_wait_ms=DEFAULT_TIMEOUT_MS):
     """Wait for the given job's status to change to the specified value."""
-    return wait_for_jobs_in_statuses(cook_url,[job_id], [status], max_wait_ms)[0]
+    return wait_for_jobs_in_statuses(cook_url, [job_id], [status], max_wait_ms)[0]
 
 def wait_for_jobs(cook_url, job_ids, status, max_wait_ms=DEFAULT_TIMEOUT_MS):
     return wait_for_jobs_in_statuses(cook_url, job_ids, [status], max_wait_ms)
