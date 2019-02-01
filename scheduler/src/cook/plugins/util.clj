@@ -13,9 +13,13 @@
 ;; See the License for the specific language governing permissions and
 ;; limitations under the License.
 ;;
-(ns cook.plugins.util)
+(ns cook.plugins.util
+  (:require [clj-time.core :as t]))
 
 (defn resolve-symbol
   "Resolve the given symbol to the corresponding Var."
   [sym]
   (resolve (some-> sym namespace symbol use) sym))
+
+(def positive-infinity-date
+  (t/date-time 2999 12 31))

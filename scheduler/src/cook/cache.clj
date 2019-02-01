@@ -58,7 +58,7 @@
       (when (and cache-expires-at (t/after? (t/now) cache-expires-at))  (.invalidate cache key)))))
 
 (defn expire-key!
-  "Generic cache. Caches under a key (extracted from the item with extract-key-fn. Uses miss-fn to fill
+  "Generic cache. Caches under a key (extracted from the item with extract-key-fn). Uses miss-fn to fill
   any misses. Caches only positive hits where both functions return non-nil. Also handles expiration if the value
   is a map with the key :cache-expires-at."
   [^Cache cache extract-key-fn item]

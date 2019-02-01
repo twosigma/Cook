@@ -29,7 +29,7 @@
 
 (def default-accept
   "A default accept object with an expiration at infinity"
-  {:status :accepted :message "No plugin object defined" :cache-expires-at (t/date-time 2783 12 03)})
+  {:status :accepted :message "No plugin object defined" :cache-expires-at cook.plugins.util/positive-infinity-date})
 
 (def accept-all-plugin
   "A plugin object that accepts everything. Available for use as a default plugin and unit testing."
