@@ -44,6 +44,12 @@
                                :enforce? true
                                :tokens-replenished-per-minute 600}
               :user-limit-per-m 1000000}
+ :plugins {:job-submission-validator {:batch-timeout-seconds 40
+                                      :factory-fn "cook.demo-plugin/submission-factory"}
+           :job-launch-filter {:age-out-last-seen-deadline-minutes 10
+                               :age-out-first-seen-deadline-minutes 600
+                               :age-out-seen-count 10
+                               :factory-fn "cook.demo-plugin/launch-factory"}}
  :rebalancer {:dru-scale 1
               :interval-seconds 30
               :max-preemption 500.0

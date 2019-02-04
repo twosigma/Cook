@@ -24,9 +24,13 @@
             [cook.cors :as cors]
             [cook.curator :as curator]
             [cook.datomic :as datomic]
+            ; This explicit require is needed so that mount can see the defstate defined in the cook.plugins.submission namespace.
+            [cook.plugins.submission]
+            ; This explicit require is needed so that mount can see the defstate defined in the cook.plugins.launch namespace.
+            [cook.plugins.launch]
             [cook.impersonation :refer (impersonation-authorized-wrapper)]
             [cook.mesos.pool :as pool]
-            ; This explicit require is needed so that mount can see the defstate defined in this namespace.
+            ; This explicit require is needed so that mount can see the defstate defined in the cook.rate-limit namespace.
             ; cook.rate-limit and everything else under cook.mesos.api is normally hidden from mount's defstate because
             ; cook.mesos.api is loaded via util/lazy-load-var, not via 'ns :require'
             [cook.rate-limit]

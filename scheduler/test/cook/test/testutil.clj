@@ -17,9 +17,12 @@
 (ns cook.test.testutil
   (:use clojure.test)
   (:require [clj-logging-config.log4j :as log4j-conf]
+            [clj-time.core :as t]
             [clojure.core.async :as async]
             [clojure.core.cache :as cache]
+            [clojure.string :as str]
             [clojure.tools.logging :as log]
+            [cook.plugins.definitions :refer (JobSubmissionValidator JobLaunchFilter)]
             [cook.impersonation :refer (create-impersonation-middleware)]
             [cook.mesos.api :as api]
             [cook.mesos.schema :as schema]
@@ -291,7 +294,12 @@
     "Given an optional config map, initializes the config state"
     [& {:keys [config], :or nil}]
     (mount/stop)
-    (mount/start-with-args (merge minimal-config config) #'cook.config/config #'cook.rate-limit/job-launch-rate-limiter #'cook.rate-limit/global-job-launch-rate-limiter)))
+    (mount/start-with-args (merge minimal-config config)
+                           #'cook.config/config
+                           #'cook.rate-limit/job-launch-rate-limiter
+                           #'cook.rate-limit/global-job-launch-rate-limiter
+                           #'cook.plugins.launch/plugin-object
+                           #'cook.plugins.submission/plugin-object)))
 
 (defn wait-for
   "Invoke predicate every interval (default 10) seconds until it returns true,
@@ -328,3 +336,34 @@
   (with-redefs
     [rate-limit/job-submission-rate-limiter rate-limit/AllowAllRateLimiter]
     (api/create-jobs! conn context)))
+
+;; Accept or reject based on the name of the job.
+(def fake-submission-plugin
+  (reify JobSubmissionValidator
+    (check-job-submission-default [this] {:status :rejected :message "Too slow"})
+    (check-job-submission [this {:keys [name] :as job-map}]
+      (if (str/starts-with? name "accept")
+        {:status :accepted :cache-expires-at (-> 1 t/seconds t/from-now)}
+        {:status :rejected :cache-expires-at (-> 1 t/seconds t/from-now) :message "Explicitly rejected by plugin"}))))
+
+(def reject-submission-plugin
+  (reify JobSubmissionValidator
+    (check-job-submission-default [this] {:status :rejected :message "Default Rejected"})
+    (check-job-submission [this _]
+      {:status :rejected :message "Explicit-reject by test plugin"})))
+
+(def accept-submission-plugin
+  (reify JobSubmissionValidator
+    (check-job-submission-default [this] {:status :rejected :message "Default Rejected"})
+    (check-job-submission [this _]
+      {:status :accepted :message "Explicit-accept by test plugin"})))
+
+(def defer-launch-plugin
+  (reify JobLaunchFilter
+    (check-job-launch [this _]
+      {:status :deferred :message "Explicit-deferred by test plugin" :cache-expires-at (-> -1 t/seconds t/from-now)})))
+
+(def accept-launch-plugin
+  (reify JobLaunchFilter
+    (check-job-launch [this _]
+      {:status :accepted :message "Explicit-accept by test plugin" :cache-expires-at (-> -1 t/seconds t/from-now)})))

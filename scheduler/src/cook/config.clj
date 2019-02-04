@@ -406,7 +406,18 @@
                                             :cost-endpoint (get fitness-calculator :cost-endpoint nil)
                                             :data-locality-weight (get fitness-calculator :data-locality-weight 0.95)
                                             :launch-wait-seconds (get fitness-calculator :launch-wait-seconds 60)
-                                            :update-interval-ms (get fitness-calculator :update-interval-ms nil)}))}))
+                                            :update-interval-ms (get fitness-calculator :update-interval-ms nil)}))
+     :plugins (fnk [[:config {plugins {}}]]
+                (let [{:keys [job-launch-filter job-submission-validator]} plugins]
+                  {:job-launch-filter
+                   (merge
+                     {:age-out-last-seen-deadline-minutes 10
+                      :age-out-first-seen-deadline-minutes 600
+                      :age-out-seen-count 10}
+                     job-launch-filter)
+                   :job-submission-validator
+                   (merge {:batch-timeout-seconds 40}
+                          job-submission-validator)}))}))
 
 (defn read-config
   "Given a config file path, reads the config and returns the map"
@@ -484,3 +495,23 @@
   "Returns the fitness calculator specified by fitness-calculator, or the default if nil"
   [fitness-calculator]
   (config-string->fitness-calculator (or fitness-calculator default-fitness-calculator)))
+
+(defn batch-timeout-seconds-config
+  "Used by job submission plugin."
+  []
+  (-> config :settings :plugins :job-submission-validator :batch-timeout-seconds t/seconds))
+
+(defn age-out-last-seen-deadline-minutes-config
+  "Used by job launch plugin."
+  []
+  (-> config :settings :plugins :job-launch-filter :age-out-last-seen-deadline-minutes t/minutes))
+
+(defn age-out-first-seen-deadline-minutes-config
+  "Used by job launch plugin."
+  []
+  (-> config :settings :plugins :job-launch-filter :age-out-first-seen-deadline-minutes t/minutes))
+
+(defn age-out-seen-count-config
+  "Used by job launch plugin."
+  []
+  (-> config :settings :plugins :job-launch-filter :age-out-seen-count))

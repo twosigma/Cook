@@ -47,11 +47,13 @@ esac
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 NAME=cook-scheduler-${COOK_PORT}
 
+echo "About to: Clean up existing image"
 if [ "$(docker ps -aq -f name=${NAME})" ]; then
     # Cleanup
     docker stop ${NAME}
 fi
 
+echo "About to: Check minimesos information"
 $(${DIR}/../../travis/minimesos info | grep MINIMESOS)
 EXIT_CODE=$?
 if [ ${EXIT_CODE} -eq 0 ]
@@ -81,6 +83,7 @@ case "$COOK_EXECUTOR" in
     exit 1
 esac
 
+echo "About to: Setup and check docker networking"
 if [ -z "$(docker network ls -q -f name=cook_nw)" ];
 then
     # Using a separate network allows us to access hosts by name (cook-scheduler-12321)
@@ -101,6 +104,7 @@ else
     COOK_ZOOKEEPER_LOCAL=true
 fi
 
+echo "About to: Setup data local service"
 DATA_LOCAL_IP=$(docker inspect data-local | jq -r '.[].NetworkSettings.IPAddress // empty')
 if [[ -z "${DATA_LOCAL_IP}" ]];
 then
@@ -158,8 +162,11 @@ docker create \
     -v ${DIR}/../log:/opt/cook/log \
     cook-scheduler:latest ${COOK_CONFIG:-}
 
+echo "About to: Connect cook networking"
 docker network connect bridge ${NAME}
 docker network connect cook_nw ${NAME}
+
+echo "About to: 'docker start ${NAME}'"
 docker start ${NAME}
 
 echo "Attaching to container..."

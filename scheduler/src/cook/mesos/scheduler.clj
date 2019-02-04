@@ -26,6 +26,7 @@
             [clojure.tools.logging :as log]
             [cook.config :as config]
             [cook.datomic :as datomic]
+            [cook.plugins.launch :as launch-plugin]
             [cook.mesos.constraints :as constraints]
             [cook.mesos.data-locality :as dl]
             [cook.mesos.dru :as dru]
@@ -620,6 +621,7 @@
                (filter-based-on-quota user->quota user->usage)
                (filter (fn [job] (util/job-allowed-to-start? db job)))
                (filter user-within-launch-rate-limit?-fn)
+               (filter launch-plugin/filter-job-launches)
                (take num-considerable)
                ; Force this to be taken eagerly so that the log line is accurate.
                (doall))]
