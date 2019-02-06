@@ -17,8 +17,12 @@ Custom defaults may be provided for all commands.
 Multiple clusters are supported via configuration.
 
 In order to use the Cook CLI, you’ll need a configuration file. 
-`cs` looks first for a base `.cs.json` file in `${DIR}/.cs.json`, `${DIR}/../.cs.json`, and `${DIR}/../config/.cs.json`, where `${DIR}` is the location of the `cs` executable.
-It then looks for a `.cs.json` file in the current directory, and then for a `.cs.json` file in your home directory, and overwrites any properties in the base `.cs.json` file.
+`cs` uses a default `.cs.json` file located in either `${DIR}/.cs.json`, `${DIR}/../.cs.json`, or `${DIR}/../config/.cs.json`, where `${DIR}` is the location of the `cs` executable.
+This allows you to roll out configuration changes (such as adding a new cluster) without updating the configuration files of all end users.
+If a default `.cs.json` file is not found, an empty configuration is used.
+
+Users can also add and overwrite any properties in the default `.cs.json` file using a local `.cs.json` file.
+`cs` first looks for this `.cs.json` file in your current directory, and then for this `.cs.json` file in your home directory.
 The path to this file may also be provided manually via the command line with the `--config` option.
 
 There is a sample `.cs.json` file included in this directory, which looks something like this:
