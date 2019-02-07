@@ -85,7 +85,7 @@ def run(args):
     if action is None:
         parser.print_help()
     else:
-        config_map = configuration.load_config_with_defaults(config_path)
+        _, config_map = configuration.load_config_with_defaults(config_path)
         try:
             metrics.initialize(config_map)
             metrics.inc('command.%s.runs' % action)
