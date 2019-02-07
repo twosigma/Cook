@@ -59,7 +59,7 @@ def __load_base_config():
     return config
 
 
-def load_config(config_path):
+def __load_local_config(config_path):
     """
     Loads the configuration map, using the provided config_path if not None,
     otherwise, searching the additional config paths for a valid JSON config file
@@ -81,11 +81,11 @@ def load_config_with_defaults(config_path=None):
     base_config = __load_base_config()
     base_config = base_config or {}
     base_config = deep_merge(DEFAULT_CONFIG, base_config)
-    _, config = load_config(config_path)
+    config_path, config = __load_local_config(config_path)
     config = config or {}
     config = deep_merge(base_config, config)
     logging.debug(f'using configuration: {config}')
-    return config
+    return config_path, config
 
 
 def add_defaults(action, defaults):

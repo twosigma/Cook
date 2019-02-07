@@ -209,6 +209,28 @@ class temp_config_file:
         os.remove(self.path)
 
 
+class temp_base_config_file:
+    """
+    A context manager used to generate and subsequently delete a temporary
+    base config file for the CLI. Takes as input the config dictionary to use.
+    """
+
+    def __init__(self, config):
+        # Get the location of the cs executable so we can add a default `.cs.json` file
+        cp = subprocess.run(args=['which', command()], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        base_exec = cp.stdout.decode("utf-8").rstrip('\n')
+        base_dir = os.path.dirname(os.path.abspath(base_exec))
+        self.path = os.path.join(base_dir, '.cs.json')
+        self.config = config
+
+    def __enter__(self):
+        write_json(self.path, self.config)
+        return self.path
+
+    def __exit__(self, _, __, ___):
+        os.remove(self.path)
+
+
 def jobs(cook_url=None, jobs_flags=None, flags=None):
     """Invokes the jobs subcommand"""
     args = f'jobs {jobs_flags}' if jobs_flags else 'jobs'

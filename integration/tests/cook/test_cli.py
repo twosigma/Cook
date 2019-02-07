@@ -1308,6 +1308,34 @@ def dummy_ls_entries(_, __, ___):
             self.assertEqual('export FOO=0; exit ${FOO:-1}', jobs[0]['command'])
             self.assertEqual('success', jobs[0]['state'])
 
+    def test_base_config_file(self):
+        base_config = {'defaults': {'submit': {'command-prefix': 'export FOO=0; '}}, 'other': 'bar'}
+
+        with cli.temp_base_config_file(base_config) as base_config:
+            # Get entries in base config file
+            cp = cli.config_get('defaults.submit.command-prefix')
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            self.assertEqual('export FOO=0; \n', cli.decode(cp.stdout))
+
+            cp = cli.config_get('other')
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            self.assertEquals('bar\n', cli.decode(cp.stdout))
+
+            # Overwrite defaults with specified config file
+            config = {'defaults': {'submit': {'command-prefix': 'export FOO=1; '}}}
+            with cli.temp_config_file(config) as path:
+                flags = '--config %s' % path
+
+                # Verify default config is overwritten
+                cp = cli.config_get('defaults.submit.command-prefix', flags=flags)
+                self.assertEqual(0, cp.returncode, cp.stderr)
+                self.assertEqual('export FOO=1; \n', cli.decode(cp.stdout))
+
+                # Verify other config is still loaded
+                cp = cli.config_get('other', flags=flags)
+                self.assertEqual(0, cp.returncode, cp.stderr)
+                self.assertEqual('bar\n', cli.decode(cp.stdout))
+
     def test_config_command_basics(self):
         config = {'defaults': {'submit': {'command-prefix': 'export FOO=0; '}}}
         with cli.temp_config_file(config) as path:
@@ -1346,16 +1374,6 @@ def dummy_ls_entries(_, __, ___):
         with cli.temp_config_file(config) as path:
             flags = '--config %s' % path
 
-            # Set an entry that doesn't exist
-            cp = cli.config_get('defaults.submit.command-prefix', flags=flags)
-            self.assertEqual(1, cp.returncode, cp.stderr)
-            self.assertIn('Configuration entry defaults.submit.command-prefix not found.', cli.decode(cp.stderr))
-            cp = cli.config_set('defaults.submit.command-prefix', '"export FOO=1; "', flags=flags)
-            self.assertEqual(0, cp.returncode, cp.stderr)
-            cp = cli.config_get('defaults.submit.command-prefix', flags=flags)
-            self.assertEqual(0, cp.returncode, cp.stderr)
-            self.assertEqual('export FOO=1; \n', cli.decode(cp.stdout))
-
             # Set at the top level
             cp = cli.config_get('foo', flags=flags)
             self.assertEqual(1, cp.returncode, cp.stderr)
@@ -1370,6 +1388,16 @@ def dummy_ls_entries(_, __, ___):
             cp = cli.config_get('foo', flags=flags)
             self.assertEqual(0, cp.returncode, cp.stderr)
             self.assertEqual('baz\n', cli.decode(cp.stdout))
+
+            # Set nested entry
+            cp = cli.config_get('new.nested.entry', flags=flags)
+            self.assertEqual(1, cp.returncode, cp.stderr)
+            self.assertIn('Configuration entry new.nested.entry not found.', cli.decode(cp.stderr))
+            cp = cli.config_set('new.nested.entry', '"exists"', flags=flags)
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            cp = cli.config_get('new.nested.entry', flags=flags)
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            self.assertEqual('exists\n', cli.decode(cp.stdout))
 
             # Set non-string types
             cp = cli.config_set('int', '12345', flags=flags)

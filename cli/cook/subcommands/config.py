@@ -1,7 +1,7 @@
 from cook.util import print_info
 
 from cook import configuration, terminal
-from cook.configuration import load_config
+from cook.configuration import load_config_with_defaults
 
 
 def get_in(dct, keys):
@@ -98,14 +98,13 @@ def config(_, args, config_path):
         raise Exception(f'You can only provide a single key.')
 
     keys = key[0].split('.')
-    config_path, config_map = load_config(config_path)
-
-    if not config_path:
-        raise Exception(f'Unable to locate configuration file.')
+    config_path, config_map = load_config_with_defaults(config_path)
 
     if get:
         return get_config_value(config_map, keys)
     else:
+        if not config_path:
+            raise Exception(f'Unable to locate configuration file.')
         return set_config_value(config_map, keys, value, config_path)
 
 
@@ -117,3 +116,5 @@ def register(add_parser, _):
     parser.add_argument('key', nargs=1)
     parser.add_argument('value', nargs='?')
     return config
+
+
