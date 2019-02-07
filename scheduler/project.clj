@@ -133,8 +133,7 @@
   :java-source-paths ["java"]
 
   :profiles
-  {
-   ; By default, activate the :oss profile (explained below)
+  {; By default, activate the :oss profile (explained below)
    :default [:base :system :user :provided :dev :oss]
 
    ; The :oss profile exists so that Cook can be built with a more

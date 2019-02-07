@@ -840,7 +840,7 @@
         hosts (map (fn [x] (str "test-host-" x)) (range 10))
         make-offers (fn [] (map #(make-vm-offer framework-id % (make-uuid)) hosts))
         group-id (create-dummy-group conn :host-placement {:host-placement/type :host-placement.type/unique})
-                                        ;        group-id (create-dummy-group conn)
+        ;        group-id (create-dummy-group conn)
         jobs (doall (take 200 (repeatedly (fn [] (create-dummy-job conn :group group-id)))))
         group (d/entity (d/db conn) group-id)]
     (println  "============ match offers with group constraints timing ============")
@@ -1501,7 +1501,7 @@
             pool->matched-job-uuids {:gpu #{}
                                      :normal (set (range 1 5))}
             expected-pool->pending-jobs {:gpu (create-jobs-in-range 10 15)
-                                             :normal (create-jobs-in-range 5 10)}]
+                                         :normal (create-jobs-in-range 5 10)}]
         (is (= (:gpu expected-pool->pending-jobs)
                (:gpu (sched/remove-matched-jobs-from-pending-jobs pool->pending-jobs (:gpu pool->matched-job-uuids) :gpu))))
         (is (= (:normal expected-pool->pending-jobs)
@@ -1890,8 +1890,8 @@
                                               user->quota (or user-quota {test-user {:count 10, :cpus 50, :mem 32768, :gpus 10}})
                                               mesos-run-as-user nil
                                               result (sched/handle-resource-offers!
-                                                      conn driver fenzo framework-id pool-name->pending-jobs-atom mesos-run-as-user
-                                                      user->usage user->quota num-considerable offers-chan offers rebalancer-reservation-atom :normal)]
+                                                       conn driver fenzo framework-id pool-name->pending-jobs-atom mesos-run-as-user
+                                                       user->usage user->quota num-considerable offers-chan offers rebalancer-reservation-atom :normal)]
                                           result))]
       (testing "enough offers for all normal jobs"
         (let [num-considerable 10

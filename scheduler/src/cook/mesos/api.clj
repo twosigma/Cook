@@ -1268,7 +1268,7 @@
        [false {::error (str "You are not authorized to " action " the following jobs: "
                             (str/join \space (remove authorized? uuids)))}])))
   ([conn is-authorized-fn ctx uuids]
-    (job-request-allowed? conn is-authorized-fn ctx uuids "view / access"))
+   (job-request-allowed? conn is-authorized-fn ctx uuids "view / access"))
   ([conn is-authorized-fn ctx]
    (let [uuids (job-uuids-from-context conn ctx)]
      (job-request-allowed? conn is-authorized-fn ctx uuids))))
@@ -1839,47 +1839,47 @@
 (defn waiting-jobs
   [mesos-pending-jobs-fn is-authorized-fn mesos-leadership-atom leader-selector]
   (liberator/resource
-   :available-media-types ["application/json"]
-   :allowed-methods [:get]
-   :as-response (fn [data ctx] {:body data})
-   :malformed? (fn [ctx]
-                 (try
-                   (if-let [limit (Integer/parseInt (get-in ctx [:request :query-params "limit"] "1000"))]
-                     (if-not (pos? limit)
-                       [true {::error (str "Limit " limit " most be positive")}]
-                       [false {::limit limit}]))
-                   (catch Exception e
-                     [true {::error (str (.getMessage e))}])))
-   :allowed? (fn [ctx]
-               (let [user (get-in ctx [:request :authorization/user])
-                     impersonator (get-in ctx [:request :authorization/impersonator])]
-                 (if (is-authorized-fn user :read impersonator {:owner ::system :item :queue})
-                   true
-                   (do
-                     (log/info user " has failed auth")
-                     [false {::error "Unauthorized"}]))))
-   :exists? (fn [_] [@mesos-leadership-atom {}])
-   :existed? (fn [_] [true {}])
-   :moved-temporarily? (fn [ctx]
-                         (if @mesos-leadership-atom
-                           [false {}]
-                           (let [leader-id (-> leader-selector .getLeader .getId)
-                                 leader-match (re-matcher leader-hostname-regex leader-id)]
-                             (if (.matches leader-match)
-                               (let [leader-hostname (.group leader-match 1)
-                                     leader-port (.group leader-match 2)
-                                     leader-protocol (.group leader-match 3)]
-                                 [true {:location (str leader-protocol "://" leader-hostname ":" leader-port "/queue")}])
-                               (throw (IllegalStateException.
-                                       (str "Unable to parse leader id: " leader-id)))))))
-   :handle-forbidden (fn [ctx]
-                       (log/info (get-in ctx [:request :authorization/user]) " is not authorized to access queue")
-                       (render-error ctx))
-   :handle-malformed render-error
-   :handle-ok (fn [ctx]
-                (pc/map-vals (fn [queue]
-                               (take (::limit ctx) queue))
-                             (mesos-pending-jobs-fn)))))
+    :available-media-types ["application/json"]
+    :allowed-methods [:get]
+    :as-response (fn [data ctx] {:body data})
+    :malformed? (fn [ctx]
+                  (try
+                    (if-let [limit (Integer/parseInt (get-in ctx [:request :query-params "limit"] "1000"))]
+                      (if-not (pos? limit)
+                        [true {::error (str "Limit " limit " most be positive")}]
+                        [false {::limit limit}]))
+                    (catch Exception e
+                      [true {::error (str (.getMessage e))}])))
+    :allowed? (fn [ctx]
+                (let [user (get-in ctx [:request :authorization/user])
+                      impersonator (get-in ctx [:request :authorization/impersonator])]
+                  (if (is-authorized-fn user :read impersonator {:owner ::system :item :queue})
+                    true
+                    (do
+                      (log/info user " has failed auth")
+                      [false {::error "Unauthorized"}]))))
+    :exists? (fn [_] [@mesos-leadership-atom {}])
+    :existed? (fn [_] [true {}])
+    :moved-temporarily? (fn [ctx]
+                          (if @mesos-leadership-atom
+                            [false {}]
+                            (let [leader-id (-> leader-selector .getLeader .getId)
+                                  leader-match (re-matcher leader-hostname-regex leader-id)]
+                              (if (.matches leader-match)
+                                (let [leader-hostname (.group leader-match 1)
+                                      leader-port (.group leader-match 2)
+                                      leader-protocol (.group leader-match 3)]
+                                  [true {:location (str leader-protocol "://" leader-hostname ":" leader-port "/queue")}])
+                                (throw (IllegalStateException.
+                                         (str "Unable to parse leader id: " leader-id)))))))
+    :handle-forbidden (fn [ctx]
+                        (log/info (get-in ctx [:request :authorization/user]) " is not authorized to access queue")
+                        (render-error ctx))
+    :handle-malformed render-error
+    :handle-ok (fn [ctx]
+                 (pc/map-vals (fn [queue]
+                                (take (::limit ctx) queue))
+                              (mesos-pending-jobs-fn)))))
 
 ;;
 ;; /running
@@ -1888,29 +1888,29 @@
 (defn running-jobs
   [conn is-authorized-fn]
   (liberator/resource
-   :available-media-types ["application/json"]
-   :allowed-methods [:get]
-   :as-response (fn [data ctx] {:body data})
-   :malformed? (fn [ctx]
-                 (try
-                   (if-let [limit (Integer/parseInt (get-in ctx [:request :query-params "limit"] "1000"))]
-                     (if-not (pos? limit)
-                       [true {::error (str "Limit " limit " most be positive")}]
-                       [false {::limit limit}]))
-                   (catch Exception e
-                     [true {::error (str (.getMessage e))}])))
-   :allowed? (fn [ctx]
-               (let [user (get-in ctx [:request :authorization/user])
-                     impersonator (get-in ctx [:request :authorization/impersonator])]
-                 (if (is-authorized-fn user :read impersonator {:owner ::system :item :running})
-                   true
-                   [false {::error "Unauthorized"}])))
-   :handle-forbidden render-error
-   :handle-malformed render-error
-   :handle-ok (fn [ctx]
-                (->> (util/get-running-task-ents (db conn))
-                     (take (::limit ctx))
-                     (map d/touch)))))
+    :available-media-types ["application/json"]
+    :allowed-methods [:get]
+    :as-response (fn [data ctx] {:body data})
+    :malformed? (fn [ctx]
+                  (try
+                    (if-let [limit (Integer/parseInt (get-in ctx [:request :query-params "limit"] "1000"))]
+                      (if-not (pos? limit)
+                        [true {::error (str "Limit " limit " most be positive")}]
+                        [false {::limit limit}]))
+                    (catch Exception e
+                      [true {::error (str (.getMessage e))}])))
+    :allowed? (fn [ctx]
+                (let [user (get-in ctx [:request :authorization/user])
+                      impersonator (get-in ctx [:request :authorization/impersonator])]
+                  (if (is-authorized-fn user :read impersonator {:owner ::system :item :running})
+                    true
+                    [false {::error "Unauthorized"}])))
+    :handle-forbidden render-error
+    :handle-malformed render-error
+    :handle-ok (fn [ctx]
+                 (->> (util/get-running-task-ents (db conn))
+                      (take (::limit ctx))
+                      (map d/touch)))))
 
 ;;
 ;; /retry
@@ -2305,7 +2305,7 @@
 (def UserUsageParams
   "User usage endpoint query string parameters"
   (assoc UserParam
-         (s/optional-key :group_breakdown) s/Bool))
+    (s/optional-key :group_breakdown) s/Bool))
 
 (def UsageInfo
   "Schema for a dictionary of job resource usage info."
@@ -2345,8 +2345,8 @@
       (let [breakdowns (->> jobs
                             (group-by util/job-ent->group-uuid)
                             (pc/map-vals (juxt #(mapv :job/uuid %)
-                                            util/total-resources-of-jobs
-                                            #(-> % first :group/_job first))))]
+                                               util/total-resources-of-jobs
+                                               #(-> % first :group/_job first))))]
         {:grouped (for [[guuid [job-uuids usage group]] breakdowns
                         :when guuid]
                     {:group {:uuid (:group/uuid group)
@@ -2496,27 +2496,27 @@
                         (catch NumberFormatException e
                           [true {::error (.toString e)}])))))
     :allowed? (fn [ctx]
-               (let [{limit ::limit
-                      user ::user
-                      since-hours-ago ::since-hours-ago
-                      start-ms ::start-ms
-                      end-ms ::end-ms} ctx
-                     request-user (get-in ctx [:request :authorization/user])
-                     impersonator (get-in ctx [:request :authorization/impersonator])]
-                 (cond
-                   (not (is-authorized-fn request-user :get impersonator {:owner user :item :job}))
-                   [false {::error (str "You are not authorized to list jobs for " user)}]
+                (let [{limit ::limit
+                       user ::user
+                       since-hours-ago ::since-hours-ago
+                       start-ms ::start-ms
+                       end-ms ::end-ms} ctx
+                      request-user (get-in ctx [:request :authorization/user])
+                      impersonator (get-in ctx [:request :authorization/impersonator])]
+                  (cond
+                    (not (is-authorized-fn request-user :get impersonator {:owner user :item :job}))
+                    [false {::error (str "You are not authorized to list jobs for " user)}]
 
-                   (not (<= 0 since-hours-ago 168))
-                   [false {::error (str "since-hours-ago must be in the interval [0, 168], (168 hours = 7 days)")}]
+                    (not (<= 0 since-hours-ago 168))
+                    [false {::error (str "since-hours-ago must be in the interval [0, 168], (168 hours = 7 days)")}]
 
-                   (> 1 limit)
-                   [false {::error (str "limit must be positive")}]
+                    (> 1 limit)
+                    [false {::error (str "limit must be positive")}]
 
-                   (and start-ms (> start-ms end-ms))
-                   [false {::error (str "start-ms (" start-ms ") must be before end-ms (" end-ms ")")}]
+                    (and start-ms (> start-ms end-ms))
+                    [false {::error (str "start-ms (" start-ms ") must be before end-ms (" end-ms ")")}]
 
-                   :else true)))
+                    :else true)))
     :handle-malformed ::error
     :handle-forbidden ::error
     :handle-ok (fn [ctx]
@@ -2683,34 +2683,34 @@
   "Handler for return the last update time of data locality"
   [conn]
   (base-cook-handler
-   {:allowed-methods [:get]
-    ; TODO (pschorf) - cache this if it is a performance bottleneck
-    :handle-ok (fn [_]
-                 (let [uuid->datasets (->> (d/db conn)
-                                          util/get-pending-job-ents 
-                                          (filter (fn [j] (not (empty? (:job/datasets j)))))
-                                          (map (fn [j] [(:job/uuid j) (dl/get-dataset-maps j)]))
-                                          (into {}))
-                       datasets->update-time (dl/get-last-update-time)]
-                   (pc/map-vals (fn [datasets]
-                                  (when-let [update-time (get datasets->update-time datasets nil)]
-                                    (tf/unparse iso-8601-format update-time)))
-                                uuid->datasets)))}))
+    {:allowed-methods [:get]
+     ; TODO (pschorf) - cache this if it is a performance bottleneck
+     :handle-ok (fn [_]
+                  (let [uuid->datasets (->> (d/db conn)
+                                            util/get-pending-job-ents
+                                            (filter (fn [j] (not (empty? (:job/datasets j)))))
+                                            (map (fn [j] [(:job/uuid j) (dl/get-dataset-maps j)]))
+                                            (into {}))
+                        datasets->update-time (dl/get-last-update-time)]
+                    (pc/map-vals (fn [datasets]
+                                   (when-let [update-time (get datasets->update-time datasets nil)]
+                                     (tf/unparse iso-8601-format update-time)))
+                                 uuid->datasets)))}))
 
 (defn data-local-cost-handler
   "Handler which returns the data locality costs for a given job"
   [conn]
   (base-cook-handler
-   {:allowed-methods [:get]
-    :exists? (fn [ctx]
-               (let [uuid (get-in ctx [:request :params :uuid])
-                     job-ent (d/entity (d/db conn) [:job/uuid (UUID/fromString uuid)])
-                     datasets (dl/get-dataset-maps job-ent)]
-                 (if-let [costs (get (dl/get-data-local-costs) datasets nil)]
-                   {:costs costs}
-                   false)))
-    :handle-ok (fn [{:keys [costs]}]
-                 costs)}))
+    {:allowed-methods [:get]
+     :exists? (fn [ctx]
+                (let [uuid (get-in ctx [:request :params :uuid])
+                      job-ent (d/entity (d/db conn) [:job/uuid (UUID/fromString uuid)])
+                      datasets (dl/get-dataset-maps job-ent)]
+                  (if-let [costs (get (dl/get-data-local-costs) datasets nil)]
+                    {:costs costs}
+                    false)))
+     :handle-ok (fn [{:keys [costs]}]
+                  costs)}))
 
 (defn- streaming-json-encoder
   "Takes as input the response body which can be converted into JSON,
@@ -3043,21 +3043,21 @@
 
       ; Data locality debug endpoints
       (c-api/context
-       "/data-local/:uuid" []
-       :path-params [uuid :- s/Uuid]
-       (c-api/resource
-        {:produces ["application/json"]
-         :responses {200 {:schema DataLocalCostResponse}}
-         :get {:summary "Returns summary information on the current data locality status"
-               :handler (data-local-cost-handler conn)}}))
+        "/data-local/:uuid" []
+        :path-params [uuid :- s/Uuid]
+        (c-api/resource
+          {:produces ["application/json"]
+           :responses {200 {:schema DataLocalCostResponse}}
+           :get {:summary "Returns summary information on the current data locality status"
+                 :handler (data-local-cost-handler conn)}}))
 
       (c-api/context
-       "/data-local" []
-       (c-api/resource
-        {:produces ["application/json"]
-         :responses {200 {:schema DataLocalUpdateTimeResponse}}
-         :get {:summary "Returns summary information on the current data locality status"
-               :handler (data-local-update-time-handler conn)}}))
+        "/data-local" []
+        (c-api/resource
+          {:produces ["application/json"]
+           :responses {200 {:schema DataLocalUpdateTimeResponse}}
+           :get {:summary "Returns summary information on the current data locality status"
+                 :handler (data-local-update-time-handler conn)}}))
 
       (ANY "/queue" []
         (waiting-jobs mesos-pending-jobs-fn is-authorized-fn mesos-leadership-atom leader-selector))

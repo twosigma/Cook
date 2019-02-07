@@ -460,19 +460,19 @@
    function that takes a group uuid and returns a set of task-ids, which correspond to the tasks that will be assigned
    during the same Fenzo scheduling cycle as the newly created TaskRequest."
   [db job & {:keys [resources task-id assigned-resources guuid->considerable-cotask-ids reserved-hosts running-cotask-cache]
-          :or {resources (util/job-ent->resources job)
-               task-id (str (d/squuid))
-               assigned-resources (atom nil)
-               guuid->considerable-cotask-ids (constantly #{})
-               running-cotask-cache (atom (cache/fifo-cache-factory {} :threshold 1))
-               reserved-hosts #{}}}]
+             :or {resources (util/job-ent->resources job)
+                  task-id (str (d/squuid))
+                  assigned-resources (atom nil)
+                  guuid->considerable-cotask-ids (constantly #{})
+                  running-cotask-cache (atom (cache/fifo-cache-factory {} :threshold 1))
+                  reserved-hosts #{}}}]
   (let [constraints (-> (constraints/make-fenzo-job-constraints job)
                         (conj (constraints/build-rebalancer-reservation-constraint reserved-hosts))
                         (into
                           (remove nil?
                                   (mapv (fn make-group-constraints [group]
                                           (constraints/make-fenzo-group-constraint
-                                           db group #(guuid->considerable-cotask-ids (:group/uuid group)) running-cotask-cache))
+                                            db group #(guuid->considerable-cotask-ids (:group/uuid group)) running-cotask-cache))
                                         (:group/_job job)))))
         needs-gpus? (constraints/job-needs-gpus? job)
         scalar-requests (reduce (fn [result resource]
@@ -616,15 +616,15 @@
             (when is-rate-limited?
               (swap! user->rate-limit-count update user #(inc (or % 0))))
             (not (and is-rate-limited? enforcing-job-launch-rate-limit?))))
-          considerable-jobs
-          (->> pending-jobs
-               (filter-based-on-quota user->quota user->usage)
-               (filter (fn [job] (util/job-allowed-to-start? db job)))
-               (filter user-within-launch-rate-limit?-fn)
-               (filter launch-plugin/filter-job-launches)
-               (take num-considerable)
-               ; Force this to be taken eagerly so that the log line is accurate.
-               (doall))]
+        considerable-jobs
+        (->> pending-jobs
+             (filter-based-on-quota user->quota user->usage)
+             (filter (fn [job] (util/job-allowed-to-start? db job)))
+             (filter user-within-launch-rate-limit?-fn)
+             (filter launch-plugin/filter-job-launches)
+             (take num-considerable)
+             ; Force this to be taken eagerly so that the log line is accurate.
+             (doall))]
     (swap! pool->user->number-jobs update pool-name (constantly @user->number-jobs))
     (log/info "Users whose job launches are rate-limited " @user->rate-limit-count)
     considerable-jobs))
