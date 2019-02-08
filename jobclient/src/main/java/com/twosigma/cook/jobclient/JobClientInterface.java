@@ -40,6 +40,20 @@ public interface JobClientInterface {
         throws JobClientException;
 
     /**
+     * Submit a list of jobs to Cook scheduler. It will <br>
+     * -- firstly associate each job with the provided {@link JobListener}<br>
+     * -- secondly submit these jobs to Cook scheduler and track them until they complete.<br>
+     * Behaves identically to {@link #submit(List) submit(jobs)} if <code>listener</code> is <code>null</code>.
+     *
+     * @param jobs The list of jobs expected to submit.
+     * @param pool The pool for the jobs to run in
+     * @param listener specifies an instance of {@link JobListener} listening all job status updates.
+     * @throws JobClientException
+     */
+    public void submit(List<Job> jobs, String pool, JobListener listener)
+            throws JobClientException;
+
+    /**
      * Submits jobs and groups to Cook scheduler and start to track the jobs until they complete. Note that jobs
      * submitted through this API will not be listened by any listener.
      *
@@ -50,6 +64,19 @@ public interface JobClientInterface {
      */
     public void submitWithGroups(List<Job> jobs, List<Group> groups)
         throws JobClientException;
+
+    /**
+     * Submits jobs and groups to Cook scheduler and start to track the jobs until they complete. Note that jobs
+     * submitted through this API will not be listened by any listener.
+     *
+     * @param jobs specifies a list of {@link Job}s to be submitted.
+     * @param pool The pool for the jobs to run in
+     * @param groups specifies a list of {@link Group}s to be submitted.
+     * @return the response string from Cook scheduler rest endpoint.
+     * @throws JobClientException
+     */
+    public void submitWithGroups(List<Job> jobs, String pool, List<Group> groups)
+            throws JobClientException;
 
     /**
      * Submit a list of jobs and groups to Cook scheduler. It will <br>
@@ -67,6 +94,22 @@ public interface JobClientInterface {
         throws JobClientException;
 
     /**
+     * Submit a list of jobs and groups to Cook scheduler. It will <br>
+     * -- firstly associate each group with the provided {@link JobListener}<br>
+     * -- secondly submit these jobs to Cook scheduler and track them until they complete.<br>
+     * Behaves identically to {@link #submitWithGroups(List, List) submit(jobs, groups)}
+     * if <code>listener</code> is <code>null</code>.
+     *
+     * @param jobs The list of jobs to be submitted.
+     * @param pool The pool the jobs will run in
+     * @param groups The list of groups to be submitted.
+     * @param listener specifies an instance of {@link JobListener} listening all job status updates.
+     * @throws JobClientException
+     */
+    public void submitWithGroups(List<Job> jobs, String pool, List<Group> groups, GroupListener listener)
+            throws JobClientException;
+
+    /**
      * Submit a list of jobs to Cook scheduler and start to track these jobs until they complete. Note that jobs
      * submitted through this API will not be listened by any listener.
      *
@@ -76,6 +119,18 @@ public interface JobClientInterface {
      */
     public void submit(List<Job> jobs)
         throws JobClientException;
+
+    /**
+     * Submit a list of jobs to Cook scheduler and start to track these jobs until they complete. Note that jobs
+     * submitted through this API will not be listened by any listener.
+     *
+     * @param jobs specifies a list of {@link Job}s to be submitted.
+     * @param pool The pool the jobs will run in
+     * @return the response string from Cook scheduler rest endpoint.
+     * @throws JobClientException
+     */
+    public void submit(List<Job> jobs, String pool)
+            throws JobClientException;
 
     /**
      * Query jobs for a given list of job {@link UUID}s. If the list size is larger that the
