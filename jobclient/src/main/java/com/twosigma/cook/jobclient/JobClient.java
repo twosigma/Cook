@@ -623,20 +623,34 @@ public class JobClient implements Closeable, JobClientInterface {
 
     @Override
     public void submit(List<Job> jobs, JobListener listener)
+            throws JobClientException {
+        submit(jobs, null, listener, null);
+    }
+
+    @Override
+    public void submit(List<Job> jobs, String pool, JobListener listener)
         throws JobClientException {
-        submit(jobs, listener, null);
+        submit(jobs, pool, listener, null);
+    }
+
+    @Override
+    public void submitWithGroups(List<Job> jobs, String pool, List<Group> groups)
+        throws JobClientException {
+        submitWithGroups(jobs, pool, groups, null, null);
     }
 
     @Override
     public void submitWithGroups(List<Job> jobs, List<Group> groups)
-        throws JobClientException {
-        submitWithGroups(jobs, groups, null, null);
+            throws JobClientException {
+        submitWithGroups(jobs, null, groups);
     }
+
+
 
     /**
      * @see #submitWithGroups(List, List, GroupListener)
      */
-    private void submitWithGroups(List<Job> jobs, List<Group> groups, GroupListener listener, String impersonatedUser)
+    private void submitWithGroups(List<Job> jobs, String pool, List<Group> groups, GroupListener listener, String impersonatedUser)
         throws JobClientException {
         // It is ok to change the listeners map even if the actual submission fails because it won't
         // update the internal status map {@code _activeUUIDTOJob}.
@@ -652,6 +666,9 @@ public class JobClient implements Closeable, JobClientInterface {
             JSONObject jobsJSON = Job.jsonizeJob(jobs);
             json.put("groups", groupsJSON.getJSONArray("groups"));
             json.put("jobs", jobsJSON.getJSONArray("jobs"));
+            if (pool != null) {
+                json.put("pool", pool);
+            }
         } catch (JSONException e) {
             throw new JobClientException("Can not jsonize jobs or groups to submit.", e);
         }
@@ -728,7 +745,13 @@ public class JobClient implements Closeable, JobClientInterface {
     @Override
     public void submitWithGroups(List<Job> jobs, List<Group> groups, GroupListener listener)
         throws JobClientException {
-        submitWithGroups(jobs, groups, listener, null);
+        submitWithGroups(jobs, null, groups, listener);
+    }
+
+    @Override
+    public void submitWithGroups(List<Job> jobs, String pool, List<Group> groups, GroupListener listener)
+            throws JobClientException {
+        submitWithGroups(jobs, pool, groups, listener, null);
     }
 
     private JobClientException releaseAndCreateException(HttpRequestBase httpRequest, HttpResponse httpResponse, final String msg, final Throwable cause) {
@@ -797,13 +820,18 @@ public class JobClient implements Closeable, JobClientInterface {
     @Override
     public void submit(List<Job> jobs)
         throws JobClientException {
-        submit(jobs, null, null);
+        submit(jobs, (String) null);
+    }
+
+    @Override
+    public void submit(List<Job> jobs, String pool) throws JobClientException {
+        submit(jobs, pool, null);
     }
 
     /**
      * @see #submit(List, JobListener).
      */
-    private void submit(List<Job> jobs, JobListener listener, String impersonatedUser)
+    private void submit(List<Job> jobs, String pool, JobListener listener, String impersonatedUser)
         throws JobClientException {
         // It is ok to change the listeners map even if the actual submission fails because it won't
         // update the internal status map {@code _activeUUIDTOJob}.
@@ -816,6 +844,9 @@ public class JobClient implements Closeable, JobClientInterface {
         JSONObject json;
         try {
             json = Job.jsonizeJob(jobs);
+            if (pool != null) {
+                json.put("pool", pool);
+            }
         } catch (JSONException e) {
             throw new JobClientException("Can not jsonize jobs to submit.", e);
         }
@@ -1224,25 +1255,50 @@ public class JobClient implements Closeable, JobClientInterface {
         @Override
         public void submit(List<Job> jobs, JobListener listener)
             throws JobClientException {
-            JobClient.this.submit(jobs, listener, _impersonatedUser);
+            submit(jobs, null, listener);
         }
+
+        @Override
+        public void submit(List<Job> jobs, String pool, JobListener listener)
+                throws JobClientException {
+            JobClient.this.submit(jobs, pool, listener, _impersonatedUser);
+        }
+
 
         @Override
         public void submitWithGroups(List<Job> jobs, List<Group> groups)
             throws JobClientException {
-            JobClient.this.submitWithGroups(jobs, groups, null, _impersonatedUser);
+            submitWithGroups(jobs, null, groups);
+        }
+
+        @Override
+        public void submitWithGroups(List<Job> jobs, String pool, List<Group> groups)
+                throws JobClientException {
+            JobClient.this.submitWithGroups(jobs, pool, groups, null, _impersonatedUser);
         }
 
         @Override
         public void submitWithGroups(List<Job> jobs, List<Group> groups, GroupListener listener)
             throws JobClientException {
-            JobClient.this.submitWithGroups(jobs, groups, listener, _impersonatedUser);
+            submitWithGroups(jobs, null, groups, listener);
+        }
+
+        @Override
+        public void submitWithGroups(List<Job> jobs, String pool, List<Group> groups, GroupListener listener)
+                throws JobClientException {
+            JobClient.this.submitWithGroups(jobs, pool, groups, listener, _impersonatedUser);
         }
 
         @Override
         public void submit(List<Job> jobs)
             throws JobClientException {
-            JobClient.this.submit(jobs, null, _impersonatedUser);
+            submit(jobs, (String) null);
+        }
+
+        @Override
+        public void submit(List<Job> jobs, String pool)
+                throws JobClientException {
+            JobClient.this.submit(jobs, pool, null, _impersonatedUser);
         }
 
         @Override

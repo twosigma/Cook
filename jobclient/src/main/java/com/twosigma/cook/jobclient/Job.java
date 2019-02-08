@@ -509,7 +509,7 @@ final public class Job {
          * @param pool {@link String} specifies the pool the job is expected to run in.
          * @return this builder.
          */
-        public Builder setPool(String pool) {
+        private Builder setPool(String pool) {
             _pool = pool;
             return this;
         }
@@ -955,9 +955,6 @@ final public class Job {
         }
         if (job._datasets != null) {
             object.put("datasets", job._datasets);
-        }
-        if (job._pool != null) {
-            object.put("pool", job._pool);
         }
         return object;
     }
