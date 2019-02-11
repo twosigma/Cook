@@ -63,17 +63,17 @@
     <dependency>
       <groupId>com.google.guava</groupId>
       <artifactId>guava</artifactId>
-      <version>14.0.1</version>
+      <version>25.1-jre</version>
     </dependency>
     <dependency>
       <groupId>org.json</groupId>
       <artifactId>json</artifactId>
-      <version>20140107</version>
+      <version>20160810</version>
     </dependency>
     <dependency>
       <groupId>org.apache.httpcomponents</groupId>
       <artifactId>httpclient</artifactId>
-      <version>4.3.2</version>
+      <version>4.3.6</version>
     </dependency>
     <dependency>
       <groupId>log4j</groupId>
