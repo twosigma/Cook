@@ -1033,7 +1033,7 @@ def dummy_ls_entries(_, __, ___):
             temp.flush()
             config = {
                 'plugins': {
-                    "retrieve-ls-entries": {
+                    "ls-plugin": {
                         "module-name": "does_not_matter",
                         "path": temp.name,
                         "function-name": "dummy_ls_entries"

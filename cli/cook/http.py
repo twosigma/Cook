@@ -45,6 +45,12 @@ def configure(config):
             raise Exception(f'Encountered unsupported authentication type "{auth_type}".')
 
 
+def __head(url, params=None, **kwargs):
+    """Sends a HEAD with params to the given url"""
+    logging.info(f'HEAD {url} with {params}')
+    return session.head(url, params=params, timeout=timeouts, **kwargs)
+
+
 def __post(url, json_body):
     """Sends a POST with the json payload to the given url"""
     logging.info(f'POST {url} with body {json_body}')

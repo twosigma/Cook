@@ -1,6 +1,7 @@
 import time
 from functools import partial
 
+from cook import plugins
 from cook.mesos import read_file
 from cook.querying import query_unique_and_run, parse_entity_refs
 from cook.util import check_positive, guard_no_cluster
@@ -109,7 +110,8 @@ def tail_for_instance(instance, sandbox_dir, path, num_lines_to_print, follow, f
     Tails the contents of the Mesos sandbox path for the given instance. If follow is truthy, it will
     try and read more data from the file until the user terminates. This assumes files will not shrink.
     """
-    read = partial(read_file, instance=instance, sandbox_dir=sandbox_dir, path=path)
+    retrieve_fn = plugins.get_fn('tail-plugin', read_file)
+    read = partial(retrieve_fn, instance=instance, sandbox_dir=sandbox_dir, path=path)
     file_size = read()['offset']
     tail_backwards(file_size, read, num_lines_to_print)
     if follow:
