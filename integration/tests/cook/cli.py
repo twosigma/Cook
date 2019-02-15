@@ -263,10 +263,10 @@ def ssh(uuid, cook_url=None, env=None, flags=None):
     return cp
 
 
-def tail(uuid, path, cook_url, tail_flags=None, wait_for_exit=True):
+def tail(uuid, path, cook_url, tail_flags=None, wait_for_exit=True, flags=None):
     """Invokes the tail subcommand"""
     args = f'tail {tail_flags} {uuid} {path}' if tail_flags else f'tail {uuid} {path}'
-    cp = cli(args, cook_url, wait_for_exit=wait_for_exit)
+    cp = cli(args, cook_url, flags=flags, wait_for_exit=wait_for_exit)
     return cp
 
 
@@ -344,10 +344,10 @@ def command_prefix():
     return decode(cp.stdout).rstrip('\n') if cp.returncode == 0 else ''
 
 
-def cat(uuid, path, cook_url):
+def cat(uuid, path, cook_url, flags=None):
     """Invokes the cat subcommand"""
     args = f'cat {uuid} {path}'
-    cp = cli(args, cook_url)
+    cp = cli(args, cook_url, flags=flags)
     return cp
 
 

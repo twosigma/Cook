@@ -858,6 +858,41 @@ class CookCliTest(util.CookTest):
         self.assertEqual(1, cp.returncode, cli.decode(cp.stderr))
         self.assertEqual(f"Cannot open '{path}' for reading (file was not found).\n", cli.decode(cp.stderr))
 
+    def test_tail_with_plugin(self):
+        # User defined plugin to print dummy content from a file
+        with tempfile.NamedTemporaryFile(suffix='.py', delete=True) as temp:
+            plugin_code = """
+def dummy_tail_text(instance, sandbox_dir, path, offset=None, length=None):
+    if offset is None:
+        return {'data': '', 'offset': 12}
+    else:
+        return {'data': 'Hello\\nworld!', 'offset': 0}
+"""
+            temp.write(plugin_code.encode())
+            temp.flush()
+            config = {
+                'plugins': {
+                    "tail-plugin": {
+                        "module-name": "does_not_matter",
+                        "path": temp.name,
+                        "function-name": "dummy_tail_text"
+                    }
+                }
+            }
+
+            with cli.temp_config_file(config) as path:
+                flags = f'--config {path} --verbose'
+                cp, uuids = cli.submit('touch file.txt', self.cook_url)
+                self.assertEqual(0, cp.returncode, cp.stderr)
+                cp = cli.wait(uuids, self.cook_url)
+                self.assertEqual(0, cp.returncode, cp.stderr)
+                cp = cli.tail(uuids[0], 'file.txt', self.cook_url, flags=flags)
+                self.assertEqual(0, cp.returncode, cp.stderr)
+                self.assertEqual('Hello\nworld!', cli.decode(cp.stdout))
+                cp = cli.tail(uuids[0], 'file.txt', self.cook_url, f'--lines 1', flags=flags)
+                self.assertEqual(0, cp.returncode, cp.stderr)
+                self.assertEqual('world!', cli.decode(cp.stdout))
+
     def test_ls(self):
 
         def entry(name):
@@ -1782,6 +1817,41 @@ def dummy_ls_entries(_, __, ___):
         cp = cli.cat(uuids[0], 'file.bin', self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(bytes(i for i in range(0, 256)), cp.stdout)
+
+    def test_cat_with_plugin(self):
+        # User defined plugin to print dummy file content from a file
+        with tempfile.NamedTemporaryFile(suffix='.py', delete=True) as temp:
+            plugin_code = """
+class MockResp:
+    def iter_content(self, chunk_size):
+        yield b"Hello"
+        yield b" "
+        yield b"world!"
+
+def dummy_cat_text(_, __, ___):
+    return MockResp()
+"""
+            temp.write(plugin_code.encode())
+            temp.flush()
+            config = {
+                'plugins': {
+                    "cat-plugin": {
+                        "module-name": "does_not_matter",
+                        "path": temp.name,
+                        "function-name": "dummy_cat_text"
+                    }
+                }
+            }
+
+            with cli.temp_config_file(config) as path:
+                flags = f'--config {path} --verbose'
+                cp, uuids = cli.submit('touch file.txt', self.cook_url)
+                self.assertEqual(0, cp.returncode, cp.stderr)
+                cp = cli.wait(uuids, self.cook_url)
+                self.assertEqual(0, cp.returncode, cp.stderr)
+                cp = cli.cat(uuids[0], 'file.txt', self.cook_url, flags=flags)
+                self.assertEqual(0, cp.returncode, cp.stderr)
+                self.assertEqual('Hello world!', cli.decode(cp.stdout))
 
     def test_usage(self):
         command = 'sleep 300'
