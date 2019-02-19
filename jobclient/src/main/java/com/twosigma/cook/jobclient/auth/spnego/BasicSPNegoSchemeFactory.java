@@ -48,8 +48,7 @@ public class BasicSPNegoSchemeFactory extends SPNegoSchemeFactory {
 
     public static SPNegoSchemeFactory build(final boolean stripPort, final GSSCredentialProvider credentialProvider) {
         return credentialProvider == null
-            // USE_CANONICAL_HOSTNAME should be enabled below for HttpClient v4.4 or above
-            ? new SPNegoSchemeFactory(true /*, USE_CANONICAL_HOSTNAME */)
+            ? new SPNegoSchemeFactory(true, USE_CANONICAL_HOSTNAME)
             : new BasicSPNegoSchemeFactory(true, credentialProvider);
     }
 
@@ -86,8 +85,7 @@ public class BasicSPNegoSchemeFactory extends SPNegoSchemeFactory {
         }
 
         BasicSPNegoScheme(final boolean stripPort, final GSSCredentialProvider credentialProvider) {
-            // USE_CANONICAL_HOSTNAME should be enabled below for HttpClient v4.4 or above
-            super(stripPort /*, USE_CANONICAL_HOSTNAME */);
+            super(stripPort, USE_CANONICAL_HOSTNAME);
             _credentialProvider = credentialProvider;
         }
 
@@ -125,8 +123,7 @@ public class BasicSPNegoSchemeFactory extends SPNegoSchemeFactory {
     private final GSSCredentialProvider _credentialProvider;
 
     protected BasicSPNegoSchemeFactory(final boolean stripPort, final GSSCredentialProvider credentialProvider) {
-        // USE_CANONICAL_HOSTNAME should be enabled below for HttpClient v4.4 or above
-        super(stripPort /*, USE_CANONICAL_HOSTNAME */);
+        super(stripPort, USE_CANONICAL_HOSTNAME);
         _credentialProvider = credentialProvider;
     }
 
