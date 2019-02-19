@@ -3,7 +3,7 @@
   <groupId>twosigma</groupId>
   <artifactId>cook-jobclient</artifactId>
   <packaging>jar</packaging>
-  <version>0.4.2-SNAPSHOT</version>
+  <version>0.4.2</version>
   <name>cook-jobclient</name>
   <description>A Java API for connecting to the Cook scheduler, submitting, and monitoring jobs.</description>
   <licenses>
