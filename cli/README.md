@@ -132,6 +132,49 @@ The `usage` command allows you to list cluster share and usage for a particular 
 In addition to totals, it displays a breakdown of usage by application and job group.
 As with `show`, `usage` will list usage across all configured clusters.
 
+### Plugins
+
+You can also specify custom functionality for some subcommands with your own plugin functions.
+You will need to add a `plugins` map to your `.cs.json` file. An example plugin config is shown below.
+
+```json
+{
+  "plugins": {
+    "plugin-name": {
+      "module-name": "module_name",
+      "path": "path_to_plugin_module",
+      "function-name": "function_name"
+    }
+  }
+}
+```
+
+Plugins are available for the following subcommands:
+
+#### `ls`
+
+The `ls` command has the plugin name `retrieve-job-instance-files`.
+The plugin function must take in an instance, sandbox directory, and path,
+and must return an array of dicts containing the file metadata fields
+`path`, `mode`, `nlink`, `size`, `uid`, `gid`, and `mtime`.
+
+#### `cat`
+
+The `cat` command has the plugin name `download-job-instance-file`.
+The plugin function must take in an instance, sandbox directory, and path,
+and must return an object with an `iter_content` method which generates the file contents.
+
+#### `tail`
+
+The `tail` command has the plugin name `read-job-instance-file`.
+The plugin function must take in an instance, sandbox directory, path, offset, and length,
+and must return a dict containing two fields: `data` and `offset`.
+ - When the `offset` param is `None`, the returned `data` is empty and `offset` is the file size.
+ - When the `offset` param is not `None`, the returned `data` is the file contents starting at offset `offset` with length `length`,
+   and the returned `offset` is the `offset` param.
+
+See the integration tests for simple examples of the subcommand plugins.
+
 ### Examples
 
 Simple job creation:

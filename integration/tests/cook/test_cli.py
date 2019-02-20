@@ -871,8 +871,8 @@ def dummy_tail_text(instance, sandbox_dir, path, offset=None, length=None):
             temp.write(plugin_code.encode())
             temp.flush()
             config = {
-                'plugins': {
-                    "tail-plugin": {
+                "plugins": {
+                    "read-job-instance-file": {
                         "module-name": "does_not_matter",
                         "path": temp.name,
                         "function-name": "dummy_tail_text"
@@ -1067,8 +1067,8 @@ def dummy_ls_entries(_, __, ___):
             temp.write(plugin_code.encode())
             temp.flush()
             config = {
-                'plugins': {
-                    "ls-plugin": {
+                "plugins": {
+                    "retrieve-job-instance-files": {
                         "module-name": "does_not_matter",
                         "path": temp.name,
                         "function-name": "dummy_ls_entries"
@@ -1834,8 +1834,8 @@ def dummy_cat_text(_, __, ___):
             temp.write(plugin_code.encode())
             temp.flush()
             config = {
-                'plugins': {
-                    "cat-plugin": {
+                "plugins": {
+                    "download-job-instance-file": {
                         "module-name": "does_not_matter",
                         "path": temp.name,
                         "function-name": "dummy_cat_text"

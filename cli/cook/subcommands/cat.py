@@ -11,7 +11,7 @@ from cook.util import guard_no_cluster
 
 def cat_for_instance(instance, sandbox_dir, path):
     """Outputs the contents of the Mesos sandbox path for the given instance."""
-    retrieve_fn = plugins.get_fn('cat-plugin', download_file)
+    retrieve_fn = plugins.get_fn('download-job-instance-file', download_file)
     resp = retrieve_fn(instance, sandbox_dir, path)
     try:
         for data in resp.iter_content(chunk_size=4096):
