@@ -97,4 +97,4 @@ def download_file(instance, sandbox_dir, path):
         logging.error(f'mesos agent returned status code {resp.status_code} and body {resp.text}')
         raise Exception('Could not download the file.')
 
-    return resp
+    return resp.iter_content

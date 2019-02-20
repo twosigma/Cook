@@ -96,14 +96,14 @@ def download_file(session, instance, sandbox_dir, path):
         logging.error(f'mesos agent returned status code {resp.status_code} and body {resp.text}')
         raise Exception('Could not download the file.')
 
-    return resp
+    return resp.iter_content
 
 
 def cat_for_instance(session, instance, sandbox_dir, path):
     """Outputs the contents of the Mesos sandbox path for the given instance."""
-    resp = download_file(session, instance, sandbox_dir, path)
+    download = download_file(session, instance, sandbox_dir, path)
     try:
-        for data in resp.iter_content(chunk_size=4096):
+        for data in download(chunk_size=4096):
             if data:
                 logging.info(data.decode())
     except BrokenPipeError as bpe:

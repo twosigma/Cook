@@ -162,7 +162,7 @@ and must return an array of dicts containing the file metadata fields
 
 The `cat` command has the plugin name `download-job-instance-file`.
 The plugin function must take in an instance, sandbox directory, and path,
-and must return an object with an `iter_content` method which generates the file contents.
+and must return an iterator that takes in a chunk size, which generates the file contents.
 
 #### `tail`
 

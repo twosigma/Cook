@@ -884,12 +884,11 @@ def dummy_tail_text(instance, sandbox_dir, path, offset=None, length=None):
                 flags = f'--config {path} --verbose'
                 cp, uuids = cli.submit('touch file.txt', self.cook_url)
                 self.assertEqual(0, cp.returncode, cp.stderr)
-                cp = cli.wait(uuids, self.cook_url)
-                self.assertEqual(0, cp.returncode, cp.stderr)
-                cp = cli.tail(uuids[0], 'file.txt', self.cook_url, flags=flags)
+                instance_uuid = util.wait_for_instance(self.cook_url, uuids[0])['task_id']
+                cp = cli.tail(instance_uuid, 'file.txt', self.cook_url, flags=flags)
                 self.assertEqual(0, cp.returncode, cp.stderr)
                 self.assertEqual('Hello\nworld!', cli.decode(cp.stdout))
-                cp = cli.tail(uuids[0], 'file.txt', self.cook_url, f'--lines 1', flags=flags)
+                cp = cli.tail(instance_uuid, 'file.txt', self.cook_url, f'--lines 1', flags=flags)
                 self.assertEqual(0, cp.returncode, cp.stderr)
                 self.assertEqual('world!', cli.decode(cp.stdout))
 
@@ -1822,14 +1821,12 @@ def dummy_ls_entries(_, __, ___):
         # User defined plugin to print dummy file content from a file
         with tempfile.NamedTemporaryFile(suffix='.py', delete=True) as temp:
             plugin_code = """
-class MockResp:
-    def iter_content(self, chunk_size):
+def dummy_cat_text(_, __, ___):
+    def gen(chunk_size):
         yield b"Hello"
         yield b" "
         yield b"world!"
-
-def dummy_cat_text(_, __, ___):
-    return MockResp()
+    return gen
 """
             temp.write(plugin_code.encode())
             temp.flush()
@@ -1847,9 +1844,8 @@ def dummy_cat_text(_, __, ___):
                 flags = f'--config {path} --verbose'
                 cp, uuids = cli.submit('touch file.txt', self.cook_url)
                 self.assertEqual(0, cp.returncode, cp.stderr)
-                cp = cli.wait(uuids, self.cook_url)
-                self.assertEqual(0, cp.returncode, cp.stderr)
-                cp = cli.cat(uuids[0], 'file.txt', self.cook_url, flags=flags)
+                instance_uuid = util.wait_for_instance(self.cook_url, uuids[0])['task_id']
+                cp = cli.cat(instance_uuid, 'file.txt', self.cook_url, flags=flags)
                 self.assertEqual(0, cp.returncode, cp.stderr)
                 self.assertEqual('Hello world!', cli.decode(cp.stdout))
 
