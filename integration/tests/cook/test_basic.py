@@ -208,12 +208,14 @@ class CookTest(util.CookTest):
         job = util.load_job(self.cook_url, job_uuid)
         self.assertEqual('mesos', job['executor'])
 
-    def test_job_environment_cook_job_uuid_only(self):
+    def test_job_environment_cook_job_and_instance_uuid_only(self):
         command = 'echo "Job environment:" && env && echo "Checking environment variables..." && ' \
                   'if [ ${#COOK_JOB_GROUP_UUID} -ne 0 ]; then echo "COOK_JOB_GROUP_UUID env is present"; exit 1; ' \
                   'else echo "COOK_JOB_GROUP_UUID env is missing as expected"; fi && ' \
                   'if [ ${#COOK_JOB_UUID} -eq 0 ]; then echo "COOK_JOB_UUID env is missing"; exit 1; ' \
-                  'else echo "COOK_JOB_UUID env is present as expected"; fi'
+                  'else echo "COOK_JOB_UUID env is present as expected"; fi && ' \
+                  'if [ ${#COOK_INSTANCE_UUID} -eq 0 ]; then echo "COOK_INSTANCE_UUID env is missing"; exit 1; ' \
+                  'else echo "COOK_INSTANCE_UUID env is present as expected"; fi'
         job_uuid, resp = util.submit_job(self.cook_url, command=command)
         self.assertEqual(201, resp.status_code, msg=resp.content)
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
@@ -221,12 +223,14 @@ class CookTest(util.CookTest):
         message = json.dumps(job['instances'][0], sort_keys=True)
         self.assertEqual('success', job['instances'][0]['status'], message)
 
-    def test_job_environment_cook_job_and_group_uuid(self):
+    def test_job_environment_cook_job_and_instance_and_group_uuid(self):
         command = 'echo "Job environment:" && env && echo "Checking environment variables..." && ' \
                   'if [ ${#COOK_JOB_GROUP_UUID} -eq 0 ]; then echo "COOK_JOB_GROUP_UUID env is missing"; exit 1; ' \
                   'else echo "COOK_JOB_GROUP_UUID env is present as expected"; fi && ' \
                   'if [ ${#COOK_JOB_UUID} -eq 0 ]; then echo "COOK_JOB_UUID env is missing"; exit 1; ' \
-                  'else echo "COOK_JOB_UUID env is present as expected"; fi'
+                  'else echo "COOK_JOB_UUID env is present as expected"; fi && ' \
+                  'if [ ${#COOK_INSTANCE_UUID} -eq 0 ]; then echo "COOK_INSTANCE_UUID env is missing"; exit 1; ' \
+                  'else echo "COOK_INSTANCE_UUID env is present as expected"; fi'
         group_uuid = str(uuid.uuid4())
         job_uuid, resp = util.submit_job(self.cook_url, command=command, group=group_uuid)
         self.assertEqual(201, resp.status_code, msg=resp.content)
@@ -1616,8 +1620,10 @@ class CookTest(util.CookTest):
                 jobs, _ = util.unscheduled_jobs(self.cook_url, job_uuid_1, job_uuid_2)
                 self.logger.info(f'Unscheduled jobs: {jobs}')
                 pattern = re.compile('^You have (at least )?[0-9]+ other jobs ahead in the queue.$')
-                self.assertTrue(any([pattern.match(reason['reason']) for reason in jobs[0]['reasons']]), jobs[0]['reasons'])
-                self.assertTrue(any([pattern.match(reason['reason']) for reason in jobs[1]['reasons']]), jobs[1]['reasons'])
+                self.assertTrue(any([pattern.match(reason['reason']) for reason in jobs[0]['reasons']]),
+                                jobs[0]['reasons'])
+                self.assertTrue(any([pattern.match(reason['reason']) for reason in jobs[1]['reasons']]),
+                                jobs[1]['reasons'])
                 self.assertEqual(job_uuid_1, jobs[0]['uuid'])
                 self.assertEqual(job_uuid_2, jobs[1]['uuid'])
 
@@ -1990,7 +1996,8 @@ class CookTest(util.CookTest):
                     my_group_usage = [x for x in usage_data['grouped'] if x['group']['uuid'] == group_uuid]
                     self.assertEqual(0, len(my_group_usage))
 
-                    resp = util.user_current_usage(self.cook_url, headers={'x-cook-pool': pool}, user=user, group_breakdown='true')
+                    resp = util.user_current_usage(self.cook_url, headers={'x-cook-pool': pool}, user=user,
+                                                   group_breakdown='true')
                     self.assertEqual(resp.status_code, 200, resp.content)
                     usage_data = resp.json()
                     my_group_usage = [x for x in usage_data['grouped'] if x['group']['uuid'] == group_uuid]
@@ -2128,7 +2135,8 @@ class CookTest(util.CookTest):
                     self.assertEqual(1000, resp.json()['cpus'], resp.text)
 
                     # now delete the pool limit with headers
-                    resp = util.reset_limit(self.cook_url, limit, user, reason=self.current_name(), headers={'x-cook-pool': pool})
+                    resp = util.reset_limit(self.cook_url, limit, user, reason=self.current_name(),
+                                            headers={'x-cook-pool': pool})
                     self.assertEqual(resp.status_code, 204, resp.text)
 
                     # check that the default value is returned
@@ -2634,7 +2642,6 @@ class CookTest(util.CookTest):
             self.assertEqual(1, len(instances))
             self.assertEqual('Mesos task reconciliation', instances[0]['reason_string'])
 
-
     @unittest.skipUnless(util.using_data_local_fitness_calculator(), "Requires the data local fitness calculator")
     def test_data_local_constraint_missing_data(self):
         job_uuid, resp = util.submit_job(self.cook_url, datasets=[{'dataset': {'uuid': str(uuid.uuid4())}}])
@@ -2707,10 +2714,13 @@ class CookTest(util.CookTest):
 
             util.wait_for_jobs(self.cook_url, [job_uuid], 'completed')
             settings = util.settings(self.cook_url)
-            timeout = settings['data-local-fitness-calculator']['cache-ttl-ms'] + 2 * settings['data-local-fitness-calculator']['update-interval-ms']
+            timeout = settings['data-local-fitness-calculator']['cache-ttl-ms'] + 2 * \
+                      settings['data-local-fitness-calculator']['update-interval-ms']
+
             def get_debug_status_code():
                 resp = util.session.get(f'{self.cook_url}/data-local/{str(job_uuid)}')
                 return resp.status_code
+
             util.wait_until(get_debug_status_code, lambda c: c == 404, timeout)
 
             missing_resp = util.session.get(f'{self.cook_url}/data-local/{str(uuid.uuid4())}')
