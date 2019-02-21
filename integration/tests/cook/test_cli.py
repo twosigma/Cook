@@ -1343,30 +1343,30 @@ def dummy_ls_entries(_, __, ___):
             self.assertEqual('success', jobs[0]['state'])
 
     def test_base_config_file(self):
-        base_config = {'defaults': {'submit': {'command-prefix': 'export FOO=0; '}}, 'other': 'bar'}
+        base_config = {'overwrite': 'foo', 'constant': 'bar'}
 
         with cli.temp_base_config_file(base_config) as base_config:
             # Get entries in base config file
-            cp = cli.config_get('defaults.submit.command-prefix')
+            cp = cli.config_get('overwrite')
             self.assertEqual(0, cp.returncode, cp.stderr)
-            self.assertEqual('export FOO=0; \n', cli.decode(cp.stdout))
+            self.assertEqual('foo\n', cli.decode(cp.stdout))
 
-            cp = cli.config_get('other')
+            cp = cli.config_get('constant')
             self.assertEqual(0, cp.returncode, cp.stderr)
             self.assertEquals('bar\n', cli.decode(cp.stdout))
 
             # Overwrite defaults with specified config file
-            config = {'defaults': {'submit': {'command-prefix': 'export FOO=1; '}}}
+            config = {'overwrite': 'baz'}
             with cli.temp_config_file(config) as path:
                 flags = '--config %s' % path
 
                 # Verify default config is overwritten
-                cp = cli.config_get('defaults.submit.command-prefix', flags=flags)
+                cp = cli.config_get('overwrite', flags=flags)
                 self.assertEqual(0, cp.returncode, cp.stderr)
-                self.assertEqual('export FOO=1; \n', cli.decode(cp.stdout))
+                self.assertEqual('baz\n', cli.decode(cp.stdout))
 
                 # Verify other config is still loaded
-                cp = cli.config_get('other', flags=flags)
+                cp = cli.config_get('constant', flags=flags)
                 self.assertEqual(0, cp.returncode, cp.stderr)
                 self.assertEqual('bar\n', cli.decode(cp.stdout))
 
