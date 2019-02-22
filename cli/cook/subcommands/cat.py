@@ -3,6 +3,7 @@ import logging
 import sys
 from functools import partial
 
+from cook import plugins
 from cook.mesos import download_file
 from cook.querying import parse_entity_refs, query_unique_and_run, parse_entity_ref
 from cook.util import guard_no_cluster
@@ -10,9 +11,10 @@ from cook.util import guard_no_cluster
 
 def cat_for_instance(instance, sandbox_dir, path):
     """Outputs the contents of the Mesos sandbox path for the given instance."""
-    resp = download_file(instance, sandbox_dir, path)
+    retrieve_fn = plugins.get_fn('download-job-instance-file', download_file)
+    download = retrieve_fn(instance, sandbox_dir, path)
     try:
-        for data in resp.iter_content(chunk_size=4096):
+        for data in download(chunk_size=4096):
             if data:
                 sys.stdout.buffer.write(data)
     except BrokenPipeError as bpe:
