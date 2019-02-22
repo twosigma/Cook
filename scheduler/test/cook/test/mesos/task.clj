@@ -332,7 +332,8 @@
               db (d/db conn)
               job-ent (d/entity db job)
               framework-id {:value "framework-id"}
-              environment {"COOK_JOB_CPUS" "1.0"
+              environment {"COOK_INSTANCE_UUID" task-id
+                           "COOK_JOB_CPUS" "1.0"
                            "COOK_JOB_MEM_MB" "10.0"
                            "COOK_JOB_UUID" (-> job-ent :job/uuid str)}]
 
@@ -378,7 +379,8 @@
               job-ent (d/entity db job)
               group-ent (d/entity db group-ent-id)
               framework-id {:value "framework-id"}
-              environment {"COOK_JOB_CPUS" "1.0"
+              environment {"COOK_INSTANCE_UUID" task-id
+                           "COOK_JOB_CPUS" "1.0"
                            "COOK_JOB_GROUP_UUID" (-> group-ent :group/uuid str)
                            "COOK_JOB_MEM_MB" "10.0"
                            "COOK_JOB_UUID" (-> job-ent :job/uuid str)}
@@ -404,7 +406,8 @@
               db (d/db conn)
               job-ent (d/entity db job)
               framework-id {:value "framework-id"}
-              environment {"COOK_JOB_CPUS" "1.0"
+              environment {"COOK_INSTANCE_UUID" task-id
+                           "COOK_JOB_CPUS" "1.0"
                            "COOK_JOB_MEM_MB" "10.0"
                            "COOK_JOB_UUID" (-> job-ent :job/uuid str)}
               task-metadata (task/job->task-metadata db framework-id mesos-run-as-user job-ent task-id)]
@@ -429,7 +432,8 @@
               db (d/db conn)
               job-ent (d/entity db job)
               framework-id {:value "framework-id"}
-              environment {"COOK_JOB_CPUS" "1.0"
+              environment {"COOK_INSTANCE_UUID" task-id
+                           "COOK_JOB_CPUS" "1.0"
                            "COOK_JOB_MEM_MB" "10.0"
                            "COOK_JOB_UUID" (-> job-ent :job/uuid str)
                            "EXECUTOR_LOG_LEVEL" (:log-level executor)
@@ -464,7 +468,8 @@
               group-ent (d/entity db group-ent-id)
               job-ent (d/entity db job)
               framework-id {:value "framework-id"}
-              environment {"COOK_JOB_CPUS" "1.0"
+              environment {"COOK_INSTANCE_UUID" task-id
+                           "COOK_JOB_CPUS" "1.0"
                            "COOK_JOB_GROUP_UUID" (-> group-ent :group/uuid str)
                            "COOK_JOB_GPUS" "1000.0"
                            "COOK_JOB_MEM_MB" "10.0"
@@ -499,7 +504,8 @@
               db (d/db conn)
               job-ent (d/entity db job)
               framework-id {:value "framework-id"}
-              environment {"COOK_JOB_CPUS" "1.0"
+              environment {"COOK_INSTANCE_UUID" task-id
+                           "COOK_JOB_CPUS" "1.0"
                            "COOK_JOB_MEM_MB" "10.0"
                            "COOK_JOB_UUID" (-> job-ent :job/uuid str)}
               task-metadata (task/job->task-metadata db framework-id mesos-run-as-user job-ent task-id)]
@@ -535,7 +541,8 @@
               db (d/db conn)
               job-ent (d/entity db job)
               framework-id {:value "framework-id"}
-              environment {"COOK_JOB_CPUS" "1.0"
+              environment {"COOK_INSTANCE_UUID" task-id
+                           "COOK_JOB_CPUS" "1.0"
                            "COOK_JOB_MEM_MB" "10.0"
                            "COOK_JOB_UUID" (-> job-ent :job/uuid str)}
               task-metadata (task/job->task-metadata db framework-id mesos-run-as-user job-ent task-id)]
@@ -574,7 +581,8 @@
               db (d/db conn)
               job-ent (d/entity db job)
               framework-id {:value "framework-id"}
-              environment {"COOK_JOB_CPUS" "1.0"
+              environment {"COOK_INSTANCE_UUID" task-id
+                           "COOK_JOB_CPUS" "1.0"
                            "COOK_JOB_MEM_MB" "200.0"
                            "COOK_JOB_UUID" (-> job-ent :job/uuid str)}
               task-metadata (task/job->task-metadata db framework-id mesos-run-as-user job-ent task-id)]

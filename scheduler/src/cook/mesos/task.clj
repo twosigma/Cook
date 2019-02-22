@@ -88,6 +88,7 @@
                             (use-cook-executor? job-ent))
         group-uuid (util/job-ent->group-uuid job-ent)
         environment (cond-> (assoc (util/job-ent->env job-ent)
+                              "COOK_INSTANCE_UUID" task-id
                               "COOK_JOB_UUID" (-> job-ent :job/uuid str))
                             group-uuid (assoc "COOK_JOB_GROUP_UUID" (str group-uuid))
                             (:cpus resources) (assoc "COOK_JOB_CPUS" (-> resources :cpus str))
