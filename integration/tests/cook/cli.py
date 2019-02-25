@@ -58,6 +58,11 @@ def command():
     return os.environ['COOK_CLI_COMMAND'] if 'COOK_CLI_COMMAND' in os.environ else 'cs'
 
 
+def plugins():
+    """If the COOK_PLUGIN_JSON environment variable is set, returns its value, otherwise empty dict"""
+    return json.loads(os.environ['COOK_PLUGIN_JSON']) if 'COOK_PLUGIN_JSON' in os.environ else {}
+
+
 def cli(args, cook_url=None, flags=None, stdin=None, env=None, wait_for_exit=True):
     """Runs a CLI command with the given URL, flags, and stdin"""
     url_flag = f'--url {cook_url} ' if cook_url else ''
@@ -197,7 +202,8 @@ class temp_config_file:
 
     def write_temp_json(self):
         path = tempfile.NamedTemporaryFile(delete=False).name
-        config = self.deep_merge(base_config(), self.config)
+        default_config = self.deep_merge(base_config(), plugins())
+        config = self.deep_merge(default_config, self.config)
         write_json(path, config)
         return path
 
