@@ -26,6 +26,8 @@
             [clojure.tools.logging :as log]
             [cook.config :as config]
             [cook.datomic :as datomic]
+            [cook.plugins.completion :as completion]
+            [cook.plugins.definitions :as plugins]
             [cook.plugins.launch :as launch-plugin]
             [cook.mesos.constraints :as constraints]
             [cook.mesos.data-locality :as dl]
@@ -288,24 +290,35 @@
              (log/debug "Transacting updated state for instance" instance "to status" instance-status)
              ;; The database can become inconsistent if we make multiple calls to :instance/update-state in a single
              ;; transaction; see the comment in the definition of :instance/update-state for more details
-             (datomic/transact-with-retries
-               conn
-               (reduce
-                 into
-                 [[:instance/update-state instance instance-status (or (:db/id previous-reason)
-                                                                       (reason/mesos-reason->cook-reason-entity-id db reason)
-                                                                       [:reason.name :unknown])]] ; Warning: Default is not mea-culpa
-                 [(when (and (#{:instance.status/failed} instance-status) (not previous-reason) reason)
-                    [[:db/add instance :instance/reason (reason/mesos-reason->cook-reason-entity-id db reason)]])
-                  (when (and (#{:instance.status/success
-                                :instance.status/failed} instance-status)
-                             (nil? (:instance/end-time instance-ent)))
-                    [[:db/add instance :instance/end-time (now)]])
-                  (when (and (#{:task-starting :task-running} task-state)
-                             (nil? (:instance/mesos-start-time instance-ent)))
-                    [[:db/add instance :instance/mesos-start-time (now)]])
-                  (when progress
-                    [[:db/add instance :instance/progress progress]])]))))
+             (let [transaction-chan (datomic/transact-with-retries
+                                     conn
+                                     (reduce
+                                      into
+                                      [[:instance/update-state instance instance-status (or (:db/id previous-reason)
+                                                                                            (reason/mesos-reason->cook-reason-entity-id db reason)
+                                                                                            [:reason.name :unknown])]] ; Warning: Default is not mea-culpa
+                                      [(when (and (#{:instance.status/failed} instance-status) (not previous-reason) reason)
+                                         [[:db/add instance :instance/reason (reason/mesos-reason->cook-reason-entity-id db reason)]])
+                                       (when (and (#{:instance.status/success
+                                                     :instance.status/failed} instance-status)
+                                                  (nil? (:instance/end-time instance-ent)))
+                                         [[:db/add instance :instance/end-time (now)]])
+                                       (when (and (#{:task-starting :task-running} task-state)
+                                                  (nil? (:instance/mesos-start-time instance-ent)))
+                                         [[:db/add instance :instance/mesos-start-time (now)]])
+                                       (when progress
+                                         [[:db/add instance :instance/progress progress]])]))]
+               (async/go
+                 ; Wait for the transcation to complete before running the plugin
+                 (async/<! transaction-chan)
+                 (when (#{:instance.status/success :instance.status/failed} instance-status)
+                   (let [db (d/db conn)
+                         updated-job (d/entity db job)
+                         updated-instance (d/entity db instance)]
+                     (try
+                       (plugins/on-instance-completion completion/plugin updated-job updated-instance)
+                       (catch Exception e
+                         (log/error e "Error while running instance completion plugin.")))))))))
          (catch Exception e
            (log/error e "Mesos scheduler status update error")))))
 

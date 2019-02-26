@@ -24,6 +24,8 @@
             [cook.cors :as cors]
             [cook.curator :as curator]
             [cook.datomic :as datomic]
+            ; This explicit require is needed so that mount can see the defstate defined in the cook.plugins.completion namespace.
+            [cook.plugins.completion]
             ; This explicit require is needed so that mount can see the defstate defined in the cook.plugins.submission namespace.
             [cook.plugins.submission]
             ; This explicit require is needed so that mount can see the defstate defined in the cook.plugins.launch namespace.

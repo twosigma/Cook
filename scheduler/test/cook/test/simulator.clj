@@ -19,6 +19,7 @@
             [cook.mesos.mesos-mock :as mm]
             [cook.mesos.share :as share]
             [cook.mesos.util :as util]
+            [cook.plugins.completion :as completion]
             [cook.test.testutil :refer (restore-fresh-database! poll-until)]
             [datomic.api :as d]
             [plumbing.core :refer (map-vals map-keys map-from-vals)])
@@ -124,7 +125,8 @@
          trigger-chans# (or (:trigger-chans ~scheduler-config)
                             (c/make-trigger-chans rebalancer-config# progress-config# optimizer-config# task-constraints#))]
      (try
-       (with-redefs [executor-config (constantly executor-config#)]
+       (with-redefs [executor-config (constantly executor-config#)
+                     completion/plugin completion/no-op]
          (c/start-mesos-scheduler
            {:curator-framework curator-framework#
             :exit-code-syncer-state exit-code-syncer-state#
@@ -671,6 +673,7 @@
   (not (seq (trace-diffs trace-a trace-b))))
 
 (deftest test-simulator
+  (cook.test.testutil/setup)
   (let [users ["a" "b" "c" "d"]
         jobs (-> (for [minute (range 5)
                        sim-i (range (+ (rand-int 50) 30))]
