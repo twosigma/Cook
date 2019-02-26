@@ -1539,6 +1539,9 @@
      :allowed? (partial job-kill-allowed? conn is-authorized-fn)
      :exists? (partial retrieve-jobs conn)
      :delete! (fn [ctx]
+                (let [user (get-in ctx [:request :authorization/user])]
+                  (log/info "Killing jobs for user" user {:jobs (::jobs-requested ctx)
+                                                          :instances (::instances-requested ctx)}))
                 (cook.mesos/kill-job conn (::jobs-requested ctx))
                 (cook.mesos/kill-instances conn (::instances-requested ctx)))}))
 
@@ -1822,7 +1825,10 @@
      :delete! (fn [ctx]
                 (let [jobs (mapcat #(fetch-group-live-jobs (db conn) %)
                                    (::guuids ctx))
-                      juuids (mapv :job/uuid jobs)]
+                      juuids (mapv :job/uuid jobs)
+                      user (get-in ctx [:request :authorization/user])]
+                  (log/info "Killing job group for user" user {:groups (::guuids ctx)
+                                                               :jobs juuids})
                   (cook.mesos/kill-job conn juuids)))}))
 
 ;;
@@ -2137,7 +2143,9 @@
     (doseq [job (distinct (::jobs ctx))]
       (let [new-retries (or (::retries ctx)
                             (+ (:job/max-retries (d/entity db [:job/uuid job]))
-                               (::increment ctx)))]
+                               (::increment ctx)))
+            user (get-in ctx [:request :authorization/user])]
+        (log/info "Updating retry count for job" job "to" new-retries "for user" user)
         (util/retry-job! conn job new-retries)))))
 
 (defn post-retries-handler
@@ -2235,11 +2243,19 @@
     limit-type is-authorized-fn
     {:allowed-methods [:delete]
      :delete! (fn [ctx]
-                (retract-limit-fn conn
-                                  (get-in ctx [:request :query-params :user])
-                                  (or (get-in ctx [:request :query-params :pool])
-                                      (get-in ctx [:request :headers "x-cook-pool"]))
-                                  (get-in ctx [:request :query-params :reason])))}))
+                (let [request-user (get-in ctx [:request :authorization/user])
+                      limit-user (get-in ctx [:request :query-params :user])
+                      pool (or (get-in ctx [:request :query-params :pool])
+                               (get-in ctx [:request :headers "x-cook-pool"]))
+                      reason (get-in ctx [:request :query-params :reason])]
+                  (log/info "Retracting limit type" limit-type {:request-user request-user
+                                                                :limit-user limit-user
+                                                                :pool pool
+                                                                :reason reason})
+                  (retract-limit-fn conn
+                                    limit-user
+                                    pool
+                                    reason)))}))
 
 (defn coerce-limit-values
   [limits-from-request]
@@ -2268,13 +2284,23 @@
                        [false {::limits limits}])))
 
      :post! (fn [ctx]
-              (apply set-limit-fn
-                     conn
-                     (get-in ctx [:request :body-params :user])
-                     (or (get-in ctx [:request :body-params :pool])
-                         (get-in ctx [:request :headers "x-cook-pool"]))
-                     (get-in ctx [:request :body-params :reason])
-                     (reduce into [] (::limits ctx))))}))
+              (let [request-user (get-in ctx [:request :authorization/user])
+                    limit-user (get-in ctx [:request :body-params :user])
+                    pool (or (get-in ctx [:request :body-params :pool])
+                             (get-in ctx [:request :headers "x-cook-pool"]))
+                    reason (get-in ctx [:request :body-params :reason])
+                    limits (reduce into [] (::limits ctx))]
+                (log/info "Updating limit" limit-type {:request-user request-user
+                                                       :limit-user limit-user
+                                                       :pool pool
+                                                       :reason reason
+                                                       :limits limits})
+                (apply set-limit-fn
+                       conn
+                       limit-user
+                       pool
+                       reason
+                       limits)))}))
 
 (def UserUsageParams
   "User usage endpoint query string parameters"
