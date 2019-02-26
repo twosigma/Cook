@@ -112,6 +112,7 @@
     (json/read-str (.toString baos))))
 
 (deftest handler-db-roundtrip
+  (testutil/setup)
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
         uuid #uuid "386b374c-4c4a-444f-aca0-0c25384c6fa0"
         env {"MY_VAR" "one"
