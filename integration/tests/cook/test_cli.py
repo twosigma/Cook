@@ -304,7 +304,7 @@ class CookCliTest(util.CookTest):
 
     def test_retries(self):
         # Default retries = 2
-        cp, uuids = cli.submit('-- ls -al', 'localhost:99999', '--verbose')
+        cp, uuids = cli.submit('-- ls -al', 'localhost:65535', '--verbose')
         stderr = cli.decode(cp.stderr)
         self.assertEqual(1, cp.returncode, stderr)
         self.assertIn('Retrying (Retry(total=1', stderr)
@@ -313,14 +313,14 @@ class CookCliTest(util.CookTest):
         # Set retries = 0
         config = {'http': {'retries': 0}}
         with cli.temp_config_file(config) as path:
-            cp, uuids = cli.submit('-- ls -al', 'localhost:99999', '--verbose --config %s' % path)
+            cp, uuids = cli.submit('-- ls -al', 'localhost:65535', '--verbose --config %s' % path)
             stderr = cli.decode(cp.stderr)
             self.assertEqual(1, cp.returncode, stderr)
             self.assertNotIn('Retrying (Retry(total=0', stderr)
         # Set retries = 4
         config = {'http': {'retries': 4}}
         with cli.temp_config_file(config) as path:
-            cp, uuids = cli.submit('-- ls -al', 'localhost:99999', '--verbose --config %s' % path)
+            cp, uuids = cli.submit('-- ls -al', 'localhost:65535', '--verbose --config %s' % path)
             stderr = cli.decode(cp.stderr)
             self.assertEqual(1, cp.returncode, stderr)
             self.assertIn('Retrying (Retry(total=3', stderr)
@@ -1316,8 +1316,8 @@ def dummy_ls_entries(_, __, ___):
         self.assertEqual('FOO=0; exit ${FOO:-1}', jobs[0]['command'])
         self.assertEqual('success', jobs[0]['state'])
 
-        # Default command prefix (empty)
-        config = {'defaults': {'submit': {}}}
+        # Empty command prefix
+        config = {'defaults': {'submit': {'command-prefix': ''}}}
         with cli.temp_config_file(config) as path:
             flags = '--config %s' % path
             cp, uuids = cli.submit('"exit ${FOO:-1}"', self.cook_url, flags=flags,
@@ -2047,7 +2047,7 @@ def dummy_cat_text(_, __, ___):
         self.assertEqual(0, cp.returncode, cp.stderr)
         user = util.get_user(self.cook_url, uuids[0])
         config = {'clusters': [{'name': 'foo', 'url': self.cook_url},
-                               {'name': 'bar', 'url': 'http://localhost:99999'}]}
+                               {'name': 'bar', 'url': 'http://localhost:65535'}]}
         with cli.temp_config_file(config) as path:
             flags = f'--config {path}'
             cp, jobs = cli.jobs_json(flags=flags, jobs_flags=f'--name {name} --all --user {user}')
