@@ -856,7 +856,7 @@ class CookCliTest(util.CookTest):
         path = uuid.uuid4()
         cp = cli.tail(uuids[0], path, self.cook_url)
         self.assertEqual(1, cp.returncode, cli.decode(cp.stderr))
-        self.assertEqual(f"Cannot open '{path}' for reading (file was not found).\n", cli.decode(cp.stderr))
+        self.assertIn('file was not found', cli.decode(cp.stderr))
 
     def test_tail_with_plugin(self):
         # User defined plugin to print dummy content from a file
@@ -900,7 +900,7 @@ def dummy_tail_text(instance, sandbox_dir, path, offset=None, length=None):
         cp, uuids = cli.submit('"mkdir foo; echo 123 > foo/bar; echo 45678 > baz; mkdir empty"',
                                self.cook_url, submit_flags=f'--name {self.current_name()}')
         self.assertEqual(0, cp.returncode, cp.stderr)
-        cli.wait_for_output_file(self.cook_url, uuids[0], 'empty')
+        util.wait_for_job(self.cook_url, uuids[0], 'completed')
 
         # Path that doesn't exist
         cp, entries = cli.ls(uuids[0], self.cook_url, 'qux', parse_json=False)
@@ -929,7 +929,9 @@ def dummy_tail_text(instance, sandbox_dir, path, offset=None, length=None):
         self.assertLessEqual(4, len(entries))
         self.logger.debug(entries)
         foo = entry('foo')
-        self.assertEqual('drwxr-xr-x', foo['mode'])
+        # Hack because some ls commands don't check for sticky bits in directories
+        assert_foo_mode = 'drwxr-xr-x' == foo['mode'] or 'drwxr-sr-x' == foo['mode']
+        self.assertTrue(assert_foo_mode)
         self.assertLessEqual(2, foo['nlink'])
         baz = entry('baz')
         self.assertEqual('-rw-r--r--', baz['mode'])
@@ -970,7 +972,7 @@ def dummy_tail_text(instance, sandbox_dir, path, offset=None, length=None):
         cp, uuids = cli.submit('"touch t?.sh; touch [ab]*; touch {b,c,est}; touch \'*\'; touch \'t*\'; touch done"',
                                self.cook_url, submit_flags=f'--name {self.current_name()}')
         self.assertEqual(0, cp.returncode, cp.stderr)
-        cli.wait_for_output_file(self.cook_url, uuids[0], 'done')
+        util.wait_for_job(self.cook_url, uuids[0], 'completed')
 
         path = 't?.sh'
         cp, _ = cli.ls(uuids[0], self.cook_url, path, parse_json=False)
@@ -1342,7 +1344,9 @@ def dummy_ls_entries(_, __, ___):
             self.assertEqual('export FOO=0; exit ${FOO:-1}', jobs[0]['command'])
             self.assertEqual('success', jobs[0]['state'])
 
+    @unittest.skipIf('COOK_CLI_COMMAND' in os.environ, 'cs executable may be unknown.')
     def test_base_config_file(self):
+
         base_config = {'overwrite': 'foo', 'constant': 'bar'}
 
         with cli.temp_base_config_file(base_config) as base_config:
