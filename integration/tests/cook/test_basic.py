@@ -116,17 +116,19 @@ class CookTest(util.CookTest):
                        'container-path': '/var/lib/pqr'}, volumes)
 
     def test_no_cook_executor_on_subsequent_instances(self):
-        retry_limit = util.get_in(util.settings(self.cook_url), 'executor', 'retry-limit')
-        if retry_limit is None:
-            self.logger.debug('Cook executor is not configured (retry-limit is None)')
-            return
+        settings = util.settings(self.cook_url)
+        retry_limit = util.get_in(settings, 'executor', 'retry-limit')
+        max_job_retries = util.get_in(settings, 'task-constraints', 'retry-limit')
+        if retry_limit is None or retry_limit is 0:
+            pytest.skip('Cook executor is not configured (retry-limit is None)')
+        elif retry_limit * 2 > max_job_retries:
+            pytest.skip(f'Cannot set max_retries to {retry_limit * 2}, configured maximum is {max_job_retries}')
         else:
             self.logger.debug(f'Cook executor retry limit is {retry_limit}')
             num_hosts = len(util.get_mesos_state(self.mesos_url)['slaves'])
             if retry_limit >= num_hosts:
-                self.logger.debug(f'Skipping test as not enough agents to verify Mesos executor on subsequent '
+                pytest.skip(f'Skipping test as not enough agents to verify Mesos executor on subsequent '
                                   f'instances (agents = {num_hosts}, retry limit = {retry_limit})')
-                return
 
         # Should launch many instances
         job_uuid, resp = util.submit_job(self.cook_url, command='exit 1', max_retries=retry_limit * 2)
