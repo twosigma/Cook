@@ -31,8 +31,9 @@
   "A default accept object with an expiration at infinity"
   {:status :accepted :message "No plugin object defined" :cache-expires-at cook.plugins.util/positive-infinity-date})
 
-(def accept-all-plugin
+(defn accept-all-plugin-factory
   "A plugin object that accepts everything. Available for use as a default plugin and unit testing."
+  []
   (reify JobSubmissionValidator
     (check-job-submission-default [_] default-accept)
     (check-job-submission [_ _] default-accept)))
@@ -52,7 +53,7 @@
             (log/info (str "Resolved as " resolved-fn))
             (resolved-fn))
           (throw (ex-info "Unable to resolve factory function" (assoc job-submission-validator :ns (namespace factory-fn))))))
-      accept-all-plugin)))
+      (accept-all-plugin-factory))))
 
 ;  Contains the plugin object that matches to a given job map. This code may create a new plugin object or re-use an existing one.
 (mount/defstate plugin-object
