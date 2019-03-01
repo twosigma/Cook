@@ -223,7 +223,9 @@ class temp_base_config_file:
 
     def __init__(self, config):
         # Get the location of the cs executable so we can add a default `.cs.json` file
-        cp = subprocess.run(args=['which', command()], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        command_args = shlex.split(command())
+        command_args.insert(0, 'which')
+        cp = subprocess.run(args=command_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         base_exec = cp.stdout.decode("utf-8").rstrip('\n')
         base_dir = os.path.dirname(os.path.abspath(base_exec))
         self.path = os.path.join(base_dir, '.cs.json')
