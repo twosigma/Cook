@@ -1296,8 +1296,8 @@ def get_agent_endpoint(master_state, agent_hostname):
     agent = [agent for agent in master_state['slaves']
              if agent['hostname'] == agent_hostname][0]
     if agent is None:
-        self.logger.warning(f"Could not find agent for hostname {instance['hostname']}")
-        self.logger.warning(f"slaves: {state['slaves']}")
+        logger.warning(f"Could not find agent for hostname {instance['hostname']}")
+        logger.warning(f"slaves: {state['slaves']}")
         return None
     else:
         # Get the host and port of the agent API.
@@ -1312,7 +1312,12 @@ def _supported_isolators():
     mesos_url = retrieve_mesos_url()
     mesos_state = get_mesos_state(mesos_url)
     slave_endpoint = get_agent_endpoint(mesos_state, mesos_state['slaves'][0]['hostname'])
-    return set(session.get(slave_endpoint).json()['flags']['isolation'].split(','))
+    slave_state = session.get(slave_endpoint).json()
+    if 'flags' in slave_state:
+        return set(slave_state['flags']['isolation'].split(','))
+    else:
+        logger.error(f'Unable to determine flags from slave state at {slave_endpoint}: {slave_state}')
+        return []
 
 
 def supports_mesos_containerizer_images():
