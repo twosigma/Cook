@@ -57,20 +57,30 @@ class CookTest(util.CookTest):
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
         self.assertIn('success', [i['status'] for i in job['instances']], json.dumps(job, indent=2))
         self.assertEqual(False, job['disable_mea_culpa_retries'])
-        self.assertTrue(len(util.wait_for_output_url(self.cook_url, job_uuid)['output_url']) > 0)
-
-        if util.should_expect_sandbox_directory_for_job(job):
-            instance = util.wait_for_sandbox_directory(self.cook_url, job_uuid)
+        instance = job['instances'][0]
+        if instance['executor'] == 'cook':
+            instance = util.wait_for_exit_code(self.cook_url, job_uuid)
             message = json.dumps(instance, sort_keys=True)
-            self.assertIsNotNone(instance['output_url'], message)
-            self.assertIsNotNone(instance['sandbox_directory'], message)
+            self.assertEqual(0, instance['exit_code'], message)
+        else:
+            self.logger.info(f'Exit code not checked because cook executor was not used for {instance}')
 
-            if instance['executor'] == 'cook':
-                instance = util.wait_for_exit_code(self.cook_url, job_uuid)
+
+    def test_output_url(self):
+        job_executor_type = util.get_job_executor_type(self.cook_url)
+        job_uuid, resp = util.submit_job(self.cook_url, command='sleep 600', executor=job_executor_type)
+        try:
+            self.assertTrue(len(util.wait_for_output_url(self.cook_url, job_uuid)['output_url']) > 0)
+            job = util.query_jobs(self.cook_url, True, uuid=[job_uuid]).json()[0]
+
+            if util.should_expect_sandbox_directory_for_job(job):
+                instance = util.wait_for_sandbox_directory(self.cook_url, job_uuid)
                 message = json.dumps(instance, sort_keys=True)
-                self.assertEqual(0, instance['exit_code'], message)
-            else:
-                self.logger.info(f'Exit code not checked because cook executor was not used for {instance}')
+                self.assertIsNotNone(instance['output_url'], message)
+                self.assertIsNotNone(instance['sandbox_directory'], message)
+        finally:
+            util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
+
 
     @unittest.skipUnless(util.docker_tests_enabled(),
                          'Requires setting the COOK_TEST_DOCKER_IMAGE environment variable')
