@@ -1312,11 +1312,15 @@ def _supported_isolators():
     mesos_url = retrieve_mesos_url()
     mesos_state = get_mesos_state(mesos_url)
     slave_endpoint = get_agent_endpoint(mesos_state, mesos_state['slaves'][0]['hostname'])
-    slave_state = session.get(slave_endpoint).json()
-    if 'flags' in slave_state:
-        return set(slave_state['flags']['isolation'].split(','))
-    else:
-        logger.error(f'Unable to determine flags from slave state at {slave_endpoint}: {slave_state}')
+    try:
+        slave_state = session.get(slave_endpoint).json()
+        if 'flags' in slave_state:
+            return set(slave_state['flags']['isolation'].split(','))
+        else:
+            logger.error(f'Unable to determine flags from slave state at {slave_endpoint}: {slave_state}')
+            return []
+    except Error as e:
+        logger.exception('Unable to parse json response')
         return []
 
 
