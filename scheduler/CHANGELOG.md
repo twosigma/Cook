@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.28.0] - 2019-03-05
+### Added
+- Added support for suitable flag for datasets, from @pschorf
+- Added plugin support for job submission and launch, from @scrosby
+- Added COOK_INSTANCE_UUID to task environment, from @dposada
+### Changed
+- Allow setting cook executor retry limit to 0, from @pschorf
+
 ## [1.27.0] - 2019-01-23
 ### Added
 - Support for docker images in mesos containerizer, from @pschorf
