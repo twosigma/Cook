@@ -58,11 +58,6 @@ def command():
     return os.environ['COOK_CLI_COMMAND'] if 'COOK_CLI_COMMAND' in os.environ else 'cs'
 
 
-def plugins():
-    """If the COOK_PLUGIN_JSON environment variable is set, returns its value, otherwise empty dict"""
-    return json.loads(os.environ['COOK_PLUGIN_JSON']) if 'COOK_PLUGIN_JSON' in os.environ else {}
-
-
 def cli(args, cook_url=None, flags=None, stdin=None, env=None, wait_for_exit=True):
     """Runs a CLI command with the given URL, flags, and stdin"""
     url_flag = f'--url {cook_url} ' if cook_url else ''
@@ -150,6 +145,11 @@ def write_json(path, config):
         json.dump(config, outfile)
 
 
+def plugins_config():
+    """If the COOK_PLUGIN_JSON environment variable is set, returns its value, otherwise empty dict"""
+    return json.loads(os.environ['COOK_PLUGIN_JSON']) if 'COOK_PLUGIN_JSON' in os.environ else {}
+
+
 def basic_auth_config():
     """Returns a config map with HTTP basic auth configured."""
     config = {'http': {'auth': {'type': 'basic',
@@ -160,18 +160,34 @@ def basic_auth_config():
 
 def base_config():
     """Returns a "base" config map that can be added to."""
-    config = basic_auth_config() if util.http_basic_auth_enabled() else {}
-    return config
+    basic_auth = basic_auth_config() if util.http_basic_auth_enabled() else {}
+    plugins = plugins_config()
+    return deep_merge(basic_auth, plugins)
 
 
 def write_base_config():
-    """If HTTP basic auth is enabled, creates the needed auth config"""
-    if util.http_basic_auth_enabled():
-        write_json(os.path.abspath('.cs.json'), basic_auth_config())
-        cp = config_get('http.auth.basic.user', '--verbose')
-        auth_user = stdout(cp)
-        logging.debug(f'stderr is:\n{decode(cp.stderr)}')
-        logging.info(f'Auth user is "{auth_user}"')
+    """If plugins or HTTP basic auth are enabled, creates the config"""
+    config = base_config()
+    if config:
+        write_json(os.path.abspath('.cs.json'), config)
+        if util.http_basic_auth_enabled():
+            cp = config_get('http.auth.basic.user', '--verbose')
+            auth_user = stdout(cp)
+            logging.debug(f'stderr is:\n{decode(cp.stderr)}')
+            logging.info(f'Auth user is "{auth_user}"')
+
+
+def deep_merge(a, b):
+    """Merges a and b, letting b win if there is a conflict"""
+    merged = a.copy()
+    for key in b:
+        b_value = b[key]
+        merged[key] = b_value
+        if key in a:
+            a_value = a[key]
+            if isinstance(a_value, dict) and isinstance(b_value, dict):
+                merged[key] = deep_merge(a_value, b_value)
+    return merged
 
 
 class temp_config_file:
@@ -188,22 +204,9 @@ class temp_config_file:
         else:
             self.config = config
 
-    def deep_merge(self, a, b):
-        """Merges a and b, letting b win if there is a conflict"""
-        merged = a.copy()
-        for key in b:
-            b_value = b[key]
-            merged[key] = b_value
-            if key in a:
-                a_value = a[key]
-                if isinstance(a_value, dict) and isinstance(b_value, dict):
-                    merged[key] = self.deep_merge(a_value, b_value)
-        return merged
-
     def write_temp_json(self):
         path = tempfile.NamedTemporaryFile(delete=False).name
-        default_config = self.deep_merge(base_config(), plugins())
-        config = self.deep_merge(default_config, self.config)
+        config = deep_merge(base_config(), self.config)
         write_json(path, config)
         return path
 
