@@ -19,7 +19,7 @@
 (defn resolve-symbol
   "Resolve the given symbol to the corresponding Var."
   [sym]
-  (resolve (some-> sym namespace symbol use) sym))
+  (resolve (some-> sym namespace symbol require) sym))
 
 (def positive-infinity-date
   (t/date-time 2999 12 31))
