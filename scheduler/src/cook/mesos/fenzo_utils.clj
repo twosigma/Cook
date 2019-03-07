@@ -15,13 +15,7 @@
 ;;
 (ns cook.mesos.fenzo-utils
   (:require [clojure.tools.logging :as log]
-            [datomic.api :as d])
-  (import java.util.concurrent.TimeUnit
-          org.apache.mesos.Protos$Offer
-          com.netflix.fenzo.TaskAssignmentResult
-          com.netflix.fenzo.TaskScheduler
-          com.netflix.fenzo.VirtualMachineLease
-          com.netflix.fenzo.plugins.BinPackingFitnessCalculators))
+            [datomic.api :as d]))
 
 (defn extract-message
   "For some reason, Fenzo's AssignmentFailure doesn't have a getter for the

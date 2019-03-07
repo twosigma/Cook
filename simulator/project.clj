@@ -1,6 +1,6 @@
 (defproject cook/sim "0.1.0-SNAPSHOT"
   :description "Simulation tests for Cook"
-  :dependencies   [[org.clojure/clojure "1.8.0"]
+  :dependencies   [[org.clojure/clojure "1.10.0"]
                    [clj-time "0.9.0"]
                    [cheshire "5.5.0"]
                    [com.datomic/datomic-free "0.9.5344"

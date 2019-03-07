@@ -23,8 +23,7 @@
             [mesomatic.scheduler :as mesos]
             [mesomatic.types :as mesos-type]
             [plumbing.core :refer (map-vals map-from-vals)])
-  (import org.apache.mesos.Protos$Status
-          org.apache.mesos.SchedulerDriver))
+  (:import (org.apache.mesos Protos$Status SchedulerDriver)))
 
 (def resource->type {:cpus :scalar
                      :mem :scalar

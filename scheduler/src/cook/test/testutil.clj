@@ -15,12 +15,12 @@
 ;;
 
 (ns cook.test.testutil
-  (:use clojure.test)
   (:require [clj-logging-config.log4j :as log4j-conf]
             [clj-time.core :as t]
             [clojure.core.async :as async]
             [clojure.core.cache :as cache]
             [clojure.string :as str]
+            [clojure.test :refer :all]
             [clojure.tools.logging :as log]
             [cook.plugins.definitions :refer (JobSubmissionValidator JobLaunchFilter)]
             [cook.impersonation :refer (create-impersonation-middleware)]
@@ -292,7 +292,7 @@
                       :zookeeper {:local? true}}]
   (defn setup
     "Given an optional config map, initializes the config state"
-    [& {:keys [config], :or nil}]
+    [& {:keys [config]}]
     (mount/stop)
     (mount/start-with-args (merge minimal-config config)
                            #'cook.config/config

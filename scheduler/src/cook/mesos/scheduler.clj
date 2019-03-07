@@ -54,11 +54,10 @@
             [metrics.meters :as meters]
             [metrics.timers :as timers]
             [plumbing.core :as pc])
-  (import [com.netflix.fenzo ConstraintEvaluator ConstraintEvaluator$Result
-                             TaskAssignmentResult TaskRequest TaskScheduler TaskScheduler$Builder
-                             VirtualMachineLease VirtualMachineLease$Range
-                             VirtualMachineCurrentState]
-          [com.netflix.fenzo.functions Action1 Func1]))
+  (:import (com.netflix.fenzo TaskAssignmentResult TaskRequest TaskScheduler TaskScheduler$Builder
+                              VirtualMachineLease VirtualMachineLease$Range
+                              VirtualMachineCurrentState)
+           (com.netflix.fenzo.functions Action1 Func1)))
 
 (defn now
   []

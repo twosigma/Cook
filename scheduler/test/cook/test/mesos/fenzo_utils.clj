@@ -20,10 +20,7 @@
             [cook.mesos.util :as util]
             [cook.test.testutil :refer (restore-fresh-database! create-dummy-job)]
             [datomic.api :as d])
-  (import com.netflix.fenzo.SimpleAssignmentResult
-          com.netflix.fenzo.AssignmentFailure
-          com.netflix.fenzo.ConstraintFailure
-          com.netflix.fenzo.VMResource))
+  (:import (com.netflix.fenzo AssignmentFailure ConstraintFailure SimpleAssignmentResult VMResource)))
 
 ;; Fenzo is aware of other resources as well; just limiting it to ones
 ;; Cook will usually encounter
@@ -46,10 +43,10 @@
 (defn assignment-result
   [constraint-name resources-lacking]
   (SimpleAssignmentResult.
-   (map assignment-failure resources-lacking)
-   (when constraint-name
-     (ConstraintFailure. constraint-name (str constraint-name " was not satisfied")))
-   ))
+    (map assignment-failure resources-lacking)
+    (when constraint-name
+      (ConstraintFailure. constraint-name (str constraint-name " was not satisfied")))
+    ))
 
 (deftest test-summarize-placement-failures
   (testing "starting from empty accumulator"
@@ -57,18 +54,18 @@
            {}))
 
     (is (= (fenzo/summarize-placement-failure
-            {}
-            (assignment-result nil [:ports]))
+             {}
+             (assignment-result nil [:ports]))
            {:resources {"ports" 1}}))
 
     (is (= (fenzo/summarize-placement-failure
-            {}
-            (assignment-result "novel_host_constraint" []))
+             {}
+             (assignment-result "novel_host_constraint" []))
            {:constraints {"novel_host_constraint" 1}}))
 
     (is (= (fenzo/summarize-placement-failure
-            {}
-            (assignment-result "novel_host_constraint" [:cpus :mem]))
+             {}
+             (assignment-result "novel_host_constraint" [:cpus :mem]))
            {:constraints {"novel_host_constraint" 1}
             :resources {"cpus" 1
                         "mem" 1}})))

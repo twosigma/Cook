@@ -15,7 +15,7 @@
 ;;
 (ns metatransaction.core
   (:require [datomic.api :as d])
-  (:import [datomic.Datom]))
+  (:import (datomic Datom)))
 
 (def metatransaction-schema
   [{:db/id (d/tempid :db.part/db)
@@ -127,7 +127,7 @@
    Transactions without a metatransaction will go unfiltered. "
   [db]
   (let [committed (d/entid db :metatransaction.status/committed)]
-    (fn [db ^datomic.Datom datom]
+    (fn [db ^Datom datom]
       (if-let [mt (-> (d/datoms db :vaet (.tx datom) :metatransaction/tx) first :e)]
         (= committed (-> (d/datoms db :eavt mt :metatransaction/status) first :v))
         true))))
