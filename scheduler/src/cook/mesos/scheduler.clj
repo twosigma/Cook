@@ -310,15 +310,16 @@
                                          [[:db/add instance :instance/progress progress]])]))]
                (async/go
                  ; Wait for the transcation to complete before running the plugin
-                 (async/<! transaction-chan)
-                 (when (#{:instance.status/success :instance.status/failed} instance-status)
-                   (let [db (d/db conn)
-                         updated-job (d/entity db job)
-                         updated-instance (d/entity db instance)]
-                     (try
-                       (plugins/on-instance-completion completion/plugin updated-job updated-instance)
-                       (catch Exception e
-                         (log/error e "Error while running instance completion plugin.")))))))))
+                 (let [chan-result (async/<! transaction-chan)]
+                   (when (#{:instance.status/success :instance.status/failed} instance-status)
+                     (let [db (d/db conn)
+                           updated-job (d/entity db job)
+                           updated-instance (d/entity db instance)]
+                       (try
+                         (plugins/on-instance-completion completion/plugin updated-job updated-instance)
+                         (catch Exception e
+                           (log/error e "Error while running instance completion plugin.")))))
+                   chan-result)))))
          (catch Exception e
            (log/error e "Mesos scheduler status update error")))))
 

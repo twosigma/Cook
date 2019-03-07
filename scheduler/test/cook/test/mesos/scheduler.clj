@@ -31,8 +31,9 @@
             [cook.mesos.scheduler :as sched]
             [cook.mesos.share :as share]
             [cook.mesos.util :as util]
-            [cook.plugins.launch :as launch-plugin]
             [cook.plugins.completion :as completion]
+            [cook.plugins.definitions :as pd]
+            [cook.plugins.launch :as launch-plugin]
             [cook.rate-limit :as rate-limit]
             [cook.test.testutil :refer [restore-fresh-database! create-dummy-group create-dummy-job
                                         create-dummy-instance init-agent-attributes-cache poll-until wait-for
@@ -896,6 +897,13 @@
         (is (= 1 (count killable)))
         (is (= (-> killable first :db/id) inst-cancelled))))))
 
+(defn make-dummy-status-update
+  [task-id reason state & {:keys [progress] :or {progress nil}}]
+  (let [task {:task-id {:value task-id}
+              :reason reason
+              :state state}]
+    task))
+
 (deftest test-handle-status-update
   (with-redefs [completion/plugin completion/no-op]
     (let [uri "datomic:mem://test-handle-status-update"
@@ -905,11 +913,6 @@
                    (kill-task! [_ task] (swap! tasks-killed conj (:value task)))) ; Conjoin the task-id
           driver-atom (atom nil)
           fenzo (sched/make-fenzo-scheduler driver-atom 1500 nil 0.8)
-          make-dummy-status-update (fn [task-id reason state & {:keys [progress] :or {progress nil}}]
-                                     (let [task {:task-id {:value task-id}
-                                                 :reason reason
-                                                 :state state}]
-                                       task))
           synced-agents-atom (atom [])
           sync-agent-sandboxes-fn (fn sync-agent-sandboxes-fn [hostname _]
                                     (swap! synced-agents-atom conj hostname))]
@@ -1046,6 +1049,41 @@
                  (sched/handle-status-update conn driver (constantly fenzo) sync-agent-sandboxes-fn)
                  async/<!!)
             (is (= first-observed-start-time (.getTime (mesos-start-time))))))))))
+
+(deftest test-instance-completion-plugin
+  (setup)
+  (let [plugin-invocation-atom (atom {})
+        plugin-implementation (reify
+                                pd/InstanceCompletionHandler
+                                (on-instance-completion [this job instance]
+                                  (reset! plugin-invocation-atom {:instance instance
+                                                                  :job job})))
+        conn (restore-fresh-database! "datomic:mem://test-instance-completion-plugin")
+        driver (reify msched/SchedulerDriver)
+        driver-atom (atom nil)
+        fenzo (sched/make-fenzo-scheduler driver-atom 1500 nil 0.8)]
+    (with-redefs [completion/plugin plugin-implementation]
+      (testing "Mesos task death"
+        (let [job-id (create-dummy-job conn :user "tsram" :job-state :job.state/running
+                                       :retry-count 1)
+              task-id "task1"
+              instance-id (create-dummy-instance conn job-id
+                                                 :instance-status :instance.status/unknown
+                                                 :task-id task-id)]
+          (->> (make-dummy-status-update task-id :reason-command-executor-failed :task-running)
+               (sched/handle-status-update conn driver (constantly fenzo) (constantly nil))
+               async/<!!)
+          ; instance not complete, plugin should not have been invoked
+          (is (= {} @plugin-invocation-atom))
+
+          (->> (make-dummy-status-update task-id :reason-command-executor-failed :task-killed)
+               (sched/handle-status-update conn driver (constantly fenzo) (constantly nil))
+               async/<!!)
+          ; instance complete, plugin should have been invoked with resulting job/instance
+          (let [job (:job @plugin-invocation-atom)
+                instance (:instance @plugin-invocation-atom)]
+            (is (= :job.state/completed (:job/state job)))
+            (is (= :reason-command-executor-failed (:reason/mesos-reason (:instance/reason instance))))))))))
 
 (deftest test-handle-framework-message
   (let [uri "datomic:mem://test-handle-framework-message"
