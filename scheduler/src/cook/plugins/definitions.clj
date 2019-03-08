@@ -41,3 +41,8 @@
 
       If the return value is :status :accepted, the job is considered ready to launch right now.
       If the return value is :status :deferred, the job execution should be deferred until at least the given datetime."))
+
+(defprotocol InstanceCompletionHandler
+  (on-instance-completion [this job instance]
+    "Plugin for performing operations on a job after an instance of the job has completed.
+     The return value of the plugin is ignored."))

@@ -25,13 +25,15 @@
             [clojure.tools.logging :as log]
             [clojure.walk :as walk]
             [cook.config :as config]
-            [cook.plugins.launch :as launch-plugin]
             [cook.mesos.data-locality :as dl]
             [cook.mesos.heartbeat :as heartbeat]
             [cook.mesos.sandbox :as sandbox]
             [cook.mesos.scheduler :as sched]
             [cook.mesos.share :as share]
             [cook.mesos.util :as util]
+            [cook.plugins.completion :as completion]
+            [cook.plugins.definitions :as pd]
+            [cook.plugins.launch :as launch-plugin]
             [cook.rate-limit :as rate-limit]
             [cook.test.testutil :refer [restore-fresh-database! create-dummy-group create-dummy-job
                                         create-dummy-instance init-agent-attributes-cache poll-until wait-for
@@ -895,155 +897,192 @@
         (is (= 1 (count killable)))
         (is (= (-> killable first :db/id) inst-cancelled))))))
 
+(defn make-dummy-status-update
+  [task-id reason state & {:keys [progress] :or {progress nil}}]
+  {:task-id {:value task-id}
+   :reason reason
+   :state state})
+
 (deftest test-handle-status-update
-  (let [uri "datomic:mem://test-handle-status-update"
-        conn (restore-fresh-database! uri)
-        tasks-killed (atom #{})
-        driver (reify msched/SchedulerDriver
-                 (kill-task! [_ task] (swap! tasks-killed conj (:value task)))) ; Conjoin the task-id
-        driver-atom (atom nil)
-        fenzo (sched/make-fenzo-scheduler driver-atom 1500 nil 0.8)
-        make-dummy-status-update (fn [task-id reason state & {:keys [progress] :or {progress nil}}]
-                                   (let [task {:task-id {:value task-id}
-                                               :reason reason
-                                               :state state}]
-                                     task))
-        synced-agents-atom (atom [])
-        sync-agent-sandboxes-fn (fn sync-agent-sandboxes-fn [hostname _]
-                                  (swap! synced-agents-atom conj hostname))]
+  (with-redefs [completion/plugin completion/no-op]
+    (let [uri "datomic:mem://test-handle-status-update"
+          conn (restore-fresh-database! uri)
+          tasks-killed (atom #{})
+          driver (reify msched/SchedulerDriver
+                   (kill-task! [_ task] (swap! tasks-killed conj (:value task)))) ; Conjoin the task-id
+          driver-atom (atom nil)
+          fenzo (sched/make-fenzo-scheduler driver-atom 1500 nil 0.8)
+          synced-agents-atom (atom [])
+          sync-agent-sandboxes-fn (fn sync-agent-sandboxes-fn [hostname _]
+                                    (swap! synced-agents-atom conj hostname))]
 
-    (testing "Mesos task death"
-      (let [job-id (create-dummy-job conn :user "tsram" :job-state :job.state/running)
-            task-id "task1"
-            instance-id (create-dummy-instance conn job-id
-                                               :instance-status :instance.status/running
-                                               :task-id task-id)]
-        ; Wait for async database transaction inside handle-status-update
-        (->> (make-dummy-status-update task-id :reason-gc-error :task-killed)
-             (sched/handle-status-update conn driver (constantly fenzo) sync-agent-sandboxes-fn)
-             async/<!!)
-
-        (is (= :instance.status/failed
-               (ffirst (q '[:find ?status
-                            :in $ ?i
-                            :where
-                            [?i :instance/status ?s]
-                            [?s :db/ident ?status]]
-                          (db conn) instance-id))))
-        (is (= :mesos-gc-error
-               (ffirst (q '[:find ?reason-name
-                            :in $ ?i
-                            :where
-                            [?i :instance/reason ?r]
-                            [?r :reason/name ?reason-name]]
-                          (db conn) instance-id))))
-        (let [get-end-time (fn [] (ffirst (q '[:find ?end-time
-                                               :in $ ?i
-                                               :where
-                                               [?i :instance/end-time ?end-time]]
-                                             (db conn) instance-id)))
-              original-end-time (get-end-time)]
-          (Thread/sleep 100)
+      (testing "Mesos task death"
+        (let [job-id (create-dummy-job conn :user "tsram" :job-state :job.state/running)
+              task-id "task1"
+              instance-id (create-dummy-instance conn job-id
+                                                 :instance-status :instance.status/running
+                                                 :task-id task-id)]
+                                        ; Wait for async database transaction inside handle-status-update
           (->> (make-dummy-status-update task-id :reason-gc-error :task-killed)
                (sched/handle-status-update conn driver (constantly fenzo) sync-agent-sandboxes-fn)
                async/<!!)
-          (is (= original-end-time (get-end-time))))))
 
-    (testing "Pre-existing reason is not mea-culpa. New reason is. Job still out of retries because non-mea-culpa takes preference"
-      (let [job-id (create-dummy-job conn
-                                     :user "tsram"
-                                     :job-state :job.state/completed
-                                     :retry-count 3)
-            task-id "task2"
-            _ (create-dummy-instance conn job-id
-                                     :instance-status :instance.status/failed
-                                     :reason :unknown)
-            _ (create-dummy-instance conn job-id
-                                     :instance-status :instance.status/failed
-                                     :reason :unknown)
-            _ (create-dummy-instance conn job-id
-                                     :instance-status :instance.status/failed
-                                     :reason :mesos-master-disconnected) ; Mea-culpa
-            instance-id (create-dummy-instance conn job-id
-                                               :instance-status :instance.status/failed
-                                               :task-id task-id
-                                               :reason :max-runtime-exceeded)] ; Previous reason is not mea-culpa
-        ; Status update says slave got restarted (mea-culpa)
-        (->> (make-dummy-status-update task-id :mesos-slave-restarted :task-killed)
-             (sched/handle-status-update conn driver (constantly fenzo) sync-agent-sandboxes-fn)
-             async/<!!)
-        ; Assert old reason persists
-        (is (= :max-runtime-exceeded
-               (ffirst (q '[:find ?reason-name
-                            :in $ ?i
-                            :where
-                            [?i :instance/reason ?r]
-                            [?r :reason/name ?reason-name]]
-                          (db conn) instance-id))))
-        ; Assert job still marked as out of retries
-        (is (= :job.state/completed
-               (ffirst (q '[:find ?state
-                            :in $ ?j
-                            :where
-                            [?j :job/state ?s]
-                            [?s :db/ident ?state]]
-                          (db conn) job-id))))))
+          (is (= :instance.status/failed
+                 (ffirst (q '[:find ?status
+                              :in $ ?i
+                              :where
+                              [?i :instance/status ?s]
+                              [?s :db/ident ?status]]
+                            (db conn) instance-id))))
+          (is (= :mesos-gc-error
+                 (ffirst (q '[:find ?reason-name
+                              :in $ ?i
+                              :where
+                              [?i :instance/reason ?r]
+                              [?r :reason/name ?reason-name]]
+                            (db conn) instance-id))))
+          (let [get-end-time (fn [] (ffirst (q '[:find ?end-time
+                                                 :in $ ?i
+                                                 :where
+                                                 [?i :instance/end-time ?end-time]]
+                                               (db conn) instance-id)))
+                original-end-time (get-end-time)]
+            (Thread/sleep 100)
+            (->> (make-dummy-status-update task-id :reason-gc-error :task-killed)
+                 (sched/handle-status-update conn driver (constantly fenzo) sync-agent-sandboxes-fn)
+                 async/<!!)
+            (is (= original-end-time (get-end-time))))))
 
-    (testing "Tasks of completed jobs are killed"
-      (let [job-id (create-dummy-job conn
-                                     :user "tsram"
-                                     :job-state :job.state/completed
-                                     :retry-count 3)
-            task-id-a "taska"
-            task-id-b "taskb"]
-        (create-dummy-instance conn job-id
-                               :hostname "www.test-host.com"
-                               :instance-status :instance.status/running
-                               :task-id task-id-a
-                               :reason :unknown)
-        (create-dummy-instance conn job-id
-                               :instance-status :instance.status/success
-                               :task-id task-id-b
-                               :reason :unknown)
-        (reset! synced-agents-atom [])
-        (->> (make-dummy-status-update task-id-a :mesos-slave-restarted :task-running)
-             (sched/handle-status-update conn driver (constantly fenzo) sync-agent-sandboxes-fn)
-             async/<!!)
-        (is (true? (contains? @tasks-killed task-id-a)))
-        (is (= ["www.test-host.com"] @synced-agents-atom))))
+      (testing "Pre-existing reason is not mea-culpa. New reason is. Job still out of retries because non-mea-culpa takes preference"
+        (let [job-id (create-dummy-job conn
+                                       :user "tsram"
+                                       :job-state :job.state/completed
+                                       :retry-count 3)
+              task-id "task2"
+              _ (create-dummy-instance conn job-id
+                                       :instance-status :instance.status/failed
+                                       :reason :unknown)
+              _ (create-dummy-instance conn job-id
+                                       :instance-status :instance.status/failed
+                                       :reason :unknown)
+              _ (create-dummy-instance conn job-id
+                                       :instance-status :instance.status/failed
+                                       :reason :mesos-master-disconnected) ; Mea-culpa
+              instance-id (create-dummy-instance conn job-id
+                                                 :instance-status :instance.status/failed
+                                                 :task-id task-id
+                                                 :reason :max-runtime-exceeded)] ; Previous reason is not mea-culpa
+                                        ; Status update says slave got restarted (mea-culpa)
+          (->> (make-dummy-status-update task-id :mesos-slave-restarted :task-killed)
+               (sched/handle-status-update conn driver (constantly fenzo) sync-agent-sandboxes-fn)
+               async/<!!)
+                                        ; Assert old reason persists
+          (is (= :max-runtime-exceeded
+                 (ffirst (q '[:find ?reason-name
+                              :in $ ?i
+                              :where
+                              [?i :instance/reason ?r]
+                              [?r :reason/name ?reason-name]]
+                            (db conn) instance-id))))
+                                        ; Assert job still marked as out of retries
+          (is (= :job.state/completed
+                 (ffirst (q '[:find ?state
+                              :in $ ?j
+                              :where
+                              [?j :job/state ?s]
+                              [?s :db/ident ?state]]
+                            (db conn) job-id))))))
 
-    (testing "instance persists mesos-start-time when task is first known to be starting or running"
-      (let [job-id (create-dummy-job conn
-                                     :user "mforsyth"
-                                     :job-state :job.state/running
-                                     :retry-count 3)
-            task-id "task-mesos-start-time"
-            mesos-start-time (fn [] (-> conn
-                                        d/db
-                                        (d/entity [:instance/task-id task-id])
-                                        :instance/mesos-start-time))]
-        (create-dummy-instance conn job-id
-                               :hostname "www.test-host.com"
-                               :instance-status :instance.status/unknown
-                               :reason :unknown
-                               :task-id task-id)
-        (is (nil? (mesos-start-time)))
-        (->> (make-dummy-status-update task-id :unknown :task-staging)
-             (sched/handle-status-update conn driver (constantly fenzo) sync-agent-sandboxes-fn)
-             async/<!!)
-        (is (nil? (mesos-start-time)))
-        (reset! synced-agents-atom [])
-        (->> (make-dummy-status-update task-id :unknown :task-running)
-             (sched/handle-status-update conn driver (constantly fenzo) sync-agent-sandboxes-fn)
-             async/<!!)
-        (is (= ["www.test-host.com"] @synced-agents-atom))
-        (is (not (nil? (mesos-start-time))))
-        (let [first-observed-start-time (.getTime (mesos-start-time))]
-          (is (not (nil? first-observed-start-time)))
+      (testing "Tasks of completed jobs are killed"
+        (let [job-id (create-dummy-job conn
+                                       :user "tsram"
+                                       :job-state :job.state/completed
+                                       :retry-count 3)
+              task-id-a "taska"
+              task-id-b "taskb"]
+          (create-dummy-instance conn job-id
+                                 :hostname "www.test-host.com"
+                                 :instance-status :instance.status/running
+                                 :task-id task-id-a
+                                 :reason :unknown)
+          (create-dummy-instance conn job-id
+                                 :instance-status :instance.status/success
+                                 :task-id task-id-b
+                                 :reason :unknown)
+          (reset! synced-agents-atom [])
+          (->> (make-dummy-status-update task-id-a :mesos-slave-restarted :task-running)
+               (sched/handle-status-update conn driver (constantly fenzo) sync-agent-sandboxes-fn)
+               async/<!!)
+          (is (true? (contains? @tasks-killed task-id-a)))
+          (is (= ["www.test-host.com"] @synced-agents-atom))))
+
+      (testing "instance persists mesos-start-time when task is first known to be starting or running"
+        (let [job-id (create-dummy-job conn
+                                       :user "mforsyth"
+                                       :job-state :job.state/running
+                                       :retry-count 3)
+              task-id "task-mesos-start-time"
+              mesos-start-time (fn [] (-> conn
+                                          d/db
+                                          (d/entity [:instance/task-id task-id])
+                                          :instance/mesos-start-time))]
+          (create-dummy-instance conn job-id
+                                 :hostname "www.test-host.com"
+                                 :instance-status :instance.status/unknown
+                                 :reason :unknown
+                                 :task-id task-id)
+          (is (nil? (mesos-start-time)))
+          (->> (make-dummy-status-update task-id :unknown :task-staging)
+               (sched/handle-status-update conn driver (constantly fenzo) sync-agent-sandboxes-fn)
+               async/<!!)
+          (is (nil? (mesos-start-time)))
+          (reset! synced-agents-atom [])
           (->> (make-dummy-status-update task-id :unknown :task-running)
                (sched/handle-status-update conn driver (constantly fenzo) sync-agent-sandboxes-fn)
                async/<!!)
-          (is (= first-observed-start-time (.getTime (mesos-start-time)))))))))
+          (is (= ["www.test-host.com"] @synced-agents-atom))
+          (is (not (nil? (mesos-start-time))))
+          (let [first-observed-start-time (.getTime (mesos-start-time))]
+            (is (not (nil? first-observed-start-time)))
+            (->> (make-dummy-status-update task-id :unknown :task-running)
+                 (sched/handle-status-update conn driver (constantly fenzo) sync-agent-sandboxes-fn)
+                 async/<!!)
+            (is (= first-observed-start-time (.getTime (mesos-start-time))))))))))
+
+(deftest test-instance-completion-plugin
+  (setup)
+  (let [plugin-invocation-atom (atom {})
+        plugin-implementation (reify
+                                pd/InstanceCompletionHandler
+                                (on-instance-completion [this job instance]
+                                  (reset! plugin-invocation-atom {:instance instance
+                                                                  :job job})))
+        conn (restore-fresh-database! "datomic:mem://test-instance-completion-plugin")
+        driver (reify msched/SchedulerDriver)
+        driver-atom (atom nil)
+        fenzo (sched/make-fenzo-scheduler driver-atom 1500 nil 0.8)]
+    (with-redefs [completion/plugin plugin-implementation]
+      (testing "Mesos task death"
+        (let [job-id (create-dummy-job conn :user "testuser" :job-state :job.state/running
+                                       :retry-count 1)
+              task-id "task1"
+              instance-id (create-dummy-instance conn job-id
+                                                 :instance-status :instance.status/unknown
+                                                 :task-id task-id)]
+          (->> (make-dummy-status-update task-id :reason-command-executor-failed :task-running)
+               (sched/handle-status-update conn driver (constantly fenzo) (constantly nil))
+               async/<!!)
+          ; instance not complete, plugin should not have been invoked
+          (is (= {} @plugin-invocation-atom))
+
+          (->> (make-dummy-status-update task-id :reason-command-executor-failed :task-killed)
+               (sched/handle-status-update conn driver (constantly fenzo) (constantly nil))
+               async/<!!)
+          ; instance complete, plugin should have been invoked with resulting job/instance
+          (let [job (:job @plugin-invocation-atom)
+                instance (:instance @plugin-invocation-atom)]
+            (is (= :job.state/completed (:job/state job)))
+            (is (= :reason-command-executor-failed (:reason/mesos-reason (:instance/reason instance))))))))))
 
 (deftest test-handle-framework-message
   (let [uri "datomic:mem://test-handle-framework-message"
