@@ -899,10 +899,9 @@
 
 (defn make-dummy-status-update
   [task-id reason state & {:keys [progress] :or {progress nil}}]
-  (let [task {:task-id {:value task-id}
-              :reason reason
-              :state state}]
-    task))
+  {:task-id {:value task-id}
+   :reason reason
+   :state state})
 
 (deftest test-handle-status-update
   (with-redefs [completion/plugin completion/no-op]
@@ -1064,7 +1063,7 @@
         fenzo (sched/make-fenzo-scheduler driver-atom 1500 nil 0.8)]
     (with-redefs [completion/plugin plugin-implementation]
       (testing "Mesos task death"
-        (let [job-id (create-dummy-job conn :user "tsram" :job-state :job.state/running
+        (let [job-id (create-dummy-job conn :user "testuser" :job-state :job.state/running
                                        :retry-count 1)
               task-id "task1"
               instance-id (create-dummy-instance conn job-id

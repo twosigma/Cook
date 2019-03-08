@@ -10,7 +10,7 @@
     (on-instance-completion [_ _ _])))
 
 (defn create-default-plugin-object
-  "Returns the configred InstanceCompletionHandler, or a no-op if none is defined."
+  "Returns the configured InstanceCompletionHandler, or a no-op if none is defined."
   [config]
   (let [factory-fn (get-in config [:settings :plugins :instance-completion :factory-fn])]
     (if factory-fn
