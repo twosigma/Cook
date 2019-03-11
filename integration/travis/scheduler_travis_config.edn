@@ -35,8 +35,8 @@
               ; Keep these job-launch and job-submission values as they are for integration tests. Making them smaller can cause
               ; spurious failures, and making them larger will cause the rate-limit integration test to skip itself.
               :global-job-launch {:bucket-size #config/env-int-default ["GLOBAL_JOB_LAUNCH_RATE_LIMIT_BUCKET_SIZE" 10000]
-                           :enforce? true
-                           :tokens-replenished-per-minute #config/env-int-default ["GLOBAL_JOB_LAUNCH_RATE_LIMIT_REPLENISHED_PER_MINUTE" 10000]}
+                                  :enforce? true
+                                  :tokens-replenished-per-minute #config/env-int-default ["GLOBAL_JOB_LAUNCH_RATE_LIMIT_REPLENISHED_PER_MINUTE" 10000]}
               :job-launch {:bucket-size #config/env-int-default ["JOB_LAUNCH_RATE_LIMIT_BUCKET_SIZE" 10000]
                            :enforce? true
                            :tokens-replenished-per-minute #config/env-int-default ["JOB_LAUNCH_RATE_LIMIT_REPLENISHED_PER_MINUTE" 10000]}
