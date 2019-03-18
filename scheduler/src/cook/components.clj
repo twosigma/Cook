@@ -312,6 +312,9 @@
                                ((util/lazy-load-var 'cook.mesos.sandbox/prepare-sandbox-publisher)
                                  framework-id datomic/conn publish-batch-size publish-interval-ms sync-interval-ms
                                  max-consecutive-sync-failure mesos-agent-query-cache)))
+     :clear-uncommitted-canceler (fnk [mesos-leadership-atom]
+                                   ((util/lazy-load-var 'cook.mesos.util/clear-uncommitted-jobs-on-schedule)
+                                     datomic/conn mesos-leadership-atom))
      :mesos-leadership-atom (fnk [] (atom false))
      :pool-name->pending-jobs-atom (fnk [] (atom {}))
      :mesos-agent-attributes-cache (fnk [[:settings {agent-attributes-cache nil}]]
