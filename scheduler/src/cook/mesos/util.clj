@@ -691,7 +691,7 @@
                       {:count-committed (count committed-jobs)
                        :count-uncommitted (count uncommitted-jobs)})))
     (when-not dry-run?
-      (doseq [batch (partition-all 10 uncommitted-before)]
+      (doseq [batch (partition-all 100 uncommitted-before)]
         @(d/transact conn (mapv #(vector :db.fn/retractEntity (:db/id %))
                                 batch))))
     uncommitted-before))
