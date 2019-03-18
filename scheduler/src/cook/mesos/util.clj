@@ -14,9 +14,11 @@
 ;; limitations under the License.
 ;;
 (ns cook.mesos.util
-  (:require [clj-time.coerce :as tc]
+  (:require [chime]
+            [clj-time.coerce :as tc]
             [clj-time.core :as t]
             [clj-time.format :as tf]
+            [clj-time.periodic :as tp]
             [cook.cache :as ccache]
             [cook.config :as config]
             [cook.mesos.pool :as pool]
@@ -698,6 +700,27 @@
         @(d/transact conn (mapv #(vector :db.fn/retractEntity (:db/id %))
                                 batch))))
     uncommitted-before))
+
+(defn clear-uncommitted-jobs-on-schedule
+  "Runs the clear-uncommitted-jobs on a schedule; 12 hours after starting up and every 24 hours thereafter.
+
+   If something goes wrong and a batch of jobs is submitted to Cook, but is never committed, they will slowly build up
+   and clutter the database, causing the scheduler loop to slow down due to get-pending-jobs having to read and skip them.
+
+   The cost appears to be around one second every 50k jobs.
+
+   This is a simple loop that nukes any uncommitted jobs older than a few days. It runs every 24 hours. There will be a minor
+   performance hiccough lasting around 1 minute per 1000 jobs or so as this runs and flushes."
+  [conn mesos-leadership-atom]
+  (let [age (tc/to-date (-> -3 t/days t/from-now))
+        start-time (-> 12 t/hours t/from-now)
+        frequency (-> 1 t/days)
+        schedule (tp/periodic-seq start-time frequency)
+        chime-fn (fn [time]
+                   (when @mesos-leadership-atom
+                     (clear-uncommitted-jobs conn age false)))]
+    (log/info "Launching clear-uncommitted-jobs-on-schedule")
+    (chime/chime-at schedule chime-fn)))
 
 (defn instance-running?
   [instance]
