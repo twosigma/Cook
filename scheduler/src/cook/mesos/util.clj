@@ -690,6 +690,9 @@
       (throw (ex-info "There is overlap between committed and uncommitted jobs, there is something wrong!"
                       {:count-committed (count committed-jobs)
                        :count-uncommitted (count uncommitted-jobs)})))
+    (if dry-run?
+      (log/info "clear-uncommitted-jobs would delete" (count uncommitted-before) "uncommitted jobs submitted before" submitted-before)
+      (log/info "clear-uncommitted-jobs is deleting" (count uncommitted-before) "uncommitted jobs submitted before" submitted-before))
     (when-not dry-run?
       (doseq [batch (partition-all 100 uncommitted-before)]
         @(d/transact conn (mapv #(vector :db.fn/retractEntity (:db/id %))
