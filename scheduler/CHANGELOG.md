@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.29.0] - 2019-03-19
+### Added
+- Instance completion plugin, from @pschorf
+- Periodic cleanup of uncommitted jobs, from @scrosby
+- Pool selection plugin, from @pschorf
+
 ## [1.28.0] - 2019-03-05
 ### Added
 - Added support for suitable flag for datasets, from @pschorf
