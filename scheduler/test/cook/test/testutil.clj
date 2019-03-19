@@ -299,6 +299,7 @@
                            #'cook.rate-limit/job-launch-rate-limiter
                            #'cook.rate-limit/global-job-launch-rate-limiter
                            #'cook.plugins.launch/plugin-object
+                           #'cook.plugins.pool/plugin
                            #'cook.plugins.submission/plugin-object)))
 
 (defn wait-for

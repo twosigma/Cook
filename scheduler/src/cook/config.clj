@@ -408,7 +408,8 @@
                                             :launch-wait-seconds (get fitness-calculator :launch-wait-seconds 60)
                                             :update-interval-ms (get fitness-calculator :update-interval-ms nil)}))
      :plugins (fnk [[:config {plugins {}}]]
-                (let [{:keys [job-launch-filter job-submission-validator]} plugins]
+                 (let [{:keys [job-launch-filter job-submission-validator
+                               pool-selection]} plugins]
                   (merge plugins
                          {:job-launch-filter
                           (merge
@@ -418,7 +419,11 @@
                             job-launch-filter)
                           :job-submission-validator
                           (merge {:batch-timeout-seconds 40}
-                                 job-submission-validator)})))}))
+                                 job-submission-validator)
+                          :pool-selection
+                          (merge {:attribute-name "cook-pool"
+                                  :default-pool "no-pool"}
+                                 pool-selection)})))}))
 
 (defn read-config
   "Given a config file path, reads the config and returns the map"

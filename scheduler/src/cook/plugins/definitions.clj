@@ -46,3 +46,7 @@
   (on-instance-completion [this job instance]
     "Plugin for performing operations on a job after an instance of the job has completed.
      The return value of the plugin is ignored."))
+
+(defprotocol PoolSelector
+  (select-pool [this offer]
+    "Returns the pool name as a string for the offer"))

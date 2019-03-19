@@ -29,6 +29,7 @@
             [cook.plugins.completion :as completion]
             [cook.plugins.definitions :as plugins]
             [cook.plugins.launch :as launch-plugin]
+            [cook.plugins.pool :as pool-plugin]
             [cook.mesos.constraints :as constraints]
             [cook.mesos.data-locality :as dl]
             [cook.mesos.dru :as dru]
@@ -1485,11 +1486,7 @@
       (resource-offers
         [this driver offers]
         (log/debug "Got offers:" offers)
-        (let [pool->offers (group-by (fn [o]
-                                       (or
-                                         (->> o :attributes (filter #(= "cook-pool" (:name %))) first :text)
-                                         "no-pool"))
-                                     offers)
+        (let [pool->offers (group-by (fn [o] (plugins/select-pool pool-plugin/plugin o)) offers)
               using-pools? (config/default-pool)]
           (log/info "Offers by pool:" (pc/map-vals count pool->offers))
           (run!

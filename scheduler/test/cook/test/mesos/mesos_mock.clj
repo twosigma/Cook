@@ -8,7 +8,7 @@
             [cook.mesos.share :as share]
             [cook.mesos.util :as util]
             [cook.test.simulator :refer (with-cook-scheduler pull-all-task-ents dump-jobs-to-csv)]
-            [cook.test.testutil :refer (restore-fresh-database! create-dummy-job poll-until)]
+            [cook.test.testutil :refer (restore-fresh-database! create-dummy-job poll-until setup)]
             [datomic.api :as d]
             [mesomatic.scheduler :as mesos]
             [mesomatic.types :as mesos-types])
@@ -654,6 +654,7 @@
           (throw (ex-info "Error while testing launch" atom-map t)))))))
 
 (deftest cook-scheduler-integration
+  (setup)
   ;; This tests the case where one user has all the resources in the cluster
   ;; and then another user shows up which causes the scheduler to preempt jobs
   ;; so both may run.
