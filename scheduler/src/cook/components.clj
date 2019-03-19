@@ -30,6 +30,8 @@
             [cook.plugins.submission]
             ; This explicit require is needed so that mount can see the defstate defined in the cook.plugins.launch namespace.
             [cook.plugins.launch]
+            ; This explicit require is needed so that mount can see the defstate defined in the cook.plugins.pool namespace.
+            [cook.plugins.pool]
             [cook.impersonation :refer (impersonation-authorized-wrapper)]
             [cook.mesos.pool :as pool]
             ; This explicit require is needed so that mount can see the defstate defined in the cook.rate-limit namespace.
