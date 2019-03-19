@@ -712,13 +712,13 @@
    This is a simple loop that nukes any uncommitted jobs older than a few days. It runs every 24 hours. There will be a minor
    performance hiccough lasting around 1 minute per 1000 jobs or so as this runs and flushes."
   [conn mesos-leadership-atom]
-  (let [age (tc/to-date (-> -3 t/days t/from-now))
-        start-time (-> 12 t/hours t/from-now)
+  (let [start-time (-> 12 t/hours t/from-now)
         frequency (-> 1 t/days)
         schedule (tp/periodic-seq start-time frequency)
-        chime-fn (fn [time]
+        chime-fn (fn [_]
                    (when @mesos-leadership-atom
-                     (clear-uncommitted-jobs conn age false)))]
+                     (let [age (-> -7 t/days t/from-now tc/to-date)]
+                       (clear-uncommitted-jobs conn age false))))]
     (log/info "Launching clear-uncommitted-jobs-on-schedule")
     (chime/chime-at schedule chime-fn)))
 
