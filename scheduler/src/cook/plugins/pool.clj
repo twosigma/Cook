@@ -12,7 +12,7 @@
         default-pool)))
 
 (defn create-plugin-object
-  "Returns the configured PoolSelector, or a no-op if none is defined."
+  "Returns the configured PoolSelector, or an AttributePoolSelector if none is defined."
   [config]
   (let [pool-selection (get-in config [:settings :plugins :pool-selection])
         factory-fn (:factory-fn pool-selection)]
