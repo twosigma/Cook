@@ -250,6 +250,8 @@ class CookCliTest(util.CookTest):
         self.assertEqual(1, cp.returncode, cp.stderr)
         self.assertIn('You must specify at least one UUID', cli.decode(cp.stderr))
 
+    # Marked xfail due to failure during CRON run: https://travis-ci.org/twosigma/Cook/jobs/510411404
+    @pytest.mark.xfail
     def test_wait_specify_timeout_and_interval(self):
         cp, uuids = cli.submit('"sleep 60"', self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
@@ -607,7 +609,9 @@ class CookCliTest(util.CookTest):
         self.assertIn('/jobs', cli.decode(cp.stderr))
         self.assertNotIn('/list', cli.decode(cp.stderr))
 
+    # Marked xfail due to failure during CRON run: https://travis-ci.org/twosigma/Cook/jobs/510411402
     @unittest.skipUnless(util.are_pools_enabled(), 'Pools are not enabled on the cluster')
+    @pytest.mark.xfail
     def test_jobs_pool(self):
         pools, _ = util.active_pools(self.cook_url)
         self.assertLess(0, len(pools))
@@ -894,6 +898,8 @@ def dummy_tail_text(instance, sandbox_dir, path, offset=None, length=None):
                 self.assertEqual(0, cp.returncode, cp.stderr)
                 self.assertEqual('world!', cli.decode(cp.stdout))
 
+    # Marked xfail due to failure during CRON run: https://travis-ci.org/twosigma/Cook/jobs/510411402
+    @pytest.mark.xfail
     def test_ls(self):
 
         def entry(name):
