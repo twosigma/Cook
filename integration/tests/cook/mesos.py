@@ -17,8 +17,8 @@ def instance_to_agent_url(instance):
     return f'http://{netloc}'
 
 
-def sandbox_directory(session, instance, job):
-    """Given an instance and its parent job, determines the Mesos agent sandbox directory"""
+def sandbox_directory(session, instance, job, cook_framework_id):
+    """Given an instance and its framework, determines the Mesos agent sandbox directory"""
 
     # Check if we've simply been handed the sandbox directory
     if 'sandbox_directory' in instance:
@@ -46,7 +46,7 @@ def sandbox_directory(session, instance, job):
     # Parse the Mesos agent state and look for a matching executor
     resp_json = resp.json()
     frameworks = resp_json['completed_frameworks'] + resp_json['frameworks']
-    cook_framework = next(f for f in frameworks if f['id'] == job['framework_id'])
+    cook_framework = next(f for f in frameworks if f['id'] == cook_framework_id)
     cook_executors = cook_framework['completed_executors'] + cook_framework['executors']
     instance_id = instance['task_id']
     directories = [e['directory'] for e in cook_executors if e['id'] == instance_id]
@@ -111,7 +111,7 @@ def cat_for_instance(session, instance, sandbox_dir, path):
         logging.exception(bpe)
 
 
-def dump_sandbox_files(session, instance, job):
+def dump_sandbox_files(session, instance, job, cook_framework):
     """Logs the contents of each file in the root of the given instance's sandbox."""
     if os.getenv('COOK_TEST_SKIP_SANDBOX_DUMP') is not None:
         logging.info(f'Skipping dumping of sandbox files for instance {instance["task_id"]}')
@@ -119,7 +119,7 @@ def dump_sandbox_files(session, instance, job):
 
     try:
         logging.info(f'Attempting to dump sandbox files for {instance}')
-        directory = sandbox_directory(session, instance, job)
+        directory = sandbox_directory(session, instance, job, cook_framework_id)
         entries = browse_files(session, instance, directory, None)
         for entry in entries:
             try:
