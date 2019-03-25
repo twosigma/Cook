@@ -44,7 +44,6 @@
         api-handler (wrap-params
                       (let [handler
                             (api/main-handler conn
-                                              "my-framework-id"
                                               (fn [] [])
                                               {:is-authorized-fn authorized-fn
                                                :mesos-gpu-enabled false

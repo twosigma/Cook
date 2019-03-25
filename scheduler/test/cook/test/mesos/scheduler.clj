@@ -141,7 +141,7 @@
 ;(.getOffer (make-vm-offer (make-uuid) "lol" (make-uuid)))
 
 (defn schedule-and-run-jobs
-  [conn framework-id scheduler offers job-ids]
+  [conn scheduler offers job-ids]
   (let [db (d/db conn)
         jobs (->> job-ids
                   (map #(d/entity db %))
@@ -408,7 +408,7 @@
         framework-id (str "framework-id-" (java.util.UUID/randomUUID))
         fenzo (make-dummy-scheduler)
         ; Schedule conflicting
-        _ (schedule-and-run-jobs conn framework-id fenzo [(make-vm-offer (make-uuid)
+        _ (schedule-and-run-jobs conn fenzo [(make-vm-offer (make-uuid)
                                                                          conflict-host
                                                                          (make-uuid))] [conflicting-job-id])
         low-priority (map #(d/entity (d/db conn) %) low-priority-ids)
@@ -682,11 +682,11 @@
             make-offers #(vector (make-vm-offer framework-id shared-host (make-uuid)))
             group (d/entity (d/db conn) group-id)
             ; Schedule first job
-            scheduled-tasks (schedule-and-run-jobs conn framework-id scheduler (make-offers) [conflicting-job-id])
+            scheduled-tasks (schedule-and-run-jobs conn scheduler (make-offers) [conflicting-job-id])
             _ (is (= 1 (count (:scheduled scheduled-tasks))))
             conflicting-task-id (first (:scheduled scheduled-tasks))
             ; Try to schedule conflicted job, but fail
-            failures (-> (schedule-and-run-jobs conn framework-id scheduler (make-offers) [conflicted-job-id])
+            failures (-> (schedule-and-run-jobs conn scheduler (make-offers) [conflicted-job-id])
                          :result
                          .getFailures)
             task-results (-> failures
@@ -710,7 +710,7 @@
             make-offers #(vector (make-vm-offer framework-id shared-host (make-uuid)))
             group (d/entity (d/db conn) group-id)
             ; Schedule first job
-            result (schedule-and-run-jobs conn framework-id scheduler (make-offers) [conflicting-job-id
+            result (schedule-and-run-jobs conn scheduler (make-offers) [conflicting-job-id
                                                                                      conflicted-job-id])
             _ (is (= 1 (count (:scheduled result))))
             conflicting-task-id (-> result :scheduled first)
@@ -733,8 +733,8 @@
             make-offers #(vector (make-vm-offer framework-id shared-host (make-uuid)))
             isolated-job-id1 (create-dummy-job conn)
             isolated-job-id2 (create-dummy-job conn)]
-        (is (= 1 (count (:scheduled (schedule-and-run-jobs conn framework-id scheduler (make-offers) [isolated-job-id1])))))
-        (is (= 1 (count (:scheduled (schedule-and-run-jobs conn framework-id scheduler (make-offers) [isolated-job-id2])))))))))
+        (is (= 1 (count (:scheduled (schedule-and-run-jobs conn scheduler (make-offers) [isolated-job-id1])))))
+        (is (= 1 (count (:scheduled (schedule-and-run-jobs conn scheduler (make-offers) [isolated-job-id2])))))))))
 
 (deftest test-balanced-host-placement-constraint
   (let [uri "datomic:mem://test-balanced-host-placement-constraint"
@@ -752,7 +752,7 @@
             job-ids (doall (repeatedly 9 #(create-dummy-job conn :group group-id)))]
         (is (= {"straw" 3 "sticks" 3 "bricks" 3}
                (->> job-ids
-                    (schedule-and-run-jobs conn framework-id scheduler (make-offers))
+                    (schedule-and-run-jobs conn scheduler (make-offers))
                     :result
                     .getResultMap
                     (pc/map-vals #(count (.getTasksAssigned %))))))))
@@ -762,7 +762,7 @@
             make-offers (fn [] (mapv #(make-vm-offer framework-id % (make-uuid)) hostnames))
             job-ids (doall (repeatedly 9 #(create-dummy-job conn)))]
         (is (not (= (list 3) (->> job-ids
-                                  (schedule-and-run-jobs conn framework-id scheduler (make-offers))
+                                  (schedule-and-run-jobs conn scheduler (make-offers))
                                   :result
                                   .getResultMap
                                   vals
@@ -793,10 +793,10 @@
             other-jobs (doall (repeatedly 20 #(create-dummy-job conn :ncpus 1.0 :group group-id)))
             ; Group jobs, setting balanced host-placement constraint
             ; Schedule the first job
-            _ (is (= 1 (->> (schedule-and-run-jobs conn framework-id scheduler [(make-attr-offer 1.0)] [first-job])
+            _ (is (= 1 (->> (schedule-and-run-jobs conn scheduler [(make-attr-offer 1.0)] [first-job])
                             :scheduled
                             count)))
-            batch-result (->> (schedule-and-run-jobs conn framework-id scheduler
+            batch-result (->> (schedule-and-run-jobs conn scheduler
                                                      (conj (make-non-attr-offers 20) (make-attr-offer 5.0)) other-jobs)
                               :result)]
         (testing "Other jobs all pile up on attr-offer."
@@ -822,11 +822,11 @@
       (let [scheduler (make-dummy-scheduler)
             first-job (create-dummy-job conn)
             other-jobs (doall (repeatedly 20 #(create-dummy-job conn)))
-            _ (is (= 1 (->> (schedule-and-run-jobs conn framework-id scheduler [(make-attr-offer 2.0)] [first-job])
+            _ (is (= 1 (->> (schedule-and-run-jobs conn scheduler [(make-attr-offer 2.0)] [first-job])
                             :scheduled
                             count)))]
         ; Need to use all offers to fit all 20 other-jobs
-        (is (= 20 (->> (schedule-and-run-jobs conn framework-id scheduler
+        (is (= 20 (->> (schedule-and-run-jobs conn scheduler
                                               (conj (make-non-attr-offers 15) (make-attr-offer 5.0)) other-jobs)
                        :result
                        .getResultMap
@@ -846,7 +846,7 @@
         jobs (doall (take 200 (repeatedly (fn [] (create-dummy-job conn :group group-id)))))
         group (d/entity (d/db conn) group-id)]
     (println  "============ match offers with group constraints timing ============")
-    (crit/bench (schedule-and-run-jobs conn framework-id scheduler (make-offers) jobs))))
+    (crit/bench (schedule-and-run-jobs conn scheduler (make-offers) jobs))))
 
 (deftest test-gpu-share-prioritization
   (let [uri "datomic:mem://test-gpu-shares"
@@ -1600,7 +1600,6 @@
                        :id {:value (str "id-" (UUID/randomUUID))}
                        :slave-id {:value (str "slave-" (UUID/randomUUID))}
                        :hostname (str "host-" (UUID/randomUUID))})
-        framework-id #mesomatic.types.FrameworkID{:value "my-framework-id"}
         offers-chan (async/chan (async/buffer 10))
         offer-1 (offer-maker 10 2048 0)
         offer-2 (offer-maker 20 16384 0)
@@ -1669,7 +1668,7 @@
                                             user->quota (or user-quota {test-user {:count 10, :cpus 50, :mem 32768, :gpus 10}})
                                             mesos-run-as-user nil
                                             result (sched/handle-resource-offers!
-                                                     conn driver fenzo framework-id pool-name->pending-jobs-atom mesos-run-as-user
+                                                     conn driver fenzo pool-name->pending-jobs-atom mesos-run-as-user
                                                      user->usage user->quota num-considerable offers-chan offers rebalancer-reservation-atom pool)]
                                         (async/>!! offers-chan :end-marker)
                                         result))]
@@ -1875,7 +1874,6 @@
                          :id {:value (str "id-" (UUID/randomUUID))}
                          :slave-id {:value (str "slave-" (UUID/randomUUID))}
                          :hostname (str "host-" (UUID/randomUUID))})
-          framework-id #mesomatic.types.FrameworkID{:value "my-framework-id"}
           offers-chan (async/chan (async/buffer 10))
           offer-1 (offer-maker 10 2048 0)
           offer-2 (offer-maker 20 16384 0)
@@ -1929,7 +1927,7 @@
                                               user->quota (or user-quota {test-user {:count 10, :cpus 50, :mem 32768, :gpus 10}})
                                               mesos-run-as-user nil
                                               result (sched/handle-resource-offers!
-                                                       conn driver fenzo framework-id pool-name->pending-jobs-atom mesos-run-as-user
+                                                       conn driver fenzo pool-name->pending-jobs-atom mesos-run-as-user
                                                        user->usage user->quota num-considerable offers-chan offers rebalancer-reservation-atom :normal)]
                                           result))]
       (testing "enough offers for all normal jobs"
@@ -1954,7 +1952,7 @@
                                                   (-> status mtypes/pb->data :state)))))
                     (Thread/sleep (rand-int 100))
                     (.countDown latch))]
-      (let [s (sched/create-mesos-scheduler nil true nil nil nil nil nil nil nil nil)]
+      (let [s (sched/create-mesos-scheduler nil true nil nil nil nil nil nil nil)]
 
         (.statusUpdate s nil (mtypes/->pb :TaskStatus {:task-id {} :state :task-starting}))
         (.statusUpdate s nil (mtypes/->pb :TaskStatus {:task-id {:value "T1"} :state :task-starting}))
@@ -1986,7 +1984,7 @@
                                            (swap! sandbox-store conj framework-message))
                   sched/handle-framework-message (fn [_ _ framework-message]
                                                    (swap! framework-message-store conj framework-message))]
-      (let [s (sched/create-mesos-scheduler nil true nil nil nil nil nil nil nil nil)
+      (let [s (sched/create-mesos-scheduler nil true nil nil nil nil nil nil nil)
             make-message (fn [message] (-> message json/write-str str (.getBytes "UTF-8")))]
 
         (testing "message delegation"
@@ -2022,7 +2020,7 @@
                       (swap! messages-store update (str task-id) (fn [messages] (conj (or messages []) message))))
                     (Thread/sleep (rand-int 100))
                     (.countDown latch))]
-      (let [s (sched/create-mesos-scheduler nil true nil nil nil nil nil nil nil nil)
+      (let [s (sched/create-mesos-scheduler nil true nil nil nil nil nil nil nil)
             foo 11
             bar 21
             fee 31
@@ -2194,7 +2192,7 @@
                              (when (= :warn level)
                                (reset! logged-atom {:throwable throwable
                                                     :message message})))]
-      (is (thrown? ExceptionInfo (sched/launch-matched-tasks! matches conn nil nil nil nil nil nil)))
+      (is (thrown? ExceptionInfo (sched/launch-matched-tasks! matches conn nil nil nil nil nil)))
       (is (= timeout-exception (:throwable @logged-atom)))
       (is (str/includes? (:message @logged-atom) (str job-id))))))
 

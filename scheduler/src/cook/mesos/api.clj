@@ -341,8 +341,7 @@
   (-> JobRequestMap
       (dissoc (s/optional-key :group))
       (dissoc (s/optional-key :status))
-      (merge {:framework-id (s/maybe s/Str)
-              :retries-remaining NonNegInt
+      (merge {:retries-remaining NonNegInt
               :status s/Str
               :state s/Str
               :submit-time (s/maybe PosInt)
@@ -1000,7 +999,7 @@
           volumes (assoc :volumes (map container-volume->response-map volumes))))
 
 (defn fetch-job-map
-  [db framework-id job-uuid]
+  [db job-uuid]
   (timers/time!
     (timers/timer ["cook-mesos" "internal" "fetch-job-map"])
     (let [job (d/entity db [:job/uuid job-uuid])
@@ -1030,7 +1029,6 @@
                    :cpus (:cpus resources)
                    :disable_mea_culpa_retries (:job/disable-mea-culpa-retries job false)
                    :env (util/job-ent->env job)
-                   :framework_id framework-id
                    :gpus (int (:gpus resources 0))
                    :instances instances
                    :labels (util/job-ent->label job)
@@ -1290,11 +1288,11 @@
       [true exist-data])))
 
 (defn render-jobs-for-response-deprecated
-  [conn framework-id ctx]
-  (mapv (partial fetch-job-map (db conn) framework-id) (::jobs ctx)))
+  [conn ctx]
+  (mapv (partial fetch-job-map (db conn)) (::jobs ctx)))
 
 (defn render-jobs-for-response
-  [conn framework-id ctx]
+  [conn ctx]
   (let [db (db conn)
 
         fetch-group
@@ -1305,16 +1303,16 @@
 
         fetch-job
         (fn fetch-job [job-uuid]
-          (let [job (fetch-job-map db framework-id job-uuid)
+          (let [job (fetch-job-map db job-uuid)
                 groups (mapv fetch-group (:groups job))]
             (assoc job :groups groups)))]
 
     (mapv fetch-job (::jobs ctx))))
 
 (defn render-instances-for-response
-  [conn framework-id ctx]
+  [conn ctx]
   (let [db (db conn)
-        fetch-job (partial fetch-job-map db framework-id)
+        fetch-job (partial fetch-job-map db)
         job-uuids (::jobs ctx)
         jobs (mapv fetch-job job-uuids)
         instance-uuids (set (::instances ctx))]
@@ -1343,13 +1341,13 @@
 
 ;;; On GET; use repeated job argument
 (defn read-jobs-handler-deprecated
-  [conn framework-id is-authorized-fn]
+  [conn is-authorized-fn]
   (base-cook-handler
     {:allowed-methods [:get]
      :malformed? check-job-params-present
      :allowed? (partial job-request-allowed? conn is-authorized-fn)
      :exists? (partial retrieve-jobs conn)
-     :handle-ok (fn [ctx] (render-jobs-for-response-deprecated conn framework-id ctx))}))
+     :handle-ok (fn [ctx] (render-jobs-for-response-deprecated conn ctx))}))
 
 (defn valid-name-filter?
   "Returns true if the provided name filter is either nil or satisfies the JobNameListFilter schema"
@@ -1491,16 +1489,16 @@
            resource-attrs)))
 
 (defn read-jobs-handler-multiple
-  [conn framework-id is-authorized-fn]
-  (let [handle-ok (partial render-jobs-for-response conn framework-id)]
+  [conn is-authorized-fn]
+  (let [handle-ok (partial render-jobs-for-response conn)]
     (read-jobs-handler conn is-authorized-fn {:handle-ok handle-ok})))
 
 (defn read-jobs-handler-single
-  [conn framework-id is-authorized-fn]
+  [conn is-authorized-fn]
   (let [handle-ok
         (fn handle-ok [ctx]
           (first
-            (render-jobs-for-response conn framework-id ctx)))]
+            (render-jobs-for-response conn ctx)))]
     (read-jobs-handler conn is-authorized-fn {:handle-ok handle-ok})))
 
 (defn instance-request-exists?
@@ -1520,13 +1518,13 @@
            resource-attrs)))
 
 (defn read-instances-handler-multiple
-  [conn framework-id is-authorized-fn]
-  (let [handle-ok (partial render-instances-for-response conn framework-id)]
+  [conn is-authorized-fn]
+  (let [handle-ok (partial render-instances-for-response conn)]
     (base-read-instances-handler conn is-authorized-fn {:handle-ok handle-ok})))
 
 (defn read-instances-handler-single
-  [conn framework-id is-authorized-fn]
-  (let [handle-ok (->> (partial render-instances-for-response conn framework-id)
+  [conn is-authorized-fn]
+  (let [handle-ok (->> (partial render-instances-for-response conn)
                        (comp first))]
     (base-read-instances-handler conn is-authorized-fn {:handle-ok handle-ok})))
 
@@ -2460,7 +2458,7 @@
     (Long/parseLong s)))
 
 (defn list-resource
-  [db framework-id is-authorized-fn]
+  [db is-authorized-fn]
   (liberator/resource
     :available-media-types ["application/json"]
     :allowed-methods [:get]
@@ -2523,7 +2521,7 @@
                  (timers/time!
                    (timers/timer ["cook-scheduler" "handler" "list-endpoint-duration"])
                    (let [job-uuids (list-jobs db false ctx)]
-                     (mapv (partial fetch-job-map db framework-id) job-uuids))))))
+                     (mapv (partial fetch-job-map db) job-uuids))))))
 
 ;;
 ;; /unscheduled_jobs
@@ -2793,7 +2791,7 @@
 ;; "main" - the entry point that routes to other handlers
 ;;
 (defn main-handler
-  [conn framework-id mesos-pending-jobs-fn
+  [conn mesos-pending-jobs-fn
    {:keys [is-authorized-fn task-constraints]
     gpu-enabled? :mesos-gpu-enabled
     :as settings}
@@ -2821,7 +2819,7 @@
                                     :description "The jobs and their instances were returned."}
                                400 {:description "Non-UUID values were passed as jobs."}
                                403 {:description "The supplied UUIDs don't correspond to valid jobs."}}
-                   :handler (read-jobs-handler-deprecated conn framework-id is-authorized-fn)}
+                   :handler (read-jobs-handler-deprecated conn is-authorized-fn)}
              :post {:summary "Schedules one or more jobs (deprecated)."
                     :parameters {:body-params RawSchedulerRequestDeprecated}
                     :responses {201 {:description "The jobs were successfully scheduled."}
@@ -2844,7 +2842,7 @@
                                     :description "The job was returned."}
                                400 {:description "A non-UUID value was passed."}
                                403 {:description "The supplied UUID doesn't correspond to a valid job."}}
-                   :handler (read-jobs-handler-single conn framework-id is-authorized-fn)}}))
+                   :handler (read-jobs-handler-single conn is-authorized-fn)}}))
 
         (c-api/context
           "/jobs" []
@@ -2855,7 +2853,7 @@
                                     :description "The jobs were returned."}
                                400 {:description "Non-UUID values were passed."}
                                403 {:description "The supplied UUIDs don't correspond to valid jobs."}}
-                   :handler (read-jobs-handler-multiple conn framework-id is-authorized-fn)}
+                   :handler (read-jobs-handler-multiple conn is-authorized-fn)}
              :post {:summary "Schedules one or more jobs."
                     :parameters {:body-params JobSubmissionRequest}
                     :responses {201 {:description "The jobs were successfully scheduled."}
@@ -2880,7 +2878,7 @@
                                     :description "The job instance was returned."}
                                400 {:description "A non-UUID value was passed."}
                                403 {:description "The supplied UUID doesn't correspond to a valid job instance."}}
-                   :handler (read-instances-handler-single conn framework-id is-authorized-fn)}}))
+                   :handler (read-instances-handler-single conn is-authorized-fn)}}))
 
         (c-api/context
           "/instances" []
@@ -2891,7 +2889,7 @@
                                     :description "The job instances were returned."}
                                400 {:description "Non-UUID values were passed."}
                                403 {:description "The supplied UUIDs don't correspond to valid job instances."}}
-                   :handler (read-instances-handler-multiple conn framework-id is-authorized-fn)}}))
+                   :handler (read-instances-handler-multiple conn is-authorized-fn)}}))
 
         (c-api/context
           "/share" []
@@ -3064,7 +3062,7 @@
       (ANY "/running" []
         (running-jobs conn is-authorized-fn))
       (ANY "/list" []
-        (list-resource (d/db conn) framework-id is-authorized-fn)))
+        (list-resource (d/db conn) is-authorized-fn)))
     (format-params/wrap-restful-params {:formats [:json-kw]
                                         :handle-error c-mw/handle-req-error})
     (streaming-json-middleware)))

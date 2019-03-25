@@ -565,7 +565,6 @@ class CookTest(util.CookTest):
         # 9223372036854775807 is MAX_LONG(ish), the default value for max_runtime
         self.assertEqual('success', job['state'])
         self.assertTrue('env' in job)
-        self.assertTrue('framework_id' in job)
         self.assertTrue('ports' in job)
         self.assertTrue('instances' in job)
         self.assertEqual('completed', job['status'])
