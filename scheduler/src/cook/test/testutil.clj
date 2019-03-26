@@ -51,7 +51,8 @@
                                               (Object.)
                                               (atom true))]
                         (fn [request]
-                          (with-redefs [rate-limit/job-submission-rate-limiter rate-limit/AllowAllRateLimiter]
+                          (with-redefs [cook.config/batch-timeout-seconds-config (constantly (t/seconds 30))
+                                        rate-limit/job-submission-rate-limiter rate-limit/AllowAllRateLimiter]
                             (handler request)))))
         ; Add impersonation handler (current user is authorized to impersonate)
         api-handler-impersonation ((create-impersonation-middleware #{user}) api-handler)

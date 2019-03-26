@@ -1038,7 +1038,7 @@
                    ;; sandbox-related integration tests are making those queries. They need the framework ID and are
                    ;; getting it out of the job. Once we put the framework into the task structure and fix those
                    ;; uses, we can get rid of it.
-                   :framework_id @cook.config/framework-id-atom
+                   :framework_id (cook.config/framework-id-config)
                    :gpus (int (:gpus resources 0))
                    :instances instances
                    :labels (util/job-ent->label job)

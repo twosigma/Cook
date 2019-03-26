@@ -1420,7 +1420,7 @@
   "Creates the mesos scheduler which processes status updates asynchronously but in order of receipt."
   [gpu-enabled? conn heartbeat-ch pool->fenzo pool->offers-chan match-trigger-chan
    handle-exit-code handle-progress-message sandbox-syncer-state]
-  (let [configured-framework-id @cook.config/framework-id-atom
+  (let [configured-framework-id (cook.config/framework-id-config)
         sync-agent-sandboxes-fn #(sandbox/sync-agent-sandboxes sandbox-syncer-state configured-framework-id %1 %2)
         message-handlers {:handle-exit-code handle-exit-code
                           :handle-progress-message handle-progress-message}]

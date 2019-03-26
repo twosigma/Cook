@@ -142,13 +142,13 @@
   "Organizes the info Fenzo has already told us about the task we need to run"
   [db mesos-run-as-user ^TaskAssignmentResult task-result]
   (let [{:keys [job task-id] :as task-request} (.getRequest task-result)]
-    ; I kept the framework-id-atom here. Long term when cook schedules over multiple domains, it can vary on a per-offer
+    ; I kept the framework-id-config here. Long term when cook schedules over multiple domains, it can vary on a per-offer
     ; basis in the fenzo cycle. Then this will be replaced with a function from the Fenzo result (indicating the scheduling
     ; domain matched) that will store the selected scheduling domain into the task structure (and subsequently use that
     ; in order to launch it in the right spot.)
     ;
     ; Today, however, we have a single scheduling domain --- a single mesos cluster, so just stuff that in here.
-    (merge (job->task-metadata db @cook.config/framework-id-atom mesos-run-as-user job task-id)
+    (merge (job->task-metadata db (cook.config/framework-id-config) mesos-run-as-user job task-id)
            {:hostname (.getHostname task-result)
             :ports-assigned (vec (sort (.getAssignedPorts task-result)))
             :task-request task-request})))

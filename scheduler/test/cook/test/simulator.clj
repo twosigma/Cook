@@ -130,7 +130,7 @@
                      ; This initializatioon is needed so the code to validate that the
                      ; registration responses matches the configured cook scheduler passes simulator
                      ; and mesos-mock unit tests. (cook.mesos.scheduler, lines 1428 create-mesos-scheduler)
-                     cook.config/framework-id-atom (atom framework-id#)]
+                     cook.config/framework-id-config (constantly framework-id#)]
          (c/start-mesos-scheduler
            {:curator-framework curator-framework#
             :exit-code-syncer-state exit-code-syncer-state#

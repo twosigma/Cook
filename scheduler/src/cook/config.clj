@@ -523,4 +523,7 @@
   (-> config :settings :plugins :job-launch-filter :age-out-seen-count))
 
 ; TODO: Temporary place to stuff the framework-id while we clean up and cease propagating it inside of the job dictionary.
-(def framework-id-atom (atom nil))
+(defn framework-id-config
+  "Used to get the fremework-id"
+  []
+  (get-in config [:settings :mesos-framework-id]))

@@ -121,7 +121,7 @@
 
 (deftest test-task-info->mesos-message
   (testing "task-info->mesos-message"
-    (with-redefs [cook.config/framework-id-atom (atom "4425e656-2278-4f91-b1e4-9a2e942e6e81")]
+    (with-redefs [cook.config/framework-id-config (constantly "4425e656-2278-4f91-b1e4-9a2e942e6e81")]
       (let [command "sleep 26; exit 0"
             task {:name "yaiqlzwhfm_andalucien_4425e656-2278-4f91-b1e4-9a2e942e6e82",
                   :slave-id {:value "foobar"},

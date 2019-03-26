@@ -341,8 +341,7 @@
           framework-id (get-in server [:framework-id])]
       (intern 'user 'main-graph server)
       (log/info "Started Cook, stored variable in user/main-graph")
-      (log/info "Framework-id" framework-id)
-      (reset! cook.config/framework-id-atom framework-id))
+      (log/info "Framework-id" (cook.config/framework-id-config)))
     (catch Throwable t
       (log/error t "Failed to start Cook")
       (System/exit 1))))
