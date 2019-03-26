@@ -1198,6 +1198,7 @@
                      :command command
                      :cpus cpus
                      :disable_mea_culpa_retries disable-mea-culpa-retries
+                     :framework_id nil
                      :gpus (or gpus 0)
                      :max_retries max-retries
                      :max_runtime max-runtime
