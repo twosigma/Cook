@@ -490,7 +490,6 @@ class CookTest(util.CookTest):
     def memory_limit_exceeded_helper(self, command, executor_type):
         """Given a command that needs more memory than it is allocated, when the command is submitted to cook,
         the job should be killed by Mesos as it exceeds its memory limits."""
-        cook_framework = util.settings(self.cook_url)['mesos-framework-id']
         job_uuid, resp = util.submit_job(self.cook_url, command=command, executor=executor_type, mem=128)
         self.assertEqual(201, resp.status_code, msg=resp.content)
         instance = util.wait_for_instance(self.cook_url, job_uuid)
@@ -522,7 +521,7 @@ class CookTest(util.CookTest):
             else:
                 self.fail('Unknown reason code {}, details {}'.format(instance['reason_code'], instance_details))
         finally:
-            mesos.dump_sandbox_files(util.session, instance, job, cook_framework)
+            mesos.dump_sandbox_files(util.session, instance, job)
             util.kill_jobs(self.cook_url, [job_uuid])
 
     @pytest.mark.memlimit
@@ -1542,7 +1541,6 @@ class CookTest(util.CookTest):
     @pytest.mark.docker
     @unittest.skipUnless(util.has_docker_service(), "Requires `docker inspect`")
     def test_docker_port_mapping(self):
-        cook_framework = util.settings(self.cook_url)['mesos-framework-id']
         job_uuid, resp = util.submit_job(self.cook_url,
                                          command='python -m http.server 8080',
                                          ports=2,
@@ -1606,7 +1604,7 @@ class CookTest(util.CookTest):
             job = util.load_job(self.cook_url, job_uuid)
             self.logger.info(f'Job status is {job["status"]}: {job}')
             util.session.delete('%s/rawscheduler?job=%s' % (self.cook_url, job_uuid))
-            mesos.dump_sandbox_files(util.session, instance, cook_framework, cook_framework)
+            mesos.dump_sandbox_files(util.session, instance, job)
 
     def test_unscheduled_jobs(self):
         job_spec = {'command': 'sleep 30',
@@ -2280,7 +2278,6 @@ class CookTest(util.CookTest):
             util.kill_jobs(self.cook_url, job_uuids)
 
     def test_instance_stats_success(self):
-        cook_framework = util.settings(self.cook_url)['mesos-framework-id']
         name = str(uuid.uuid4())
         job_uuid_1, resp = util.submit_job(self.cook_url, command='exit 0', name=name, cpus=0.1, mem=32)
         self.assertEqual(resp.status_code, 201, msg=resp.content)
@@ -2336,7 +2333,7 @@ class CookTest(util.CookTest):
                 self.assertAlmostEqual(sum(mem_times), mem_seconds['total'])
             except:
                 for instance in instances:
-                    mesos.dump_sandbox_files(util.session, instance, instance['parent'], cook_framework)
+                    mesos.dump_sandbox_files(util.session, instance, instance['parent'])
                 raise
         finally:
             util.kill_jobs(self.cook_url, job_uuids)

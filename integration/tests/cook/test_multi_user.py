@@ -63,7 +63,6 @@ class MultiUserCookTest(util.CookTest):
                 util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
 
     def test_multi_user_usage(self):
-        cook_framework = util.settings(self.cook_url)['mesos-framework-id']
         users = self.user_factory.new_users(6)
         job_resources = {'cpus': 0.1, 'mem': 123}
         all_job_uuids = []
@@ -104,7 +103,7 @@ class MultiUserCookTest(util.CookTest):
                 job = util.load_job(self.cook_url, job_uuid)
                 for instance in job['instances']:
                     if instance['status'] == 'failed':
-                        mesos.dump_sandbox_files(util.session, instance, job, cook_framework)
+                        mesos.dump_sandbox_files(util.session, instance, job)
             # Terminate all of the jobs
             if all_job_uuids:
                 with self.user_factory.admin():

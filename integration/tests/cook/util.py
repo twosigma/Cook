@@ -931,7 +931,6 @@ def group_submit_kill_retry(cook_url, retry_failed_jobs_only):
     6) Finally kills all the jobs again (clean up)
     Returns the job info (json response) for the group's jobs after step 5.
     """
-    cook_framework = settings(cook_url)['mesos-framework-id']
     group_spec = minimal_group()
     group_uuid = group_spec['uuid']
     job_spec = {'group': group_uuid, 'command': f'sleep 600'}
@@ -963,7 +962,7 @@ def group_submit_kill_retry(cook_url, retry_failed_jobs_only):
         jobs = query_jobs(cook_url, assert_response=True, uuid=jobs).json()
         for job in jobs:
             for instance in job['instances']:
-                mesos.dump_sandbox_files(session, instance, job, cook_framework)
+                mesos.dump_sandbox_files(session, instance, job)
         return jobs
     finally:
         # ensure that we don't leave a bunch of jobs running/waiting
