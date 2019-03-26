@@ -717,7 +717,7 @@
         schedule (tp/periodic-seq start-time frequency)
         chime-fn (fn [_]
                    (when @mesos-leadership-atom
-                     (let [age (-> -7 t/days t/from-now tc/to-date)]
+                     (let [age (-> -7 t/days t/from-now tc/to-date-time)]
                        (clear-uncommitted-jobs conn age false))))]
     (log/info "Launching clear-uncommitted-jobs-on-schedule")
     (chime/chime-at schedule chime-fn)))
