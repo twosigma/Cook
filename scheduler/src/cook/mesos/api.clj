@@ -341,7 +341,8 @@
   (-> JobRequestMap
       (dissoc (s/optional-key :group))
       (dissoc (s/optional-key :status))
-      (merge {:retries-remaining NonNegInt
+      (merge {:framework-id (s/maybe s/Str)
+              :retries-remaining NonNegInt
               :status s/Str
               :state s/Str
               :submit-time (s/maybe PosInt)
@@ -1029,6 +1030,15 @@
                    :cpus (:cpus resources)
                    :disable_mea_culpa_retries (:job/disable-mea-culpa-retries job false)
                    :env (util/job-ent->env job)
+                   ;; The framework information is task-level information, not job-level information.
+                   ;; It should not be here.
+                   ;;
+                   ;; It is not used within the cook scheduler. We need to keep it here temporarily
+                   ;; because direct queries to the mesos agents need the framework-id. In particular, the CLI code and
+                   ;; sandbox-related integration tests are making those queries. They need the framework ID and are
+                   ;; getting it out of the job. Once we put the framework into the task structure and fix those
+                   ;; uses, we can get rid of it.
+                   :framework_id @cook.config/framework-id-atom
                    :gpus (int (:gpus resources 0))
                    :instances instances
                    :labels (util/job-ent->label job)
