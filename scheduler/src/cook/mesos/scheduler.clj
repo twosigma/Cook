@@ -1420,13 +1420,20 @@
   "Creates the mesos scheduler which processes status updates asynchronously but in order of receipt."
   [gpu-enabled? conn heartbeat-ch pool->fenzo pool->offers-chan match-trigger-chan
    handle-exit-code handle-progress-message sandbox-syncer-state]
-  (let [sync-agent-sandboxes-fn #(sandbox/sync-agent-sandboxes sandbox-syncer-state @cook.config/framework-id-atom %1 %2)
+  (let [configured-framework-id @cook.config/framework-id-atom
+        sync-agent-sandboxes-fn #(sandbox/sync-agent-sandboxes sandbox-syncer-state configured-framework-id %1 %2)
         message-handlers {:handle-exit-code handle-exit-code
                           :handle-progress-message handle-progress-message}]
     (mesos/scheduler
       (registered
         [this driver framework-id master-info]
         (log/info "Registered with mesos with framework-id " framework-id)
+        (let [value (-> framework-id mesomatic.types/pb->data :value)]
+          (when (not= configured-framework-id value)
+            (let [message (str "The framework-id provided by Mesos (" value ") "
+                               "does not match the one Cook is configured with (" configured-framework-id ")")]
+              (log/error message)
+              (throw (ex-info message {:framework-id-mesos value :framework-id-cook configured-framework-id})))))
         (when (and gpu-enabled? (not (re-matches #"1\.\d+\.\d+" (:version master-info))))
           (binding [*out* *err*]
             (println "Cannot enable GPU support on pre-mesos 1.0. The version we found was " (:version master-info)))
