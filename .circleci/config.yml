@@ -12,7 +12,7 @@ jobs:
   
   cook_scheduler_integration_tests_with_http_basic_auth:
     docker:
-      - image: circleci/python:3.7.2-stretch
+      - image: circleci/openjdk:8-jdk-browsers
     steps:
       - checkout
       - run: wget https://raw.githubusercontent.com/technomancy/leiningen/stable/bin/lein
