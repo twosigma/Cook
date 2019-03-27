@@ -3,7 +3,7 @@ version: 2
 jobs:
   cook_scheduler_and_job_client_unit_tests:
     docker:
-      - image: circleci/clojure:openjdk-11-lein-2.9.1
+      - image: circleci/openjdk:8-jdk-browsers
     steps:
       - checkout
       - run: cd scheduler && TRAVIS_BUILD_DIR=.. ./travis/setup.sh
