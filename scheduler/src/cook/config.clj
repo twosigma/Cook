@@ -522,7 +522,7 @@
   []
   (-> config :settings :plugins :job-launch-filter :age-out-seen-count))
 
-; TODO: Temporary place to stuff the framework-id while we clean up and cease propagating it inside of the job dictionary.
+; TODO: Temporary place to stuff the framework-id for the few remaining direct uses of it.
 (defn framework-id-config
   "Used to get the fremework-id"
   []
