@@ -947,13 +947,12 @@ class ExecutorTest(unittest.TestCase):
             self.assertFalse(executor.disconnect_signal.isSet())
             self.assertFalse(executor.stop_signal.isSet())
 
-            time.sleep(6)
+            executor.await_completion()
+            logging.info('Task completed')
+
             self.assertFalse(executor.reregister_signal.isSet())
             self.assertTrue(executor.disconnect_signal.isSet())
             self.assertTrue(executor.stop_signal.isSet())
-
-            executor.await_completion()
-            logging.info('Task completed')
 
             if os.path.isfile(output_name):
                 with open(output_name) as f:

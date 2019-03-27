@@ -40,10 +40,10 @@ class ExecutorConfig(object):
                  progress_output_name='stdout',
                  progress_regex_string='',
                  progress_sample_interval_ms=100,
-                 recovery_timeout='5mins',
+                 recovery_timeout='15mins',
                  sandbox_directory='',
                  shutdown_grace_period='1secs'):
-        self.checkpoint = checkpoint
+        self.checkpoint = checkpoint != 0
         self.max_bytes_read_per_line = max_bytes_read_per_line
         self.max_message_length = max_message_length
         self.memory_usage_interval_secs = memory_usage_interval_secs
