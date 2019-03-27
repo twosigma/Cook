@@ -1,0 +1,28 @@
+version: 2
+
+jobs:
+  cook_scheduler_and_job_client_unit_tests:
+    docker:
+      - image: circleci/clojure:openjdk-11-lein-2.9.1
+    steps:
+      - checkout
+      - run: cd scheduler && ./travis/setup.sh
+      - run: pushd ../jobclient && mvn test
+      - run: popd && lein with-profile +test test :all-but-benchmark
+  
+  cook_scheduler_integration_tests_with_http_basic_auth:
+    docker:
+      - image: circleci/python:3.7.2-stretch
+    steps:
+      - checkout
+      - run: sudo ./travis/install_mesos.sh
+      - run: cd integration && ./travis/prepare_integration.sh
+      - run: ./travis/run_integration.sh --auth=http-basic
+
+workflows:
+  version: 2
+  build_and_test:
+    jobs:
+      - cook_scheduler_and_job_client_unit_tests
+      - cook_scheduler_integration_tests_with_http_basic_auth
+
