@@ -15,7 +15,6 @@ jobs:
       - image: circleci/python:3.7.2-stretch
     steps:
       - checkout
-      - run: sudo ./travis/install_mesos.sh
       - run: cd integration && ./travis/prepare_integration.sh
       - run: ./travis/run_integration.sh --auth=http-basic
 
