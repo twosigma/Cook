@@ -184,6 +184,30 @@ def await_process_completion(process, stop_signal, shutdown_grace_period_ms):
     # wait indefinitely for process to terminate (either normally or by being killed)
     process.wait()
 
+def await_reregister(reregister_signal, recovery_s, *disconnect_signals):
+    """Awaits reregistration on rerigster_signal, and notifies on stop_signal and disconnect_signal if not set.
+
+    Parameters
+    ----------
+    reregister_signal: Event
+        Event that notifies on mesos agent reregistration
+    recovery_s: int
+        Number of seconds to wait for reregistration.
+    disconnect_signals: [Event]
+        Events to notify if reregistration does not occur
+    """
+    def await_reregister_thread():
+        reregister_signal.wait(recovery_s)
+        if reregister_signal.isSet():
+            logging.info("Reregistered with mesos agent. Not notifying on disconnect_signals")
+        else:
+            logging.warn("Failed to reregister within {} seconds. Notifying disconnect_signals".format(recovery_s))
+            for signal in disconnect_signals:
+                signal.set()
+    await_thread = Thread(target=await_reregister_thread, args=())
+    await_thread.daemon = True
+    await_thread.start()
+
 
 def get_task_state(exit_code):
     """Interprets the exit_code and return the corresponding task status string
@@ -378,6 +402,7 @@ class CookExecutor(pm.Executor):
         self.config = config
         self.disconnect_signal = Event()
         self.stop_signal = stop_signal
+        self.reregister_signal = Event()
 
     def registered(self, driver, executor_info, framework_info, agent_info):
         logging.info('Executor registered executor={}, framework={}, agent={}'.
@@ -392,11 +417,20 @@ class CookExecutor(pm.Executor):
 
     def reregistered(self, driver, agent_info):
         logging.info('Executor re-registered agent={}'.format(agent_info))
+        if self.config.checkpoint == 1:
+            logging.info('Executor checkpointing is enabled. Notifying on reregister_signal')
+            self.reregister_signal.set()
+            self.reregister_signal = Event()
 
     def disconnected(self, driver):
         logging.info('Mesos requested executor to disconnect')
-        self.disconnect_signal.set()
-        self.stop_signal.set()
+        if self.config.checkpoint == 1:
+            logging.info('Executor checkpointing is enabled. Waiting for agent recovery.')
+            await_reregister(self.reregister_signal, self.config.recovery_timeout_ms / 1000, self.stop_signal, self.disconnect_signal)
+        else:
+            logging.info('Executor checkpointing is not enabled. Terminating task.')
+            self.disconnect_signal.set()
+            self.stop_signal.set()
 
     def launchTask(self, driver, task):
         logging.info('Driver {} launching task {}'.format(driver, task))

@@ -32,6 +32,7 @@ class ExecutorConfig(object):
             return 1000
 
     def __init__(self,
+                 checkpoint=0,
                  max_bytes_read_per_line=1024,
                  max_message_length=512,
                  memory_usage_interval_secs=15,
@@ -39,8 +40,10 @@ class ExecutorConfig(object):
                  progress_output_name='stdout',
                  progress_regex_string='',
                  progress_sample_interval_ms=100,
+                 recovery_timeout='5mins',
                  sandbox_directory='',
                  shutdown_grace_period='1secs'):
+        self.checkpoint = checkpoint
         self.max_bytes_read_per_line = max_bytes_read_per_line
         self.max_message_length = max_message_length
         self.memory_usage_interval_secs = memory_usage_interval_secs
@@ -48,6 +51,7 @@ class ExecutorConfig(object):
         self.progress_output_name = progress_output_name
         self.progress_regex_string = progress_regex_string
         self.progress_sample_interval_ms = progress_sample_interval_ms
+        self.recovery_timeout_ms = ExecutorConfig.parse_time_ms(recovery_timeout)
         self.sandbox_directory = sandbox_directory
         self.shutdown_grace_period_ms = ExecutorConfig.parse_time_ms(shutdown_grace_period)
 
@@ -65,6 +69,7 @@ def initialize_config(environment):
     """Initializes the config using the environment.
     Populates the default values for missing environment variables.
     """
+    checkpoint = int(environment.get('MESOS_CHECKPOINT', '0'))
     executor_id = environment.get('MESOS_EXECUTOR_ID', 'executor')
     sandbox_directory = environment.get('MESOS_SANDBOX', '')
     default_progress_output_key = 'EXECUTOR_DEFAULT_PROGRESS_OUTPUT_NAME'
@@ -86,9 +91,11 @@ def initialize_config(environment):
     progress_output_name = environment.get(progress_output_env_variable, default_progress_output_file)
     progress_regex_string = environment.get('PROGRESS_REGEX_STRING', 'progress: ([0-9]*\.?[0-9]+), (.*)')
     progress_sample_interval_ms = max(int(environment.get('PROGRESS_SAMPLE_INTERVAL_MS', 1000)), 100)
+    recovery_timeout = environment.get('MESOS_RECOVERY_TIMEOUT', '5mins')
     sandbox_directory = environment.get('MESOS_SANDBOX', '')
     shutdown_grace_period = environment.get('MESOS_EXECUTOR_SHUTDOWN_GRACE_PERIOD', '2secs')
 
+    logging.info('Checkpoint: {} with recovery timeout {}'.format(checkpoint, recovery_timeout))
     logging.info('Max bytes read per line is {}'.format(max_bytes_read_per_line))
     logging.info('Memory usage will be logged every {} secs'.format(memory_usage_interval_secs))
     logging.info('Progress message length is limited to {}'.format(max_message_length))
@@ -98,12 +105,14 @@ def initialize_config(environment):
     logging.info('Sandbox location is {}'.format(sandbox_directory))
     logging.info('Shutdown grace period is {}'.format(shutdown_grace_period))
 
-    return ExecutorConfig(max_bytes_read_per_line=max_bytes_read_per_line,
+    return ExecutorConfig(checkpoint=checkpoint,
+                          max_bytes_read_per_line=max_bytes_read_per_line,
                           max_message_length=max_message_length,
                           memory_usage_interval_secs=memory_usage_interval_secs,
                           progress_output_env_variable=progress_output_env_variable,
                           progress_output_name=progress_output_name,
                           progress_regex_string=progress_regex_string,
                           progress_sample_interval_ms=progress_sample_interval_ms,
+                          recovery_timeout=recovery_timeout,
                           sandbox_directory=sandbox_directory,
                           shutdown_grace_period=shutdown_grace_period)

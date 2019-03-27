@@ -19,6 +19,7 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(1000, cc.ExecutorConfig.parse_time_ms('corrupt-value'))
 
     def test_executor_config(self):
+        checkpoint = 1
         max_bytes_read_per_line = 16 * 1024
         max_message_length = 300
         memory_usage_interval_secs = 150
@@ -26,18 +27,22 @@ class ConfigTest(unittest.TestCase):
         progress_output_name = 'stdout_name'
         progress_regex_string = 'some-regex-string'
         progress_sample_interval_ms = 100
+        recovery_timeout = '5mins'
         sandbox_directory = '/location/to/task/sandbox/task_id'
         shutdown_grace_period_secs = '5secs'
-        config = cc.ExecutorConfig(max_bytes_read_per_line=max_bytes_read_per_line,
+        config = cc.ExecutorConfig(checkpoint=checkpoint,
+                                   max_bytes_read_per_line=max_bytes_read_per_line,
                                    max_message_length=max_message_length,
                                    memory_usage_interval_secs=memory_usage_interval_secs,
                                    progress_output_env_variable=progress_output_env_variable,
                                    progress_output_name=progress_output_name,
                                    progress_regex_string=progress_regex_string,
                                    progress_sample_interval_ms=progress_sample_interval_ms,
+                                   recovery_timeout=recovery_timeout,
                                    sandbox_directory=sandbox_directory,
                                    shutdown_grace_period=shutdown_grace_period_secs)
 
+        self.assertEqual(checkpoint, config.checkpoint)
         self.assertEqual(max_bytes_read_per_line, config.max_bytes_read_per_line)
         self.assertEqual(max_message_length, config.max_message_length)
         self.assertEqual(memory_usage_interval_secs, config.memory_usage_interval_secs)
@@ -45,6 +50,7 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(progress_output_name, config.progress_output_name)
         self.assertEqual(progress_regex_string, config.progress_regex_string)
         self.assertEqual(progress_sample_interval_ms, config.progress_sample_interval_ms)
+        self.assertEqual(5 * 60 * 1000, config.recovery_timeout_ms)
         self.assertEqual(sandbox_directory, config.sandbox_directory)
         self.assertEqual(5000, config.shutdown_grace_period_ms)
         self.assertEqual(os.path.join(sandbox_directory, 'foo.bar'), config.sandbox_file('foo.bar'))
@@ -55,10 +61,12 @@ class ConfigTest(unittest.TestCase):
         environment = {}
         config = cc.initialize_config(environment)
 
+        self.assertEqual(0, config.checkpoint)
         self.assertEqual(4 * 1024, config.max_bytes_read_per_line)
         self.assertEqual(512, config.max_message_length)
         self.assertEqual('executor.progress', config.progress_output_name)
         self.assertEqual('progress: ([0-9]*\\.?[0-9]+), (.*)', config.progress_regex_string)
+        self.assertEqual(5 * 60 * 1000, config.recovery_timeout_ms)
         self.assertEqual(1000, config.progress_sample_interval_ms)
         self.assertEqual('', config.sandbox_directory)
         self.assertEqual(2000, config.shutdown_grace_period_ms)
@@ -68,18 +76,22 @@ class ConfigTest(unittest.TestCase):
                        'EXECUTOR_MAX_MESSAGE_LENGTH': '1024',
                        'EXECUTOR_MEMORY_USAGE_INTERVAL_SECS': '120',
                        'EXECUTOR_PROGRESS_OUTPUT_FILE': 'progress_file',
+                       'MESOS_CHECKPOINT': '1',
                        'MESOS_EXECUTOR_SHUTDOWN_GRACE_PERIOD': '4secs',
+                       'MESOS_RECOVERY_TIMEOUT': '15mins',
                        'MESOS_SANDBOX': '/sandbox/location',
                        'PROGRESS_REGEX_STRING': 'progress/regex',
                        'PROGRESS_SAMPLE_INTERVAL_MS': '2500'}
         config = cc.initialize_config(environment)
 
+        self.assertEqual(1, config.checkpoint)
         self.assertEqual(1234, config.max_bytes_read_per_line)
         self.assertEqual(1024, config.max_message_length)
         self.assertEqual(120, config.memory_usage_interval_secs)
         self.assertEqual('EXECUTOR_PROGRESS_OUTPUT_FILE', config.progress_output_env_variable)
         self.assertEqual('progress_file', config.progress_output_name)
         self.assertEqual('progress/regex', config.progress_regex_string)
+        self.assertEqual(15 * 60 * 1000, config.recovery_timeout_ms)
         self.assertEqual(2500, config.progress_sample_interval_ms)
         self.assertEqual('/sandbox/location', config.sandbox_directory)
         self.assertEqual(4000, config.shutdown_grace_period_ms)
