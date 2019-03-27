@@ -15,7 +15,7 @@ jobs:
       - image: circleci/python:3.7.2-stretch
     steps:
       - checkout
-      - run: cd integration && ./travis/prepare_integration.sh
+      - run: cd integration && TRAVIS_BUILD_DIR=.. ./travis/prepare_integration.sh
       - run: ./travis/run_integration.sh --auth=http-basic
 
 workflows:
