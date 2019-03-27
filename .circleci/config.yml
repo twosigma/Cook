@@ -24,5 +24,10 @@ workflows:
   build_and_test:
     jobs:
       - cook_scheduler_and_job_client_unit_tests
+          filters:
+            branches:
+              only: circleci
       - cook_scheduler_integration_tests_with_http_basic_auth
-
+          filters:
+            branches:
+              only: circleci
