@@ -16,7 +16,7 @@ jobs:
     steps:
       - checkout
       - run: wget https://raw.githubusercontent.com/technomancy/leiningen/stable/bin/lein
-      - run: mkdir ~/bin && mv lein ~/bin && chmod a+x ~/bin/lein && lein
+      - run: mkdir ~/bin && mv lein ~/bin && chmod a+x ~/bin/lein && export PATH=${PATH}:~/bin && lein
       - run: cd integration && TRAVIS_BUILD_DIR=.. ./travis/prepare_integration.sh
       - run: ./travis/run_integration.sh --auth=http-basic
 
