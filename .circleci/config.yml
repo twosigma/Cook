@@ -6,7 +6,7 @@ jobs:
       - image: circleci/clojure:openjdk-11-lein-2.9.1
     steps:
       - checkout
-      - run: cd scheduler && ./travis/setup.sh
+      - run: cd scheduler && TRAVIS_BUILD_DIR=${CIRCLE_WORKING_DIRECTORY} ./travis/setup.sh
       - run: pushd ../jobclient && mvn test
       - run: popd && lein with-profile +test test :all-but-benchmark
   
