@@ -337,8 +337,7 @@
     (mount/start-with-args (cook.config/read-config config-file-path))
     (pool/guard-invalid-default-pool (d/db datomic/conn))
     (metrics-jvm/instrument-jvm)
-    (let [server (scheduler-server config)
-          framework-id (get-in server [:framework-id])]
+    (let [server (scheduler-server config)]
       (intern 'user 'main-graph server)
       (log/info "Started Cook, stored variable in user/main-graph")
       (log/info "Framework-id" (cook.config/framework-id-config)))

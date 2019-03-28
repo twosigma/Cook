@@ -1184,7 +1184,8 @@
 
 (deftest test-create-jobs!
   (cook.test.testutil/flush-caches!)
-  (with-redefs [dl/job-uuid->dataset-maps-cache (util/new-cache)]
+  (with-redefs [dl/job-uuid->dataset-maps-cache (util/new-cache)
+                config/framework-id-config (constantly "fake_framework_id_3")]
     (let [expected-job-map
           (fn
             ; Converts the provided job to the job-map we expect to get back from
@@ -1198,7 +1199,7 @@
                      :command command
                      :cpus cpus
                      :disable_mea_culpa_retries disable-mea-culpa-retries
-                     :framework_id nil
+                     :framework_id "fake_framework_id_3"
                      :gpus (or gpus 0)
                      :max_retries max-retries
                      :max_runtime max-runtime
