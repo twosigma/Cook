@@ -22,7 +22,7 @@ setup(
     test_suite='tests',
     tests_require=test_deps,
     extras_require=extras,
-    install_requires=['psutil==5.4.1', 'pymesos==0.2.15'],
+    install_requires=['psutil==5.4.1', 'pymesos==0.3.9'],
     entry_points={
         'console_scripts': [
             'cook-executor = cook.__main__:main'

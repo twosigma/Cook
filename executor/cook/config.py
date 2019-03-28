@@ -91,7 +91,7 @@ def initialize_config(environment):
     progress_output_name = environment.get(progress_output_env_variable, default_progress_output_file)
     progress_regex_string = environment.get('PROGRESS_REGEX_STRING', 'progress: ([0-9]*\.?[0-9]+), (.*)')
     progress_sample_interval_ms = max(int(environment.get('PROGRESS_SAMPLE_INTERVAL_MS', 1000)), 100)
-    recovery_timeout = environment.get('MESOS_RECOVERY_TIMEOUT', '5mins')
+    recovery_timeout = environment.get('MESOS_RECOVERY_TIMEOUT', '15mins')
     sandbox_directory = environment.get('MESOS_SANDBOX', '')
     shutdown_grace_period = environment.get('MESOS_EXECUTOR_SHUTDOWN_GRACE_PERIOD', '2secs')
 
