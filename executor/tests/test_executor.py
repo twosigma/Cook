@@ -790,7 +790,7 @@ class ExecutorTest(unittest.TestCase):
             tu.cleanup_output(stdout_name, stderr_name)
             tu.cleanup_file(output_name)
 
-    def test_executor_launch_task_and_disconnect(self):
+    def test_executor_launch_task_and_disconnect_no_checkpointing(self):
 
         task_id = tu.get_random_task_id()
         stdout_name = tu.ensure_directory('build/stdout.{}'.format(task_id))
@@ -833,6 +833,132 @@ class ExecutorTest(unittest.TestCase):
                     file_contents = f.read()
                     self.assertTrue('Start' in file_contents)
                     self.assertTrue('Done' not in file_contents)
+            else:
+                self.fail('{} does not exist.'.format(stderr_name))
+
+            expected_statuses = [{'task_id': {'value': task_id}, 'state': cook.TASK_STARTING},
+                                 {'task_id': {'value': task_id}, 'state': cook.TASK_RUNNING},
+                                 {'task_id': {'value': task_id}, 'state': cook.TASK_KILLED}]
+            tu.assert_statuses(self, expected_statuses, driver.statuses)
+
+            expected_message_0 = {'sandbox-directory': '', 'task-id': task_id, 'type': 'directory'}
+            expected_message_1 = {'exit-code': -15, 'task-id': task_id}
+            tu.assert_messages(self, [expected_message_0, expected_message_1], [], driver.messages)
+        finally:
+            tu.cleanup_output(stdout_name, stderr_name)
+            tu.cleanup_file(output_name)
+
+    def test_executor_reregistration(self):
+
+        task_id = tu.get_random_task_id()
+        stdout_name = tu.ensure_directory('build/stdout.{}'.format(task_id))
+        stderr_name = tu.ensure_directory('build/stderr.{}'.format(task_id))
+        output_name = tu.ensure_directory('build/output.' + str(task_id))
+
+        tu.redirect_stdout_to_file(stdout_name)
+        tu.redirect_stderr_to_file(stderr_name)
+
+        try:
+            config = cc.ExecutorConfig(checkpoint=1, recovery_timeout='5mins')
+            stop_signal = Event()
+            executor = ce.CookExecutor(stop_signal, config)
+
+            driver = tu.FakeMesosExecutorDriver()
+            agent_info = {'id': {'value': 'agent'}}
+            command = 'echo "Start" >> {}; sleep 30; echo "Done." >> {}; '.format(output_name, output_name)
+            task = {'task_id': {'value': task_id},
+                    'data': pm.encode_data(json.dumps({'command': command}).encode('utf8'))}
+
+            executor.launchTask(driver, task)
+
+            # let the process run for up to 10 seconds
+            for _ in range(1000):
+                time.sleep(0.01)
+                if os.path.isfile(output_name):
+                    with open(output_name) as f:
+                        content = f.read()
+                        if 'Start' in content:
+                            break
+
+            executor.disconnected(driver)
+            self.assertFalse(executor.disconnect_signal.isSet())
+            self.assertFalse(executor.stop_signal.isSet())
+
+            old_reregister_signal = executor.reregister_signal
+            executor.reregistered(driver, agent_info)
+            self.assertTrue(old_reregister_signal.isSet())
+            self.assertFalse(executor.reregister_signal.isSet())
+
+            executor.await_completion()
+            logging.info('Task completed')
+
+            if os.path.isfile(output_name):
+                with open(output_name) as f:
+                    file_contents = f.read()
+                    self.assertTrue('Start' in file_contents)
+                    self.assertTrue('Done' in file_contents)
+            else:
+                self.fail('{} does not exist.'.format(stderr_name))
+
+            expected_statuses = [{'task_id': {'value': task_id}, 'state': cook.TASK_STARTING},
+                                 {'task_id': {'value': task_id}, 'state': cook.TASK_RUNNING},
+                                 {'task_id': {'value': task_id}, 'state': cook.TASK_FINISHED}]
+            tu.assert_statuses(self, expected_statuses, driver.statuses)
+
+            expected_message_0 = {'sandbox-directory': '', 'task-id': task_id, 'type': 'directory'}
+            expected_message_1 = {'exit-code': 0, 'task-id': task_id}
+            tu.assert_messages(self, [expected_message_0, expected_message_1], [], driver.messages)
+        finally:
+            tu.cleanup_output(stdout_name, stderr_name)
+            tu.cleanup_file(output_name)
+
+    def test_executor_reregistration_timeout(self):
+        task_id = tu.get_random_task_id()
+        stdout_name = tu.ensure_directory('build/stdout.{}'.format(task_id))
+        stderr_name = tu.ensure_directory('build/stderr.{}'.format(task_id))
+        output_name = tu.ensure_directory('build/output.' + str(task_id))
+
+        tu.redirect_stdout_to_file(stdout_name)
+        tu.redirect_stderr_to_file(stderr_name)
+
+        try:
+            config = cc.ExecutorConfig(checkpoint=1, recovery_timeout='5secs')
+            stop_signal = Event()
+            executor = ce.CookExecutor(stop_signal, config)
+
+            driver = tu.FakeMesosExecutorDriver()
+            agent_info = {'id': {'value': 'agent'}}
+            command = 'echo "Start" >> {}; sleep 30; echo "Done." >> {}; '.format(output_name, output_name)
+            task = {'task_id': {'value': task_id},
+                    'data': pm.encode_data(json.dumps({'command': command}).encode('utf8'))}
+
+            executor.launchTask(driver, task)
+
+            # let the process run for up to 10 seconds
+            for _ in range(1000):
+                time.sleep(0.01)
+                if os.path.isfile(output_name):
+                    with open(output_name) as f:
+                        content = f.read()
+                        if 'Start' in content:
+                            break
+
+            executor.disconnected(driver)
+            self.assertFalse(executor.disconnect_signal.isSet())
+            self.assertFalse(executor.stop_signal.isSet())
+
+            executor.await_completion()
+            logging.info('Task completed')
+
+            self.assertFalse(executor.reregister_signal.isSet())
+            self.assertTrue(executor.disconnect_signal.isSet())
+            self.assertTrue(executor.stop_signal.isSet())
+
+            if os.path.isfile(output_name):
+                with open(output_name) as f:
+                    file_contents = f.read()
+                    self.assertTrue('Start' in file_contents)
+                    self.assertFalse('Done' in file_contents)
             else:
                 self.fail('{} does not exist.'.format(stderr_name))
 
