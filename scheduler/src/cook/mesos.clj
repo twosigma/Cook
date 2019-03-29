@@ -201,7 +201,6 @@
                                           :fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-warn
                                           :fenzo-max-jobs-considered fenzo-max-jobs-considered
                                           :fenzo-scaleback fenzo-scaleback
-                                          :framework-id framework-id
                                           :good-enough-fitness good-enough-fitness
                                           :gpu-enabled? gpu-enabled?
                                           :heartbeat-ch mesos-heartbeat-chan
@@ -266,7 +265,7 @@
                               ;; ZK connection
                               (when (#{ConnectionState/LOST ConnectionState/SUSPENDED} newState)
                                 (reset! mesos-leadership-atom false)
-                                (when-let [driver @current-driver]
+                                (when @current-driver
                                   (counters/dec! mesos-leader)
                                   ;; Better to fail over and rely on start up code we trust then rely on rarely run code
                                   ;; to make sure we yield leadership correctly (and fully)
@@ -283,9 +282,7 @@
     (.start leader-selector)
     (log/info "Started the mesos leader selector")
     {:submitter (partial submit-to-mesos mesos-datomic-conn)
-     :driver current-driver
-     :leader-selector leader-selector
-     :framework-id framework-id}))
+     :leader-selector leader-selector}))
 
 (defn kill-job
   "Kills jobs. It works by marking them completed, which will trigger the subscription

@@ -140,9 +140,15 @@
 
 (defn TaskAssignmentResult->task-metadata
   "Organizes the info Fenzo has already told us about the task we need to run"
-  [db framework-id mesos-run-as-user ^TaskAssignmentResult task-result]
+  [db mesos-run-as-user ^TaskAssignmentResult task-result]
   (let [{:keys [job task-id] :as task-request} (.getRequest task-result)]
-    (merge (job->task-metadata db framework-id mesos-run-as-user job task-id)
+    ; I kept the framework-id-config here. Long term when cook schedules over multiple domains, it can vary on a per-offer
+    ; basis in the fenzo cycle. Then this will be replaced with a function from the Fenzo result (indicating the scheduling
+    ; domain matched) that will store the selected scheduling domain into the task structure (and subsequently use that
+    ; in order to launch it in the right spot.)
+    ;
+    ; Today, however, we have a single scheduling domain --- a single mesos cluster, so just stuff that in here.
+    (merge (job->task-metadata db (cook.config/framework-id-config) mesos-run-as-user job task-id)
            {:hostname (.getHostname task-result)
             :ports-assigned (vec (sort (.getAssignedPorts task-result)))
             :task-request task-request})))
@@ -347,7 +353,7 @@
                                        volumes)))))
         executor {:command command
                   :executor-id (mtypes/->ExecutorID (str task-id))
-                  :framework-id (mtypes/->FrameworkID framework-id)
+                  :framework-id (mtypes/->FrameworkID framework-id) ; Yes, this is necessary to generate the mesos message.
                   :source custom-executor-source}]
     (cond-> {:data (ByteString/copyFrom data)
              :labels {:labels (map->mesos-kv labels :key)}

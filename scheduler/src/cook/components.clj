@@ -77,7 +77,6 @@
   {:scheduler (fnk [mesos mesos-leadership-atom pool-name->pending-jobs-atom framework-id settings]
                 ((util/lazy-load-var 'cook.mesos.api/main-handler)
                   datomic/conn
-                  framework-id
                   (fn [] @pool-name->pending-jobs-atom)
                   settings
                   (get-in mesos [:mesos-scheduler :leader-selector])
@@ -340,7 +339,8 @@
     (metrics-jvm/instrument-jvm)
     (let [server (scheduler-server config)]
       (intern 'user 'main-graph server)
-      (log/info "Started Cook, stored variable in user/main-graph"))
+      (log/info "Started Cook, stored variable in user/main-graph")
+      (log/info "Framework-id" (cook.config/framework-id-config)))
     (catch Throwable t
       (log/error t "Failed to start Cook")
       (System/exit 1))))

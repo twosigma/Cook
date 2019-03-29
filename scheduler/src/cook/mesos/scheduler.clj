@@ -670,11 +670,11 @@
 
 (defn- update-match-with-task-metadata-seq
   "Updates the match with an entry for the task metadata for all tasks."
-  [{:keys [tasks] :as match} db framework-id mesos-run-as-user]
+  [{:keys [tasks] :as match} db mesos-run-as-user]
   (->> tasks
        ;; sort-by makes task-txns created in matches->task-txns deterministic
        (sort-by (comp :job/uuid :job #(.getRequest ^TaskAssignmentResult %)))
-       (map (partial task/TaskAssignmentResult->task-metadata db framework-id mesos-run-as-user))
+       (map (partial task/TaskAssignmentResult->task-metadata db mesos-run-as-user))
        (assoc match :task-metadata-seq)))
 
 (defn- matches->task-txns
@@ -705,8 +705,8 @@
 
 (defn launch-matched-tasks!
   "Updates the state of matched tasks in the database and then launches them."
-  [matches conn db driver fenzo framework-id mesos-run-as-user pool-name]
-  (let [matches (map #(update-match-with-task-metadata-seq % db framework-id mesos-run-as-user) matches)
+  [matches conn db driver fenzo mesos-run-as-user pool-name]
+  (let [matches (map #(update-match-with-task-metadata-seq % db mesos-run-as-user) matches)
         task-txns (matches->task-txns matches)]
     ;; Note that this transaction can fail if a job was scheduled
     ;; during a race. If that happens, then other jobs that should
@@ -765,7 +765,7 @@
 (defn handle-resource-offers!
   "Gets a list of offers from mesos. Decides what to do with them all--they should all
    be accepted or rejected at the end of the function."
-  [conn driver ^TaskScheduler fenzo framework-id pool-name->pending-jobs-atom mesos-run-as-user
+  [conn driver ^TaskScheduler fenzo pool-name->pending-jobs-atom mesos-run-as-user
    user->usage user->quota num-considerable offers-chan offers rebalancer-reservation-atom pool-name]
   (log/debug "In" pool-name "pool, invoked handle-resource-offers!")
   (let [offer-stash (atom nil)] ;; This is a way to ensure we never lose offers fenzo assigned if an error occurs in the middle of processing
@@ -810,7 +810,7 @@
             (do
               (swap! pool-name->pending-jobs-atom remove-matched-jobs-from-pending-jobs matched-job-uuids pool-name)
               (log/debug "In" pool-name "pool, updated pool-name->pending-jobs-atom:" @pool-name->pending-jobs-atom)
-              (launch-matched-tasks! matches conn db driver fenzo framework-id mesos-run-as-user pool-name)
+              (launch-matched-tasks! matches conn db driver fenzo mesos-run-as-user pool-name)
               (update-host-reservations! rebalancer-reservation-atom matched-job-uuids)
               matched-considerable-jobs-head?)))
         (catch Throwable t
@@ -840,7 +840,7 @@
 (counters/defcounter [cook-mesos scheduler offer-chan-depth])
 
 (defn make-offer-handler
-  [conn driver-atom fenzo framework-id pool-name->pending-jobs-atom agent-attributes-cache max-considerable scaleback
+  [conn driver-atom fenzo pool-name->pending-jobs-atom agent-attributes-cache max-considerable scaleback
    floor-iterations-before-warn floor-iterations-before-reset trigger-chan rebalancer-reservation-atom
    mesos-run-as-user pool-name]
   (let [chan-length 100
@@ -889,7 +889,7 @@
                       _ (log/debug "In" pool-name "pool, passing following offers to handle-resource-offers!" offers)
                       using-pools? (not (nil? (config/default-pool)))
                       user->quota (quota/create-user->quota-fn (d/db conn) (if using-pools? pool-name nil))
-                      matched-head? (handle-resource-offers! conn @driver-atom fenzo framework-id pool-name->pending-jobs-atom
+                      matched-head? (handle-resource-offers! conn @driver-atom fenzo pool-name->pending-jobs-atom
                                                              mesos-run-as-user @user->usage-future user->quota
                                                              num-considerable offers-chan offers
                                                              rebalancer-reservation-atom pool-name)]
@@ -1418,9 +1418,10 @@
 
 (defn create-mesos-scheduler
   "Creates the mesos scheduler which processes status updates asynchronously but in order of receipt."
-  [configured-framework-id gpu-enabled? conn heartbeat-ch pool->fenzo pool->offers-chan match-trigger-chan
+  [gpu-enabled? conn heartbeat-ch pool->fenzo pool->offers-chan match-trigger-chan
    handle-exit-code handle-progress-message sandbox-syncer-state]
-  (let [sync-agent-sandboxes-fn #(sandbox/sync-agent-sandboxes sandbox-syncer-state configured-framework-id %1 %2)
+  (let [configured-framework-id (cook.config/framework-id-config)
+        sync-agent-sandboxes-fn #(sandbox/sync-agent-sandboxes sandbox-syncer-state configured-framework-id %1 %2)
         message-handlers {:handle-exit-code handle-exit-code
                           :handle-progress-message handle-progress-message}]
     (mesos/scheduler
@@ -1518,7 +1519,7 @@
 
 (defn create-datomic-scheduler
   [{:keys [conn driver-atom exit-code-syncer-state fenzo-fitness-calculator fenzo-floor-iterations-before-reset
-           fenzo-floor-iterations-before-warn fenzo-max-jobs-considered fenzo-scaleback framework-id good-enough-fitness
+           fenzo-floor-iterations-before-warn fenzo-max-jobs-considered fenzo-scaleback good-enough-fitness
            gpu-enabled? heartbeat-ch mea-culpa-failure-limit mesos-run-as-user agent-attributes-cache offer-incubate-time-ms
            pool-name->pending-jobs-atom progress-config rebalancer-reservation-atom sandbox-syncer-state task-constraints
            trigger-chans]}]
@@ -1538,7 +1539,7 @@
                         fenzo (pool-name->fenzo pool-name)
                         [offers-chan resources-atom]
                         (make-offer-handler
-                          conn driver-atom fenzo framework-id pool-name->pending-jobs-atom agent-attributes-cache fenzo-max-jobs-considered
+                          conn driver-atom fenzo pool-name->pending-jobs-atom agent-attributes-cache fenzo-max-jobs-considered
                           fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset
                           match-trigger-chan rebalancer-reservation-atom mesos-run-as-user pool-name)]
                     (-> m
@@ -1554,7 +1555,7 @@
         handle-exit-code (fn handle-exit-code [task-id exit-code]
                            (sandbox/aggregate-exit-code exit-code-syncer-state task-id exit-code))]
     (start-jobs-prioritizer! conn pool-name->pending-jobs-atom task-constraints rank-trigger-chan)
-    {:scheduler (create-mesos-scheduler framework-id gpu-enabled? conn heartbeat-ch pool-name->fenzo pool->offers-chan
+    {:scheduler (create-mesos-scheduler gpu-enabled? conn heartbeat-ch pool-name->fenzo pool->offers-chan
                                         match-trigger-chan handle-exit-code handle-progress-message sandbox-syncer-state)
      :view-incubating-offers (fn get-resources-atom [p]
                                (deref (get pool->resources-atom p)))}))
