@@ -364,9 +364,8 @@
               (create-dummy-job conn
                                 :committed? false
                                 :submit-time (tc/to-date (-> 9 t/days t/ago))))]
-      (is (= (count ((util/clear-old-uncommitted-jobs-fn conn (atom true)) nil))
-             uncommitted-count))
-      (is (= (count ((util/clear-old-uncommitted-jobs-fn conn (atom true)) nil)) 0))))
+      (is (= (count (util/clear-old-uncommitted-jobs conn (atom true))) uncommitted-count))
+      (is (= (count (util/clear-old-uncommitted-jobs conn (atom true))) 0))))
 
   (testing "Clear old uncommitted jobs does nothing when we're not the master."
     (let [uri "datomic:mem://test-clear-old-uncommitted"
@@ -382,8 +381,8 @@
               (create-dummy-job conn
                                 :committed? false
                                 :submit-time (tc/to-date (-> 9 t/days t/ago))))]
-      (is (= (count ((util/clear-old-uncommitted-jobs-fn conn (atom false)) nil)) 0))
-      (is (= (count ((util/clear-old-uncommitted-jobs-fn conn (atom false)) nil)) 0)))))
+      (is (= (count (util/clear-old-uncommitted-jobs conn (atom false))) 0))
+      (is (= (count (util/clear-old-uncommitted-jobs conn (atom false))) 0)))))
 
 (deftest test-make-guuid->juuids
   (let [jobs [{:job/uuid "1"

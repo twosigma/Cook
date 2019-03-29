@@ -701,16 +701,15 @@
                                 batch))))
     uncommitted-before))
 
-(defn clear-old-uncommitted-jobs-fn
+(defn clear-old-uncommitted-jobs
   "Returns a function that will, when invoked, clear any uncommitted jobs older than a week if the leadership atom is true."
   [conn mesos-leadership-atom]
-  (fn [_]
     (try
       (when @mesos-leadership-atom
         (let [age (-> -7 t/days t/from-now tc/to-date-time)]
           (clear-uncommitted-jobs conn age false)))
       (catch Exception e
-        (log/error e "Failed to kill the offensive job!")))))
+        (log/error e "Failed to kill the offensive job!"))))
 
 (defn clear-uncommitted-jobs-on-schedule
   "Runs the clear-uncommitted-jobs on a schedule; 12 hours after starting up and every 24 hours thereafter.
@@ -727,7 +726,8 @@
         frequency (-> 1 t/days)
         schedule (tp/periodic-seq start-time frequency)]
     (log/info "Launching clear-uncommitted-jobs-on-schedule")
-    (chime/chime-at schedule (clear-old-uncommitted-jobs-fn conn mesos-leadership-atom))))
+    (chime/chime-at schedule
+                    (fn [_] (clear-old-uncommitted-jobs conn mesos-leadership-atom)))))
 
 (defn instance-running?
   [instance]
