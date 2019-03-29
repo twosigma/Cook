@@ -24,7 +24,7 @@ import pymesos as pm
 
 
 def main(args=None):
-    from _version import __version__
+    from cook._version import __version__
 
     if len(sys.argv) == 2 and sys.argv[1] == "--version":
         print(__version__)
