@@ -349,6 +349,41 @@
              uncommitted-count))
       (is (= (count (util/clear-uncommitted-jobs conn (t/yesterday) false)) 0)))))
 
+(deftest test-clear-old-uncommitted-jobs
+  (testing "Clear old uncommitted jobs works when we're the master."
+    (let [uri "datomic:mem://test-clear-old-uncommitted"
+          conn (restore-fresh-database! uri)
+          _ (dotimes [_ 100]
+              (create-dummy-job conn))
+          _ (dotimes [_ 100]
+              (create-dummy-job conn
+                                :committed? false
+                                :submit-time (tc/to-date (-> 6 t/hours t/ago))))
+          uncommitted-count 26
+          _ (dotimes [_ uncommitted-count]
+              (create-dummy-job conn
+                                :committed? false
+                                :submit-time (tc/to-date (-> 9 t/days t/ago))))]
+      (is (= (count (util/clear-old-uncommitted-jobs conn (atom true))) uncommitted-count))
+      (is (= (count (util/clear-old-uncommitted-jobs conn (atom true))) 0))))
+
+  (testing "Clear old uncommitted jobs does nothing when we're not the master."
+    (let [uri "datomic:mem://test-clear-old-uncommitted"
+          conn (restore-fresh-database! uri)
+          _ (dotimes [_ 100]
+              (create-dummy-job conn))
+          _ (dotimes [_ 100]
+              (create-dummy-job conn
+                                :committed? false
+                                :submit-time (tc/to-date (-> 6 t/hours t/ago))))
+          uncommitted-count 27
+          _ (dotimes [_ uncommitted-count]
+              (create-dummy-job conn
+                                :committed? false
+                                :submit-time (tc/to-date (-> 9 t/days t/ago))))]
+      (is (= (count (util/clear-old-uncommitted-jobs conn (atom false))) 0))
+      (is (= (count (util/clear-old-uncommitted-jobs conn (atom false))) 0)))))
+
 (deftest test-make-guuid->juuids
   (let [jobs [{:job/uuid "1"
                :group/_job #{{:group/uuid "a"} {:group/uuid "b"} {:group/uuid "c"} {:group/uuid "d"} {:group/uuid "e"}}}
