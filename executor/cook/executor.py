@@ -402,7 +402,7 @@ class CookExecutor(pm.Executor):
         self.config = config
         self.disconnect_signal = Event()
         self.stop_signal = stop_signal
-        self.reregister_signal = Event()
+        self.reregister_signal = None
 
     def registered(self, driver, executor_info, framework_info, agent_info):
         logging.info('Executor registered executor={}, framework={}, agent={}'.
@@ -420,13 +420,16 @@ class CookExecutor(pm.Executor):
         if self.config.checkpoint:
             logging.info('Executor checkpointing is enabled. Notifying on reregister_signal')
             self.reregister_signal.set()
-            self.reregister_signal = Event()
+            self.reregister_signal = None
 
     def disconnected(self, driver):
         logging.info('Mesos requested executor to disconnect')
         if self.config.checkpoint:
-            logging.info('Executor checkpointing is enabled. Waiting for agent recovery.')
-            await_reregister(self.reregister_signal, self.config.recovery_timeout_ms / 1000, self.stop_signal, self.disconnect_signal)
+            if self.reregister_signal is None:
+                logging.info('Executor checkpointing is enabled. Waiting for agent recovery.')
+                new_event = Event()
+                self.reregister_signal = new_event
+                await_reregister(new_event, self.config.recovery_timeout_ms / 1000, self.stop_signal, self.disconnect_signal)
         else:
             logging.info('Executor checkpointing is not enabled. Terminating task.')
             self.disconnect_signal.set()
