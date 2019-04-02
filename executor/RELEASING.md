@@ -22,11 +22,11 @@ python3 -m twine upload --repository-url https://test.pypi.org/legacy/ dist/*
 ```
 Then, in a separate virtualenv for testing:
 ```bash
-pip install  --index-url https://test.pypi.org/simple/ --no-deps cook-executor==$VERSION
-pip install pymesos==0.3.9 # install any other required dependencies from the main pypi repo
+pip3 install  --index-url https://test.pypi.org/simple/ --no-deps cook-executor==$VERSION
+pip3 install pymesos==0.3.9 # install any other required dependencies from the main pypi repo
 cook-executor
 ```
-If there is an issue with the release, you can just release another version. They are GCed periodically from the test instance.
+If there is an issue with the release, you can just release another version. They are GC-ed periodically from the test instance.
 
 Production Release
 ------------------
