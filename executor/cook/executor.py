@@ -402,7 +402,7 @@ class CookExecutor(pm.Executor):
         self.config = config
         self.disconnect_signal = Event()
         self.stop_signal = stop_signal
-        self.reregister_signal = Event()
+        self.reregister_signal = None
 
     def registered(self, driver, executor_info, framework_info, agent_info):
         logging.info('Executor registered executor={}, framework={}, agent={}'.
@@ -418,15 +418,23 @@ class CookExecutor(pm.Executor):
     def reregistered(self, driver, agent_info):
         logging.info('Executor re-registered agent={}'.format(agent_info))
         if self.config.checkpoint:
-            logging.info('Executor checkpointing is enabled. Notifying on reregister_signal')
-            self.reregister_signal.set()
-            self.reregister_signal = Event()
+            if self.reregister_signal is not None:
+                logging.info('Executor checkpointing is enabled. Notifying on reregister_signal')
+                self.reregister_signal.set()
+                self.reregister_signal = None
+            else:
+                logging.error('Checkpointing is enabled but reregister_signal is None. Unable to notify!')
 
     def disconnected(self, driver):
         logging.info('Mesos requested executor to disconnect')
         if self.config.checkpoint:
-            logging.info('Executor checkpointing is enabled. Waiting for agent recovery.')
-            await_reregister(self.reregister_signal, self.config.recovery_timeout_ms / 1000, self.stop_signal, self.disconnect_signal)
+            if self.reregister_signal is None:
+                logging.info('Executor checkpointing is enabled. Waiting for agent recovery.')
+                new_event = Event()
+                self.reregister_signal = new_event
+                await_reregister(new_event, self.config.recovery_timeout_ms / 1000, self.stop_signal, self.disconnect_signal)
+            else:
+                logging.info('Checkpointing is enabled. Already launched await_reregister thread.')
         else:
             logging.info('Executor checkpointing is not enabled. Terminating task.')
             self.disconnect_signal.set()

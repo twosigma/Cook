@@ -880,6 +880,7 @@ class ExecutorTest(unittest.TestCase):
                         if 'Start' in content:
                             break
 
+            self.assertEqual(None, executor.reregister_signal)
             executor.disconnected(driver)
             self.assertFalse(executor.disconnect_signal.isSet())
             self.assertFalse(executor.stop_signal.isSet())
@@ -887,7 +888,7 @@ class ExecutorTest(unittest.TestCase):
             old_reregister_signal = executor.reregister_signal
             executor.reregistered(driver, agent_info)
             self.assertTrue(old_reregister_signal.isSet())
-            self.assertFalse(executor.reregister_signal.isSet())
+            self.assertEqual(None, executor.reregister_signal)
 
             executor.await_completion()
             logging.info('Task completed')
