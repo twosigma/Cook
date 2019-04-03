@@ -1716,7 +1716,6 @@ def dummy_ls_entries(_, __, ___):
         # Ask for a file that doesn't exist
         cp = cli.cat(uuids[0], uuid.uuid4(), self.cook_url)
         self.assertEqual(1, cp.returncode, cp.stderr)
-        self.assertIn('file was not found', cli.decode(cp.stderr))
 
     def test_cat_no_newlines(self):
         cp, uuids = cli.submit('bash -c \'for i in {1..100}; do printf "$i " >> foo; done\'', self.cook_url)
