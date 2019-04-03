@@ -41,6 +41,7 @@ class ExecutorConfig(object):
                  progress_regex_string='',
                  progress_sample_interval_ms=100,
                  recovery_timeout='15mins',
+                 reset_vars=[],
                  sandbox_directory='',
                  shutdown_grace_period='1secs'):
         self.checkpoint = checkpoint != 0
@@ -52,6 +53,7 @@ class ExecutorConfig(object):
         self.progress_regex_string = progress_regex_string
         self.progress_sample_interval_ms = progress_sample_interval_ms
         self.recovery_timeout_ms = ExecutorConfig.parse_time_ms(recovery_timeout)
+        self.reset_vars=reset_vars
         self.sandbox_directory = sandbox_directory
         self.shutdown_grace_period_ms = ExecutorConfig.parse_time_ms(shutdown_grace_period)
 
@@ -92,6 +94,8 @@ def initialize_config(environment):
     progress_regex_string = environment.get('PROGRESS_REGEX_STRING', 'progress: ([0-9]*\.?[0-9]+), (.*)')
     progress_sample_interval_ms = max(int(environment.get('PROGRESS_SAMPLE_INTERVAL_MS', 1000)), 100)
     recovery_timeout = environment.get('MESOS_RECOVERY_TIMEOUT', '15mins')
+    reset_vars = [v for v in environment.get('EXECUTOR_RESET_VARS', '').split(',')
+                  if len(v) > 0]
     sandbox_directory = environment.get('MESOS_SANDBOX', '')
     shutdown_grace_period = environment.get('MESOS_EXECUTOR_SHUTDOWN_GRACE_PERIOD', '2secs')
 
@@ -102,6 +106,7 @@ def initialize_config(environment):
     logging.info('Progress output file is {}'.format(progress_output_name))
     logging.info('Progress regex is {}'.format(progress_regex_string))
     logging.info('Progress sample interval is {}'.format(progress_sample_interval_ms))
+    logging.info('Reset vars are {}'.format(reset_vars))
     logging.info('Sandbox location is {}'.format(sandbox_directory))
     logging.info('Shutdown grace period is {}'.format(shutdown_grace_period))
 
@@ -114,5 +119,6 @@ def initialize_config(environment):
                           progress_regex_string=progress_regex_string,
                           progress_sample_interval_ms=progress_sample_interval_ms,
                           recovery_timeout=recovery_timeout,
+                          reset_vars=reset_vars,
                           sandbox_directory=sandbox_directory,
                           shutdown_grace_period=shutdown_grace_period)

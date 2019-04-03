@@ -241,7 +241,7 @@ def set_environment(environment, key, value):
         environment[key] = value
 
 
-def retrieve_process_environment(config, os_environ):
+def retrieve_process_environment(config, task, os_environ):
     """Prepares the environment for the subprocess.
     The function also ensures that env[config.progress_output_env_variable] is set to config.progress_output_name.
     This protects against the scenario where the config.progress_output_env_variable was specified
@@ -251,6 +251,8 @@ def retrieve_process_environment(config, os_environ):
     ----------
     config: cook.config.ExecutorConfig
         The current executor config.
+    task: dictionary
+        The mesos task object
     os_environ: dictionary
         A dictionary representing the current environment.
 
@@ -259,6 +261,18 @@ def retrieve_process_environment(config, os_environ):
     The environment dictionary for the subprocess.
     """
     environment = dict(os_environ)
+    task_env = {}
+    mesos_task_variables = (task.get('executor', {})
+                            .get('command', {})
+                            .get('environment', {})
+                            .get('variables', []))
+    for variable in mesos_task_variables:
+        task_env[variable['name']] = variable['value']
+    for var in config.reset_vars:
+        if var in task_env:
+            environment[var] = task_env[var]
+        elif var in environment:
+            del environment[var]
     set_environment(environment, config.progress_output_env_variable, config.progress_output_name)
     return environment
 
@@ -314,7 +328,7 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
         sandbox_message = {'sandbox-directory': config.sandbox_directory, 'task-id': task_id, 'type': 'directory'}
         send_message(driver, inner_os_error_handler, sandbox_message)
 
-        environment = retrieve_process_environment(config, os.environ)
+        environment = retrieve_process_environment(config, task, os.environ)
         launched_process = launch_task(task, environment)
         if launched_process:
             # task has begun running successfully
