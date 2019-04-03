@@ -36,6 +36,7 @@ class ExecutorConfig(object):
                  max_bytes_read_per_line=1024,
                  max_message_length=512,
                  memory_usage_interval_secs=15,
+                 mesos_directory='',
                  progress_output_env_variable=DEFAULT_PROGRESS_FILE_ENV_VARIABLE,
                  progress_output_name='stdout',
                  progress_regex_string='',
@@ -47,6 +48,7 @@ class ExecutorConfig(object):
         self.max_bytes_read_per_line = max_bytes_read_per_line
         self.max_message_length = max_message_length
         self.memory_usage_interval_secs = memory_usage_interval_secs
+        self.mesos_directory = mesos_directory
         self.progress_output_env_variable = progress_output_env_variable
         self.progress_output_name = progress_output_name
         self.progress_regex_string = progress_regex_string
@@ -72,6 +74,7 @@ def initialize_config(environment):
     checkpoint = int(environment.get('MESOS_CHECKPOINT', '0'))
     executor_id = environment.get('MESOS_EXECUTOR_ID', 'executor')
     sandbox_directory = environment.get('MESOS_SANDBOX', '')
+    mesos_directory = environment.get('MESOS_DIRECTORY', '')
     default_progress_output_key = 'EXECUTOR_DEFAULT_PROGRESS_OUTPUT_NAME'
     default_progress_output_name = environment.get(default_progress_output_key, '{}.progress'.format(executor_id))
     if sandbox_directory:
@@ -103,12 +106,14 @@ def initialize_config(environment):
     logging.info('Progress regex is {}'.format(progress_regex_string))
     logging.info('Progress sample interval is {}'.format(progress_sample_interval_ms))
     logging.info('Sandbox location is {}'.format(sandbox_directory))
+    logging.info('Mesos directory is {}'.format(mesos_directory))
     logging.info('Shutdown grace period is {}'.format(shutdown_grace_period))
 
     return ExecutorConfig(checkpoint=checkpoint,
                           max_bytes_read_per_line=max_bytes_read_per_line,
                           max_message_length=max_message_length,
                           memory_usage_interval_secs=memory_usage_interval_secs,
+                          mesos_directory=mesos_directory,
                           progress_output_env_variable=progress_output_env_variable,
                           progress_output_name=progress_output_name,
                           progress_regex_string=progress_regex_string,

@@ -363,20 +363,23 @@ class ExecutorTest(unittest.TestCase):
         completed_signal = Event()
         if config is None:
             sandbox_directory = '/location/to/task/sandbox/{}'.format(task_id)
+            mesos_directory = '/mesos/directory/{}'.format(task_id)
             config = cc.ExecutorConfig(max_message_length=300,
+                                       mesos_directory = mesos_directory,
                                        progress_output_name=stdout_name,
                                        progress_regex_string='\^\^\^\^JOB-PROGRESS:\s+([0-9]*\.?[0-9]+)($|\s+.*)',
                                        progress_sample_interval_ms=100,
                                        sandbox_directory=sandbox_directory)
         else:
             sandbox_directory = config.sandbox_directory
+            mesos_directory = config.mesos_directory
 
         try:
 
             ce.manage_task(driver, task, stop_signal, completed_signal, config)
 
             self.assertTrue(completed_signal.isSet())
-            assertions_fn(driver, task_id, sandbox_directory)
+            assertions_fn(driver, task_id, sandbox_directory, mesos_directory)
 
         finally:
             tu.cleanup_output(stdout_name, stderr_name)
@@ -388,14 +391,13 @@ class ExecutorTest(unittest.TestCase):
         stop_signal.set()
 
     def test_manage_task_environment_output(self):
-        def assertions(driver, task_id, _):
+        def assertions(driver, task_id, sandbox_directory, mesos_directory):
             expected_statuses = [{'task_id': {'value': task_id}, 'state': cook.TASK_STARTING},
                                  {'task_id': {'value': task_id}, 'state': cook.TASK_RUNNING},
                                  {'task_id': {'value': task_id}, 'state': cook.TASK_FINISHED}]
             tu.assert_statuses(self, expected_statuses, driver.statuses)
 
-            expected_message_0 = {'sandbox-directory': '/location/to/task/sandbox/{}'.format(task_id),
-                                  'task-id': task_id, 'type': 'directory'}
+            expected_message_0 = {'sandbox-directory': mesos_directory, 'task-id': task_id, 'type': 'directory'}
             expected_message_1 = {'exit-code': 0, 'task-id': task_id}
             tu.assert_messages(self, [expected_message_0, expected_message_1], [], driver.messages)
 
@@ -415,13 +417,13 @@ class ExecutorTest(unittest.TestCase):
             os.environ = current_environ
 
     def test_manage_task_successful_exit(self):
-        def assertions(driver, task_id, sandbox_directory):
+        def assertions(driver, task_id, sandbox_directory, mesos_directory):
             expected_statuses = [{'task_id': {'value': task_id}, 'state': cook.TASK_STARTING},
                                  {'task_id': {'value': task_id}, 'state': cook.TASK_RUNNING},
                                  {'task_id': {'value': task_id}, 'state': cook.TASK_FINISHED}]
             tu.assert_statuses(self, expected_statuses, driver.statuses)
 
-            expected_message_0 = {'sandbox-directory': sandbox_directory, 'task-id': task_id, 'type': 'directory'}
+            expected_message_0 = {'sandbox-directory': mesos_directory, 'task-id': task_id, 'type': 'directory'}
             expected_message_1 = {'exit-code': 0, 'task-id': task_id}
             tu.assert_messages(self, [expected_message_0, expected_message_1], [], driver.messages)
 
@@ -429,7 +431,7 @@ class ExecutorTest(unittest.TestCase):
         self.manage_task_runner(command, assertions)
 
     def test_manage_task_empty_command(self):
-        def assertions(driver, task_id, sandbox_directory):
+        def assertions(driver, task_id, sandbox_directory, mesos_directory):
             expected_statuses = [{'task_id': {'value': task_id},
                                   'state': cook.TASK_STARTING},
                                  {'task_id': {'value': task_id},
@@ -437,20 +439,20 @@ class ExecutorTest(unittest.TestCase):
                                   'state': cook.TASK_ERROR}]
             tu.assert_statuses(self, expected_statuses, driver.statuses)
 
-            expected_message_0 = {'sandbox-directory': sandbox_directory, 'task-id': task_id, 'type': 'directory'}
+            expected_message_0 = {'sandbox-directory': mesos_directory, 'task-id': task_id, 'type': 'directory'}
             tu.assert_messages(self, [expected_message_0], [], driver.messages)
 
         command = ''
         self.manage_task_runner(command, assertions)
 
     def test_manage_task_involved_command_successful_exit(self):
-        def assertions(driver, task_id, sandbox_directory):
+        def assertions(driver, task_id, sandbox_directory, mesos_directory):
             expected_statuses = [{'task_id': {'value': task_id}, 'state': cook.TASK_STARTING},
                                  {'task_id': {'value': task_id}, 'state': cook.TASK_RUNNING},
                                  {'task_id': {'value': task_id}, 'state': cook.TASK_FINISHED}]
             tu.assert_statuses(self, expected_statuses, driver.statuses)
 
-            expected_core_messages = [{'sandbox-directory': sandbox_directory, 'task-id': task_id, 'type': 'directory'},
+            expected_core_messages = [{'sandbox-directory': mesos_directory, 'task-id': task_id, 'type': 'directory'},
                                       {'exit-code': 0, 'task-id': task_id}]
             expected_progress_messages = [{'progress-message': 'line count is 20',
                                            'progress-percent': 90, 'progress-sequence': 1, 'task-id': task_id}]
@@ -463,13 +465,13 @@ class ExecutorTest(unittest.TestCase):
         self.manage_task_runner(command, assertions)
 
     def test_manage_task_successful_exit_despite_faulty_driver(self):
-        def assertions(driver, task_id, sandbox_directory):
+        def assertions(driver, task_id, sandbox_directory, mesos_directory):
             expected_statuses = [{'task_id': {'value': task_id}, 'state': cook.TASK_STARTING},
                                  {'task_id': {'value': task_id}, 'state': cook.TASK_RUNNING},
                                  {'task_id': {'value': task_id}, 'state': cook.TASK_FINISHED}]
             tu.assert_statuses(self, expected_statuses, driver.statuses)
 
-            expected_core_messages = [{'sandbox-directory': sandbox_directory, 'task-id': task_id, 'type': 'directory'},
+            expected_core_messages = [{'sandbox-directory': mesos_directory, 'task-id': task_id, 'type': 'directory'},
                                       {'exit-code': 0, 'task-id': task_id}]
             expected_progress_messages = [{'progress-message': 'ninety percent',
                                            'progress-percent': 90, 'progress-sequence': 1, 'task-id': task_id},
@@ -484,13 +486,13 @@ class ExecutorTest(unittest.TestCase):
         self.manage_task_runner(command, assertions, driver=tu.ErrorMesosExecutorDriver(socket_error))
 
     def test_manage_task_successful_exit_with_progress_message(self):
-        def assertions(driver, task_id, sandbox_directory):
+        def assertions(driver, task_id, sandbox_directory, mesos_directory):
             expected_statuses = [{'task_id': {'value': task_id}, 'state': cook.TASK_STARTING},
                                  {'task_id': {'value': task_id}, 'state': cook.TASK_RUNNING},
                                  {'task_id': {'value': task_id}, 'state': cook.TASK_FINISHED}]
             tu.assert_statuses(self, expected_statuses, driver.statuses)
 
-            expected_core_messages = [{'sandbox-directory': sandbox_directory, 'task-id': task_id, 'type': 'directory'},
+            expected_core_messages = [{'sandbox-directory': mesos_directory, 'task-id': task_id, 'type': 'directory'},
                                       {'exit-code': 0, 'task-id': task_id}]
             expected_progress_messages = [{'progress-message': 'Fifty percent',
                                            'progress-percent': 50, 'progress-sequence': 1, 'task-id': task_id},
@@ -508,13 +510,13 @@ class ExecutorTest(unittest.TestCase):
         self.manage_task_runner(command, assertions)
 
     def test_manage_task_erroneous_exit(self):
-        def assertions(driver, task_id, sandbox_directory):
+        def assertions(driver, task_id, sandbox_directory, mesos_directory):
             expected_statuses = [{'task_id': {'value': task_id}, 'state': cook.TASK_STARTING},
                                  {'task_id': {'value': task_id}, 'state': cook.TASK_RUNNING},
                                  {'task_id': {'value': task_id}, 'state': cook.TASK_FAILED}]
             tu.assert_statuses(self, expected_statuses, driver.statuses)
 
-            expected_message_0 = {'sandbox-directory': sandbox_directory, 'task-id': task_id, 'type': 'directory'}
+            expected_message_0 = {'sandbox-directory': mesos_directory, 'task-id': task_id, 'type': 'directory'}
             expected_message_1 = {'exit-code': 1, 'task-id': task_id}
             tu.assert_messages(self, [expected_message_0, expected_message_1], [], driver.messages)
 
@@ -526,13 +528,13 @@ class ExecutorTest(unittest.TestCase):
     @pytest.mark.xfail
     @unittest.skip('This test crashes occasionally')
     def test_manage_task_terminated(self):
-        def assertions(driver, task_id, sandbox_directory):
+        def assertions(driver, task_id, sandbox_directory, mesos_directory):
             expected_statuses = [{'task_id': {'value': task_id}, 'state': cook.TASK_STARTING},
                                  {'task_id': {'value': task_id}, 'state': cook.TASK_RUNNING},
                                  {'task_id': {'value': task_id}, 'state': cook.TASK_KILLED}]
             tu.assert_statuses(self, expected_statuses, driver.statuses)
 
-            expected_message_0 = {'sandbox-directory': sandbox_directory, 'task-id': task_id, 'type': 'directory'}
+            expected_message_0 = {'sandbox-directory': mesos_directory, 'task-id': task_id, 'type': 'directory'}
             expected_message_1 = {'exit-code': -15, 'task-id': task_id}
             tu.assert_messages(self, [expected_message_0, expected_message_1], [], driver.messages)
 
@@ -544,13 +546,13 @@ class ExecutorTest(unittest.TestCase):
     @pytest.mark.xfail
     @unittest.skip('This test fails occasionally')
     def test_manage_task_random_binary_output(self):
-        def assertions(driver, task_id, sandbox_directory):
+        def assertions(driver, task_id, sandbox_directory, mesos_directory):
             expected_statuses = [{'task_id': {'value': task_id}, 'state': cook.TASK_STARTING},
                                  {'task_id': {'value': task_id}, 'state': cook.TASK_RUNNING},
                                  {'task_id': {'value': task_id}, 'state': cook.TASK_FINISHED}]
             tu.assert_statuses(self, expected_statuses, driver.statuses)
 
-            expected_core_messages = [{'sandbox-directory': sandbox_directory, 'task-id': task_id, 'type': 'directory'},
+            expected_core_messages = [{'sandbox-directory': mesos_directory, 'task-id': task_id, 'type': 'directory'},
                                       {'exit-code': 0, 'task-id': task_id}]
             expected_progress_messages = [{'progress-message': '',
                                            'progress-percent': 50, 'progress-sequence': 1, 'task-id': task_id}]
@@ -576,14 +578,14 @@ class ExecutorTest(unittest.TestCase):
     def test_manage_task_long_output_single_line(self):
         num_iterations = 100000
 
-        def assertions(driver, task_id, sandbox_directory):
+        def assertions(driver, task_id, sandbox_directory, mesos_directory):
 
             expected_statuses = [{'task_id': {'value': task_id}, 'state': cook.TASK_STARTING},
                                  {'task_id': {'value': task_id}, 'state': cook.TASK_RUNNING},
                                  {'task_id': {'value': task_id}, 'state': cook.TASK_FINISHED}]
             tu.assert_statuses(self, expected_statuses, driver.statuses)
 
-            expected_message_0 = {'sandbox-directory': sandbox_directory, 'task-id': task_id, 'type': 'directory'}
+            expected_message_0 = {'sandbox-directory': mesos_directory, 'task-id': task_id, 'type': 'directory'}
             expected_message_1 = {'exit-code': 0, 'task-id': task_id}
             tu.assert_messages(self, [expected_message_0, expected_message_1], [], driver.messages)
 
@@ -611,14 +613,14 @@ class ExecutorTest(unittest.TestCase):
     def test_manage_task_long_output_multiple_lines(self):
         num_iterations = 100000
 
-        def assertions(driver, task_id, sandbox_directory):
+        def assertions(driver, task_id, sandbox_directory, mesos_directory):
 
             expected_statuses = [{'task_id': {'value': task_id}, 'state': cook.TASK_STARTING},
                                  {'task_id': {'value': task_id}, 'state': cook.TASK_RUNNING},
                                  {'task_id': {'value': task_id}, 'state': cook.TASK_FINISHED}]
             tu.assert_statuses(self, expected_statuses, driver.statuses)
 
-            expected_message_0 = {'sandbox-directory': sandbox_directory, 'task-id': task_id, 'type': 'directory'}
+            expected_message_0 = {'sandbox-directory': mesos_directory, 'task-id': task_id, 'type': 'directory'}
             expected_message_1 = {'exit-code': 0, 'task-id': task_id}
             tu.assert_messages(self, [expected_message_0, expected_message_1], [], driver.messages)
 
@@ -646,7 +648,7 @@ class ExecutorTest(unittest.TestCase):
     def test_manage_task_long_progress_output(self):
         num_iterations = 100000
 
-        def assertions(driver, task_id, sandbox_directory):
+        def assertions(driver, task_id, sandbox_directory, mesos_directory):
 
             expected_statuses = [{'task_id': {'value': task_id}, 'state': cook.TASK_STARTING},
                                  {'task_id': {'value': task_id}, 'state': cook.TASK_RUNNING},
@@ -657,7 +659,7 @@ class ExecutorTest(unittest.TestCase):
             self.assertLess(2, len(driver.messages))
 
             actual_encoded_message_0 = driver.messages[0]
-            expected_message_0 = {'sandbox-directory': sandbox_directory, 'task-id': task_id, 'type': 'directory'}
+            expected_message_0 = {'sandbox-directory': mesos_directory, 'task-id': task_id, 'type': 'directory'}
             tu.assert_message(self, expected_message_0, actual_encoded_message_0)
 
             found_exit_message = False
@@ -691,13 +693,13 @@ class ExecutorTest(unittest.TestCase):
     def test_manage_task_progress_in_progress_stderr_and_stdout_progress(self):
         max_message_length = 35
 
-        def assertions(driver, task_id, sandbox_directory):
+        def assertions(driver, task_id, sandbox_directory, mesos_directory):
             expected_statuses = [{'task_id': {'value': task_id}, 'state': cook.TASK_STARTING},
                                  {'task_id': {'value': task_id}, 'state': cook.TASK_RUNNING},
                                  {'task_id': {'value': task_id}, 'state': cook.TASK_FINISHED}]
             tu.assert_statuses(self, expected_statuses, driver.statuses)
 
-            expected_core_messages = [{'sandbox-directory': sandbox_directory, 'task-id': task_id, 'type': 'directory'},
+            expected_core_messages = [{'sandbox-directory': mesos_directory, 'task-id': task_id, 'type': 'directory'},
                                       {'exit-code': 0, 'task-id': task_id}]
             expected_progress_messages = [{'progress-message': 'Fifty percent in progress file',
                                            'progress-percent': 50, 'progress-sequence': 1, 'task-id': task_id},
@@ -719,6 +721,7 @@ class ExecutorTest(unittest.TestCase):
 
         config = tu.FakeExecutorConfig({'max_bytes_read_per_line': 1024,
                                         'max_message_length': max_message_length,
+                                        'mesos_directory': '/mesos/directory/for/{}'.format(task_id),
                                         'progress_output_env_variable': 'DEFAULT_PROGRESS_FILE_ENV_VARIABLE',
                                         'progress_output_name': progress_name,
                                         'progress_regex_string': '\^\^\^\^JOB-PROGRESS:\s+([0-9]*\.?[0-9]+)($|\s+.*)',

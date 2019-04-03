@@ -23,6 +23,7 @@ class ConfigTest(unittest.TestCase):
         max_bytes_read_per_line = 16 * 1024
         max_message_length = 300
         memory_usage_interval_secs = 150
+        mesos_directory = '/mesos/directory'
         progress_output_env_variable = 'PROGRESS_OUTPUT_ENV_VARIABLE'
         progress_output_name = 'stdout_name'
         progress_regex_string = 'some-regex-string'
@@ -34,6 +35,7 @@ class ConfigTest(unittest.TestCase):
                                    max_bytes_read_per_line=max_bytes_read_per_line,
                                    max_message_length=max_message_length,
                                    memory_usage_interval_secs=memory_usage_interval_secs,
+                                   mesos_directory=mesos_directory,
                                    progress_output_env_variable=progress_output_env_variable,
                                    progress_output_name=progress_output_name,
                                    progress_regex_string=progress_regex_string,
@@ -46,6 +48,7 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(max_bytes_read_per_line, config.max_bytes_read_per_line)
         self.assertEqual(max_message_length, config.max_message_length)
         self.assertEqual(memory_usage_interval_secs, config.memory_usage_interval_secs)
+        self.assertEqual(mesos_directory, config.mesos_directory)
         self.assertEqual(progress_output_env_variable, config.progress_output_env_variable)
         self.assertEqual(progress_output_name, config.progress_output_name)
         self.assertEqual(progress_regex_string, config.progress_regex_string)
@@ -64,6 +67,7 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(False, config.checkpoint)
         self.assertEqual(4 * 1024, config.max_bytes_read_per_line)
         self.assertEqual(512, config.max_message_length)
+        self.assertEqual('', config.mesos_directory)
         self.assertEqual('executor.progress', config.progress_output_name)
         self.assertEqual('progress: ([0-9]*\\.?[0-9]+), (.*)', config.progress_regex_string)
         self.assertEqual(15 * 60 * 1000, config.recovery_timeout_ms)
@@ -77,6 +81,7 @@ class ConfigTest(unittest.TestCase):
                        'EXECUTOR_MEMORY_USAGE_INTERVAL_SECS': '120',
                        'EXECUTOR_PROGRESS_OUTPUT_FILE': 'progress_file',
                        'MESOS_CHECKPOINT': '1',
+                       'MESOS_DIRECTORY': '/mesos/directory',
                        'MESOS_EXECUTOR_SHUTDOWN_GRACE_PERIOD': '4secs',
                        'MESOS_RECOVERY_TIMEOUT': '5mins',
                        'MESOS_SANDBOX': '/sandbox/location',
@@ -88,6 +93,7 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(1234, config.max_bytes_read_per_line)
         self.assertEqual(1024, config.max_message_length)
         self.assertEqual(120, config.memory_usage_interval_secs)
+        self.assertEqual('/mesos/directory', config.mesos_directory)
         self.assertEqual('EXECUTOR_PROGRESS_OUTPUT_FILE', config.progress_output_env_variable)
         self.assertEqual('progress_file', config.progress_output_name)
         self.assertEqual('progress/regex', config.progress_regex_string)
