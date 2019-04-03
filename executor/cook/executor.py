@@ -311,7 +311,8 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
         # not yet started to run the task
         status_updater.update_status(cook.TASK_STARTING)
 
-        sandbox_message = {'sandbox-directory': config.sandbox_directory, 'task-id': task_id, 'type': 'directory'}
+        # Use MESOS_DIRECTORY instead of MESOS_SANDBOX, to report the sandbox location outside of the container
+        sandbox_message = {'sandbox-directory': config.mesos_directory, 'task-id': task_id, 'type': 'directory'}
         send_message(driver, inner_os_error_handler, sandbox_message)
 
         environment = retrieve_process_environment(config, os.environ)

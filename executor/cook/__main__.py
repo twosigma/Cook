@@ -35,9 +35,10 @@ def main(args=None):
     environment = os.environ
     executor_id = environment.get('MESOS_EXECUTOR_ID', '1')
     log_level = environment.get('EXECUTOR_LOG_LEVEL', 'INFO')
+    sandbox_directory = environment.get('MESOS_SANDBOX', '.')
 
     logging.basicConfig(level = log_level,
-                        filename = 'executor.log',
+                        filename = os.path.join(sandbox_directory, 'executor.log'),
                         format='%(asctime)s %(levelname)s %(message)s')
     logging.info('Starting Cook Executor {} for executor-id={}'.format(__version__, executor_id))
     logging.info('Log level is {}'.format(log_level))
