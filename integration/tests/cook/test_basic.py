@@ -2761,3 +2761,16 @@ class CookTest(util.CookTest):
             self.assertEqual('alpine', container['mesos']['image']['docker']['name'], container)
         finally:
             util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
+
+    @unittest.skipUnless(util.is_cook_executor_in_use(), 'Test assumes the Cook Executor is in use')
+    def test_cook_executor_reset_vars(self):
+        job_uuid1, resp1 = util.submit_job(self.cook_url, executor='cook', command='if [ ${#MESOS_EXECUTOR_ID} -eq 0 ]; then echo var was not set; else exit 1; fi;',
+                                           env={'EXECUTOR_RESET_VARS': 'MESOS_EXECUTOR_ID'})
+        job_uuid2, resp1 = util.submit_job(self.cook_url, executor='cook', command='if [ ${#MESOS_EXECUTOR_ID} -gt 0 ]; then echo var was not set; else exit 1; fi;')
+        try:
+            self.assertEqual(201, resp1.status_code, resp1.text)
+            instance = util.wait_for_instance(self.cook_url, job_uuid1, status='success')
+            instance = util.wait_for_instance(self.cook_url, job_uuid2, status='success')
+        finally:
+            util.kill_jobs(self.cook_url, [job_uuid1, job_uuid2], assert_response=False)
+

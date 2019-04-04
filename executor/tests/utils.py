@@ -85,7 +85,8 @@ def assert_messages(test_case, expected_process_messages, expected_progress_mess
 
 def assert_statuses(test_case, expected_statuses, driver_statuses):
     logging.info('Statuses: {}'.format(driver_statuses))
-    test_case.assertEqual(len(expected_statuses), len(driver_statuses))
+    test_case.assertEqual(len(expected_statuses), len(driver_statuses),
+                          'Expected: {} but got {}'.format(expected_statuses, driver_statuses))
     for i in range(1, len(expected_statuses)):
         expected_status = expected_statuses[i]
         actual_status = driver_statuses[i]

@@ -29,6 +29,7 @@ class ConfigTest(unittest.TestCase):
         progress_regex_string = 'some-regex-string'
         progress_sample_interval_ms = 100
         recovery_timeout = '5mins'
+        reset_vars = ['a', 'b']
         sandbox_directory = '/location/to/task/sandbox/task_id'
         shutdown_grace_period_secs = '5secs'
         config = cc.ExecutorConfig(checkpoint=checkpoint,
@@ -41,6 +42,7 @@ class ConfigTest(unittest.TestCase):
                                    progress_regex_string=progress_regex_string,
                                    progress_sample_interval_ms=progress_sample_interval_ms,
                                    recovery_timeout=recovery_timeout,
+                                   reset_vars=reset_vars,
                                    sandbox_directory=sandbox_directory,
                                    shutdown_grace_period=shutdown_grace_period_secs)
 
@@ -54,6 +56,7 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(progress_regex_string, config.progress_regex_string)
         self.assertEqual(progress_sample_interval_ms, config.progress_sample_interval_ms)
         self.assertEqual(5 * 60 * 1000, config.recovery_timeout_ms)
+        self.assertEqual(reset_vars, reset_vars)
         self.assertEqual(sandbox_directory, config.sandbox_directory)
         self.assertEqual(5000, config.shutdown_grace_period_ms)
         self.assertEqual(os.path.join(sandbox_directory, 'foo.bar'), config.sandbox_file('foo.bar'))
@@ -72,6 +75,7 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual('progress: ([0-9]*\\.?[0-9]+), (.*)', config.progress_regex_string)
         self.assertEqual(15 * 60 * 1000, config.recovery_timeout_ms)
         self.assertEqual(1000, config.progress_sample_interval_ms)
+        self.assertEqual([], config.reset_vars)
         self.assertEqual('', config.sandbox_directory)
         self.assertEqual(2000, config.shutdown_grace_period_ms)
 
@@ -80,6 +84,7 @@ class ConfigTest(unittest.TestCase):
                        'EXECUTOR_MAX_MESSAGE_LENGTH': '1024',
                        'EXECUTOR_MEMORY_USAGE_INTERVAL_SECS': '120',
                        'EXECUTOR_PROGRESS_OUTPUT_FILE': 'progress_file',
+                       'EXECUTOR_RESET_VARS': 'VAR_A,VAR_B',
                        'MESOS_CHECKPOINT': '1',
                        'MESOS_DIRECTORY': '/mesos/directory',
                        'MESOS_EXECUTOR_SHUTDOWN_GRACE_PERIOD': '4secs',
@@ -99,6 +104,7 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual('progress/regex', config.progress_regex_string)
         self.assertEqual(5 * 60 * 1000, config.recovery_timeout_ms)
         self.assertEqual(2500, config.progress_sample_interval_ms)
+        self.assertEqual(['VAR_A', 'VAR_B'], config.reset_vars)
         self.assertEqual('/sandbox/location', config.sandbox_directory)
         self.assertEqual(4000, config.shutdown_grace_period_ms)
 

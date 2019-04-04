@@ -25,6 +25,12 @@ def sleep_and_set_stop_signal_task(stop_signal, wait_seconds):
     timer.daemon = True
     timer.start()
 
+def make_task_env(env_dict):
+    environment = []
+    for (key, value) in env_dict.items():
+        environment.append({'type': 'VALUE', 'name': key, 'value': str(value)})
+    return {'executor': {'command': {'environment': {'variables': environment}}}}
+
 
 class ExecutorTest(unittest.TestCase):
     def test_get_task_id(self):
@@ -315,13 +321,14 @@ class ExecutorTest(unittest.TestCase):
 
     def test_retrieve_process_environment(self):
         self.assertEqual({'EXECUTOR_PROGRESS_OUTPUT_FILE': 'stdout'},
-                         ce.retrieve_process_environment(cc.ExecutorConfig(), {}))
+                         ce.retrieve_process_environment(cc.ExecutorConfig(), make_task_env({}), {}))
         self.assertEqual({'CUSTOM_PROGRESS_OUTPUT_FILE': 'stdout',
                           'FOO': 'BAR',
                           'MESOS_SANDBOX': '/path/to/sandbox',
                           'PROGRESS_OUTPUT_FILE': 'executor.progress'},
                          ce.retrieve_process_environment(
                              cc.ExecutorConfig(progress_output_env_variable='CUSTOM_PROGRESS_OUTPUT_FILE'),
+                             make_task_env({}),
                              {'FOO': 'BAR',
                               'MESOS_SANDBOX': '/path/to/sandbox',
                               'PROGRESS_OUTPUT_FILE': 'executor.progress'}))
@@ -330,6 +337,7 @@ class ExecutorTest(unittest.TestCase):
                          ce.retrieve_process_environment(
                              cc.ExecutorConfig(progress_output_env_variable='CUSTOM_PROGRESS_OUTPUT_FILE',
                                                progress_output_name='custom.progress'),
+                             make_task_env({}),
                              {'CUSTOM_PROGRESS_OUTPUT_FILE': 'executor.progress',
                               'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV': 'CUSTOM_PROGRESS_OUTPUT_FILE'}))
         self.assertEqual({'CUSTOM_PROGRESS_OUTPUT_FILE': 'custom.progress',
@@ -338,9 +346,19 @@ class ExecutorTest(unittest.TestCase):
                          ce.retrieve_process_environment(
                              cc.ExecutorConfig(progress_output_env_variable='CUSTOM_PROGRESS_OUTPUT_FILE',
                                                progress_output_name='custom.progress'),
+                             make_task_env({}),
                              {'CUSTOM_PROGRESS_OUTPUT_FILE': 'executor.progress',
                               'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV': 'CUSTOM_PROGRESS_OUTPUT_FILE',
                               'PROGRESS_OUTPUT_FILE': 'stdout'}))
+        self.assertEqual({'EXECUTOR_PROGRESS_OUTPUT_FILE': 'stdout',
+                          'MY_RESET_VAR': 'myval',
+                          'ANOTHER_VAR': 'another'},
+                         ce.retrieve_process_environment(
+                             cc.ExecutorConfig(reset_vars=['MY_RESET_VAR', 'ANOTHER_RESET_VAR', 'A_MISSING_VAR']),
+                             make_task_env({'MY_RESET_VAR': 'myval'}),
+                             {'MY_RESET_VAR': 'badval',
+                              'ANOTHER_VAR': 'another',
+                              'ANOTHER_RESET_VAR': 'get rid of me'}))
 
     def manage_task_runner(self, command, assertions_fn, stop_signal=None, task_id=None, config=None, driver=None):
 
@@ -726,6 +744,7 @@ class ExecutorTest(unittest.TestCase):
                                         'progress_output_name': progress_name,
                                         'progress_regex_string': '\^\^\^\^JOB-PROGRESS:\s+([0-9]*\.?[0-9]+)($|\s+.*)',
                                         'progress_sample_interval_ms': 10,
+                                        'reset_vars': [],
                                         'sandbox_directory': '/sandbox/directory/for/{}'.format(task_id),
                                         'shutdown_grace_period_ms': 60000,
                                         'stderr_file': stderr_name,
