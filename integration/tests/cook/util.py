@@ -666,15 +666,19 @@ def wait_for_job(cook_url, job_id, status, max_wait_ms=DEFAULT_TIMEOUT_MS):
     """Wait for the given job's status to change to the specified value."""
     return wait_for_jobs_in_statuses(cook_url, [job_id], [status], max_wait_ms)[0]
 
+
 def wait_for_jobs(cook_url, job_ids, status, max_wait_ms=DEFAULT_TIMEOUT_MS):
     return wait_for_jobs_in_statuses(cook_url, job_ids, [status], max_wait_ms)
+
 
 def wait_for_job_in_statuses(cook_url, job_id, statuses, max_wait_ms=DEFAULT_TIMEOUT_MS):
     """Wait for the given job's status to change to one of the specified statuses."""
     return wait_for_jobs_in_statuses(cook_url, [job_id], statuses, max_wait_ms)[0]
 
+
 def wait_for_jobs_in_statuses(cook_url, job_ids, statuses, max_wait_ms=DEFAULT_TIMEOUT_MS):
     """Wait for the given job's status to change to one of the specified statuses."""
+
     def query():
         return query_jobs(cook_url, True, uuid=job_ids)
 
@@ -686,6 +690,7 @@ def wait_for_jobs_in_statuses(cook_url, job_ids, statuses, max_wait_ms=DEFAULT_T
 
     response = wait_until(query, predicate, max_wait_ms=max_wait_ms, wait_interval_ms=DEFAULT_WAIT_INTERVAL_MS * 2)
     return response.json()
+
 
 def wait_for_exit_code(cook_url, job_id, max_wait_ms=DEFAULT_TIMEOUT_MS):
     """
@@ -883,11 +888,13 @@ def unscheduled_jobs(cook_url, *job_uuids, partial=None):
 
 def wait_for_instance(cook_url, job_uuid, max_wait_ms=DEFAULT_TIMEOUT_MS, wait_interval_ms=1000, status=None):
     """Waits for the job with the given job_uuid to have at least one instance, and returns the first instance uuid"""
+
     def instances_with_status(job):
         if status is None:
             return job['instances']
         else:
             return [i for i in job['instances'] if i['status'] == status]
+
     job = wait_until(lambda: load_job(cook_url, job_uuid), lambda j: len(instances_with_status(j)) >= 1,
                      max_wait_ms=max_wait_ms, wait_interval_ms=wait_interval_ms)
     instance = job['instances'][0]
@@ -1039,7 +1046,8 @@ def get_limit(cook_url, limit_type, user, pool=None, headers={}):
     return session.get(f'{cook_url}/{limit_type}', params=params, headers=headers)
 
 
-def set_limit(cook_url, limit_type, user, mem=None, cpus=None, gpus=None, count=None, reason='testing', pool=None, headers={}):
+def set_limit(cook_url, limit_type, user, mem=None, cpus=None, gpus=None, count=None, reason='testing', pool=None,
+              headers={}):
     """
     Set resource limits for the given user.
     The limit_type parameter should be either 'share' or 'quota', specifying which type of limit is being set.
@@ -1226,7 +1234,9 @@ def hosts_to_consider(cook_url, mesos_url):
     state = get_mesos_state(mesos_url)
     slaves = state['slaves']
     pool = default_pool(cook_url)
-    slaves = [s for s in slaves if s['attributes'].get('cook-pool', None) == pool] if pool else slaves
+    pool_selection_plugin_config = settings(cook_url).get('plugins', {}).get('pool-selection', {})
+    attribute_name = pool_selection_plugin_config.get('attribute-name', None) or 'cook-pool'
+    slaves = [s for s in slaves if s['attributes'].get(attribute_name, None) == pool] if pool else slaves
     num_to_log = min(len(slaves), 10)
     logging.info(f'First {num_to_log} hosts to consider: {json.dumps(slaves[:num_to_log], indent=2)}')
     return slaves
@@ -1267,6 +1277,7 @@ def should_expect_sandbox_directory_for_job(job):
 def data_local_service_is_set():
     return os.getenv('DATA_LOCAL_SERVICE', None) is not None
 
+
 def demo_plugin_is_configured(cook_url):
     settings_dict = settings(cook_url)
     # Because we always create plugin configuration in config.clj, the first keys always exist.
@@ -1276,6 +1287,7 @@ def demo_plugin_is_configured(cook_url):
     if settings_dict['plugins']['job-launch-filter'].get('factory-fn') != "cook.demo-plugin/launch-factory":
         return False
     return True
+
 
 @functools.lru_cache()
 def _fenzo_fitness_calculator():
@@ -1296,8 +1308,8 @@ def get_agent_endpoint(master_state, agent_hostname):
     agent = [agent for agent in master_state['slaves']
              if agent['hostname'] == agent_hostname][0]
     if agent is None:
-        logger.warning(f"Could not find agent for hostname {instance['hostname']}")
-        logger.warning(f"slaves: {state['slaves']}")
+        logger.warning(f"Could not find agent for hostname {agent_hostname}")
+        logger.warning(f"slaves: {master_state['slaves']}")
         return None
     else:
         # Get the host and port of the agent API.
@@ -1320,7 +1332,7 @@ def _supported_isolators():
         else:
             logger.error(f'Unable to determine flags from slave state at {slave_endpoint}: {slave_state}')
             return []
-    except Error as e:
+    except Exception:
         logger.exception(f'Unable to parse response as json: {slave_response.text}')
     return []
 
