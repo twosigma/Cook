@@ -2765,13 +2765,25 @@ class CookTest(util.CookTest):
 
     @unittest.skipUnless(util.is_cook_executor_in_use(), 'Test assumes the Cook Executor is in use')
     def test_cook_executor_reset_vars(self):
-        job_uuid1, resp1 = util.submit_job(self.cook_url, executor='cook', command='if [ ${#MESOS_EXECUTOR_ID} -eq 0 ]; then echo var was not set; else exit 1; fi;',
-                                           env={'EXECUTOR_RESET_VARS': 'MESOS_EXECUTOR_ID'})
-        job_uuid2, resp1 = util.submit_job(self.cook_url, executor='cook', command='if [ ${#MESOS_EXECUTOR_ID} -gt 0 ]; then echo var was not set; else exit 1; fi;')
-        try:
+        settings = util.settings(self.cook_url)
+        reset_vars = settings.get('executor', {}).get('environment', {}).get('EXECUTOR_RESET_VARS', None)
+        if reset_vars is not None:
+            command = ''
+            for var in reset_vars.split(','):
+                command += f'if [ ${{#{var}}} -gt 0]; then echo Variable {var} was defined, but should have been reset; exit 1; fi;\n'
+            job_uuid, resp = util.submit_job(self.cook_url, executor='cook', command=command)
+            self.assertEqual(201, resp.status_code, resp.text)
+            job_uuids = [job_uuid]
+        else:
+            job_uuid1, resp1 = util.submit_job(self.cook_url, executor='cook', command='if [ ${#MESOS_EXECUTOR_ID} -eq 0 ]; then echo var was not set; else exit 1; fi;',
+                                               env={'EXECUTOR_RESET_VARS': 'MESOS_EXECUTOR_ID'})
+            job_uuid2, resp2 = util.submit_job(self.cook_url, executor='cook', command='if [ ${#MESOS_EXECUTOR_ID} -gt 0 ]; then echo var was not set; else exit 1; fi;')
             self.assertEqual(201, resp1.status_code, resp1.text)
-            instance = util.wait_for_instance(self.cook_url, job_uuid1, status='success')
-            instance = util.wait_for_instance(self.cook_url, job_uuid2, status='success')
+            self.assertEqual(201, resp2.status_code, resp2.text)
+            job_uuids = [job_uuid1, job_uuid2]
+        try:
+            for uuid in job_uuids:
+                util.wait_for_instance(self.cook_url, uuid, status='success')
         finally:
-            util.kill_jobs(self.cook_url, [job_uuid1, job_uuid2], assert_response=False)
+            util.kill_jobs(self.cook_url, job_uuids, assert_response=False)
 
