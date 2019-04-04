@@ -13,6 +13,7 @@ COOK_AUTH=one-user
 COOK_EXECUTOR=mesos
 COOK_POOLS=on
 CONFIG_FILE=scheduler_travis_config.edn
+COOK_TEST_DOCKER_IMAGE=""
 
 while (( $# > 0 )); do
   case "$1" in
@@ -26,6 +27,10 @@ while (( $# > 0 )); do
       ;;
     --pools=*)
       COOK_POOLS="${1#--pools=}"
+      shift
+      ;;
+    --image=*)
+      COOK_TEST_DOCKER_IMAGE="${1#--image=}"
       shift
       ;;
     *)
@@ -52,6 +57,7 @@ case "$COOK_EXECUTOR" in
     COOK_EXECUTOR_COMMAND="${TRAVIS_BUILD_DIR}/travis/cook-executor-local/cook-executor-local"
     # Build cook-executor
     ${TRAVIS_BUILD_DIR}/travis/build_cook_executor.sh
+    # Run with docker
     ;;
   mesos)
     COOK_EXECUTOR_COMMAND=""
@@ -124,6 +130,9 @@ lein exec -p datomic/data/seed_running_jobs.clj ${COOK_DATOMIC_URI_1}
 ## on travis, ports on 172.17.0.1 are bindable from the host OS, and are also
 ## available for processes inside minimesos containers to connect to
 export COOK_EXECUTOR_COMMAND=${COOK_EXECUTOR_COMMAND}
+if [[ ! -z "${COOK_TEST_DOCKER_IMAGE}" ]]; then
+    export COOK_TEST_DOCKER_IMAGE=${COOK_TEST_DOCKER_IMAGE}
+fi
 # Start one cook listening on port 12321, this will be the master of the "cook-framework-1" framework
 LIBPROCESS_IP=172.17.0.1 COOK_DATOMIC="${COOK_DATOMIC_URI_1}" COOK_PORT=12321 COOK_SSL_PORT=12322 COOK_FRAMEWORK_ID=cook-framework-1 COOK_LOGFILE="log/cook-12321.log" COOK_DEFAULT_POOL=${DEFAULT_POOL} lein run ${PROJECT_DIR}/travis/${CONFIG_FILE} &
 # Start a second cook listening on port 22321, this will be the master of the "cook-framework-2" framework
