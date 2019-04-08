@@ -951,8 +951,14 @@ public class JobClient implements Closeable, JobClientInterface {
     public Map<UUID, Job> queryJobs(Collection<UUID> uuids)
         throws JobClientException {
         final List<NameValuePair> allParams = new ArrayList<NameValuePair>(uuids.size());
+        final String paramName;
+        if (_jobURI.getPath().equals("/jobs")) {
+            paramName = "uuid";
+        } else {
+            paramName = "job";
+        }
         for (UUID uuid : uuids) {
-            allParams.add(new BasicNameValuePair("job", uuid.toString()));
+            allParams.add(new BasicNameValuePair(paramName, uuid.toString()));
         }
         final ImmutableMap.Builder<UUID, Job> UUIDToJob = ImmutableMap.builder();
         // Partition a large query into small queries.

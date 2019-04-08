@@ -36,9 +36,32 @@
   (:import (java.util UUID)
            (org.apache.log4j ConsoleAppender Logger PatternLayout)))
 
+(let [minimal-config {:authorization {:one-user ""}
+                      :database {:datomic-uri ""}
+                      :log {}
+                      :mesos {:leader-path "", :master ""}
+                      :metrics {}
+                      :nrepl {}
+                      :port 80
+                      :scheduler {}
+                      :unhandled-exceptions {}
+                      :zookeeper {:local? true}}]
+  (defn setup
+    "Given an optional config map, initializes the config state"
+    [& {:keys [config], :or nil}]
+    (mount/stop)
+    (mount/start-with-args (merge minimal-config config)
+                           #'cook.config/config
+                           #'cook.rate-limit/job-launch-rate-limiter
+                           #'cook.rate-limit/global-job-launch-rate-limiter
+                           #'cook.plugins.launch/plugin-object
+                           #'cook.plugins.pool/plugin
+                           #'cook.plugins.submission/plugin-object)))
+
 (defn run-test-server-in-thread
   "Runs a minimal cook scheduler server for testing inside a thread. Note that it is not properly kerberized."
   [conn port]
+  (setup)
   (let [authorized-fn (fn [w x y z] true)
         user (System/getProperty "user.name")
         api-handler (wrap-params
@@ -280,27 +303,7 @@
                               :out (ConsoleAppender. (PatternLayout. "%d{ISO8601} %-5p %c [%t] - %m%n"))}))
   (log/info "Running" (:var m)))
 
-(let [minimal-config {:authorization {:one-user ""}
-                      :database {:datomic-uri ""}
-                      :log {}
-                      :mesos {:leader-path "", :master ""}
-                      :metrics {}
-                      :nrepl {}
-                      :port 80
-                      :scheduler {}
-                      :unhandled-exceptions {}
-                      :zookeeper {:local? true}}]
-  (defn setup
-    "Given an optional config map, initializes the config state"
-    [& {:keys [config], :or nil}]
-    (mount/stop)
-    (mount/start-with-args (merge minimal-config config)
-                           #'cook.config/config
-                           #'cook.rate-limit/job-launch-rate-limiter
-                           #'cook.rate-limit/global-job-launch-rate-limiter
-                           #'cook.plugins.launch/plugin-object
-                           #'cook.plugins.pool/plugin
-                           #'cook.plugins.submission/plugin-object)))
+
 
 (defn wait-for
   "Invoke predicate every interval (default 10) seconds until it returns true,
