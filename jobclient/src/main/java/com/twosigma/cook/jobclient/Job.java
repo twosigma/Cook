@@ -1100,7 +1100,15 @@ final public class Job {
             JSONArray groupsJson = json.optJSONArray("groups");
             if (groupsJson != null) {
                 for (int j = 0; j < groupsJson.length(); j++) {
-                    jobBuilder._setGroupByUUID(UUID.fromString(groupsJson.getString(j)));
+                    Object group = groupsJson.get(j);
+                    if (group instanceof String) {
+                        jobBuilder._setGroupByUUID(UUID.fromString((String) group));
+                    } else if (group instanceof JSONObject) {
+                        JSONObject groupObject = (JSONObject) group;
+                        jobBuilder._setGroupByUUID(UUID.fromString(groupObject.getString("uuid")));
+                    } else {
+                        throw new JSONException("Unable to parse group from json object:" + group);
+                    }
                 }
             }
             jobBuilder.addInstances(Instance.parseFromJSON(json.getJSONArray("instances"), decorator));

@@ -125,7 +125,7 @@
         jc (-> (JobClient$Builder.)
                (.setHost "localhost")
                (.setPort port)
-               (.setJobEndpoint "rawscheduler")
+               (.setJobEndpoint "jobs")
                (.setGroupEndpoint "group")
                (.setStatusUpdateInterval 0.1)
                (.build))]
