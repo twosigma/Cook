@@ -127,7 +127,7 @@
                (.setPort port)
                (.setJobEndpoint "jobs")
                (.setGroupEndpoint "group")
-               (.setStatusUpdateInterval 0.1)
+               (.setStatusUpdateInterval 1)
                (.build))]
     (with-test-server [conn port]
                       (testing "Submit loose job"
@@ -238,4 +238,33 @@
                               retrieved-jobs (.queryJobs jc juuids)]
                           (is (= (count juuids) (count retrieved-jobs)))
                           (doseq [job (.values retrieved-jobs)]
-                            (is (= (.getUser job) user))))))))
+                            (is (= (.getUser job) user)))))
+
+                      (testing "mea culpa reason"
+                        (let [juuid (UUID/randomUUID)
+                              job (make-job :uuid juuid)
+                              successful-instance (UUID/randomUUID)
+                              mea-culpa-instance (UUID/randomUUID)
+                              not-mea-culpa-instance (UUID/randomUUID)]
+                          (.submit jc (ArrayList. [job]))
+                          (let [instance (create-dummy-instance conn [:job/uuid juuid]
+                                                                :instance-status :instance.status/unknown
+                                                                :task-id (str mea-culpa-instance))]
+                            @(d/transact conn [[:instance/update-state instance :instance.status/failed [:reason/name :mesos-slave-removed]]
+                                               [:db/add instance :instance/reason [:reason/name :mesos-slave-removed]]]))
+                          (let [instance (create-dummy-instance conn [:job/uuid juuid]
+                                                                :instance-status :instance.status/unknown
+                                                                :task-id (str not-mea-culpa-instance))]
+                            @(d/transact conn [[:instance/update-state instance :instance.status/failed [:reason/name :mesos-command-executor-failed]]
+                                               [:db/add instance :instance/reason [:reason/name :mesos-command-executor-failed]]]))
+                          (let [instance (create-dummy-instance conn [:job/uuid juuid]
+                                                                :instance-status :instance.status/running
+                                                                :task-id (str successful-instance))]
+                            @(d/transact conn [[:instance/update-state instance :instance.status/success [:reason/name :unknown]]]))
+                          (let [job (-> jc (.query (ArrayList. [juuid])) (.get juuid))
+                                instances (.getInstances job)
+                                get-mea-culpa-for-id (fn [uuid] (.getReasonMeaCulpa (first (filter #(= uuid (.getTaskID %)) instances))))]
+                            (is (= 3 (count instances)))
+                            (is (get-mea-culpa-for-id mea-culpa-instance))
+                            (is (= false (get-mea-culpa-for-id not-mea-culpa-instance)))
+                            (is (nil? (get-mea-culpa-for-id successful-instance)))))))))

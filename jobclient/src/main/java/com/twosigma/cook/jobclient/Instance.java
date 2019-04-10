@@ -76,6 +76,7 @@ final public class Instance {
         private String _outputURL;
         private String _hostName;
         private Executor _executor;
+        private Boolean _reasonMeaCulpa;
 
         /**
          * The task id must be provided prior to {@code build()}. If the instance status is not
@@ -89,7 +90,7 @@ final public class Instance {
                 _status = Status.UNKNOWN;
             }
             return new Instance(_taskID, _slaveID, _executorID, _startTime, _endTime, _status, _progress,
-                _progressMessage,  _reasonCode, _preempted, _outputURL, _hostName, _executor);
+                _progressMessage,  _reasonCode, _preempted, _outputURL, _hostName, _executor, _reasonMeaCulpa);
         }
 
         /**
@@ -242,6 +243,16 @@ final public class Instance {
             return this;
         }
 
+        /**
+         * Set whether the instance failed for a mea culpa reason
+         * @param meaCulpa whether the instance failed for a mea culpa reason
+         * @return this builder.
+         */
+        public Builder setReasonMeaCulpa(Boolean meaCulpa) {
+            _reasonMeaCulpa = meaCulpa;
+            return this;
+        }
+
         public UUID getTaskID() {
             return _taskID;
         }
@@ -292,6 +303,10 @@ final public class Instance {
         public Executor getExecutor() {
             return _executor;
         }
+
+        public Boolean getReasonMeaCulpa() {
+            return _reasonMeaCulpa;
+        }
     }
 
     /**
@@ -310,10 +325,11 @@ final public class Instance {
     final private String _outputURL;
     final private String _hostName;
     final private Executor _executor;
+    final private Boolean _reasonMeaCulpa;
 
     private Instance(UUID taskID, String slaveID, String executorID, Long startTime, Long endTime,
                      Status status, Integer progress, String progressMessage, Long reasonCode, Boolean preempted,
-                     String outputURL, String hostName, Executor executor) {
+                     String outputURL, String hostName, Executor executor, Boolean reasonMeaCulpa) {
         _taskID = taskID;
         _slaveID = slaveID;
         _executorID = executorID;
@@ -327,6 +343,7 @@ final public class Instance {
         _outputURL = outputURL;
         _hostName = hostName;
         _executor = executor;
+        _reasonMeaCulpa = reasonMeaCulpa;
     }
 
     /**
@@ -401,6 +418,9 @@ final public class Instance {
             if (json.has("reason_code")) {
                 instanceBuilder.setReasonCode(json.getLong("reason_code"));
             }
+            if (json.has("reason_mea_culpa")) {
+                instanceBuilder.setReasonMeaCulpa(json.getBoolean("reason_mea_culpa"));
+            }
             if (decorator != null) {
                 instanceBuilder = decorator.decorate(instanceBuilder);
             }
@@ -429,7 +449,7 @@ final public class Instance {
                 + _executorID + ", _startTime=" + _startTime + ", _endTime=" + _endTime
                 + ", _status=" + _status + ", _progress=" + _progress + ", _progressMessage=" + _progressMessage
                 + ", _reasonCode=" + _reasonCode + ", _preempted=" + _preempted + ", _outputURL=" + _outputURL
-                + ", _hostName=" + _hostName + ", _executor=" + _executor + "]";
+                + ", _hostName=" + _hostName + ", _executor=" + _executor + ", _reasonMeaCulpa=" + _reasonMeaCulpa + "]";
     }
 
     public UUID getTaskID() {
@@ -488,6 +508,10 @@ final public class Instance {
 
     public Executor getExecutor() {
         return _executor;
+    }
+
+    public Boolean getReasonMeaCulpa() {
+        return _reasonMeaCulpa;
     }
 
 
