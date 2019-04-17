@@ -57,7 +57,8 @@
             [ring.middleware.format-params :as format-params]
             [ring.util.response :as res]
             [schema.core :as s]
-            [swiss.arrows :refer :all])
+            [swiss.arrows :refer :all]
+            [cook.mesos.compute-cluster :as cc])
   (:import (clojure.lang Atom Var)
            com.codahale.metrics.ScheduledReporter
            com.netflix.fenzo.VMTaskFitnessCalculator
@@ -176,6 +177,13 @@
    (s/optional-key :extract) s/Bool
    (s/optional-key :cache) s/Bool})
 
+(def ComputeCluster
+  "Schema for a compute cluster"
+  {:compute-cluster-type s/Keyword
+   :compute-cluster-name s/Str
+   (s/optional-key :mesos-framework-id) s/Str
+   (s/optional-key :data-source) s/Keyword})
+
 (def Instance
   "Schema for a description of a single job instance."
   {:status s/Str
@@ -186,6 +194,7 @@
    :preempted s/Bool
    :backfilled s/Bool
    :ports [s/Int]
+   :compute-cluster ComputeCluster
    (s/optional-key :start_time) s/Int
    (s/optional-key :mesos_start_time) s/Int
    (s/optional-key :end_time) s/Int
@@ -935,6 +944,24 @@
       (log/debug e "Unable to retrieve directory path for" task-id "on agent" agent-hostname)
       nil)))
 
+(defn fetch-compute-cluster-map
+  "Converts a compute cluster entity as a map representing the fields. For legacy instances
+  that predate cook-cluster, inline the default cluster, pulled from config."
+  [db entity]
+  (if entity
+    {:compute-cluster-type
+     (case (:compute-cluster/type entity)
+       (:compute-cluster.type/mesos) :compute-cluster-type-mesos
+       :compute-cluster-type-unknown)
+     :compute-cluster-name (:compute-cluster/cluster-name entity)
+     :mesos-framework-id (:compute-cluster/mesos-framework-id entity)}
+    (assoc
+      (->> (cc/cluster-name-hack)  ; Get the default cluster.
+           cc/cluster-name->db-id
+           (d/entity db)
+           (fetch-compute-cluster-map db))
+      :data-source :legacy-data-filled))) ; Note that this record was filled in data.
+
 (defn fetch-instance-map
   "Converts the instance entity to a map representing the instance fields."
   [db instance]
@@ -953,6 +980,7 @@
         progress-message (:instance/progress-message instance)
         file-url (plugins/file-url file-plugin/plugin instance)]
     (cond-> {:backfilled false ;; Backfill has been deprecated
+             :compute-cluster (fetch-compute-cluster-map db (:instance/compute-cluster instance))
              :executor_id (:instance/executor-id instance)
              :hostname hostname
              :ports (vec (sort (:instance/ports instance)))

@@ -25,6 +25,7 @@
             [cook.plugins.definitions :refer (JobSubmissionValidator JobLaunchFilter)]
             [cook.impersonation :refer (create-impersonation-middleware)]
             [cook.mesos.api :as api]
+            [cook.mesos.compute-cluster :as cc]
             [cook.mesos.schema :as schema]
             [cook.mesos.util :as util]
             [cook.rate-limit :as rate-limit]
@@ -35,6 +36,19 @@
             [ring.middleware.params :refer (wrap-params)])
   (:import (java.util UUID)
            (org.apache.log4j ConsoleAppender Logger PatternLayout)))
+
+(defn setup-fake-test-compute-cluster
+  "Setup a fake test compute cluster"
+  [conn]
+  (cc/setup-cluster-map-config conn
+                               {:mesos-framework-id "compute-cluster-default-test-framework"
+                                :mesos-compute-cluster-name "compute-cluster-default-compute-cluster-name"}))
+
+(defn fake-test-compute-cluster-dbid
+  "Return the dbid for the fake test compute cluster. Used to generate the right compute-cluster component in task structure in unit tests."
+  []
+  {:post [%]} ; Never returns nil. If it does, then setup-fake-test-cluster wasn't run.
+  (cc/cluster-name->db-id "compute-cluster-default-compute-cluster-name"))
 
 (let [minimal-config {:authorization {:one-user ""}
                       :database {:datomic-uri ""}
@@ -63,6 +77,7 @@
   "Runs a minimal cook scheduler server for testing inside a thread. Note that it is not properly kerberized."
   [conn port]
   (setup)
+  (setup-fake-test-compute-cluster conn)
   (let [authorized-fn (fn [w x y z] true)
         user (System/getProperty "user.name")
         api-handler (wrap-params
@@ -224,6 +239,7 @@
                      slave-id  (str (UUID/randomUUID))
                      start-time (java.util.Date.)
                      task-id (str (str (UUID/randomUUID)))} :as cfg}]
+  (setup-fake-test-compute-cluster conn)
   (let [id (d/tempid :db.part/user)
         val @(d/transact conn [(cond->
                                  {:db/id id
@@ -235,7 +251,8 @@
                                   :instance/start-time start-time
                                   :instance/status instance-status
                                   :instance/task-id task-id
-                                  :job/_instance job}
+                                  :job/_instance job
+                                  :instance/compute-cluster (fake-test-compute-cluster-dbid)}
                                  cancelled (assoc :instance/cancelled true)
                                  end-time (assoc :instance/end-time end-time)
                                  executor (assoc :instance/executor executor)
