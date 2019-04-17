@@ -29,7 +29,6 @@
             [cook.config :as config]
             [cook.cors :as cors]
             [cook.datomic :as datomic]
-            [cook.plugins.submission :as submission-plugin]
             [cook.mesos.data-locality :as dl]
             [cook.mesos.pool :as pool]
             [cook.mesos.quota :as quota]
@@ -40,6 +39,9 @@
             [cook.mesos.unscheduled :as unscheduled]
             [cook.mesos.util :as util]
             [cook.mesos]
+            [cook.plugins.definitions :as plugins]
+            [cook.plugins.file :as file-plugin]
+            [cook.plugins.submission :as submission-plugin]
             [cook.rate-limit :as rate-limit]
             [cook.util :refer [ZeroInt PosNum NonNegNum PosInt NonNegInt PosDouble UserName NonEmptyString]]
             [datomic.api :as d :refer [q]]
@@ -196,7 +198,8 @@
    (s/optional-key :exit_code) s/Int
    (s/optional-key :progress) s/Int
    (s/optional-key :progress_message) s/Str
-   (s/optional-key :sandbox_directory) s/Str})
+   (s/optional-key :sandbox_directory) s/Str
+   (s/optional-key :file_url) s/Str})
 
 (defn max-128-characters-and-alphanum?
   "Returns true if s contains only '.', '_', '-' or
@@ -947,7 +950,8 @@
         reason (reason/instance-entity->reason-entity db instance)
         exit-code (:instance/exit-code instance)
         progress (:instance/progress instance)
-        progress-message (:instance/progress-message instance)]
+        progress-message (:instance/progress-message instance)
+        file-url (plugins/file-url file-plugin/plugin instance)]
     (cond-> {:backfilled false ;; Backfill has been deprecated
              :executor_id (:instance/executor-id instance)
              :hostname hostname
@@ -957,6 +961,7 @@
              :status (name (:instance/status instance))
              :task_id task-id}
       executor (assoc :executor (name executor))
+      file-url (assoc :file_url file-url)
       start (assoc :start_time (.getTime start))
       mesos-start (assoc :mesos_start_time (.getTime mesos-start))
       end (assoc :end_time (.getTime end))

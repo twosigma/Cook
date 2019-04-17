@@ -193,6 +193,7 @@ Where each instance contains a map with the following keys:
 |`executor_id` | Mesos executor_id
 |`status` | current status of the instance; could be `unknown`, `running`, `success`, or `failed`
 |`output_url` | See <<using_output_url>>, (will be absent if the agent the job was run on is unable to return the necessary data, e.g. it is offline)
+|`file_url`| See <<using_file_url>>. This is not a required field, and will only be returned if supported by the scheduler.
 |====
 
 [[using_output_url]]
@@ -211,6 +212,15 @@ Rather than always specifying `offset=0`, you can use whatever `offset` and `len
 Since the returned data always includes its length, a client can maintain a local offset and repeatedly poll for only the latest data.
 
 Don't forget that Mesos periodically garbage collects output directories--jobs should archive their results to a longer-term data store if longer-term access is neccessary.
+====
+
+[[using_file_url]]
+.Using the `file_url`
+[TIP]
+====
+The `file_url` is an optional alternative API for accessing the files stored in an instance's sandbox. If supported by Cook, each instance will have a `file_url` variable.
+To access a file, you should modify the url by appending the name of the file you want to access: `"$file_url/filename.txt"`
+The API will return the raw contents of that file.
 ====
 
 The response will include Job details listed below:
