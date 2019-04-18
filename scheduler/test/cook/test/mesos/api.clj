@@ -23,13 +23,15 @@
             [clojure.walk :refer [keywordize-keys]]
             [cook.authorization :as auth]
             [cook.config :as config]
-            [cook.plugins.submission :as submission-plugin]
             [cook.impersonation :as imp]
             [cook.mesos.api :as api]
             [cook.mesos.data-locality :as dl]
             [cook.mesos.reason :as reason]
             [cook.mesos.scheduler :as sched]
             [cook.mesos.util :as util]
+            [cook.plugins.definitions :refer [FileUrlGenerator]]
+            [cook.plugins.file :as file-plugin]
+            [cook.plugins.submission :as submission-plugin]
             [cook.rate-limit :as rate-limit]
             [cook.test.testutil :refer [create-dummy-instance
                                         create-dummy-job
@@ -1532,6 +1534,18 @@
                              :sandbox_directory "/path/to/working/directory"
                              :status "success")]
           (is (= expected-map (dissoc instance-map :start_time))))))))
+
+(deftest test-file-plugin
+  (with-redefs [file-plugin/plugin (reify FileUrlGenerator
+                                     (file-url [this {:keys [instance/task-id]}]
+                                       (str "https://cook-files/instance/" task-id "/file")))]
+    (let [conn (restore-fresh-database! "datomic:mem://test-file-plugin")
+          job-id (create-dummy-job conn :user "test-user" :job-state :job.state/completed)
+          instance-id (create-dummy-instance conn job-id)
+          instance (d/entity (d/db conn) instance-id)
+          instance-map (api/fetch-instance-map (d/db conn) instance)]
+      (is (= (str "https://cook-files/instance/" (:instance/task-id instance) "/file")
+             (:file_url instance-map))))))
 
 (deftest test-job-create-allowed?
   (is (true? (api/job-create-allowed? (constantly true) nil)))

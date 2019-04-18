@@ -50,3 +50,7 @@
 (defprotocol PoolSelector
   (select-pool [this offer]
     "Returns the pool name as a string for the offer"))
+
+(defprotocol FileUrlGenerator
+  (file-url [this instance]
+    "Returns the file URL endpoint for the instance"))
