@@ -1656,6 +1656,7 @@ class CookTest(util.CookTest):
         self.assertEqual(1, len(jobs))
         self.assertEqual(job_uuid_1, jobs[0]['uuid'])
 
+    @pytest.mark.xfail
     def test_unique_host_constraint(self):
         num_hosts = util.num_hosts_to_consider(self.cook_url, self.mesos_url)
         group = {'uuid': str(uuid.uuid4()),
