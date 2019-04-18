@@ -13,8 +13,8 @@
 (defn create-plugin-object
   "Returns the configured FileUrlPlugin, or a NilFileUrlPlugin if none is defined."
   [config]
-  (let [pool-selection (get-in config [:settings :plugins :file-url])
-        factory-fn (:factory-fn pool-selection)]
+  (let [file-url (get-in config [:settings :plugins :file-url])
+        factory-fn (:factory-fn file-url)]
     (if factory-fn
       (do
         (log/info "Creating file url plugin with" factory-fn)
