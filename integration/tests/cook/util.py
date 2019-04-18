@@ -1162,11 +1162,15 @@ def slave_cpus(mesos_url, hostname):
     slave_cpus = next(s['unreserved_resources']['cpus'] for s in slaves if s['hostname'] == hostname)
     return slave_cpus
 
+def _pool_attribute_name(cook_url):
+    pool_selection_plugin_config = settings(cook_url).get('plugins', {}).get('pool-selection', {})
+    return pool_selection_plugin_config.get('attribute-name', None) or 'cook-pool'
 
-def slave_pool(mesos_url, hostname):
+def slave_pool(cook_url, mesos_url, hostname):
     """Returns the pool of the specified Mesos agent, or None if the agent doesn't have the attribute"""
     slaves = get_mesos_state(mesos_url)['slaves']
-    pool = next(s.get('attributes', {}).get('cook-pool', None) for s in slaves if s['hostname'] == hostname)
+    attribute_name = _pool_attribute_name(cook_url)
+    pool = next(s.get('attributes', {}).get(attribute_name, None) for s in slaves if s['hostname'] == hostname)
     return pool
 
 
@@ -1234,8 +1238,7 @@ def hosts_to_consider(cook_url, mesos_url):
     state = get_mesos_state(mesos_url)
     slaves = state['slaves']
     pool = default_pool(cook_url)
-    pool_selection_plugin_config = settings(cook_url).get('plugins', {}).get('pool-selection', {})
-    attribute_name = pool_selection_plugin_config.get('attribute-name', None) or 'cook-pool'
+    attribute_name = _pool_attribute_name(cook_url)
     slaves = [s for s in slaves if s['attributes'].get(attribute_name, None) == pool] if pool else slaves
     num_to_log = min(len(slaves), 10)
     logging.info(f'First {num_to_log} hosts to consider: {json.dumps(slaves[:num_to_log], indent=2)}')

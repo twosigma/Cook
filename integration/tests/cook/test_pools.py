@@ -54,7 +54,7 @@ class PoolsCookTest(util.CookTest):
                                                           command='sleep 600', pool=pool_name)
                     all_job_uuids.append(filling_job_uuid)
                     instance = util.wait_for_running_instance(self.cook_url, filling_job_uuid)
-                    slave_pool = util.slave_pool(self.mesos_url, instance['hostname'])
+                    slave_pool = util.slave_pool(self.cook_url, self.mesos_url, instance['hostname'])
                     self.assertEqual(pool_name, slave_pool)
 
                     # Submit a job that should not get scheduled
