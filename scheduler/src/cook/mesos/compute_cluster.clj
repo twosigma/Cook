@@ -15,7 +15,7 @@
 ;;
 (ns cook.mesos.compute-cluster
   (:require         [clojure.tools.logging :as log]
-                    [datomic.api :as d :refer (q)]))
+                    [datomic.api :as d]))
 
 (defn- create-missing-compute-cluster
   "Create a missing compute-cluster for one thats not yet in the database."
@@ -38,7 +38,7 @@
   {:pre [compute-cluster-name
          framework-id]}
   (let [query-result
-        (q '[:find [?c]
+        (d/q '[:find [?c]
              :in $ ?cluster-name? ?mesos-id?
              :where
              [?c :compute-cluster/type :compute-cluster.type/mesos]

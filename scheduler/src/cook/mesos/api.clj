@@ -29,6 +29,7 @@
             [cook.config :as config]
             [cook.cors :as cors]
             [cook.datomic :as datomic]
+            [cook.mesos.compute-cluster :as cc]
             [cook.mesos.data-locality :as dl]
             [cook.mesos.pool :as pool]
             [cook.mesos.quota :as quota]
@@ -57,8 +58,7 @@
             [ring.middleware.format-params :as format-params]
             [ring.util.response :as res]
             [schema.core :as s]
-            [swiss.arrows :refer :all]
-            [cook.mesos.compute-cluster :as cc])
+            [swiss.arrows :refer :all])
   (:import (clojure.lang Atom Var)
            com.codahale.metrics.ScheduledReporter
            com.netflix.fenzo.VMTaskFitnessCalculator
