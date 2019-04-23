@@ -21,9 +21,9 @@
   "Create a missing compute-cluster for one thats not yet in the database."
   [conn compute-cluster]
   (log/info "Installing a new compute cluster in datomic for " compute-cluster)
-  (d/transact
-    conn
-    [(assoc compute-cluster :db/id (d/tempid :db.part/user))]))
+  @(d/transact
+     conn
+     [(assoc compute-cluster :db/id (d/tempid :db.part/user))]))
 
 (defn- mesos-cluster->compute-cluster-map-for-datomic
   "Given a mesos cluster dictionary, determine the datomic entity it should correspond to."

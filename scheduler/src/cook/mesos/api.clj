@@ -944,17 +944,21 @@
       (log/debug e "Unable to retrieve directory path for" task-id "on agent" agent-hostname)
       nil)))
 
+(defn compute-cluster-entity->map
+  [entity]
+  {:compute-cluster-type
+   (case (:compute-cluster/type entity)
+     (:compute-cluster.type/mesos) :compute-cluster-type-mesos
+     :compute-cluster-type-unknown)
+   :compute-cluster-name (:compute-cluster/cluster-name entity)
+   :mesos-framework-id (:compute-cluster/mesos-framework-id entity)})
+
 (defn fetch-compute-cluster-map
   "Converts a compute cluster entity as a map representing the fields. For legacy instances
   that predate cook-cluster, inline the default cluster, pulled from config."
   [db entity]
   (if entity
-    {:compute-cluster-type
-     (case (:compute-cluster/type entity)
-       (:compute-cluster.type/mesos) :compute-cluster-type-mesos
-       :compute-cluster-type-unknown)
-     :compute-cluster-name (:compute-cluster/cluster-name entity)
-     :mesos-framework-id (:compute-cluster/mesos-framework-id entity)}
+    (compute-cluster-entity->map entity)
     (assoc
       (->> (cc/cluster-name-hack)  ; Get the default cluster.
            cc/cluster-name->db-id
