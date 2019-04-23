@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.30.0] - 2019-04-23
+### Added
+- Added support for file_url, from @pschorf
+### Fixed
+- Fix for periodic job cleanup, from @scrosby
+
 ## [1.29.0] - 2019-03-19
 ### Added
 - Instance completion plugin, from @pschorf
