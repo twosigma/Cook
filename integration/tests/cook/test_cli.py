@@ -727,6 +727,7 @@ class CookCliTest(util.CookTest):
         self.assertIn(f'-t {hostname} cd', stdout)
         self.assertIn('; bash', stdout)
 
+    @pytest.mark.xfail
     def test_tail_basic(self):
         cp, uuids = cli.submit('bash -c "for i in {1..100}; do echo $i >> foo; done"', self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
@@ -848,6 +849,7 @@ class CookCliTest(util.CookTest):
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertIn(text, cli.decode(cp.stdout))
 
+    @pytest.mark.xfail
     def test_tail_wait(self):
         # No --wait should fail
         cp, uuids = cli.submit(f'bash -c \'sleep 10; echo hello > foo\'', self.cook_url)
@@ -1047,6 +1049,7 @@ def dummy_tail_text(instance, sandbox_dir, path, offset=None, length=None):
         self.assertEqual(1, bar['nlink'])
         self.assertEqual(0, bar['size'])
 
+    @pytest.mark.xfail
     def test_ls_empty_root_directory(self):
         cp, uuids = cli.submit("'rm -r * && rm -r .*'", self.cook_url, submit_flags=f'--name {self.current_name()}')
         self.assertEqual(0, cp.returncode, cp.stderr)

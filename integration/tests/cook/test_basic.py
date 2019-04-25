@@ -1112,6 +1112,7 @@ class CookTest(util.CookTest):
         util.wait_for_job(self.cook_url, jobs[0], 'completed')
         util.wait_for_job(self.cook_url, jobs[1], 'completed')
 
+    @pytest.mark.xfail
     def test_straggler_handling(self):
         straggler_handling = {
             'type': 'quantile-deviation',
