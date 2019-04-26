@@ -28,8 +28,7 @@
 (deftest test-creates-compute-clusters
   (let [conn (restore-fresh-database! "datomic:mem://compute-cluster-factory")
         mesos-1 {:compute-cluster-name "mesos-1" :framework-id "mesos-1a"}
-        mesos-2 {:compute-cluster-name "mesos-2" :framework-id "mesos-1a"}
-        ]
+        mesos-2 {:compute-cluster-name "mesos-2" :framework-id "mesos-1a"}]
     (testing "Start with no clusters"
       (is (= [] (cc/get-mesos-cluster-entity (d/db conn) mesos-1)))
       (is (= [] (cc/get-mesos-cluster-entity (d/db conn) mesos-2))))
@@ -39,8 +38,7 @@
         ; This should create one cluster in the DB, but not the other.
         (is (= 1 (count (cc/get-mesos-cluster-entity (d/db conn) mesos-1))))
         (is (= [] (cc/get-mesos-cluster-entity (d/db conn) mesos-2)))
-        (let [
-              {id2a :db-id :as fetch-mesos-2a} (cc/get-mesos-cluster-map conn mesos-2)
+        (let [{id2a :db-id :as fetch-mesos-2a} (cc/get-mesos-cluster-map conn mesos-2)
               {id1b :db-id :as fetch-mesos-1b} (cc/get-mesos-cluster-map conn mesos-1)
               {id2b :db-id :as fetch-mesos-2b} (cc/get-mesos-cluster-map conn mesos-2)]
           ; Should see both clusters created.
