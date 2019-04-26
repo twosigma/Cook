@@ -13,9 +13,9 @@
 ;; See the License for the specific language governing permissions and
 ;; limitations under the License.
 ;;
-(ns cook.test.mesos.compute-cluster
+(ns cook.test.compute-cluster
   (:require [clojure.test :refer :all]
-            [cook.mesos.compute-cluster :as cc]
+            [cook.compute-cluster :as cc]
             [cook.test.testutil :refer [create-dummy-instance
                                         create-dummy-job
                                         create-dummy-job-with-instances

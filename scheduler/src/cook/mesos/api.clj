@@ -29,7 +29,7 @@
             [cook.config :as config]
             [cook.cors :as cors]
             [cook.datomic :as datomic]
-            [cook.mesos.compute-cluster :as cc]
+            [cook.compute-cluster :as cc]
             [cook.mesos.data-locality :as dl]
             [cook.mesos.pool :as pool]
             [cook.mesos.quota :as quota]

@@ -30,7 +30,7 @@
             [cook.plugins.definitions :as plugins]
             [cook.plugins.launch :as launch-plugin]
             [cook.plugins.pool :as pool-plugin]
-            [cook.mesos.compute-cluster :as cc]
+            [cook.compute-cluster :as cc]
             [cook.mesos.constraints :as constraints]
             [cook.mesos.data-locality :as dl]
             [cook.mesos.dru :as dru]

@@ -13,7 +13,7 @@
 ;; See the License for the specific language governing permissions and
 ;; limitations under the License.
 ;;
-(ns cook.mesos.compute-cluster
+(ns cook.compute-cluster
   (:require         [clojure.tools.logging :as log]
                     [datomic.api :as d]))
 

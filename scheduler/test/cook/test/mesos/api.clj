@@ -23,7 +23,7 @@
             [clojure.walk :refer [keywordize-keys]]
             [cook.authorization :as auth]
             [cook.config :as config]
-            [cook.mesos.compute-cluster :as cc]
+            [cook.compute-cluster :as cc]
             [cook.impersonation :as imp]
             [cook.mesos.api :as api]
             [cook.mesos.data-locality :as dl]

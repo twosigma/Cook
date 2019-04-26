@@ -294,7 +294,7 @@
                          (log/info "Using framework id:" framework-id)
                          framework-id)))
      :compute-clusters (fnk [settings]
-                         ((util/lazy-load-var 'cook.mesos.compute-cluster/setup-cluster-map-config) datomic/conn settings))
+                         ((util/lazy-load-var 'cook.compute-cluster/setup-cluster-map-config) datomic/conn settings))
      :mesos-datomic-mult (fnk []
                            (first ((util/lazy-load-var 'cook.datomic/create-tx-report-mult) datomic/conn)))
      :local-zookeeper (fnk [[:settings zookeeper-server]]

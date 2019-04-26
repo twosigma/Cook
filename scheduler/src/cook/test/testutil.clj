@@ -25,7 +25,7 @@
             [cook.plugins.definitions :refer (JobSubmissionValidator JobLaunchFilter)]
             [cook.impersonation :refer (create-impersonation-middleware)]
             [cook.mesos.api :as api]
-            [cook.mesos.compute-cluster :as cc]
+            [cook.compute-cluster :as cc]
             [cook.mesos.schema :as schema]
             [cook.mesos.util :as util]
             [cook.rate-limit :as rate-limit]
