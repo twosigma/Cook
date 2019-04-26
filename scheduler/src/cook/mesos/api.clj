@@ -184,8 +184,7 @@
 (def ComputeCluster
   "Schema for a compute cluster"
   {:compute-cluster-name s/Str
-   (s/optional-key :mesos) MesosComputeCluster
-   (s/optional-key :data-source) s/Keyword})
+   (s/optional-key :mesos) MesosComputeCluster})
 
 (def Instance
   "Schema for a description of a single job instance."
@@ -959,12 +958,10 @@
   [db entity]
   (if entity
     (compute-cluster-entity->map entity)
-    (assoc
-      (->> (cc/cluster-name-hack)  ; Get the default cluster.
-           cc/cluster-name->db-id
-           (d/entity db)
-           (fetch-compute-cluster-map db))
-      :data-source :legacy-data-filled))) ; Note that this record was filled in data.
+    (->> (cc/cluster-name-hack)  ; Get the default cluster.
+         cc/cluster-name->db-id
+         (d/entity db)
+         (fetch-compute-cluster-map db))))
 
 (defn fetch-instance-map
   "Converts the instance entity to a map representing the instance fields."
