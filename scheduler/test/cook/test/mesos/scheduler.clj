@@ -24,6 +24,7 @@
             [clojure.string :as str]
             [clojure.tools.logging :as log]
             [clojure.walk :as walk]
+            [cook.compute-cluster :as cc]
             [cook.config :as config]
             [cook.mesos.data-locality :as dl]
             [cook.mesos.heartbeat :as heartbeat]
@@ -1599,7 +1600,8 @@
                                    {:name "gpus", :scalar gpus, :type :value-scalar, :role "cook"}]
                        :id {:value (str "id-" (UUID/randomUUID))}
                        :slave-id {:value (str "slave-" (UUID/randomUUID))}
-                       :hostname (str "host-" (UUID/randomUUID))})
+                       :hostname (str "host-" (UUID/randomUUID))
+                       :compute-cluster-name (cc/get-default-cluster-name-for-legacy)})
         offers-chan (async/chan (async/buffer 10))
         offer-1 (offer-maker 10 2048 0)
         offer-2 (offer-maker 20 16384 0)
@@ -1873,7 +1875,8 @@
                                      {:name "gpus", :scalar gpus, :type :value-scalar, :role "cook"}]
                          :id {:value (str "id-" (UUID/randomUUID))}
                          :slave-id {:value (str "slave-" (UUID/randomUUID))}
-                         :hostname (str "host-" (UUID/randomUUID))})
+                         :hostname (str "host-" (UUID/randomUUID))
+                         :compute-cluster-name (cc/get-default-cluster-name-for-legacy)})
           offers-chan (async/chan (async/buffer 10))
           offer-1 (offer-maker 10 2048 0)
           offer-2 (offer-maker 20 16384 0)
@@ -2186,7 +2189,8 @@
         job (d/entity (d/db conn) job-id)
         ^TaskRequest task-request (sched/make-task-request (d/db conn) job)
         matches [{:tasks [(SimpleAssignmentResult. [] nil task-request)]}]]
-    (with-redefs [d/transact (fn [_ _]
+    (with-redefs [cc/cluster-name->db-id (constantly -1) ; So this doesn't throw and we hit the timeout exception (later)
+                  d/transact (fn [_ _]
                                (throw timeout-exception))
                   log/log* (fn [_ level throwable message]
                              (when (= :warn level)

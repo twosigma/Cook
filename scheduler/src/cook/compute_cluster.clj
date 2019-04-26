@@ -62,6 +62,18 @@
      :mesos-framework-id framework-id
      :db-id (or cluster-entity-id (get-mesos-cluster-entity-id (d/db conn) mesos-cluster))}))
 
+(def default-cluster-name-for-legacy (atom nil))
+
+(defn get-default-cluster-name-for-legacy
+  "What cluster name to put on for legacy jobs when generating their compute-cluster."
+  []
+  @default-cluster-name-for-legacy)
+
+; A hack to store the mesos cluster name, until we refactor the code so that we support multiple clusters. In the long term future
+; this is probably replaced with a function from driver->cluster-id, or the cluster name is propagated by function arguments and
+; closed over.
+(def mesos-cluster-name-hack (atom nil))
+
 (defn get-mesos-clusters-from-config
   "Get all of the mesos clusters defined in the configuration.
   In config.edn, we put all of the mesos keys under one toplevel dictionary.
@@ -84,6 +96,8 @@
   occurs in config.clj. Long term, we need to fix config.clj to not to that, probably
   as part of global cook, at which time, this probably won't need to exist. Until then however....."
   [{:keys [mesos-compute-cluster-name mesos-framework-id]}]
+  (reset! default-cluster-name-for-legacy mesos-compute-cluster-name)
+  (reset! mesos-cluster-name-hack mesos-compute-cluster-name)
   [{:compute-cluster-name mesos-compute-cluster-name :framework-id mesos-framework-id}])
 
 (def cluster-name->cluster-dict-atom (atom nil))
@@ -111,14 +125,3 @@
     (run! (fn [compute-cluster]
             (log/info "Setting up compute cluster: " compute-cluster)) compute-clusters)
     (reset! cluster-name->cluster-dict-atom (reduce reduce-fn {} compute-clusters))))
-
-; TODO: Until we thread the compute-cluster-name through fenzo, we'll need this hack to remember
-; the cluster name so that we can find the compute cluster when generating the fenzo result.
-(defn cluster-name-hack
-  "A hack that today returns the default cluster name. This is used e.g., in processing
-  fenzo responses. In the future it will need to exist in order to fill in compute cluster
-  objects in legacy task entities."
-  []
-  (-> @cluster-name->cluster-dict-atom
-      keys
-      first))

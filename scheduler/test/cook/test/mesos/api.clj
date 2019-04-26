@@ -1483,11 +1483,11 @@
           ; Track whether we invoke this function to fetch the default. We shouldn't use this unless
           ; we're filling in because the entity lacks a compute cluster.
           fetched-default-cluster-atom (atom false)
-          tmp-cluster-name-hack cc/cluster-name-hack]
-      (with-redefs [cc/cluster-name-hack
+          tmp-default-cluster-name-for-legacy cc/get-default-cluster-name-for-legacy]
+      (with-redefs [cc/get-default-cluster-name-for-legacy
                     (fn []
                       (reset! fetched-default-cluster-atom true)
-                      (tmp-cluster-name-hack))]
+                      (tmp-default-cluster-name-for-legacy))]
 
         (reset! fetched-default-cluster-atom false)
         (testing "basic-instance-without-sandbox"

@@ -960,7 +960,7 @@
   [db entity]
   (if entity
     (compute-cluster-entity->map entity)
-    (->> (cc/cluster-name-hack)  ; Get the default cluster.
+    (->> (cc/get-default-cluster-name-for-legacy)  ; Get the default cluster.
          cc/cluster-name->db-id
          (d/entity db)
          (fetch-compute-cluster-map db))))
