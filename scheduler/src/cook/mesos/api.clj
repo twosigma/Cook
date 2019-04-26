@@ -177,11 +177,14 @@
    (s/optional-key :extract) s/Bool
    (s/optional-key :cache) s/Bool})
 
+(def MesosComputeCluster
+  "Schema for a compute cluster"
+  {:framework-id s/Str})
+
 (def ComputeCluster
   "Schema for a compute cluster"
-  {:compute-cluster-type s/Keyword
-   :compute-cluster-name s/Str
-   (s/optional-key :mesos-framework-id) s/Str
+  {:compute-cluster-name s/Str
+   (s/optional-key :mesos) MesosComputeCluster
    (s/optional-key :data-source) s/Keyword})
 
 (def Instance
@@ -946,12 +949,9 @@
 
 (defn compute-cluster-entity->map
   [entity]
-  {:compute-cluster-type
-   (case (:compute-cluster/type entity)
-     (:compute-cluster.type/mesos) :compute-cluster-type-mesos
-     :compute-cluster-type-unknown)
-   :compute-cluster-name (:compute-cluster/cluster-name entity)
-   :mesos-framework-id (:compute-cluster/mesos-framework-id entity)})
+  (cond-> {:compute-cluster-name (:compute-cluster/cluster-name entity)}
+    (= :compute-cluster.type/mesos (:compute-cluster/type entity))
+          (assoc :mesos {:framework-id (:compute-cluster/mesos-framework-id entity)})))
 
 (defn fetch-compute-cluster-map
   "Converts a compute cluster entity as a map representing the fields. For legacy instances
