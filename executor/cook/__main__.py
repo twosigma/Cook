@@ -4,6 +4,7 @@
 This module configures logging and starts the executor's driver thread.
 """
 
+import faulthandler
 import logging
 import signal
 import sys
@@ -65,6 +66,11 @@ def main(args=None):
 
     signal.signal(signal.SIGINT, handle_interrupt)
     signal.signal(signal.SIGTERM, handle_interrupt)
+
+    def dump_traceback(signal, frame):
+        faulthandler.dump_traceback()
+
+    signal.signal(signal.SIGUSR1, dump_traceback)
 
     try:
         executor = ce.CookExecutor(stop_signal, config)
