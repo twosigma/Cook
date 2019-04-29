@@ -1955,7 +1955,7 @@
                                                   (-> status mtypes/pb->data :state)))))
                     (Thread/sleep (rand-int 100))
                     (.countDown latch))]
-      (let [s (sched/create-mesos-scheduler nil true nil nil nil nil nil nil nil)]
+      (let [s (sched/create-mesos-scheduler nil true nil nil nil nil nil nil nil nil)]
 
         (.statusUpdate s nil (mtypes/->pb :TaskStatus {:task-id {} :state :task-starting}))
         (.statusUpdate s nil (mtypes/->pb :TaskStatus {:task-id {:value "T1"} :state :task-starting}))
@@ -1987,7 +1987,7 @@
                                            (swap! sandbox-store conj framework-message))
                   sched/handle-framework-message (fn [_ _ framework-message]
                                                    (swap! framework-message-store conj framework-message))]
-      (let [s (sched/create-mesos-scheduler nil true nil nil nil nil nil nil nil)
+      (let [s (sched/create-mesos-scheduler nil true nil nil nil nil nil nil nil nil)
             make-message (fn [message] (-> message json/write-str str (.getBytes "UTF-8")))]
 
         (testing "message delegation"
@@ -2023,7 +2023,7 @@
                       (swap! messages-store update (str task-id) (fn [messages] (conj (or messages []) message))))
                     (Thread/sleep (rand-int 100))
                     (.countDown latch))]
-      (let [s (sched/create-mesos-scheduler nil true nil nil nil nil nil nil nil)
+      (let [s (sched/create-mesos-scheduler nil true nil nil nil nil nil nil nil nil)
             foo 11
             bar 21
             fee 31

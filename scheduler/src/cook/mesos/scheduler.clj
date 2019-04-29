@@ -1425,7 +1425,7 @@
 (defn create-mesos-scheduler
   "Creates the mesos scheduler which processes status updates asynchronously but in order of receipt."
   [gpu-enabled? conn heartbeat-ch pool->fenzo pool->offers-chan match-trigger-chan
-   handle-exit-code handle-progress-message sandbox-syncer-state]
+   handle-exit-code handle-progress-message sandbox-syncer-state compute-cluster-name]
   (let [configured-framework-id (cook.config/framework-id-config)
         sync-agent-sandboxes-fn #(sandbox/sync-agent-sandboxes sandbox-syncer-state configured-framework-id %1 %2)
         message-handlers {:handle-exit-code handle-exit-code
@@ -1493,7 +1493,7 @@
       (resource-offers
         [this driver raw-offers]
         (log/debug "Got offers:" raw-offers)
-        (let [offers (map #(assoc % :compute-cluster-name @cc/mesos-cluster-name-hack) raw-offers)
+        (let [offers (map #(assoc % :compute-cluster-name compute-cluster-name) raw-offers)
               pool->offers (group-by (fn [o] (plugins/select-pool pool-plugin/plugin o)) offers)
               using-pools? (config/default-pool)]
           (log/info "Offers by pool:" (pc/map-vals count pool->offers))
@@ -1563,6 +1563,7 @@
                            (sandbox/aggregate-exit-code exit-code-syncer-state task-id exit-code))]
     (start-jobs-prioritizer! conn pool-name->pending-jobs-atom task-constraints rank-trigger-chan)
     {:scheduler (create-mesos-scheduler gpu-enabled? conn heartbeat-ch pool-name->fenzo pool->offers-chan
-                                        match-trigger-chan handle-exit-code handle-progress-message sandbox-syncer-state)
+                                        match-trigger-chan handle-exit-code handle-progress-message sandbox-syncer-state
+                                        @cc/mesos-cluster-name-hack)
      :view-incubating-offers (fn get-resources-atom [p]
                                (deref (get pool->resources-atom p)))}))
