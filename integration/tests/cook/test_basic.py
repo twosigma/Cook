@@ -209,6 +209,29 @@ class CookTest(util.CookTest):
         finally:
             util.kill_jobs(self.cook_url, [uuid])
 
+    def test_compute_cluster(self):
+        settings_dict = util.settings(self.cook_url)
+
+        # For now, we only have one compute cluster. This could be wrong with future
+        # refactors, but for now, this is the only compute cluster we have, so we should
+        # expect it.
+        expected_compute_cluster = settings_dict['mesos-compute-cluster-name']
+        self.assertIsNotNone(expected_compute_cluster)
+        self.assertEqual("default-compute-cluster-from-config-defaulting",expected_compute_cluster)
+
+        job_executor_type = util.get_job_executor_type(self.cook_url)
+        job_uuid, resp = util.submit_job(self.cook_url, executor=job_executor_type)
+        self.assertEqual(resp.status_code, 201, msg=resp.content)
+        self.assertEqual(resp.content, str.encode(f"submitted jobs {job_uuid}"))
+
+        job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
+        self.assertIn('success', [i['status'] for i in job['instances']], json.dumps(job, indent=2))
+        instance = job['instances'][0]
+        message = json.dumps(instance, sort_keys=True)
+
+        self.assertIsNotNone(instance['compute-cluster'],message)
+        self.assertEqual(expected_compute_cluster,instance['compute-cluster']['compute-cluster-name'],message)
+
     def test_executor_flag(self):
         job_uuid, resp = util.submit_job(self.cook_url, executor='cook')
         self.assertEqual(201, resp.status_code, msg=resp.content)
