@@ -14,8 +14,8 @@
 ;; limitations under the License.
 ;;
 (ns cook.compute-cluster
-  (:require         [clojure.tools.logging :as log]
-                    [datomic.api :as d]))
+  (:require [clojure.tools.logging :as log]
+            [datomic.api :as d]))
 
 (defn- create-missing-compute-cluster
   "Create a missing compute-cluster for one thats not yet in the database."
@@ -46,7 +46,7 @@
              [?c :compute-cluster/mesos-framework-id ?framework-id?]]
            unfiltered-db compute-cluster-name framework-id)
         materialized-query-result (into [] query-result)]
-    materialized-query-result))
+    (first materialized-query-result)))
 
 (defn get-mesos-cluster-map
   "Process one mesos cluster specification, returning the entity id of the corresponding compute-cluster, creating the cluster if it does not exist."
@@ -54,13 +54,12 @@
   {:pre [compute-cluster-name
          framework-id]}
   (let [cluster-entity (get-mesos-cluster-entity (d/db conn) mesos-cluster)]
-    (when (zero? (count cluster-entity))
+    (when-not cluster-entity
       (create-missing-compute-cluster conn (mesos-cluster->compute-cluster-map-for-datomic mesos-cluster)))
     {:cluster-type :mesos-cluster
      :compute-cluster-name compute-cluster-name
      :mesos-framework-id framework-id
-     :db-id (->> (get-mesos-cluster-entity (d/db conn) mesos-cluster)
-                 first)}))
+     :db-id (get-mesos-cluster-entity (d/db conn) mesos-cluster)}))
 
 (defn get-mesos-clusters-from-config
   "Get all of the mesos clusters defined in the configuration.
@@ -90,7 +89,8 @@
                     (when (contains? accum compute-cluster-name)
                       (throw (IllegalArgumentException. (str "Multiple compute-clusters have the same name: " compute-cluster-name))))
                     (assoc accum compute-cluster-name cluster-dict))]
-    (map #(log/info "Setting up compute cluster: " %) compute-clusters)
+    (doseq [ii compute-clusters]
+      (log/info "Setting up compute cluster: " ii))
     (reset! cluster-name->cluster-dict-atom (reduce reduce-fn {} compute-clusters))))
 
 ; TODO: Until we thread the compute-cluster-name through fenzo, we'll need this hack to remember
