@@ -32,8 +32,8 @@
    :compute-cluster/cluster-name compute-cluster-name
    :compute-cluster/mesos-framework-id framework-id})
 
-(defn get-mesos-cluster-entity
-  "Given a configuration map for a mesos cluster, return the datomic entity corresponding to the cluster, if it exists. Internal helper function."
+(defn get-mesos-cluster-entity-id
+  "Given a configuration map for a mesos cluster, return the datomic entity-id corresponding to the cluster, if it exists. Internal helper function."
   [unfiltered-db {:keys [compute-cluster-name framework-id]}]
   {:pre [compute-cluster-name
          framework-id]}
@@ -53,13 +53,13 @@
   [conn {:keys [compute-cluster-name framework-id] :as mesos-cluster}]
   {:pre [compute-cluster-name
          framework-id]}
-  (let [cluster-entity (get-mesos-cluster-entity (d/db conn) mesos-cluster)]
+  (let [cluster-entity (get-mesos-cluster-entity-id (d/db conn) mesos-cluster)]
     (when-not cluster-entity
       (create-missing-compute-cluster conn (mesos-cluster->compute-cluster-map-for-datomic mesos-cluster)))
     {:cluster-type :mesos-cluster
      :compute-cluster-name compute-cluster-name
      :mesos-framework-id framework-id
-     :db-id (get-mesos-cluster-entity (d/db conn) mesos-cluster)}))
+     :db-id (get-mesos-cluster-entity-id (d/db conn) mesos-cluster)}))
 
 (defn get-mesos-clusters-from-config
   "Get all of the mesos clusters defined in the configuration.

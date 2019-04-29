@@ -30,22 +30,22 @@
         mesos-1 {:compute-cluster-name "mesos-1" :framework-id "mesos-1a"}
         mesos-2 {:compute-cluster-name "mesos-2" :framework-id "mesos-1a"}]
     (testing "Start with no clusters"
-      (is (= nil (cc/get-mesos-cluster-entity (d/db conn) mesos-1)))
-      (is (= nil (cc/get-mesos-cluster-entity (d/db conn) mesos-2))))
+      (is (= nil (cc/get-mesos-cluster-entity-id (d/db conn) mesos-1)))
+      (is (= nil (cc/get-mesos-cluster-entity-id (d/db conn) mesos-2))))
 
     (testing "Create a cluster. Should be a new cluster"
       (let [{id1a :db-id :as fetch-mesos-1a} (cc/get-mesos-cluster-map conn mesos-1)]
         ; This should create one cluster in the DB, but not the other.
-        (is (not= nil (cc/get-mesos-cluster-entity (d/db conn) mesos-1)))
-        (is (= nil (cc/get-mesos-cluster-entity (d/db conn) mesos-2)))
+        (is (not= nil (cc/get-mesos-cluster-entity-id (d/db conn) mesos-1)))
+        (is (= nil (cc/get-mesos-cluster-entity-id (d/db conn) mesos-2)))
         (let [{id2a :db-id :as fetch-mesos-2a} (cc/get-mesos-cluster-map conn mesos-2)
               {id1b :db-id :as fetch-mesos-1b} (cc/get-mesos-cluster-map conn mesos-1)
               {id2b :db-id :as fetch-mesos-2b} (cc/get-mesos-cluster-map conn mesos-2)]
           ; Should see both clusters created.
-          (is (not= nil (cc/get-mesos-cluster-entity (d/db conn) mesos-1)))
-          (is (not= nil (cc/get-mesos-cluster-entity (d/db conn) mesos-2)))
-          (is (not= (cc/get-mesos-cluster-entity (d/db conn) mesos-1)
-                    (cc/get-mesos-cluster-entity (d/db conn) mesos-2)))
+          (is (not= nil (cc/get-mesos-cluster-entity-id (d/db conn) mesos-1)))
+          (is (not= nil (cc/get-mesos-cluster-entity-id (d/db conn) mesos-2)))
+          (is (not= (cc/get-mesos-cluster-entity-id (d/db conn) mesos-1)
+                    (cc/get-mesos-cluster-entity-id (d/db conn) mesos-2)))
           ; Now, we should only have two unique db-id's.
           (is (= fetch-mesos-1a fetch-mesos-1b))
           (is (= fetch-mesos-2a fetch-mesos-2b))
