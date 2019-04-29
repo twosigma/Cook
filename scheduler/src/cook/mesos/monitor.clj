@@ -82,7 +82,7 @@
   "Sets the value of the counter to the new value.
    A data race is possible if two threads invoke this function concurrently."
   [counter value]
-  (let [amount-to-inc (- (int value) (counters/value counter))]
+  (let [amount-to-inc (- (long value) (counters/value counter))]
     (counters/inc! counter amount-to-inc)))
 
 (defn- clear-old-counters!
