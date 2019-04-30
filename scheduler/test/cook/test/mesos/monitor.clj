@@ -32,7 +32,7 @@
         counter #(counters/value (counters/counter (conj % "pool-no-pool")))
         job1 {:uuid (UUID/randomUUID), :command "ls", :max-retries 1, :cpus 1., :mem 128., :user "alice"}
         job2 {:uuid (UUID/randomUUID), :command "ls", :max-retries 1, :cpus 2., :mem 256., :user "bob"}
-        job3 {:uuid (UUID/randomUUID), :command "ls", :max-retries 1, :cpus 4., :mem 512., :user "sally"}
+        job3 {:uuid (UUID/randomUUID), :command "ls", :max-retries 1, :cpus 4., :mem (double Long/MAX_VALUE), :user "sally"}
         stats-atom (atom {})
         run-job (fn [job] @(d/transact conn [[:db/add [:job/uuid (:uuid job)] :job/state :job.state/running]]))]
 
@@ -228,7 +228,7 @@
     (is (= 0 (counter ["running" "all" "mem"])))
     (is (= 1 (counter ["waiting" "all" "jobs"])))
     (is (= 4 (counter ["waiting" "all" "cpus"])))
-    (is (= 512 (counter ["waiting" "all" "mem"])))
+    (is (= Long/MAX_VALUE (counter ["waiting" "all" "mem"])))
     (is (= 0 (counter ["waiting" "alice" "jobs"])))
     (is (= 0 (counter ["waiting" "alice" "cpus"])))
     (is (= 0 (counter ["waiting" "alice" "mem"])))
@@ -237,7 +237,7 @@
     (is (= 0 (counter ["waiting" "bob" "mem"])))
     (is (= 1 (counter ["waiting" "sally" "jobs"])))
     (is (= 4 (counter ["waiting" "sally" "cpus"])))
-    (is (= 512 (counter ["waiting" "sally" "mem"])))
+    (is (= Long/MAX_VALUE (counter ["waiting" "sally" "mem"])))
     (is (= 0 (counter ["starved" "all" "jobs"])))
     (is (= 0 (counter ["starved" "all" "cpus"])))
     (is (= 0 (counter ["starved" "all" "mem"])))
@@ -262,10 +262,10 @@
                                  "no-pool")
     (is (= 1 (counter ["running" "all" "jobs"])))
     (is (= 4 (counter ["running" "all" "cpus"])))
-    (is (= 512 (counter ["running" "all" "mem"])))
+    (is (= Long/MAX_VALUE (counter ["running" "all" "mem"])))
     (is (= 1 (counter ["running" "sally" "jobs"])))
     (is (= 4 (counter ["running" "sally" "cpus"])))
-    (is (= 512 (counter ["running" "sally" "mem"])))
+    (is (= Long/MAX_VALUE (counter ["running" "sally" "mem"])))
     (is (= 0 (counter ["waiting" "all" "jobs"])))
     (is (= 0 (counter ["waiting" "all" "cpus"])))
     (is (= 0 (counter ["waiting" "all" "mem"])))
