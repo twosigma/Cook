@@ -44,9 +44,8 @@
              [?c :compute-cluster/type :compute-cluster.type/mesos]
              [?c :compute-cluster/cluster-name ?cluster-name?]
              [?c :compute-cluster/mesos-framework-id ?framework-id?]]
-           unfiltered-db compute-cluster-name framework-id)
-        materialized-query-result (into [] query-result)]
-    (first materialized-query-result)))
+           unfiltered-db compute-cluster-name framework-id)]
+    (first query-result)))
 
 (defn get-mesos-cluster-map
   "Process one mesos cluster specification, returning the entity id of the corresponding compute-cluster, creating the cluster if it does not exist."
