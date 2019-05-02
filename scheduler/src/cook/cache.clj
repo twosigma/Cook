@@ -43,11 +43,12 @@
   (if-let [key (extract-key-fn item)]
     (if-let [result (.getIfPresent cache key)]
       result ; we got a hit.
-      (let [new-result (miss-fn item)]
-        ; Only cache non-nil
-        (when new-result
-          (.put cache key new-result))
-        new-result))
+      (locking cache ; TODO: Consider lock striping based on hashcode of the key to allow concurrent loads.
+        (let [new-result (miss-fn item)]
+          ; Only cache non-nil
+          (when new-result
+            (.put cache key new-result))
+          new-result)))
     (miss-fn item)))
 
 (defn- expire-key-helper
