@@ -911,11 +911,13 @@
           tasks-killed (atom #{})
           driver (reify msched/SchedulerDriver
                    (kill-task! [_ task] (swap! tasks-killed conj (:value task)))) ; Conjoin the task-id
-          driver-atom (atom nil)
-          fenzo (sched/make-fenzo-scheduler driver-atom 1500 nil 0.8)
+          compute-cluster (testutil/fake-test-compute-cluster driver)
+          fenzo (sched/make-fenzo-scheduler compute-cluster 1500 nil 0.8)
           synced-agents-atom (atom [])
           sync-agent-sandboxes-fn (fn sync-agent-sandboxes-fn [hostname _]
                                     (swap! synced-agents-atom conj hostname))]
+      (testutil/setup-fake-test-compute-cluster conn)
+
 
       (testing "Mesos task death"
         (let [job-id (create-dummy-job conn :user "tsram" :job-state :job.state/running)
@@ -925,7 +927,7 @@
                                                  :task-id task-id)]
                                         ; Wait for async database transaction inside handle-status-update
           (->> (make-dummy-status-update task-id :reason-gc-error :task-killed)
-               (sched/handle-status-update conn driver (constantly fenzo) sync-agent-sandboxes-fn)
+               (sched/handle-status-update conn compute-cluster (constantly fenzo) sync-agent-sandboxes-fn)
                async/<!!)
 
           (is (= :instance.status/failed
@@ -950,7 +952,7 @@
                 original-end-time (get-end-time)]
             (Thread/sleep 100)
             (->> (make-dummy-status-update task-id :reason-gc-error :task-killed)
-                 (sched/handle-status-update conn driver (constantly fenzo) sync-agent-sandboxes-fn)
+                 (sched/handle-status-update conn compute-cluster (constantly fenzo) sync-agent-sandboxes-fn)
                  async/<!!)
             (is (= original-end-time (get-end-time))))))
 
@@ -975,7 +977,7 @@
                                                  :reason :max-runtime-exceeded)] ; Previous reason is not mea-culpa
                                         ; Status update says slave got restarted (mea-culpa)
           (->> (make-dummy-status-update task-id :mesos-slave-restarted :task-killed)
-               (sched/handle-status-update conn driver (constantly fenzo) sync-agent-sandboxes-fn)
+               (sched/handle-status-update conn compute-cluster (constantly fenzo) sync-agent-sandboxes-fn)
                async/<!!)
                                         ; Assert old reason persists
           (is (= :max-runtime-exceeded
@@ -1012,7 +1014,7 @@
                                  :reason :unknown)
           (reset! synced-agents-atom [])
           (->> (make-dummy-status-update task-id-a :mesos-slave-restarted :task-running)
-               (sched/handle-status-update conn driver (constantly fenzo) sync-agent-sandboxes-fn)
+               (sched/handle-status-update conn compute-cluster (constantly fenzo) sync-agent-sandboxes-fn)
                async/<!!)
           (is (true? (contains? @tasks-killed task-id-a)))
           (is (= ["www.test-host.com"] @synced-agents-atom))))
@@ -1034,7 +1036,7 @@
                                  :task-id task-id)
           (is (nil? (mesos-start-time)))
           (->> (make-dummy-status-update task-id :unknown :task-staging)
-               (sched/handle-status-update conn driver (constantly fenzo) sync-agent-sandboxes-fn)
+               (sched/handle-status-update conn compute-cluster (constantly fenzo) sync-agent-sandboxes-fn)
                async/<!!)
           (is (nil? (mesos-start-time)))
           (reset! synced-agents-atom [])
@@ -1046,7 +1048,7 @@
           (let [first-observed-start-time (.getTime (mesos-start-time))]
             (is (not (nil? first-observed-start-time)))
             (->> (make-dummy-status-update task-id :unknown :task-running)
-                 (sched/handle-status-update conn driver (constantly fenzo) sync-agent-sandboxes-fn)
+                 (sched/handle-status-update conn compute-cluster (constantly fenzo) sync-agent-sandboxes-fn)
                  async/<!!)
             (is (= first-observed-start-time (.getTime (mesos-start-time))))))))))
 
@@ -1060,8 +1062,9 @@
                                                                   :job job})))
         conn (restore-fresh-database! "datomic:mem://test-instance-completion-plugin")
         driver (reify msched/SchedulerDriver)
-        driver-atom (atom nil)
-        fenzo (sched/make-fenzo-scheduler driver-atom 1500 nil 0.8)]
+        compute-cluster (testutil/fake-test-compute-cluster driver)
+        fenzo (sched/make-fenzo-scheduler compute-cluster 1500 nil 0.8)]
+    (testutil/setup-fake-test-compute-cluster conn)
     (with-redefs [completion/plugin plugin-implementation]
       (testing "Mesos task death"
         (let [job-id (create-dummy-job conn :user "testuser" :job-state :job.state/running
@@ -1573,11 +1576,11 @@
 
 (deftest test-handle-resource-offers
   (setup)
-  (let [test-user (System/getProperty "user.name")
-        uri "datomic:mem://test-handle-resource-offers"
+  (let [uri "datomic:mem://test-handle-resource-offers"
         conn (restore-fresh-database! uri)]
     (testutil/setup-fake-test-compute-cluster conn)
-    (let [executor {:command "cook-executor"
+    (let [test-user (System/getProperty "user.name")
+          executor {:command "cook-executor"
                     :default-progress-regex-string "regex-string"
                     :log-level "INFO"
                     :max-message-length 512
@@ -1596,6 +1599,7 @@
                                                                       suffix-start (str/index-of task-name (str "_" test-user "_"))]
                                                                   (subs task-name 0 suffix-start)))
                                                               tasks))))
+          compute-cluster (testutil/fake-test-compute-cluster driver)
           offer-maker (fn [cpus mem gpus]
                         {:resources [{:name "cpus", :scalar cpus, :type :value-scalar, :role "cook"}
                                      {:name "mem", :scalar mem, :type :value-scalar, :role "cook"}
@@ -1603,7 +1607,7 @@
                          :id {:value (str "id-" (UUID/randomUUID))}
                          :slave-id {:value (str "slave-" (UUID/randomUUID))}
                          :hostname (str "host-" (UUID/randomUUID))
-                         :compute-cluster-name (cc/get-default-cluster-name-for-legacy)})
+                         :compute-cluster compute-cluster})
           offers-chan (async/chan (async/buffer 10))
           offer-1 (offer-maker 10 2048 0)
           offer-2 (offer-maker 20 16384 0)
@@ -1621,8 +1625,7 @@
                                         (reset! launched-job-ids-atom [])
                                         (let [conn (restore-fresh-database! uri)
                                               test-db (d/db conn)
-                                              driver-atom (atom nil)
-                                              ^TaskScheduler fenzo (sched/make-fenzo-scheduler driver-atom 1500 nil 0.8)
+                                              ^TaskScheduler fenzo (sched/make-fenzo-scheduler compute-cluster 1500 nil 0.8)
                                               group-ent-id (create-dummy-group conn)
                                               get-uuid (fn [name] (get job-name->uuid name (d/squuid)))
                                               job-1 (d/entity test-db (create-dummy-job conn
@@ -1672,7 +1675,7 @@
                                               user->quota (or user-quota {test-user {:count 10, :cpus 50, :mem 32768, :gpus 10}})
                                               mesos-run-as-user nil
                                               result (sched/handle-resource-offers!
-                                                       conn driver fenzo pool-name->pending-jobs-atom mesos-run-as-user
+                                                       conn fenzo pool-name->pending-jobs-atom mesos-run-as-user
                                                        user->usage user->quota num-considerable offers-chan offers rebalancer-reservation-atom pool)]
                                           (async/>!! offers-chan :end-marker)
                                           result))]
@@ -1865,86 +1868,88 @@
   (with-redefs [config/data-local-fitness-config (constantly {:data-locality-weight 0.95
                                                               :base-calculator BinPackingFitnessCalculators/cpuMemBinPacker})
                 dl/job-uuid->dataset-maps-cache (util/new-cache)]
-    (let [test-user (System/getProperty "user.name")
-          uri "datomic:mem://test-handle-resource-offers"
-          launched-tasks-atom (atom [])
-          driver (reify msched/SchedulerDriver
-                   (launch-tasks! [_ _ tasks]
-                     (swap! launched-tasks-atom concat tasks)))
-          offer-maker (fn [cpus mem gpus]
-                        {:resources [{:name "cpus", :scalar cpus, :type :value-scalar, :role "cook"}
-                                     {:name "mem", :scalar mem, :type :value-scalar, :role "cook"}
-                                     {:name "gpus", :scalar gpus, :type :value-scalar, :role "cook"}]
-                         :id {:value (str "id-" (UUID/randomUUID))}
-                         :slave-id {:value (str "slave-" (UUID/randomUUID))}
-                         :hostname (str "host-" (UUID/randomUUID))
-                         :compute-cluster-name (cc/get-default-cluster-name-for-legacy)})
-          offers-chan (async/chan (async/buffer 10))
-          offer-1 (offer-maker 10 2048 0)
-          offer-2 (offer-maker 20 16384 0)
-          offer-3 (offer-maker 30 8192 0)
-          [d1 d2] [#{{:dataset {"a" "a"}} {:dataset {"b" "b"}}}]
-          run-handle-resource-offers! (fn [num-considerable offers & {:keys [user-quota user->usage rebalancer-reservation-atom job-name->uuid]
-                                                                      :or {rebalancer-reservation-atom (atom {})
-                                                                           job-name->uuid {}}}]
-                                        (reset! launched-tasks-atom [])
-                                        (let [conn (restore-fresh-database! uri)
-                                              driver-atom (atom nil)
+    (let [uri "datomic:mem://test-handle-resource-offers"
+          conn (restore-fresh-database! uri)]
+      (testutil/setup-fake-test-compute-cluster conn)
+      (let [test-user (System/getProperty "user.name")
 
-                                              ^TaskScheduler fenzo (sched/make-fenzo-scheduler driver-atom 1500
-                                                                                               "cook.mesos.data-locality/make-data-local-fitness-calculator"
-                                                                                               0.8)
-                                              group-ent-id (create-dummy-group conn)
-                                              get-uuid (fn [name] (get job-name->uuid name (d/squuid)))
-                                              job-1 (d/entity (d/db conn) (create-dummy-job conn
-                                                                                            :uuid (get-uuid "job-1")
-                                                                                            :group group-ent-id
-                                                                                            :name "job-1"
-                                                                                            :ncpus 3
-                                                                                            :memory 2048
-                                                                                            :datasets d1))
-                                              job-2 (d/entity (d/db conn) (create-dummy-job conn
-                                                                                            :uuid (get-uuid "job-2")
-                                                                                            :group group-ent-id
-                                                                                            :name "job-2"
-                                                                                            :ncpus 13
-                                                                                            :memory 1024
-                                                                                            :datasets d2))
-                                              _ (dl/update-data-local-costs {d1 {(:hostname offer-1) {:cost 0.0
-                                                                                                      :suitable true}
-                                                                                 (:hostname offer-2) {:cost 0.0
-                                                                                                      :suitable true}
-                                                                                 (:hostname offer-3) {:cost 100.0
-                                                                                                      :suitable true}}
-                                                                             d2 {(:hostname offer-1) {:cost 0.0
-                                                                                                      :suitable true}
-                                                                                 (:hostname offer-2) {:cost 0.0
-                                                                                                      :suitable true}
-                                                                                 (:hostname offer-3) {:cost 0.0
-                                                                                                      :suitable true}}}
-                                                                            [])
-                                              entity->map (fn [entity]
-                                                            (util/job-ent->map entity (d/db conn)))
-                                              pool->pending-jobs (->> {:normal [job-1 job-2]}
-                                                                      (pc/map-vals (partial map entity->map)))
-                                              pool-name->pending-jobs-atom (atom pool->pending-jobs)
-                                              user->usage (or user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}})
-                                              user->quota (or user-quota {test-user {:count 10, :cpus 50, :mem 32768, :gpus 10}})
-                                              mesos-run-as-user nil
-                                              result (sched/handle-resource-offers!
-                                                       conn driver fenzo pool-name->pending-jobs-atom mesos-run-as-user
-                                                       user->usage user->quota num-considerable offers-chan offers rebalancer-reservation-atom :normal)]
-                                          result))]
-      (testing "enough offers for all normal jobs"
-        (let [num-considerable 10
-              offers [offer-1 offer-2 offer-3]]
-          (is (run-handle-resource-offers! num-considerable offers :job-name->uuid {"job-1" (d/squuid) "job-2" (d/squuid)}))
-          (let [launched-tasks @launched-tasks-atom
-                task-1 (first (filter #(.startsWith (:name %) "job-1") launched-tasks))
-                task-2 (first (filter #(.startsWith (:name %) "job-2") launched-tasks))]
-            (is (= 2 (count launched-tasks)))
-            (is (= (:slave-id offer-1) (:slave-id task-1)))
-            (is (= (:slave-id offer-2) (:slave-id task-2)))))))))
+            launched-tasks-atom (atom [])
+            driver (reify msched/SchedulerDriver
+                     (launch-tasks! [_ _ tasks]
+                       (swap! launched-tasks-atom concat tasks)))
+            compute-cluster (testutil/fake-test-compute-cluster driver)
+            offer-maker (fn [cpus mem gpus]
+                          {:resources [{:name "cpus", :scalar cpus, :type :value-scalar, :role "cook"}
+                                       {:name "mem", :scalar mem, :type :value-scalar, :role "cook"}
+                                       {:name "gpus", :scalar gpus, :type :value-scalar, :role "cook"}]
+                           :id {:value (str "id-" (UUID/randomUUID))}
+                           :slave-id {:value (str "slave-" (UUID/randomUUID))}
+                           :hostname (str "host-" (UUID/randomUUID))
+                           :compute-cluster (testutil/fake-test-compute-cluster driver)})
+            offers-chan (async/chan (async/buffer 10))
+            offer-1 (offer-maker 10 2048 0)
+            offer-2 (offer-maker 20 16384 0)
+            offer-3 (offer-maker 30 8192 0)
+            [d1 d2] [#{{:dataset {"a" "a"}} {:dataset {"b" "b"}}}]
+            run-handle-resource-offers! (fn [num-considerable offers & {:keys [user-quota user->usage rebalancer-reservation-atom job-name->uuid]
+                                                                        :or {rebalancer-reservation-atom (atom {})
+                                                                             job-name->uuid {}}}]
+                                          (reset! launched-tasks-atom [])
+                                          (let [conn (restore-fresh-database! uri)
+                                                ^TaskScheduler fenzo (sched/make-fenzo-scheduler compute-cluster 1500
+                                                                                                 "cook.mesos.data-locality/make-data-local-fitness-calculator"
+                                                                                                 0.8)
+                                                group-ent-id (create-dummy-group conn)
+                                                get-uuid (fn [name] (get job-name->uuid name (d/squuid)))
+                                                job-1 (d/entity (d/db conn) (create-dummy-job conn
+                                                                                              :uuid (get-uuid "job-1")
+                                                                                              :group group-ent-id
+                                                                                              :name "job-1"
+                                                                                              :ncpus 3
+                                                                                              :memory 2048
+                                                                                              :datasets d1))
+                                                job-2 (d/entity (d/db conn) (create-dummy-job conn
+                                                                                              :uuid (get-uuid "job-2")
+                                                                                              :group group-ent-id
+                                                                                              :name "job-2"
+                                                                                              :ncpus 13
+                                                                                              :memory 1024
+                                                                                              :datasets d2))
+                                                _ (dl/update-data-local-costs {d1 {(:hostname offer-1) {:cost 0.0
+                                                                                                        :suitable true}
+                                                                                   (:hostname offer-2) {:cost 0.0
+                                                                                                        :suitable true}
+                                                                                   (:hostname offer-3) {:cost 100.0
+                                                                                                        :suitable true}}
+                                                                               d2 {(:hostname offer-1) {:cost 0.0
+                                                                                                        :suitable true}
+                                                                                   (:hostname offer-2) {:cost 0.0
+                                                                                                        :suitable true}
+                                                                                   (:hostname offer-3) {:cost 0.0
+                                                                                                        :suitable true}}}
+                                                                              [])
+                                                entity->map (fn [entity]
+                                                              (util/job-ent->map entity (d/db conn)))
+                                                pool->pending-jobs (->> {:normal [job-1 job-2]}
+                                                                        (pc/map-vals (partial map entity->map)))
+                                                pool-name->pending-jobs-atom (atom pool->pending-jobs)
+                                                user->usage (or user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}})
+                                                user->quota (or user-quota {test-user {:count 10, :cpus 50, :mem 32768, :gpus 10}})
+                                                mesos-run-as-user nil
+                                                result (sched/handle-resource-offers!
+                                                         conn fenzo pool-name->pending-jobs-atom mesos-run-as-user
+                                                         user->usage user->quota num-considerable offers-chan offers rebalancer-reservation-atom :normal)]
+                                            result))]
+        (testing "enough offers for all normal jobs"
+          (let [num-considerable 10
+                offers [offer-1 offer-2 offer-3]]
+            (is (run-handle-resource-offers! num-considerable offers :job-name->uuid {"job-1" (d/squuid) "job-2" (d/squuid)}))
+            (let [launched-tasks @launched-tasks-atom
+                  task-1 (first (filter #(.startsWith (:name %) "job-1") launched-tasks))
+                  task-2 (first (filter #(.startsWith (:name %) "job-2") launched-tasks))]
+              (is (= 2 (count launched-tasks)))
+              (is (= (:slave-id offer-1) (:slave-id task-1)))
+              (is (= (:slave-id offer-2) (:slave-id task-2))))))))))
 
 (deftest test-in-order-status-update-processing
   (let [status-store (atom {})
@@ -2166,8 +2171,8 @@
         killed-tasks (atom [])
         mock-driver (reify msched/SchedulerDriver
                       (kill-task! [_ task-id]
-                        (swap! killed-tasks #(conj % task-id))))
-        driver-ref (ref mock-driver)]
+                        (swap! killed-tasks #(conj % task-id))))]
+    (testutil/fake-test-compute-cluster mock-driver)
     (cook.mesos/kill-job conn [(:job/uuid (d/entity (d/db conn) job-id-1))])
     (let [job-ent (d/entity (d/db conn) job-id-1)
           instance-ent (d/entity (d/db conn) instance-id-1)]
@@ -2176,7 +2181,7 @@
     (let [[report-mult close-fn] (cook.datomic/create-tx-report-mult conn)
           transaction-chan (async/chan (async/sliding-buffer 4096))
           _ (async/tap report-mult transaction-chan)
-          kill-fn (cook.mesos.scheduler/monitor-tx-report-queue transaction-chan conn driver-ref)]
+          kill-fn (cook.mesos.scheduler/monitor-tx-report-queue transaction-chan conn)]
       (cook.mesos/kill-job conn [(:job/uuid (d/entity (d/db conn) job-id-2))])
       (let [expected-tasks-killed [{:value (:instance/task-id (d/entity (d/db conn) instance-id-1))}
                                    {:value (:instance/task-id (d/entity (d/db conn) instance-id-2))}]
@@ -2184,6 +2189,7 @@
         (is (wait-for tasks-killed? :interval 20 :timeout 100 :unit-multiplier 1))))))
 
 (deftest test-launch-matched-tasks!-logs-transaction-timeouts
+  (setup)
   (let [conn (restore-fresh-database! "datomic:mem://test-launch-matched-tasks!-logs-transaction-timeouts")
         timeout-exception (ex-info "Transaction timed out." {})
         logged-atom (atom nil)
@@ -2191,14 +2197,15 @@
         job (d/entity (d/db conn) job-id)
         ^TaskRequest task-request (sched/make-task-request (d/db conn) job)
         matches [{:tasks [(SimpleAssignmentResult. [] nil task-request)]}]]
-    (with-redefs [cc/cluster-name->db-id (constantly -1) ; So this doesn't throw and we hit the timeout exception (later)
+    (with-redefs [cc/get-mesos-framework-id-hack (constantly "Fake_to_bypass") ; So we don't throw prematurely 
+                  cc/ComputeCluster->db-id (constantly -1) ; So we don't throw prematurely when trying to create the task structure.
                   d/transact (fn [_ _]
                                (throw timeout-exception))
                   log/log* (fn [_ level throwable message]
                              (when (= :warn level)
                                (reset! logged-atom {:throwable throwable
                                                     :message message})))]
-      (is (thrown? ExceptionInfo (sched/launch-matched-tasks! matches conn nil nil nil nil nil)))
+      (is (thrown? ExceptionInfo (sched/launch-matched-tasks! matches conn nil nil nil nil)))
       (is (= timeout-exception (:throwable @logged-atom)))
       (is (str/includes? (:message @logged-atom) (str job-id))))))
 

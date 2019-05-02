@@ -34,31 +34,30 @@
       (is (= nil (cc/get-mesos-cluster-entity-id (d/db conn) mesos-2))))
 
     (testing "Create a cluster. Should be a new cluster"
-      (let [{id1a :db-id :as fetch-mesos-1a} (cc/get-mesos-cluster-map conn mesos-1)]
+      (let [{id1a :db-id :as fetch-mesos-1a} (cc/get-mesos-ComputeCluster conn mesos-1)]
         ; This should create one cluster in the DB, but not the other.
         (is (not= nil (cc/get-mesos-cluster-entity-id (d/db conn) mesos-1)))
         (is (= nil (cc/get-mesos-cluster-entity-id (d/db conn) mesos-2)))
-        (let [{id2a :db-id :as fetch-mesos-2a} (cc/get-mesos-cluster-map conn mesos-2)
-              {id1b :db-id :as fetch-mesos-1b} (cc/get-mesos-cluster-map conn mesos-1)
-              {id2b :db-id :as fetch-mesos-2b} (cc/get-mesos-cluster-map conn mesos-2)]
+        (let [{id2a :db-id :as fetch-mesos-2a} (cc/get-mesos-ComputeCluster conn mesos-2)
+              {id1b :db-id :as fetch-mesos-1b} (cc/get-mesos-ComputeCluster conn mesos-1)
+              {id2b :db-id :as fetch-mesos-2b} (cc/get-mesos-ComputeCluster conn mesos-2)]
           ; Should see both clusters created.
           (is (not= nil (cc/get-mesos-cluster-entity-id (d/db conn) mesos-1)))
           (is (not= nil (cc/get-mesos-cluster-entity-id (d/db conn) mesos-2)))
           (is (not= (cc/get-mesos-cluster-entity-id (d/db conn) mesos-1)
                     (cc/get-mesos-cluster-entity-id (d/db conn) mesos-2)))
           ; Now, we should only have two unique db-id's.
-          (is (= fetch-mesos-1a fetch-mesos-1b))
-          (is (= fetch-mesos-2a fetch-mesos-2b))
+          (is (= id1a id1b))
+          (is (= id2a id2b))
 
           (is (and id1a (< 0 id1a)))
           (is (and id2a (< 0 id2a)))
           (is (and id1b (< 0 id1b)))
           (is (and id2b (< 0 id2b)))
 
-          (is (= (dissoc fetch-mesos-1a :db-id)
-                 {:compute-cluster-type :mesos-cluster
-                  :compute-cluster-name "mesos-1"
-                  :mesos-framework-id "mesos-1a"})))))))
+          (is (= (dissoc fetch-mesos-1a :db-id :driver-atom)
+                 {:compute-cluster-name "mesos-1"
+                  :framework-id "mesos-1a"})))))))
 
 (deftest setup-cluster-map-config
   (let [conn (restore-fresh-database! "datomic:mem://compute-cluster")]
@@ -78,6 +77,6 @@
                                  {:compute-cluster-name "foo-4"
                                   :framework-id "foo-1a"}])]
         (cc/setup-cluster-map-config conn nil)
-        (is (< 0 (cc/cluster-name->db-id "foo-3")))
-        (is (< 0 (cc/cluster-name->db-id "foo-4")))
-        (is (thrown-with-msg? IllegalStateException #"Was asked to lookup" (cc/cluster-name->db-id "foo-5")))))))
+        (is (< 0 (-> "foo-3" cc/compute-cluster-name->ComputeCluster cc/ComputeCluster->db-id)))
+        (is (< 0 (-> "foo-4" cc/compute-cluster-name->ComputeCluster cc/ComputeCluster->db-id)))
+        (is (thrown-with-msg? IllegalStateException #"Was asked to lookup" (cc/compute-cluster-name->ComputeCluster "foo-5")))))))

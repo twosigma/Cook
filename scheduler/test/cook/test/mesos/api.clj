@@ -1476,19 +1476,15 @@
           basic-instance-map {:executor_id (str job-entity-id "-executor-1")
                               :slave_id "slave-1"
                               :task_id (str job-entity-id "-executor-1")
-                              :compute-cluster
-                              ; Observe this does not include the provenance record of filled in data.
-                              {:name "compute-cluster-default-compute-cluster-name"
-                               :type :mesos
-                               :mesos {:framework-id "compute-cluster-default-test-framework"}}}
+                              :compute-cluster (testutil/fake-test-compute-cluster-map (d/db conn))}
           ; Track whether we invoke this function to fetch the default. We shouldn't use this unless
           ; we're filling in because the entity lacks a compute cluster.
           fetched-default-cluster-atom (atom false)
-          tmp-default-cluster-name-for-legacy cc/get-default-cluster-name-for-legacy]
-      (with-redefs [cc/get-default-cluster-name-for-legacy
+          tmp-default-compute-cluster-for-legacy cc/get-default-cluster-for-legacy]
+      (with-redefs [cc/get-default-cluster-for-legacy
                     (fn []
                       (reset! fetched-default-cluster-atom true)
-                      (tmp-default-cluster-name-for-legacy))]
+                      (tmp-default-compute-cluster-for-legacy))]
 
         (reset! fetched-default-cluster-atom false)
         (testing "basic-instance-without-sandbox"

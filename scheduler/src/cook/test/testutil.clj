@@ -44,11 +44,30 @@
                                {:mesos-framework-id "compute-cluster-default-test-framework"
                                 :mesos-compute-cluster-name "compute-cluster-default-compute-cluster-name"}))
 
+(defn fake-test-compute-cluster
+  ([]
+   {:post [%]} ; Never returns nil. If it does, then setup-fake-test-cluster wasn't run.
+   (-> "compute-cluster-default-compute-cluster-name"
+       cc/compute-cluster-name->ComputeCluster))
+  ([driver]
+   (let [out (fake-test-compute-cluster)]
+     (cc/set-mesos-driver-atom-hack! out driver)
+     out)))
+
 (defn fake-test-compute-cluster-dbid
   "Return the dbid for the fake test compute cluster. Used to generate the right compute-cluster component in task structure in unit tests."
   []
   {:post [%]} ; Never returns nil. If it does, then setup-fake-test-cluster wasn't run.
-  (cc/cluster-name->db-id "compute-cluster-default-compute-cluster-name"))
+  (-> (fake-test-compute-cluster)
+      cc/ComputeCluster->db-id))
+
+
+(defn fake-test-compute-cluster-map
+  "Helper function to report a compute cluster map for instances."
+  [db]
+  (->> (fake-test-compute-cluster-dbid)
+       (d/entity db)
+       api/compute-cluster-entity->map))
 
 (let [minimal-config {:authorization {:one-user ""}
                       :database {:datomic-uri ""}

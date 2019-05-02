@@ -100,7 +100,8 @@
                            mesos-role mesos-run-as-user offer-incubate-time-ms optimizer progress rebalancer server-port
                            task-constraints]
                           curator-framework exit-code-syncer-state framework-id mesos-datomic-mult mesos-leadership-atom
-                          mesos-agent-attributes-cache pool-name->pending-jobs-atom sandbox-syncer-state]
+                          mesos-agent-attributes-cache pool-name->pending-jobs-atom sandbox-syncer-state
+                          compute-clusters]
                       (if (cook.config/api-only-mode?)
                         (if curator-framework
                           (throw (ex-info "This node is configured for API-only mode, but also has a curator configured"

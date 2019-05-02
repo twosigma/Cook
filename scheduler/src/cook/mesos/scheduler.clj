@@ -212,7 +212,7 @@
 
 (defn handle-status-update
   "Takes a status update from mesos."
-  [conn driver pool->fenzo sync-agent-sandboxes-fn status]
+  [conn compute-cluster pool->fenzo sync-agent-sandboxes-fn status]
   (log/info "Mesos status is:" status)
   (timers/time!
     handle-status-update-duration
@@ -282,7 +282,7 @@
                        "as instance" instance "with" prior-job-state "and" prior-instance-status
                        "should've been put down already")
              (meters/mark! (meters/meter (metric-title "tasks-killed-in-status-update" pool-name)))
-             (mesos/kill-task! driver {:value task-id}))
+             (mesos/kill-task! (cc/get-mesos-driver-hack compute-cluster) {:value task-id}))
            (when-not (nil? instance)
              (when (and (#{:task-starting :task-running} task-state)
                         (not= :executor/cook (:instance/executor instance-ent)))
@@ -365,27 +365,29 @@
 
 (defn monitor-tx-report-queue
   "Takes an async channel that will have tx report queue elements on it"
-  [tx-report-chan conn driver-ref]
+  [tx-report-chan conn]
   (log/info "Starting tx-report-queue")
   (let [kill-chan (async/chan)
         query-db (d/db conn)
         query-basis (d/basis-t query-db)
-        tasks-to-kill (q '[:find ?task-id
+        tasks-to-kill (q '[:find ?i
                            :in $ [?status ...]
                            :where
                            [?i :instance/status ?status]
                            [?job :job/instance ?i]
-                           [?job :job/state :job.state/completed]
-                           [?i :instance/task-id ?task-id]]
+                           [?job :job/state :job.state/completed]]
                          query-db [:instance.status/unknown :instance.status/running])]
-    (doseq [[task-id] tasks-to-kill]
-      (when-let [driver @driver-ref]
-        (try
-          (log/info "Attempting to kill task" task-id "from already completed job")
-          (meters/mark! tx-report-queue-tasks-killed)
-          (mesos/kill-task! driver {:value task-id})
-          (catch Exception e
-            (log/error e (str "Failed to kill task" task-id))))))
+    (doseq [[task-entity-id] tasks-to-kill]
+      (let [task-id (task/task-entity-id->task-id query-db task-entity-id)
+            compute-cluster-name (task/task-entity-id->compute-cluster-name query-db task-entity-id)]
+        (if-let [compute-cluster (cc/compute-cluster-name->ComputeCluster compute-cluster-name)]
+          (try
+            (log/info "Attempting to kill task" task-id "in" compute-cluster-name "from already completed job")
+            (meters/mark! tx-report-queue-tasks-killed)
+            (mesos/kill-task! (cc/get-mesos-driver-hack compute-cluster) {:value task-id})
+            (catch Exception e
+              (log/error e (str "Failed to kill task" task-id))))
+          (log/warn "Unable to kill task" task-id "with unknown cluster" compute-cluster-name))))
     (async/go
       (loop []
         (async/alt!
@@ -403,19 +405,21 @@
                                          (when (and (= a (d/entid db :job/state))
                                                     (= v (d/entid db :job.state/completed)))
                                            (meters/mark! tx-report-queue-job-complete)
-                                           (doseq [[task-id] (q '[:find ?task-id
-                                                                  :in $ ?job [?status ...]
-                                                                  :where
-                                                                  [?job :job/instance ?i]
-                                                                  [?i :instance/status ?status]
-                                                                  [?i :instance/task-id ?task-id]]
-                                                                db e [:instance.status/unknown
-                                                                      :instance.status/running])]
-                                             (if-let [driver @driver-ref]
-                                               (do (log/info "Attempting to kill task" task-id "due to job completion")
-                                                   (meters/mark! tx-report-queue-tasks-killed)
-                                                   (mesos/kill-task! driver {:value task-id}))
-                                               (log/error "Couldn't kill task" task-id "due to no Mesos driver!"))))
+                                           (doseq [[task-entity-id]
+                                                   (q '[:find ?i
+                                                        :in $ ?job [?status ...]
+                                                        :where
+                                                        [?job :job/instance ?i]
+                                                        [?i :instance/status ?status]]
+                                                      db e [:instance.status/unknown
+                                                            :instance.status/running])]
+                                             (let [task-id (task/task-entity-id->task-id db task-entity-id)
+                                                   compute-cluster-name (task/task-entity-id->compute-cluster-name db task-entity-id)]
+                                               (if-let [compute-cluster (cc/compute-cluster-name->ComputeCluster compute-cluster-name)]
+                                                 (do (log/info "Attempting to kill task" task-id "in" compute-cluster-name "due to job completion")
+                                                     (meters/mark! tx-report-queue-tasks-killed)
+                                                     (mesos/kill-task! (cc/get-mesos-driver-hack compute-cluster) {:value task-id}))
+                                                 (log/error "Couldn't kill task" task-id "due to no Mesos driver for compute cluster" compute-cluster-name "!")))))
                                          (catch Exception e
                                            (log/error e "Unexpected exception on tx report queue processor")))))))))
                            (recur))
@@ -672,12 +676,15 @@
 (defn- update-match-with-task-metadata-seq
   "Updates the match with an entry for the task metadata for all tasks. A 'match' is a set of jobs that we
   will want to all run on the same host."
-  [{:keys [tasks] :as match} db mesos-run-as-user]
-  (->> tasks
-       ;; sort-by makes task-txns created in matches->task-txns deterministic
-       (sort-by (comp :job/uuid :job #(.getRequest ^TaskAssignmentResult %)))
-       (map (partial task/TaskAssignmentResult->task-metadata db mesos-run-as-user))
-       (assoc match :task-metadata-seq)))
+  [{:keys [tasks leases] :as match} db mesos-run-as-user]
+  (let [offers (mapv :offer leases)
+        first-offer (-> offers first)
+        compute-cluster (-> first-offer :compute-cluster)]
+    (->> tasks
+         ;; sort-by makes task-txns created in matches->task-txns deterministic
+         (sort-by (comp :job/uuid :job #(.getRequest ^TaskAssignmentResult %)))
+         (map (partial task/TaskAssignmentResult->task-metadata db mesos-run-as-user compute-cluster))
+         (assoc match :task-metadata-seq))))
 
 (defn- matches->task-txns
   "Converts matches to a task transactions."
@@ -686,7 +693,7 @@
         :let [offers (mapv :offer leases)
               first-offer (-> offers first)
               slave-id (-> first-offer :slave-id :value)
-              compute-cluster-name (-> first-offer :compute-cluster-name)]
+              compute-cluster-name (-> first-offer :compute-cluster :compute-cluster-name)]
         {:keys [executor hostname ports-assigned task-id task-request]} task-metadata-seq
         :let [job-ref [:job/uuid (get-in task-request [:job :job/uuid])]]]
     [[:job/allowed-to-start? job-ref]
@@ -706,11 +713,14 @@
       :instance/start-time (now)
       :instance/status :instance.status/unknown
       :instance/task-id task-id
-      :instance/compute-cluster (cc/cluster-name->db-id compute-cluster-name)}]))
+      :instance/compute-cluster
+      (-> first-offer
+          :compute-cluster
+          cc/ComputeCluster->db-id)}]))
 
 (defn launch-matched-tasks!
   "Updates the state of matched tasks in the database and then launches them."
-  [matches conn db driver fenzo mesos-run-as-user pool-name]
+  [matches conn db fenzo mesos-run-as-user pool-name]
   (let [matches (map #(update-match-with-task-metadata-seq % db mesos-run-as-user) matches)
         task-txns (matches->task-txns matches)]
     ;; Note that this transaction can fail if a job was scheduled
@@ -745,18 +755,20 @@
       (timers/timer (metric-title "handle-resource-offer!-mesos-submit-duration" pool-name))
       ;; Iterates over offers (each offer can match to multiple tasks)
       (doseq [{:keys [leases task-metadata-seq]} matches
-              :let [offers (mapv :offer leases)
-                    task-infos (task/compile-mesos-messages offers task-metadata-seq)]]
+              :let [all-offers (mapv :offer leases)
+                    task-infos (task/compile-mesos-messages all-offers task-metadata-seq)]]
         (log/debug "Matched task-infos" task-infos)
-        (mesos/launch-tasks! driver (mapv :id offers) task-infos)
-        (doseq [{:keys [hostname task-request] :as meta} task-metadata-seq]
-          ; Iterate over the tasks we matched
+        (doseq [[compute-cluster offers] (group-by :compute-cluster all-offers)]
+          (mesos/launch-tasks! (cc/get-mesos-driver-hack compute-cluster) (mapv :id offers) task-infos)
+          (log/info "Launching " (count offers) "offers for" (cc/ComputeCluster->compute-cluster-name compute-cluster) "compute cluster")
+          (doseq [{:keys [hostname task-request] :as meta} task-metadata-seq]
+            ; Iterate over the tasks we matched
           (let [user (get-in task-request [:job :job/user])]
             (ratelimit/spend! ratelimit/job-launch-rate-limiter user 1))
           (locking fenzo
             (.. fenzo
                 (getTaskAssigner)
-                (call task-request hostname))))))))
+                (call task-request hostname)))))))))
 
 (defn update-host-reservations!
   "Updates the rebalancer-reservation-atom with the result of the match cycle.
@@ -770,7 +782,7 @@
 (defn handle-resource-offers!
   "Gets a list of offers from mesos. Decides what to do with them all--they should all
    be accepted or rejected at the end of the function."
-  [conn driver ^TaskScheduler fenzo pool-name->pending-jobs-atom mesos-run-as-user
+  [conn ^TaskScheduler fenzo pool-name->pending-jobs-atom mesos-run-as-user
    user->usage user->quota num-considerable offers-chan offers rebalancer-reservation-atom pool-name]
   (log/debug "In" pool-name "pool, invoked handle-resource-offers!")
   (let [offer-stash (atom nil)] ;; This is a way to ensure we never lose offers fenzo assigned if an error occurs in the middle of processing
@@ -816,7 +828,7 @@
             (do
               (swap! pool-name->pending-jobs-atom remove-matched-jobs-from-pending-jobs matched-job-uuids pool-name)
               (log/debug "In" pool-name "pool, updated pool-name->pending-jobs-atom:" @pool-name->pending-jobs-atom)
-              (launch-matched-tasks! matches conn db driver fenzo mesos-run-as-user pool-name)
+              (launch-matched-tasks! matches conn db fenzo mesos-run-as-user pool-name)
               (update-host-reservations! rebalancer-reservation-atom matched-job-uuids)
               matched-considerable-jobs-head?)))
         (catch Throwable t
@@ -846,7 +858,7 @@
 (counters/defcounter [cook-mesos scheduler offer-chan-depth])
 
 (defn make-offer-handler
-  [conn driver-atom fenzo pool-name->pending-jobs-atom agent-attributes-cache max-considerable scaleback
+  [conn fenzo pool-name->pending-jobs-atom agent-attributes-cache max-considerable scaleback
    floor-iterations-before-warn floor-iterations-before-reset trigger-chan rebalancer-reservation-atom
    mesos-run-as-user pool-name]
   (let [chan-length 100
@@ -895,7 +907,7 @@
                       _ (log/debug "In" pool-name "pool, passing following offers to handle-resource-offers!" offers)
                       using-pools? (not (nil? (config/default-pool)))
                       user->quota (quota/create-user->quota-fn (d/db conn) (if using-pools? pool-name nil))
-                      matched-head? (handle-resource-offers! conn @driver-atom fenzo pool-name->pending-jobs-atom
+                      matched-head? (handle-resource-offers! conn fenzo pool-name->pending-jobs-atom
                                                              mesos-run-as-user @user->usage-future user->quota
                                                              num-considerable offers-chan offers
                                                              rebalancer-reservation-atom pool-name)]
@@ -1032,6 +1044,7 @@
           :when (time/after? now timeout-boundary)]
       task-id)))
 
+; TODO: Should get the compute-cluster from the task structure, and kill based on that.
 (defn kill-lingering-tasks
   [now conn driver config]
   (let [{:keys [max-timeout-hours
@@ -1061,6 +1074,7 @@
            [[:instance/update-state [:instance/task-id task-id] :instance.status/failed [:reason/name :max-runtime-exceeded]]
             [:db/add [:instance/task-id task-id] :instance/reason [:reason/name :max-runtime-exceeded]]])))))
 
+; Should not use driver as an argument.
 (defn lingering-task-killer
   "Periodically kill lingering tasks.
 
@@ -1336,7 +1350,7 @@
 (meters/defmeter [cook-mesos scheduler offer-chan-full-error])
 
 (defn make-fenzo-scheduler
-  [driver offer-incubate-time-ms fitness-calculator good-enough-fitness]
+  [compute-cluster offer-incubate-time-ms fitness-calculator good-enough-fitness]
   (.. (TaskScheduler$Builder.)
       (disableShortfallEvaluation) ;; We're not using the autoscaling features
       (withLeaseOfferExpirySecs (max (-> offer-incubate-time-ms time/millis time/in-seconds) 1)) ;; should be at least 1 second
@@ -1350,12 +1364,10 @@
                                  (let [offer (:offer lease)
                                        id (:id offer)]
                                    (log/debug "Fenzo is declining offer" offer)
-                                   (if-let [driver @driver]
-                                     (try
-                                       (decline-offers driver [id])
-                                       (catch Exception e
-                                         (log/error e "Unable to decline fenzos rejected offers")))
-                                     (log/error "Unable to decline offer; no current driver"))))))
+                                   (try
+                                     (decline-offers (cc/get-mesos-driver-hack compute-cluster) [id])
+                                     (catch Exception e
+                                       (log/error e "Unable to decline fenzos rejected offers")))))))
       (build)))
 
 (defn persist-mea-culpa-failure-limit!
@@ -1425,7 +1437,7 @@
 (defn create-mesos-scheduler
   "Creates the mesos scheduler which processes status updates asynchronously but in order of receipt."
   [gpu-enabled? conn heartbeat-ch pool->fenzo pool->offers-chan match-trigger-chan
-   handle-exit-code handle-progress-message sandbox-syncer-state compute-cluster-name]
+   handle-exit-code handle-progress-message sandbox-syncer-state compute-cluster]
   (let [configured-framework-id (cook.config/framework-id-config)
         sync-agent-sandboxes-fn #(sandbox/sync-agent-sandboxes sandbox-syncer-state configured-framework-id %1 %2)
         message-handlers {:handle-exit-code handle-exit-code
@@ -1493,7 +1505,7 @@
       (resource-offers
         [this driver raw-offers]
         (log/debug "Got offers:" raw-offers)
-        (let [offers (map #(assoc % :compute-cluster-name compute-cluster-name) raw-offers)
+        (let [offers (map #(assoc % :compute-cluster compute-cluster) raw-offers)
               pool->offers (group-by (fn [o] (plugins/select-pool pool-plugin/plugin o)) offers)
               using-pools? (config/default-pool)]
           (log/info "Offers by pool:" (pc/map-vals count pool->offers))
@@ -1522,10 +1534,10 @@
         (meters/mark! handle-status-update-rate)
         (let [task-id (-> status :task-id :value)]
           (async-in-order-processing
-            task-id #(handle-status-update conn driver pool->fenzo sync-agent-sandboxes-fn status)))))))
+            task-id #(handle-status-update conn compute-cluster pool->fenzo sync-agent-sandboxes-fn status)))))))
 
 (defn create-datomic-scheduler
-  [{:keys [conn driver-atom exit-code-syncer-state fenzo-fitness-calculator fenzo-floor-iterations-before-reset
+  [{:keys [conn compute-cluster exit-code-syncer-state fenzo-fitness-calculator fenzo-floor-iterations-before-reset
            fenzo-floor-iterations-before-warn fenzo-max-jobs-considered fenzo-scaleback good-enough-fitness
            gpu-enabled? heartbeat-ch mea-culpa-failure-limit mesos-run-as-user agent-attributes-cache offer-incubate-time-ms
            pool-name->pending-jobs-atom progress-config rebalancer-reservation-atom sandbox-syncer-state task-constraints
@@ -1538,7 +1550,7 @@
         pools' (if (-> pools count pos?)
                  pools
                  [{:pool/name "no-pool"}])
-        pool-name->fenzo (pool-map pools' (fn [_] (make-fenzo-scheduler driver-atom offer-incubate-time-ms
+        pool-name->fenzo (pool-map pools' (fn [_] (make-fenzo-scheduler compute-cluster offer-incubate-time-ms
                                                                         fenzo-fitness-calculator good-enough-fitness)))
         {:keys [pool->offers-chan pool->resources-atom]}
         (reduce (fn [m pool-ent]
@@ -1546,7 +1558,7 @@
                         fenzo (pool-name->fenzo pool-name)
                         [offers-chan resources-atom]
                         (make-offer-handler
-                          conn driver-atom fenzo pool-name->pending-jobs-atom agent-attributes-cache fenzo-max-jobs-considered
+                          conn fenzo pool-name->pending-jobs-atom agent-attributes-cache fenzo-max-jobs-considered
                           fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset
                           match-trigger-chan rebalancer-reservation-atom mesos-run-as-user pool-name)]
                     (-> m
@@ -1564,6 +1576,6 @@
     (start-jobs-prioritizer! conn pool-name->pending-jobs-atom task-constraints rank-trigger-chan)
     {:scheduler (create-mesos-scheduler gpu-enabled? conn heartbeat-ch pool-name->fenzo pool->offers-chan
                                         match-trigger-chan handle-exit-code handle-progress-message sandbox-syncer-state
-                                        (cc/get-mesos-cluster-name-hack))
+                                        compute-cluster)
      :view-incubating-offers (fn get-resources-atom [p]
                                (deref (get pool->resources-atom p)))}))
