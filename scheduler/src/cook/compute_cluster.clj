@@ -17,8 +17,8 @@
   (:require [clojure.tools.logging :as log]
             [datomic.api :as d]))
 
-(defn- create-missing-compute-cluster
-  "Create a missing compute-cluster for one thats not yet in the database."
+(defn- write-compute-cluster
+  "Create a missing compute-cluster for one that's not yet in the database."
   [conn compute-cluster]
   (log/info "Installing a new compute cluster in datomic for " compute-cluster)
   @(d/transact
@@ -54,7 +54,7 @@
          framework-id]}
   (let [cluster-entity (get-mesos-cluster-entity-id (d/db conn) mesos-cluster)]
     (when-not cluster-entity
-      (create-missing-compute-cluster conn (mesos-cluster->compute-cluster-map-for-datomic mesos-cluster)))
+      (write-compute-cluster conn (mesos-cluster->compute-cluster-map-for-datomic mesos-cluster)))
     {:cluster-type :mesos-cluster
      :compute-cluster-name compute-cluster-name
      :mesos-framework-id framework-id
