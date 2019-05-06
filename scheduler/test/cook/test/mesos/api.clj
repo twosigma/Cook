@@ -1479,7 +1479,8 @@
                               ; Observe this does not include the provenance record of filled in data.
                               {:compute-cluster-name "compute-cluster-default-compute-cluster-name"
                                :mesos {:framework-id "compute-cluster-default-test-framework"}}}
-          ; Track whether we invoke this function to fetch the default. We shouldn't use this unless we're filling in because the entity lacks a compute cluster.
+          ; Track whether we invoke this function to fetch the default. We shouldn't use this unless
+          ; we're filling in because the entity lacks a compute cluster.
           fetched-default-cluster-atom (atom false)
           tmp-cluster-name-hack cc/cluster-name-hack]
       (with-redefs [cc/cluster-name-hack

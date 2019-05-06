@@ -33,22 +33,24 @@
    :compute-cluster/mesos-framework-id framework-id})
 
 (defn get-mesos-cluster-entity-id
-  "Given a configuration map for a mesos cluster, return the datomic entity-id corresponding to the cluster, if it exists. Internal helper function."
+  "Given a configuration map for a mesos cluster, return the datomic entity-id corresponding to the cluster,
+  if it exists. Internal helper function."
   [unfiltered-db {:keys [compute-cluster-name framework-id]}]
   {:pre [compute-cluster-name
          framework-id]}
   (let [query-result
         (d/q '[:find [?c]
-             :in $ ?cluster-name? ?mesos-id?
-             :where
-             [?c :compute-cluster/type :compute-cluster.type/mesos]
-             [?c :compute-cluster/cluster-name ?cluster-name?]
-             [?c :compute-cluster/mesos-framework-id ?framework-id?]]
-           unfiltered-db compute-cluster-name framework-id)]
+               :in $ ?cluster-name? ?mesos-id?
+               :where
+               [?c :compute-cluster/type :compute-cluster.type/mesos]
+               [?c :compute-cluster/cluster-name ?cluster-name?]
+               [?c :compute-cluster/mesos-framework-id ?framework-id?]]
+             unfiltered-db compute-cluster-name framework-id)]
     (first query-result)))
 
 (defn get-mesos-cluster-map
-  "Process one mesos cluster specification, returning the entity id of the corresponding compute-cluster, creating the cluster if it does not exist."
+  "Process one mesos cluster specification, returning the entity id of the corresponding compute-cluster,
+  creating the cluster if it does not exist."
   [conn {:keys [compute-cluster-name framework-id] :as mesos-cluster}]
   {:pre [compute-cluster-name
          framework-id]}
@@ -86,7 +88,8 @@
                               (map (partial get-mesos-cluster-map conn)))
         reduce-fn (fn [accum {:keys [compute-cluster-name] :as cluster-dict}]
                     (when (contains? accum compute-cluster-name)
-                      (throw (IllegalArgumentException. (str "Multiple compute-clusters have the same name: " compute-cluster-name))))
+                      (throw (IllegalArgumentException.
+                               (str "Multiple compute-clusters have the same name: " compute-cluster-name))))
                     (assoc accum compute-cluster-name cluster-dict))]
     (doseq [ii compute-clusters]
       (log/info "Setting up compute cluster: " ii))
