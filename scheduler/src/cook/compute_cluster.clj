@@ -64,8 +64,25 @@
 
 (defn get-mesos-clusters-from-config
   "Get all of the mesos clusters defined in the configuration.
-  This is a wart that undo'ed the shattering of the :mesos {...} into separate keys that
-  occurs in config.edn, and consolidates it into one dictionary for downstream consumption."
+  In config.edn, we put all of the mesos keys under one toplevel dictionary.
+
+  E.g.:
+
+  {:failover-timeout-ms nil
+   :framework-id #config/env \"COOK_FRAMEWORK_ID\"
+   :master #config/env \"MESOS_MASTER\"
+   ...
+   }
+
+  However, in config.clj, we split this up into lots of different keys at the toplevel:
+
+  :mesos-master (fnk [[:config {mesos nil}]]
+      ...)
+  :mesos-framework-id (fnk [[:config {mesos ....
+
+  This function undoes this shattering of the :mesos {...} into separate keys that
+  occurs in config.clj. Long term, we need to fix config.clj to not to that, probably
+  as part of global cook, at which time, this probably won't need to exist. Until then however....."
   [{:keys [mesos-compute-cluster-name mesos-framework-id]}]
   [{:compute-cluster-name mesos-compute-cluster-name :framework-id mesos-framework-id}])
 
@@ -91,8 +108,8 @@
                       (throw (IllegalArgumentException.
                                (str "Multiple compute-clusters have the same name: " compute-cluster-name))))
                     (assoc accum compute-cluster-name cluster-dict))]
-    (doseq [ii compute-clusters]
-      (log/info "Setting up compute cluster: " ii))
+    (doseq [compute-cluster compute-clusters]
+      (log/info "Setting up compute cluster: " compute-cluster))
     (reset! cluster-name->cluster-dict-atom (reduce reduce-fn {} compute-clusters))))
 
 ; TODO: Until we thread the compute-cluster-name through fenzo, we'll need this hack to remember

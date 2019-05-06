@@ -226,7 +226,8 @@ class CookTest(util.CookTest):
             message = repr(instance)
 
             self.assertIsNotNone(instance['compute-cluster'], message)
-            self.assertEqual(expected_compute_cluster, instance['compute-cluster']['compute-cluster-name'], message)
+            self.assertEqual('mesos', instance['compute-cluster']['type'], message)
+            self.assertEqual(expected_compute_cluster, instance['compute-cluster']['name'], message)
             self.assertEqual(expected_mesos_framework, instance['compute-cluster']['mesos']['framework-id'], message)
         finally:
             util.kill_jobs(self.cook_url, [job_uuid])

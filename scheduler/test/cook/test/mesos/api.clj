@@ -1477,7 +1477,8 @@
                               :task_id (str job-entity-id "-executor-1")
                               :compute-cluster
                               ; Observe this does not include the provenance record of filled in data.
-                              {:compute-cluster-name "compute-cluster-default-compute-cluster-name"
+                              {:name "compute-cluster-default-compute-cluster-name"
+                               :type :mesos
                                :mesos {:framework-id "compute-cluster-default-test-framework"}}}
           ; Track whether we invoke this function to fetch the default. We shouldn't use this unless
           ; we're filling in because the entity lacks a compute cluster.
@@ -1559,7 +1560,8 @@
         (reset! fetched-default-cluster-atom false)
         (testing "Backward compatability when no cluster map supplied"
           ; Should map to the default. Make sure we actually did fetch the default.
-          (is (= {:compute-cluster-name "compute-cluster-default-compute-cluster-name"
+          (is (= {:name "compute-cluster-default-compute-cluster-name"
+                  :type :mesos
                   :mesos {:framework-id "compute-cluster-default-test-framework"}}
                  (api/fetch-compute-cluster-map (db conn) nil)))
           (is @fetched-default-cluster-atom))))))
