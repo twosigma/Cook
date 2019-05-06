@@ -56,7 +56,7 @@
           (is (and id2b (< 0 id2b)))
 
           (is (= (dissoc fetch-mesos-1a :db-id)
-                 {:cluster-type :mesos-cluster
+                 {:compute-cluster-type :mesos-cluster
                   :compute-cluster-name "mesos-1"
                   :mesos-framework-id "mesos-1a"})))))))
 

@@ -54,13 +54,13 @@
   [conn {:keys [compute-cluster-name framework-id] :as mesos-cluster}]
   {:pre [compute-cluster-name
          framework-id]}
-  (let [cluster-entity (get-mesos-cluster-entity-id (d/db conn) mesos-cluster)]
-    (when-not cluster-entity
+  (let [cluster-entity-id (get-mesos-cluster-entity-id (d/db conn) mesos-cluster)]
+    (when-not cluster-entity-id
       (write-compute-cluster conn (mesos-cluster->compute-cluster-map-for-datomic mesos-cluster)))
-    {:cluster-type :mesos-cluster
+    {:compute-cluster-type :mesos-cluster
      :compute-cluster-name compute-cluster-name
      :mesos-framework-id framework-id
-     :db-id (get-mesos-cluster-entity-id (d/db conn) mesos-cluster)}))
+     :db-id (or cluster-entity-id (get-mesos-cluster-entity-id (d/db conn) mesos-cluster))}))
 
 (defn get-mesos-clusters-from-config
   "Get all of the mesos clusters defined in the configuration.
@@ -108,8 +108,8 @@
                       (throw (IllegalArgumentException.
                                (str "Multiple compute-clusters have the same name: " compute-cluster-name))))
                     (assoc accum compute-cluster-name cluster-dict))]
-    (doseq [compute-cluster compute-clusters]
-      (log/info "Setting up compute cluster: " compute-cluster))
+    (run! (fn [compute-cluster]
+            (log/info "Setting up compute cluster: " compute-cluster)) compute-clusters)
     (reset! cluster-name->cluster-dict-atom (reduce reduce-fn {} compute-clusters))))
 
 ; TODO: Until we thread the compute-cluster-name through fenzo, we'll need this hack to remember
