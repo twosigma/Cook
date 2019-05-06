@@ -330,6 +330,9 @@
                                (or (:framework-name mesos) "Cook")))
      :mesos-framework-id (fnk [[:config {mesos nil}]]
                            (:framework-id mesos))
+     :mesos-compute-cluster-name (fnk [[:config {mesos nil}]]
+                                   (or (:compute-cluster-name mesos) "default-compute-cluster-from-config-defaulting"))
+
      :jmx-metrics (fnk [[:config [:metrics {jmx false}]]]
                     (when jmx
                       ((util/lazy-load-var 'cook.reporter/jmx-reporter))))

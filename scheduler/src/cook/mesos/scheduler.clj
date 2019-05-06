@@ -24,6 +24,7 @@
             [clojure.edn :as edn]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
+            [cook.compute-cluster :as cc]
             [cook.config :as config]
             [cook.datomic :as datomic]
             [cook.plugins.completion :as completion]
@@ -669,7 +670,8 @@
                (remove #(contains? matched-job-uuids (:job/uuid %)) jobs))))
 
 (defn- update-match-with-task-metadata-seq
-  "Updates the match with an entry for the task metadata for all tasks."
+  "Updates the match with an entry for the task metadata for all tasks. A 'match' is a set of jobs that we
+  will want to all run on the same host."
   [{:keys [tasks] :as match} db mesos-run-as-user]
   (->> tasks
        ;; sort-by makes task-txns created in matches->task-txns deterministic
@@ -701,7 +703,8 @@
       :instance/slave-id slave-id
       :instance/start-time (now)
       :instance/status :instance.status/unknown
-      :instance/task-id task-id}]))
+      :instance/task-id task-id
+      :instance/compute-cluster (cc/cluster-name->db-id (cc/cluster-name-hack))}]))
 
 (defn launch-matched-tasks!
   "Updates the state of matched tasks in the database and then launches them."
@@ -780,6 +783,7 @@
                                   (timers/timer (metric-title "handle-resource-offer!-considerable-jobs-duration" pool-name))
                                   (pending-jobs->considerable-jobs
                                     db pending-jobs user->quota user->usage num-considerable pool-name))
+              ; matches is a vector of maps of {:hostname .. :leases .. :tasks}
               {:keys [matches failures]} (timers/time!
                                            (timers/timer (metric-title "handle-resource-offer!-match-duration" pool-name))
                                            (match-offer-to-schedule db fenzo considerable-jobs offers rebalancer-reservation-atom))

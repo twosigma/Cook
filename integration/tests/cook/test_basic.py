@@ -209,6 +209,30 @@ class CookTest(util.CookTest):
         finally:
             util.kill_jobs(self.cook_url, [uuid])
 
+    def test_compute_cluster(self):
+        settings_dict = util.settings(self.cook_url)
+        # For now, we only have one compute cluster. This could be wrong with future
+        # refactors, but for now, this is the only compute cluster we have, so we should
+        # expect it.
+        expected_compute_cluster = settings_dict['mesos-compute-cluster-name']
+        expected_mesos_framework = settings_dict['mesos-framework-id']
+        job_uuid, resp = util.submit_job(self.cook_url)
+
+        try:
+            self.assertIsNotNone(expected_compute_cluster)
+            self.assertEqual(resp.status_code, 201, msg=resp.content)
+
+            instance = util.wait_for_instance(self.cook_url, job_uuid)
+            message = repr(instance)
+
+            self.assertIsNotNone(instance['compute-cluster'], message)
+            self.assertEqual('mesos', instance['compute-cluster']['type'], message)
+            self.assertEqual(expected_compute_cluster, instance['compute-cluster']['name'], message)
+            self.assertEqual(expected_mesos_framework, instance['compute-cluster']['mesos']['framework-id'], message)
+        finally:
+            util.kill_jobs(self.cook_url, [job_uuid])
+
+
     def test_executor_flag(self):
         job_uuid, resp = util.submit_job(self.cook_url, executor='cook')
         self.assertEqual(201, resp.status_code, msg=resp.content)

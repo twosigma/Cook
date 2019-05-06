@@ -315,6 +315,32 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
              any semantic meaning other than they will be considered schedulable
              at the same time. A primitive of job group will be added to add
              more semantic power in the future."}
+   ; compute-cluster types
+   {:db/id (d/tempid :db.part/user)
+    :db/ident :compute-cluster.type/mesos}
+   {:db/id (d/tempid :db.part/user)
+    :db/ident :compute-cluster.type/kubernetes}
+   ;; compute-cluster
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :compute-cluster/type
+    :db/valueType :db.type/ref
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :compute-cluster/cluster-name
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db
+    :db/doc "A named compute cluster denotes a single place where we execute. It may correspond to
+             a single mesos cluster, a single kubernetes cluster, etc. A cluster can change configuration
+             over time, causing several entries. On startup, we determine which compute-cluster entity corresponds
+             the a configured cluster and attach it to jobs."}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :compute-cluster/mesos-framework-id
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db
+    :db/doc "For a mesos compute cluster, what framework-id did it run under?"}
    ;; Container Attributes
    {:db/id (d/tempid :db.part/db)
     :db/doc "variant records based on container/type"
@@ -627,6 +653,12 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :db/valueType :db.type/long
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :instance/compute-cluster
+    :db/valueType :db.type/ref
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db
+    :db/doc "On which compute cluster did the instance run?"}
 
    ;; Share attributes
    {:db/id (d/tempid :db.part/db)

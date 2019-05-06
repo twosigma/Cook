@@ -22,6 +22,7 @@
             [clojure.string :as str]
             [clojure.walk :refer [keywordize-keys]]
             [cook.authorization :as auth]
+            [cook.compute-cluster :as cc]
             [cook.config :as config]
             [cook.impersonation :as imp]
             [cook.mesos.api :as api]
@@ -204,41 +205,42 @@
         (is (= "No content." (:body delete-response)))))))
 
 (deftest descriptive-state
-  (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
-        job-waiting (create-dummy-job conn :user "mforsyth"
-                                      :job-state :job.state/waiting)
-        job-running (create-dummy-job conn :user "mforsyth"
-                                      :job-state :job.state/running)
-        job-success (create-dummy-job conn :user "mforsyth"
-                                      :job-state :job.state/completed)
-        instance-success (create-dummy-instance conn job-success
-                                                :instance-status :instance.status/success)
-        job-fail (create-dummy-job conn :user "mforsyth"
-                                   :job-state :job.state/completed)
-        instance-fail (create-dummy-instance conn job-success
-                                             :instance-status :instance.status/success)
-        db (d/db conn)
-        waiting-uuid (:job/uuid (d/entity db job-waiting))
-        running-uuid (:job/uuid (d/entity db job-running))
-        success-uuid (:job/uuid (d/entity db job-success))
-        fail-uuid (:job/uuid (d/entity db job-fail))
-        h (basic-handler conn)
-        req-attrs {:scheme :http
-                   :uri "/rawscheduler"
-                   :authorization/user "mforsyth"
-                   :request-method :get}
-        waiting-resp (h (merge req-attrs {:query-params {"job" (str waiting-uuid)}}))
-        waiting-body (response->body-data waiting-resp)
-        running-resp (h (merge req-attrs {:query-params {"job" (str running-uuid)}}))
-        running-body (response->body-data running-resp)
-        success-resp (h (merge req-attrs {:query-params {"job" (str success-uuid)}}))
-        success-body (response->body-data success-resp)
-        fail-resp (h (merge req-attrs {:query-params {"job" (str fail-uuid)}}))
-        fail-body (response->body-data fail-resp)]
-    (is (= ((first waiting-body) "state") "waiting"))
-    (is (= ((first running-body) "state") "running"))
-    (is (= ((first success-body) "state") "success"))
-    (is (= ((first fail-body) "state") "failed"))))
+  (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")]
+    (testutil/setup-fake-test-compute-cluster conn)
+    (let [job-waiting (create-dummy-job conn :user "mforsyth"
+                                        :job-state :job.state/waiting)
+          job-running (create-dummy-job conn :user "mforsyth"
+                                        :job-state :job.state/running)
+          job-success (create-dummy-job conn :user "mforsyth"
+                                        :job-state :job.state/completed)
+          instance-success (create-dummy-instance conn job-success
+                                                  :instance-status :instance.status/success)
+          job-fail (create-dummy-job conn :user "mforsyth"
+                                     :job-state :job.state/completed)
+          instance-fail (create-dummy-instance conn job-success
+                                               :instance-status :instance.status/success)
+          db (d/db conn)
+          waiting-uuid (:job/uuid (d/entity db job-waiting))
+          running-uuid (:job/uuid (d/entity db job-running))
+          success-uuid (:job/uuid (d/entity db job-success))
+          fail-uuid (:job/uuid (d/entity db job-fail))
+          h (basic-handler conn)
+          req-attrs {:scheme :http
+                     :uri "/rawscheduler"
+                     :authorization/user "mforsyth"
+                     :request-method :get}
+          waiting-resp (h (merge req-attrs {:query-params {"job" (str waiting-uuid)}}))
+          waiting-body (response->body-data waiting-resp)
+          running-resp (h (merge req-attrs {:query-params {"job" (str running-uuid)}}))
+          running-body (response->body-data running-resp)
+          success-resp (h (merge req-attrs {:query-params {"job" (str success-uuid)}}))
+          success-body (response->body-data success-resp)
+          fail-resp (h (merge req-attrs {:query-params {"job" (str fail-uuid)}}))
+          fail-body (response->body-data fail-resp)]
+      (is (= ((first waiting-body) "state") "waiting"))
+      (is (= ((first running-body) "state") "running"))
+      (is (= ((first success-body) "state") "success"))
+      (is (= ((first fail-body) "state") "failed")))))
 
 (deftest job-validator
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
@@ -1012,7 +1014,7 @@
                            :uri "/retry"
                            :headers {"Content-Type" "application/json"}
                            :authorization/user "dgrnbrg"
-                           :body-params {"job" [uuid]
+                           :body-params {"jobs" [uuid]
                                          "increment" 5}}))
               499)))))
 
@@ -1465,75 +1467,104 @@
 
 (deftest test-fetch-instance-map
   (let [conn (restore-fresh-database! "datomic:mem://test-fetch-instance-map")]
+    (testutil/setup-fake-test-compute-cluster conn)
     (let [job-entity-id (create-dummy-job conn :user "test-user" :job-state :job.state/completed)
           basic-instance-properties {:executor-id (str job-entity-id "-executor-1")
                                      :slave-id "slave-1"
                                      :task-id (str job-entity-id "-executor-1")}
           basic-instance-map {:executor_id (str job-entity-id "-executor-1")
                               :slave_id "slave-1"
-                              :task_id (str job-entity-id "-executor-1")}]
+                              :task_id (str job-entity-id "-executor-1")
+                              :compute-cluster
+                              ; Observe this does not include the provenance record of filled in data.
+                              {:name "compute-cluster-default-compute-cluster-name"
+                               :type :mesos
+                               :mesos {:framework-id "compute-cluster-default-test-framework"}}}
+          ; Track whether we invoke this function to fetch the default. We shouldn't use this unless
+          ; we're filling in because the entity lacks a compute cluster.
+          fetched-default-cluster-atom (atom false)
+          tmp-cluster-name-hack cc/cluster-name-hack]
+      (with-redefs [cc/cluster-name-hack
+                    (fn []
+                      (reset! fetched-default-cluster-atom true)
+                      (tmp-cluster-name-hack))]
 
-      (testing "basic-instance-without-sandbox"
-        (let [instance-entity-id (apply create-dummy-instance conn job-entity-id
-                                        :instance-status :instance.status/success
-                                        (mapcat seq basic-instance-properties))
-              instance-entity (d/entity (db conn) instance-entity-id)
-              instance-map (api/fetch-instance-map (db conn) instance-entity)
-              expected-map (assoc basic-instance-map
-                             :backfilled false
-                             :hostname "localhost"
-                             :ports []
-                             :preempted false
-                             :progress 0
-                             :status "success")]
-          (is (= expected-map (dissoc instance-map :start_time)))))
+        (reset! fetched-default-cluster-atom false)
+        (testing "basic-instance-without-sandbox"
+          (let [instance-entity-id (apply create-dummy-instance conn job-entity-id
+                                          :instance-status :instance.status/success
+                                          (mapcat seq basic-instance-properties))
+                instance-entity (d/entity (db conn) instance-entity-id)
+                instance-map (api/fetch-instance-map (db conn) instance-entity)
+                expected-map (assoc basic-instance-map
+                               :backfilled false
+                               :hostname "localhost"
+                               :ports []
+                               :preempted false
+                               :progress 0
+                               :status "success")]
+            (is (= expected-map (dissoc instance-map :start_time))))
+          (is (not @fetched-default-cluster-atom)))
 
-      (testing "basic-instance-with-sandbox-url"
-        (let [instance-entity-id (apply create-dummy-instance conn job-entity-id
-                                        :instance-status :instance.status/success
-                                        :sandbox-directory "/path/to/working/directory"
-                                        (mapcat seq basic-instance-properties))
-              instance-entity (d/entity (db conn) instance-entity-id)
-              instance-map (api/fetch-instance-map (db conn) instance-entity)
-              expected-map (assoc basic-instance-map
-                             :backfilled false
-                             :hostname "localhost"
-                             :output_url "http://localhost:5051/files/read.json?path=%2Fpath%2Fto%2Fworking%2Fdirectory"
-                             :ports []
-                             :preempted false
-                             :progress 0
-                             :sandbox_directory "/path/to/working/directory"
-                             :status "success")]
-          (is (= expected-map (dissoc instance-map :start_time)))))
+        (reset! fetched-default-cluster-atom false)
+        (testing "basic-instance-with-sandbox-url"
+          (let [instance-entity-id (apply create-dummy-instance conn job-entity-id
+                                          :instance-status :instance.status/success
+                                          :sandbox-directory "/path/to/working/directory"
+                                          (mapcat seq basic-instance-properties))
+                instance-entity (d/entity (db conn) instance-entity-id)
+                instance-map (api/fetch-instance-map (db conn) instance-entity)
+                expected-map (assoc basic-instance-map
+                               :backfilled false
+                               :hostname "localhost"
+                               :output_url "http://localhost:5051/files/read.json?path=%2Fpath%2Fto%2Fworking%2Fdirectory"
+                               :ports []
+                               :preempted false
+                               :progress 0
+                               :sandbox_directory "/path/to/working/directory"
+                               :status "success")]
+            (is (= expected-map (dissoc instance-map :start_time))))
+          (is (not @fetched-default-cluster-atom)))
 
-      (testing "detailed-instance"
-        (let [instance-entity-id (apply create-dummy-instance conn job-entity-id
-                                        :exit-code 2
-                                        :hostname "agent-hostname"
-                                        :instance-status :instance.status/success
-                                        :preempted? true
-                                        :progress 78
-                                        :progress-message "seventy-eight percent done"
-                                        :reason :preempted-by-rebalancer
-                                        :sandbox-directory "/path/to/working/directory"
-                                        (mapcat seq basic-instance-properties))
-              instance-entity (d/entity (db conn) instance-entity-id)
-              instance-map (api/fetch-instance-map (db conn) instance-entity)
-              expected-map (assoc basic-instance-map
-                             :backfilled false
-                             :exit_code 2
-                             :hostname "agent-hostname"
-                             :output_url "http://agent-hostname:5051/files/read.json?path=%2Fpath%2Fto%2Fworking%2Fdirectory"
-                             :ports []
-                             :preempted true
-                             :progress 78
-                             :progress_message "seventy-eight percent done"
-                             :reason_code 1002
-                             :reason_string "Preempted by rebalancer"
-                             :reason_mea_culpa true
-                             :sandbox_directory "/path/to/working/directory"
-                             :status "success")]
-          (is (= expected-map (dissoc instance-map :start_time))))))))
+        (reset! fetched-default-cluster-atom false)
+        (testing "detailed-instance"
+          (let [instance-entity-id (apply create-dummy-instance conn job-entity-id
+                                          :exit-code 2
+                                          :hostname "agent-hostname"
+                                          :instance-status :instance.status/success
+                                          :preempted? true
+                                          :progress 78
+                                          :progress-message "seventy-eight percent done"
+                                          :reason :preempted-by-rebalancer
+                                          :sandbox-directory "/path/to/working/directory"
+                                          (mapcat seq basic-instance-properties))
+                instance-entity (d/entity (db conn) instance-entity-id)
+                instance-map (api/fetch-instance-map (db conn) instance-entity)
+                expected-map (assoc basic-instance-map
+                               :backfilled false
+                               :exit_code 2
+                               :hostname "agent-hostname"
+                               :output_url "http://agent-hostname:5051/files/read.json?path=%2Fpath%2Fto%2Fworking%2Fdirectory"
+                               :ports []
+                               :preempted true
+                               :progress 78
+                               :progress_message "seventy-eight percent done"
+                               :reason_code 1002
+                               :reason_string "Preempted by rebalancer"
+                               :reason_mea_culpa true
+                               :sandbox_directory "/path/to/working/directory"
+                               :status "success")]
+            (is (= expected-map (dissoc instance-map :start_time))))
+          (is (not @fetched-default-cluster-atom)))
+
+        (reset! fetched-default-cluster-atom false)
+        (testing "Backward compatability when no cluster map supplied"
+          ; Should map to the default. Make sure we actually did fetch the default.
+          (is (= {:name "compute-cluster-default-compute-cluster-name"
+                  :type :mesos
+                  :mesos {:framework-id "compute-cluster-default-test-framework"}}
+                 (api/fetch-compute-cluster-map (db conn) nil)))
+          (is @fetched-default-cluster-atom))))))
 
 (deftest test-file-plugin
   (with-redefs [file-plugin/plugin (reify FileUrlGenerator

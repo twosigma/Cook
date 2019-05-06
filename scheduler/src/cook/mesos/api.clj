@@ -26,6 +26,7 @@
             [compojure.api.middleware :as c-mw]
             [compojure.api.sweet :as c-api]
             [compojure.core :refer [ANY GET POST routes]]
+            [cook.compute-cluster :as cc]
             [cook.config :as config]
             [cook.cors :as cors]
             [cook.datomic :as datomic]
@@ -176,6 +177,16 @@
    (s/optional-key :extract) s/Bool
    (s/optional-key :cache) s/Bool})
 
+(def MesosComputeCluster
+  "Schema for a Mesos compute cluster"
+  {:framework-id s/Str})
+
+(def ComputeCluster
+  "Schema for a compute cluster"
+  {:name s/Str
+   :type s/Keyword
+   (s/optional-key :mesos) MesosComputeCluster})
+
 (def Instance
   "Schema for a description of a single job instance."
   {:status s/Str
@@ -186,6 +197,7 @@
    :preempted s/Bool
    :backfilled s/Bool
    :ports [s/Int]
+   :compute-cluster ComputeCluster
    (s/optional-key :start_time) s/Int
    (s/optional-key :mesos_start_time) s/Int
    (s/optional-key :end_time) s/Int
@@ -935,6 +947,24 @@
       (log/debug e "Unable to retrieve directory path for" task-id "on agent" agent-hostname)
       nil)))
 
+(defn compute-cluster-entity->map
+  [entity]
+  (cond-> {:name (:compute-cluster/cluster-name entity)}
+    (= :compute-cluster.type/mesos (:compute-cluster/type entity))
+    (-> (assoc :mesos {:framework-id (:compute-cluster/mesos-framework-id entity)})
+        (assoc :type :mesos))))
+
+(defn fetch-compute-cluster-map
+  "Converts a compute cluster entity as a map representing the fields. For legacy instances
+  that predate cook-cluster, inline the default cluster, pulled from config."
+  [db entity]
+  (if entity
+    (compute-cluster-entity->map entity)
+    (->> (cc/cluster-name-hack)  ; Get the default cluster.
+         cc/cluster-name->db-id
+         (d/entity db)
+         (fetch-compute-cluster-map db))))
+
 (defn fetch-instance-map
   "Converts the instance entity to a map representing the instance fields."
   [db instance]
@@ -953,6 +983,7 @@
         progress-message (:instance/progress-message instance)
         file-url (plugins/file-url file-plugin/plugin instance)]
     (cond-> {:backfilled false ;; Backfill has been deprecated
+             :compute-cluster (fetch-compute-cluster-map db (:instance/compute-cluster instance))
              :executor_id (:instance/executor-id instance)
              :hostname hostname
              :ports (vec (sort (:instance/ports instance)))
