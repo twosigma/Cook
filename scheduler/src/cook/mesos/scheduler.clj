@@ -565,36 +565,6 @@
 (gauges/defgauge [cook-mesos scheduler front-of-job-queue-mem] (fn [] @front-of-job-queue-mem-atom))
 (gauges/defgauge [cook-mesos scheduler front-of-job-queue-cpus] (fn [] @front-of-job-queue-cpus-atom))
 
-(defn below-quota?
-  "Returns true if the usage is below quota-constraints on all dimensions"
-  [{:keys [count cpus mem] :as quota}
-   {:keys [count cpus mem] :as usage}]
-  (every? (fn [[usage-key usage-val]]
-            (<= usage-val (get quota usage-key 0)))
-          (seq usage)))
-
-(defn job->usage
-  "Takes a job-ent and returns a map of the usage of that job,
-   specifically :cpus, :gpus (when available), :mem, and :count (which is 1)"
-  [job-ent]
-  (let [{:keys [cpus gpus mem]} (util/job-ent->resources job-ent)]
-    (cond-> {:count 1 :cpus cpus :mem mem}
-            gpus (assoc :gpus gpus))))
-
-(defn filter-based-on-quota
-  "Lazily filters jobs for which the sum of running jobs and jobs earlier in the queue exceeds one of the constraints,
-   max-jobs, max-cpus or max-mem"
-  [user->quota user->usage queue]
-  (letfn [(filter-with-quota [user->usage job]
-            (let [user (:job/user job)
-                  job-usage (job->usage job)
-                  user->usage' (update-in user->usage [user] #(merge-with + job-usage %))]
-              (log/debug "Quota check" {:user user
-                                        :usage (get user->usage' user)
-                                        :quota (user->quota user)})
-              [user->usage' (below-quota? (user->quota user) (get user->usage' user))]))]
-    (util/filter-sequential filter-with-quota user->usage queue)))
-
 (defn generate-user-usage-map
   "Returns a mapping from user to usage stats"
   [unfiltered-db pool-name]
@@ -606,9 +576,8 @@
          (group-by :job/user)
          (pc/map-vals (fn [jobs]
                         (->> jobs
-                             (map job->usage)
+                             (map util/job->usage)
                              (reduce (partial merge-with +))))))))
-
 
 ;Shared as we use this for unscheduled too.
 (defonce pool->user->number-jobs (atom {}))
@@ -634,7 +603,7 @@
             (not (and is-rate-limited? enforcing-job-launch-rate-limit?))))
         considerable-jobs
         (->> pending-jobs
-             (filter-based-on-quota user->quota user->usage)
+             (util/filter-based-on-quota user->quota user->usage)
              (filter (fn [job] (util/job-allowed-to-start? db job)))
              (filter user-within-launch-rate-limit?-fn)
              (filter launch-plugin/filter-job-launches)

@@ -833,3 +833,49 @@
    Takes as input the starting value and the growing value, returning a lazy infinite sequence."
   [start ^ReadablePeriod period]
   (iterate (fn [^DateTime t] (.plus t period)) start))
+
+(defn below-quota?
+  "Returns true if the usage is below quota-constraints on all dimensions"
+  [{:keys [count cpus mem] :as quota}
+   {:keys [count cpus mem] :as usage}]
+  (every? (fn [[usage-key usage-val]]
+            (<= usage-val (get quota usage-key 0)))
+          (seq usage)))
+
+(defn job->usage
+  "Takes a job-ent and returns a map of the usage of that job,
+   specifically :cpus, :gpus (when available), :mem, and :count (which is 1)"
+  [job-ent]
+  (let [{:keys [cpus gpus mem]} (job-ent->resources job-ent)]
+    (cond-> {:count 1 :cpus cpus :mem mem}
+      gpus (assoc :gpus gpus))))
+
+(defn filter-based-on-quota
+  "Lazily filters jobs for which the sum of running jobs and jobs earlier in the queue exceeds one of the constraints,
+   max-jobs, max-cpus or max-mem"
+  [user->quota user->usage queue]
+  (letfn [(filter-with-quota [user->usage job]
+            (let [user (:job/user job)
+                  job-usage (job->usage job)
+                  user->usage' (update-in user->usage [user] #(merge-with + job-usage %))]
+              (log/debug "Quota check" {:user user
+                                        :usage (get user->usage' user)
+                                        :quota (user->quota user)})
+              [user->usage' (below-quota? (user->quota user) (get user->usage' user))]))]
+    (filter-sequential filter-with-quota user->usage queue)))
+
+
+(defn pool->user->usage
+  "Returns a map from pool name to user name to usage for all users in all pools."
+  [db]
+  (let [running-tasks (get-running-task-ents db)
+        running-jobs (map :job/_instance running-tasks)
+        pool->jobs (group-by job->pool-name running-jobs)]
+    (pc/map-vals (fn [jobs]
+                   (let [user->jobs (group-by :job/user jobs)]
+                     (pc/map-vals (fn [jobs]
+                                    (->> jobs
+                                         (map job->usage)
+                                         (reduce (partial merge-with +))))
+                                  user->jobs)))
+                 pool->jobs)))

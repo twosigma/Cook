@@ -1880,8 +1880,9 @@
 
 (def leader-hostname-regex #"^([^#]*)#([0-9]*)#([a-z]*)#.*")
 
+(timers/deftimer [cook-scheduler handler queue-endpoint])
 (defn waiting-jobs
-  [mesos-pending-jobs-fn is-authorized-fn mesos-leadership-atom leader-selector]
+  [conn mesos-pending-jobs-fn is-authorized-fn mesos-leadership-atom leader-selector]
   (liberator/resource
     :available-media-types ["application/json"]
     :allowed-methods [:get]
@@ -1921,9 +1922,17 @@
                         (render-error ctx))
     :handle-malformed render-error
     :handle-ok (fn [ctx]
-                 (pc/map-vals (fn [queue]
-                                (take (::limit ctx) queue))
-                              (mesos-pending-jobs-fn)))))
+                 (timers/time!
+                  queue-endpoint
+                  (let [db (d/db conn)
+                        pool->queue (mesos-pending-jobs-fn)
+                        pool->user->quota (quota/create-pool->user->quota-fn db)
+                        pool->user->usage (util/pool->user->usage db)]
+                    (pc/for-map [[pool-name queue] pool->queue]
+                                pool-name (->> queue
+                                               (util/filter-based-on-quota (pool->user->quota pool-name)
+                                                                           (pool->user->usage pool-name))
+                                               (take (::limit ctx)))))))))
 
 ;;
 ;; /running
@@ -3104,7 +3113,7 @@
                  :handler (data-local-update-time-handler conn)}}))
 
       (ANY "/queue" []
-        (waiting-jobs mesos-pending-jobs-fn is-authorized-fn mesos-leadership-atom leader-selector))
+        (waiting-jobs conn mesos-pending-jobs-fn is-authorized-fn mesos-leadership-atom leader-selector))
       (ANY "/running" []
         (running-jobs conn is-authorized-fn))
       (ANY "/list" []

@@ -695,4 +695,140 @@
             every-ten-secs (util/time-seq now (t/millis 10000))]
         (is (true? (t/equal? (t/plus now (t/weeks 52)) (nth every-ten-secs 3144960))))))))
 
-(comment (run-tests))
+(deftest test-below-quota?
+  (testing "not using quota"
+    (is (util/below-quota? {:count 5, :cpus 15, :mem 9999}
+                           {:count 0, :cpus 0, :mem 0})))
+  (testing "not using quota with extra keys"
+    (is (util/below-quota? {:count 5, :cpus 15, :mem 9999, :foo 2, :bar 3}
+                           {:count 0, :cpus 0, :mem 0})))
+  (testing "inside quota"
+    (is (util/below-quota? {:count 5, :cpus 15, :mem 9999}
+                           {:count 4, :cpus 10, :mem 1234})))
+  (testing "at quota limit"
+    (is (util/below-quota? {:count 5, :cpus 15, :mem 9999}
+                           {:count 5, :cpus 15, :mem 9999})))
+  (testing "exceed quota limit - count"
+    (is (not (util/below-quota? {:count 5, :cpus 15, :mem 9999}
+                                {:count 6, :cpus 10, :mem 1234}))))
+  (testing "exceed quota limit - cpus"
+    (is (not (util/below-quota? {:count 5, :cpus 15, :mem 9999}
+                                {:count 4, :cpus 20, :mem 1234}))))
+  (testing "exceed quota limit - mem"
+    (is (not (util/below-quota? {:count 5, :cpus 15, :mem 1234}
+                                {:count 4, :cpus 10, :mem 4321}))))
+  (testing "exceed quota limit - gpus"
+    (is (not (util/below-quota? {:count 5, :cpus 15, :mem 9999, :gpus 4}
+                                {:count 4, :cpus 10, :mem 1234, :gpus 5}))))
+  (testing "at quota limit with extra keys"
+    (is (util/below-quota? {:count 5, :cpus 15, :mem 9999, :gpus 4}
+                           {:count 5, :cpus 15, :mem 9999}))))
+
+(deftest test-job->usage
+  (testing "cpus and mem usage"
+    (is (= {:count 1, :cpus 2, :mem 2048}
+           (util/job->usage {:job/resource [{:resource/type :cpus, :resource/amount 2}
+                                            {:resource/type :mem, :resource/amount 2048}]}))))
+  (testing "cpus and mem usage - ignore extra resources"
+    (is (= {:count 1, :cpus 2, :mem 2048}
+           (util/job->usage {:job/resource [{:resource/type :cpus, :resource/amount 2}
+                                            {:resource/type :mem, :resource/amount 2048}
+                                            {:resource/type :uri, :resource.uri/value "www.test.com"}]}))))
+  (testing "cpus mem and gpus usage"
+    (is (= {:count 1, :cpus 2, :gpus 10, :mem 2048}
+           (util/job->usage {:job/resource [{:resource/type :cpus, :resource/amount 2}
+                                            {:resource/type :mem, :resource/amount 2048}
+                                            {:resource/type :gpus, :resource/amount 10}
+                                            {:resource/type :uri, :resource.uri/value "www.test.com"}]}))))
+  (testing "cpus mem and gpus usage - ignore extra resources"
+    (is (= {:count 1, :cpus 2, :gpus 10, :mem 2048}
+           (util/job->usage {:job/resource [{:resource/type :cpus, :resource/amount 2}
+                                            {:resource/type :mem, :resource/amount 2048}
+                                            {:resource/type :gpus, :resource/amount 10}]}))))
+  (testing "ensures cpu value - gpus absent"
+    (is (= {:count 1, :cpus nil, :mem 2048}
+           (util/job->usage {:job/resource [{:resource/type :mem, :resource/amount 2048}]}))))
+  (testing "ensures cpu value - gpus present"
+    (is (= {:count 1, :cpus nil, :gpus 10, :mem 2048}
+           (util/job->usage {:job/resource [{:resource/type :mem, :resource/amount 2048}
+                                            {:resource/type :gpus, :resource/amount 10}]}))))
+  (testing "ensures mem value - gpus absent"
+    (is (= {:count 1, :cpus 2, :mem nil}
+           (util/job->usage {:job/resource [{:resource/type :cpus, :resource/amount 2}]}))))
+  (testing "ensures mem value - gpus present"
+    (is (= {:count 1, :cpus 2, :gpus 10, :mem nil}
+           (util/job->usage {:job/resource [{:resource/type :cpus, :resource/amount 2}
+                                            {:resource/type :gpus, :resource/amount 10}]})))))
+
+(deftest test-filter-based-on-quota
+  (let [test-user "john"
+        user->usage {test-user {:count 1, :cpus 2, :mem 1024}}
+        make-job (fn [id cpus mem]
+                   {:db/id id
+                    :job/user test-user
+                    :job/resource [{:resource/type :cpus, :resource/amount cpus}
+                                   {:resource/type :mem, :resource/amount mem}]})
+        queue [(make-job 1 2 2048) (make-job 2 1 1024) (make-job 3 3 4096) (make-job 4 1 1024)]]
+    (testing "no jobs included"
+      (is (= []
+             (util/filter-based-on-quota {test-user {:count 1, :cpus 2, :mem 1024}} user->usage queue))))
+    (testing "all jobs included"
+      (is (= [(make-job 1 2 2048) (make-job 2 1 1024) (make-job 3 3 4096) (make-job 4 1 1024)]
+             (util/filter-based-on-quota {test-user {:count 10, :cpus 20, :mem 32768}} user->usage queue))))
+    (testing "room for later jobs not included"
+      (is (= [(make-job 1 2 2048) (make-job 2 1 1024)]
+             (util/filter-based-on-quota {test-user {:count 4, :cpus 20, :mem 6144}} user->usage queue))))))
+
+
+(deftest test-pool->user->usage
+  (let [uri "datomic:mem://test-pool-user-usage"
+        conn (restore-fresh-database! uri)]
+    (create-pool conn "A")
+    (create-pool conn "B")
+    (create-dummy-job-with-instances conn
+                                     :job-state :job.state/running
+                                     :user "tom"
+                                     :memory 10.0
+                                     :cpus 1.0
+                                     :pool "A"
+                                     :instances [{:instance-status :instance.status/running}])
+    (create-dummy-job-with-instances conn
+                                     :job-state :job.state/running
+                                     :user "tom"
+                                     :memory 100.0
+                                     :cpus 1.0
+                                     :pool "A"
+                                     :instances [{:instance-status :instance.status/running}])
+    (create-dummy-job-with-instances conn
+                                     :job-state :job.state/running
+                                     :user "tom"
+                                     :memory 10.0
+                                     :cpus 1.0
+                                     :pool "B"
+                                     :instances [{:instance-status :instance.status/running}])
+    (create-dummy-job-with-instances conn
+                                     :job-state :job.state/running
+                                     :user "mary"
+                                     :memory 10.0
+                                     :cpus 1.0
+                                     :pool "A"
+                                     :instances [{:instance-status :instance.status/running}])
+
+    (create-dummy-job conn
+                      :job-state :job.state/waiting
+                      :user "tom"
+                      :pool "A"
+                      :memory 100.0
+                      :cpus 1.0)
+
+    (is (= {"A" {"tom" {:cpus 2.0
+                        :mem 110.0
+                        :count 2}
+                 "mary" {:cpus 1.0
+                         :mem 10.0
+                         :count 1}}
+            "B" {"tom" {:cpus 1.0
+                        :mem 10.0
+                        :count 1}}}
+           (util/pool->user->usage (d/db conn))))))
+

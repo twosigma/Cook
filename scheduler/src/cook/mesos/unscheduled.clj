@@ -43,7 +43,7 @@
                                        :cpus {:limit 4 :usage 5}}"
   [limits running-jobs job]
   (let [jobs-with-new (conj running-jobs job)
-        usages (map scheduler/job->usage jobs-with-new)
+        usages (map util/job->usage jobs-with-new)
         total-usage (reduce (partial merge-with +) usages)]
     (->> (map (fn [[k v]]
                 (when (> (or (k total-usage) 0) v)
