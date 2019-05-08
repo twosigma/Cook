@@ -485,3 +485,55 @@ class MultiUserCookTest(util.CookTest):
                 self.assertEqual(len(job_uuids), total_usage['jobs'], total_usage)
             finally:
                 util.kill_jobs(self.cook_url, job_uuids)
+
+
+    def test_queue_quota_filtering(self):
+        bad_constraint = [["HOSTNAME",
+                           "EQUALS",
+                           "lol won't get scheduled"]]
+        user = self.user_factory.new_user()
+        admin = self.user_factory.admin()
+        uuids = []
+        default_pool = util.default_pool(self.cook_url)
+        pool = default_pool or 'no-pool'
+        def queue_uuids():
+            try:
+                queue = util.query_queue(self.cook_url).json()
+                uuids = [j['job/uuid'] for j in queue[pool] if j['job/user'] == user.name]
+                self.logger.info(f'Queued uuids: {uuids}')
+                return uuids
+            except BaseException as e:
+                self.logger.error(f"Didn't reach desired instance count: {e}")
+                raise e
+        try:
+            with admin:
+                resp = util.set_limit(self.cook_url, 'quota', user.name, count=1)
+                self.assertEqual(resp.status_code, 201, resp.text)
+            with user:
+                uuid1, resp = util.submit_job(self.cook_url, priority=1, constraints=bad_constraint)
+                self.assertEqual(resp.status_code, 201, resp.text)
+                uuids.append(uuid1)
+                self.logger.info(f'Priority 1 uuid: {uuid1}')
+                uuid2, resp = util.submit_job(self.cook_url, priority=2, constraints=bad_constraint)
+                self.assertEqual(resp.status_code, 201, resp.text)
+                uuids.append(uuid2)
+                self.logger.info(f'Priority 2 uuid: {uuid2}')
+                uuid3, resp = util.submit_job(self.cook_url, priority=3, constraints=bad_constraint)
+                self.assertEqual(resp.status_code, 201, resp.text)
+                uuids.append(uuid3)
+                self.logger.info(f'Priority 3 uuid: {uuid3}')
+            with admin:
+                # Only the highest priority job should be queued
+                util.wait_until(queue_uuids, lambda uuids: uuids == [uuid3])
+            with user:
+                uuid, resp = util.submit_job(self.cook_url, command='sleep 300', priority=100)
+                self.assertEqual(resp.status_code, 201, resp.text)
+                uuids.append(uuid)
+                util.wait_for_job(self.cook_url, uuid, 'running')
+            with admin:
+                # No jobs should be in the queue endpoint
+                util.wait_until(queue_uuids, lambda uuids: uuids == [])
+        finally:
+            with admin:
+                util.reset_limit(self.cook_url, 'quota', user.name)
+                util.kill_jobs(self.cook_url, uuids)

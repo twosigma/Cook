@@ -162,3 +162,19 @@
       [user]
       (or (get user->quota-cache user)
           (get user->quota-cache default-user)))))
+
+(defn create-pool->user->quota-fn
+  "Creates a function that takes a pool name, and returns an equivalent of user->quota-fn for each pool"
+  [db]
+  (let [all-pools (map :pool/name (pool/all-pools db))
+        using-pools? (seq all-pools)]
+    (if using-pools?
+      (let [pool->quota-cache (pc/map-from-keys (fn [pool-name] (create-user->quota-fn db pool-name))
+                                                all-pools)]
+        (fn pool->user->quota
+          [pool]
+          (pool->quota-cache pool)))
+      (let [quota-cache (create-user->quota-fn db nil)]
+        (fn pool->user->quota
+          [pool]
+          quota-cache)))))
