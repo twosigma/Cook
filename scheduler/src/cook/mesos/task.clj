@@ -381,8 +381,8 @@
 
             (= executor-key :container-cook-executor)
             (assoc :executor (assoc executor :name cook-executor-name
-                                    :source cook-executor-source
-                                    :container container))
+                                             :source cook-executor-source
+                                             :container container))
 
             (= executor-key :custom-executor)
             (assoc :executor (assoc executor :name custom-executor-name)))))
