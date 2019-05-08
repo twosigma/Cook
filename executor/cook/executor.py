@@ -425,6 +425,10 @@ class CookExecutor(pm.Executor):
 
         env = os.environ
         if 'EXECUTOR_TEST_EXIT' in env:
+            # When running in docker, if the container exits too quickly it's logged in mesos as container launch failed
+            # instead of mesos executor terminated. This sleep ensures that we have the correct reason code for our
+            # integration tests.
+            time.sleep(5)
             exit_code = int(env['EXECUTOR_TEST_EXIT'])
             logging.warn('Exiting with code {} from EXECUTOR_TEST_EXIT environment variable'.
                          format(exit_code))

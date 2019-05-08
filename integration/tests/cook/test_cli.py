@@ -2184,7 +2184,7 @@ def dummy_cat_text(_, __, ___):
     def test_submit_docker(self):
         docker_image = util.docker_image()
         self.assertIsNotNone(docker_image)
-        cp, uuids = cli.submit('sleep 600', self.cook_url, submit_flags=f'--docker-image {docker_image}')
+        cp, uuids = cli.submit('sleep 600', self.cook_url, submit_flags=f'--docker-image {docker_image} --executor mesos')
         self.assertEqual(0, cp.returncode, cp.stderr)
         try:
             job = util.load_job(self.cook_url, uuids[0])

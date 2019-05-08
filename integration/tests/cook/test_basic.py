@@ -115,7 +115,7 @@ class CookTest(util.CookTest):
         self.assertEqual(2, len(docker['parameters']))
         self.assertEqual('bar', next(p['value'] for p in docker['parameters'] if p['key'] == 'foo'))
         self.assertEqual('qux', next(p['value'] for p in docker['parameters'] if p['key'] == 'baz'))
-        self.assertEqual(4, len(volumes))
+        self.assertLessEqual(4, len(volumes))
         self.assertIn({'host-path': '/var/lib/abc'}, volumes)
         self.assertIn({'mode': 'RW',
                        'host-path': '/var/lib/def'}, volumes)
@@ -304,8 +304,8 @@ class CookTest(util.CookTest):
         job_executor_type = util.get_job_executor_type(self.cook_url)
         progress_file_env = util.retrieve_progress_file_env(self.cook_url)
 
-        line = util.progress_line(self.cook_url, 25, f'Twenty-five percent in ${{{progress_file_env}}}')
-        command = f'echo "{line}" >> ${{{progress_file_env}}}; sleep 1; exit 0'
+        line = util.progress_line(self.cook_url, 25, f'Twenty-five percent in ${{{progress_file_env}}}', True)
+        command = f'{line}; sleep 1; exit 0'
         job_uuid, resp = util.submit_job(self.cook_url, command=command,
                                          env={progress_file_env: 'progress.txt'},
                                          executor=job_executor_type, max_runtime=60000)
@@ -358,6 +358,37 @@ class CookTest(util.CookTest):
     @unittest.skipUnless(util.is_cook_executor_in_use(), 'Test assumes the Cook Executor is in use')
     def test_multiple_progress_updates_submit(self):
         job_executor_type = util.get_job_executor_type(self.cook_url)
+        line_1 = util.progress_line(self.cook_url, 25, 'Twenty-five percent', True)
+        line_2 = util.progress_line(self.cook_url, 50, 'Fifty percent', True)
+        line_3 = util.progress_line(self.cook_url, '', 'Sixty percent invalid format', True)
+        line_4 = util.progress_line(self.cook_url, 75, 'Seventy-five percent', True)
+        line_5 = util.progress_line(self.cook_url, '', 'Eighty percent invalid format', True)
+        command = f'{line_1} && sleep 2 && {line_2} && sleep 2 && ' \
+                  f'{line_3} && sleep 2 && {line_4} && sleep 2 && ' \
+                  f'{line_5} && sleep 2 && echo "Done" && sleep 10 && exit 0'
+        job_uuid, resp = util.submit_job(self.cook_url, command=command, executor=job_executor_type, max_runtime=60000)
+        self.assertEqual(201, resp.status_code, msg=resp.content)
+        job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
+        self.assertEqual(1, len(job['instances']))
+        message = json.dumps(job['instances'][0], sort_keys=True)
+        self.assertEqual('success', job['instances'][0]['status'], message)
+
+        instance = util.wait_for_sandbox_directory(self.cook_url, job_uuid)
+        message = json.dumps(instance, sort_keys=True)
+        self.assertIsNotNone(instance['output_url'], message)
+        self.assertIsNotNone(instance['sandbox_directory'], message)
+        self.assertEqual('cook', instance['executor'])
+        util.sleep_for_publish_interval(self.cook_url)
+        instance = util.wait_for_exit_code(self.cook_url, job_uuid)
+        message = json.dumps(instance, sort_keys=True)
+        self.assertEqual(0, instance['exit_code'], message)
+        self.assertEqual(75, instance['progress'], message)
+        self.assertEqual('Seventy-five percent', instance['progress_message'], message)
+
+    @unittest.skipUnless(util.is_cook_executor_in_use() and not (util.docker_tests_enabled() and util.continuous_integration()),
+                         'Test assumes the Cook Executor is in use. Fails on travis with docker')
+    def test_multiple_progress_updates_submit_stdout(self):
+        job_executor_type = util.get_job_executor_type(self.cook_url)
         line_1 = util.progress_line(self.cook_url, 25, 'Twenty-five percent')
         line_2 = util.progress_line(self.cook_url, 50, 'Fifty percent')
         line_3 = util.progress_line(self.cook_url, '', 'Sixty percent invalid format')
@@ -390,10 +421,10 @@ class CookTest(util.CookTest):
         job_executor_type = util.get_job_executor_type(self.cook_url)
 
         def progress_string(a):
-            return util.progress_line(self.cook_url, a, f'{a}%')
+            return util.progress_line(self.cook_url, a, f'{a}%', True)
 
         items = list(range(1, 100, 4)) + list(range(99, 40, -4)) + list(range(40, 81, 2))
-        command = ''.join([f'echo "{progress_string(a)}" && ' for a in items]) + 'echo "Done" && exit 0'
+        command = ''.join([f'{progress_string(a)} && ' for a in items]) + 'echo "Done" && sleep 10 && exit 0'
         job_uuid, resp = util.submit_job(self.cook_url, command=command, executor=job_executor_type, max_runtime=60000)
         self.assertEqual(201, resp.status_code, msg=resp.content)
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
@@ -1551,9 +1582,9 @@ class CookTest(util.CookTest):
         finally:
             util.kill_jobs(self.cook_url, uuids)
 
-    @pytest.mark.docker
+    @unittest.skipUnless(util.docker_tests_enabled(), "Requires a test docker image")
     def test_basic_docker_job(self):
-        image = util.docker_image() or 'alpine:latest'
+        image = util.docker_image()
         self.logger.debug(f'Using docker image {image}')
         job_uuid, resp = util.submit_job(
             self.cook_url,
@@ -1564,7 +1595,6 @@ class CookTest(util.CookTest):
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
         self.assertEqual('success', job['instances'][0]['status'])
 
-    @pytest.mark.docker
     @unittest.skipUnless(util.has_docker_service(), "Requires `docker inspect`")
     def test_docker_port_mapping(self):
         job_uuid, resp = util.submit_job(self.cook_url,
@@ -2770,7 +2800,7 @@ class CookTest(util.CookTest):
 
     @unittest.skipUnless(util.supports_mesos_containerizer_images(), "Requires support for docker images in mesos containerizer")
     def test_mesos_containerizer_image_support(self):
-        job_uuid, resp = util.submit_job(self.cook_url, container={'type': 'mesos', 'mesos': {'image': 'alpine'}})
+        job_uuid, resp = util.submit_job(self.cook_url, executor='mesos', container={'type': 'mesos', 'mesos': {'image': 'alpine'}})
         try:
             self.assertEqual(201, resp.status_code, resp.text)
             instance = util.wait_for_instance(self.cook_url, job_uuid, status='success')
@@ -2812,4 +2842,3 @@ class CookTest(util.CookTest):
                 util.wait_for_instance(self.cook_url, uuid, status='success')
         finally:
             util.kill_jobs(self.cook_url, job_uuids, assert_response=False)
-

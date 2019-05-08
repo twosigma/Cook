@@ -311,6 +311,25 @@
               (is (= (-> container-executor-msg :executor :name) task/custom-executor-name))
               (is (= (-> container-executor-msg :executor :source) task/custom-executor-source))
               (is (nil? (->> container-executor-task task/task-info->mesos-message :container)))
+              (is (= expected-container (->> container-executor-task task/task-info->mesos-message :executor :container)))))
+
+          (testing "container-cook-executor"
+            (let [container-executor-task (assoc task :container container
+                                                      :data (.getBytes (pr-str {:instance "5"}) "UTF-8")
+                                                      :executor-key :container-cook-executor)
+                  container-executor-msg (->> container-executor-task
+                                              task/task-info->mesos-message
+                                              (mtypes/->pb :TaskInfo)
+                                              mtypes/pb->data)]
+              ;; Check container executor built correctly
+              (is (= (:instance (edn/read-string (String. (.toByteArray (:data container-executor-msg))))) "5"))
+              (is (str/blank? (-> container-executor-msg :command :value)))
+              (is (= (-> container-executor-msg :executor :command :value) (-> task :command :value)))
+              (is (= (-> container-executor-msg :executor :executor-id :value) (:task-id task)))
+              (is (= (-> container-executor-msg :executor :framework-id :value) (-> task :framework-id)))
+              (is (= (-> container-executor-msg :executor :name) task/cook-executor-name))
+              (is (= (-> container-executor-msg :executor :source) task/cook-executor-source))
+              (is (nil? (->> container-executor-task task/task-info->mesos-message :container)))
               (is (= expected-container (->> container-executor-task task/task-info->mesos-message :executor :container))))))))))
 
 (deftest test-job->task-metadata
@@ -604,7 +623,54 @@
                   :resources {:cpus 1.0, :mem 200.0}
                   :task-id task-id}
                  (dissoc task-metadata :data)))
-          (is (= (pr-str {:instance "0"}) (-> task-metadata :data (String. "UTF-8")))))))))
+          (is (= (pr-str {:instance "0"}) (-> task-metadata :data (String. "UTF-8"))))))
+
+      (testing "container-command with simple job and cook executor"
+        (let [task-id (str (UUID/randomUUID))
+              job (tu/create-dummy-job conn
+                                       :command "run-my-command"
+                                       :container {:container/docker {:docker/image "a-docker-image"
+                                                                      :docker/network "HOST"
+                                                                      :docker/parameters []}
+                                                   :container/type "DOCKER"
+                                                   :container/volumes []}
+                                       :custom-executor? false
+                                       :executor :executor/cook
+                                       :job-state :job.state/running
+                                       :memory 200
+                                       :user "test-user")
+              db (d/db conn)
+              job-ent (d/entity db job)
+              framework-id {:value "framework-id"}
+              environment {"COOK_INSTANCE_UUID" task-id
+                           "COOK_JOB_CPUS" "1.0"
+                           "COOK_JOB_MEM_MB" "200.0"
+                           "COOK_JOB_UUID" (-> job-ent :job/uuid str)
+                           "EXECUTOR_LOG_LEVEL" (:log-level executor)
+                           "EXECUTOR_MAX_MESSAGE_LENGTH" (:max-message-length executor)
+                           "PROGRESS_REGEX_STRING" (:default-progress-regex-string executor)
+                           "PROGRESS_SAMPLE_INTERVAL_MS" (:progress-sample-interval-ms executor)}
+              task-metadata (task/job->task-metadata db framework-id mesos-run-as-user job-ent task-id)]
+          (is (= {:command {:environment environment
+                            :uris [(:uri executor)]
+                            :user "test-user"
+                            :value (:command executor)}
+                  :container {:docker {:image "a-docker-image"
+                                       :network "HOST"}
+                              :type "DOCKER"}
+                  :environment environment
+                  :executor :executor/cook
+                  :executor-key :container-cook-executor
+                  :framework-id framework-id
+                  :labels {}
+                  :name (format "dummy_job_%s_%s" (:job/user job-ent) task-id)
+                  :num-ports 0
+                  :resources {:cpus 1.0, :mem 200.0}
+                  :task-id task-id}
+                 (dissoc task-metadata :data)))
+          (is (= (json/write-str {"command" "run-my-command"})
+                 (-> task-metadata :data (String. "UTF-8")))))))))
+
 
 (deftest test-use-cook-executor?
   (testing "empty entity and config"

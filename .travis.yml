@@ -47,6 +47,12 @@ matrix:
       before_script: cd integration && ./travis/prepare_integration.sh
       script: ./travis/run_integration.sh --executor=cook
 
+    - name: 'Cook Scheduler integration tests with Cook Executor and Docker'
+      services: docker
+      install: sudo ./travis/install_mesos.sh
+      before_script: cd integration && ./travis/prepare_integration.sh
+      script: ./travis/run_integration.sh --executor=cook --image=python:3.5
+
     - name: 'Cook Scheduler integration tests with no pools and with HTTP Basic Auth'
       services: docker
       install: sudo ./travis/install_mesos.sh
@@ -67,10 +73,6 @@ matrix:
       install: sudo ./travis/install_mesos.sh
       before_script: cd simulator && ./travis/prepare_simulation.sh
       script: ./travis/run_simulation.sh
-
-    - name: 'Cook Scheduler benchmark tests'
-      before_script: cd scheduler && ./travis/setup.sh
-      script: lein with-profile +test test :benchmark
 
     - name: 'Cook Executor tests'
       before_script: cd executor && ./travis/setup.sh

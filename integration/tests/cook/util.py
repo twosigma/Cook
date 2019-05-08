@@ -409,6 +409,14 @@ def minimal_job(**kwargs):
             }
         }
     job.update(kwargs)
+    if is_cook_executor_in_use() and 'container' in job:
+        if 'volumes' not in job['container']:
+            job['container']['volumes'] = []
+        config = settings(retrieve_cook_url())
+        executor_path = config['executor']['command']
+        executor_dir = os.path.dirname(os.path.dirname(executor_path))
+        job['container']['volumes'].append({'host-path': executor_dir,
+                                            'container-path': executor_dir})
     return job
 
 
@@ -910,21 +918,27 @@ def sleep_for_publish_interval(cook_url):
     time.sleep(wait_publish_interval_ms / 1000.0)
 
 
-def progress_line(cook_url, percent, message):
+def progress_line(cook_url, percent, message, write_to_file=False):
     """Simple text replacement of regex string using expected patterns of (\d+), (?: )? and (.*)."""
     cook_settings = settings(cook_url)
     regex_string = get_in(cook_settings, 'executor', 'default-progress-regex-string')
+
     if not regex_string:
         regex_string = 'progress:\s+([0-9]*\.?[0-9]+)($|\s+.*)'
     if '([0-9]*\.?[0-9]+)' not in regex_string:
         raise Exception(f'([0-9]*\.?[0-9]+) not present in {regex_string} regex string')
     if '($|\s+.*)' not in regex_string:
         raise Exception(f'($|\s+.*) not present in {regex_string} regex string')
-    return (regex_string
-            .replace('([0-9]*\.?[0-9]+)', str(percent))
-            .replace('($|\s+.*)', str(f' {message}'))
-            .replace('\s+', ' ')
-            .replace('\\', ''))
+    progress_string = (regex_string
+                       .replace('([0-9]*\.?[0-9]+)', str(percent))
+                       .replace('($|\s+.*)', str(f' {message}'))
+                       .replace('\s+', ' ')
+                       .replace('\\', ''))
+    if write_to_file:
+        progress_env = retrieve_progress_file_env(cook_url)
+        return f'echo "{progress_string}" >> ${{{progress_env}}}'
+    else:
+        return progress_string
 
 
 def group_submit_kill_retry(cook_url, retry_failed_jobs_only):
@@ -1149,9 +1163,9 @@ def _cook_executor_config():
 
 
 def is_cook_executor_in_use():
-    """Returns true if the cook executor is configured and COOK_TEST_DOCKER_IMAGE is not set"""
+    """Returns true if the cook executor is configured"""
     is_cook_executor_configured = is_not_blank(get_in(_cook_executor_config(), 'command'))
-    return is_cook_executor_configured and docker_image() is None
+    return is_cook_executor_configured
 
 
 def slave_cpus(mesos_url, hostname):

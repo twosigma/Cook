@@ -84,8 +84,7 @@
         ;; If the custom-executor attr isn't set, we default to using a custom
         ;; executor in order to support jobs submitted before we added this field
         custom-executor? (use-custom-executor? job-ent)
-        cook-executor? (and (not container) ;;TODO support cook-executor in containers
-                            (use-cook-executor? job-ent))
+        cook-executor? (use-cook-executor? job-ent)
         group-uuid (util/job-ent->group-uuid job-ent)
         environment (cond-> (assoc (util/job-ent->env job-ent)
                               "COOK_INSTANCE_UUID" task-id
@@ -104,6 +103,7 @@
                  :value (if cook-executor? (:command (config/executor-config)) (:job/command job-ent))}
         ;; executor-key configure whether this is a command or custom executor
         executor-key (cond
+                       (and container cook-executor?) :container-cook-executor
                        (and container (not custom-executor?)) :container-command-executor
                        (and container custom-executor?) :container-executor
                        custom-executor? :custom-executor
@@ -113,6 +113,7 @@
         executor (case executor-key
                    :command-executor :executor/mesos
                    :container-command-executor :executor/mesos
+                   :container-cook-executor :executor/cook
                    :cook-executor :executor/cook
                    :executor/custom)
         data (.getBytes
@@ -377,6 +378,11 @@
             (= executor-key :cook-executor)
             (assoc :executor (assoc executor :name cook-executor-name
                                              :source cook-executor-source))
+
+            (= executor-key :container-cook-executor)
+            (assoc :executor (assoc executor :name cook-executor-name
+                                             :source cook-executor-source
+                                             :container container))
 
             (= executor-key :custom-executor)
             (assoc :executor (assoc executor :name custom-executor-name)))))
