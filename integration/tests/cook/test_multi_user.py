@@ -503,7 +503,7 @@ class MultiUserCookTest(util.CookTest):
                 self.logger.info(f'Queued uuids: {uuids}')
                 return uuids
             except BaseException as e:
-                self.logger.error(f"Didn't reach desired instance count: {e}")
+                self.logger.error(f"Error when querying queue: {e}")
                 raise e
         try:
             with admin:
