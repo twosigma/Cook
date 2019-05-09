@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.31.0] - 2019-05-09
+### Added
+- Compute cluster on task objects, from @scrosby
+- Support running Cook Executor in docker containers, from @pschorf
+### Changed
+- Filter jobs that would put users out of quota from /queue endpoint, from @pschorf
+
 ## [1.30.1] - 2019-04-30
 ### Fixed
 - Fixed bug in user metric reporting, from @pschorf
