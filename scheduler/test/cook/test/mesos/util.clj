@@ -779,7 +779,6 @@
       (is (= [(make-job 1 2 2048) (make-job 2 1 1024)]
              (util/filter-based-on-quota {test-user {:count 4, :cpus 20, :mem 6144}} user->usage queue))))))
 
-
 (deftest test-pool->user->usage
   (let [uri "datomic:mem://test-pool-user-usage"
         conn (restore-fresh-database! uri)]
