@@ -15,6 +15,7 @@
 ;;
 (ns cook.compute-cluster
   (:require [clojure.tools.logging :as log]
+            [cook.config :as config]
             [datomic.api :as d]))
 
 (defn- write-compute-cluster
@@ -62,12 +63,10 @@
      :mesos-framework-id framework-id
      :db-id (or cluster-entity-id (get-mesos-cluster-entity-id (d/db conn) mesos-cluster))}))
 
-(def default-cluster-name-for-legacy (atom nil))
-
 (defn get-default-cluster-name-for-legacy
   "What cluster name to put on for legacy jobs when generating their compute-cluster."
   []
-  @default-cluster-name-for-legacy)
+  (-> config/config :settings :mesos-compute-cluster-name))
 
 ; A hack to store the mesos cluster name, until we refactor the code so that we support multiple clusters. In the long term future
 ; this is probably replaced with a function from driver->cluster-id, or the cluster name is propagated by function arguments and
@@ -96,7 +95,6 @@
   occurs in config.clj. Long term, we need to fix config.clj to not to that, probably
   as part of global cook, at which time, this probably won't need to exist. Until then however....."
   [{:keys [mesos-compute-cluster-name mesos-framework-id]}]
-  (reset! default-cluster-name-for-legacy mesos-compute-cluster-name)
   (reset! mesos-cluster-name-hack mesos-compute-cluster-name)
   [{:compute-cluster-name mesos-compute-cluster-name :framework-id mesos-framework-id}])
 
