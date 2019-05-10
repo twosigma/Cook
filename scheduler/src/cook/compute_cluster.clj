@@ -66,12 +66,16 @@
 (defn get-default-cluster-name-for-legacy
   "What cluster name to put on for legacy jobs when generating their compute-cluster."
   []
+  {:post [%]} ; Never returns nil.
   (-> config/config :settings :mesos-compute-cluster-name))
 
 ; A hack to store the mesos cluster name, until we refactor the code so that we support multiple clusters. In the long term future
 ; this is probably replaced with a function from driver->cluster-id, or the cluster name is propagated by function arguments and
 ; closed over.
-(def mesos-cluster-name-hack (atom nil))
+(defn get-mesos-cluster-name-hack
+  []
+  {:post [%]} ; Never returns nil.
+  (-> config/config :settings :mesos-compute-cluster-name))
 
 (defn get-mesos-clusters-from-config
   "Get all of the mesos clusters defined in the configuration.
@@ -95,7 +99,6 @@
   occurs in config.clj. Long term, we need to fix config.clj to not to that, probably
   as part of global cook, at which time, this probably won't need to exist. Until then however....."
   [{:keys [mesos-compute-cluster-name mesos-framework-id]}]
-  (reset! mesos-cluster-name-hack mesos-compute-cluster-name)
   [{:compute-cluster-name mesos-compute-cluster-name :framework-id mesos-framework-id}])
 
 (def cluster-name->cluster-dict-atom (atom nil))
@@ -104,6 +107,7 @@
   "Given a cluster name, return the db-id we should use to refer to that compute cluster
   when we put it within a task structure."
   [cluster-name]
+  {:post [%]} ; Never returns nil.
   (let [{:keys [db-id]} (get @cluster-name->cluster-dict-atom cluster-name)]
     ; All clusters referenced by name must have been installed in the db previously.
     (when-not db-id (throw (IllegalStateException. (str "Was asked to lookup db-id for " cluster-name " and got nil"))))

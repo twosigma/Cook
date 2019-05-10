@@ -1466,6 +1466,7 @@
       (is (= 100 (progress-from-api))))))
 
 (deftest test-fetch-instance-map
+  (testutil/setup)
   (let [conn (restore-fresh-database! "datomic:mem://test-fetch-instance-map")]
     (testutil/setup-fake-test-compute-cluster conn)
     (let [job-entity-id (create-dummy-job conn :user "test-user" :job-state :job.state/completed)

@@ -1564,6 +1564,6 @@
     (start-jobs-prioritizer! conn pool-name->pending-jobs-atom task-constraints rank-trigger-chan)
     {:scheduler (create-mesos-scheduler gpu-enabled? conn heartbeat-ch pool-name->fenzo pool->offers-chan
                                         match-trigger-chan handle-exit-code handle-progress-message sandbox-syncer-state
-                                        @cc/mesos-cluster-name-hack)
+                                        (cc/get-mesos-cluster-name-hack))
      :view-incubating-offers (fn get-resources-atom [p]
                                (deref (get pool->resources-atom p)))}))
