@@ -95,15 +95,10 @@
       (or cluster-entity-id (get-mesos-cluster-entity-id (d/db conn) mesos-cluster))
       (atom nil))))
 
+
 ; Internal variable
 (def cluster-name->compute-cluster-atom (atom nil))
-; Internal variable
-(def default-cluster-for-legacy (atom nil))
 
-(defn get-default-cluster-for-legacy
-  "What cluster name to put on for legacy jobs when generating their compute-cluster."
-  []
-  @default-cluster-for-legacy)
 
 (defn- get-mesos-clusters-from-config
   "Get all of the mesos clusters defined in the configuration.
@@ -142,18 +137,7 @@
                     (assoc accum compute-cluster-name cluster-dict))]
     (run! (fn [compute-cluster]
             (log/info "Setting up compute cluster: " compute-cluster)) compute-clusters)
-    (reset! cluster-name->compute-cluster-atom (reduce reduce-fn {} compute-clusters))
-    ; TODO: Hack, Should be configuration-based.
-    (reset! default-cluster-for-legacy (first compute-clusters))))
-
-; A hack to store the mesos cluster, until we refactor the code so that we support multiple clusters. In the long term future
-; this is probably replaced with a function from driver->cluster-id, or the cluster name is propagated by function arguments and
-; closed over.
-(defn mesos-cluster-hack
-  []
-  (-> @cluster-name->compute-cluster-atom
-      vals
-      first))
+    (reset! cluster-name->compute-cluster-atom (reduce reduce-fn {} compute-clusters))))
 
 (defn compute-cluster-name->ComputeCluster
   "Hack: Only supports one compute cluster until we fix initialization of the driver."
@@ -162,6 +146,24 @@
     (when-not result (throw (IllegalStateException. (str "Was asked to lookup db-id for " compute-cluster-name " and got nil"))))
     result))
 
+; A hack to store the mesos cluster, until we refactor the code so that we support multiple clusters. In the long term future
+; this is probably replaced with a function from driver->cluster-id, or the cluster name is propagated by function arguments and
+; closed over.
+(defn mesos-cluster-hack
+  []
+  {:post [%]} ; Never returns nil.
+  (-> config/config
+      :settings
+      :mesos-compute-cluster-name
+      compute-cluster-name->ComputeCluster))
 
-
+(defn get-default-cluster-for-legacy
+  "What cluster name to put on for legacy jobs when generating their compute-cluster.
+  TODO: Will want this to be configurable when we support multiple mesos clusters."
+  []
+  {:post [%]} ; Never returns nil.
+  (-> config/config
+      :settings
+      :mesos-compute-cluster-name
+      compute-cluster-name->ComputeCluster))
 
