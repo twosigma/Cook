@@ -409,7 +409,8 @@ def minimal_job(**kwargs):
             }
         }
     job.update(kwargs)
-    if is_cook_executor_in_use() and 'container' in job:
+    map_container_volume=bool(os.getenv('COOK_MAP_CONTAINER_VOLUME', '1'))
+    if map_container_volume and is_cook_executor_in_use() and 'container' in job:
         if 'volumes' not in job['container']:
             job['container']['volumes'] = []
         config = settings(retrieve_cook_url())
