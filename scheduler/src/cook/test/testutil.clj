@@ -53,7 +53,7 @@
 (let [minimal-config {:authorization {:one-user ""}
                       :database {:datomic-uri ""}
                       :log {}
-                      :mesos {:leader-path "", :master ""}
+                      :mesos {:leader-path "", :master "" :compute-cluster-name "compute-cluster-default-compute-cluster-name"}
                       :metrics {}
                       :nrepl {}
                       :port 80

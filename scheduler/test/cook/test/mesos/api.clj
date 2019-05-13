@@ -1466,6 +1466,7 @@
       (is (= 100 (progress-from-api))))))
 
 (deftest test-fetch-instance-map
+  (testutil/setup)
   (let [conn (restore-fresh-database! "datomic:mem://test-fetch-instance-map")]
     (testutil/setup-fake-test-compute-cluster conn)
     (let [job-entity-id (create-dummy-job conn :user "test-user" :job-state :job.state/completed)
@@ -1483,11 +1484,11 @@
           ; Track whether we invoke this function to fetch the default. We shouldn't use this unless
           ; we're filling in because the entity lacks a compute cluster.
           fetched-default-cluster-atom (atom false)
-          tmp-cluster-name-hack cc/cluster-name-hack]
-      (with-redefs [cc/cluster-name-hack
+          tmp-default-cluster-name-for-legacy cc/get-default-cluster-name-for-legacy]
+      (with-redefs [cc/get-default-cluster-name-for-legacy
                     (fn []
                       (reset! fetched-default-cluster-atom true)
-                      (tmp-cluster-name-hack))]
+                      (tmp-default-cluster-name-for-legacy))]
 
         (reset! fetched-default-cluster-atom false)
         (testing "basic-instance-without-sandbox"

@@ -653,7 +653,9 @@
   [matches]
   (for [{:keys [leases task-metadata-seq]} matches
         :let [offers (mapv :offer leases)
-              slave-id (-> offers first :slave-id :value)]
+              first-offer (-> offers first)
+              slave-id (-> first-offer :slave-id :value)
+              compute-cluster-name (-> first-offer :compute-cluster-name)]
         {:keys [executor hostname ports-assigned task-id task-request]} task-metadata-seq
         :let [job-ref [:job/uuid (get-in task-request [:job :job/uuid])]]]
     [[:job/allowed-to-start? job-ref]
@@ -673,7 +675,7 @@
       :instance/start-time (now)
       :instance/status :instance.status/unknown
       :instance/task-id task-id
-      :instance/compute-cluster (cc/cluster-name->db-id (cc/cluster-name-hack))}]))
+      :instance/compute-cluster (cc/cluster-name->db-id compute-cluster-name)}]))
 
 (defn launch-matched-tasks!
   "Updates the state of matched tasks in the database and then launches them."
@@ -1392,7 +1394,7 @@
 (defn create-mesos-scheduler
   "Creates the mesos scheduler which processes status updates asynchronously but in order of receipt."
   [gpu-enabled? conn heartbeat-ch pool->fenzo pool->offers-chan match-trigger-chan
-   handle-exit-code handle-progress-message sandbox-syncer-state]
+   handle-exit-code handle-progress-message sandbox-syncer-state compute-cluster-name]
   (let [configured-framework-id (cook.config/framework-id-config)
         sync-agent-sandboxes-fn #(sandbox/sync-agent-sandboxes sandbox-syncer-state configured-framework-id %1 %2)
         message-handlers {:handle-exit-code handle-exit-code
@@ -1458,9 +1460,10 @@
         (meters/mark! mesos-error)
         (log/error "Got a mesos error!!!!" message))
       (resource-offers
-        [this driver offers]
-        (log/debug "Got offers:" offers)
-        (let [pool->offers (group-by (fn [o] (plugins/select-pool pool-plugin/plugin o)) offers)
+        [this driver raw-offers]
+        (log/debug "Got offers:" raw-offers)
+        (let [offers (map #(assoc % :compute-cluster-name compute-cluster-name) raw-offers)
+              pool->offers (group-by (fn [o] (plugins/select-pool pool-plugin/plugin o)) offers)
               using-pools? (config/default-pool)]
           (log/info "Offers by pool:" (pc/map-vals count pool->offers))
           (run!
@@ -1529,6 +1532,7 @@
                            (sandbox/aggregate-exit-code exit-code-syncer-state task-id exit-code))]
     (start-jobs-prioritizer! conn pool-name->pending-jobs-atom task-constraints rank-trigger-chan)
     {:scheduler (create-mesos-scheduler gpu-enabled? conn heartbeat-ch pool-name->fenzo pool->offers-chan
-                                        match-trigger-chan handle-exit-code handle-progress-message sandbox-syncer-state)
+                                        match-trigger-chan handle-exit-code handle-progress-message sandbox-syncer-state
+                                        (cc/get-mesos-cluster-name-hack))
      :view-incubating-offers (fn get-resources-atom [p]
                                (deref (get pool->resources-atom p)))}))

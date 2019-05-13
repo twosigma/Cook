@@ -15,6 +15,7 @@
 ;;
 (ns cook.compute-cluster
   (:require [clojure.tools.logging :as log]
+            [cook.config :as config]
             [datomic.api :as d]))
 
 (defn- write-compute-cluster
@@ -62,6 +63,20 @@
      :mesos-framework-id framework-id
      :db-id (or cluster-entity-id (get-mesos-cluster-entity-id (d/db conn) mesos-cluster))}))
 
+(defn get-default-cluster-name-for-legacy
+  "What cluster name to put on for legacy jobs when generating their compute-cluster."
+  []
+  {:post [%]} ; Never returns nil.
+  (-> config/config :settings :mesos-compute-cluster-name))
+
+; A hack to store the mesos cluster name, until we refactor the code so that we support multiple clusters. In the long term future
+; this is probably replaced with a function from driver->cluster-id, or the cluster name is propagated by function arguments and
+; closed over.
+(defn get-mesos-cluster-name-hack
+  []
+  {:post [%]} ; Never returns nil.
+  (-> config/config :settings :mesos-compute-cluster-name))
+
 (defn get-mesos-clusters-from-config
   "Get all of the mesos clusters defined in the configuration.
   In config.edn, we put all of the mesos keys under one toplevel dictionary.
@@ -92,6 +107,7 @@
   "Given a cluster name, return the db-id we should use to refer to that compute cluster
   when we put it within a task structure."
   [cluster-name]
+  {:post [%]} ; Never returns nil.
   (let [{:keys [db-id]} (get @cluster-name->cluster-dict-atom cluster-name)]
     ; All clusters referenced by name must have been installed in the db previously.
     (when-not db-id (throw (IllegalStateException. (str "Was asked to lookup db-id for " cluster-name " and got nil"))))
@@ -111,14 +127,3 @@
     (run! (fn [compute-cluster]
             (log/info "Setting up compute cluster: " compute-cluster)) compute-clusters)
     (reset! cluster-name->cluster-dict-atom (reduce reduce-fn {} compute-clusters))))
-
-; TODO: Until we thread the compute-cluster-name through fenzo, we'll need this hack to remember
-; the cluster name so that we can find the compute cluster when generating the fenzo result.
-(defn cluster-name-hack
-  "A hack that today returns the default cluster name. This is used e.g., in processing
-  fenzo responses. In the future it will need to exist in order to fill in compute cluster
-  objects in legacy task entities."
-  []
-  (-> @cluster-name->cluster-dict-atom
-      keys
-      first))
