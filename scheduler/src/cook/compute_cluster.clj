@@ -28,7 +28,8 @@
 
   (get-mesos-driver-hack [this]
     "Get the mesos driver. Hack; any funciton invoking this should be put within the compute-cluster implementation")
-  (get-mesos-framework-id-hack [this])
+  (get-mesos-framework-id-hack [this]
+    "Short term hack to get the framework ID. When we migrate/hide all mesos functionality behind the ComputeClusterAPI, this will go away.")
   (set-mesos-driver-atom-hack! [this driver]
     "Hack to overwrite the driver. Used until we fix the initialization order of compute-cluster"))
 
@@ -150,6 +151,8 @@
 ; this is probably replaced with a function from driver->cluster-id, or the cluster name is propagated by function arguments and
 ; closed over.
 (defn mesos-cluster-hack
+  "A hack to store the mesos cluster, until we refactor the code so that we support multiple clusters. In the
+  long term future the cluster is propagated by function arguments and closed over."
   []
   {:post [%]} ; Never returns nil.
   (-> config/config

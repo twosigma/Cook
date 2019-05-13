@@ -45,6 +45,9 @@
                                 :mesos-compute-cluster-name "compute-cluster-default-compute-cluster-name"}))
 
 (defn fake-test-compute-cluster
+  "Return a fake/test compute cluster. If invoked with a driver argument, bind the driver of the compute cluster to that
+  argument.
+  TODO: Paul, talk about this function?"
   ([]
    {:post [%]} ; Never returns nil. If it does, then setup-fake-test-cluster wasn't run.
    (-> "compute-cluster-default-compute-cluster-name"

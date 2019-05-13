@@ -692,8 +692,7 @@
   (for [{:keys [leases task-metadata-seq]} matches
         :let [offers (mapv :offer leases)
               first-offer (-> offers first)
-              slave-id (-> first-offer :slave-id :value)
-              compute-cluster-name (-> first-offer :compute-cluster :compute-cluster-name)]
+              slave-id (-> first-offer :slave-id :value)]
         {:keys [executor hostname ports-assigned task-id task-request]} task-metadata-seq
         :let [job-ref [:job/uuid (get-in task-request [:job :job/uuid])]]]
     [[:job/allowed-to-start? job-ref]
