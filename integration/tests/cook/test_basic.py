@@ -1232,6 +1232,7 @@ class CookTest(util.CookTest):
         self.assertEqual(f'Duplicate job uuids: ["{job1["uuid"]}"]', resp.json()['error'], resp.text)
 
     @unittest.skipIf(util.has_ephemeral_hosts(), util.EPHEMERAL_HOSTS_SKIP_REASON)
+    @pytest.mark.xfail
     def test_hostname_equals_job_constraint(self):
         hosts = util.hosts_to_consider(self.cook_url, self.mesos_url)[:10]
 
@@ -1779,6 +1780,7 @@ class CookTest(util.CookTest):
         finally:
             util.kill_jobs(self.cook_url, uuids)
 
+    @pytest.mark.xfail
     def test_balanced_host_constraint_cannot_place(self):
         num_hosts = util.num_hosts_to_consider(self.cook_url, self.mesos_url)
         if num_hosts > 10:
