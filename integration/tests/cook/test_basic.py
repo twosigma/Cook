@@ -280,7 +280,7 @@ class CookTest(util.CookTest):
         job_uuid, resp = util.submit_job(self.cook_url, command='exit 1', executor=job_executor_type)
         self.assertEqual(201, resp.status_code, msg=resp.content)
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
-        self.assertEqual(1, len(job['instances']))
+        self.assertEqual(1, len(job['instances']), job['instances'])
         instance = job['instances'][0]
         message = json.dumps(instance, sort_keys=True)
         self.assertEqual('failed', instance['status'], message)
@@ -400,7 +400,7 @@ class CookTest(util.CookTest):
         job_uuid, resp = util.submit_job(self.cook_url, command=command, executor=job_executor_type, max_runtime=60000)
         self.assertEqual(201, resp.status_code, msg=resp.content)
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
-        self.assertEqual(1, len(job['instances']))
+        self.assertEqual(1, len(job['instances']), job['instances'])
         message = json.dumps(job['instances'][0], sort_keys=True)
         self.assertEqual('success', job['instances'][0]['status'], message)
 
