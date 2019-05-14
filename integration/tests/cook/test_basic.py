@@ -1848,7 +1848,7 @@ class CookTest(util.CookTest):
     def test_balanced_host_constraint_can_place(self):
         num_hosts = util.num_hosts_to_consider(self.cook_url, self.mesos_url)
         self.assertLessEqual(2, num_hosts)
-        minimum_hosts = min(int(os.getenv('COOK_TEST_BALANCED_CONSTRAINT_NUM_HOSTS', 10)), num_hosts)
+        minimum_hosts = min(int(os.getenv('COOK_TEST_BALANCED_CONSTRAINT_NUM_HOSTS', 3)), num_hosts)
         self.logger.info(f'Setting minimum hosts to {minimum_hosts}')
         group = {'uuid': str(uuid.uuid4()),
                  'host-placement': {'type': 'balanced',
