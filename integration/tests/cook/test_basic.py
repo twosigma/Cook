@@ -170,7 +170,7 @@ class CookTest(util.CookTest):
         job_executor_type = util.get_job_executor_type(self.cook_url)
         self.assertEqual('cook', job_executor_type)
         uuid, resp = util.submit_job(self.cook_url, command='sleep 30', env={'EXECUTOR_TEST_EXIT': '1'},
-                                     disable_mea_culpa_retries=True)
+                                     disable_mea_culpa_retries=True, executor=job_executor_type)
         try:
             instance = util.wait_for_instance(self.cook_url, uuid)
             self.assertEqual('cook', instance['executor'])
@@ -190,7 +190,7 @@ class CookTest(util.CookTest):
     def test_mea_culpa_retries(self):
         job_executor_type = util.get_job_executor_type(self.cook_url)
         self.assertEqual('cook', job_executor_type)
-        uuid, resp = util.submit_job(self.cook_url, command='sleep 30', env={'EXECUTOR_TEST_EXIT': '1'})
+        uuid, resp = util.submit_job(self.cook_url, command='sleep 30', env={'EXECUTOR_TEST_EXIT': '1'}, executor=job_executor_type)
         try:
             instance = util.wait_for_instance(self.cook_url, uuid)
             self.assertEqual('cook', instance['executor'])
