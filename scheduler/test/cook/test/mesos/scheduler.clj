@@ -911,7 +911,7 @@
           tasks-killed (atom #{})
           driver (reify msched/SchedulerDriver
                    (kill-task! [_ task] (swap! tasks-killed conj (:value task)))) ; Conjoin the task-id
-          compute-cluster (testutil/fake-test-compute-cluster driver)
+          compute-cluster (testutil/fake-test-compute-cluster-with-driver conn uri driver)
           fenzo (sched/make-fenzo-scheduler compute-cluster 1500 nil 0.8)
           synced-agents-atom (atom [])
           sync-agent-sandboxes-fn (fn sync-agent-sandboxes-fn [hostname _]
@@ -1062,7 +1062,7 @@
                                                                   :job job})))
         conn (restore-fresh-database! "datomic:mem://test-instance-completion-plugin")
         driver (reify msched/SchedulerDriver)
-        compute-cluster (testutil/fake-test-compute-cluster driver)
+        compute-cluster (testutil/fake-test-compute-cluster-with-driver conn "test-instance-completion-plugin" driver)
         fenzo (sched/make-fenzo-scheduler compute-cluster 1500 nil 0.8)]
     (testutil/setup-fake-test-compute-cluster conn)
     (with-redefs [completion/plugin plugin-implementation]
@@ -1599,7 +1599,7 @@
                                                                       suffix-start (str/index-of task-name (str "_" test-user "_"))]
                                                                   (subs task-name 0 suffix-start)))
                                                               tasks))))
-          compute-cluster (testutil/fake-test-compute-cluster driver)
+          compute-cluster (testutil/fake-test-compute-cluster-with-driver conn uri driver)
           offer-maker (fn [cpus mem gpus]
                         {:resources [{:name "cpus", :scalar cpus, :type :value-scalar, :role "cook"}
                                      {:name "mem", :scalar mem, :type :value-scalar, :role "cook"}
@@ -1868,7 +1868,7 @@
   (with-redefs [config/data-local-fitness-config (constantly {:data-locality-weight 0.95
                                                               :base-calculator BinPackingFitnessCalculators/cpuMemBinPacker})
                 dl/job-uuid->dataset-maps-cache (util/new-cache)]
-    (let [uri "datomic:mem://test-handle-resource-offers"
+    (let [uri "datomic:mem://test-handle-resource-offers-with-data-locality"
           conn (restore-fresh-database! uri)]
       (testutil/setup-fake-test-compute-cluster conn)
       (let [test-user (System/getProperty "user.name")
@@ -1877,7 +1877,7 @@
             driver (reify msched/SchedulerDriver
                      (launch-tasks! [_ _ tasks]
                        (swap! launched-tasks-atom concat tasks)))
-            compute-cluster (testutil/fake-test-compute-cluster driver)
+            compute-cluster (testutil/fake-test-compute-cluster-with-driver conn uri driver)
             offer-maker (fn [cpus mem gpus]
                           {:resources [{:name "cpus", :scalar cpus, :type :value-scalar, :role "cook"}
                                        {:name "mem", :scalar mem, :type :value-scalar, :role "cook"}
@@ -1885,7 +1885,7 @@
                            :id {:value (str "id-" (UUID/randomUUID))}
                            :slave-id {:value (str "slave-" (UUID/randomUUID))}
                            :hostname (str "host-" (UUID/randomUUID))
-                           :compute-cluster (testutil/fake-test-compute-cluster driver)})
+                           :compute-cluster compute-cluster})
             offers-chan (async/chan (async/buffer 10))
             offer-1 (offer-maker 10 2048 0)
             offer-2 (offer-maker 20 16384 0)
@@ -2163,16 +2163,17 @@
           (is (nil? (:instance/sandbox-directory instance-ent))))))))
 
 (deftest test-monitor-tx-report-queue
-  (let [conn (restore-fresh-database! "datomic:mem://test-monitor-tx-report-queue")
-        job-id-1 (create-dummy-job conn)
-        instance-id-1 (create-dummy-instance conn job-id-1)
-        job-id-2 (create-dummy-job conn)
-        instance-id-2 (create-dummy-instance conn job-id-2)
+  (let [uri "datomic:mem://test-monitor-tx-report-queue"
+        conn (restore-fresh-database! uri)
         killed-tasks (atom [])
         mock-driver (reify msched/SchedulerDriver
                       (kill-task! [_ task-id]
-                        (swap! killed-tasks #(conj % task-id))))]
-    (testutil/fake-test-compute-cluster mock-driver)
+                        (swap! killed-tasks #(conj % task-id))))
+        compute-cluster (testutil/fake-test-compute-cluster-with-driver conn uri mock-driver)
+        job-id-1 (create-dummy-job conn)
+        instance-id-1 (create-dummy-instance conn job-id-1 :compute-cluster compute-cluster)
+        job-id-2 (create-dummy-job conn)
+        instance-id-2 (create-dummy-instance conn job-id-2 :compute-cluster compute-cluster)]
     (cook.mesos/kill-job conn [(:job/uuid (d/entity (d/db conn) job-id-1))])
     (let [job-ent (d/entity (d/db conn) job-id-1)
           instance-ent (d/entity (d/db conn) instance-id-1)]

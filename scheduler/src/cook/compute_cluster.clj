@@ -98,7 +98,7 @@
 
 
 ; Internal variable
-(def cluster-name->compute-cluster-atom (atom nil))
+(def cluster-name->compute-cluster-atom (atom {}))
 
 
 (defn- get-mesos-clusters-from-config
@@ -125,20 +125,28 @@
   [{:keys [mesos-compute-cluster-name mesos-framework-id]}]
   [{:compute-cluster-name mesos-compute-cluster-name :framework-id mesos-framework-id}])
 
+
+(defn register-ComputeCluster!
+  "Register a compute cluster "
+  [compute-cluster]
+  (let [compute-cluster-name (ComputeCluster->compute-cluster-name compute-cluster)]
+    (when (contains? @cluster-name->compute-cluster-atom compute-cluster-name)
+      (throw (IllegalArgumentException.
+               (str "Multiple compute-clusters have the same name: " compute-cluster
+                    " and " (get @cluster-name->compute-cluster-atom compute-cluster-name)
+                    " with name " compute-cluster-name))))
+    (log/info "Setting up compute cluster: " compute-cluster)
+    (swap! cluster-name->compute-cluster-atom assoc compute-cluster-name compute-cluster)
+    nil))
+
 (defn setup-cluster-map-config
   "Setup the cluster-map configs, linking a cluster name to the associated metadata needed
   to represent/process it."
   [conn settings]
   (let [compute-clusters (->> (get-mesos-clusters-from-config settings)
-                              (map (partial get-mesos-ComputeCluster conn)))
-        reduce-fn (fn [accum {:keys [compute-cluster-name] :as cluster-dict}]
-                    (when (contains? accum compute-cluster-name)
-                      (throw (IllegalArgumentException.
-                               (str "Multiple compute-clusters have the same name: " compute-cluster-name))))
-                    (assoc accum compute-cluster-name cluster-dict))]
-    (run! (fn [compute-cluster]
-            (log/info "Setting up compute cluster: " compute-cluster)) compute-clusters)
-    (reset! cluster-name->compute-cluster-atom (reduce reduce-fn {} compute-clusters))))
+                              (map (partial get-mesos-ComputeCluster conn))
+                              (map register-ComputeCluster!))]
+    (doall compute-clusters)))
 
 (defn compute-cluster-name->ComputeCluster
   "Hack: Only supports one compute cluster until we fix initialization of the driver."

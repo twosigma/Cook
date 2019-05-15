@@ -205,6 +205,7 @@
         (is (= "No content." (:body delete-response)))))))
 
 (deftest descriptive-state
+  (testutil/setup)
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")]
     (testutil/setup-fake-test-compute-cluster conn)
     (let [job-waiting (create-dummy-job conn :user "mforsyth"
@@ -519,7 +520,10 @@
                (response->body-data update-resp)))))))
 
 (deftest instance-cancelling
-  (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")]
+  (testutil/setup)
+  (let [uri "datomic:mem://mesos-api-test"
+        conn (restore-fresh-database! uri)]
+    (testutil/setup-fake-test-compute-cluster conn)
     (testing "set cancelled on running instance"
       (let [job (create-dummy-job conn :user "test-user")
             instance (create-dummy-instance conn job :instance-status :instance.status/running)
@@ -1557,9 +1561,9 @@
         (reset! fetched-default-cluster-atom false)
         (testing "Backward compatability when no cluster map supplied"
           ; Should map to the default. Make sure we actually did fetch the default.
-          (is (= {:name "compute-cluster-default-compute-cluster-name"
+          (is (= {:name "unittest-default-compute-cluster-name"
                   :type :mesos
-                  :mesos {:framework-id "compute-cluster-default-test-framework"}}
+                  :mesos {:framework-id "unittest-default-compute-cluster-name-framework"}}
                  (api/fetch-compute-cluster-map (db conn) nil)))
           (is @fetched-default-cluster-atom))))))
 

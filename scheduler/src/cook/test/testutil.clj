@@ -37,45 +37,48 @@
   (:import (java.util UUID)
            (org.apache.log4j ConsoleAppender Logger PatternLayout)))
 
+(defn fake-test-compute-cluster-with-driver
+  [conn compute-cluster-name driver]
+  {:pre [compute-cluster-name]}
+  (let [existing-compute-cluster (get @cc/cluster-name->compute-cluster-atom compute-cluster-name)]
+    (let [compute-cluster-mesos-map {:framework-id (str compute-cluster-name "-framework")
+                                     :compute-cluster-name compute-cluster-name}
+          compute-cluster (cc/get-mesos-ComputeCluster conn compute-cluster-mesos-map)]
+      (cc/register-ComputeCluster! compute-cluster)
+      (cc/set-mesos-driver-atom-hack! compute-cluster driver)
+      compute-cluster)))
+
+(def fake-test-compute-cluster-name "unittest-default-compute-cluster-name")
+
 (defn setup-fake-test-compute-cluster
-  "Setup a fake test compute cluster"
+  "Setup and return a fake compute cluster. This one is standardized with no driver. Returns the compute cluster.
+  Safe to invoke multiple times."
   [conn]
-  (cc/setup-cluster-map-config conn
-                               {:mesos-framework-id "compute-cluster-default-test-framework"
-                                :mesos-compute-cluster-name "compute-cluster-default-compute-cluster-name"}))
+  (let [cluster-name fake-test-compute-cluster-name
+        ; We want intern-ing behavior here....
+        compute-cluster (get @cc/cluster-name->compute-cluster-atom cluster-name)]
+    (when-not compute-cluster
+      (fake-test-compute-cluster-with-driver conn cluster-name nil))
+    (or compute-cluster (cc/compute-cluster-name->ComputeCluster cluster-name))))
 
 (defn fake-test-compute-cluster
-  "Return a fake/test compute cluster. If invoked with a driver argument, bind the driver of the compute cluster to that
-  argument.
-  TODO: Paul, talk about this function?"
-  ([]
-   {:post [%]} ; Never returns nil. If it does, then setup-fake-test-cluster wasn't run.
-   (-> "compute-cluster-default-compute-cluster-name"
-       cc/compute-cluster-name->ComputeCluster))
-  ([driver]
-   (let [out (fake-test-compute-cluster)]
-     (cc/set-mesos-driver-atom-hack! out driver)
-     out)))
-
-(defn fake-test-compute-cluster-dbid
-  "Return the dbid for the fake test compute cluster. Used to generate the right compute-cluster component in task structure in unit tests."
+  "Return a fake/test compute cluster."
   []
   {:post [%]} ; Never returns nil. If it does, then setup-fake-test-cluster wasn't run.
-  (-> (fake-test-compute-cluster)
-      cc/ComputeCluster->db-id))
-
+  (cc/compute-cluster-name->ComputeCluster fake-test-compute-cluster-name))
 
 (defn fake-test-compute-cluster-map
   "Helper function to report a compute cluster map for instances."
   [db]
-  (->> (fake-test-compute-cluster-dbid)
+  (->> (fake-test-compute-cluster)
+       cc/ComputeCluster->db-id
        (d/entity db)
        api/compute-cluster-entity->map))
 
 (let [minimal-config {:authorization {:one-user ""}
                       :database {:datomic-uri ""}
                       :log {}
-                      :mesos {:leader-path "", :master "" :compute-cluster-name "compute-cluster-default-compute-cluster-name"}
+                      :mesos {:leader-path "", :master "" :compute-cluster-name fake-test-compute-cluster-name}
                       :metrics {}
                       :nrepl {}
                       :port 80
@@ -150,6 +153,7 @@
    Return a connection to the fresh database."
   [uri & txn]
   (flush-caches!)
+  (reset! cc/cluster-name->compute-cluster-atom {})
   (d/delete-database uri)
   (d/create-database uri)
   (let [conn (d/connect uri)]
@@ -248,7 +252,7 @@
 (defn create-dummy-instance
   "Return the entity id for the created instance."
   [conn job & {:keys [cancelled end-time executor executor-id exit-code hostname instance-status job-state preempted?
-                      progress progress-message reason sandbox-directory slave-id start-time task-id mesos-start-time]
+                      progress progress-message reason sandbox-directory slave-id start-time task-id mesos-start-time compute-cluster]
                :or  {end-time nil
                      executor-id  (str (UUID/randomUUID))
                      hostname "localhost"
@@ -274,7 +278,9 @@
                                   :instance/status instance-status
                                   :instance/task-id task-id
                                   :job/_instance job
-                                  :instance/compute-cluster (fake-test-compute-cluster-dbid)}
+                                  :instance/compute-cluster
+                                  (cc/ComputeCluster->db-id
+                                    (or compute-cluster (fake-test-compute-cluster)))}
                                  cancelled (assoc :instance/cancelled true)
                                  end-time (assoc :instance/end-time end-time)
                                  executor (assoc :instance/executor executor)
