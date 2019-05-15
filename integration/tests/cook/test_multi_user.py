@@ -507,6 +507,7 @@ class MultiUserCookTest(util.CookTest):
                 raise e
         try:
             with admin:
+                resp = util.reset_limit(self.cook_url, 'quota', user.name)
                 resp = util.set_limit(self.cook_url, 'quota', user.name, count=1)
                 self.assertEqual(resp.status_code, 201, resp.text)
             with user:

@@ -729,7 +729,7 @@ def wait_for_exit_code(cook_url, job_id, max_wait_ms=DEFAULT_TIMEOUT_MS):
     return job['instance-with-exit-code']
 
 
-def wait_for_sandbox_directory(cook_url, job_id):
+def wait_for_sandbox_directory(cook_url, job_id, status=None):
     """
     Wait for the given job's sandbox_directory field to appear.
     Returns an up-to-date job description object on success,
@@ -753,6 +753,8 @@ def wait_for_sandbox_directory(cook_url, job_id):
             for inst in job['instances']:
                 if 'sandbox_directory' not in inst:
                     logger.info(f"Job {job_id} instance {inst['task_id']} has no sandbox directory.")
+                elif status is not None and inst['status'] != status:
+                    logger.info(f"Job {job_id} instance {inst['task_id']} has status {inst['status']}")
                 else:
                     logger.info(
                         f"Job {job_id} instance {inst['task_id']} has sandbox directory {inst['sandbox_directory']}.")
@@ -760,7 +762,7 @@ def wait_for_sandbox_directory(cook_url, job_id):
 
     job = wait_until(query, predicate, max_wait_ms=max_wait_ms, wait_interval_ms=250)
     for inst in job['instances']:
-        if 'sandbox_directory' in inst:
+        if 'sandbox_directory' in inst and (status is None or inst['status'] == status):
             return inst
 
 
