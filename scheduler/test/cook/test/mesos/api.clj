@@ -205,6 +205,7 @@
         (is (= "No content." (:body delete-response)))))))
 
 (deftest descriptive-state
+  (testutil/setup)
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")]
     (testutil/setup-fake-test-compute-cluster conn)
     (let [job-waiting (create-dummy-job conn :user "mforsyth"
@@ -519,7 +520,10 @@
                (response->body-data update-resp)))))))
 
 (deftest instance-cancelling
-  (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")]
+  (testutil/setup)
+  (let [uri "datomic:mem://mesos-api-test"
+        conn (restore-fresh-database! uri)]
+    (testutil/setup-fake-test-compute-cluster conn)
     (testing "set cancelled on running instance"
       (let [job (create-dummy-job conn :user "test-user")
             instance (create-dummy-instance conn job :instance-status :instance.status/running)
@@ -1467,105 +1471,104 @@
 
 (deftest test-fetch-instance-map
   (testutil/setup)
-  (let [conn (restore-fresh-database! "datomic:mem://test-fetch-instance-map")]
-    (testutil/setup-fake-test-compute-cluster conn)
-    (let [job-entity-id (create-dummy-job conn :user "test-user" :job-state :job.state/completed)
-          basic-instance-properties {:executor-id (str job-entity-id "-executor-1")
-                                     :slave-id "slave-1"
-                                     :task-id (str job-entity-id "-executor-1")}
-          basic-instance-map {:executor_id (str job-entity-id "-executor-1")
-                              :slave_id "slave-1"
-                              :task_id (str job-entity-id "-executor-1")
-                              :compute-cluster
-                              ; Observe this does not include the provenance record of filled in data.
-                              {:name "compute-cluster-default-compute-cluster-name"
-                               :type :mesos
-                               :mesos {:framework-id "compute-cluster-default-test-framework"}}}
-          ; Track whether we invoke this function to fetch the default. We shouldn't use this unless
-          ; we're filling in because the entity lacks a compute cluster.
-          fetched-default-cluster-atom (atom false)
-          tmp-default-cluster-name-for-legacy cc/get-default-cluster-name-for-legacy]
-      (with-redefs [cc/get-default-cluster-name-for-legacy
-                    (fn []
-                      (reset! fetched-default-cluster-atom true)
-                      (tmp-default-cluster-name-for-legacy))]
+  (let [conn (restore-fresh-database! "datomic:mem://test-fetch-instance-map")
+        compute-cluster (testutil/setup-fake-test-compute-cluster conn)
+        job-entity-id (create-dummy-job conn :user "test-user" :job-state :job.state/completed)
+        basic-instance-properties {:executor-id (str job-entity-id "-executor-1")
+                                   :slave-id "slave-1"
+                                   :task-id (str job-entity-id "-executor-1")}
+        basic-instance-map {:executor_id (str job-entity-id "-executor-1")
+                            :slave_id "slave-1"
+                            :task_id (str job-entity-id "-executor-1")
+                            :compute-cluster
+                            {:name "unittest-default-compute-cluster-name"
+                             :type :mesos
+                             :mesos {:framework-id "unittest-default-compute-cluster-name-framework"}}}
+        ; Track whether we invoke this function to fetch the default. We shouldn't use this unless
+        ; we're filling in because the entity lacks a compute cluster.
+        fetched-default-cluster-atom (atom false)
+        tmp-default-compute-cluster-for-legacy cc/get-default-cluster-for-legacy]
+    (with-redefs [cc/get-default-cluster-for-legacy
+                  (fn []
+                    (reset! fetched-default-cluster-atom true)
+                    (tmp-default-compute-cluster-for-legacy))]
 
-        (reset! fetched-default-cluster-atom false)
-        (testing "basic-instance-without-sandbox"
-          (let [instance-entity-id (apply create-dummy-instance conn job-entity-id
-                                          :instance-status :instance.status/success
-                                          (mapcat seq basic-instance-properties))
-                instance-entity (d/entity (db conn) instance-entity-id)
-                instance-map (api/fetch-instance-map (db conn) instance-entity)
-                expected-map (assoc basic-instance-map
-                               :backfilled false
-                               :hostname "localhost"
-                               :ports []
-                               :preempted false
-                               :progress 0
-                               :status "success")]
-            (is (= expected-map (dissoc instance-map :start_time))))
-          (is (not @fetched-default-cluster-atom)))
+      (reset! fetched-default-cluster-atom false)
+      (testing "basic-instance-without-sandbox"
+        (let [instance-entity-id (apply create-dummy-instance conn job-entity-id
+                                        :instance-status :instance.status/success
+                                        (mapcat seq basic-instance-properties))
+              instance-entity (d/entity (db conn) instance-entity-id)
+              instance-map (api/fetch-instance-map (db conn) instance-entity)
+              expected-map (assoc basic-instance-map
+                             :backfilled false
+                             :hostname "localhost"
+                             :ports []
+                             :preempted false
+                             :progress 0
+                             :status "success")]
+          (is (= expected-map (dissoc instance-map :start_time))))
+        (is (not @fetched-default-cluster-atom)))
 
-        (reset! fetched-default-cluster-atom false)
-        (testing "basic-instance-with-sandbox-url"
-          (let [instance-entity-id (apply create-dummy-instance conn job-entity-id
-                                          :instance-status :instance.status/success
-                                          :sandbox-directory "/path/to/working/directory"
-                                          (mapcat seq basic-instance-properties))
-                instance-entity (d/entity (db conn) instance-entity-id)
-                instance-map (api/fetch-instance-map (db conn) instance-entity)
-                expected-map (assoc basic-instance-map
-                               :backfilled false
-                               :hostname "localhost"
-                               :output_url "http://localhost:5051/files/read.json?path=%2Fpath%2Fto%2Fworking%2Fdirectory"
-                               :ports []
-                               :preempted false
-                               :progress 0
-                               :sandbox_directory "/path/to/working/directory"
-                               :status "success")]
-            (is (= expected-map (dissoc instance-map :start_time))))
-          (is (not @fetched-default-cluster-atom)))
+      (reset! fetched-default-cluster-atom false)
+      (testing "basic-instance-with-sandbox-url"
+        (let [instance-entity-id (apply create-dummy-instance conn job-entity-id
+                                        :instance-status :instance.status/success
+                                        :sandbox-directory "/path/to/working/directory"
+                                        (mapcat seq basic-instance-properties))
+              instance-entity (d/entity (db conn) instance-entity-id)
+              instance-map (api/fetch-instance-map (db conn) instance-entity)
+              expected-map (assoc basic-instance-map
+                             :backfilled false
+                             :hostname "localhost"
+                             :output_url "http://localhost:5051/files/read.json?path=%2Fpath%2Fto%2Fworking%2Fdirectory"
+                             :ports []
+                             :preempted false
+                             :progress 0
+                             :sandbox_directory "/path/to/working/directory"
+                             :status "success")]
+          (is (= expected-map (dissoc instance-map :start_time))))
+        (is (not @fetched-default-cluster-atom)))
 
-        (reset! fetched-default-cluster-atom false)
-        (testing "detailed-instance"
-          (let [instance-entity-id (apply create-dummy-instance conn job-entity-id
-                                          :exit-code 2
-                                          :hostname "agent-hostname"
-                                          :instance-status :instance.status/success
-                                          :preempted? true
-                                          :progress 78
-                                          :progress-message "seventy-eight percent done"
-                                          :reason :preempted-by-rebalancer
-                                          :sandbox-directory "/path/to/working/directory"
-                                          (mapcat seq basic-instance-properties))
-                instance-entity (d/entity (db conn) instance-entity-id)
-                instance-map (api/fetch-instance-map (db conn) instance-entity)
-                expected-map (assoc basic-instance-map
-                               :backfilled false
-                               :exit_code 2
-                               :hostname "agent-hostname"
-                               :output_url "http://agent-hostname:5051/files/read.json?path=%2Fpath%2Fto%2Fworking%2Fdirectory"
-                               :ports []
-                               :preempted true
-                               :progress 78
-                               :progress_message "seventy-eight percent done"
-                               :reason_code 1002
-                               :reason_string "Preempted by rebalancer"
-                               :reason_mea_culpa true
-                               :sandbox_directory "/path/to/working/directory"
-                               :status "success")]
-            (is (= expected-map (dissoc instance-map :start_time))))
-          (is (not @fetched-default-cluster-atom)))
+      (reset! fetched-default-cluster-atom false)
+      (testing "detailed-instance"
+        (let [instance-entity-id (apply create-dummy-instance conn job-entity-id
+                                        :exit-code 2
+                                        :hostname "agent-hostname"
+                                        :instance-status :instance.status/success
+                                        :preempted? true
+                                        :progress 78
+                                        :progress-message "seventy-eight percent done"
+                                        :reason :preempted-by-rebalancer
+                                        :sandbox-directory "/path/to/working/directory"
+                                        (mapcat seq basic-instance-properties))
+              instance-entity (d/entity (db conn) instance-entity-id)
+              instance-map (api/fetch-instance-map (db conn) instance-entity)
+              expected-map (assoc basic-instance-map
+                             :backfilled false
+                             :exit_code 2
+                             :hostname "agent-hostname"
+                             :output_url "http://agent-hostname:5051/files/read.json?path=%2Fpath%2Fto%2Fworking%2Fdirectory"
+                             :ports []
+                             :preempted true
+                             :progress 78
+                             :progress_message "seventy-eight percent done"
+                             :reason_code 1002
+                             :reason_string "Preempted by rebalancer"
+                             :reason_mea_culpa true
+                             :sandbox_directory "/path/to/working/directory"
+                             :status "success")]
+          (is (= expected-map (dissoc instance-map :start_time))))
+        (is (not @fetched-default-cluster-atom)))
 
-        (reset! fetched-default-cluster-atom false)
-        (testing "Backward compatability when no cluster map supplied"
-          ; Should map to the default. Make sure we actually did fetch the default.
-          (is (= {:name "compute-cluster-default-compute-cluster-name"
-                  :type :mesos
-                  :mesos {:framework-id "compute-cluster-default-test-framework"}}
-                 (api/fetch-compute-cluster-map (db conn) nil)))
-          (is @fetched-default-cluster-atom))))))
+      (reset! fetched-default-cluster-atom false)
+      (testing "Backward compatability when no cluster map supplied"
+        ; Should map to the default. Make sure we actually did fetch the default.
+        (is (= {:name "unittest-default-compute-cluster-name"
+                :type :mesos
+                :mesos {:framework-id "unittest-default-compute-cluster-name-framework"}}
+               (api/fetch-compute-cluster-map (db conn) nil)))
+        (is @fetched-default-cluster-atom)))))
 
 (deftest test-file-plugin
   (with-redefs [file-plugin/plugin (reify FileUrlGenerator

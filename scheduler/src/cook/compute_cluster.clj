@@ -18,6 +18,36 @@
             [cook.config :as config]
             [datomic.api :as d]))
 
+(defprotocol ComputeCluster
+  ; These methods should accept bulk data and process in batches.
+  ;(kill-tasks [this task]
+  ;(launch-tasks [this offers task-metadata-seq]
+  (compute-cluster-name [this])
+
+  (db-id [this]
+    "Get a database entity-id for this compute cluster (used for putting it into a task structure).")
+
+  (get-mesos-driver-hack [this]
+    "Get the mesos driver. Hack; any funciton invoking this should be put within the compute-cluster implementation")
+  (get-mesos-framework-id-hack [this]
+    "Short term hack to get the framework ID. When we migrate/hide all mesos functionality behind the ComputeClusterAPI, this will go away.")
+  (set-mesos-driver-atom-hack! [this driver]
+    "Hack to overwrite the driver. Used until we fix the initialization order of compute-cluster"))
+
+(defrecord MesosComputeCluster [compute-cluster-name framework-id db-id driver-atom]
+  ComputeCluster
+  (compute-cluster-name [this]
+    compute-cluster-name)
+  (get-mesos-driver-hack [this]
+    @driver-atom)
+  (db-id [this]
+    db-id)
+  (get-mesos-framework-id-hack [this]
+    framework-id)
+  (set-mesos-driver-atom-hack! [this driver]
+    (reset! driver-atom driver)))
+
+; Internal method
 (defn- write-compute-cluster
   "Create a missing compute-cluster for one that's not yet in the database."
   [conn compute-cluster]
@@ -26,6 +56,7 @@
      conn
      [(assoc compute-cluster :db/id (d/tempid :db.part/user))]))
 
+; Internal method
 (defn- mesos-cluster->compute-cluster-map-for-datomic
   "Given a mesos cluster dictionary, determine the datomic entity it should correspond to."
   [{:keys [compute-cluster-name framework-id]}]
@@ -33,6 +64,7 @@
    :compute-cluster/cluster-name compute-cluster-name
    :compute-cluster/mesos-framework-id framework-id})
 
+; Internal method
 (defn get-mesos-cluster-entity-id
   "Given a configuration map for a mesos cluster, return the datomic entity-id corresponding to the cluster,
   if it exists. Internal helper function."
@@ -49,35 +81,28 @@
              unfiltered-db compute-cluster-name framework-id)]
     (first query-result)))
 
-(defn get-mesos-cluster-map
+; Internal method.
+(defn get-mesos-compute-cluster
   "Process one mesos cluster specification, returning the entity id of the corresponding compute-cluster,
-  creating the cluster if it does not exist."
+  creating the cluster if it does not exist. Warning: Not idempotent. Only call once "
   [conn {:keys [compute-cluster-name framework-id] :as mesos-cluster}]
   {:pre [compute-cluster-name
          framework-id]}
   (let [cluster-entity-id (get-mesos-cluster-entity-id (d/db conn) mesos-cluster)]
     (when-not cluster-entity-id
       (write-compute-cluster conn (mesos-cluster->compute-cluster-map-for-datomic mesos-cluster)))
-    {:compute-cluster-type :mesos-cluster
-     :compute-cluster-name compute-cluster-name
-     :mesos-framework-id framework-id
-     :db-id (or cluster-entity-id (get-mesos-cluster-entity-id (d/db conn) mesos-cluster))}))
+    (->MesosComputeCluster
+      compute-cluster-name
+      framework-id
+      (or cluster-entity-id (get-mesos-cluster-entity-id (d/db conn) mesos-cluster))
+      (atom nil))))
 
-(defn get-default-cluster-name-for-legacy
-  "What cluster name to put on for legacy jobs when generating their compute-cluster."
-  []
-  {:post [%]} ; Never returns nil.
-  (-> config/config :settings :mesos-compute-cluster-name))
 
-; A hack to store the mesos cluster name, until we refactor the code so that we support multiple clusters. In the long term future
-; this is probably replaced with a function from driver->cluster-id, or the cluster name is propagated by function arguments and
-; closed over.
-(defn get-mesos-cluster-name-hack
-  []
-  {:post [%]} ; Never returns nil.
-  (-> config/config :settings :mesos-compute-cluster-name))
+; Internal variable
+(def cluster-name->compute-cluster-atom (atom {}))
 
-(defn get-mesos-clusters-from-config
+
+(defn- get-mesos-clusters-from-config
   "Get all of the mesos clusters defined in the configuration.
   In config.edn, we put all of the mesos keys under one toplevel dictionary.
 
@@ -101,29 +126,57 @@
   [{:keys [mesos-compute-cluster-name mesos-framework-id]}]
   [{:compute-cluster-name mesos-compute-cluster-name :framework-id mesos-framework-id}])
 
-(def cluster-name->cluster-dict-atom (atom nil))
 
-(defn cluster-name->db-id
-  "Given a cluster name, return the db-id we should use to refer to that compute cluster
-  when we put it within a task structure."
-  [cluster-name]
-  {:post [%]} ; Never returns nil.
-  (let [{:keys [db-id]} (get @cluster-name->cluster-dict-atom cluster-name)]
-    ; All clusters referenced by name must have been installed in the db previously.
-    (when-not db-id (throw (IllegalStateException. (str "Was asked to lookup db-id for " cluster-name " and got nil"))))
-    db-id))
+(defn register-compute-cluster!
+  "Register a compute cluster "
+  [compute-cluster]
+  (let [compute-cluster-name (compute-cluster-name compute-cluster)]
+    (when (contains? @cluster-name->compute-cluster-atom compute-cluster-name)
+      (throw (IllegalArgumentException.
+               (str "Multiple compute-clusters have the same name: " compute-cluster
+                    " and " (get @cluster-name->compute-cluster-atom compute-cluster-name)
+                    " with name " compute-cluster-name))))
+    (log/info "Setting up compute cluster: " compute-cluster)
+    (swap! cluster-name->compute-cluster-atom assoc compute-cluster-name compute-cluster)
+    nil))
 
-(defn setup-cluster-map-config
+(defn setup-compute-cluster-map-from-config
   "Setup the cluster-map configs, linking a cluster name to the associated metadata needed
   to represent/process it."
   [conn settings]
   (let [compute-clusters (->> (get-mesos-clusters-from-config settings)
-                              (map (partial get-mesos-cluster-map conn)))
-        reduce-fn (fn [accum {:keys [compute-cluster-name] :as cluster-dict}]
-                    (when (contains? accum compute-cluster-name)
-                      (throw (IllegalArgumentException.
-                               (str "Multiple compute-clusters have the same name: " compute-cluster-name))))
-                    (assoc accum compute-cluster-name cluster-dict))]
-    (run! (fn [compute-cluster]
-            (log/info "Setting up compute cluster: " compute-cluster)) compute-clusters)
-    (reset! cluster-name->cluster-dict-atom (reduce reduce-fn {} compute-clusters))))
+                              (map (partial get-mesos-compute-cluster conn))
+                              (map register-compute-cluster!))]
+    (doall compute-clusters)))
+
+(defn compute-cluster-name->ComputeCluster
+  "From the name of a compute cluster, return the object. Throws if not found. Does not return nil."
+  [compute-cluster-name]
+  (let [result (get @cluster-name->compute-cluster-atom compute-cluster-name)]
+    (when-not result
+      (log/error "Was asked to lookup db-id for" compute-cluster-name "and got nil"))
+    result))
+
+; A hack to store the mesos cluster, until we refactor the code so that we support multiple clusters. In the long term future
+; this is probably replaced with a function from driver->cluster-id, or the cluster name is propagated by function arguments and
+; closed over.
+(defn mesos-cluster-hack
+  "A hack to store the mesos cluster, until we refactor the code so that we support multiple clusters. In the
+  long term future the cluster is propagated by function arguments and closed over."
+  []
+  {:post [%]} ; Never returns nil.
+  (-> config/config
+      :settings
+      :mesos-compute-cluster-name
+      compute-cluster-name->ComputeCluster))
+
+(defn get-default-cluster-for-legacy
+  "What cluster name to put on for legacy jobs when generating their compute-cluster.
+  TODO: Will want this to be configurable when we support multiple mesos clusters."
+  []
+  {:post [%]} ; Never returns nil.
+  (-> config/config
+      :settings
+      :mesos-compute-cluster-name
+      compute-cluster-name->ComputeCluster))
+

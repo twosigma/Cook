@@ -4,11 +4,12 @@
             [clj-time.core :as t]
             [clojure.core.async :as async]
             [clojure.tools.logging :as log]
+            [cook.compute-cluster :as cc]
             [cook.mesos.mesos-mock :as mm]
             [cook.mesos.share :as share]
             [cook.mesos.util :as util]
             [cook.test.simulator :refer (with-cook-scheduler pull-all-task-ents dump-jobs-to-csv)]
-            [cook.test.testutil :refer (restore-fresh-database! create-dummy-job poll-until setup)]
+            [cook.test.testutil :as testutil :refer (restore-fresh-database! create-dummy-job poll-until setup)]
             [datomic.api :as d]
             [mesomatic.scheduler :as mesos]
             [mesomatic.types :as mesos-types])
@@ -599,59 +600,61 @@
           (throw (ex-info "Error while testing launch" atom-map t)))))))
 
 (deftest mesos-mock-kill
-  (testing "kill task"
-    (let [registered-atom (atom false)
-          offer-atom (atom [])
-          launched-atom (atom [])
-          task-running-atom (atom [])
-          task-complete-atom (atom [])
-          atom-map {:registered-atom registered-atom
-                    :offer-atom offer-atom
-                    :launched-atom launched-atom
-                    :task-running-atom task-running-atom
-                    :task-complete-atom task-complete-atom}]
-      (try
-        (let [slave-id (str (UUID/randomUUID))
-              cpus {"*" 2}
-              mem {"*" 1000}
-              ports {"*" [{:begin 1 :end 100}]}
-              task (dummy-task :mem mem :cpus cpus :ports ports :slave-id slave-id)
-              scheduler (mesos/scheduler
-                          (registered [this driver framework-id master-info]
-                                      (reset! registered-atom true))
-                          (resource-offers [this driver offers]
-                                           (log/info {:offers offers :count (count offers) :id (map :id offers)})
-                                           (when (seq offers)
-                                             (when (< (count @launched-atom) 1)
-                                               (swap! launched-atom conj (:task-id task))
-                                               (mesos/launch-tasks! driver
-                                                                    (map :id offers)
-                                                                    [task]))
-                                             (swap! offer-atom into offers)))
-                          (status-update [this driver status]
-                                         (log/info "Status update:" status)
-                                         (condp = (:state status)
-                                           :task-killed (swap! task-complete-atom conj (-> status :task-id :value))
-                                           :task-running (let [task-id (-> status :task-id :value)]
-                                                           (is (= (:value (:task-id task)) task-id))
-                                                           (log/info "killing " task-id)
-                                                           (mesos/kill-task! driver {:value task-id})
-                                                           (swap! task-running-atom conj task-id))
-                                           (throw (ex-info "Unexpected status sent" {:status status})))))
-              hosts [(dummy-host :mem mem :cpus cpus :ports ports :slave-id slave-id)]
-              offer-trigger-chan (chime-ch (util/time-seq (t/now) (t/millis 50)))
-              mock-driver (mm/mesos-mock hosts offer-trigger-chan scheduler)]
-          (mesos/start! mock-driver)
-          (poll-until #(= (count @offer-atom) 2) 20 1000)
-          (log/warn "Calling stop")
-          (mesos/stop! mock-driver)
-          (is @registered-atom)
-          (is (= (count @offer-atom) 2))
-          (is (= (count @launched-atom) 1))
-          (is (= (count @task-running-atom) 1))
-          (is (= (count @task-complete-atom) 1)))
-        (catch Throwable t
-          (throw (ex-info "Error while testing launch" atom-map t)))))))
+  ;; Mock this out with a stub string, as the compute cluster shouldn't be used anywhere.
+  (with-redefs [cc/compute-cluster-name->ComputeCluster "mesos-mock-kill"]
+    (testing "kill task"
+      (let [registered-atom (atom false)
+            offer-atom (atom [])
+            launched-atom (atom [])
+            task-running-atom (atom [])
+            task-complete-atom (atom [])
+            atom-map {:registered-atom registered-atom
+                      :offer-atom offer-atom
+                      :launched-atom launched-atom
+                      :task-running-atom task-running-atom
+                      :task-complete-atom task-complete-atom}]
+        (try
+          (let [slave-id (str (UUID/randomUUID))
+                cpus {"*" 2}
+                mem {"*" 1000}
+                ports {"*" [{:begin 1 :end 100}]}
+                task (dummy-task :mem mem :cpus cpus :ports ports :slave-id slave-id)
+                scheduler (mesos/scheduler
+                            (registered [this driver framework-id master-info]
+                                        (reset! registered-atom true))
+                            (resource-offers [this driver offers]
+                                             (log/info {:offers offers :count (count offers) :id (map :id offers)})
+                                             (when (seq offers)
+                                               (when (< (count @launched-atom) 1)
+                                                 (swap! launched-atom conj (:task-id task))
+                                                 (mesos/launch-tasks! driver
+                                                                      (map :id offers)
+                                                                      [task]))
+                                               (swap! offer-atom into offers)))
+                            (status-update [this driver status]
+                                           (log/info "Status update:" status)
+                                           (condp = (:state status)
+                                             :task-killed (swap! task-complete-atom conj (-> status :task-id :value))
+                                             :task-running (let [task-id (-> status :task-id :value)]
+                                                             (is (= (:value (:task-id task)) task-id))
+                                                             (log/info "killing " task-id)
+                                                             (mesos/kill-task! driver {:value task-id})
+                                                             (swap! task-running-atom conj task-id))
+                                             (throw (ex-info "Unexpected status sent" {:status status})))))
+                hosts [(dummy-host :mem mem :cpus cpus :ports ports :slave-id slave-id)]
+                offer-trigger-chan (chime-ch (util/time-seq (t/now) (t/millis 50)))
+                mock-driver (mm/mesos-mock hosts offer-trigger-chan scheduler)]
+            (mesos/start! mock-driver)
+            (poll-until #(= (count @offer-atom) 2) 20 1000)
+            (log/warn "Calling stop")
+            (mesos/stop! mock-driver)
+            (is @registered-atom)
+            (is (= (count @offer-atom) 2))
+            (is (= (count @launched-atom) 1))
+            (is (= (count @task-running-atom) 1))
+            (is (= (count @task-complete-atom) 1)))
+          (catch Throwable t
+            (throw (ex-info "Error while testing launch" atom-map t))))))))
 
 (deftest cook-scheduler-integration
   (setup)
@@ -671,6 +674,7 @@
           offer-trigger-chan (chime-ch (util/time-seq (t/now) (t/millis 50)))
           make-mesos-driver-fn (fn [scheduler _] ;; _ is framework-id
                                  (mm/mesos-mock hosts offer-trigger-chan scheduler))]
+      (testutil/setup-fake-test-compute-cluster mesos-datomic-conn)
       (with-cook-scheduler
         mesos-datomic-conn make-mesos-driver-fn {}
         (share/set-share! mesos-datomic-conn "default" nil "new cluster settings"

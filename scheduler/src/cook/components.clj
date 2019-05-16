@@ -100,7 +100,8 @@
                            mesos-role mesos-run-as-user offer-incubate-time-ms optimizer progress rebalancer server-port
                            task-constraints]
                           curator-framework exit-code-syncer-state framework-id mesos-datomic-mult mesos-leadership-atom
-                          mesos-agent-attributes-cache pool-name->pending-jobs-atom sandbox-syncer-state]
+                          mesos-agent-attributes-cache pool-name->pending-jobs-atom sandbox-syncer-state
+                          compute-clusters]
                       (if (cook.config/api-only-mode?)
                         (if curator-framework
                           (throw (ex-info "This node is configured for API-only mode, but also has a curator configured"
@@ -294,7 +295,7 @@
                          (log/info "Using framework id:" framework-id)
                          framework-id)))
      :compute-clusters (fnk [settings]
-                         ((util/lazy-load-var 'cook.compute-cluster/setup-cluster-map-config) datomic/conn settings))
+                         ((util/lazy-load-var 'cook.compute-cluster/setup-compute-cluster-map-from-config) datomic/conn settings))
      :mesos-datomic-mult (fnk []
                            (first ((util/lazy-load-var 'cook.datomic/create-tx-report-mult) datomic/conn)))
      :local-zookeeper (fnk [[:settings zookeeper-server]]

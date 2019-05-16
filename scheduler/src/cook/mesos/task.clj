@@ -17,6 +17,7 @@
   (:require [clojure.data.json :as json]
             [clojure.set :as set]
             [clojure.tools.logging :as log]
+            [cook.compute-cluster :as cc]
             [cook.config :as config]
             [cook.mesos.util :as util]
             [mesomatic.types :as mtypes]
@@ -61,6 +62,7 @@
        (or (= :executor/cook (:job/executor job-ent))
            (cook-executor-candidate? job-ent))))
 
+; TODO: This is mesos specific.
 (defn build-executor-environment
   "Build the environment for the cook executor."
   [job-ent]
@@ -76,6 +78,7 @@
             (assoc "EXECUTOR_PROGRESS_OUTPUT_FILE_ENV" "EXECUTOR_PROGRESS_OUTPUT_FILE_NAME"
                    "EXECUTOR_PROGRESS_OUTPUT_FILE_NAME" progress-output-file))))
 
+; TODO: This is mesos specific.
 (defn job->task-metadata
   "Takes a job entity, returns task metadata"
   [db framework-id mesos-run-as-user job-ent task-id]
@@ -139,17 +142,12 @@
      :resources (select-keys resources [:mem :cpus])
      :task-id task-id}))
 
+; TODO: This is mesos specific.
 (defn TaskAssignmentResult->task-metadata
   "Organizes the info Fenzo has already told us about the task we need to run"
-  [db mesos-run-as-user ^TaskAssignmentResult task-result]
+  [db mesos-run-as-user ^TaskAssignmentResult compute-cluster task-result]
   (let [{:keys [job task-id] :as task-request} (.getRequest task-result)]
-    ; I kept the framework-id-config here. Long term when cook schedules over multiple domains, it can vary on a per-offer
-    ; basis in the fenzo cycle. Then this will be replaced with a function from the Fenzo result (indicating the scheduling
-    ; domain matched) that will store the selected scheduling domain into the task structure (and subsequently use that
-    ; in order to launch it in the right spot.)
-    ;
-    ; Today, however, we have a single scheduling domain --- a single mesos cluster, so just stuff that in here.
-    (merge (job->task-metadata db (cook.config/framework-id-config) mesos-run-as-user job task-id)
+    (merge (job->task-metadata db (cc/get-mesos-framework-id-hack compute-cluster) mesos-run-as-user job task-id)
            {:hostname (.getHostname task-result)
             :ports-assigned (vec (sort (.getAssignedPorts task-result)))
             :task-request task-request})))

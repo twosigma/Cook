@@ -18,6 +18,7 @@
             [clj-time.core :as time]
             [clojure.core.async :as async]
             [clojure.tools.logging :as log]
+            [cook.compute-cluster :as cc]
             [cook.config :as config]
             [cook.datomic :refer (transact-with-retries)]
             [cook.mesos.data-locality :as dl]
@@ -177,6 +178,7 @@
         {:keys [hostname server-port server-https-port]} server-config
         datomic-report-chan (async/chan (async/sliding-buffer 4096))
         mesos-heartbeat-chan (async/chan (async/buffer 4096))
+        compute-cluster (cc/mesos-cluster-hack)
         current-driver (atom nil)
         rebalancer-reservation-atom (atom {})
         leader-selector (LeaderSelector.
@@ -194,7 +196,7 @@
                                   (let [{:keys [scheduler view-incubating-offers]}
                                         (sched/create-datomic-scheduler
                                          {:conn mesos-datomic-conn
-                                          :driver-atom current-driver
+                                          :compute-cluster compute-cluster
                                           :exit-code-syncer-state exit-code-syncer-state
                                           :fenzo-fitness-calculator fenzo-fitness-calculator
                                           :fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-reset
@@ -217,8 +219,10 @@
                                         driver (make-mesos-driver-fn scheduler framework-id)]
                                     (mesomatic.scheduler/start! driver)
                                     (reset! current-driver driver)
+                                    (cc/set-mesos-driver-atom-hack! compute-cluster driver)
 
                                     (cook.mesos.monitor/start-collecting-stats)
+                                    ; Many of these should look at the compute-cluster of the underlying jobs, and not use driver at all.
                                     (cook.mesos.scheduler/lingering-task-killer mesos-datomic-conn driver task-constraints lingering-task-trigger-chan)
                                     (cook.mesos.scheduler/straggler-handler mesos-datomic-conn driver straggler-trigger-chan)
                                     (cook.mesos.scheduler/cancelled-task-killer mesos-datomic-conn driver cancelled-task-trigger-chan)
@@ -246,7 +250,7 @@
                                       (dl/start-update-cycles! mesos-datomic-conn (:update-data-local-costs-trigger-chan trigger-chans)))
                                     (counters/inc! mesos-leader)
                                     (async/tap mesos-datomic-mult datomic-report-chan)
-                                    (cook.mesos.scheduler/monitor-tx-report-queue datomic-report-chan mesos-datomic-conn current-driver)
+                                    (cook.mesos.scheduler/monitor-tx-report-queue datomic-report-chan mesos-datomic-conn)
                                     (mesomatic.scheduler/join! driver)
                                     (reset! current-driver nil))
                                   (catch Throwable e

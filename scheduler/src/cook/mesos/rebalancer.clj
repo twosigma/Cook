@@ -15,6 +15,7 @@
 ;;
 (ns cook.mesos.rebalancer
   (:require [chime :refer [chime-at]]
+            [cook.compute-cluster :as cc]
             [cook.config :as config]
             [clojure.core.async :as async]
             [clojure.core.cache :as cache]
@@ -443,7 +444,7 @@
 
 
 (defn rebalance!
-  [db conn driver agent-attributes-cache rebalancer-reservation-atom params init-state jobs-to-make-room-for pool-name]
+  [db conn compute-cluster agent-attributes-cache rebalancer-reservation-atom params init-state jobs-to-make-room-for pool-name]
   (try
     (log/info "Rebalancing...Params:" params)
     (let [preemption-decisions (rebalance db agent-attributes-cache rebalancer-reservation-atom
@@ -457,7 +458,7 @@
         (log/info "Preempting tasks to make room for waiting job"
                   {:to-make-room-for (prep-job-ent-for-printing job-ent-to-make-room-for)
                    :to-preempt (map prep-task-ent-for-printing task-ents-to-preempt)})
-        
+
         ;; If a task has no id, it must be a synthetic task.
         ;; This means that on one iteration of (compute-next-state-and-preemption-decision),
         ;; the rebalancer decided to make room for a certain hypothetical task,
@@ -485,7 +486,7 @@
             (catch Throwable e
               (log/warn e "Failed to transact preemption")))
           (when-let [task-id (:instance/task-id task-ent)]
-            (mesos/kill-task! driver {:value task-id})))))))
+            (mesos/kill-task! (cc/get-mesos-driver-hack compute-cluster) {:value task-id})))))))
 
 
 
@@ -514,7 +515,7 @@
               recognized-params))]))))
 
 (defn start-rebalancer!
-  [{:keys [config conn driver agent-attributes-cache pool-name->pending-jobs-atom
+  [{:keys [config conn compute-cluster agent-attributes-cache pool-name->pending-jobs-atom
            rebalancer-reservation-atom trigger-chan view-incubating-offers]}]
   (binding [metrics-dru-scale (:dru-scale config)]
     (update-datomic-params-from-config! conn config)
@@ -544,7 +545,7 @@
                         init-state (init-state db (util/get-running-task-ents db) jobs-to-make-room-for
                                                host->spare-resources pool-ent)]
                     (log/info "Rebalancing for pool" pool)
-                    (rebalance! db conn driver agent-attributes-cache rebalancer-reservation-atom
+                    (rebalance! db conn compute-cluster agent-attributes-cache rebalancer-reservation-atom
                                 params init-state jobs-to-make-room-for (:pool/name pool-ent))))
                 @pool-name->pending-jobs-atom)
               (log/info "Rebalance cycle ended"))
