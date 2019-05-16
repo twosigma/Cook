@@ -410,14 +410,17 @@ def minimal_job(**kwargs):
         }
     job.update(kwargs)
     no_container_volume = os.getenv('COOK_NO_CONTAINER_VOLUME') is not None
-    if not no_container_volume and is_cook_executor_in_use() and 'container' in job:
-        if 'volumes' not in job['container']:
-            job['container']['volumes'] = []
+    if (not no_container_volume
+        and is_cook_executor_in_use()
+        and 'container' in job):
         config = settings(retrieve_cook_url())
-        executor_path = config['executor']['command']
-        executor_dir = os.path.dirname(os.path.dirname(executor_path))
-        job['container']['volumes'].append({'host-path': executor_dir,
-                                            'container-path': executor_dir})
+        executor_path = get_in(config, 'executor', 'command')
+        if not executor_path.startswith('.'):
+            if 'volumes' not in job['container']:
+                job['container']['volumes'] = []
+            executor_dir = os.path.dirname(os.path.dirname(executor_path))
+            job['container']['volumes'].append({'host-path': executor_dir,
+                                                'container-path': executor_dir})
     return job
 
 
