@@ -643,7 +643,7 @@
              (fn [jobs]
                (remove #(contains? matched-job-uuids (:job/uuid %)) jobs))))
 
-(defn- update-match-with-task-metadata-seq
+(defn- update-match-with-task-mesos-metadata-seq
   "Updates the match with an entry for the task metadata for all tasks. A 'match' is a set of jobs that we
   will want to all run on the same host."
   [{:keys [tasks leases] :as match} db mesos-run-as-user]
@@ -653,7 +653,7 @@
     (->> tasks
          ;; sort-by makes task-txns created in matches->task-txns deterministic
          (sort-by (comp :job/uuid :job #(.getRequest ^TaskAssignmentResult %)))
-         (map (partial task/TaskAssignmentResult->task-metadata db mesos-run-as-user compute-cluster))
+         (map (partial task/TaskAssignmentResult->mesos-task-metadata db mesos-run-as-user compute-cluster))
          (assoc match :task-metadata-seq))))
 
 (defn- matches->task-txns
@@ -690,7 +690,7 @@
 (defn launch-matched-tasks!
   "Updates the state of matched tasks in the database and then launches them."
   [matches conn db fenzo mesos-run-as-user pool-name]
-  (let [matches (map #(update-match-with-task-metadata-seq % db mesos-run-as-user) matches)
+  (let [matches (map #(update-match-with-task-mesos-metadata-seq % db mesos-run-as-user) matches)
         task-txns (matches->task-txns matches)]
     ;; Note that this transaction can fail if a job was scheduled
     ;; during a race. If that happens, then other jobs that should

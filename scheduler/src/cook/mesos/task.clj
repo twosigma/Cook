@@ -63,7 +63,7 @@
            (cook-executor-candidate? job-ent))))
 
 ; TODO: This is mesos specific.
-(defn build-executor-environment
+(defn build-mesos-executor-environment
   "Build the environment for the cook executor."
   [job-ent]
   (let [{:keys [default-progress-regex-string environment log-level max-message-length progress-sample-interval-ms]}
@@ -79,7 +79,7 @@
                    "EXECUTOR_PROGRESS_OUTPUT_FILE_NAME" progress-output-file))))
 
 ; TODO: This is mesos specific.
-(defn job->task-metadata
+(defn job->mesos-task-metadata
   "Takes a job entity, returns task metadata"
   [db framework-id mesos-run-as-user job-ent task-id]
   (let [resources (util/job-ent->resources job-ent)
@@ -96,7 +96,7 @@
                             (:cpus resources) (assoc "COOK_JOB_CPUS" (-> resources :cpus str))
                             (:gpus resources) (assoc "COOK_JOB_GPUS" (-> resources :gpus str))
                             (:mem resources) (assoc "COOK_JOB_MEM_MB" (-> resources :mem str))
-                            cook-executor? (merge (build-executor-environment job-ent)))
+                            cook-executor? (merge (build-mesos-executor-environment job-ent)))
         labels (util/job-ent->label job-ent)
         command {:environment environment
                  :uris (cond-> (:uris resources [])
@@ -143,11 +143,11 @@
      :task-id task-id}))
 
 ; TODO: This is mesos specific.
-(defn TaskAssignmentResult->task-metadata
+(defn TaskAssignmentResult->mesos-task-metadata
   "Organizes the info Fenzo has already told us about the task we need to run"
   [db mesos-run-as-user ^TaskAssignmentResult compute-cluster task-result]
   (let [{:keys [job task-id] :as task-request} (.getRequest task-result)]
-    (merge (job->task-metadata db (cc/get-mesos-framework-id-hack compute-cluster) mesos-run-as-user job task-id)
+    (merge (job->mesos-task-metadata db (cc/get-mesos-framework-id-hack compute-cluster) mesos-run-as-user job task-id)
            {:hostname (.getHostname task-result)
             :ports-assigned (vec (sort (.getAssignedPorts task-result)))
             :task-request task-request})))
