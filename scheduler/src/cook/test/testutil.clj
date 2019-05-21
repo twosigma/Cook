@@ -37,23 +37,36 @@
   (:import (java.util UUID)
            (org.apache.log4j ConsoleAppender Logger PatternLayout)))
 
-(defn setup-fake-test-compute-cluster
-  "Setup a fake test compute cluster"
-  [conn]
-  (cc/setup-cluster-map-config conn
-                               {:mesos-framework-id "compute-cluster-default-test-framework"
-                                :mesos-compute-cluster-name "compute-cluster-default-compute-cluster-name"}))
+(defn fake-test-compute-cluster-with-driver
+  "Create a test compute cluster with associated driver attached to it. Returns the compute cluster."
+  [conn compute-cluster-name driver]
+  {:pre [compute-cluster-name]}
+  (let [existing-compute-cluster (get @cc/cluster-name->compute-cluster-atom compute-cluster-name)
+        compute-cluster-mesos-map {:framework-id (str compute-cluster-name "-framework")
+                                   :compute-cluster-name compute-cluster-name}
+        compute-cluster (cc/get-mesos-compute-cluster conn compute-cluster-mesos-map)]
+    (cc/register-compute-cluster! compute-cluster)
+    (cc/set-mesos-driver-atom-hack! compute-cluster driver)
+    compute-cluster))
 
-(defn fake-test-compute-cluster-dbid
-  "Return the dbid for the fake test compute cluster. Used to generate the right compute-cluster component in task structure in unit tests."
-  []
-  {:post [%]} ; Never returns nil. If it does, then setup-fake-test-cluster wasn't run.
-  (cc/cluster-name->db-id "compute-cluster-default-compute-cluster-name"))
+; The name of the fake compute cluster to use.
+(def fake-test-compute-cluster-name "unittest-default-compute-cluster-name")
+
+(defn setup-fake-test-compute-cluster
+  "Setup and return a fake compute cluster. This one is standardized with no driver.
+  Returns the compute cluster. Safe to invoke multiple times."
+  [conn]
+  (let [cluster-name fake-test-compute-cluster-name
+        ; We want intern-ing behavior here....
+        compute-cluster (get @cc/cluster-name->compute-cluster-atom cluster-name)]
+    (when-not compute-cluster
+      (fake-test-compute-cluster-with-driver conn cluster-name nil))
+    (or compute-cluster (cc/compute-cluster-name->ComputeCluster cluster-name))))
 
 (let [minimal-config {:authorization {:one-user ""}
                       :database {:datomic-uri ""}
                       :log {}
-                      :mesos {:leader-path "", :master "" :compute-cluster-name "compute-cluster-default-compute-cluster-name"}
+                      :mesos {:leader-path "", :master "" :compute-cluster-name fake-test-compute-cluster-name}
                       :metrics {}
                       :nrepl {}
                       :port 80
@@ -128,6 +141,7 @@
    Return a connection to the fresh database."
   [uri & txn]
   (flush-caches!)
+  (reset! cc/cluster-name->compute-cluster-atom {})
   (d/delete-database uri)
   (d/create-database uri)
   (let [conn (d/connect uri)]
@@ -226,7 +240,7 @@
 (defn create-dummy-instance
   "Return the entity id for the created instance."
   [conn job & {:keys [cancelled end-time executor executor-id exit-code hostname instance-status job-state preempted?
-                      progress progress-message reason sandbox-directory slave-id start-time task-id mesos-start-time]
+                      progress progress-message reason sandbox-directory slave-id start-time task-id mesos-start-time compute-cluster]
                :or  {end-time nil
                      executor-id  (str (UUID/randomUUID))
                      hostname "localhost"
@@ -239,8 +253,9 @@
                      slave-id  (str (UUID/randomUUID))
                      start-time (java.util.Date.)
                      task-id (str (str (UUID/randomUUID)))} :as cfg}]
-  (setup-fake-test-compute-cluster conn)
-  (let [id (d/tempid :db.part/user)
+
+  (let [unittest-compute-cluster (setup-fake-test-compute-cluster conn)
+        id (d/tempid :db.part/user)
         val @(d/transact conn [(cond->
                                  {:db/id id
                                   :instance/executor-id executor-id
@@ -252,7 +267,9 @@
                                   :instance/status instance-status
                                   :instance/task-id task-id
                                   :job/_instance job
-                                  :instance/compute-cluster (fake-test-compute-cluster-dbid)}
+                                  :instance/compute-cluster
+                                  (cc/db-id
+                                    (or compute-cluster unittest-compute-cluster))}
                                  cancelled (assoc :instance/cancelled true)
                                  end-time (assoc :instance/end-time end-time)
                                  executor (assoc :instance/executor executor)

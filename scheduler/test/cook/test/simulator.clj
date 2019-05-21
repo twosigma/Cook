@@ -20,7 +20,7 @@
             [cook.mesos.share :as share]
             [cook.mesos.util :as util]
             [cook.plugins.completion :as completion]
-            [cook.test.testutil :refer (restore-fresh-database! poll-until)]
+            [cook.test.testutil :as testutil :refer (restore-fresh-database! poll-until)]
             [datomic.api :as d]
             [plumbing.core :refer (map-vals map-keys map-from-vals)])
   (:import java.util.Date
@@ -387,6 +387,7 @@
     (DateTimeUtils/setCurrentMillisFixed simulation-time)
     (log/info "Starting simulation at" simulation-time)
     ;; launch the simulator
+    (testutil/setup-fake-test-compute-cluster mesos-datomic-conn)
     (with-cook-scheduler
       mesos-datomic-conn
       make-mesos-driver-fn

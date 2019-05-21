@@ -948,6 +948,7 @@
       nil)))
 
 (defn compute-cluster-entity->map
+  "Attached to the the instance object when we send it in API responses"
   [entity]
   (cond-> {:name (:compute-cluster/cluster-name entity)}
     (= :compute-cluster.type/mesos (:compute-cluster/type entity))
@@ -960,8 +961,8 @@
   [db entity]
   (if entity
     (compute-cluster-entity->map entity)
-    (->> (cc/get-default-cluster-name-for-legacy)  ; Get the default cluster.
-         cc/cluster-name->db-id
+    (->> (cc/get-default-cluster-for-legacy)  ; Get the default cluster.
+         cc/db-id
          (d/entity db)
          (fetch-compute-cluster-map db))))
 
