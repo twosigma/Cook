@@ -25,7 +25,7 @@
             [cook.mesos.constraints :as constraints]
             [cook.mesos.dru :as dru]
             [cook.mesos.share :as share]
-            [cook.mesos.util :as util]
+            [cook.mesos.util2 :as util]
             [datomic.api :as d :refer (q)]
             [mesomatic.scheduler :as mesos]
             [metatransaction.core :as mt]

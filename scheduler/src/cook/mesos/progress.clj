@@ -18,7 +18,7 @@
             [clojure.core.async :as async]
             [clojure.core.cache :as cache]
             [clojure.tools.logging :as log]
-            [cook.mesos.util :as util]
+            [cook.mesos.util2 :as util]
             [datomic.api :as d]
             [metrics.counters :as counters]
             [metrics.histograms :as histograms]

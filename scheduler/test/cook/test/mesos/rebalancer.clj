@@ -21,7 +21,7 @@
             [cook.mesos.rebalancer :as rebalancer :refer (->State)]
             [cook.mesos.scheduler :as sched]
             [cook.mesos.share :as share]
-            [cook.mesos.util :as util]
+            [cook.mesos.util2 :as util]
             [cook.test.testutil :refer (restore-fresh-database! create-dummy-job create-dummy-instance
                                                                 create-dummy-group init-agent-attributes-cache)]
             [datomic.api :as d :refer (q)])

@@ -8,7 +8,7 @@
             [clojure.tools.logging :as log]
             [cook.cache :as ccache]
             [cook.config :as config]
-            [cook.mesos.util :as util]
+            [cook.mesos.util2 :as util]
             [datomic.api :as d]
             [metrics.histograms :as histograms]
             [metrics.timers :as timers]

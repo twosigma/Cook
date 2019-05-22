@@ -17,7 +17,7 @@
  (:use clojure.test)
  (:require [cook.mesos.dru :as dru]
            [cook.mesos.share :as share]
-           [cook.mesos.util :as util]
+           [cook.mesos.util2 :as util]
            [cook.test.testutil :refer (restore-fresh-database! create-dummy-job create-dummy-instance)]
            [datomic.api :as d :refer (q db)]
            [plumbing.core :refer [map-vals]]))

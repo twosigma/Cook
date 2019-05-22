@@ -19,7 +19,7 @@
   (:require [cook.mesos.dru :as dru]
             [cook.mesos.scheduler :as sched]
             [cook.mesos.share :as share]
-            [cook.mesos.util :as util]
+            [cook.mesos.util2 :as util]
             [cook.test.testutil :refer (restore-fresh-database! create-dummy-group create-dummy-job create-dummy-instance poll-until)]
             [criterium.core :as cc]
             [datomic.api :as d]

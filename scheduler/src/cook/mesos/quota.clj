@@ -16,7 +16,7 @@
 (ns cook.mesos.quota
   (:require [cook.mesos.pool :as pool]
             [cook.mesos.schema]
-            [cook.mesos.util :as util]
+            [cook.mesos.util2 :as util]
             [datomic.api :as d]
             [metatransaction.core :refer (db)]
             [plumbing.core :as pc]))

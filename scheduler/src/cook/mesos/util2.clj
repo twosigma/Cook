@@ -13,7 +13,7 @@
 ;; See the License for the specific language governing permissions and
 ;; limitations under the License.
 ;;
-(ns cook.mesos.util
+(ns cook.mesos.util2
   (:require [chime]
             [clj-time.coerce :as tc]
             [clj-time.core :as t]

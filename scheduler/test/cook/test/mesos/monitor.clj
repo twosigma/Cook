@@ -20,7 +20,7 @@
             [cook.mesos.api :as api]
             [cook.mesos.monitor :as monitor]
             [cook.mesos.share :as share]
-            [cook.mesos.util :as util]
+            [cook.mesos.util2 :as util]
             [cook.test.testutil :refer [restore-fresh-database! setup] :as testutil]
             [datomic.api :as d :refer [db]]
             [metrics.counters :as counters])

@@ -22,7 +22,7 @@
             [cook.datomic :as datomic]
             [cook.mesos.pool :as pool]
             [cook.mesos.share :as share]
-            [cook.mesos.util :as util]
+            [cook.mesos.util2 :as util]
             [datomic.api :as d :refer (q)]
             [metrics.counters :as counters]))
 

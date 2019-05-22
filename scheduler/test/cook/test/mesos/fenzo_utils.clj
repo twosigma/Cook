@@ -17,7 +17,7 @@
   (:use clojure.test)
   (:require [cook.mesos.fenzo-utils :as fenzo]
             [cook.mesos.scheduler :as scheduler]
-            [cook.mesos.util :as util]
+            [cook.mesos.util2 :as util]
             [cook.test.testutil :refer (restore-fresh-database! create-dummy-job)]
             [datomic.api :as d])
   (import com.netflix.fenzo.SimpleAssignmentResult

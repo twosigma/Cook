@@ -20,7 +20,7 @@
             [cook.mesos.scheduler :as scheduler]
             [cook.mesos.quota :as quota]
             [cook.mesos.share :as share]
-            [cook.mesos.util :as util]
+            [cook.mesos.util2 :as util]
             [cook.rate-limit :as ratelimit]
             [clojure.edn :as edn]
             [clojure.tools.logging :as log]

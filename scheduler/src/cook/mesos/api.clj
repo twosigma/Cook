@@ -38,7 +38,7 @@
             [cook.mesos.share :as share]
             [cook.mesos.task-stats :as task-stats]
             [cook.mesos.unscheduled :as unscheduled]
-            [cook.mesos.util :as util]
+            [cook.mesos.util2 :as util]
             [cook.mesos]
             [cook.plugins.definitions :as plugins]
             [cook.plugins.file :as file-plugin]

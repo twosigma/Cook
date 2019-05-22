@@ -1,6 +1,6 @@
 (ns data.seed-running-jobs
   (:require [cook.datomic :as datomic]
-            [cook.mesos.util :as util]
+            [cook.mesos.util2 :as util]
             [datomic.api :as d])
   (:import (java.util Date UUID)))
 

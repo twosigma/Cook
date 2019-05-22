@@ -22,7 +22,7 @@
             [cook.mesos.constraints :as constraints]
             [cook.mesos.data-locality :as dl]
             [cook.mesos.scheduler :as sched]
-            [cook.mesos.util :as util]
+            [cook.mesos.util2 :as util]
             [cook.test.testutil :refer (restore-fresh-database! create-dummy-group create-dummy-job create-dummy-instance create-dummy-job-with-instances setup)]
             [datomic.api :as d :refer (db)])
   (:import [java.util Date UUID]

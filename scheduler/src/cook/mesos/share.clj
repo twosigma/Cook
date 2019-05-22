@@ -17,7 +17,7 @@
   (:require [clojure.tools.logging :as log]
             [cook.config :as config]
             [cook.mesos.pool :as pool]
-            [cook.mesos.util :as util]
+            [cook.mesos.util2 :as util]
             [datomic.api :as d]
             [metatransaction.core :refer (db)]
             [metrics.timers :as timers]

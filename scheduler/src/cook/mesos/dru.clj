@@ -15,7 +15,7 @@
 ;;
 (ns cook.mesos.dru
   (:require [cook.mesos.share :as share]
-            [cook.mesos.util :as util]
+            [cook.mesos.util2 :as util]
             [metrics.timers :as timers]
             [swiss.arrows :refer :all]))
 

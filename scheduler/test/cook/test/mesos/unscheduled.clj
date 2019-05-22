@@ -18,7 +18,7 @@
   (:require [cook.mesos.unscheduled :as u]
             [datomic.api :as d]
             [cook.mesos.scheduler :as scheduler]
-            [cook.mesos.util :as util]
+            [cook.mesos.util2 :as util]
             [cook.rate-limit :as rate-limit]
             [cook.test.testutil :refer (create-dummy-instance
                                         create-dummy-job

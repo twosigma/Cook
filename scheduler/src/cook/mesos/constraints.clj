@@ -22,7 +22,7 @@
             [cook.config :as config]
             [cook.mesos.data-locality :as dl]
             [cook.mesos.group :as group]
-            [cook.mesos.util :as util]
+            [cook.mesos.util2 :as util]
             [cook.rate-limit :as ratelimit]
             [swiss.arrows :refer :all])
   (:import com.netflix.fenzo.VirtualMachineLease

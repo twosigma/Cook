@@ -29,7 +29,7 @@
             [cook.mesos.data-locality :as dl]
             [cook.mesos.reason :as reason]
             [cook.mesos.scheduler :as sched]
-            [cook.mesos.util :as util]
+            [cook.mesos.util2 :as util]
             [cook.plugins.definitions :refer [FileUrlGenerator]]
             [cook.plugins.file :as file-plugin]
             [cook.plugins.submission :as submission-plugin]
