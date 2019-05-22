@@ -13,7 +13,7 @@
 ;; See the License for the specific language governing permissions and
 ;; limitations under the License.
 ;;
-(ns cook.mesos.rebalancer
+(ns cook.rebalancer
   (:require [chime :refer [chime-at]]
             [cook.compute-cluster :as cc]
             [cook.config :as config]
@@ -22,10 +22,10 @@
             [clojure.data.priority-map :as pm]
             [clojure.tools.logging :as log]
             [clojure.walk :refer (keywordize-keys)]
-            [cook.mesos.constraints :as constraints]
-            [cook.mesos.dru :as dru]
-            [cook.mesos.share :as share]
-            [cook.mesos.util2 :as util]
+            [cook.scheduler.constraints :as constraints]
+            [cook.scheduler.dru :as dru]
+            [cook.scheduler.share :as share]
+            [cook.util2 :as util]
             [datomic.api :as d :refer (q)]
             [mesomatic.scheduler :as mesos]
             [metatransaction.core :as mt]

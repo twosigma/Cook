@@ -17,7 +17,7 @@
   (:use clojure.test)
   (:require [cook.authorization :as auth]
             [cook.impersonation :as imp]
-            [cook.mesos.api :as api]))
+            [cook.api :as api]))
 
 (deftest impersonated-is-authorized
   (let [test-job-owner "the-job-owner"

@@ -16,7 +16,7 @@
 (ns cook.scratch
   (:require [clj-time.core :as t]
             [cook.datomic :refer (transact-with-retries)]
-            [cook.mesos.scheduler :as sched]
+            [cook.scheduler.scheduler :as sched]
             [cook.test.testutil :as testutil]
             [datomic.api :as d :refer (q)]
             [metatransaction.core :refer (db)]))

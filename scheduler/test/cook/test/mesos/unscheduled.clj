@@ -15,16 +15,16 @@
 ;;
 (ns cook.test.mesos.unscheduled
   (:use clojure.test)
-  (:require [cook.mesos.unscheduled :as u]
+  (:require [cook.unscheduled :as u]
             [datomic.api :as d]
-            [cook.mesos.scheduler :as scheduler]
-            [cook.mesos.util2 :as util]
+            [cook.scheduler.scheduler :as scheduler]
+            [cook.util2 :as util]
             [cook.rate-limit :as rate-limit]
             [cook.test.testutil :refer (create-dummy-instance
                                         create-dummy-job
                                         restore-fresh-database!
                                         setup)]
-            [cook.mesos.quota :as quota]))
+            [cook.quota :as quota]))
 
 (defn resource-map->list
   [m]

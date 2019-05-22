@@ -1,4 +1,4 @@
-(ns cook.mesos.pool
+(ns cook.pool
   (:require [clojure.tools.logging :as log]
             [cook.config :as config]
             [datomic.api :as d])
@@ -24,7 +24,7 @@
   ([entity entity->pool pool-name default-pool?]
    (or
      (= nil-pool pool-name)
-     (cook.mesos.pool/check-pool entity entity->pool pool-name default-pool?)))
+     (cook.pool/check-pool entity entity->pool pool-name default-pool?)))
   ([source eid entity->pool pool-name default-pool?]
    (check-pool-for-listing (d/entity source eid) entity->pool pool-name default-pool?)))
 

@@ -16,7 +16,7 @@
 (ns cook.test.mesos.share
   (:use clojure.test)
   (:require [cook.config :as config]
-            [cook.mesos.share :as share]
+            [cook.scheduler.share :as share]
             [cook.test.testutil :refer (restore-fresh-database! create-pool)]
             [metatransaction.core :as mt]
             [datomic.api :as d]))

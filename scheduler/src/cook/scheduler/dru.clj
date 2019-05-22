@@ -13,9 +13,9 @@
 ;; See the License for the specific language governing permissions and
 ;; limitations under the License.
 ;;
-(ns cook.mesos.dru
-  (:require [cook.mesos.share :as share]
-            [cook.mesos.util2 :as util]
+(ns cook.scheduler.dru
+  (:require [cook.scheduler.share :as share]
+            [cook.util2 :as util]
             [metrics.timers :as timers]
             [swiss.arrows :refer :all]))
 

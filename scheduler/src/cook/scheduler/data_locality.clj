@@ -1,4 +1,4 @@
-(ns cook.mesos.data-locality
+(ns cook.scheduler.data-locality
   (:require [cheshire.core :as cheshire]
             [clj-http.client :as http]
             [clj-time.coerce :as tc]
@@ -8,7 +8,7 @@
             [clojure.tools.logging :as log]
             [cook.cache :as ccache]
             [cook.config :as config]
-            [cook.mesos.util2 :as util]
+            [cook.util2 :as util]
             [datomic.api :as d]
             [metrics.histograms :as histograms]
             [metrics.timers :as timers]
@@ -212,7 +212,7 @@
           fitness)
         base-fitness))))
 
-(def data-local-fitness-calculator "cook.mesos.data-locality/make-data-local-fitness-calculator")
+(def data-local-fitness-calculator "cook.scheduler.data-locality/make-data-local-fitness-calculator")
 
 (defn make-data-local-fitness-calculator
   "Loads settings from configuration to build a data local fitness calculator"

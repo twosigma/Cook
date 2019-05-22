@@ -17,11 +17,11 @@
   (:use clojure.test)
   (:require [clojure.core.cache :as cache]
             [clojure.test.check.generators :as gen]
-            [cook.mesos.dru :as dru]
-            [cook.mesos.rebalancer :as rebalancer :refer (->State)]
-            [cook.mesos.scheduler :as sched]
-            [cook.mesos.share :as share]
-            [cook.mesos.util2 :as util]
+            [cook.scheduler.dru :as dru]
+            [cook.rebalancer :as rebalancer :refer (->State)]
+            [cook.scheduler.scheduler :as sched]
+            [cook.scheduler.share :as share]
+            [cook.util2 :as util]
             [cook.test.testutil :refer (restore-fresh-database! create-dummy-job create-dummy-instance
                                                                 create-dummy-group init-agent-attributes-cache)]
             [datomic.api :as d :refer (q)])

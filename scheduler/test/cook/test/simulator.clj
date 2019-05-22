@@ -17,8 +17,8 @@
             [cook.config :refer (executor-config, init-logger)]
             [cook.mesos :as c]
             [cook.mesos.mesos-mock :as mm]
-            [cook.mesos.share :as share]
-            [cook.mesos.util2 :as util]
+            [cook.scheduler.share :as share]
+            [cook.util2 :as util]
             [cook.plugins.completion :as completion]
             [cook.test.testutil :as testutil :refer (restore-fresh-database! poll-until)]
             [datomic.api :as d]
@@ -129,7 +129,7 @@
                      completion/plugin completion/no-op
                      ; This initializatioon is needed so the code to validate that the
                      ; registration responses matches the configured cook scheduler passes simulator
-                     ; and mesos-mock unit tests. (cook.mesos.scheduler, lines 1428 create-mesos-scheduler)
+                     ; and mesos-mock unit tests. (cook.scheduler, lines 1428 create-mesos-scheduler)
                      cook.config/framework-id-config (constantly framework-id#)]
          (c/start-mesos-scheduler
            {:curator-framework curator-framework#
@@ -344,9 +344,9 @@
                        :time-ms-between-optimizer-calls (-> 3 t/minutes t/in-millis)
                        :time-ms-between-rebalancing (-> 30 t/minutes t/in-millis)}
                       config)
-        opt-config {:host-feed {:create-fn 'cook.mesos.optimizer/create-dummy-host-feed
+        opt-config {:host-feed {:create-fn 'cook.scheduler.optimizer/create-dummy-host-feed
                                 :config {}}
-                    :optimizer {:create-fn 'cook.mesos.optimizer/create-dummy-optimizer
+                    :optimizer {:create-fn 'cook.scheduler.optimizer/create-dummy-optimizer
                                 :config {}}}
         scheduler-config (merge (:scheduler-config config)
                                 {:optimizer-config opt-config}

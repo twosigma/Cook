@@ -18,7 +18,7 @@
   (:use [clojure.test])
   (:require [clojure.core.async :as async]
             [clojure.core.cache :as cache]
-            [cook.mesos.progress :as progress]
+            [cook.progress :as progress]
             [cook.test.testutil :refer [restore-fresh-database! create-dummy-job create-dummy-instance poll-until]]
             [datomic.api :as d]
             [plumbing.core :as pc]))

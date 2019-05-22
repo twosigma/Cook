@@ -13,16 +13,16 @@
 ;; See the License for the specific language governing permissions and
 ;; limitations under the License.
 ;;
-(ns cook.mesos.constraints
+(ns cook.scheduler.constraints
   (:require [clj-time.coerce :as tc]
             [clj-time.core :as t]
             [clojure.core.cache :as cache]
             [clojure.set :as set]
             [clojure.tools.logging :as log]
             [cook.config :as config]
-            [cook.mesos.data-locality :as dl]
-            [cook.mesos.group :as group]
-            [cook.mesos.util2 :as util]
+            [cook.scheduler.data-locality :as dl]
+            [cook.group :as group]
+            [cook.util2 :as util]
             [cook.rate-limit :as ratelimit]
             [swiss.arrows :refer :all])
   (:import com.netflix.fenzo.VirtualMachineLease

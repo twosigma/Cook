@@ -13,7 +13,7 @@
 ;; See the License for the specific language governing permissions and
 ;; limitations under the License.
 ;;
-(ns cook.mesos.api
+(ns cook.api
   (:require [camel-snake-kebab.core :refer [->snake_case ->kebab-case]]
             [cheshire.core :as cheshire]
             [clj-time.coerce :as tc]
@@ -30,15 +30,15 @@
             [cook.config :as config]
             [cook.cors :as cors]
             [cook.datomic :as datomic]
-            [cook.mesos.data-locality :as dl]
-            [cook.mesos.pool :as pool]
-            [cook.mesos.quota :as quota]
+            [cook.scheduler.data-locality :as dl]
+            [cook.pool :as pool]
+            [cook.quota :as quota]
             [cook.mesos.reason :as reason]
-            [cook.mesos.schema :refer [constraint-operators host-placement-types straggler-handling-types]]
-            [cook.mesos.share :as share]
-            [cook.mesos.task-stats :as task-stats]
-            [cook.mesos.unscheduled :as unscheduled]
-            [cook.mesos.util2 :as util]
+            [cook.schema :refer [constraint-operators host-placement-types straggler-handling-types]]
+            [cook.scheduler.share :as share]
+            [cook.task-stats :as task-stats]
+            [cook.unscheduled :as unscheduled]
+            [cook.util2 :as util]
             [cook.mesos]
             [cook.plugins.definitions :as plugins]
             [cook.plugins.file :as file-plugin]

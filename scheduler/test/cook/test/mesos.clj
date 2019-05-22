@@ -20,8 +20,8 @@
             [cook.curator :as curator]
             [cook.datomic]
             [cook.mesos :as mesos]
-            [cook.mesos.scheduler :as sched]
-            [cook.mesos.schema :as schem]
+            [cook.scheduler.scheduler :as sched]
+            [cook.schema :as schem]
             [datomic.api :as d :refer (q db)])
   (:import [org.apache.curator.framework CuratorFrameworkFactory CuratorFramework]
            [org.apache.curator.retry BoundedExponentialBackoffRetry]
@@ -114,7 +114,7 @@
   (let [test-db-uri "datomic:mem://test-update-state-db"
         _ (d/create-database test-db-uri)
         conn (d/connect test-db-uri)]
-    (doseq [init cook.mesos.schema/work-item-schema]
+    (doseq [init cook.schema/work-item-schema]
       @(d/transact conn init))
     ;; Success means we're done
     (test-fake-job
@@ -208,7 +208,7 @@
   (let [test-db-uri "datomic:mem://test-transact-db"
         _ (d/create-database test-db-uri)
         conn (d/connect test-db-uri)]
-    (doseq [init cook.mesos.schema/work-item-schema]
+    (doseq [init cook.schema/work-item-schema]
       @(d/transact conn init))
     (async/<!! (cook.datomic/transact-with-retries conn [[:db/add (d/tempid :db.part/user) :job/command "txn"]]))
     (is (seq (q '[:find ?j

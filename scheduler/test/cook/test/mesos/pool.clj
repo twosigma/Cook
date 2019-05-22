@@ -1,7 +1,7 @@
 (ns cook.test.mesos.pool
   (:require [clojure.test :refer :all]
             [cook.config :as config]
-            [cook.mesos.pool :as pool])
+            [cook.pool :as pool])
   (:import (clojure.lang ExceptionInfo)))
 
 (deftest test-guard-invalid-default-pool

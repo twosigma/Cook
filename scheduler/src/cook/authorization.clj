@@ -51,7 +51,7 @@
 
   The `object` is an implementation of the `Ownable` protocol that the
   user is attempting to manipulate, such as a
-  `cook.mesos.api/Job`. Ownable objects are by definition owned by a
+  `cook.api/Job`. Ownable objects are by definition owned by a
   single specific user.
 
   The authorization function evaluates this information to determine

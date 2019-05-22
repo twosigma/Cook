@@ -2,8 +2,8 @@
   (:use clojure.test)
   (:require [clj-time.coerce :as tc]
             [clj-time.core :as t]
-            [cook.mesos.group :as group]
-            [cook.mesos.util2 :as util]
+            [cook.group :as group]
+            [cook.util2 :as util]
             [cook.test.testutil :refer (restore-fresh-database!
                                          create-dummy-group
                                          create-dummy-job

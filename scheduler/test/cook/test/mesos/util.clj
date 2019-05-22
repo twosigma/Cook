@@ -20,7 +20,7 @@
             [clojure.core.async :as async]
             [clojure.core.cache :as cache]
             [cook.config :as config]
-            [cook.mesos.util2 :as util]
+            [cook.util2 :as util]
             [cook.test.testutil :as testutil
              :refer [create-dummy-group
                      create-dummy-instance

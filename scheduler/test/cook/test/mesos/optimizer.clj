@@ -2,7 +2,7 @@
   (:use clojure.test)
   (:require [clj-time.core :as t]
             [clojure.core.async :as async]
-            [cook.mesos.optimizer :as optimizer]))
+            [cook.scheduler.optimizer :as optimizer]))
 
 ;; Tests to make sure data flows and validates properly
 (deftest test-optimizer-cycle

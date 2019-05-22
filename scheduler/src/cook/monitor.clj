@@ -13,16 +13,16 @@
 ;; See the License for the specific language governing permissions and
 ;; limitations under the License.
 ;;
-(ns cook.mesos.monitor
+(ns cook.monitor
   (:require [chime :refer [chime-at]]
             [clj-time.core :as time]
             [clojure.set :refer (union difference)]
             [clojure.tools.logging :as log]
             [cook.config :refer (config)]
             [cook.datomic :as datomic]
-            [cook.mesos.pool :as pool]
-            [cook.mesos.share :as share]
-            [cook.mesos.util2 :as util]
+            [cook.pool :as pool]
+            [cook.scheduler.share :as share]
+            [cook.util2 :as util]
             [datomic.api :as d :refer (q)]
             [metrics.counters :as counters]))
 

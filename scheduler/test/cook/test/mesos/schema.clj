@@ -16,7 +16,7 @@
 
 (ns cook.test.mesos.schema
   (:use clojure.test)
-  (:require [cook.mesos.schema :as schema]
+  (:require [cook.schema :as schema]
             [cook.test.testutil :as testutil :refer (create-dummy-instance create-dummy-job restore-fresh-database!)]
             [datomic.api :as d :refer (q db)]))
 

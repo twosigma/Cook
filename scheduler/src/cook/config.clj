@@ -377,9 +377,9 @@
 
      :optimizer (fnk [[:config {optimizer nil}]]
                   (let [optimizer-config
-                        (merge {:host-feed {:create-fn 'cook.mesos.optimizer/create-dummy-host-feed
+                        (merge {:host-feed {:create-fn 'cook.scheduler.optimizer/create-dummy-host-feed
                                             :config {}}
-                                :optimizer {:create-fn 'cook.mesos.optimizer/create-dummy-optimizer
+                                :optimizer {:create-fn 'cook.scheduler.optimizer/create-dummy-optimizer
                                             :config {}}
                                 :optimizer-interval-seconds 30}
                                optimizer)]

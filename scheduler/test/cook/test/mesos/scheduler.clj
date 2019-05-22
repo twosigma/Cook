@@ -26,12 +26,12 @@
             [clojure.walk :as walk]
             [cook.compute-cluster :as cc]
             [cook.config :as config]
-            [cook.mesos.data-locality :as dl]
+            [cook.scheduler.data-locality :as dl]
             [cook.mesos.heartbeat :as heartbeat]
             [cook.mesos.sandbox :as sandbox]
-            [cook.mesos.scheduler :as sched]
-            [cook.mesos.share :as share]
-            [cook.mesos.util2 :as util]
+            [cook.scheduler.scheduler :as sched]
+            [cook.scheduler.share :as share]
+            [cook.util2 :as util]
             [cook.plugins.completion :as completion]
             [cook.plugins.definitions :as pd]
             [cook.plugins.launch :as launch-plugin]
@@ -254,7 +254,7 @@
                                         :enforce? true
                                         :tokens-replenished-per-minute 100}}}})
 
-(doseq [[t i] (mapv vector cook.mesos.schema/work-item-schema (range))]
+(doseq [[t i] (mapv vector cook.schema/work-item-schema (range))]
   (deref (d/transact c (conj t
                              [:db/add (d/tempid :db.part/tx) :db/txInstant (java.util.Date. i)]))))
 
@@ -1809,7 +1809,7 @@
                                         (reset! launched-tasks-atom [])
                                         (let [conn (restore-fresh-database! uri)
                                               ^TaskScheduler fenzo (sched/make-fenzo-scheduler compute-cluster 1500
-                                                                                               "cook.mesos.data-locality/make-data-local-fitness-calculator"
+                                                                                               "cook.scheduler.data-locality/make-data-local-fitness-calculator"
                                                                                                0.8)
                                               group-ent-id (create-dummy-group conn)
                                               get-uuid (fn [name] (get job-name->uuid name (d/squuid)))
@@ -2094,7 +2094,7 @@
     (let [[report-mult close-fn] (cook.datomic/create-tx-report-mult conn)
           transaction-chan (async/chan (async/sliding-buffer 4096))
           _ (async/tap report-mult transaction-chan)
-          kill-fn (cook.mesos.scheduler/monitor-tx-report-queue transaction-chan conn)]
+          kill-fn (cook.scheduler.scheduler/monitor-tx-report-queue transaction-chan conn)]
       (cook.mesos/kill-job conn [(:job/uuid (d/entity (d/db conn) job-id-2))])
       (let [expected-tasks-killed [{:value (:instance/task-id (d/entity (d/db conn) instance-id-1))}
                                    {:value (:instance/task-id (d/entity (d/db conn) instance-id-2))}]

@@ -13,7 +13,7 @@
 ;; See the License for the specific language governing permissions and
 ;; limitations under the License.
 ;;
-(ns cook.mesos.optimizer
+(ns cook.scheduler.optimizer
   (:require [cheshire.core :as cheshire]
             [chime :refer [chime-at chime-ch]]
             [clj-http.client :as http]
@@ -23,7 +23,7 @@
             [clojure.core.async :as async]
             [clojure.tools.logging :as log]
             [cook.util :refer [lazy-load-var PosNum PosInt NonNegInt]]
-            [cook.mesos.util2 :as util]
+            [cook.util2 :as util]
             [datomic.api :as d :refer (q)]
             [schema.core :as s]))
 
@@ -68,8 +68,8 @@
                      Conforms to the Schedule schema above
 
                      Parameters:
-                     queue -- Ordered list of jobs to run (see cook.mesos.schema job)
-                     running -- Set of tasks running (see cook.mesos.schema instance)
+                     queue -- Ordered list of jobs to run (see cook.schema job)
+                     running -- Set of tasks running (see cook.schema instance)
                      available -- Set of offers outstanding
                      host-infos -- Host infos from HostFeed
 

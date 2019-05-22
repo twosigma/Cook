@@ -13,14 +13,14 @@
 ;; See the License for the specific language governing permissions and
 ;; limitations under the License.
 ;;
-(ns cook.mesos.unscheduled
+(ns cook.unscheduled
   (:require [clj-time.coerce :as tc]
             [clj-time.core :as t]
             [cook.plugins.launch :as launch-plugin]
-            [cook.mesos.scheduler :as scheduler]
-            [cook.mesos.quota :as quota]
-            [cook.mesos.share :as share]
-            [cook.mesos.util2 :as util]
+            [cook.scheduler.scheduler :as scheduler]
+            [cook.quota :as quota]
+            [cook.scheduler.share :as share]
+            [cook.util2 :as util]
             [cook.rate-limit :as ratelimit]
             [clojure.edn :as edn]
             [clojure.tools.logging :as log]

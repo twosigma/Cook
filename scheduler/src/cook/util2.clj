@@ -13,7 +13,7 @@
 ;; See the License for the specific language governing permissions and
 ;; limitations under the License.
 ;;
-(ns cook.mesos.util2
+(ns cook.util2
   (:require [chime]
             [clj-time.coerce :as tc]
             [clj-time.core :as t]
@@ -21,8 +21,8 @@
             [clj-time.periodic :as tp]
             [cook.cache :as ccache]
             [cook.config :as config]
-            [cook.mesos.pool :as pool]
-            [cook.mesos.schema :as schema]
+            [cook.pool :as pool]
+            [cook.schema :as schema]
             [clojure.core.async :as async]
             [clojure.core.cache :as cache]
             [clojure.tools.logging :as log]
@@ -522,7 +522,7 @@
                ;; If not, we might want to swap these two constraints.
                [?j :job/state :job.state/running]
                [?j :job/user ?user]
-               [(cook.mesos.pool/check-pool $ ?j :job/pool ?pool-name ?requesting-default-pool)]]
+               [(cook.pool/check-pool $ ?j :job/pool ?pool-name ?requesting-default-pool)]]
              db user pool-name' requesting-default-pool?)
            (map (partial d/entity db))))))
 

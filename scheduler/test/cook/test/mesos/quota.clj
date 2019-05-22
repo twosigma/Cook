@@ -16,8 +16,8 @@
 (ns cook.test.mesos.quota
   (:use clojure.test)
   (:require [cook.config :as config]
-            [cook.mesos.scheduler :as sched]
-            [cook.mesos.quota :as quota]
+            [cook.scheduler.scheduler :as sched]
+            [cook.quota :as quota]
             [cook.test.testutil :refer (create-pool restore-fresh-database!)]
             [metatransaction.core :as mt :refer (db)]
             [datomic.api :as d]))

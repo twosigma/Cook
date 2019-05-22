@@ -13,9 +13,9 @@
 ;; See the License for the specific language governing permissions and
 ;; limitations under the License.
 ;;
-(ns cook.mesos.task-stats
+(ns cook.task-stats
   (:require [clj-time.core :as t]
-            [cook.mesos.util2 :as util]
+            [cook.util2 :as util]
             [datomic.api :as d]
             [plumbing.core :as pc]))
 

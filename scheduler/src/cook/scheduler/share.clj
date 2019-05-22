@@ -13,11 +13,11 @@
 ;; See the License for the specific language governing permissions and
 ;; limitations under the License.
 ;;
-(ns cook.mesos.share
+(ns cook.scheduler.share
   (:require [clojure.tools.logging :as log]
             [cook.config :as config]
-            [cook.mesos.pool :as pool]
-            [cook.mesos.util2 :as util]
+            [cook.pool :as pool]
+            [cook.util2 :as util]
             [datomic.api :as d]
             [metatransaction.core :refer (db)]
             [metrics.timers :as timers]
@@ -47,7 +47,7 @@
                                [?e :share/resource ?r]
                                [?r :resource/type ?t]
                                [?r :resource/amount ?a]
-                               [(cook.mesos.pool/check-pool $ ?r :resource/pool ?pool-name
+                               [(cook.pool/check-pool $ ?r :resource/pool ?pool-name
                                                             ?requesting-default-pool)]]
                              db user type (pool/pool-name-or-default pool)
                              (pool/requesting-default-pool? pool)))]
@@ -88,7 +88,7 @@
                 [?e :share/resource ?r]
                 [?r :resource/type ?t]
                 [?r :resource/amount ?a]
-                [(cook.mesos.pool/check-pool $ ?r :resource/pool ?pool-name
+                [(cook.pool/check-pool $ ?r :resource/pool ?pool-name
                                              ?requesting-default-pool)]]
         datomic-resource-types (map resource-type->datomic-resource-type types)
         default-type->share (pc/map-from-keys
@@ -165,7 +165,7 @@
                                 [?e :share/user ?user]
                                 [?e :share/resource ?r]
                                 [?r :resource/type ?type]
-                                [(cook.mesos.pool/check-pool $ ?r :resource/pool ?pool-name
+                                [(cook.pool/check-pool $ ?r :resource/pool ?pool-name
                                                              ?requesting-default-pool)]]
                               (d/db conn) user type (pool/pool-name-or-default pool-name)
                               (pool/requesting-default-pool? pool-name))

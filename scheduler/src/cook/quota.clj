@@ -13,14 +13,14 @@
 ;; See the License for the specific language governing permissions and
 ;; limitations under the License.
 ;;
-(ns cook.mesos.quota
-  (:require [cook.mesos.pool :as pool]
-            [cook.mesos.schema]
-            [cook.mesos.util2 :as util]
+(ns cook.quota
+  (:require [cook.pool :as pool]
+            [cook.schema]
+            [cook.util2 :as util]
             [datomic.api :as d]
             [metatransaction.core :refer (db)]
             [plumbing.core :as pc]))
-;; This namespace is dangerously similar to cook.mesos.share (it was copied..)
+;; This namespace is dangerously similar to cook.share (it was copied..)
 ;; it isn't obvious what the abstraction is, but there must be one.
 
 ;; As part of the pool migration, count was migrated from a field on the share entity
@@ -50,7 +50,7 @@
                 [?e :quota/resource ?r]
                 [?r :resource/type ?t]
                 [?r :resource/amount ?a]
-                [(cook.mesos.pool/check-pool $ ?r :resource/pool ?pool-name
+                [(cook.pool/check-pool $ ?r :resource/pool ?pool-name
                                              ?requesting-default-pool)]]]
     (ffirst (d/q query db user type pool-name' requesting-default-pool))))
 
@@ -88,7 +88,7 @@
                          :where
                          [?s :quota/user ?u]
                          [?s :quota/resource ?r]
-                         [(cook.mesos.pool/check-pool $ ?r :resource/pool ?pool-name
+                         [(cook.pool/check-pool $ ?r :resource/pool ?pool-name
                                                       ?requesting-default-pool)]]
                        db user pool-name' requesting-default-pool?)
         resource-txns (mapv #(conj [:db.fn/retractEntity] %) resources)
@@ -123,7 +123,7 @@
                                   [?e :quota/user ?user]
                                   [?e :quota/resource ?r]
                                   [?r :resource/type ?type]
-                                  [(cook.mesos.pool/check-pool $ ?r :resource/pool ?pool-name
+                                  [(cook.pool/check-pool $ ?r :resource/pool ?pool-name
                                                                ?requesting-default-pool)]]
                                 db user type pool-name' requesting-default-pool?)
                            ffirst)
