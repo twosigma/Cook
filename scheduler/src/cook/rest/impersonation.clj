@@ -13,7 +13,7 @@
 ;; See the License for the specific language governing permissions and
 ;; limitations under the License.
 ;;
-(ns cook.impersonation
+(ns cook.rest.impersonation
   "Support for services impersonating a user, performing Cook actions on the user's behalf."
   (:require [clojure.string]
             [clojure.tools.logging :as log]

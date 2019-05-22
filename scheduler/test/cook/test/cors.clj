@@ -1,7 +1,7 @@
 (ns cook.test.cors
   (:use clojure.test)
   (:require [clojure.string :as str]
-            [cook.cors :as cors]))
+            [cook.rest.cors :as cors]))
 
 
 (deftest test-is-preflight?

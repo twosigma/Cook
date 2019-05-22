@@ -15,7 +15,7 @@
 ;;
 (ns cook.test.basic-auth
  (:use clojure.test)
- (:require [cook.basic-auth :as basic-auth]))
+ (:require [cook.rest.basic-auth :as basic-auth]))
 
 (deftest make-user-password-valid?-test
   (testing "none"

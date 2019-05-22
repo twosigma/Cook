@@ -13,7 +13,7 @@
 ;; See the License for the specific language governing permissions and
 ;; limitations under the License.
 ;;
-(ns cook.spnego
+(ns cook.rest.spnego
   (:require [clojure.data.codec.base64 :as b64]
             [clojure.string :as str]
             [clojure.string :refer (split lower-case)]

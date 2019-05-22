@@ -1,4 +1,4 @@
-(ns cook.cors)
+(ns cook.rest.cors)
 
 (defn preflight?
   [{:keys [request-method]}]

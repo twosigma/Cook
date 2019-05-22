@@ -21,11 +21,11 @@
             [clojure.data.json :as json]
             [clojure.string :as str]
             [clojure.walk :refer [keywordize-keys]]
-            [cook.authorization :as auth]
+            [cook.rest.authorization :as auth]
             [cook.compute-cluster :as cc]
             [cook.config :as config]
-            [cook.impersonation :as imp]
-            [cook.api :as api]
+            [cook.rest.impersonation :as imp]
+            [cook.rest.api :as api]
             [cook.scheduler.data-locality :as dl]
             [cook.mesos.reason :as reason]
             [cook.scheduler.scheduler :as sched]
@@ -362,7 +362,7 @@
 
 (deftest retries-api
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
-        is-authorized-fn (partial auth/is-authorized? {:authorization-fn 'cook.authorization/configfile-admins-auth-open-gets})
+        is-authorized-fn (partial auth/is-authorized? {:authorization-fn 'cook.rest.authorization/configfile-admins-auth-open-gets})
         h (basic-handler conn :is-authorized-fn is-authorized-fn)
         uuid1 (str (UUID/randomUUID))
         uuid2 (str (UUID/randomUUID))
@@ -1344,7 +1344,7 @@
 
 (deftest test-destroy-jobs
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
-        is-authorized-fn (partial auth/is-authorized? {:authorization-fn 'cook.authorization/configfile-admins-auth-open-gets})
+        is-authorized-fn (partial auth/is-authorized? {:authorization-fn 'cook.rest.authorization/configfile-admins-auth-open-gets})
         handler (api/destroy-jobs-handler conn is-authorized-fn)]
     (testing "should be able to destroy own jobs"
       (let [{:keys [uuid user] :as job} (minimal-job)

@@ -21,7 +21,7 @@
             [clojure.string :as str]
             [clojure.tools.logging :as log]
             [congestion.limits :refer (RateLimit)]
-            [cook.impersonation :refer (impersonation-authorized-wrapper)]
+            [cook.rest.impersonation :refer (impersonation-authorized-wrapper)]
             [cook.util :as util]
             [mount.core :as mount]
             [plumbing.core :refer (fnk)]
@@ -87,7 +87,7 @@
      :logging (fnk [[:config log]]
                 (init-logger log))}))
 
-(def default-authorization {:authorization-fn 'cook.authorization/open-auth})
+(def default-authorization {:authorization-fn 'cook.rest.authorization/open-auth})
 (def default-fitness-calculator "com.netflix.fenzo.plugins.BinPackingFitnessCalculators/cpuMemBinPacker")
 
 (defrecord UserRateLimit [id quota ttl]
@@ -166,7 +166,7 @@
      :server-keystore-pass (fnk [[:config {ssl nil}]]
                              (get ssl :keystore-pass))
      :is-authorized-fn (fnk [[:config {authorization-config default-authorization}]]
-                         (let [auth-fn @(util/lazy-load-var 'cook.authorization/is-authorized?)]
+                         (let [auth-fn @(util/lazy-load-var 'cook.rest.authorization/is-authorized?)]
                            ; we only wrap the authorization function if we have impersonators configured
                            (if (-> authorization-config :impersonators seq)
                              (impersonation-authorized-wrapper auth-fn authorization-config)
@@ -176,10 +176,10 @@
                                    http-basic
                                    (let [validation (get http-basic :validation :none)
                                          user-password-valid?
-                                         ((util/lazy-load-var 'cook.basic-auth/make-user-password-valid?) validation http-basic)]
+                                         ((util/lazy-load-var 'cook.rest.basic-auth/make-user-password-valid?) validation http-basic)]
                                      (log/info "Using http basic authorization with validation" validation)
                                      (with-meta
-                                       ((util/lazy-load-var 'cook.basic-auth/create-http-basic-middleware) user-password-valid?)
+                                       ((util/lazy-load-var 'cook.rest.basic-auth/create-http-basic-middleware) user-password-valid?)
                                        {:json-value "http-basic"}))
 
                                    one-user
@@ -195,13 +195,13 @@
                                    (do
                                      (log/info "Using kerberos middleware")
                                      (with-meta
-                                       @(util/lazy-load-var 'cook.spnego/require-gss)
+                                       @(util/lazy-load-var 'cook.rest.spnego/require-gss)
                                        {:json-value "kerberos"}))
                                    :else (throw (ex-info "Missing authorization configuration" {}))))
      :impersonation-middleware (fnk [[:config {authorization-config nil}]]
                                  (let [{impersonators :impersonators} authorization-config]
                                    (with-meta
-                                     ((util/lazy-load-var 'cook.impersonation/create-impersonation-middleware) impersonators)
+                                     ((util/lazy-load-var 'cook.rest.impersonation/create-impersonation-middleware) impersonators)
                                      {:json-value "config-impersonation"})))
      :rate-limit (fnk [[:config {rate-limit nil}]]
                    (let [{:keys [expire-minutes user-limit-per-m global-job-launch job-submission job-launch]

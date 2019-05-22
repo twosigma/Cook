@@ -13,7 +13,7 @@
 ;; See the License for the specific language governing permissions and
 ;; limitations under the License.
 ;;
-(ns cook.api
+(ns cook.rest.api
   (:require [camel-snake-kebab.core :refer [->snake_case ->kebab-case]]
             [cheshire.core :as cheshire]
             [clj-time.coerce :as tc]
@@ -28,7 +28,7 @@
             [compojure.core :refer [ANY GET POST routes]]
             [cook.compute-cluster :as cc]
             [cook.config :as config]
-            [cook.cors :as cors]
+            [cook.rest.cors :as cors]
             [cook.datomic :as datomic]
             [cook.scheduler.data-locality :as dl]
             [cook.pool :as pool]

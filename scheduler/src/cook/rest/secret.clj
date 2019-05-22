@@ -13,7 +13,7 @@
 ;; See the License for the specific language governing permissions and
 ;; limitations under the License.
 ;;
-(ns cook.secret
+(ns cook.rest.secret
   "This namespace is for development. It uses a fake secret."
   (:require [ring.middleware.params :as params])
   )

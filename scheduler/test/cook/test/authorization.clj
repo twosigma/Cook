@@ -15,16 +15,16 @@
 ;;
 (ns cook.test.authorization
   (:use clojure.test)
-  (:require [cook.authorization :as auth]))
+  (:require [cook.rest.authorization :as auth]))
 
 (def test-job-owner "the-job-owner")
 (def admin-user "admin")
 (def test-job {:owner test-job-owner :item :job})
 
-(def configfile-admins-settings {:authorization-fn 'cook.authorization/configfile-admins-auth
+(def configfile-admins-settings {:authorization-fn 'cook.rest.authorization/configfile-admins-auth
                                  :admins #{admin-user "other-admin"}})
 
-(def open-auth-settings {:authorization-fn 'cook.authorization/open-auth})
+(def open-auth-settings {:authorization-fn 'cook.rest.authorization/open-auth})
 
 (deftest open-auth-test
   (testing "open auth allows any user to do anything to any object"
@@ -89,7 +89,7 @@
     (is (false? (auth/configfile-admins-auth configfile-admins-settings "unauthorized-user" :destroy test-job)))))
 
 (deftest test-configfile-admins-open-gets-allowed-users-auth
-  (let [settings {:authorization-fn 'cook.authorization/configfile-admins-open-gets-allowed-users-auth
+  (let [settings {:authorization-fn 'cook.rest.authorization/configfile-admins-open-gets-allowed-users-auth
                   :admins #{"sally" "joe"}
                   :allow #{"alice" "bob"}}
         authorized? #(auth/configfile-admins-open-gets-allowed-users-auth settings %1 %2 %3)]

@@ -13,7 +13,7 @@
 ;; See the License for the specific language governing permissions and
 ;; limitations under the License.
 ;;
-(ns cook.basic-auth
+(ns cook.rest.basic-auth
   (:require [clojure.tools.logging :as log]
             [ring.util.response :refer (header status response)]))
 

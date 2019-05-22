@@ -15,9 +15,9 @@
 ;;
 (ns cook.test.impersonation
   (:use clojure.test)
-  (:require [cook.authorization :as auth]
-            [cook.impersonation :as imp]
-            [cook.api :as api]))
+  (:require [cook.rest.authorization :as auth]
+            [cook.rest.impersonation :as imp]
+            [cook.rest.api :as api]))
 
 (deftest impersonated-is-authorized
   (let [test-job-owner "the-job-owner"
@@ -25,7 +25,7 @@
         impersonator-user "the-impersonator"
         impersonator-job {:owner impersonator-user :item :job}
         admin-user "admin"
-        auth-settings {:authorization-fn 'cook.authorization/configfile-admins-auth-open-gets
+        auth-settings {:authorization-fn 'cook.rest.authorization/configfile-admins-auth-open-gets
                        :admins #{admin-user "other-admin"}}
         is-authorized? (imp/impersonation-authorized-wrapper auth/is-authorized? auth-settings)]
 

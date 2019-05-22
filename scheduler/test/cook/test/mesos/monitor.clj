@@ -17,7 +17,7 @@
   (:require [clj-time.core :as time]
             [clojure.test :refer :all]
             [cook.mesos :as mesos]
-            [cook.api :as api]
+            [cook.rest.api :as api]
             [cook.monitor :as monitor]
             [cook.scheduler.share :as share]
             [cook.util2 :as util]

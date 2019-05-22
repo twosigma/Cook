@@ -16,7 +16,7 @@
 (ns cook.test.jobclient.jobclient
   (:use clojure.test)
   (:require [clojure.core.async :as async]
-            [cook.authorization :as auth]
+            [cook.rest.authorization :as auth]
             [cook.components :as components]
             [cook.test.testutil :refer (with-test-server restore-fresh-database! create-dummy-instance)]
             [datomic.api :as d])

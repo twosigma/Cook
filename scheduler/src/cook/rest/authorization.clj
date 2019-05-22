@@ -13,7 +13,7 @@
 ;; See the License for the specific language governing permissions and
 ;; limitations under the License.
 ;;
-(ns cook.authorization
+(ns cook.rest.authorization
   "Functions that determine whether a given user is allowed to perform a
   certain action.
 
@@ -33,7 +33,7 @@
     `(fn ^boolean x [settings-map
                      ^String user
                      ^clojure.lang.Keyword verb
-                     ^cook.authorization.Ownable object])`
+                     ^cook.rest.authorization.Ownable object])`
 
   settings-map is the data in the `:authorization-config` section of the
   config file. The auth function can use this to pull in any arbitrary
@@ -51,18 +51,18 @@
 
   The `object` is an implementation of the `Ownable` protocol that the
   user is attempting to manipulate, such as a
-  `cook.api/Job`. Ownable objects are by definition owned by a
+  `cook.rest.api/Job`. Ownable objects are by definition owned by a
   single specific user.
 
   The authorization function evaluates this information to determine
   whether the user is permitted to perform that verb on the object. If
   so, the function returns true, else false.
 
-  The special object cook.authorization/system represents, by
+  The special object cook.rest.authorization/system represents, by
   definition, access to the Cook system itself. Auth functions should
   only allow users with superuser / admin access to manipulate this object.
 
-  For example, a call to `(is-authorized? \"foobar\" :access cook.authorization/system)` is
+  For example, a call to `(is-authorized? \"foobar\" :access cook.rest.authorization/system)` is
   attempting to determine whether user `\"foobar\"` is a system
   administrator with global access to everything.
 
