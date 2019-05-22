@@ -13,7 +13,7 @@
 ;; See the License for the specific language governing permissions and
 ;; limitations under the License.
 ;;
-(ns cook.demo-plugin
+(ns cook.plugins.demo-plugin
   (:require [clj-time.core :as t]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
