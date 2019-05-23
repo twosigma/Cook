@@ -1321,7 +1321,7 @@ def _fenzo_fitness_calculator():
 
 
 def using_data_local_fitness_calculator():
-    return _fenzo_fitness_calculator() == 'cook.mesos.data-locality/make-data-local-fitness-calculator'
+    return _fenzo_fitness_calculator() == 'cook.scheduler.data-locality/make-data-local-fitness-calculator'
 
 
 def get_agent_endpoint(master_state, agent_hostname):

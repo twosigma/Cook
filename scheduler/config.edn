@@ -8,8 +8,8 @@
                         ;; Sets "admin" and the user defined in "COOK_ONE_USER_AUTH" to be admins for local development.
                         :admins #{"admin" #config/env "COOK_ONE_USER_AUTH"}
                         ;; What function should be used to perform user authorization?
-                        ;; See the docstring in cook.authorization for details.
-                        :authorization-fn cook.authorization/configfile-admins-auth-open-gets
+                        ;; See the docstring in cook.rest.authorization for details.
+                        :authorization-fn cook.rest.authorization/configfile-admins-auth-open-gets
                         ;; users that are allowed to do things on behalf of others
                         :impersonators #{"poser" "other-impersonator"}}
  :cors-origins ["https?://cors.example.com"]
@@ -35,7 +35,7 @@
        :levels {"datomic.db" :warn
                 "datomic.kv-cluster" :warn
                 "datomic.peer" :warn
-                "cook.mesos.data-locality" :debug
+                "cook.scheduler.data-locality" :debug
                 "cook.mesos.fenzo-utils" :debug
                 "cook.mesos.rebalancer" :debug
                 "cook.mesos.scheduler" :debug
@@ -73,7 +73,7 @@
               :min-dru-diff 1.0
               :safe-dru-threshold 1.0}
  :sandbox-syncer {:sync-interval-ms 1000}
- :scheduler {:fenzo-fitness-calculator "cook.mesos.data-locality/make-data-local-fitness-calculator"
+ :scheduler {:fenzo-fitness-calculator "cook.scheduler.data-locality/make-data-local-fitness-calculator"
              :offer-incubate-ms 15000
              :task-constraints {:cpus 10
                                 :memory-gb 48

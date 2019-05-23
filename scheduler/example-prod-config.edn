@@ -4,8 +4,8 @@
  :database {:datomic-uri "datomic:free://example.com:4334/cook-jobs"}
  :authorization-config {
                         ;; What function should be used to perform user authorization?
-                        ;; See the docstring in cook.authorization for details.
-                        :authorization-fn cook.authorization/configfile-admins-auth
+                        ;; See the docstring in cook.rest.authorization for details.
+                        :authorization-fn cook.rest.authorization/configfile-admins-auth
 
 
                         ;; These users have admin privileges when using

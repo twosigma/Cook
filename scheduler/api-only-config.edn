@@ -4,8 +4,8 @@
                         ;; e.g., they can view and modify other users' jobs.
                         :admins #{"admin" "root"}
                         ;; What function should be used to perform user authorization?
-                        ;; See the docstring in cook.authorization for details.
-                        :authorization-fn cook.authorization/configfile-admins-auth-open-gets
+                        ;; See the docstring in cook.rest.authorization for details.
+                        :authorization-fn cook.rest.authorization/configfile-admins-auth-open-gets
                         ;; users that are allowed to do things on behalf of others
                         :impersonators #{"poser" "other-impersonator"}}
  :cors-origins ["https?://cors.example.com"]
