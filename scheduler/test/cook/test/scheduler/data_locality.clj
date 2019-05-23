@@ -1,4 +1,4 @@
-(ns cook.test.mesos.data-locality
+(ns cook.test.scheduler.data-locality
   (:use clojure.test)
   (:require [cheshire.core :as cheshire]
             [clj-http.client :as http]

@@ -13,7 +13,7 @@
 ;; See the License for the specific language governing permissions and
 ;; limitations under the License.
 ;;
-(ns cook.test.impersonation
+(ns cook.test.rest.impersonation
   (:use clojure.test)
   (:require [cook.rest.authorization :as auth]
             [cook.rest.impersonation :as imp]

@@ -14,7 +14,7 @@
 ;; limitations under the License.
 ;;
 
-(ns cook.test.mesos.progress
+(ns cook.test.progress
   (:use [clojure.test])
   (:require [clojure.core.async :as async]
             [clojure.core.cache :as cache]

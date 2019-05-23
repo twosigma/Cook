@@ -13,7 +13,7 @@
 ;; See the License for the specific language governing permissions and
 ;; limitations under the License.
 ;;
-(ns cook.test.mesos.share
+(ns cook.test.scheduler.share
   (:use clojure.test)
   (:require [cook.config :as config]
             [cook.scheduler.share :as share]

@@ -13,7 +13,7 @@
 ;; See the License for the specific language governing permissions and
 ;; limitations under the License.
 ;;
-(ns cook.test.mesos.quota
+(ns cook.test.quota
   (:use clojure.test)
   (:require [cook.config :as config]
             [cook.scheduler.scheduler :as sched]

@@ -13,7 +13,7 @@
 ;; See the License for the specific language governing permissions and
 ;; limitations under the License.
 ;;
-(ns cook.test.mesos.unscheduled
+(ns cook.test.unscheduled
   (:use clojure.test)
   (:require [cook.unscheduled :as u]
             [datomic.api :as d]

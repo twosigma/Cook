@@ -13,7 +13,7 @@
 ;; See the License for the specific language governing permissions and
 ;; limitations under the License.
 ;;
-(ns cook.test.mesos.monitor
+(ns cook.test.monitor
   (:require [clj-time.core :as time]
             [clojure.test :refer :all]
             [cook.mesos :as mesos]

@@ -13,7 +13,7 @@
 ;; See the License for the specific language governing permissions and
 ;; limitations under the License.
 ;;
-(ns cook.test.mesos.util
+(ns cook.test.util2
   (:use clojure.test)
   (:require [clj-time.coerce :as tc]
             [clj-time.core :as t]

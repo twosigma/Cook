@@ -13,7 +13,7 @@
 ;; See the License for the specific language governing permissions and
 ;; limitations under the License.
 ;;
-(ns cook.test.mesos.rebalancer
+(ns cook.test.rebalancer
   (:use clojure.test)
   (:require [clojure.core.cache :as cache]
             [clojure.test.check.generators :as gen]

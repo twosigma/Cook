@@ -13,7 +13,7 @@
 ;; See the License for the specific language governing permissions and
 ;; limitations under the License.
 ;;
-(ns cook.test.mesos.fenzo-utils
+(ns cook.test.scheduler.fenzo-utils
   (:use clojure.test)
   (:require [cook.scheduler.fenzo-utils :as fenzo]
             [cook.scheduler.scheduler :as scheduler]

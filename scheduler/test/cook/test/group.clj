@@ -1,4 +1,4 @@
-(ns cook.test.mesos.group
+(ns cook.test.group
   (:use clojure.test)
   (:require [clj-time.coerce :as tc]
             [clj-time.core :as t]

@@ -1,4 +1,4 @@
-(ns cook.test.mesos.pool
+(ns cook.test.pool
   (:require [clojure.test :refer :all]
             [cook.config :as config]
             [cook.pool :as pool])

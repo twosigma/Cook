@@ -1,4 +1,4 @@
-(ns cook.test.mesos.optimizer
+(ns cook.test.scheduler.optimizer
   (:use clojure.test)
   (:require [clj-time.core :as t]
             [clojure.core.async :as async]

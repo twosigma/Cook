@@ -1,4 +1,4 @@
-(ns cook.test.cors
+(ns cook.test.rest.cors
   (:use clojure.test)
   (:require [clojure.string :as str]
             [cook.rest.cors :as cors]))

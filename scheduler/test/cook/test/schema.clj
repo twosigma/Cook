@@ -14,7 +14,7 @@
 ;; limitations under the License.
 ;;
 
-(ns cook.test.mesos.schema
+(ns cook.test.schema
   (:use clojure.test)
   (:require [cook.schema :as schema]
             [cook.test.testutil :as testutil :refer (create-dummy-instance create-dummy-job restore-fresh-database!)]

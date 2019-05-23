@@ -13,7 +13,7 @@
 ;; See the License for the specific language governing permissions and
 ;; limitations under the License.
 ;;
-(ns cook.test.authorization
+(ns cook.test.rest.authorization
   (:use clojure.test)
   (:require [cook.rest.authorization :as auth]))
 

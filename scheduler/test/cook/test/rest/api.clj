@@ -13,7 +13,7 @@
 ;; See the License for the specific language governing permissions and
 ;; limitations under the License.
 ;;
-(ns cook.test.mesos.api
+(ns cook.test.rest.api
   (:use clojure.test)
   (:require [cheshire.core :as cheshire]
             [clj-time.core :as t]

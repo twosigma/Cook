@@ -14,7 +14,7 @@
 ;; limitations under the License.
 ;;
 
-(ns cook.test.mesos.scheduler
+(ns cook.test.scheduler.scheduler
   (:use [clojure.test])
   (:require [clj-time.coerce :as tc]
             [clj-time.core :as t]
