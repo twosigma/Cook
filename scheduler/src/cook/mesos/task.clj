@@ -109,6 +109,7 @@
   "Takes a job entity, returns task metadata"
   [db framework-id mesos-run-as-user job-ent task-id]
   (let [container (util/job-ent->container db job-ent)
+        cook-executor? (use-cook-executor? job-ent)
         executor-key (job->executor-key db job-ent)
         executor (executor-key->executor executor-key)
         resources (util/job-ent->resources job-ent)
