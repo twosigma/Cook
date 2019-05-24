@@ -78,16 +78,40 @@
             (assoc "EXECUTOR_PROGRESS_OUTPUT_FILE_ENV" "EXECUTOR_PROGRESS_OUTPUT_FILE_NAME"
                    "EXECUTOR_PROGRESS_OUTPUT_FILE_NAME" progress-output-file))))
 
+(defn job->executor-key
+  [db job-ent]
+  (let [container (util/job-ent->container db job-ent)
+        ;; If the custom-executor attr isn't set, we default to using a custom
+        ;; executor in order to support jobs submitted before we added this field
+        custom-executor? (use-custom-executor? job-ent)
+        cook-executor? (use-cook-executor? job-ent)]
+        ;; executor-key configure whether this is a command or custom executor
+        (cond
+                       (and container cook-executor?) :container-cook-executor
+                       (and container (not custom-executor?)) :container-command-executor
+                       (and container custom-executor?) :container-executor
+                       custom-executor? :custom-executor
+                       cook-executor? :cook-executor
+                       ;; use mesos' command executor by default
+                       :else :command-executor)))
+
+(defn executor-key->executor
+  [executor-key]
+    (case executor-key
+      :command-executor :executor/mesos
+      :container-command-executor :executor/mesos
+      :container-cook-executor :executor/cook
+      :cook-executor :executor/cook
+      :executor/custom))
+
 ; TODO: This is mesos specific.
 (defn job->mesos-task-metadata
   "Takes a job entity, returns task metadata"
   [db framework-id mesos-run-as-user job-ent task-id]
-  (let [resources (util/job-ent->resources job-ent)
-        container (util/job-ent->container db job-ent)
-        ;; If the custom-executor attr isn't set, we default to using a custom
-        ;; executor in order to support jobs submitted before we added this field
-        custom-executor? (use-custom-executor? job-ent)
-        cook-executor? (use-cook-executor? job-ent)
+  (let [container (util/job-ent->container db job-ent)
+        executor-key (job->executor-key db job-ent)
+        executor (executor-key->executor executor-key)
+        resources (util/job-ent->resources job-ent)
         group-uuid (util/job-ent->group-uuid job-ent)
         environment (cond-> (assoc (util/job-ent->env job-ent)
                               "COOK_INSTANCE_UUID" task-id
@@ -104,21 +128,6 @@
                                (conj (:uri (config/executor-config))))
                  :user (or mesos-run-as-user (:job/user job-ent))
                  :value (if cook-executor? (:command (config/executor-config)) (:job/command job-ent))}
-        ;; executor-key configure whether this is a command or custom executor
-        executor-key (cond
-                       (and container cook-executor?) :container-cook-executor
-                       (and container (not custom-executor?)) :container-command-executor
-                       (and container custom-executor?) :container-executor
-                       custom-executor? :custom-executor
-                       cook-executor? :cook-executor
-                       ;; use mesos' command executor by default
-                       :else :command-executor)
-        executor (case executor-key
-                   :command-executor :executor/mesos
-                   :container-command-executor :executor/mesos
-                   :container-cook-executor :executor/cook
-                   :cook-executor :executor/cook
-                   :executor/custom)
         data (.getBytes
                (if cook-executor?
                  (json/write-str {"command" (:job/command job-ent)})
@@ -145,7 +154,7 @@
 ; TODO: This is mesos specific.
 (defn TaskAssignmentResult->mesos-task-metadata
   "Organizes the info Fenzo has already told us about the task we need to run"
-  [db mesos-run-as-user ^TaskAssignmentResult compute-cluster task-result]
+  [db mesos-run-as-user compute-cluster ^TaskAssignmentResult task-result]
   (let [{:keys [job task-id] :as task-request} (.getRequest task-result)]
     (merge (job->mesos-task-metadata db (cc/get-mesos-framework-id-hack compute-cluster) mesos-run-as-user job task-id)
            {:hostname (.getHostname task-result)
