@@ -1,4 +1,7 @@
-(ns cook.test.simulator
+;; This tests leaves state behind that messes up cook.test.mesos.mesos-mock, cook.test.unscheduled, rest.api, and data-locality.
+;; It seems to leave behind a thread that changes job states; maybe restoring consistency between task state and
+;; job state?
+(ns cook.test.zz-simulator
   (:use clojure.test)
   (:require [cheshire.core :as cheshire]
             [chime :refer [chime-ch]]

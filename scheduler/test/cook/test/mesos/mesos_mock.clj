@@ -8,7 +8,7 @@
             [cook.mesos.mesos-mock :as mm]
             [cook.scheduler.share :as share]
             [cook.util2 :as util]
-            [cook.test.simulator :refer (with-cook-scheduler pull-all-task-ents dump-jobs-to-csv)]
+            [cook.test.zz-simulator :refer (with-cook-scheduler pull-all-task-ents dump-jobs-to-csv)]
             [cook.test.testutil :as testutil :refer (restore-fresh-database! create-dummy-job poll-until setup)]
             [datomic.api :as d]
             [mesomatic.scheduler :as mesos]
