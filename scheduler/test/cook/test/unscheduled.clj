@@ -73,17 +73,17 @@
 (deftest test-reasons
   (setup)
   (let [conn (restore-fresh-database! "datomic:mem://test-unscheduled")
-        _ (quota/set-quota! conn "mforsyth" nil "test-reasons" :count 2)
-        running-job-id1 (-> (create-dummy-job conn :user "mforsyth"
+        _ (quota/set-quota! conn "mforsythr" nil "test-reasons" :count 2)
+        running-job-id1 (-> (create-dummy-job conn :user "mforsythr"
                                               :ncpus 1.0 :memory 3.0
                                               :job-state :job.state/running))
-        running-job-id2 (-> (create-dummy-job conn :user "mforsyth"
+        running-job-id2 (-> (create-dummy-job conn :user "mforsythr"
                                               :ncpus 1.0 :memory 3.1
                                               :job-state :job.state/running))
-        uncommitted-job-id (create-dummy-job conn :user "mforsyth"
+        uncommitted-job-id (create-dummy-job conn :user "mforsythr"
                                              :job-state :job.state/waiting
                                              :committed? false)
-        waiting-job-id (-> (create-dummy-job conn :user "mforsyth"
+        waiting-job-id (-> (create-dummy-job conn :user "mforsythr"
                                              :ncpus 1.0 :memory 3.0
                                              :job-state :job.state/waiting
                                              :retry-count 2))
@@ -134,7 +134,7 @@
             running-job-uuids [(-> running-job-ent1 :job/uuid str)
                                (-> running-job-ent2 :job/uuid str)]
             reasons
-            (with-redefs [scheduler/pool->user->number-jobs (atom {:pool0 {"mforsyth" 3}})
+            (with-redefs [scheduler/pool->user->number-jobs (atom {:pool0 {"mforsythr" 3}})
                           rate-limit/job-launch-rate-limiter
                           (rate-limit/create-job-launch-rate-limiter
                             {:settings {:rate-limit {:expire-minutes 180
@@ -202,12 +202,12 @@
 (deftest test-check-queue-position
   (let [conn (restore-fresh-database! "datomic:mem://test-check-queue-position")
         waiting-job-ids (doall (for [x (range 0 500)]
-                                 (create-dummy-job conn :user "mforsyth"
+                                 (create-dummy-job conn :user "mforsythq"
                                                    :ncpus 1.0 :memory 3.0
                                                    :job-state :job.state/waiting)))
         waiting-jobs (map #(d/entity (d/db conn) %) waiting-job-ids)
         running-job-ids (doall (for [x (range 0 50)]
-                                 (let [job-id (create-dummy-job conn :user "mforsyth"
+                                 (let [job-id (create-dummy-job conn :user "mforsythq"
                                                                 :ncpus 1.0 :memory 3.0
                                                              :job-state :job.state/running)]
                                    (create-dummy-instance conn job-id
