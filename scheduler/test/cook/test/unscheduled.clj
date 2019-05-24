@@ -55,10 +55,8 @@
               {:job/resource (resource-map->list {:mem 500 :cpus 4})})
              {:cpus {:limit 8, :usage 10} :count {:limit 2 :usage 3}})))))
 
-(def datomic-uri "datomic:mem://test-unscheduled")
-
 (deftest test-fenzo-placement
-  (let [conn (restore-fresh-database! datomic-uri)
+  (let [conn (restore-fresh-database! "datomic:mem://test-fenzo-placement")
         placement-failures (str {:constraints {"novel_host_constraint" 3}
                                  :resources {"mem" 14
                                              "cpus" 8}})]
@@ -74,7 +72,7 @@
 
 (deftest test-reasons
   (setup)
-  (let [conn (restore-fresh-database! datomic-uri)
+  (let [conn (restore-fresh-database! "datomic:mem://test-unscheduled")
         _ (quota/set-quota! conn "mforsyth" nil "test-reasons" :count 2)
         running-job-id1 (-> (create-dummy-job conn :user "mforsyth"
                                               :ncpus 1.0 :memory 3.0
