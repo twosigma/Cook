@@ -26,7 +26,10 @@ class MasterSlaveTest(unittest.TestCase):
         self.logger = logging.getLogger(__name__)
 
     def test_get_queue(self):
-        uuids, resp = util.submit_jobs(self.master_url, {'command': 'sleep 30'}, clones=100)
+        bad_constraint = [["HOSTNAME",
+                           "EQUALS",
+                           "lol won't get scheduled"]]
+        uuid, resp = util.submit_job(self.master_url, command='sleep 30', constraints=bad_constraint)
         self.assertEqual(201, resp.status_code, resp.content)
         try:
             slave_queue = util.session.get('%s/queue' % self.slave_url, allow_redirects=False)
@@ -39,8 +42,9 @@ class MasterSlaveTest(unittest.TestCase):
             def check_queue():
                 master_queue = util.session.get(slave_queue.headers['Location'])
                 self.assertEqual(200, master_queue.status_code, master_queue.content)
-                self.assertTrue(any([job['job/uuid'] in uuids for job in master_queue.json()[pool]]))
+                pool_queue = master_queue.json()[pool]
+                self.assertTrue(any([job['job/uuid'] == uuid for job in pool_queue]), pool_queue)
 
             check_queue()
         finally:
-            util.kill_jobs(self.master_url, uuids)
+            util.kill_jobs(self.master_url, [uuid])
