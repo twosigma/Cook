@@ -22,7 +22,7 @@
             [cook.config :as config]
             [cook.scheduler.data-locality :as dl]
             [cook.group :as group]
-            [cook.util2 :as util]
+            [cook.tools :as util]
             [cook.rate-limit :as ratelimit]
             [swiss.arrows :refer :all])
   (:import com.netflix.fenzo.VirtualMachineLease

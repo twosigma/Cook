@@ -21,7 +21,7 @@
             [cook.mesos :as c]
             [cook.mesos.mesos-mock :as mm]
             [cook.scheduler.share :as share]
-            [cook.util2 :as util]
+            [cook.tools :as util]
             [cook.plugins.completion :as completion]
             [cook.test.testutil :as testutil :refer (restore-fresh-database! poll-until)]
             [datomic.api :as d]

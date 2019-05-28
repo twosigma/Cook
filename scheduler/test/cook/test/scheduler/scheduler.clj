@@ -31,7 +31,7 @@
             [cook.mesos.sandbox :as sandbox]
             [cook.scheduler.scheduler :as sched]
             [cook.scheduler.share :as share]
-            [cook.util2 :as util]
+            [cook.tools :as util]
             [cook.plugins.completion :as completion]
             [cook.plugins.definitions :as pd]
             [cook.plugins.launch :as launch-plugin]

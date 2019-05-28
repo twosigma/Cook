@@ -2,7 +2,7 @@
   (:require [clj-time.coerce :as tc]
             [clj-time.core :as t]
             [datomic.api :as d]
-            [cook.util2 :as util]))
+            [cook.tools :as util]))
 
 (defmulti find-stragglers
   "Given a group entity, returns a list of task entities 

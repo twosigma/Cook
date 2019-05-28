@@ -44,7 +44,7 @@
             [cook.mesos.sandbox :as sandbox]
             [cook.scheduler.share :as share]
             [cook.mesos.task :as task]
-            [cook.util2 :as util]
+            [cook.tools :as util]
             [cook.rate-limit :as ratelimit]
             [cook.task]
             [datomic.api :as d :refer (q)]

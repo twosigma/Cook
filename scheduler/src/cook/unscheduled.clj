@@ -20,7 +20,7 @@
             [cook.scheduler.scheduler :as scheduler]
             [cook.quota :as quota]
             [cook.scheduler.share :as share]
-            [cook.util2 :as util]
+            [cook.tools :as util]
             [cook.rate-limit :as ratelimit]
             [clojure.edn :as edn]
             [clojure.tools.logging :as log]

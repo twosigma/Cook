@@ -18,7 +18,7 @@
   (:require [cook.unscheduled :as u]
             [datomic.api :as d]
             [cook.scheduler.scheduler :as scheduler]
-            [cook.util2 :as util]
+            [cook.tools :as util]
             [cook.rate-limit :as rate-limit]
             [cook.test.testutil :refer (create-dummy-instance
                                         create-dummy-job

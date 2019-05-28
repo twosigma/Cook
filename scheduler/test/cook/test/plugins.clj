@@ -21,7 +21,7 @@
             [cook.plugins.submission :as submission-plugin]
             [cook.plugins.launch :as launch-plugin]
             [cook.plugins.definitions :as chd]
-            [cook.util2 :as util]
+            [cook.tools :as util]
             [cook.test.testutil :refer [create-dummy-job
                                         restore-fresh-database!] :as testutil]
             [datomic.api :as d]))

@@ -6,7 +6,7 @@
             [clj-time.core :as t]
             [cook.config :as config]
             [cook.scheduler.data-locality :as dl]
-            [cook.util2 :as util]
+            [cook.tools :as util]
             [cook.test.testutil :refer (restore-fresh-database! create-dummy-job)]
             [datomic.api :as d]
             [plumbing.core :as pc])

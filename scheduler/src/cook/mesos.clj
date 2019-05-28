@@ -27,7 +27,7 @@
             [cook.scheduler.optimizer]
             [cook.rebalancer]
             [cook.scheduler.scheduler :as sched]
-            [cook.util2 :as util]
+            [cook.tools :as util]
             [cook.util]
             [datomic.api :as d :refer (q)]
             [mesomatic.scheduler]
@@ -242,7 +242,7 @@
                                                                                       ;;      think about how to handle quota 
                                                                                       @pool-name->pending-jobs-atom)
                                                                                     (fn get-running []
-                                                                                      (cook.util2/get-running-task-ents (d/db mesos-datomic-conn)))
+                                                                                      (cook.tools/get-running-task-ents (d/db mesos-datomic-conn)))
                                                                                     view-incubating-offers
                                                                                     optimizer-config
                                                                                     optimizer-trigger-chan))

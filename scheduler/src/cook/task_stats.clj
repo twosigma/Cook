@@ -15,7 +15,7 @@
 ;;
 (ns cook.task-stats
   (:require [clj-time.core :as t]
-            [cook.util2 :as util]
+            [cook.tools :as util]
             [datomic.api :as d]
             [plumbing.core :as pc]))
 

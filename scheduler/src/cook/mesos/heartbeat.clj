@@ -19,7 +19,7 @@
             [clj-time.core :as time]
             [clojure.core.async :as async :refer [alts! go-loop go >!]]
             [clojure.tools.logging :as log]
-            [cook.util2 :as util]
+            [cook.tools :as util]
             [datomic.api :as d :refer (q)]
             [metatransaction.core :refer (db)]
             [metrics.meters :as meters]

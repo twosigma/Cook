@@ -19,7 +19,7 @@
             [clojure.tools.logging :as log]
             [cook.compute-cluster :as cc]
             [cook.config :as config]
-            [cook.util2 :as util]
+            [cook.tools :as util]
             [mesomatic.types :as mtypes]
             [plumbing.core :refer (map-vals)])
   (:import com.google.protobuf.ByteString

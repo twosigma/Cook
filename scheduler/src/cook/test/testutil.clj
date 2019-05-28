@@ -27,7 +27,7 @@
             [cook.rest.impersonation :refer (create-impersonation-middleware)]
             [cook.rest.api :as api]
             [cook.schema :as schema]
-            [cook.util2 :as util]
+            [cook.tools :as util]
             [cook.rate-limit :as rate-limit]
             [datomic.api :as d :refer (q db)]
             [mount.core :as mount]

@@ -13,14 +13,14 @@
 ;; See the License for the specific language governing permissions and
 ;; limitations under the License.
 ;;
-(ns cook.test.util2
+(ns cook.test.tools
   (:use clojure.test)
   (:require [clj-time.coerce :as tc]
             [clj-time.core :as t]
             [clojure.core.async :as async]
             [clojure.core.cache :as cache]
             [cook.config :as config]
-            [cook.util2 :as util]
+            [cook.tools :as util]
             [cook.test.testutil :as testutil
              :refer [create-dummy-group
                      create-dummy-instance

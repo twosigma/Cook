@@ -23,7 +23,7 @@
             [clojure.core.async :as async]
             [clojure.tools.logging :as log]
             [cook.util :refer [lazy-load-var PosNum PosInt NonNegInt]]
-            [cook.util2 :as util]
+            [cook.tools :as util]
             [datomic.api :as d :refer (q)]
             [schema.core :as s]))
 

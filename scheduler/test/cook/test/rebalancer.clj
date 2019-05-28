@@ -21,7 +21,7 @@
             [cook.rebalancer :as rebalancer :refer (->State)]
             [cook.scheduler.scheduler :as sched]
             [cook.scheduler.share :as share]
-            [cook.util2 :as util]
+            [cook.tools :as util]
             [cook.test.testutil :refer (restore-fresh-database! create-dummy-job create-dummy-instance
                                                                 create-dummy-group init-agent-attributes-cache)]
             [datomic.api :as d :refer (q)])

@@ -3,7 +3,7 @@
   (:require [clj-time.coerce :as tc]
             [clj-time.core :as t]
             [cook.group :as group]
-            [cook.util2 :as util]
+            [cook.tools :as util]
             [cook.test.testutil :refer (restore-fresh-database!
                                          create-dummy-group
                                          create-dummy-job

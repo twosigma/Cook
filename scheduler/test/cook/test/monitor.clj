@@ -20,7 +20,7 @@
             [cook.rest.api :as api]
             [cook.monitor :as monitor]
             [cook.scheduler.share :as share]
-            [cook.util2 :as util]
+            [cook.tools :as util]
             [cook.test.testutil :refer [restore-fresh-database! setup] :as testutil]
             [datomic.api :as d :refer [db]]
             [metrics.counters :as counters])

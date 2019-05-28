@@ -15,7 +15,7 @@
 ;;
 (ns cook.scheduler.dru
   (:require [cook.scheduler.share :as share]
-            [cook.util2 :as util]
+            [cook.tools :as util]
             [metrics.timers :as timers]
             [swiss.arrows :refer :all]))
 

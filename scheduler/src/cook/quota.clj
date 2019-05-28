@@ -16,7 +16,7 @@
 (ns cook.quota
   (:require [cook.pool :as pool]
             [cook.schema]
-            [cook.util2 :as util]
+            [cook.tools :as util]
             [datomic.api :as d]
             [metatransaction.core :refer (db)]
             [plumbing.core :as pc]))
