@@ -726,9 +726,7 @@
       (doseq [{:keys [leases task-metadata-seq]} matches
               :let [all-offers (mapv :offer leases)]]
         (doseq [[compute-cluster offers] (group-by :compute-cluster all-offers)]
-          (mesos/launch-tasks! (cc/get-mesos-driver-hack compute-cluster)
-                               (mapv :id offers)
-                               (task/compile-mesos-messages offers task-metadata-seq))
+          (cc/launch-tasks compute-cluster offers task-metadata-seq)
           (log/info "Launching " (count offers) "offers for" (cc/compute-cluster-name compute-cluster) "compute cluster")
           (doseq [{:keys [hostname task-request] :as meta} task-metadata-seq]
             ; Iterate over the tasks we matched
