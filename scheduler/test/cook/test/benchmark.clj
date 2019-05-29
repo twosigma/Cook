@@ -21,7 +21,7 @@
             [cook.scheduler.scheduler :as sched]
             [cook.scheduler.share :as share]
             [cook.tools :as util]
-            [cook.test.testutil :refer (restore-fresh-database! create-dummy-group create-dummy-job create-dummy-instance poll-until)]
+            [cook.test.testutil :refer (restore-fresh-database! create-dummy-group create-dummy-job create-dummy-instance poll-until setup)]
             [criterium.core :as cc]
             [datomic.api :as d]
             [metrics.timers :as timers]))
@@ -33,6 +33,7 @@
     [job inst]))
 
 (deftest ^:benchmark bench-rank-jobs
+  (setup)
   (let [uri "datomic:mem://bench-rank-jobs"
         conn (restore-fresh-database! uri)
         ;; Cheap way to have a non-uniform distribution of users

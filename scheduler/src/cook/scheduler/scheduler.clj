@@ -1162,14 +1162,14 @@
   (let [over-quota-job-limit (config/max-over-quota-jobs)]
     (->> task-ents
          (map (fn [task-ent] [task-ent (util/job->usage (:job/_instance task-ent))]))
-         (reductions (fn [[prev-task total-usage] [task-ent usage]] [task-ent (merge-with + usage total-usage)]))
-         (reductions (fn [[prev-task-ent over-quota-jobs] [task-ent usage]]
-                       (if (util/below-quota? quota usage)
-                         [task-ent over-quota-jobs]
-                         [task-ent (inc over-quota-jobs)]))
-                     [nil 0])
-         (take-while (fn [[task-ent over-quota-jobs]] (<= over-quota-jobs over-quota-job-limit)))
-         (map (fn [[task-ent over-quota-jobs]] task-ent))
+         (reductions (fn [[prev-task total-usage over-quota-jobs] [task-ent usage]]
+                       (let [total-usage' (merge-with + total-usage usage)]
+                         (if (util/below-quota? quota total-usage')
+                           [task-ent total-usage' over-quota-jobs]
+                           [task-ent total-usage' (inc over-quota-jobs)])))
+                     [nil {} 0])
+         (take-while (fn [[task-ent _ over-quota-jobs]] (<= over-quota-jobs over-quota-job-limit)))
+         (map first)
          (filter (fn [task-ent] (not (nil? task-ent)))))))
 
 (defn sort-jobs-by-dru-helper

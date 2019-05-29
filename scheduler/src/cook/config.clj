@@ -287,8 +287,9 @@
      :mea-culpa-failure-limit (fnk [[:config {scheduler nil}]]
                                 (:mea-culpa-failure-limit scheduler))
      :max-over-quota-jobs (fnk [[:config {scheduler nil}]]
-                             (when scheduler
-                               (or (:max-over-quota-jobs scheduler) 100)))
+                               (or (when scheduler
+                                     (:max-over-quota-jobs scheduler))
+                                   100))
      :fenzo-max-jobs-considered (fnk [[:config {scheduler nil}]]
                                   (when scheduler
                                     (or (:fenzo-max-jobs-considered scheduler) 1000)))
