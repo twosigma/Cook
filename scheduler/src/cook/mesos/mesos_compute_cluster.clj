@@ -33,8 +33,6 @@
                          (task/compile-mesos-messages framework-id offers task-metadata-seq)))
   (db-id [this]
     db-id)
-  (get-mesos-framework-id-hack [this]
-    framework-id)
   (set-mesos-driver-atom-hack! [this driver]
     (reset! driver-atom driver)))
 

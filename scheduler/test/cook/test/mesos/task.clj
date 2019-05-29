@@ -120,216 +120,218 @@
            (-> tasks first :resources)))))
 
 (deftest test-task-info->mesos-message
-  (testing "task-info->mesos-message"
-    (with-redefs [cook.config/framework-id-config (constantly "4425e656-2278-4f91-b1e4-9a2e942e6e81")]
-      (let [command "sleep 26; exit 0"
-            task {:name "yaiqlzwhfm_andalucien_4425e656-2278-4f91-b1e4-9a2e942e6e82",
-                  :slave-id {:value "foobar"},
-                  :task-id "4425e656-2278-4f91-b1e4-9a2e942e6e82",
-                  :scalar-resource-messages [{:name "mem", :type :value-scalar, :scalar 623.0, :role "cook"}
-                                             {:name "cpus", :type :value-scalar, :scalar 1.0, :role "cook"}]
-                  :ports-resource-messages [{:name "ports" :type :value-ranges :role "cook" :ranges [{:begin 31000 :end 31002}]}]
-                  :command {:value command,
-                            :environment {"MYENV" "VAR"},
-                            :user "andalucien",
-                            :uris [{:value "http://www.yahoo.com"
-                                    :executable true
-                                    :cache true
-                                    :extract true}]}
-                  :labels {"foo" "bar", "doo" "dar"},
-                  :data (.getBytes "string-data" "UTF-8")
-                  :role "4425e656-2278-4f91-b1e4-9a2e942e6e82",
-                  :num-ports 0,
-                  :ports-assigned [31000 31001]
-                  :resources {:mem 623.0
-                              :cpus 1.0
-                              :ports [{:begin 31000, :end 31002}]}}
-            ;; roundrip to and from Mesos protobuf to validate clojure data format
-            msg (->> task
-                     (task/task-info->mesos-message "4425e656-2278-4f91-b1e4-9a2e942e6e81")
-                     (mtypes/->pb :TaskInfo)
-                     mtypes/pb->data)]
+  (let [framework-id "4425e656-2278-4f91-b1e4-9a2e942e6e81"
+        task-info->mesos-message-wrap (partial task/task-info->mesos-message framework-id)]
+    (testing "task-info->mesos-message"
+      (with-redefs [cook.config/framework-id-config (constantly framework-id)]
+        (let [command "sleep 26; exit 0"
+              task {:name "yaiqlzwhfm_andalucien_4425e656-2278-4f91-b1e4-9a2e942e6e82",
+                    :slave-id {:value "foobar"},
+                    :task-id "4425e656-2278-4f91-b1e4-9a2e942e6e82",
+                    :scalar-resource-messages [{:name "mem", :type :value-scalar, :scalar 623.0, :role "cook"}
+                                               {:name "cpus", :type :value-scalar, :scalar 1.0, :role "cook"}]
+                    :ports-resource-messages [{:name "ports" :type :value-ranges :role "cook" :ranges [{:begin 31000 :end 31002}]}]
+                    :command {:value command,
+                              :environment {"MYENV" "VAR"},
+                              :user "andalucien",
+                              :uris [{:value "http://www.yahoo.com"
+                                      :executable true
+                                      :cache true
+                                      :extract true}]}
+                    :labels {"foo" "bar", "doo" "dar"},
+                    :data (.getBytes "string-data" "UTF-8")
+                    :role "4425e656-2278-4f91-b1e4-9a2e942e6e82",
+                    :num-ports 0,
+                    :ports-assigned [31000 31001]
+                    :resources {:mem 623.0
+                                :cpus 1.0
+                                :ports [{:begin 31000, :end 31002}]}}
+              ;; roundrip to and from Mesos protobuf to validate clojure data format
+              msg (->> task
+                       task-info->mesos-message-wrap
+                       (mtypes/->pb :TaskInfo)
+                       mtypes/pb->data)]
 
-        (testing "name-and-ids"
-          (is (= (:name msg) (:name task)))
-          (is (= (-> msg :slave-id :value) (-> task :slave-id :value)))
-          (is (= (-> msg :task-id :value) (:task-id task))))
+          (testing "name-and-ids"
+            (is (= (:name msg) (:name task)))
+            (is (= (-> msg :slave-id :value) (-> task :slave-id :value)))
+            (is (= (-> msg :task-id :value) (:task-id task))))
 
-        (testing "resources"
-          ;; offers have the same resources structure as tasks so we can reuse (offer-resource-values)
-          (is (= (sched/offer-resource-scalar msg "mem") (-> task :resources :mem)))
-          (is (= (sched/offer-resource-scalar msg "cpus") (-> task :resources :cpus)))
-          (is (= (->> (sched/offer-resource-ranges msg "ports") first :begin)
-                 (-> task :resources :ports first :begin)))
-          (is (= (->> (sched/offer-resource-ranges msg "ports") first :end)
-                 (-> task :resources :ports first :end)))
-          (is (= (->> msg :resources (map :role))
-                 (map :role (into (:scalar-resource-messages task)
-                                  (:ports-resource-messages task))))))
+          (testing "resources"
+            ;; offers have the same resources structure as tasks so we can reuse (offer-resource-values)
+            (is (= (sched/offer-resource-scalar msg "mem") (-> task :resources :mem)))
+            (is (= (sched/offer-resource-scalar msg "cpus") (-> task :resources :cpus)))
+            (is (= (->> (sched/offer-resource-ranges msg "ports") first :begin)
+                   (-> task :resources :ports first :begin)))
+            (is (= (->> (sched/offer-resource-ranges msg "ports") first :end)
+                   (-> task :resources :ports first :end)))
+            (is (= (->> msg :resources (map :role))
+                   (map :role (into (:scalar-resource-messages task)
+                                    (:ports-resource-messages task))))))
 
-        (testing "labels"
-          (is (= (->> msg :labels :labels (filter #(= (:key %) "foo")) first :value) "bar")))
+          (testing "labels"
+            (is (= (->> msg :labels :labels (filter #(= (:key %) "foo")) first :value) "bar")))
 
 
-        (testing "command-executor"
-          (let [command-executor-task (assoc task :data (.getBytes (pr-str {:instance "5"}) "UTF-8")
-                                                  :executor-key :command-executor)
-                command-executor-msg (->> command-executor-task
-                                          (task/task-info->mesos-message "4425e656-2278-4f91-b1e4-9a2e942e6e81")
-                                          (mtypes/->pb :TaskInfo)
-                                          mtypes/pb->data)]
-            ;; Check custom executor built correctly
-            (is (= (:instance (edn/read-string (String. (.toByteArray (:data command-executor-msg))))) "5"))
-            (let [command-executor-msg-cmd (-> command-executor-msg :command)
-                  command-executor-task-cmd (-> command-executor-task :command)
-                  command-executor-msg-uri (-> command-executor-msg-cmd :uris first)
-                  command-executor-task-uri (-> command-executor-task-cmd :uris first)]
-              (is (= (:user command-executor-msg-cmd) (:user command-executor-task-cmd)))
-              (is (= (:value command-executor-msg-cmd) (:value command-executor-task-cmd)))
-              (is (= (:cache command-executor-msg-uri) (:cache command-executor-task-uri)))
-              (is (= (:executable command-executor-msg-uri) (:executable command-executor-task-uri)))
-              (is (= (:extract command-executor-msg-uri) (:extract command-executor-task-uri)))
-              (is (= (:value command-executor-msg-uri) (:value command-executor-task-uri))))))
+          (testing "command-executor"
+            (let [command-executor-task (assoc task :data (.getBytes (pr-str {:instance "5"}) "UTF-8")
+                                                    :executor-key :command-executor)
+                  command-executor-msg (->> command-executor-task
+                                            task-info->mesos-message-wrap
+                                            (mtypes/->pb :TaskInfo)
+                                            mtypes/pb->data)]
+              ;; Check custom executor built correctly
+              (is (= (:instance (edn/read-string (String. (.toByteArray (:data command-executor-msg))))) "5"))
+              (let [command-executor-msg-cmd (-> command-executor-msg :command)
+                    command-executor-task-cmd (-> command-executor-task :command)
+                    command-executor-msg-uri (-> command-executor-msg-cmd :uris first)
+                    command-executor-task-uri (-> command-executor-task-cmd :uris first)]
+                (is (= (:user command-executor-msg-cmd) (:user command-executor-task-cmd)))
+                (is (= (:value command-executor-msg-cmd) (:value command-executor-task-cmd)))
+                (is (= (:cache command-executor-msg-uri) (:cache command-executor-task-uri)))
+                (is (= (:executable command-executor-msg-uri) (:executable command-executor-task-uri)))
+                (is (= (:extract command-executor-msg-uri) (:extract command-executor-task-uri)))
+                (is (= (:value command-executor-msg-uri) (:value command-executor-task-uri))))))
 
-        (doseq [executor-key [:cook-executor :custom-executor]]
-          (testing (str "common-fields-" executor-key)
-            (let [task (assoc task :executor-key executor-key)
-                  ;; roundrip to and from Mesos protobuf to validate clojure data format
-                  msg (->> task
-                           (task/task-info->mesos-message "4425e656-2278-4f91-b1e4-9a2e942e6e81")
-                           (mtypes/->pb :TaskInfo)
-                           mtypes/pb->data)]
-              (let [msg-cmd (-> msg :executor :command)
-                    task-cmd (:command task)
-                    msg-uri (-> msg-cmd :uris first)
-                    task-uri (-> task-cmd :uris first)]
-                (is (str/blank? (-> msg :command :uris first)))
-                (is (str/blank? (-> msg :command :user)))
-                (is (str/blank? (-> msg :command :value)))
-                (is (= (:user msg-cmd) (:user task-cmd)))
-                (is (= (:value msg-cmd) (:value task-cmd)))
-                (is (= (:cache msg-uri) (:cache task-uri)))
-                (is (= (:executable msg-uri) (:executable task-uri)))
-                (is (= (:extract msg-uri) (:extract task-uri)))
-                (is (= (:value msg-uri) (:value task-uri))))
-              ;; the following assertions don't use the roundtrip because Mesomatic currently
-              ;; has a bug and doesn't convert env var info back into clojure data.
-              ;; It's not a problem for Cook, except for the purposes of this unit test.
-              (let [msg-env (->> task (task/task-info->mesos-message "4425e656-2278-4f91-b1e4-9a2e942e6e81") :executor :command :environment)]
-                (is (= (-> msg-env :variables first :name) "MYENV"))
-                (is (= (-> msg-env :variables first :value) "VAR"))))))
+          (doseq [executor-key [:cook-executor :custom-executor]]
+            (testing (str "common-fields-" executor-key)
+              (let [task (assoc task :executor-key executor-key)
+                    ;; roundrip to and from Mesos protobuf to validate clojure data format
+                    msg (->> task
+                             task-info->mesos-message-wrap
+                             (mtypes/->pb :TaskInfo)
+                             mtypes/pb->data)]
+                (let [msg-cmd (-> msg :executor :command)
+                      task-cmd (:command task)
+                      msg-uri (-> msg-cmd :uris first)
+                      task-uri (-> task-cmd :uris first)]
+                  (is (str/blank? (-> msg :command :uris first)))
+                  (is (str/blank? (-> msg :command :user)))
+                  (is (str/blank? (-> msg :command :value)))
+                  (is (= (:user msg-cmd) (:user task-cmd)))
+                  (is (= (:value msg-cmd) (:value task-cmd)))
+                  (is (= (:cache msg-uri) (:cache task-uri)))
+                  (is (= (:executable msg-uri) (:executable task-uri)))
+                  (is (= (:extract msg-uri) (:extract task-uri)))
+                  (is (= (:value msg-uri) (:value task-uri))))
+                ;; the following assertions don't use the roundtrip because Mesomatic currently
+                ;; has a bug and doesn't convert env var info back into clojure data.
+                ;; It's not a problem for Cook, except for the purposes of this unit test.
+                (let [msg-env (-> task task-info->mesos-message-wrap :executor :command :environment)]
+                  (is (= (-> msg-env :variables first :name) "MYENV"))
+                  (is (= (-> msg-env :variables first :value) "VAR"))))))
 
-        (testing "cook-executor"
-          (let [cook-executor-task (assoc task :data (.getBytes command "UTF-8")
-                                               :executor-key :cook-executor)
-                cook-executor-msg (->> cook-executor-task
-                                       (task/task-info->mesos-message "4425e656-2278-4f91-b1e4-9a2e942e6e81")
-                                       (mtypes/->pb :TaskInfo)
-                                       mtypes/pb->data)]
-            ;; Check custom executor built correctly
-            (is (= command (String. (.toByteArray (:data cook-executor-msg)))))
-            (is (= (-> cook-executor-msg :executor :command :value) (-> task :command :value)))
-            (is (= (-> cook-executor-msg :executor :executor-id :value) (:task-id task)))
-            (is (= (-> cook-executor-msg :executor :framework-id :value) (-> task :framework-id)))
-            (is (= (-> cook-executor-msg :executor :name) task/cook-executor-name))
-            (is (= (-> cook-executor-msg :executor :source) task/cook-executor-source))))
-
-        (testing "custom-executor"
-          (let [custom-executor-task (assoc task :data (.getBytes (pr-str {:instance "5"}) "UTF-8")
-                                                 :executor-key :custom-executor)
-                custom-executor-msg (->> custom-executor-task
-                                         (task/task-info->mesos-message "4425e656-2278-4f91-b1e4-9a2e942e6e81")
+          (testing "cook-executor"
+            (let [cook-executor-task (assoc task :data (.getBytes command "UTF-8")
+                                                 :executor-key :cook-executor)
+                  cook-executor-msg (->> cook-executor-task
+                                         task-info->mesos-message-wrap
                                          (mtypes/->pb :TaskInfo)
                                          mtypes/pb->data)]
-            ;; Check custom executor built correctly
-            (is (= (:instance (edn/read-string (String. (.toByteArray (:data custom-executor-msg))))) "5"))
-            (is (= (-> custom-executor-msg :executor :command :value) (-> task :command :value)))
-            (is (= (-> custom-executor-msg :executor :executor-id :value) (:task-id task)))
-            (is (= (-> custom-executor-msg :executor :framework-id :value) (-> task :framework-id)))
-            (is (= (-> custom-executor-msg :executor :name) task/custom-executor-name))
-            (is (= (-> custom-executor-msg :executor :source) task/custom-executor-source))))
+              ;; Check custom executor built correctly
+              (is (= command (String. (.toByteArray (:data cook-executor-msg)))))
+              (is (= (-> cook-executor-msg :executor :command :value) (-> task :command :value)))
+              (is (= (-> cook-executor-msg :executor :executor-id :value) (:task-id task)))
+              (is (= (-> cook-executor-msg :executor :framework-id :value) framework-id))
+              (is (= (-> cook-executor-msg :executor :name) task/cook-executor-name))
+              (is (= (-> cook-executor-msg :executor :source) task/cook-executor-source))))
 
-        (let [container {:docker {:image "a-docker-image"
-                                  :force-pull-image false
-                                  :network "HOST"
-                                  :parameters [{:key "user" :value "100:5"}]
-                                  :port-mapping [{:host-port 0
-                                                  :container-port 1
-                                                  :protocol "tcp"}
-                                                 {:host-port 1
-                                                  :container-port 2
-                                                  :protocol "udp"}]}
-                         :hostname "test.docker.hostname"
-                         :type "DOCKER"
-                         :volumes [{:container-path "/var/lib/sss"
-                                    :host-path "/var/lib/sss"
-                                    :mode "RW"}]}
-              expected-container (-> (update container :docker assoc :network :docker-network-host)
-                                     (update :docker #(clojure.set/rename-keys % {:port-mapping :port-mappings}))
-                                     (assoc-in [:docker :port-mappings 0 :host-port]
-                                               (first (:ports-assigned task)))
-                                     (assoc-in [:docker :port-mappings 1 :host-port]
-                                               (second (:ports-assigned task)))
-                                     (assoc :type :container-type-docker)
-                                     (update-in [:volumes 0] assoc :mode :volume-rw)
-                                     (assoc :mesos nil))]
+          (testing "custom-executor"
+            (let [custom-executor-task (assoc task :data (.getBytes (pr-str {:instance "5"}) "UTF-8")
+                                                   :executor-key :custom-executor)
+                  custom-executor-msg (->> custom-executor-task
+                                           task-info->mesos-message-wrap
+                                           (mtypes/->pb :TaskInfo)
+                                           mtypes/pb->data)]
+              ;; Check custom executor built correctly
+              (is (= (:instance (edn/read-string (String. (.toByteArray (:data custom-executor-msg))))) "5"))
+              (is (= (-> custom-executor-msg :executor :command :value) (-> task :command :value)))
+              (is (= (-> custom-executor-msg :executor :executor-id :value) (:task-id task)))
+              (is (= (-> custom-executor-msg :executor :framework-id :value) framework-id))
+              (is (= (-> custom-executor-msg :executor :name) task/custom-executor-name))
+              (is (= (-> custom-executor-msg :executor :source) task/custom-executor-source))))
 
-          (testing "container-command"
-            (let [container-executor-task (assoc task :container container
-                                                      :data (.getBytes (pr-str {:instance "5"}) "UTF-8")
-                                                      :executor-key :container-command-executor)
-                  container-executor-msg (->> container-executor-task
-                                              (task/task-info->mesos-message "4425e656-2278-4f91-b1e4-9a2e942e6e81")
-                                              (mtypes/->pb :TaskInfo)
-                                              mtypes/pb->data)]
-              ;; Check container executor built correctly
-              (is (= (:instance (edn/read-string (String. (.toByteArray (:data container-executor-msg))))) "5"))
-              (is (= (-> container-executor-msg :command :value) (-> task :command :value)))
-              (is (str/blank? (-> container-executor-msg :executor :command :value)))
-              (is (str/blank? (-> container-executor-msg :executor :executor-id :value)))
-              (is (str/blank? (-> container-executor-msg :executor :framework-id :value)))
-              (is (= (-> container-executor-msg :executor :name) ""))
-              (is (str/blank? (-> container-executor-msg :executor :source)))
-              (is (= expected-container (->> container-executor-task (task/task-info->mesos-message "4425e656-2278-4f91-b1e4-9a2e942e6e81") :container)))
-              (is (nil? (->> container-executor-task (task/task-info->mesos-message "4425e656-2278-4f91-b1e4-9a2e942e6e81") :executor :container)))))
+          (let [container {:docker {:image "a-docker-image"
+                                    :force-pull-image false
+                                    :network "HOST"
+                                    :parameters [{:key "user" :value "100:5"}]
+                                    :port-mapping [{:host-port 0
+                                                    :container-port 1
+                                                    :protocol "tcp"}
+                                                   {:host-port 1
+                                                    :container-port 2
+                                                    :protocol "udp"}]}
+                           :hostname "test.docker.hostname"
+                           :type "DOCKER"
+                           :volumes [{:container-path "/var/lib/sss"
+                                      :host-path "/var/lib/sss"
+                                      :mode "RW"}]}
+                expected-container (-> (update container :docker assoc :network :docker-network-host)
+                                       (update :docker #(clojure.set/rename-keys % {:port-mapping :port-mappings}))
+                                       (assoc-in [:docker :port-mappings 0 :host-port]
+                                                 (first (:ports-assigned task)))
+                                       (assoc-in [:docker :port-mappings 1 :host-port]
+                                                 (second (:ports-assigned task)))
+                                       (assoc :type :container-type-docker)
+                                       (update-in [:volumes 0] assoc :mode :volume-rw)
+                                       (assoc :mesos nil))]
 
-          (testing "container-executor"
-            (let [container-executor-task (assoc task :container container
-                                                      :data (.getBytes (pr-str {:instance "5"}) "UTF-8")
-                                                      :executor-key :container-executor)
-                  container-executor-msg (->> container-executor-task
-                                              (task/task-info->mesos-message "4425e656-2278-4f91-b1e4-9a2e942e6e81")
-                                              (mtypes/->pb :TaskInfo)
-                                              mtypes/pb->data)]
-              ;; Check container executor built correctly
-              (is (= (:instance (edn/read-string (String. (.toByteArray (:data container-executor-msg))))) "5"))
-              (is (str/blank? (-> container-executor-msg :command :value)))
-              (is (= (-> container-executor-msg :executor :command :value) (-> task :command :value)))
-              (is (= (-> container-executor-msg :executor :executor-id :value) (:task-id task)))
-              (is (= (-> container-executor-msg :executor :framework-id :value) (-> task :framework-id)))
-              (is (= (-> container-executor-msg :executor :name) task/custom-executor-name))
-              (is (= (-> container-executor-msg :executor :source) task/custom-executor-source))
-              (is (nil? (->> container-executor-task (task/task-info->mesos-message "4425e656-2278-4f91-b1e4-9a2e942e6e81") :container)))
-              (is (= expected-container (->> container-executor-task (task/task-info->mesos-message "4425e656-2278-4f91-b1e4-9a2e942e6e81") :executor :container)))))
+            (testing "container-command"
+              (let [container-executor-task (assoc task :container container
+                                                        :data (.getBytes (pr-str {:instance "5"}) "UTF-8")
+                                                        :executor-key :container-command-executor)
+                    container-executor-msg (->> container-executor-task
+                                                task-info->mesos-message-wrap
+                                                (mtypes/->pb :TaskInfo)
+                                                mtypes/pb->data)]
+                ;; Check container executor built correctly
+                (is (= (:instance (edn/read-string (String. (.toByteArray (:data container-executor-msg))))) "5"))
+                (is (= (-> container-executor-msg :command :value) (-> task :command :value)))
+                (is (str/blank? (-> container-executor-msg :executor :command :value)))
+                (is (str/blank? (-> container-executor-msg :executor :executor-id :value)))
+                (is (str/blank? (-> container-executor-msg :executor :framework-id :value)))
+                (is (= (-> container-executor-msg :executor :name) ""))
+                (is (str/blank? (-> container-executor-msg :executor :source)))
+                (is (= expected-container (->> container-executor-task task-info->mesos-message-wrap :container)))
+                (is (nil? (->> container-executor-task task-info->mesos-message-wrap :executor :container)))))
 
-          (testing "container-cook-executor"
-            (let [container-executor-task (assoc task :container container
-                                                      :data (.getBytes (pr-str {:instance "5"}) "UTF-8")
-                                                      :executor-key :container-cook-executor)
-                  container-executor-msg (->> container-executor-task
-                                              (task/task-info->mesos-message "4425e656-2278-4f91-b1e4-9a2e942e6e81")
-                                              (mtypes/->pb :TaskInfo)
-                                              mtypes/pb->data)]
-              ;; Check container executor built correctly
-              (is (= (:instance (edn/read-string (String. (.toByteArray (:data container-executor-msg))))) "5"))
-              (is (str/blank? (-> container-executor-msg :command :value)))
-              (is (= (-> container-executor-msg :executor :command :value) (-> task :command :value)))
-              (is (= (-> container-executor-msg :executor :executor-id :value) (:task-id task)))
-              (is (= (-> container-executor-msg :executor :framework-id :value) (-> task :framework-id)))
-              (is (= (-> container-executor-msg :executor :name) task/cook-executor-name))
-              (is (= (-> container-executor-msg :executor :source) task/cook-executor-source))
-              (is (nil? (->> container-executor-task (task/task-info->mesos-message "4425e656-2278-4f91-b1e4-9a2e942e6e81") :container)))
-              (is (= expected-container (->> container-executor-task (task/task-info->mesos-message "4425e656-2278-4f91-b1e4-9a2e942e6e81") :executor :container))))))))))
+            (testing "container-executor"
+              (let [container-executor-task (assoc task :container container
+                                                        :data (.getBytes (pr-str {:instance "5"}) "UTF-8")
+                                                        :executor-key :container-executor)
+                    container-executor-msg (->> container-executor-task
+                                                task-info->mesos-message-wrap
+                                                (mtypes/->pb :TaskInfo)
+                                                mtypes/pb->data)]
+                ;; Check container executor built correctly
+                (is (= (:instance (edn/read-string (String. (.toByteArray (:data container-executor-msg))))) "5"))
+                (is (str/blank? (-> container-executor-msg :command :value)))
+                (is (= (-> container-executor-msg :executor :command :value) (-> task :command :value)))
+                (is (= (-> container-executor-msg :executor :executor-id :value) (:task-id task)))
+                (is (= (-> container-executor-msg :executor :framework-id :value) framework-id))
+                (is (= (-> container-executor-msg :executor :name) task/custom-executor-name))
+                (is (= (-> container-executor-msg :executor :source) task/custom-executor-source))
+                (is (nil? (->> container-executor-task task-info->mesos-message-wrap :container)))
+                (is (= expected-container (->> container-executor-task task-info->mesos-message-wrap :executor :container)))))
+
+            (testing "container-cook-executor"
+              (let [container-executor-task (assoc task :container container
+                                                        :data (.getBytes (pr-str {:instance "5"}) "UTF-8")
+                                                        :executor-key :container-cook-executor)
+                    container-executor-msg (->> container-executor-task
+                                                task-info->mesos-message-wrap
+                                                (mtypes/->pb :TaskInfo)
+                                                mtypes/pb->data)]
+                ;; Check container executor built correctly
+                (is (= (:instance (edn/read-string (String. (.toByteArray (:data container-executor-msg))))) "5"))
+                (is (str/blank? (-> container-executor-msg :command :value)))
+                (is (= (-> container-executor-msg :executor :command :value) (-> task :command :value)))
+                (is (= (-> container-executor-msg :executor :executor-id :value) (:task-id task)))
+                (is (= (-> container-executor-msg :executor :framework-id :value) framework-id))
+                (is (= (-> container-executor-msg :executor :name) task/cook-executor-name))
+                (is (= (-> container-executor-msg :executor :source) task/cook-executor-source))
+                (is (nil? (->> container-executor-task task-info->mesos-message-wrap :container)))
+                (is (= expected-container (->> container-executor-task task-info->mesos-message-wrap :executor :container)))))))))))
 
 (deftest test-job->task-metadata
   (let [uri "datomic:mem://test-job-task-metadata"
