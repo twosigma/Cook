@@ -138,7 +138,6 @@
                                     :extract true}]}
                   :labels {"foo" "bar", "doo" "dar"},
                   :data (.getBytes "string-data" "UTF-8")
-                  :framework-id "4425e656-2278-4f91-b1e4-9a2e942e6e81"
                   :role "4425e656-2278-4f91-b1e4-9a2e942e6e82",
                   :num-ports 0,
                   :ports-assigned [31000 31001]
@@ -147,7 +146,7 @@
                               :ports [{:begin 31000, :end 31002}]}}
             ;; roundrip to and from Mesos protobuf to validate clojure data format
             msg (->> task
-                     task/task-info->mesos-message
+                     (task/task-info->mesos-message "4425e656-2278-4f91-b1e4-9a2e942e6e81")
                      (mtypes/->pb :TaskInfo)
                      mtypes/pb->data)]
 
@@ -176,7 +175,7 @@
           (let [command-executor-task (assoc task :data (.getBytes (pr-str {:instance "5"}) "UTF-8")
                                                   :executor-key :command-executor)
                 command-executor-msg (->> command-executor-task
-                                          task/task-info->mesos-message
+                                          (task/task-info->mesos-message "4425e656-2278-4f91-b1e4-9a2e942e6e81")
                                           (mtypes/->pb :TaskInfo)
                                           mtypes/pb->data)]
             ;; Check custom executor built correctly
@@ -197,7 +196,7 @@
             (let [task (assoc task :executor-key executor-key)
                   ;; roundrip to and from Mesos protobuf to validate clojure data format
                   msg (->> task
-                           task/task-info->mesos-message
+                           (task/task-info->mesos-message "4425e656-2278-4f91-b1e4-9a2e942e6e81")
                            (mtypes/->pb :TaskInfo)
                            mtypes/pb->data)]
               (let [msg-cmd (-> msg :executor :command)
@@ -216,7 +215,7 @@
               ;; the following assertions don't use the roundtrip because Mesomatic currently
               ;; has a bug and doesn't convert env var info back into clojure data.
               ;; It's not a problem for Cook, except for the purposes of this unit test.
-              (let [msg-env (-> task task/task-info->mesos-message :executor :command :environment)]
+              (let [msg-env (->> task (task/task-info->mesos-message "4425e656-2278-4f91-b1e4-9a2e942e6e81") :executor :command :environment)]
                 (is (= (-> msg-env :variables first :name) "MYENV"))
                 (is (= (-> msg-env :variables first :value) "VAR"))))))
 
@@ -224,7 +223,7 @@
           (let [cook-executor-task (assoc task :data (.getBytes command "UTF-8")
                                                :executor-key :cook-executor)
                 cook-executor-msg (->> cook-executor-task
-                                       task/task-info->mesos-message
+                                       (task/task-info->mesos-message "4425e656-2278-4f91-b1e4-9a2e942e6e81")
                                        (mtypes/->pb :TaskInfo)
                                        mtypes/pb->data)]
             ;; Check custom executor built correctly
@@ -239,7 +238,7 @@
           (let [custom-executor-task (assoc task :data (.getBytes (pr-str {:instance "5"}) "UTF-8")
                                                  :executor-key :custom-executor)
                 custom-executor-msg (->> custom-executor-task
-                                         task/task-info->mesos-message
+                                         (task/task-info->mesos-message "4425e656-2278-4f91-b1e4-9a2e942e6e81")
                                          (mtypes/->pb :TaskInfo)
                                          mtypes/pb->data)]
             ;; Check custom executor built correctly
@@ -280,7 +279,7 @@
                                                       :data (.getBytes (pr-str {:instance "5"}) "UTF-8")
                                                       :executor-key :container-command-executor)
                   container-executor-msg (->> container-executor-task
-                                              task/task-info->mesos-message
+                                              (task/task-info->mesos-message "4425e656-2278-4f91-b1e4-9a2e942e6e81")
                                               (mtypes/->pb :TaskInfo)
                                               mtypes/pb->data)]
               ;; Check container executor built correctly
@@ -291,15 +290,15 @@
               (is (str/blank? (-> container-executor-msg :executor :framework-id :value)))
               (is (= (-> container-executor-msg :executor :name) ""))
               (is (str/blank? (-> container-executor-msg :executor :source)))
-              (is (= expected-container (->> container-executor-task task/task-info->mesos-message :container)))
-              (is (nil? (->> container-executor-task task/task-info->mesos-message :executor :container)))))
+              (is (= expected-container (->> container-executor-task (task/task-info->mesos-message "4425e656-2278-4f91-b1e4-9a2e942e6e81") :container)))
+              (is (nil? (->> container-executor-task (task/task-info->mesos-message "4425e656-2278-4f91-b1e4-9a2e942e6e81") :executor :container)))))
 
           (testing "container-executor"
             (let [container-executor-task (assoc task :container container
                                                       :data (.getBytes (pr-str {:instance "5"}) "UTF-8")
                                                       :executor-key :container-executor)
                   container-executor-msg (->> container-executor-task
-                                              task/task-info->mesos-message
+                                              (task/task-info->mesos-message "4425e656-2278-4f91-b1e4-9a2e942e6e81")
                                               (mtypes/->pb :TaskInfo)
                                               mtypes/pb->data)]
               ;; Check container executor built correctly
@@ -310,15 +309,15 @@
               (is (= (-> container-executor-msg :executor :framework-id :value) (-> task :framework-id)))
               (is (= (-> container-executor-msg :executor :name) task/custom-executor-name))
               (is (= (-> container-executor-msg :executor :source) task/custom-executor-source))
-              (is (nil? (->> container-executor-task task/task-info->mesos-message :container)))
-              (is (= expected-container (->> container-executor-task task/task-info->mesos-message :executor :container)))))
+              (is (nil? (->> container-executor-task (task/task-info->mesos-message "4425e656-2278-4f91-b1e4-9a2e942e6e81") :container)))
+              (is (= expected-container (->> container-executor-task (task/task-info->mesos-message "4425e656-2278-4f91-b1e4-9a2e942e6e81") :executor :container)))))
 
           (testing "container-cook-executor"
             (let [container-executor-task (assoc task :container container
                                                       :data (.getBytes (pr-str {:instance "5"}) "UTF-8")
                                                       :executor-key :container-cook-executor)
                   container-executor-msg (->> container-executor-task
-                                              task/task-info->mesos-message
+                                              (task/task-info->mesos-message "4425e656-2278-4f91-b1e4-9a2e942e6e81")
                                               (mtypes/->pb :TaskInfo)
                                               mtypes/pb->data)]
               ;; Check container executor built correctly
@@ -329,8 +328,8 @@
               (is (= (-> container-executor-msg :executor :framework-id :value) (-> task :framework-id)))
               (is (= (-> container-executor-msg :executor :name) task/cook-executor-name))
               (is (= (-> container-executor-msg :executor :source) task/cook-executor-source))
-              (is (nil? (->> container-executor-task task/task-info->mesos-message :container)))
-              (is (= expected-container (->> container-executor-task task/task-info->mesos-message :executor :container))))))))))
+              (is (nil? (->> container-executor-task (task/task-info->mesos-message "4425e656-2278-4f91-b1e4-9a2e942e6e81") :container)))
+              (is (= expected-container (->> container-executor-task (task/task-info->mesos-message "4425e656-2278-4f91-b1e4-9a2e942e6e81") :executor :container))))))))))
 
 (deftest test-job->task-metadata
   (let [uri "datomic:mem://test-job-task-metadata"
@@ -358,13 +357,12 @@
                            "COOK_JOB_UUID" (-> job-ent :job/uuid str)}]
 
           (testing "mesos-run-as-user absent"
-            (let [task-metadata (task/job->mesos-task-metadata db framework-id mesos-run-as-user job-ent task-id)]
+            (let [task-metadata (task/job->mesos-task-metadata db mesos-run-as-user job-ent task-id)]
               (is (= {:command {:value "run-my-command", :environment environment, :user "test-user", :uris []}
                       :container nil
                       :environment environment
                       :executor :executor/custom
                       :executor-key :custom-executor
-                      :framework-id framework-id
                       :labels {}
                       :name (format "dummy_job_%s_%s" (:job/user job-ent) task-id)
                       :num-ports 0
@@ -375,13 +373,12 @@
 
           (testing "mesos-run-as-user present"
             (let [mesos-run-as-user "mesos-run-as-user"
-                  task-metadata (task/job->mesos-task-metadata db framework-id mesos-run-as-user job-ent task-id)]
+                  task-metadata (task/job->mesos-task-metadata db mesos-run-as-user job-ent task-id)]
               (is (= {:command {:value "run-my-command", :environment environment, :user mesos-run-as-user, :uris []}
                       :container nil
                       :environment environment
                       :executor :executor/custom
                       :executor-key :custom-executor
-                      :framework-id framework-id
                       :labels {}
                       :name (format "dummy_job_%s_%s" (:job/user job-ent) task-id)
                       :num-ports 0
@@ -404,13 +401,12 @@
                            "COOK_JOB_GROUP_UUID" (-> group-ent :group/uuid str)
                            "COOK_JOB_MEM_MB" "10.0"
                            "COOK_JOB_UUID" (-> job-ent :job/uuid str)}
-              task-metadata (task/job->mesos-task-metadata db framework-id mesos-run-as-user job-ent task-id)]
+              task-metadata (task/job->mesos-task-metadata db mesos-run-as-user job-ent task-id)]
           (is (= {:command {:value "run-my-command", :environment environment, :user "test-user", :uris []}
                   :container nil
                   :environment environment
                   :executor :executor/custom
                   :executor-key :custom-executor
-                  :framework-id framework-id
                   :labels {}
                   :name (format "dummy_job_%s_%s" (:job/user job-ent) task-id)
                   :num-ports 0
@@ -430,13 +426,12 @@
                            "COOK_JOB_CPUS" "1.0"
                            "COOK_JOB_MEM_MB" "10.0"
                            "COOK_JOB_UUID" (-> job-ent :job/uuid str)}
-              task-metadata (task/job->mesos-task-metadata db framework-id mesos-run-as-user job-ent task-id)]
+              task-metadata (task/job->mesos-task-metadata db mesos-run-as-user job-ent task-id)]
           (is (= {:command {:value "run-my-command", :environment environment, :user "test-user", :uris []}
                   :container nil
                   :environment environment
                   :executor :executor/custom
                   :executor-key :custom-executor
-                  :framework-id framework-id
                   :labels {}
                   :name (format "dummy_job_%s_%s" (:job/user job-ent) task-id)
                   :num-ports 0
@@ -460,7 +455,7 @@
                            "EXECUTOR_MAX_MESSAGE_LENGTH" (:max-message-length executor)
                            "PROGRESS_REGEX_STRING" (:default-progress-regex-string executor)
                            "PROGRESS_SAMPLE_INTERVAL_MS" (:progress-sample-interval-ms executor)}
-              task-metadata (task/job->mesos-task-metadata db framework-id mesos-run-as-user job-ent task-id)]
+              task-metadata (task/job->mesos-task-metadata db mesos-run-as-user job-ent task-id)]
           (is (= {:command {:environment environment
                             :uris [(:uri executor)]
                             :user "test-user"
@@ -469,7 +464,6 @@
                   :environment environment
                   :executor :executor/cook
                   :executor-key :cook-executor
-                  :framework-id framework-id
                   :labels {}
                   :name (format "dummy_job_%s_%s" (:job/user job-ent) task-id)
                   :num-ports 0
@@ -498,7 +492,7 @@
                            "EXECUTOR_MAX_MESSAGE_LENGTH" (:max-message-length executor)
                            "PROGRESS_REGEX_STRING" (:default-progress-regex-string executor)
                            "PROGRESS_SAMPLE_INTERVAL_MS" (:progress-sample-interval-ms executor)}
-              task-metadata (task/job->mesos-task-metadata db framework-id mesos-run-as-user job-ent task-id)]
+              task-metadata (task/job->mesos-task-metadata db mesos-run-as-user job-ent task-id)]
           (is (= {:command {:environment environment
                             :uris [(:uri executor)]
                             :user "test-user"
@@ -507,7 +501,6 @@
                   :environment environment
                   :executor :executor/cook
                   :executor-key :cook-executor
-                  :framework-id framework-id
                   :labels {}
                   :name (format "dummy_job_%s_%s" (:job/user job-ent) task-id)
                   :num-ports 0
@@ -528,7 +521,7 @@
                            "COOK_JOB_CPUS" "1.0"
                            "COOK_JOB_MEM_MB" "10.0"
                            "COOK_JOB_UUID" (-> job-ent :job/uuid str)}
-              task-metadata (task/job->mesos-task-metadata db framework-id mesos-run-as-user job-ent task-id)]
+              task-metadata (task/job->mesos-task-metadata db mesos-run-as-user job-ent task-id)]
           (is (= {:command {:environment environment
                             :uris []
                             :user "test-user"
@@ -537,7 +530,6 @@
                   :environment environment
                   :executor :executor/mesos
                   :executor-key :command-executor
-                  :framework-id framework-id
                   :labels {}
                   :name (format "dummy_job_%s_%s" (:job/user job-ent) task-id)
                   :num-ports 0
@@ -565,7 +557,7 @@
                            "COOK_JOB_CPUS" "1.0"
                            "COOK_JOB_MEM_MB" "10.0"
                            "COOK_JOB_UUID" (-> job-ent :job/uuid str)}
-              task-metadata (task/job->mesos-task-metadata db framework-id mesos-run-as-user job-ent task-id)]
+              task-metadata (task/job->mesos-task-metadata db mesos-run-as-user job-ent task-id)]
           (is (= {:command {:environment environment
                             :uris []
                             :user "test-user"
@@ -576,7 +568,6 @@
                   :environment environment
                   :executor :executor/custom
                   :executor-key :container-executor
-                  :framework-id framework-id
                   :labels {}
                   :name (format "dummy_job_%s_%s" (:job/user job-ent) task-id)
                   :num-ports 0
@@ -605,7 +596,7 @@
                            "COOK_JOB_CPUS" "1.0"
                            "COOK_JOB_MEM_MB" "200.0"
                            "COOK_JOB_UUID" (-> job-ent :job/uuid str)}
-              task-metadata (task/job->mesos-task-metadata db framework-id mesos-run-as-user job-ent task-id)]
+              task-metadata (task/job->mesos-task-metadata db mesos-run-as-user job-ent task-id)]
           (is (= {:command {:environment environment
                             :uris []
                             :user "test-user"
@@ -616,7 +607,6 @@
                   :environment environment
                   :executor :executor/mesos
                   :executor-key :container-command-executor
-                  :framework-id framework-id
                   :labels {}
                   :name (format "dummy_job_%s_%s" (:job/user job-ent) task-id)
                   :num-ports 0
@@ -650,7 +640,7 @@
                            "EXECUTOR_MAX_MESSAGE_LENGTH" (:max-message-length executor)
                            "PROGRESS_REGEX_STRING" (:default-progress-regex-string executor)
                            "PROGRESS_SAMPLE_INTERVAL_MS" (:progress-sample-interval-ms executor)}
-              task-metadata (task/job->mesos-task-metadata db framework-id mesos-run-as-user job-ent task-id)]
+              task-metadata (task/job->mesos-task-metadata db mesos-run-as-user job-ent task-id)]
           (is (= {:command {:environment environment
                             :uris [(:uri executor)]
                             :user "test-user"
@@ -661,7 +651,6 @@
                   :environment environment
                   :executor :executor/cook
                   :executor-key :container-cook-executor
-                  :framework-id framework-id
                   :labels {}
                   :name (format "dummy_job_%s_%s" (:job/user job-ent) task-id)
                   :num-ports 0

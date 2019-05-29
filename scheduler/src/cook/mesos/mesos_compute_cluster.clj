@@ -30,7 +30,7 @@
   (launch-tasks [this offers task-metadata-seq]
     (mesos/launch-tasks! @driver-atom
                          (mapv :id offers)
-                         (task/compile-mesos-messages offers task-metadata-seq)))
+                         (task/compile-mesos-messages framework-id offers task-metadata-seq)))
   (db-id [this]
     db-id)
   (get-mesos-framework-id-hack [this]

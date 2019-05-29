@@ -107,7 +107,7 @@
 ; TODO: This is mesos specific.
 (defn job->mesos-task-metadata
   "Takes a job entity, returns task metadata"
-  [db framework-id mesos-run-as-user job-ent task-id]
+  [db mesos-run-as-user job-ent task-id]
   (let [container (util/job-ent->container db job-ent)
         cook-executor? (use-cook-executor? job-ent)
         executor-key (job->executor-key db job-ent)
@@ -145,7 +145,6 @@
      :environment environment
      :executor executor
      :executor-key executor-key
-     :framework-id framework-id
      :labels labels
      :name (format "%s_%s_%s" (:job/name job-ent "cookjob") (:job/user job-ent) task-id)
      :num-ports (:ports resources)
@@ -157,7 +156,7 @@
   "Organizes the info Fenzo has already told us about the task we need to run"
   [db mesos-run-as-user compute-cluster ^TaskAssignmentResult task-result]
   (let [{:keys [job task-id] :as task-request} (.getRequest task-result)]
-    (merge (job->mesos-task-metadata db (cc/get-mesos-framework-id-hack compute-cluster) mesos-run-as-user job task-id)
+    (merge (job->mesos-task-metadata db mesos-run-as-user job task-id)
            {:hostname (.getHostname task-result)
             :ports-assigned (vec (sort (.getAssignedPorts task-result)))
             :task-request task-request})))
@@ -332,7 +331,7 @@
   "Given a clojure data structure (based on Cook's internal data format for jobs),
    which has already been decorated with everything we need to know about
    a task, return a Mesos message that will actually launch that task"
-  [{:keys [command container data executor-key framework-id labels name ports-resource-messages
+  [framework-id {:keys [command container data executor-key labels name ports-resource-messages
            scalar-resource-messages slave-id task-id ports-assigned]}]
   (let [command (update command
                         :environment
@@ -400,11 +399,11 @@
    TaskAssignmentResult->task-info
    Returns a vector of Mesos messages that can start the tasks
    suggested by the TaskAssignmentResults"
-  [offers task-data-maps]
+  [framework-id offers task-data-maps]
   (let [slave-id (-> offers first :slave-id)
         combined-resource-pool (resources-by-role offers)]
     (->> task-data-maps
          (add-scalar-resources-to-task-infos combined-resource-pool)
          (add-ports-to-task-info combined-resource-pool)
          (map #(assoc % :slave-id slave-id))
-         (map task-info->mesos-message))))
+         (map #(task-info->mesos-message framework-id %)))))
