@@ -658,17 +658,11 @@
 
 (defn- matches->task-txns
   "Converts matches to a task transactions."
-  [matches db mesos-run-as-user]
-  (for [{:keys [leases tasks] :as match} matches
+  [matches]
+  (for [{:keys [leases task-metadata-seq]} matches
         :let [offers (mapv :offer leases)
               first-offer (-> offers first)
-              compute-cluster (-> first-offer :compute-cluster)
-              slave-id (-> first-offer :slave-id :value)
-              task-metadata-seq
-              (->> tasks
-                   ;; sort-by makes task-txns created in matches->task-txns deterministic
-                   (sort-by (comp :job/uuid :job #(.getRequest ^TaskAssignmentResult %)))
-                   (map (partial task/TaskAssignmentResult->mesos-task-metadata db mesos-run-as-user compute-cluster)))]
+              slave-id (-> first-offer :slave-id :value)]
         {:keys [executor hostname ports-assigned task-id task-request]} task-metadata-seq
         :let [job-ref [:job/uuid (get-in task-request [:job :job/uuid])]]]
     [[:job/allowed-to-start? job-ref]
@@ -697,7 +691,7 @@
   "Updates the state of matched tasks in the database and then launches them."
   [matches conn db fenzo mesos-run-as-user pool-name]
   (let [matches (map #(update-match-with-task-mesos-metadata-seq % db mesos-run-as-user) matches)
-        task-txns (matches->task-txns matches db mesos-run-as-user)]
+        task-txns (matches->task-txns matches)]
     ;; Note that this transaction can fail if a job was scheduled
     ;; during a race. If that happens, then other jobs that should
     ;; be scheduled will not be eligible for rescheduling until
