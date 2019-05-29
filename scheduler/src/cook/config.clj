@@ -286,6 +286,10 @@
                                    (:offer-cache scheduler))))
      :mea-culpa-failure-limit (fnk [[:config {scheduler nil}]]
                                 (:mea-culpa-failure-limit scheduler))
+     :max-over-quota-jobs (fnk [[:config {scheduler nil}]]
+                               (or (when scheduler
+                                     (:max-over-quota-jobs scheduler))
+                                   100))
      :fenzo-max-jobs-considered (fnk [[:config {scheduler nil}]]
                                   (when scheduler
                                     (or (:fenzo-max-jobs-considered scheduler) 1000)))
@@ -530,3 +534,7 @@
   "Used to get the fremework-id"
   []
   (get-in config [:settings :mesos-framework-id]))
+
+(defn max-over-quota-jobs
+  []
+  (get-in config [:settings :max-over-quota-jobs]))

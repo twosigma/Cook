@@ -1156,9 +1156,25 @@
              ;; Return all 0's for a user who does NOT have any running job.
              (zipmap (util/get-all-resource-types db) (repeat 0.0)))})))
 
+(defn limit-over-quota-jobs
+  "Filters task-ents, preserving at most (config/max-over-quota-jobs) that would exceed the user's quota"
+  [task-ents quota]
+  (let [over-quota-job-limit (config/max-over-quota-jobs)]
+    (->> task-ents
+         (map (fn [task-ent] [task-ent (util/job->usage (:job/_instance task-ent))]))
+         (reductions (fn [[prev-task total-usage over-quota-jobs] [task-ent usage]]
+                       (let [total-usage' (merge-with + total-usage usage)]
+                         (if (util/below-quota? quota total-usage')
+                           [task-ent total-usage' over-quota-jobs]
+                           [task-ent total-usage' (inc over-quota-jobs)])))
+                     [nil {} 0])
+         (take-while (fn [[task-ent _ over-quota-jobs]] (<= over-quota-jobs over-quota-job-limit)))
+         (map first)
+         (filter (fn [task-ent] (not (nil? task-ent)))))))
+
 (defn sort-jobs-by-dru-helper
   "Return a list of job entities ordered by the provided sort function"
-  [pending-task-ents running-task-ents user->dru-divisors sort-task-scored-task-pairs sort-jobs-duration pool-name]
+  [pending-task-ents running-task-ents user->dru-divisors sort-task-scored-task-pairs sort-jobs-duration pool-name user->quota]
   (let [tasks (into (vec running-task-ents) pending-task-ents)
         task-comparator (util/same-user-task-comparator tasks)
         pending-task-ents-set (into #{} pending-task-ents)
@@ -1166,7 +1182,9 @@
                sort-jobs-duration
                (->> tasks
                     (group-by util/task-ent->user)
-                    (pc/map-vals (fn [task-ents] (sort task-comparator task-ents)))
+                    (map (fn [[user task-ents]] (let [sorted-tasks (sort task-comparator task-ents)]
+                                                  [user (limit-over-quota-jobs sorted-tasks (user->quota user))])))
+                    (into (hash-map))
                     (sort-task-scored-task-pairs user->dru-divisors pool-name)
                     (filter (fn [[task _]] (contains? pending-task-ents-set task)))
                     (map (fn [[task _]] (:job/_instance task)))))]
@@ -1174,15 +1192,15 @@
 
 (defn- sort-normal-jobs-by-dru
   "Return a list of normal job entities ordered by dru"
-  [pending-task-ents running-task-ents user->dru-divisors timer pool-name]
+  [pending-task-ents running-task-ents user->dru-divisors timer pool-name user->quota]
   (sort-jobs-by-dru-helper pending-task-ents running-task-ents user->dru-divisors
-                           dru/sorted-task-scored-task-pairs timer pool-name))
+                           dru/sorted-task-scored-task-pairs timer pool-name user->quota))
 
 (defn- sort-gpu-jobs-by-dru
   "Return a list of gpu job entities ordered by dru"
-  [pending-task-ents running-task-ents user->dru-divisors timer pool-name]
+  [pending-task-ents running-task-ents user->dru-divisors timer pool-name user->quota]
   (sort-jobs-by-dru-helper pending-task-ents running-task-ents user->dru-divisors
-                           dru/sorted-task-cumulative-gpu-score-pairs timer pool-name))
+                           dru/sorted-task-cumulative-gpu-score-pairs timer pool-name user->quota))
 
 (defn- pool-map
   "Given a collection of pools, and a function val-fn that takes a pool,
@@ -1220,8 +1238,10 @@
               (let [pending-tasks (pool-name->pending-task-ents pool-name)
                     running-tasks (pool-name->running-task-ents pool-name)
                     user->dru-divisors (pool-name->user->dru-divisors pool-name)
+                    user->quota (quota/create-user->quota-fn unfiltered-db
+                                                             (when using-pools? pool-name))
                     timer (timers/timer (metric-title "sort-jobs-hierarchy-duration" pool-name))]
-                [pool-name (sort-jobs-by-dru pending-tasks running-tasks user->dru-divisors timer pool-name)]))]
+                [pool-name (sort-jobs-by-dru pending-tasks running-tasks user->dru-divisors timer pool-name user->quota)]))]
       (into {} (map sort-jobs-by-dru-pool-helper) pool-name->sort-jobs-by-dru-fn))))
 
 (timers/deftimer [cook-mesos scheduler filter-offensive-jobs-duration])

@@ -16,11 +16,12 @@
 
 (ns cook.test.benchmark
   (:use clojure.test)
-  (:require [cook.scheduler.dru :as dru]
+  (:require [cook.quota :as quota]
+            [cook.scheduler.dru :as dru]
             [cook.scheduler.scheduler :as sched]
             [cook.scheduler.share :as share]
             [cook.tools :as util]
-            [cook.test.testutil :refer (restore-fresh-database! create-dummy-group create-dummy-job create-dummy-instance poll-until)]
+            [cook.test.testutil :refer (restore-fresh-database! create-dummy-group create-dummy-job create-dummy-instance poll-until setup)]
             [criterium.core :as cc]
             [datomic.api :as d]
             [metrics.timers :as timers]))
@@ -32,6 +33,7 @@
     [job inst]))
 
 (deftest ^:benchmark bench-rank-jobs
+  (setup)
   (let [uri "datomic:mem://bench-rank-jobs"
         conn (restore-fresh-database! uri)
         ;; Cheap way to have a non-uniform distribution of users
@@ -54,10 +56,12 @@
         (cc/quick-bench (sched/rank-jobs db offensive-job-filter))))
     (testing "sort-jobs-by-dru-helper"
       (let [db (d/db conn)
-            pending-task-ents (util/get-pending-job-ents db)
+            pending-task-ents (->> (util/get-pending-job-ents db)
+                                   (map util/create-task-ent))
             running-task-ents (util/get-running-task-ents db)
             sort-task-scored-task-pairs dru/sorted-task-scored-task-pairs
-            user->dru-divisors (share/create-user->share-fn db nil)]
+            user->dru-divisors (share/create-user->share-fn db nil)
+            user->quota (quota/create-user->quota-fn db nil)]
         (do
           (println "============ sort-jobs-by-dru timing ============")
           (cc/quick-bench (sched/sort-jobs-by-dru-helper pending-task-ents
@@ -65,5 +69,6 @@
                                                          user->dru-divisors
                                                          sort-task-scored-task-pairs
                                                          (timers/timer (sched/metric-title "sort-jobs-hierarchy-duration" "no-pool"))
-                                                         "no-pool"))
+                                                         "no-pool"
+                                                         user->quota))
           nil)))))

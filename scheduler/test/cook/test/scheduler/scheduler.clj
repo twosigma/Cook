@@ -35,6 +35,7 @@
             [cook.plugins.completion :as completion]
             [cook.plugins.definitions :as pd]
             [cook.plugins.launch :as launch-plugin]
+            [cook.quota :as quota]
             [cook.rate-limit :as rate-limit]
             [cook.test.testutil :as testutil :refer [restore-fresh-database! create-dummy-group create-dummy-job
                                         create-dummy-instance init-agent-attributes-cache poll-until wait-for
@@ -175,6 +176,7 @@
       {:result result})))
 
 (deftest test-sort-jobs-by-dru-pool
+  (setup)
   (let [uri "datomic:mem://test-sort-jobs-by-dru"
         conn (restore-fresh-database! uri)
         j1 (create-dummy-job conn :user "ljin" :ncpus 1.0 :memory 3.0 :job-state :job.state/running)
@@ -240,7 +242,24 @@
           j4g (create-dummy-job conn :user "u2" :job-state :job.state/waiting :memory 1500 :ncpus 1.0 :pool "gpu" :gpus 10.0 :priority 30)
           test-db (d/db conn)]
       (is (= [j2n j3n j1n j4n] (map :db/id (get (sched/sort-jobs-by-dru-pool test-db) "normal"))))
-      (is (= [j3g j2g j4g j1g] (map :db/id (get (sched/sort-jobs-by-dru-pool test-db) "gpu")))))))
+      (is (= [j3g j2g j4g j1g] (map :db/id (get (sched/sort-jobs-by-dru-pool test-db) "gpu"))))))
+
+  (testing "sort-jobs-by-dru:limit-quota"
+    (with-redefs [config/max-over-quota-jobs (fn [] 3)]
+      (let [uri "datomic:mem://test-sort-jobs-by-dru-limit-quota"
+            conn (restore-fresh-database! uri)
+            _ (quota/set-quota! conn "test" nil "reason" :count 1)
+            [rj _] (create-dummy-job-with-instances conn
+                                                    :job-state :job.state/running
+                                                    :user "test"
+                                                    :instances [{:instance-status :instance.status/running}])
+            wj1 (create-dummy-job conn :user "test" :job-state :job.state/waiting)
+            wj2 (create-dummy-job conn :user "test" :job-state :job.state/waiting)
+            wj3 (create-dummy-job conn :user "test" :job-state :job.state/waiting)
+            wj4 (create-dummy-job conn :user "test" :job-state :job.state/waiting)
+            wj5 (create-dummy-job conn :user "test" :job-state :job.state/waiting)
+            test-db (d/db conn)]
+        (is (= [wj1 wj2 wj3] (map :db/id (get (sched/sort-jobs-by-dru-pool test-db) "no-pool"))))))))
 
 (d/delete-database "datomic:mem://preemption-testdb")
 (d/create-database "datomic:mem://preemption-testdb")
@@ -2149,3 +2168,20 @@
       (is (contains? reconciled-tasks {:task-id {:value (:instance/task-id unknown-instance)}
                                        :state :task-staging
                                        :slave-id {:value (:instance/slave-id unknown-instance)}})))))
+
+
+(deftest test-limit-over-quota-jobs
+  (setup)
+  (with-redefs [config/max-over-quota-jobs (fn [] 10)]
+    (let [conn (restore-fresh-database! "datomic:mem://test-limit-over-quota-jobs")
+          job-ids (doall (take 25 (repeatedly #(create-dummy-job conn))))
+          db (d/db conn)
+          task-ents (->> job-ids
+                         (map #(d/entity db %))
+                         (map #(util/create-task-ent %)))]
+      (is (= 25 (count (sched/limit-over-quota-jobs task-ents {:mem Double/MAX_VALUE
+                                                               :cpus Double/MAX_VALUE
+                                                               :count Double/MAX_VALUE}))))
+      (is (= 15 (count (sched/limit-over-quota-jobs task-ents {:mem Double/MAX_VALUE
+                                                               :cpus Double/MAX_VALUE
+                                                               :count 5})))))))
