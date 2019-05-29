@@ -70,9 +70,9 @@ If need it to bind to another port, you can specify that with the `:local-port` 
 
   This key specifies what function to use to perform user
   authorization.  Two example authorization functions are provided.
-  `cook.authorization/open-auth` allows any user to do anything, for testing and development.
-  `cook.authorization/configfile-admins-auth` consults the `:admins` key in the config file for a list of admins. Admins may do anything to any object; other users may only manipulate their own object.
-   It's easy to write your own custom authorization function. See the cook.authorization docstrings for more information.
+  `cook.rest.authorization/open-auth` allows any user to do anything, for testing and development.
+  `cook.rest.authorization/configfile-admins-auth` consults the `:admins` key in the config file for a list of admins. Admins may do anything to any object; other users may only manipulate their own object.
+   It's easy to write your own custom authorization function. See the cook.rest.authorization docstrings for more information.
 
 `:admins`::
   The value of this key is a set of usernames who should be considered administrators when using the `configfile-admins-auth` authorization-fn.

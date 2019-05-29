@@ -9,8 +9,8 @@
                  :http-basic #config/env-bool "COOK_HTTP_BASIC_AUTH"
                  :one-user "root"}
  :authorization-config {;; What function should be used to perform user authorization?
-                        ;; See the docstring in cook.authorization for details.
-                        :authorization-fn cook.authorization/configfile-admins-auth-open-gets
+                        ;; See the docstring in cook.rest.authorization for details.
+                        :authorization-fn cook.rest.authorization/configfile-admins-auth-open-gets
                         ;; These users have admin privileges when using configfile-admins-auth;
                         ;; e.g., they can view and modify other users' jobs.
                         :admins #{"root" "travis"}
@@ -24,7 +24,7 @@
  :zookeeper {:connection #config/env "COOK_ZOOKEEPER"
              :local? #config/env-bool "COOK_ZOOKEEPER_LOCAL"
              :local-port #config/env-int-default ["COOK_ZOOKEEPER_LOCAL_PORT" -1]}
- :scheduler {:fenzo-fitness-calculator "cook.mesos.data-locality/make-data-local-fitness-calculator"
+ :scheduler {:fenzo-fitness-calculator "cook.scheduler.data-locality/make-data-local-fitness-calculator"
              :offer-incubate-ms 15000
              :task-constraints {:timeout-hours 1
                                 :timeout-interval-minutes 1
@@ -45,11 +45,11 @@
                                :tokens-replenished-per-minute 600}
               :user-limit-per-m 1000000}
  :plugins {:job-submission-validator {:batch-timeout-seconds 40
-                                      :factory-fn "cook.demo-plugin/submission-factory"}
+                                      :factory-fn "cook.plugins.demo-plugin/submission-factory"}
            :job-launch-filter {:age-out-last-seen-deadline-minutes 10
                                :age-out-first-seen-deadline-minutes 600
                                :age-out-seen-count 10
-                               :factory-fn "cook.demo-plugin/launch-factory"}}
+                               :factory-fn "cook.plugins.demo-plugin/launch-factory"}}
  :rebalancer {:dru-scale 1
               :interval-seconds 30
               :max-preemption 500.0
@@ -72,7 +72,7 @@
        :levels {"datomic.db" :warn
                 "datomic.peer" :warn
                 "datomic.kv-cluster" :warn
-                "cook.mesos.data-locality" :debug
+                "cook.scheduler.data-locality" :debug
                 "cook.mesos.fenzo-utils" :debug
                 "cook.mesos.rebalancer" :debug
                 "cook.mesos.scheduler" :debug

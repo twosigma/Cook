@@ -3,7 +3,7 @@
   (:require [clojure.data.json :as json]
             [clojure.edn :as edn]
             [clojure.string :as str]
-            [cook.mesos.scheduler :as sched]
+            [cook.scheduler.scheduler :as sched]
             [cook.mesos.task :as task]
             [cook.test.testutil :as tu]
             [datomic.api :as d]

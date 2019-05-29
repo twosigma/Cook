@@ -1,6 +1,6 @@
 (ns data.seed-pools
   (:require [cook.datomic :as datomic]
-            [cook.mesos.quota :as quota]
+            [cook.quota :as quota]
             [datomic.api :as d]))
 
 (def uri (second *command-line-args*))

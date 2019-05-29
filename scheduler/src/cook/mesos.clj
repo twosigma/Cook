@@ -21,13 +21,13 @@
             [cook.compute-cluster :as cc]
             [cook.config :as config]
             [cook.datomic :refer (transact-with-retries)]
-            [cook.mesos.data-locality :as dl]
+            [cook.scheduler.data-locality :as dl]
             [cook.mesos.heartbeat]
-            [cook.mesos.monitor]
-            [cook.mesos.optimizer]
-            [cook.mesos.rebalancer]
-            [cook.mesos.scheduler :as sched]
-            [cook.mesos.util :as util]
+            [cook.monitor]
+            [cook.scheduler.optimizer]
+            [cook.rebalancer]
+            [cook.scheduler.scheduler :as sched]
+            [cook.tools :as util]
             [cook.util]
             [datomic.api :as d :refer (q)]
             [mesomatic.scheduler]
@@ -221,13 +221,13 @@
                                     (reset! current-driver driver)
                                     (cc/set-mesos-driver-atom-hack! compute-cluster driver)
 
-                                    (cook.mesos.monitor/start-collecting-stats)
+                                    (cook.monitor/start-collecting-stats)
                                     ; Many of these should look at the compute-cluster of the underlying jobs, and not use driver at all.
-                                    (cook.mesos.scheduler/lingering-task-killer mesos-datomic-conn driver task-constraints lingering-task-trigger-chan)
-                                    (cook.mesos.scheduler/straggler-handler mesos-datomic-conn driver straggler-trigger-chan)
-                                    (cook.mesos.scheduler/cancelled-task-killer mesos-datomic-conn driver cancelled-task-trigger-chan)
+                                    (cook.scheduler.scheduler/lingering-task-killer mesos-datomic-conn driver task-constraints lingering-task-trigger-chan)
+                                    (cook.scheduler.scheduler/straggler-handler mesos-datomic-conn driver straggler-trigger-chan)
+                                    (cook.scheduler.scheduler/cancelled-task-killer mesos-datomic-conn driver cancelled-task-trigger-chan)
                                     (cook.mesos.heartbeat/start-heartbeat-watcher! mesos-datomic-conn mesos-heartbeat-chan)
-                                    (cook.mesos.rebalancer/start-rebalancer! {:config rebalancer-config
+                                    (cook.rebalancer/start-rebalancer! {:config rebalancer-config
                                                                               :conn mesos-datomic-conn
                                                                               :driver driver
                                                                               :agent-attributes-cache agent-attributes-cache
@@ -236,13 +236,13 @@
                                                                               :trigger-chan rebalancer-trigger-chan
                                                                               :view-incubating-offers view-incubating-offers})
                                     (when (seq optimizer-config)
-                                      (cook.mesos.optimizer/start-optimizer-cycles! (fn get-queue []
+                                      (cook.scheduler.optimizer/start-optimizer-cycles! (fn get-queue []
                                                                                       ;; TODO Use filter of queue that scheduler uses to filter to considerable.
                                                                                       ;;      Specifically, think about filtering to jobs that are waiting and 
                                                                                       ;;      think about how to handle quota 
                                                                                       @pool-name->pending-jobs-atom)
                                                                                     (fn get-running []
-                                                                                      (cook.mesos.util/get-running-task-ents (d/db mesos-datomic-conn)))
+                                                                                      (cook.tools/get-running-task-ents (d/db mesos-datomic-conn)))
                                                                                     view-incubating-offers
                                                                                     optimizer-config
                                                                                     optimizer-trigger-chan))
@@ -250,7 +250,7 @@
                                       (dl/start-update-cycles! mesos-datomic-conn (:update-data-local-costs-trigger-chan trigger-chans)))
                                     (counters/inc! mesos-leader)
                                     (async/tap mesos-datomic-mult datomic-report-chan)
-                                    (cook.mesos.scheduler/monitor-tx-report-queue datomic-report-chan mesos-datomic-conn)
+                                    (cook.scheduler.scheduler/monitor-tx-report-queue datomic-report-chan mesos-datomic-conn)
                                     (mesomatic.scheduler/join! driver)
                                     (reset! current-driver nil))
                                   (catch Throwable e

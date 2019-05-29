@@ -18,7 +18,7 @@
             [clj-time.core :as t]
             [clojure.core.async :as async]
             [clojure.tools.logging :as log]
-            [cook.mesos.util :as util]
+            [cook.tools :as util]
             [datomic.api :refer (q)]
             [mesomatic.scheduler :as mesos]
             [mesomatic.types :as mesos-type]

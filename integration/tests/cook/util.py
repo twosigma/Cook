@@ -1302,9 +1302,9 @@ def demo_plugin_is_configured(cook_url):
     settings_dict = settings(cook_url)
     # Because we always create plugin configuration in config.clj, the first keys always exist.
     # The actual factory-fn keys are not set unless the user specifies them.
-    if settings_dict['plugins']['job-submission-validator'].get('factory-fn') != "cook.demo-plugin/submission-factory":
+    if settings_dict['plugins']['job-submission-validator'].get('factory-fn') != "cook.plugins.demo-plugin/submission-factory":
         return False
-    if settings_dict['plugins']['job-launch-filter'].get('factory-fn') != "cook.demo-plugin/launch-factory":
+    if settings_dict['plugins']['job-launch-filter'].get('factory-fn') != "cook.plugins.demo-plugin/launch-factory":
         return False
     return True
 
@@ -1321,7 +1321,7 @@ def _fenzo_fitness_calculator():
 
 
 def using_data_local_fitness_calculator():
-    return _fenzo_fitness_calculator() == 'cook.mesos.data-locality/make-data-local-fitness-calculator'
+    return _fenzo_fitness_calculator() == 'cook.scheduler.data-locality/make-data-local-fitness-calculator'
 
 
 def get_agent_endpoint(master_state, agent_hostname):

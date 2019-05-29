@@ -21,7 +21,7 @@
             [congestion.middleware :refer (wrap-rate-limit ip-rate-limit)]
             [congestion.storage :as storage]
             [cook.config :refer (config)]
-            [cook.cors :as cors]
+            [cook.rest.cors :as cors]
             [cook.curator :as curator]
             [cook.datomic :as datomic]
             ; This explicit require is needed so that mount can see the defstate defined in the cook.plugins.completion namespace.
@@ -34,11 +34,11 @@
             [cook.plugins.launch]
             ; This explicit require is needed so that mount can see the defstate defined in the cook.plugins.pool namespace.
             [cook.plugins.pool]
-            [cook.impersonation :refer (impersonation-authorized-wrapper)]
-            [cook.mesos.pool :as pool]
+            [cook.rest.impersonation :refer (impersonation-authorized-wrapper)]
+            [cook.pool :as pool]
             ; This explicit require is needed so that mount can see the defstate defined in the cook.rate-limit namespace.
-            ; cook.rate-limit and everything else under cook.mesos.api is normally hidden from mount's defstate because
-            ; cook.mesos.api is loaded via util/lazy-load-var, not via 'ns :require'
+            ; cook.rate-limit and everything else under cook.rest.api is normally hidden from mount's defstate because
+            ; cook.rest.api is loaded via util/lazy-load-var, not via 'ns :require'
             [cook.rate-limit]
             [cook.util :as util]
             [datomic.api :as d]
@@ -77,7 +77,7 @@
 
 (def raw-scheduler-routes
   {:scheduler (fnk [mesos mesos-leadership-atom pool-name->pending-jobs-atom framework-id settings]
-                ((util/lazy-load-var 'cook.mesos.api/main-handler)
+                ((util/lazy-load-var 'cook.rest.api/main-handler)
                   datomic/conn
                   (fn [] @pool-name->pending-jobs-atom)
                   settings
@@ -182,7 +182,7 @@
         curator-framework))))
 
 (defn tell-jetty-about-usename [h]
-  "Our auth in cook.spnego doesn't hook in to Jetty - this handler
+  "Our auth in cook.rest.spnego doesn't hook in to Jetty - this handler
   does so to make sure it's available for Jetty to log"
   (fn [req]
     (do
@@ -319,7 +319,7 @@
                                  framework-id datomic/conn publish-batch-size publish-interval-ms sync-interval-ms
                                  max-consecutive-sync-failure mesos-agent-query-cache)))
      :clear-uncommitted-canceler (fnk [mesos-leadership-atom]
-                                   ((util/lazy-load-var 'cook.mesos.util/clear-uncommitted-jobs-on-schedule)
+                                   ((util/lazy-load-var 'cook.tools/clear-uncommitted-jobs-on-schedule)
                                      datomic/conn mesos-leadership-atom))
      :mesos-leadership-atom (fnk [] (atom false))
      :pool-name->pending-jobs-atom (fnk [] (atom {}))
