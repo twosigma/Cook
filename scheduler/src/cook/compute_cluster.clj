@@ -17,7 +17,7 @@
   (:require [clojure.tools.logging :as log]
             [cook.config :as config]
             [datomic.api :as d]
-                        [mesomatic.scheduler :as mesos]))
+            [mesomatic.scheduler :as mesos]))
 
 (defprotocol ComputeCluster
   ; These methods should accept bulk data and process in batches.

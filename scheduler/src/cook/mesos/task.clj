@@ -79,6 +79,7 @@
                    "EXECUTOR_PROGRESS_OUTPUT_FILE_NAME" progress-output-file))))
 
 (defn job->executor-key
+  "Extract the executor key value from the job"
   [db job-ent]
   (let [container (util/job-ent->container db job-ent)
         ;; If the custom-executor attr isn't set, we default to using a custom
@@ -96,6 +97,7 @@
                        :else :command-executor)))
 
 (defn executor-key->executor
+  "From the executor key, compute the executor/* parameters."
   [executor-key]
     (case executor-key
       :command-executor :executor/mesos
@@ -104,8 +106,7 @@
       :cook-executor :executor/cook
       :executor/custom))
 
-; TODO: This is mesos specific.
-(defn job->mesos-task-metadata
+(defn job->task-metadata
   "Takes a job entity, returns task metadata"
   [db mesos-run-as-user job-ent task-id]
   (let [container (util/job-ent->container db job-ent)
@@ -151,12 +152,11 @@
      :resources (select-keys resources [:mem :cpus])
      :task-id task-id}))
 
-; TODO: This is mesos specific.
-(defn TaskAssignmentResult->mesos-task-metadata
+(defn TaskAssignmentResult->task-metadata
   "Organizes the info Fenzo has already told us about the task we need to run"
   [db mesos-run-as-user compute-cluster ^TaskAssignmentResult task-result]
   (let [{:keys [job task-id] :as task-request} (.getRequest task-result)]
-    (merge (job->mesos-task-metadata db mesos-run-as-user job task-id)
+    (merge (job->task-metadata db mesos-run-as-user job task-id)
            {:hostname (.getHostname task-result)
             :ports-assigned (vec (sort (.getAssignedPorts task-result)))
             :task-request task-request})))
