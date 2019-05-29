@@ -36,7 +36,7 @@
     "Hack to overwrite the driver. Used until we fix the initialization order of compute-cluster"))
 
 ; Internal method
-(defn- write-compute-cluster
+(defn write-compute-cluster
   "Create a missing compute-cluster for one that's not yet in the database."
   [conn compute-cluster]
   (log/info "Installing a new compute cluster in datomic for " compute-cluster)

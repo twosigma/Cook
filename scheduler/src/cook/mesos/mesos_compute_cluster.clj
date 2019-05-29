@@ -17,11 +17,12 @@
   (:require [clojure.tools.logging :as log]
             [cook.config :as config]
             [cook.compute-cluster :as cc]
+            [cook.mesos.task :as task]
             [datomic.api :as d]
-                        [mesomatic.scheduler :as mesos]))
+            [mesomatic.scheduler :as mesos]))
 
 (defrecord MesosComputeCluster [compute-cluster-name framework-id db-id driver-atom]
-  ComputeCluster
+  cc/ComputeCluster
   (compute-cluster-name [this]
     compute-cluster-name)
   (get-mesos-driver-hack [this]
@@ -71,7 +72,7 @@
          framework-id]}
   (let [cluster-entity-id (get-mesos-cluster-entity-id (d/db conn) mesos-cluster)]
     (when-not cluster-entity-id
-      (write-compute-cluster conn (mesos-cluster->compute-cluster-map-for-datomic mesos-cluster)))
+      (cc/write-compute-cluster conn (mesos-cluster->compute-cluster-map-for-datomic mesos-cluster)))
     (->MesosComputeCluster
       compute-cluster-name
       framework-id
@@ -109,7 +110,7 @@
   [conn settings]
   (let [compute-clusters (->> (get-mesos-clusters-from-config settings)
                               (map (partial get-mesos-compute-cluster conn))
-                              (map register-compute-cluster!))]
+                              (map cc/register-compute-cluster!))]
     (doall compute-clusters)))
 
 
@@ -124,6 +125,6 @@
   (-> config/config
       :settings
       :mesos-compute-cluster-name
-      compute-cluster-name->ComputeCluster))
+      cc/compute-cluster-name->ComputeCluster))
 
 
