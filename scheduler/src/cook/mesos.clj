@@ -23,6 +23,7 @@
             [cook.datomic :refer (transact-with-retries)]
             [cook.scheduler.data-locality :as dl]
             [cook.mesos.heartbeat]
+            [cook.mesos.mesos-compute-cluster :as mcc]
             [cook.monitor]
             [cook.scheduler.optimizer]
             [cook.rebalancer]
@@ -178,7 +179,7 @@
         {:keys [hostname server-port server-https-port]} server-config
         datomic-report-chan (async/chan (async/sliding-buffer 4096))
         mesos-heartbeat-chan (async/chan (async/buffer 4096))
-        compute-cluster (cc/mesos-cluster-hack)
+        compute-cluster (mcc/mesos-cluster-hack)
         current-driver (atom nil)
         rebalancer-reservation-atom (atom {})
         leader-selector (LeaderSelector.

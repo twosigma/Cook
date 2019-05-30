@@ -23,6 +23,7 @@
             [clojure.string :as str]
             [clojure.tools.logging :as log]
             [cook.compute-cluster :as cc]
+            [cook.mesos.mesos-compute-cluster :as mcc]
             [cook.plugins.definitions :refer (JobSubmissionValidator JobLaunchFilter)]
             [cook.rest.impersonation :refer (create-impersonation-middleware)]
             [cook.rest.api :as api]
@@ -44,7 +45,7 @@
   (let [existing-compute-cluster (get @cc/cluster-name->compute-cluster-atom compute-cluster-name)
         compute-cluster-mesos-map {:framework-id (str compute-cluster-name "-framework")
                                    :compute-cluster-name compute-cluster-name}
-        compute-cluster (cc/get-mesos-compute-cluster conn compute-cluster-mesos-map)]
+        compute-cluster (mcc/get-mesos-compute-cluster conn compute-cluster-mesos-map)]
     (cc/register-compute-cluster! compute-cluster)
     (cc/set-mesos-driver-atom-hack! compute-cluster driver)
     compute-cluster))

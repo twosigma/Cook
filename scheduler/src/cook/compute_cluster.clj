@@ -16,12 +16,13 @@
 (ns cook.compute-cluster
   (:require [clojure.tools.logging :as log]
             [cook.config :as config]
-            [datomic.api :as d]))
+            [datomic.api :as d]
+            [mesomatic.scheduler :as mesos]))
 
 (defprotocol ComputeCluster
   ; These methods should accept bulk data and process in batches.
   ;(kill-tasks [this task]
-  ;(launch-tasks [this offers task-metadata-seq]
+  (launch-tasks [this offers task-metadata-seq])
   (compute-cluster-name [this])
 
   (db-id [this]
@@ -29,26 +30,11 @@
 
   (get-mesos-driver-hack [this]
     "Get the mesos driver. Hack; any funciton invoking this should be put within the compute-cluster implementation")
-  (get-mesos-framework-id-hack [this]
-    "Short term hack to get the framework ID. When we migrate/hide all mesos functionality behind the ComputeClusterAPI, this will go away.")
   (set-mesos-driver-atom-hack! [this driver]
     "Hack to overwrite the driver. Used until we fix the initialization order of compute-cluster"))
 
-(defrecord MesosComputeCluster [compute-cluster-name framework-id db-id driver-atom]
-  ComputeCluster
-  (compute-cluster-name [this]
-    compute-cluster-name)
-  (get-mesos-driver-hack [this]
-    @driver-atom)
-  (db-id [this]
-    db-id)
-  (get-mesos-framework-id-hack [this]
-    framework-id)
-  (set-mesos-driver-atom-hack! [this driver]
-    (reset! driver-atom driver)))
-
 ; Internal method
-(defn- write-compute-cluster
+(defn write-compute-cluster
   "Create a missing compute-cluster for one that's not yet in the database."
   [conn compute-cluster]
   (log/info "Installing a new compute cluster in datomic for " compute-cluster)
@@ -56,76 +42,8 @@
      conn
      [(assoc compute-cluster :db/id (d/tempid :db.part/user))]))
 
-; Internal method
-(defn- mesos-cluster->compute-cluster-map-for-datomic
-  "Given a mesos cluster dictionary, determine the datomic entity it should correspond to."
-  [{:keys [compute-cluster-name framework-id]}]
-  {:compute-cluster/type :compute-cluster.type/mesos
-   :compute-cluster/cluster-name compute-cluster-name
-   :compute-cluster/mesos-framework-id framework-id})
-
-; Internal method
-(defn get-mesos-cluster-entity-id
-  "Given a configuration map for a mesos cluster, return the datomic entity-id corresponding to the cluster,
-  if it exists. Internal helper function."
-  [unfiltered-db {:keys [compute-cluster-name framework-id]}]
-  {:pre [compute-cluster-name
-         framework-id]}
-  (let [query-result
-        (d/q '[:find [?c]
-               :in $ ?cluster-name? ?mesos-id?
-               :where
-               [?c :compute-cluster/type :compute-cluster.type/mesos]
-               [?c :compute-cluster/cluster-name ?cluster-name?]
-               [?c :compute-cluster/mesos-framework-id ?framework-id?]]
-             unfiltered-db compute-cluster-name framework-id)]
-    (first query-result)))
-
-; Internal method.
-(defn get-mesos-compute-cluster
-  "Process one mesos cluster specification, returning the entity id of the corresponding compute-cluster,
-  creating the cluster if it does not exist. Warning: Not idempotent. Only call once "
-  [conn {:keys [compute-cluster-name framework-id] :as mesos-cluster}]
-  {:pre [compute-cluster-name
-         framework-id]}
-  (let [cluster-entity-id (get-mesos-cluster-entity-id (d/db conn) mesos-cluster)]
-    (when-not cluster-entity-id
-      (write-compute-cluster conn (mesos-cluster->compute-cluster-map-for-datomic mesos-cluster)))
-    (->MesosComputeCluster
-      compute-cluster-name
-      framework-id
-      (or cluster-entity-id (get-mesos-cluster-entity-id (d/db conn) mesos-cluster))
-      (atom nil))))
-
-
 ; Internal variable
 (def cluster-name->compute-cluster-atom (atom {}))
-
-
-(defn- get-mesos-clusters-from-config
-  "Get all of the mesos clusters defined in the configuration.
-  In config.edn, we put all of the mesos keys under one toplevel dictionary.
-
-  E.g.:
-
-  {:failover-timeout-ms nil
-   :framework-id #config/env \"COOK_FRAMEWORK_ID\"
-   :master #config/env \"MESOS_MASTER\"
-   ...
-   }
-
-  However, in config.clj, we split this up into lots of different keys at the toplevel:
-
-  :mesos-master (fnk [[:config {mesos nil}]]
-      ...)
-  :mesos-framework-id (fnk [[:config {mesos ....
-
-  This function undoes this shattering of the :mesos {...} into separate keys that
-  occurs in config.clj. Long term, we need to fix config.clj to not to that, probably
-  as part of global cook, at which time, this probably won't need to exist. Until then however....."
-  [{:keys [mesos-compute-cluster-name mesos-framework-id]}]
-  [{:compute-cluster-name mesos-compute-cluster-name :framework-id mesos-framework-id}])
-
 
 (defn register-compute-cluster!
   "Register a compute cluster "
@@ -140,15 +58,6 @@
     (swap! cluster-name->compute-cluster-atom assoc compute-cluster-name compute-cluster)
     nil))
 
-(defn setup-compute-cluster-map-from-config
-  "Setup the cluster-map configs, linking a cluster name to the associated metadata needed
-  to represent/process it."
-  [conn settings]
-  (let [compute-clusters (->> (get-mesos-clusters-from-config settings)
-                              (map (partial get-mesos-compute-cluster conn))
-                              (map register-compute-cluster!))]
-    (doall compute-clusters)))
-
 (defn compute-cluster-name->ComputeCluster
   "From the name of a compute cluster, return the object. Throws if not found. Does not return nil."
   [compute-cluster-name]
@@ -156,19 +65,6 @@
     (when-not result
       (log/error "Was asked to lookup db-id for" compute-cluster-name "and got nil"))
     result))
-
-; A hack to store the mesos cluster, until we refactor the code so that we support multiple clusters. In the long term future
-; this is probably replaced with a function from driver->cluster-id, or the cluster name is propagated by function arguments and
-; closed over.
-(defn mesos-cluster-hack
-  "A hack to store the mesos cluster, until we refactor the code so that we support multiple clusters. In the
-  long term future the cluster is propagated by function arguments and closed over."
-  []
-  {:post [%]} ; Never returns nil.
-  (-> config/config
-      :settings
-      :mesos-compute-cluster-name
-      compute-cluster-name->ComputeCluster))
 
 (defn get-default-cluster-for-legacy
   "What cluster name to put on for legacy jobs when generating their compute-cluster.

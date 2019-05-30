@@ -62,7 +62,6 @@
        (or (= :executor/cook (:job/executor job-ent))
            (cook-executor-candidate? job-ent))))
 
-; TODO: This is mesos specific.
 (defn build-executor-environment
   "Build the environment for the cook executor."
   [job-ent]
@@ -78,16 +77,42 @@
             (assoc "EXECUTOR_PROGRESS_OUTPUT_FILE_ENV" "EXECUTOR_PROGRESS_OUTPUT_FILE_NAME"
                    "EXECUTOR_PROGRESS_OUTPUT_FILE_NAME" progress-output-file))))
 
-; TODO: This is mesos specific.
-(defn job->task-metadata
-  "Takes a job entity, returns task metadata"
-  [db framework-id mesos-run-as-user job-ent task-id]
-  (let [resources (util/job-ent->resources job-ent)
-        container (util/job-ent->container db job-ent)
+(defn job->executor-key
+  "Extract the executor key value from the job"
+  [db job-ent]
+  (let [container (util/job-ent->container db job-ent)
         ;; If the custom-executor attr isn't set, we default to using a custom
         ;; executor in order to support jobs submitted before we added this field
         custom-executor? (use-custom-executor? job-ent)
+        cook-executor? (use-cook-executor? job-ent)]
+    ;; executor-key configure whether this is a command or custom executor
+    (cond
+      (and container cook-executor?) :container-cook-executor
+      (and container (not custom-executor?)) :container-command-executor
+      (and container custom-executor?) :container-executor
+      custom-executor? :custom-executor
+      cook-executor? :cook-executor
+      ;; use mesos' command executor by default
+      :else :command-executor)))
+
+(defn executor-key->executor
+  "From the executor key, compute the executor/* parameters."
+  [executor-key]
+    (case executor-key
+      :command-executor :executor/mesos
+      :container-command-executor :executor/mesos
+      :container-cook-executor :executor/cook
+      :cook-executor :executor/cook
+      :executor/custom))
+
+(defn job->task-metadata
+  "Takes a job entity, returns task metadata"
+  [db mesos-run-as-user job-ent task-id]
+  (let [container (util/job-ent->container db job-ent)
         cook-executor? (use-cook-executor? job-ent)
+        executor-key (job->executor-key db job-ent)
+        executor (executor-key->executor executor-key)
+        resources (util/job-ent->resources job-ent)
         group-uuid (util/job-ent->group-uuid job-ent)
         environment (cond-> (assoc (util/job-ent->env job-ent)
                               "COOK_INSTANCE_UUID" task-id
@@ -104,21 +129,6 @@
                                (conj (:uri (config/executor-config))))
                  :user (or mesos-run-as-user (:job/user job-ent))
                  :value (if cook-executor? (:command (config/executor-config)) (:job/command job-ent))}
-        ;; executor-key configure whether this is a command or custom executor
-        executor-key (cond
-                       (and container cook-executor?) :container-cook-executor
-                       (and container (not custom-executor?)) :container-command-executor
-                       (and container custom-executor?) :container-executor
-                       custom-executor? :custom-executor
-                       cook-executor? :cook-executor
-                       ;; use mesos' command executor by default
-                       :else :command-executor)
-        executor (case executor-key
-                   :command-executor :executor/mesos
-                   :container-command-executor :executor/mesos
-                   :container-cook-executor :executor/cook
-                   :cook-executor :executor/cook
-                   :executor/custom)
         data (.getBytes
                (if cook-executor?
                  (json/write-str {"command" (:job/command job-ent)})
@@ -135,19 +145,17 @@
      :environment environment
      :executor executor
      :executor-key executor-key
-     :framework-id framework-id
      :labels labels
      :name (format "%s_%s_%s" (:job/name job-ent "cookjob") (:job/user job-ent) task-id)
      :num-ports (:ports resources)
      :resources (select-keys resources [:mem :cpus])
      :task-id task-id}))
 
-; TODO: This is mesos specific.
 (defn TaskAssignmentResult->task-metadata
   "Organizes the info Fenzo has already told us about the task we need to run"
-  [db mesos-run-as-user ^TaskAssignmentResult compute-cluster task-result]
+  [db mesos-run-as-user compute-cluster ^TaskAssignmentResult task-result]
   (let [{:keys [job task-id] :as task-request} (.getRequest task-result)]
-    (merge (job->task-metadata db (cc/get-mesos-framework-id-hack compute-cluster) mesos-run-as-user job task-id)
+    (merge (job->task-metadata db mesos-run-as-user job task-id)
            {:hostname (.getHostname task-result)
             :ports-assigned (vec (sort (.getAssignedPorts task-result)))
             :task-request task-request})))
@@ -322,7 +330,7 @@
   "Given a clojure data structure (based on Cook's internal data format for jobs),
    which has already been decorated with everything we need to know about
    a task, return a Mesos message that will actually launch that task"
-  [{:keys [command container data executor-key framework-id labels name ports-resource-messages
+  [framework-id {:keys [command container data executor-key labels name ports-resource-messages
            scalar-resource-messages slave-id task-id ports-assigned]}]
   (let [command (update command
                         :environment
@@ -390,11 +398,11 @@
    TaskAssignmentResult->task-info
    Returns a vector of Mesos messages that can start the tasks
    suggested by the TaskAssignmentResults"
-  [offers task-data-maps]
+  [framework-id offers task-data-maps]
   (let [slave-id (-> offers first :slave-id)
         combined-resource-pool (resources-by-role offers)]
     (->> task-data-maps
          (add-scalar-resources-to-task-infos combined-resource-pool)
          (add-ports-to-task-info combined-resource-pool)
          (map #(assoc % :slave-id slave-id))
-         (map task-info->mesos-message))))
+         (map #(task-info->mesos-message framework-id %)))))

@@ -2129,8 +2129,7 @@
         job (d/entity (d/db conn) job-id)
         ^TaskRequest task-request (sched/make-task-request (d/db conn) job)
         matches [{:tasks [(SimpleAssignmentResult. [] nil task-request)]}]]
-    (with-redefs [cc/get-mesos-framework-id-hack (constantly "Fake_to_bypass") ; So we don't throw prematurely 
-                  cc/db-id (constantly -1) ; So we don't throw prematurely when trying to create the task structure.
+    (with-redefs [cc/db-id (constantly -1) ; So we don't throw prematurely when trying to create the task structure.
                   d/transact (fn [_ _]
                                (throw timeout-exception))
                   log/log* (fn [_ level throwable message]
