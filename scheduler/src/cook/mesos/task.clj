@@ -62,8 +62,7 @@
        (or (= :executor/cook (:job/executor job-ent))
            (cook-executor-candidate? job-ent))))
 
-; TODO: This is mesos specific.
-(defn build-mesos-executor-environment
+(defn build-executor-environment
   "Build the environment for the cook executor."
   [job-ent]
   (let [{:keys [default-progress-regex-string environment log-level max-message-length progress-sample-interval-ms]}
@@ -86,15 +85,15 @@
         ;; executor in order to support jobs submitted before we added this field
         custom-executor? (use-custom-executor? job-ent)
         cook-executor? (use-cook-executor? job-ent)]
-        ;; executor-key configure whether this is a command or custom executor
-        (cond
-                       (and container cook-executor?) :container-cook-executor
-                       (and container (not custom-executor?)) :container-command-executor
-                       (and container custom-executor?) :container-executor
-                       custom-executor? :custom-executor
-                       cook-executor? :cook-executor
-                       ;; use mesos' command executor by default
-                       :else :command-executor)))
+    ;; executor-key configure whether this is a command or custom executor
+    (cond
+      (and container cook-executor?) :container-cook-executor
+      (and container (not custom-executor?)) :container-command-executor
+      (and container custom-executor?) :container-executor
+      custom-executor? :custom-executor
+      cook-executor? :cook-executor
+      ;; use mesos' command executor by default
+      :else :command-executor)))
 
 (defn executor-key->executor
   "From the executor key, compute the executor/* parameters."
@@ -122,7 +121,7 @@
                             (:cpus resources) (assoc "COOK_JOB_CPUS" (-> resources :cpus str))
                             (:gpus resources) (assoc "COOK_JOB_GPUS" (-> resources :gpus str))
                             (:mem resources) (assoc "COOK_JOB_MEM_MB" (-> resources :mem str))
-                            cook-executor? (merge (build-mesos-executor-environment job-ent)))
+                            cook-executor? (merge (build-executor-environment job-ent)))
         labels (util/job-ent->label job-ent)
         command {:environment environment
                  :uris (cond-> (:uris resources [])

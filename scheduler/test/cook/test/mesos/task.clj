@@ -805,7 +805,7 @@
                                   :progress-sample-interval-ms 2000}
                  job-ent nil]
              (with-redefs [cook.config/executor-config (constantly executor-config)]
-               (task/build-mesos-executor-environment job-ent))))))
+               (task/build-executor-environment job-ent))))))
 
   (testing "default values with environment"
     (is (= {"CUSTOM_FOO" "foo"
@@ -826,7 +826,7 @@
                                   :progress-sample-interval-ms 2000}
                  job-ent nil]
              (with-redefs [cook.config/executor-config (constantly executor-config)]
-               (task/build-mesos-executor-environment job-ent))))))
+               (task/build-executor-environment job-ent))))))
 
   (testing "job configured values"
     (is (= {"EXECUTOR_LOG_LEVEL" "INFO"
@@ -846,7 +846,7 @@
                           :job/progress-regex-string "custom-regex"
                           :job/progress-sample-interval-ms 5000}]
              (with-redefs [cook.config/executor-config (constantly executor-config)]
-               (task/build-mesos-executor-environment job-ent))))))
+               (task/build-executor-environment job-ent))))))
 
   (testing "job configured values sanitized"
     (is (= {"CONFIGURED_PROGRESS_OUTPUT_ENV" "progress.conf.out"
@@ -874,4 +874,4 @@
                           :job/progress-regex-string "custom-regex"
                           :job/progress-sample-interval-ms 5000000}]
              (with-redefs [cook.config/executor-config (constantly executor-config)]
-               (task/build-mesos-executor-environment job-ent)))))))
+               (task/build-executor-environment job-ent)))))))
