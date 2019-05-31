@@ -17,18 +17,7 @@
   (:require [clojure.tools.logging :as log]
             [cook.config :as config]
             [cook.datomic]
-            [datomic.api :as d]
-            [clojure.core.async :as async]
-            [cook.mesos.sandbox :as sandbox]
-            [cook.plugins.pool :as pool-plugin]
-            [mesomatic.scheduler :as mesos]
-            [clojure.data.json :as json]
-            [cook.mesos.heartbeat :as heartbeat]
-            [cook.plugins.definitions :as plugins]
-            [metrics.meters :as meters]
-            [plumbing.core :as pc]
-            [metrics.histograms :as histograms]
-            [metrics.counters :as counters]))
+            [datomic.api :as d]))
 
 (defprotocol ComputeCluster
   ; These methods should accept bulk data and process in batches.
@@ -39,12 +28,11 @@
   (db-id [this]
     "Get a database entity-id for this compute cluster (used for putting it into a task structure).")
 
-  (initialize-cluster [this pool->fenzo pool->offers-chan])
+  (initialize-cluster [this pool->fenzo pool->offers-chan]
+    "Initializes the cluster. Returns a channel that will be delivered on when the cluster loses leadership.")
 
   (get-mesos-driver-hack [this]
-    "Get the mesos driver. Hack; any funciton invoking this should be put within the compute-cluster implementation")
-  (set-mesos-driver-atom-hack! [this driver]
-    "Hack to overwrite the driver. Used until we fix the initialization order of compute-cluster"))
+    "Get the mesos driver. Hack; any funciton invoking this should be put within the compute-cluster implementation"))
 
 ; Internal method
 (defn write-compute-cluster

@@ -58,9 +58,9 @@
    {:pre [compute-cluster-name]}
    (let [compute-cluster-mesos-map {:framework-id         (str compute-cluster-name "-framework")
                                     :compute-cluster-name compute-cluster-name}
-         compute-cluster (mcc/get-mesos-compute-cluster conn mesos-compute-cluster-factory compute-cluster-mesos-map)]
+         compute-cluster (mcc/get-mesos-compute-cluster conn mesos-compute-cluster-factory compute-cluster-mesos-map
+                                                        driver)]
      (cc/register-compute-cluster! compute-cluster)
-     (cc/set-mesos-driver-atom-hack! compute-cluster driver)
      compute-cluster)))
 
 ; The name of the fake compute cluster to use.

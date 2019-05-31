@@ -17,10 +17,8 @@
   (:require [chime :refer [chime-at chime-ch]]
             [clj-time.coerce :as tc]
             [clj-time.core :as time]
-            [clj-time.periodic :as periodic]
             [clojure.core.async :as async]
             [clojure.core.cache :as cache]
-            [clojure.data.json :as json]
             [clojure.edn :as edn]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
@@ -30,18 +28,14 @@
             [cook.plugins.completion :as completion]
             [cook.plugins.definitions :as plugins]
             [cook.plugins.launch :as launch-plugin]
-            [cook.plugins.pool :as pool-plugin]
             [cook.scheduler.constraints :as constraints]
             [cook.scheduler.data-locality :as dl]
             [cook.scheduler.dru :as dru]
             [cook.scheduler.fenzo-utils :as fenzo]
             [cook.group :as group]
-            [cook.mesos.heartbeat :as heartbeat]
             [cook.pool :as pool]
-            [cook.progress :as progress]
             [cook.quota :as quota]
             [cook.mesos.reason :as reason]
-            [cook.mesos.sandbox :as sandbox]
             [cook.scheduler.share :as share]
             [cook.mesos.task :as task]
             [cook.tools :as util]
@@ -56,8 +50,7 @@
             [metrics.meters :as meters]
             [metrics.timers :as timers]
             [plumbing.core :as pc])
-  (import [com.netflix.fenzo ConstraintEvaluator ConstraintEvaluator$Result
-                             TaskAssignmentResult TaskRequest TaskScheduler TaskScheduler$Builder
+  (import [com.netflix.fenzo TaskAssignmentResult TaskRequest TaskScheduler TaskScheduler$Builder
                              VirtualMachineLease VirtualMachineLease$Range
                              VirtualMachineCurrentState]
           [com.netflix.fenzo.functions Action1 Func1]))
@@ -552,7 +545,6 @@
 
 (meters/defmeter [cook-mesos scheduler scheduler-offer-declined])
 
-; TODO (pschorf): Delete
 (defn decline-offers
   "declines a collection of offer ids"
   [driver offer-ids]

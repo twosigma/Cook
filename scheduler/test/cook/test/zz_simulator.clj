@@ -113,7 +113,6 @@
                                  :executable true
                                  :extract false
                                  :value "file:///path/to/cook/executor"}}
-         gpu-enabled?# (or (:gpus-enabled? ~scheduler-config) false)
          progress-config# {:batch-size 100
                            :pending-threshold 1000
                            :publish-interval-ms 2000
@@ -154,11 +153,7 @@
                                                          create-compute-cluster#)
          (c/start-leader-selector
            {:curator-framework curator-framework#
-            :exit-code-syncer-state exit-code-syncer-state#
             :fenzo-config fenzo-config#
-            :framework-id framework-id#
-            :gpu-enabled? gpu-enabled?#
-            :make-mesos-driver-fn ~make-mesos-driver-fn
             :mea-culpa-failure-limit mea-culpa-failure-limit#
             :mesos-datomic-conn ~conn
             :mesos-datomic-mult mesos-mult#
@@ -169,9 +164,7 @@
             :agent-attributes-cache agent-attributes-cache#
             :offer-incubate-time-ms offer-incubate-time-ms#
             :optimizer-config optimizer-config#
-            :progress-config progress-config#
             :rebalancer-config rebalancer-config#
-            :sandbox-syncer-state sandbox-syncer-state#
             :server-config host-settings#
             :task-constraints task-constraints#
             :trigger-chans trigger-chans#

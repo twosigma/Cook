@@ -213,8 +213,7 @@
                                     (cook.scheduler.scheduler/monitor-tx-report-queue datomic-report-chan mesos-datomic-conn)
                                     (let [res (async/<!! cluster-leadership-promise)]
                                       (when (instance? Throwable res)
-                                        (throw res)))
-                                    (cc/set-mesos-driver-atom-hack! compute-cluster nil))
+                                        (throw res))))
                                   (catch Throwable e
                                     (log/error e "Lost leadership due to exception")
                                     (reset! normal-exit false))

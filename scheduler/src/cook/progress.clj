@@ -78,7 +78,6 @@
 
    Note: the wrapper chan is used due to our use of `util/xform-pipe`"
   [{:keys [pending-threshold publish-interval-ms sequence-cache-threshold]} progress-state-chan]
-  (log/info "In aggregator: " pending-threshold publish-interval-ms sequence-cache-threshold progress-state-chan)
   (log/info "Starting progress update aggregator")
   (let [progress-aggregator-chan (async/chan (async/sliding-buffer pending-threshold))
         sequence-cache-store (-> {}

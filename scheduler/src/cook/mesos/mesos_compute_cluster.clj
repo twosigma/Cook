@@ -14,24 +14,22 @@
 ;; limitations under the License.
 ;;
 (ns cook.mesos.mesos-compute-cluster
-  (:require [clojure.tools.logging :as log]
-            [cook.config :as config]
+  (:require [clojure.core.async :as async]
+            [clojure.data.json :as json]
+            [clojure.tools.logging :as log]
             [cook.compute-cluster :as cc]
+            [cook.config :as config]
+            [cook.mesos.heartbeat :as heartbeat]
+            [cook.mesos.sandbox :as sandbox]
             [cook.mesos.task :as task]
+            [cook.plugins.definitions :as plugins]
             [cook.plugins.pool :as pool-plugin]
+            [cook.progress :as progress]
             [cook.scheduler.scheduler :as sched]
             [datomic.api :as d]
             [mesomatic.scheduler :as mesos]
             [metrics.meters :as meters]
-            [metrics.counters :as counters]
-            [metrics.histograms :as histograms]
-            [clojure.core.async :as async]
-            [clojure.data.json :as json]
-            [cook.mesos.sandbox :as sandbox]
-            [cook.mesos.heartbeat :as heartbeat]
-            [cook.plugins.definitions :as plugins]
-            [plumbing.core :as pc]
-            [cook.progress :as progress]))
+            [plumbing.core :as pc]))
 
 (meters/defmeter [cook-mesos scheduler mesos-error])
 (meters/defmeter [cook-mesos scheduler handle-framework-message-rate])
@@ -191,16 +189,14 @@
                          (task/compile-mesos-messages framework-id offers task-metadata-seq)))
   (db-id [this]
     db-id)
-  (set-mesos-driver-atom-hack! [this driver]
-    (reset! driver-atom driver))
   (initialize-cluster [this pool->fenzo pool->offers-chan]
     (let [settings (:settings config/config)
           mesos-config (select-keys settings [:mesos-master
-                                                   :mesos-failover-timeout
-                                                   :mesos-principal
-                                                   :mesos-role
-                                                   :mesos-framework-name
-                                                   :gpu-enabled?])
+                                              :mesos-failover-timeout
+                                              :mesos-principal
+                                              :mesos-role
+                                              :mesos-framework-name
+                                              :gpu-enabled?])
           progress-config (:progress settings)
           conn cook.datomic/conn
           {:keys [match-trigger-chan progress-updater-trigger-chan]} trigger-chans
@@ -230,7 +226,9 @@
         (try
           (mesomatic.scheduler/join! driver)
           (catch Exception e
-            e))))))
+            e)
+          (finally
+            (reset! driver-atom nil)))))))
 
 ; Internal method
 (defn- mesos-cluster->compute-cluster-map-for-datomic
@@ -261,16 +259,18 @@
 (defn get-mesos-compute-cluster
   "Process one mesos cluster specification, returning the entity id of the corresponding compute-cluster,
   creating the cluster if it does not exist. Warning: Not idempotent. Only call once "
-  [conn create-mesos-compute-cluster {:keys [compute-cluster-name framework-id] :as mesos-cluster}]
-  {:pre [compute-cluster-name
-         framework-id]}
-  (let [cluster-entity-id (get-mesos-cluster-entity-id (d/db conn) mesos-cluster)]
-    (when-not cluster-entity-id
-      (cc/write-compute-cluster conn (mesos-cluster->compute-cluster-map-for-datomic mesos-cluster)))
-    (create-mesos-compute-cluster compute-cluster-name
-                                  framework-id
-                                  (or cluster-entity-id (get-mesos-cluster-entity-id (d/db conn) mesos-cluster))
-                                  (atom nil))))
+  ([conn create-mesos-compute-cluster mesos-cluster]
+    (get-mesos-compute-cluster conn create-mesos-compute-cluster mesos-cluster nil))
+  ([conn create-mesos-compute-cluster {:keys [compute-cluster-name framework-id] :as mesos-cluster} driver]
+   {:pre [compute-cluster-name
+          framework-id]}
+   (let [cluster-entity-id (get-mesos-cluster-entity-id (d/db conn) mesos-cluster)]
+     (when-not cluster-entity-id
+       (cc/write-compute-cluster conn (mesos-cluster->compute-cluster-map-for-datomic mesos-cluster)))
+     (create-mesos-compute-cluster compute-cluster-name
+                                   framework-id
+                                   (or cluster-entity-id (get-mesos-cluster-entity-id (d/db conn) mesos-cluster))
+                                   (atom driver)))))
 
 (defn- get-mesos-clusters-from-config
   "Get all of the mesos clusters defined in the configuration.
