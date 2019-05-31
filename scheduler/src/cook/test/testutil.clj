@@ -52,14 +52,16 @@
 
 (defn fake-test-compute-cluster-with-driver
   "Create a test compute cluster with associated driver attached to it. Returns the compute cluster."
-  [conn compute-cluster-name driver]
-  {:pre [compute-cluster-name]}
-  (let [compute-cluster-mesos-map {:framework-id (str compute-cluster-name "-framework")
-                                   :compute-cluster-name compute-cluster-name}
-        compute-cluster (mcc/get-mesos-compute-cluster conn create-dummy-mesos-compute-cluster compute-cluster-mesos-map)]
-    (cc/register-compute-cluster! compute-cluster)
-    (cc/set-mesos-driver-atom-hack! compute-cluster driver)
-    compute-cluster))
+  ([conn compute-cluster-name driver]
+   (fake-test-compute-cluster-with-driver conn compute-cluster-name driver create-dummy-mesos-compute-cluster))
+  ([conn compute-cluster-name driver mesos-compute-cluster-factory]
+   {:pre [compute-cluster-name]}
+   (let [compute-cluster-mesos-map {:framework-id         (str compute-cluster-name "-framework")
+                                    :compute-cluster-name compute-cluster-name}
+         compute-cluster (mcc/get-mesos-compute-cluster conn mesos-compute-cluster-factory compute-cluster-mesos-map)]
+     (cc/register-compute-cluster! compute-cluster)
+     (cc/set-mesos-driver-atom-hack! compute-cluster driver)
+     compute-cluster)))
 
 ; The name of the fake compute cluster to use.
 (def fake-test-compute-cluster-name "unittest-default-compute-cluster-name")

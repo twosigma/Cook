@@ -18,6 +18,7 @@
             [clojure.walk :refer (keywordize-keys)]
             [com.rpl.specter :refer (transform ALL MAP-VALS MAP-KEYS select FIRST)]
             [cook.config :refer (executor-config, init-logger)]
+            [cook.datomic :as datomic]
             [cook.mesos :as c]
             [cook.mesos.mesos-mock :as mm]
             [cook.scheduler.share :as share]
@@ -25,7 +26,8 @@
             [cook.plugins.completion :as completion]
             [cook.test.testutil :as testutil :refer (restore-fresh-database! poll-until)]
             [datomic.api :as d]
-            [plumbing.core :refer (map-vals map-keys map-from-vals)])
+            [plumbing.core :refer (map-vals map-keys map-from-vals)]
+            [cook.mesos.mesos-compute-cluster :as mcc])
   (:import java.util.Date
            org.apache.curator.framework.CuratorFrameworkFactory
            org.apache.curator.framework.state.ConnectionStateListener
@@ -126,14 +128,30 @@
          optimizer-config# (or (:optimizer-config ~scheduler-config)
                                {})
          trigger-chans# (or (:trigger-chans ~scheduler-config)
-                            (c/make-trigger-chans rebalancer-config# progress-config# optimizer-config# task-constraints#))]
+                            (c/make-trigger-chans rebalancer-config# progress-config# optimizer-config# task-constraints#))
+         mesos-heartbeat-chan# (async/chan 1024)
+         create-compute-cluster# (fn [compute-cluster-name# framework-id# db-id# driver-atom#]
+                                   (mcc/->MesosComputeCluster compute-cluster-name#
+                                                              framework-id#
+                                                              db-id#
+                                                              driver-atom#
+                                                              sandbox-syncer-state#
+                                                              exit-code-syncer-state#
+                                                              mesos-heartbeat-chan#
+                                                              trigger-chans#))]
      (try
        (with-redefs [executor-config (constantly executor-config#)
                      completion/plugin completion/no-op
                      ; This initializatioon is needed so the code to validate that the
                      ; registration responses matches the configured cook scheduler passes simulator
                      ; and mesos-mock unit tests. (cook.scheduler, lines 1428 create-mesos-scheduler)
-                     cook.config/framework-id-config (constantly framework-id#)]
+                     cook.config/framework-id-config (constantly framework-id#)
+                     mcc/make-mesos-driver ~make-mesos-driver-fn
+                     datomic/conn ~conn]
+         (testutil/fake-test-compute-cluster-with-driver ~conn
+                                                         testutil/fake-test-compute-cluster-name
+                                                         nil ; no dummy driver - simulator is going to call initialize
+                                                         create-compute-cluster#)
          (c/start-leader-selector
            {:curator-framework curator-framework#
             :exit-code-syncer-state exit-code-syncer-state#
@@ -144,6 +162,7 @@
             :mea-culpa-failure-limit mea-culpa-failure-limit#
             :mesos-datomic-conn ~conn
             :mesos-datomic-mult mesos-mult#
+            :mesos-heartbeat-chan mesos-heartbeat-chan#
             :mesos-leadership-atom mesos-leadership-atom#
             :pool-name->pending-jobs-atom pool-name->pending-jobs-atom#
             :mesos-run-as-user nil
@@ -336,7 +355,7 @@
         rebalancer-trigger-chan (async/chan)
         optimizer-trigger-chan (async/chan)
         state-atom (atom {})
-        make-mesos-driver-fn (fn [scheduler _]
+        make-mesos-driver-fn (fn [config scheduler framework-id]
                                (mm/mesos-mock mesos-hosts offer-trigger-chan scheduler
                                               :task->runtime-ms task->runtime-ms
                                               :task->complete-status task->complete-status
@@ -390,7 +409,6 @@
     (DateTimeUtils/setCurrentMillisFixed simulation-time)
     (log/info "Starting simulation at" simulation-time)
     ;; launch the simulator
-    (testutil/setup-fake-test-compute-cluster mesos-datomic-conn)
     (with-cook-scheduler
       mesos-datomic-conn
       make-mesos-driver-fn
