@@ -38,14 +38,25 @@
   (:import (java.util UUID)
            (org.apache.log4j ConsoleAppender Logger PatternLayout)))
 
+(defn create-dummy-mesos-compute-cluster
+  [compute-cluster-name framework-id db-id driver-atom]
+  (mcc/->MesosComputeCluster compute-cluster-name
+                             framework-id
+                             db-id
+                             driver-atom
+                             nil ; sandbox-syncer-state
+                             nil ; exit-code-syncer-state
+                             nil ; mesos-heartbeat-chan
+                             nil ; trigger-chans
+                             ))
+
 (defn fake-test-compute-cluster-with-driver
   "Create a test compute cluster with associated driver attached to it. Returns the compute cluster."
   [conn compute-cluster-name driver]
   {:pre [compute-cluster-name]}
-  (let [existing-compute-cluster (get @cc/cluster-name->compute-cluster-atom compute-cluster-name)
-        compute-cluster-mesos-map {:framework-id (str compute-cluster-name "-framework")
+  (let [compute-cluster-mesos-map {:framework-id (str compute-cluster-name "-framework")
                                    :compute-cluster-name compute-cluster-name}
-        compute-cluster (mcc/get-mesos-compute-cluster conn compute-cluster-mesos-map)]
+        compute-cluster (mcc/get-mesos-compute-cluster conn create-dummy-mesos-compute-cluster compute-cluster-mesos-map)]
     (cc/register-compute-cluster! compute-cluster)
     (cc/set-mesos-driver-atom-hack! compute-cluster driver)
     compute-cluster))
