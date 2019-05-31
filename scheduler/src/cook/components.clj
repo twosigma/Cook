@@ -98,7 +98,7 @@
                            fenzo-floor-iterations-before-warn fenzo-max-jobs-considered fenzo-scaleback
                            good-enough-fitness hostname mea-culpa-failure-limit mesos-leader-path mesos-run-as-user
                            offer-incubate-time-ms optimizer rebalancer server-port task-constraints]
-                          curator-framework mesos-datomic-mult mesos-leadership-atom
+                          compute-clusters curator-framework mesos-datomic-mult mesos-leadership-atom
                           mesos-agent-attributes-cache pool-name->pending-jobs-atom mesos-heartbeat-chan
                           trigger-chans]
                       (if (cook.config/api-only-mode?)
