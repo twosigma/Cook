@@ -101,8 +101,8 @@
                            mesos-role mesos-run-as-user offer-incubate-time-ms optimizer progress rebalancer server-port
                            task-constraints]
                           curator-framework exit-code-syncer-state framework-id mesos-datomic-mult mesos-leadership-atom
-                          mesos-agent-attributes-cache pool-name->pending-jobs-atom sandbox-syncer-state
-                          compute-clusters]
+                          mesos-agent-attributes-cache pool-name->pending-jobs-atom sandbox-syncer-state mesos-heartbeat-chan
+                          compute-clusters trigger-chans]
                       (if (cook.config/api-only-mode?)
                         (if curator-framework
                           (throw (ex-info "This node is configured for API-only mode, but also has a curator configured"
@@ -111,15 +111,7 @@
                         (if curator-framework
                           (do
                             (log/info "Initializing mesos scheduler")
-                            (let [make-mesos-driver-fn (partial (util/lazy-load-var 'cook.mesos/make-mesos-driver)
-                                                                {:mesos-master           mesos-master
-                                                                 :mesos-failover-timeout mesos-failover-timeout
-                                                                 :mesos-principal        mesos-principal
-                                                                 :mesos-role             mesos-role
-                                                                 :mesos-framework-name   mesos-framework-name
-                                                                 :gpu-enabled?           mesos-gpu-enabled})
-                                  trigger-chans ((util/lazy-load-var 'cook.mesos/make-trigger-chans) rebalancer progress optimizer task-constraints)
-                                  mesos-heartbeat-chan (async/chan (async/buffer 4096))]
+                            (let []
                               (try
                                 (Class/forName "org.apache.mesos.Scheduler")
                                 ((util/lazy-load-var 'cook.mesos/start-leader-selector)
@@ -133,7 +125,6 @@
                                                                   :good-enough-fitness                 good-enough-fitness}
                                    :framework-id                 framework-id
                                    :gpu-enabled?                 mesos-gpu-enabled
-                                   :make-mesos-driver-fn         make-mesos-driver-fn
                                    :mea-culpa-failure-limit      mea-culpa-failure-limit
                                    :mesos-datomic-conn           datomic/conn
                                    :mesos-datomic-mult           mesos-datomic-mult
@@ -297,10 +288,27 @@
                            (throw (ex-info "Framework id not configured and not in ZooKeeper" {})))
                          (log/info "Using framework id:" framework-id)
                          framework-id)))
-     :compute-clusters (fnk [settings]
-                         ((util/lazy-load-var 'cook.mesos.mesos-compute-cluster/setup-compute-cluster-map-from-config) datomic/conn settings))
+     :compute-clusters (fnk [exit-code-syncer-state
+                             mesos-heartbeat-chan
+                             sandbox-syncer-state
+                             settings
+                             trigger-chans]
+                         (let [constructor (util/lazy-load-var 'cook.mesos.mesos-compute-cluster/->MesosComputeCluster)
+                               create-mesos-compute-cluster (fn [compute-cluster-name framework-id db-id driver-atom]
+                                                              (constructor compute-cluster-name
+                                                                           framework-id
+                                                                           db-id
+                                                                           driver-atom
+                                                                           sandbox-syncer-state
+                                                                           exit-code-syncer-state
+                                                                           mesos-heartbeat-chan
+                                                                           trigger-chans))]
+                           ((util/lazy-load-var 'cook.mesos.mesos-compute-cluster/setup-compute-cluster-map-from-config) datomic/conn settings
+                             create-mesos-compute-cluster)))
      :mesos-datomic-mult (fnk []
                            (first ((util/lazy-load-var 'cook.datomic/create-tx-report-mult) datomic/conn)))
+     :mesos-heartbeat-chan (fnk []
+                             (async/chan (async/buffer 4096)))
      :local-zookeeper (fnk [[:settings zookeeper-server]]
                         (when zookeeper-server
                           (log/info "Starting local ZK server")
@@ -321,6 +329,8 @@
                                ((util/lazy-load-var 'cook.mesos.sandbox/prepare-sandbox-publisher)
                                  framework-id datomic/conn publish-batch-size publish-interval-ms sync-interval-ms
                                  max-consecutive-sync-failure mesos-agent-query-cache)))
+     :trigger-chans (fnk [[:settings rebalancer progress optimizer task-constraints]]
+                      ((util/lazy-load-var 'cook.mesos/make-trigger-chans) rebalancer progress optimizer task-constraints))
      :clear-uncommitted-canceler (fnk [mesos-leadership-atom]
                                    ((util/lazy-load-var 'cook.tools/clear-uncommitted-jobs-on-schedule)
                                      datomic/conn mesos-leadership-atom))

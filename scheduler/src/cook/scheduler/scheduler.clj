@@ -100,8 +100,8 @@
     (merge mesos-attributes cook-attributes)))
 
 (timers/deftimer [cook-mesos scheduler handle-status-update-duration])
-(meters/defmeter [cook-mesos scheduler handle-status-update-rate])
 (timers/deftimer [cook-mesos scheduler handle-framework-message-duration])
+(meters/defmeter [cook-mesos scheduler handle-framework-message-rate])
 
 (timers/deftimer [cook-mesos scheduler generate-user-usage-map-duration])
 
@@ -214,7 +214,6 @@
   "Takes a status update from mesos."
   [conn compute-cluster pool->fenzo sync-agent-sandboxes-fn status]
   (log/info "Mesos status is:" status)
-  (meters/mark! handle-status-update-rate)
   (timers/time!
     handle-status-update-duration
     (try (let [db (db conn)
@@ -1334,6 +1333,9 @@
                         (reset! pool-name->pending-jobs-atom
                                 (rank-jobs (d/db conn) offensive-job-filter))))))
 
+(meters/defmeter [cook-mesos scheduler mesos-error])
+(meters/defmeter [cook-mesos scheduler offer-chan-full-error])
+
 (defn make-fenzo-scheduler
   [compute-cluster offer-incubate-time-ms fitness-calculator good-enough-fitness]
   (.. (TaskScheduler$Builder.)
@@ -1372,6 +1374,28 @@
   (when (number? limits)
     @(d/transact conn [{:db/id :scheduler/config
                         :scheduler.config/mea-culpa-failure-limit limits}])))
+
+(defn decline-offers-safe
+  "Declines a collection of offers, catching exceptions"
+  [driver offers]
+  (try
+    (decline-offers driver (map :id offers))
+    (catch Exception e
+      (log/error e "Unable to decline offers!"))))
+
+(defn receive-offers
+  [offers-chan match-trigger-chan driver pool-name offers]
+  (doseq [offer offers]
+    (histograms/update! (histograms/histogram (metric-title "offer-size-cpus" pool-name)) (get-in offer [:resources :cpus] 0))
+    (histograms/update! (histograms/histogram (metric-title "offer-size-mem" pool-name)) (get-in offer [:resources :mem] 0)))
+  (if (async/offer! offers-chan offers)
+    (do
+      (counters/inc! offer-chan-depth)
+      (async/offer! match-trigger-chan :trigger)) ; :trigger is arbitrary, the value is ignored
+    (do (log/warn "Offer chan is full. Are we not handling offers fast enough?")
+        (meters/mark! offer-chan-full-error)
+        (future
+          (decline-offers-safe driver offers)))))
 
 (let [in-order-queue-counter (counters/counter ["cook-mesos" "scheduler" "in-order-queue-size"])
       in-order-queue-timer (timers/timer ["cook-mesos" "scheduler" "in-order-queue-delay-duration"])
