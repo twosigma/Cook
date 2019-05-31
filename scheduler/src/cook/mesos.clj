@@ -83,44 +83,8 @@
 
 (counters/defcounter [cook-mesos mesos mesos-leader])
 
-(defn make-mesos-driver
-  "Creates a mesos driver
-
-   Parameters:
-   mesos-framework-name     -- string, name to use when connecting to mesos.
-                               Will be appended with version of cook
-   mesos-role               -- string, (optional) The role to connect to mesos with
-   mesos-principal          -- string, (optional) principal to connect to mesos with
-   gpu-enabled?             -- boolean, (optional) whether cook will schedule gpu jobs
-   mesos-failover-timeout   -- long, (optional) time in milliseconds mesos will wait
-                               for framework to reconnect.
-                               See http://mesos.apache.org/documentation/latest/high-availability-framework-guide/
-                               and search for failover_timeout
-   mesos-master             -- str, (optional) connection string for mesos masters
-   scheduler                -- mesos scheduler implementation
-   framework-id             -- str, (optional) Id of framework if it has connected to mesos before
-   "
-  ([config scheduler]
-   (make-mesos-driver config scheduler nil))
-  ([{:keys [mesos-framework-name mesos-role mesos-principal gpu-enabled?
-            mesos-failover-timeout mesos-master] :as config}
-    scheduler framework-id]
-   (apply mesomatic.scheduler/scheduler-driver
-          scheduler
-          (cond-> {:checkpoint true
-                   :name (str mesos-framework-name "-" @cook.util/version "-" @cook.util/commit)
-                   :user ""}
-                  framework-id (assoc :id {:value framework-id})
-                  gpu-enabled? (assoc :capabilities [{:type :framework-capability-gpu-resources}])
-                  mesos-failover-timeout (assoc :failover-timeout mesos-failover-timeout)
-                  mesos-principal (assoc :principal mesos-principal)
-                  mesos-role (assoc :role mesos-role))
-          mesos-master
-          (when mesos-principal
-            [{:principal mesos-principal}]))))
-
 (defn make-trigger-chans
-  "Creates a map of of the trigger channels expected by `start-mesos-scheduler`
+  "Creates a map of of the trigger channels expected by `start-leader-selector`
    Each channel receives chime triggers at particular intervals and it is
    possible to send additional events as desired"
   [rebalancer-config progress-config optimizer-config
@@ -145,7 +109,7 @@
       update-interval-ms
       (assoc :update-data-local-costs-trigger-chan (prepare-trigger-chan (time/millis update-interval-ms))))))
 
-(defn start-mesos-scheduler
+(defn start-leader-selector
   "Starts a leader elector. When the process is leader, it starts the mesos
    scheduler and associated threads to interact with mesos.
 
@@ -171,16 +135,15 @@
   [{:keys [curator-framework exit-code-syncer-state fenzo-config framework-id gpu-enabled? make-mesos-driver-fn
            mea-culpa-failure-limit mesos-datomic-conn mesos-datomic-mult mesos-leadership-atom pool-name->pending-jobs-atom
            mesos-run-as-user agent-attributes-cache offer-incubate-time-ms optimizer-config progress-config rebalancer-config
-           sandbox-syncer-state server-config task-constraints trigger-chans zk-prefix]}]
+           sandbox-syncer-state server-config task-constraints trigger-chans zk-prefix mesos-heartbeat-chan]}]
   (let [{:keys [fenzo-fitness-calculator fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-warn
                 fenzo-max-jobs-considered fenzo-scaleback good-enough-fitness]} fenzo-config
         {:keys [cancelled-task-trigger-chan lingering-task-trigger-chan optimizer-trigger-chan
                 rebalancer-trigger-chan straggler-trigger-chan]} trigger-chans
         {:keys [hostname server-port server-https-port]} server-config
         datomic-report-chan (async/chan (async/sliding-buffer 4096))
-        mesos-heartbeat-chan (async/chan (async/buffer 4096))
+
         compute-cluster (mcc/mesos-cluster-hack)
-        current-driver (atom nil)
         rebalancer-reservation-atom (atom {})
         leader-selector (LeaderSelector.
                           curator-framework
@@ -194,7 +157,7 @@
                               ;; TODO: get the framework ID and try to reregister
                               (let [normal-exit (atom true)]
                                 (try
-                                  (let [{:keys [scheduler view-incubating-offers]}
+                                  (let [{:keys [pool-name->fenzo pool->offers-chan view-incubating-offers]}
                                         (sched/create-datomic-scheduler
                                          {:conn mesos-datomic-conn
                                           :compute-cluster compute-cluster
@@ -206,7 +169,6 @@
                                           :fenzo-scaleback fenzo-scaleback
                                           :good-enough-fitness good-enough-fitness
                                           :gpu-enabled? gpu-enabled?
-                                          :heartbeat-ch mesos-heartbeat-chan
                                           :mea-culpa-failure-limit mea-culpa-failure-limit
                                           :mesos-run-as-user mesos-run-as-user
                                           :agent-attributes-cache agent-attributes-cache
@@ -217,20 +179,21 @@
                                           :sandbox-syncer-state sandbox-syncer-state
                                           :task-constraints task-constraints
                                           :trigger-chans trigger-chans})
-                                        driver (make-mesos-driver-fn scheduler framework-id)]
-                                    (mesomatic.scheduler/start! driver)
-                                    (reset! current-driver driver)
-                                    (cc/set-mesos-driver-atom-hack! compute-cluster driver)
-
+                                        cluster-leadership-promise (cc/initialize-cluster compute-cluster
+                                                                                          pool-name->fenzo
+                                                                                          pool->offers-chan)]
                                     (cook.monitor/start-collecting-stats)
                                     ; Many of these should look at the compute-cluster of the underlying jobs, and not use driver at all.
-                                    (cook.scheduler.scheduler/lingering-task-killer mesos-datomic-conn driver task-constraints lingering-task-trigger-chan)
-                                    (cook.scheduler.scheduler/straggler-handler mesos-datomic-conn driver straggler-trigger-chan)
-                                    (cook.scheduler.scheduler/cancelled-task-killer mesos-datomic-conn driver cancelled-task-trigger-chan)
+                                    (cook.scheduler.scheduler/lingering-task-killer mesos-datomic-conn (cc/get-mesos-driver-hack compute-cluster)
+                                                                                    task-constraints lingering-task-trigger-chan)
+                                    (cook.scheduler.scheduler/straggler-handler mesos-datomic-conn (cc/get-mesos-driver-hack compute-cluster)
+                                                                                straggler-trigger-chan)
+                                    (cook.scheduler.scheduler/cancelled-task-killer mesos-datomic-conn (cc/get-mesos-driver-hack compute-cluster)
+                                                                                    cancelled-task-trigger-chan)
                                     (cook.mesos.heartbeat/start-heartbeat-watcher! mesos-datomic-conn mesos-heartbeat-chan)
                                     (cook.rebalancer/start-rebalancer! {:config rebalancer-config
                                                                               :conn mesos-datomic-conn
-                                                                              :driver driver
+                                                                              :driver (cc/get-mesos-driver-hack compute-cluster)
                                                                               :agent-attributes-cache agent-attributes-cache
                                                                               :pool-name->pending-jobs-atom pool-name->pending-jobs-atom
                                                                               :rebalancer-reservation-atom rebalancer-reservation-atom
@@ -252,10 +215,10 @@
                                     (counters/inc! mesos-leader)
                                     (async/tap mesos-datomic-mult datomic-report-chan)
                                     (cook.scheduler.scheduler/monitor-tx-report-queue datomic-report-chan mesos-datomic-conn)
-                                    (mesomatic.scheduler/join! driver)
-                                    (reset! current-driver nil))
+                                    @cluster-leadership-promise
+                                    (cc/set-mesos-driver-atom-hack! compute-cluster nil))
                                   (catch Throwable e
-                                    (log/error e "Lost mesos leadership due to exception")
+                                    (log/error e "Lost leadership due to exception")
                                     (reset! normal-exit false))
                                   (finally
                                     (counters/dec! mesos-leader)
@@ -270,7 +233,7 @@
                               ;; ZK connection
                               (when (#{ConnectionState/LOST ConnectionState/SUSPENDED} newState)
                                 (reset! mesos-leadership-atom false)
-                                (when @current-driver
+                                (when (cc/get-mesos-driver-hack compute-cluster)
                                   (counters/dec! mesos-leader)
                                   ;; Better to fail over and rely on start up code we trust then rely on rarely run code
                                   ;; to make sure we yield leadership correctly (and fully)

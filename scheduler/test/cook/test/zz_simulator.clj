@@ -134,7 +134,7 @@
                      ; registration responses matches the configured cook scheduler passes simulator
                      ; and mesos-mock unit tests. (cook.scheduler, lines 1428 create-mesos-scheduler)
                      cook.config/framework-id-config (constantly framework-id#)]
-         (c/start-mesos-scheduler
+         (c/start-leader-selector
            {:curator-framework curator-framework#
             :exit-code-syncer-state exit-code-syncer-state#
             :fenzo-config fenzo-config#

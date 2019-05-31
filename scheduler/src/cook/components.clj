@@ -24,21 +24,21 @@
             [cook.rest.cors :as cors]
             [cook.curator :as curator]
             [cook.datomic :as datomic]
-            ; This explicit require is needed so that mount can see the defstate defined in the cook.plugins.completion namespace.
+    ; This explicit require is needed so that mount can see the defstate defined in the cook.plugins.completion namespace.
             [cook.plugins.completion]
-            ; This explicit require is needed so that mount can see the defstate defined in the cook.plugins.submission namespace.
+    ; This explicit require is needed so that mount can see the defstate defined in the cook.plugins.submission namespace.
             [cook.plugins.submission]
-            ; This explicit require is needed so that mount can see the defstate defined in the cook.plugins.file namespace.
+    ; This explicit require is needed so that mount can see the defstate defined in the cook.plugins.file namespace.
             [cook.plugins.file]
-            ; This explicit require is needed so that mount can see the defstate defined in the cook.plugins.launch namespace.
+    ; This explicit require is needed so that mount can see the defstate defined in the cook.plugins.launch namespace.
             [cook.plugins.launch]
-            ; This explicit require is needed so that mount can see the defstate defined in the cook.plugins.pool namespace.
+    ; This explicit require is needed so that mount can see the defstate defined in the cook.plugins.pool namespace.
             [cook.plugins.pool]
             [cook.rest.impersonation :refer (impersonation-authorized-wrapper)]
             [cook.pool :as pool]
-            ; This explicit require is needed so that mount can see the defstate defined in the cook.rate-limit namespace.
-            ; cook.rate-limit and everything else under cook.rest.api is normally hidden from mount's defstate because
-            ; cook.rest.api is loaded via util/lazy-load-var, not via 'ns :require'
+    ; This explicit require is needed so that mount can see the defstate defined in the cook.rate-limit namespace.
+    ; cook.rate-limit and everything else under cook.rest.api is normally hidden from mount's defstate because
+    ; cook.rest.api is loaded via util/lazy-load-var, not via 'ns :require'
             [cook.rate-limit]
             [cook.util :as util]
             [datomic.api :as d]
@@ -51,7 +51,8 @@
             [ring.middleware.params :refer (wrap-params)]
             [ring.middleware.stacktrace :refer (wrap-stacktrace)]
             [ring.util.mime-type]
-            [ring.util.response :refer (response)])
+            [ring.util.response :refer (response)]
+            [clojure.core.async :as async])
   (:import clojure.core.async.impl.channels.ManyToManyChannel
            java.io.IOException
            java.security.Principal
@@ -111,44 +112,46 @@
                           (do
                             (log/info "Initializing mesos scheduler")
                             (let [make-mesos-driver-fn (partial (util/lazy-load-var 'cook.mesos/make-mesos-driver)
-                                                                {:mesos-master mesos-master
+                                                                {:mesos-master           mesos-master
                                                                  :mesos-failover-timeout mesos-failover-timeout
-                                                                 :mesos-principal mesos-principal
-                                                                 :mesos-role mesos-role
-                                                                 :mesos-framework-name mesos-framework-name
-                                                                 :gpu-enabled? mesos-gpu-enabled})
-                                  trigger-chans ((util/lazy-load-var 'cook.mesos/make-trigger-chans) rebalancer progress optimizer task-constraints)]
+                                                                 :mesos-principal        mesos-principal
+                                                                 :mesos-role             mesos-role
+                                                                 :mesos-framework-name   mesos-framework-name
+                                                                 :gpu-enabled?           mesos-gpu-enabled})
+                                  trigger-chans ((util/lazy-load-var 'cook.mesos/make-trigger-chans) rebalancer progress optimizer task-constraints)
+                                  mesos-heartbeat-chan (async/chan (async/buffer 4096))]
                               (try
                                 (Class/forName "org.apache.mesos.Scheduler")
-                                ((util/lazy-load-var 'cook.mesos/start-mesos-scheduler)
-                                  {:curator-framework curator-framework
-                                   :exit-code-syncer-state exit-code-syncer-state
-                                   :fenzo-config {:fenzo-max-jobs-considered fenzo-max-jobs-considered
-                                                  :fenzo-scaleback fenzo-scaleback
-                                                  :fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-warn
-                                                  :fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-reset
-                                                  :fenzo-fitness-calculator fenzo-fitness-calculator
-                                                  :good-enough-fitness good-enough-fitness}
-                                   :framework-id framework-id
-                                   :gpu-enabled? mesos-gpu-enabled
-                                   :make-mesos-driver-fn make-mesos-driver-fn
-                                   :mea-culpa-failure-limit mea-culpa-failure-limit
-                                   :mesos-datomic-conn datomic/conn
-                                   :mesos-datomic-mult mesos-datomic-mult
-                                   :mesos-leadership-atom mesos-leadership-atom
+                                ((util/lazy-load-var 'cook.mesos/start-leader-selector)
+                                  {:curator-framework            curator-framework
+                                   :exit-code-syncer-state       exit-code-syncer-state
+                                   :fenzo-config                 {:fenzo-max-jobs-considered           fenzo-max-jobs-considered
+                                                                  :fenzo-scaleback                     fenzo-scaleback
+                                                                  :fenzo-floor-iterations-before-warn  fenzo-floor-iterations-before-warn
+                                                                  :fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-reset
+                                                                  :fenzo-fitness-calculator            fenzo-fitness-calculator
+                                                                  :good-enough-fitness                 good-enough-fitness}
+                                   :framework-id                 framework-id
+                                   :gpu-enabled?                 mesos-gpu-enabled
+                                   :make-mesos-driver-fn         make-mesos-driver-fn
+                                   :mea-culpa-failure-limit      mea-culpa-failure-limit
+                                   :mesos-datomic-conn           datomic/conn
+                                   :mesos-datomic-mult           mesos-datomic-mult
+                                   :mesos-heartbeat-chan         mesos-heartbeat-chan
+                                   :mesos-leadership-atom        mesos-leadership-atom
                                    :pool-name->pending-jobs-atom pool-name->pending-jobs-atom
-                                   :mesos-run-as-user mesos-run-as-user
-                                   :agent-attributes-cache mesos-agent-attributes-cache
-                                   :offer-incubate-time-ms offer-incubate-time-ms
-                                   :optimizer-config optimizer
-                                   :progress-config progress
-                                   :rebalancer-config rebalancer
-                                   :sandbox-syncer-state sandbox-syncer-state
-                                   :server-config {:hostname hostname
-                                                   :server-port server-port}
-                                   :task-constraints task-constraints
-                                   :trigger-chans trigger-chans
-                                   :zk-prefix mesos-leader-path})
+                                   :mesos-run-as-user            mesos-run-as-user
+                                   :agent-attributes-cache       mesos-agent-attributes-cache
+                                   :offer-incubate-time-ms       offer-incubate-time-ms
+                                   :optimizer-config             optimizer
+                                   :progress-config              progress
+                                   :rebalancer-config            rebalancer
+                                   :sandbox-syncer-state         sandbox-syncer-state
+                                   :server-config                {:hostname    hostname
+                                                                  :server-port server-port}
+                                   :task-constraints             task-constraints
+                                   :trigger-chans                trigger-chans
+                                   :zk-prefix                    mesos-leader-path})
                                 (catch ClassNotFoundException e
                                   (log/warn e "Not loading mesos support...")
                                   nil))))
