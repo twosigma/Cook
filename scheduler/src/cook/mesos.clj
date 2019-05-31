@@ -132,10 +132,10 @@
    framework-id                  -- str, the Mesos framework id from the cook settings
    fenzo-config                  -- map, config for fenzo, See scheduler/docs/configuration.adoc for more details
    sandbox-syncer-state          -- map, representing the sandbox syncer object"
-  [{:keys [curator-framework exit-code-syncer-state fenzo-config framework-id gpu-enabled? make-mesos-driver-fn
-           mea-culpa-failure-limit mesos-datomic-conn mesos-datomic-mult mesos-leadership-atom pool-name->pending-jobs-atom
-           mesos-run-as-user agent-attributes-cache offer-incubate-time-ms optimizer-config progress-config rebalancer-config
-           sandbox-syncer-state server-config task-constraints trigger-chans zk-prefix mesos-heartbeat-chan]}]
+  [{:keys [curator-framework fenzo-config mea-culpa-failure-limit mesos-datomic-conn mesos-datomic-mult
+           mesos-heartbeat-chan mesos-leadership-atom pool-name->pending-jobs-atom mesos-run-as-user agent-attributes-cache
+           offer-incubate-time-ms optimizer-config  rebalancer-config server-config task-constraints trigger-chans
+           zk-prefix]}]
   (let [{:keys [fenzo-fitness-calculator fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-warn
                 fenzo-max-jobs-considered fenzo-scaleback good-enough-fitness]} fenzo-config
         {:keys [cancelled-task-trigger-chan lingering-task-trigger-chan optimizer-trigger-chan
@@ -161,22 +161,18 @@
                                         (sched/create-datomic-scheduler
                                          {:conn mesos-datomic-conn
                                           :compute-cluster compute-cluster
-                                          :exit-code-syncer-state exit-code-syncer-state
                                           :fenzo-fitness-calculator fenzo-fitness-calculator
                                           :fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-reset
                                           :fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-warn
                                           :fenzo-max-jobs-considered fenzo-max-jobs-considered
                                           :fenzo-scaleback fenzo-scaleback
                                           :good-enough-fitness good-enough-fitness
-                                          :gpu-enabled? gpu-enabled?
                                           :mea-culpa-failure-limit mea-culpa-failure-limit
                                           :mesos-run-as-user mesos-run-as-user
                                           :agent-attributes-cache agent-attributes-cache
                                           :offer-incubate-time-ms offer-incubate-time-ms
                                           :pool-name->pending-jobs-atom pool-name->pending-jobs-atom
-                                          :progress-config progress-config
                                           :rebalancer-reservation-atom rebalancer-reservation-atom
-                                          :sandbox-syncer-state sandbox-syncer-state
                                           :task-constraints task-constraints
                                           :trigger-chans trigger-chans})
                                         cluster-leadership-promise (cc/initialize-cluster compute-cluster
