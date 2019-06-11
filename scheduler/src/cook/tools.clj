@@ -180,7 +180,7 @@
 
 (defn job-ent->container
   "Take a job entity and return its container"
-  [db job-ent]
+  [job-ent]
   (some-> job-ent :job/container remove-datomic-namespacing))
 
 (defn job-ent->group-uuid
