@@ -227,6 +227,8 @@
       (reset! driver-atom driver)
       (async/thread
         (try
+          ; scheduler/join! is a blocking call which returns or throws when the driver loses it's connection to mesos.
+          ; Run this in an async thread which will deliver either the Status on a normal exit, or an exception if thrown.
           (mesomatic.scheduler/join! driver)
           (catch Exception e
             e)
