@@ -134,7 +134,7 @@
    sandbox-syncer-state          -- map, representing the sandbox syncer object"
   [{:keys [curator-framework fenzo-config mea-culpa-failure-limit mesos-datomic-conn mesos-datomic-mult
            mesos-heartbeat-chan mesos-leadership-atom pool-name->pending-jobs-atom mesos-run-as-user agent-attributes-cache
-           offer-incubate-time-ms optimizer-config  rebalancer-config server-config task-constraints trigger-chans
+           offer-incubate-time-ms optimizer-config rebalancer-config server-config task-constraints trigger-chans
            zk-prefix]}]
   (let [{:keys [fenzo-fitness-calculator fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-warn
                 fenzo-max-jobs-considered fenzo-scaleback good-enough-fitness]} fenzo-config
@@ -175,7 +175,7 @@
                                           :rebalancer-reservation-atom rebalancer-reservation-atom
                                           :task-constraints task-constraints
                                           :trigger-chans trigger-chans})
-                                        cluster-leadership-promise (cc/initialize-cluster compute-cluster
+                                        cluster-leadership-chan (cc/initialize-cluster compute-cluster
                                                                                           pool-name->fenzo
                                                                                           pool->offers-chan)]
                                     (cook.monitor/start-collecting-stats)
@@ -211,13 +211,16 @@
                                     (counters/inc! mesos-leader)
                                     (async/tap mesos-datomic-mult datomic-report-chan)
                                     (cook.scheduler.scheduler/monitor-tx-report-queue datomic-report-chan mesos-datomic-conn)
-                                    (let [res (async/<!! cluster-leadership-promise)]
+                                    ; Curator expects takeLeadership to block until voluntarily surrendering leadership.
+                                    ; Block on cluster-leadership-chan to hold ZK leadership unless we lose mesos leadership.
+                                    (let [res (async/<!! cluster-leadership-chan)]
                                       (when (instance? Throwable res)
                                         (throw res))))
                                   (catch Throwable e
                                     (log/error e "Lost leadership due to exception")
                                     (reset! normal-exit false))
                                   (finally
+                                    (reset! mesos-leadership-atom false)
                                     (counters/dec! mesos-leader)
                                     (when @normal-exit
                                       (log/warn "Lost mesos leadership naturally"))
@@ -230,7 +233,7 @@
                               ;; ZK connection
                               (when (#{ConnectionState/LOST ConnectionState/SUSPENDED} newState)
                                 (reset! mesos-leadership-atom false)
-                                (when (cc/get-mesos-driver-hack compute-cluster)
+                                (when (cc/current-leader? compute-cluster)
                                   (counters/dec! mesos-leader)
                                   ;; Better to fail over and rely on start up code we trust then rely on rarely run code
                                   ;; to make sure we yield leadership correctly (and fully)

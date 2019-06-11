@@ -31,6 +31,9 @@
   (initialize-cluster [this pool->fenzo pool->offers-chan]
     "Initializes the cluster. Returns a channel that will be delivered on when the cluster loses leadership.")
 
+  (current-leader? [this]
+    "Returns true if this cook instance is currently the leader for the compute cluster")
+
   (get-mesos-driver-hack [this]
     "Get the mesos driver. Hack; any funciton invoking this should be put within the compute-cluster implementation"))
 

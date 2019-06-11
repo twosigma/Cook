@@ -53,10 +53,11 @@
 (defn fake-test-compute-cluster-with-driver
   "Create a test compute cluster with associated driver attached to it. Returns the compute cluster."
   ([conn compute-cluster-name driver]
-   (fake-test-compute-cluster-with-driver conn compute-cluster-name driver create-dummy-mesos-compute-cluster))
-  ([conn compute-cluster-name driver mesos-compute-cluster-factory]
+   (fake-test-compute-cluster-with-driver conn compute-cluster-name driver create-dummy-mesos-compute-cluster
+                                          (str compute-cluster-name "-framework")))
+  ([conn compute-cluster-name driver mesos-compute-cluster-factory framework-id]
    {:pre [compute-cluster-name]}
-   (let [compute-cluster-mesos-map {:framework-id         (str compute-cluster-name "-framework")
+   (let [compute-cluster-mesos-map {:framework-id framework-id
                                     :compute-cluster-name compute-cluster-name}
          compute-cluster (mcc/get-mesos-compute-cluster conn mesos-compute-cluster-factory compute-cluster-mesos-map
                                                         driver)]

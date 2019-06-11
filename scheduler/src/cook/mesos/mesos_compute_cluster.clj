@@ -39,21 +39,20 @@
 (defn create-mesos-scheduler
   "Creates the mesos scheduler which processes status updates asynchronously but in order of receipt."
   [gpu-enabled? conn heartbeat-ch pool->fenzo pool->offers-chan match-trigger-chan
-   handle-exit-code handle-progress-message sandbox-syncer-state compute-cluster]
-  (let [configured-framework-id (cook.config/framework-id-config)
-        sync-agent-sandboxes-fn #(sandbox/sync-agent-sandboxes sandbox-syncer-state configured-framework-id %1 %2)
+   handle-exit-code handle-progress-message sandbox-syncer-state framework-id compute-cluster]
+  (let [sync-agent-sandboxes-fn #(sandbox/sync-agent-sandboxes sandbox-syncer-state framework-id %1 %2)
         message-handlers {:handle-exit-code handle-exit-code
                           :handle-progress-message handle-progress-message}]
     (mesos/scheduler
       (registered
-        [this driver framework-id master-info]
-        (log/info "Registered with mesos with framework-id " framework-id)
-        (let [value (-> framework-id mesomatic.types/pb->data :value)]
-          (when (not= configured-framework-id value)
+        [this driver mesos-framework-id master-info]
+        (log/info "Registered with mesos with framework-id " mesos-framework-id)
+        (let [value (-> mesos-framework-id mesomatic.types/pb->data :value)]
+          (when (not= framework-id value)
             (let [message (str "The framework-id provided by Mesos (" value ") "
-                               "does not match the one Cook is configured with (" configured-framework-id ")")]
+                               "does not match the one Cook is configured with (" framework-id ")")]
               (log/error message)
-              (throw (ex-info message {:framework-id-mesos value :framework-id-cook configured-framework-id})))))
+              (throw (ex-info message {:framework-id-mesos value :framework-id-cook framework-id})))))
         (when (and gpu-enabled? (not (re-matches #"1\.\d+\.\d+" (:version master-info))))
           (binding [*out* *err*]
             (println "Cannot enable GPU support on pre-mesos 1.0. The version we found was " (:version master-info)))
@@ -189,6 +188,10 @@
                          (task/compile-mesos-messages framework-id offers task-metadata-seq)))
   (db-id [this]
     db-id)
+
+  (current-leader? [this]
+    (not (nil? @driver-atom)))
+
   (initialize-cluster [this pool->fenzo pool->offers-chan]
     (let [settings (:settings config/config)
           mesos-config (select-keys settings [:mesos-master
@@ -216,8 +219,8 @@
                                             handle-exit-code
                                             handle-progress-message
                                             sandbox-syncer-state
+                                            framework-id
                                             this)
-          framework-id (config/framework-id-config)
           _ (log/info "Initializing mesos driver with config: " mesos-config)
           driver (make-mesos-driver mesos-config scheduler framework-id)]
       (mesomatic.scheduler/start! driver)
@@ -259,15 +262,15 @@
 (defn get-mesos-compute-cluster
   "Process one mesos cluster specification, returning the entity id of the corresponding compute-cluster,
   creating the cluster if it does not exist. Warning: Not idempotent. Only call once "
-  ([conn create-mesos-compute-cluster mesos-cluster]
-    (get-mesos-compute-cluster conn create-mesos-compute-cluster mesos-cluster nil))
-  ([conn create-mesos-compute-cluster {:keys [compute-cluster-name framework-id] :as mesos-cluster} driver]
+  ([conn mesos-compute-cluster-factory mesos-cluster]
+    (get-mesos-compute-cluster conn mesos-compute-cluster-factory mesos-cluster nil))
+  ([conn mesos-compute-cluster-factory {:keys [compute-cluster-name framework-id] :as mesos-cluster} driver] ; driver argument for unit tests
    {:pre [compute-cluster-name
           framework-id]}
    (let [cluster-entity-id (get-mesos-cluster-entity-id (d/db conn) mesos-cluster)]
      (when-not cluster-entity-id
        (cc/write-compute-cluster conn (mesos-cluster->compute-cluster-map-for-datomic mesos-cluster)))
-     (create-mesos-compute-cluster compute-cluster-name
+     (mesos-compute-cluster-factory compute-cluster-name
                                    framework-id
                                    (or cluster-entity-id (get-mesos-cluster-entity-id (d/db conn) mesos-cluster))
                                    (atom driver)))))

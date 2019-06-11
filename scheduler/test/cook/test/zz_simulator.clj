@@ -150,7 +150,8 @@
          (testutil/fake-test-compute-cluster-with-driver ~conn
                                                          testutil/fake-test-compute-cluster-name
                                                          nil ; no dummy driver - simulator is going to call initialize
-                                                         create-compute-cluster#)
+                                                         create-compute-cluster#
+                                                         framework-id#)
          (c/start-leader-selector
            {:curator-framework curator-framework#
             :fenzo-config fenzo-config#
