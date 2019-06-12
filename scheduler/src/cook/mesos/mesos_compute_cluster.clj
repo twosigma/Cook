@@ -160,19 +160,17 @@
   ([{:keys [mesos-framework-name mesos-role mesos-principal gpu-enabled?
             mesos-failover-timeout mesos-master] :as config}
     scheduler framework-id]
-   (mesomatic.scheduler/scheduler-driver
-     scheduler
-     (cond-> {:checkpoint true
-              :name (str mesos-framework-name "-" @cook.util/version "-" @cook.util/commit)
-              :user ""}
-             framework-id (assoc :id {:value framework-id})
-             gpu-enabled? (assoc :capabilities [{:type :framework-capability-gpu-resources}])
-             mesos-failover-timeout (assoc :failover-timeout mesos-failover-timeout)
-             mesos-principal (assoc :principal mesos-principal)
-             mesos-role (assoc :role mesos-role))
-     mesos-master
-     (when mesos-principal
-       [{:principal mesos-principal}]))))
+   (let [mesos-config (cond-> {:checkpoint true
+                               :name (str mesos-framework-name "-" @cook.util/version "-" @cook.util/commit)
+                               :user ""}
+                              framework-id (assoc :id {:value framework-id})
+                              gpu-enabled? (assoc :capabilities [{:type :framework-capability-gpu-resources}])
+                              mesos-failover-timeout (assoc :failover-timeout mesos-failover-timeout)
+                              mesos-principal (assoc :principal mesos-principal)
+                              mesos-role (assoc :role mesos-role))]
+     (if mesos-principal
+       (mesomatic.scheduler/scheduler-driver scheduler mesos-config mesos-master {:principal mesos-principal})
+       (mesomatic.scheduler/scheduler-driver scheduler mesos-config mesos-master)))))
 
 (defrecord MesosComputeCluster [compute-cluster-name framework-id db-id driver-atom
                                 sandbox-syncer-state exit-code-syncer-state mesos-heartbeat-chan
