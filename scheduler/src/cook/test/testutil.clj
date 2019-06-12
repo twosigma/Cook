@@ -40,15 +40,18 @@
 
 (defn create-dummy-mesos-compute-cluster
   [compute-cluster-name framework-id db-id driver-atom]
-  (mcc/->MesosComputeCluster compute-cluster-name
-                             framework-id
-                             db-id
-                             driver-atom
-                             nil ; sandbox-syncer-state
-                             nil ; exit-code-syncer-state
-                             nil ; mesos-heartbeat-chan
-                             nil ; trigger-chans
-                             ))
+  (let [sandbox-syncer-state nil
+        exit-code-syncer-state nil
+        mesos-heartbeat-chan nil
+        trigger-chans nil]
+    (mcc/->MesosComputeCluster compute-cluster-name
+                               framework-id
+                               db-id
+                               driver-atom
+                               sandbox-syncer-state
+                               exit-code-syncer-state
+                               mesos-heartbeat-chan
+                               trigger-chans)))
 
 (defn fake-test-compute-cluster-with-driver
   "Create a test compute cluster with associated driver attached to it. Returns the compute cluster."

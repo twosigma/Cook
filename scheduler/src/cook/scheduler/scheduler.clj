@@ -1444,7 +1444,7 @@
                 {}
                 pools')]
     (start-jobs-prioritizer! conn pool-name->pending-jobs-atom task-constraints rank-trigger-chan)
-    {:view-incubating-offers (fn get-resources-atom [p]
-                               (deref (get pool->resources-atom p)))
+    {:pool-name->fenzo pool-name->fenzo
      :pool->offers-chan pool->offers-chan
-     :pool-name->fenzo pool-name->fenzo}))
+     :view-incubating-offers (fn get-resources-atom [p]
+                               (deref (get pool->resources-atom p)))}))

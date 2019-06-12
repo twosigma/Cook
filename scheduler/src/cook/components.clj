@@ -299,6 +299,7 @@
                              create-mesos-compute-cluster)))
      :mesos-datomic-mult (fnk []
                            (first ((util/lazy-load-var 'cook.datomic/create-tx-report-mult) datomic/conn)))
+     ; TODO(pschorf): Remove hearbeat support
      :mesos-heartbeat-chan (fnk []
                              (async/chan (async/buffer 4096)))
      :local-zookeeper (fnk [[:settings zookeeper-server]]
