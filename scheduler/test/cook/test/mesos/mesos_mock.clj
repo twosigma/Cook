@@ -672,9 +672,8 @@
           hosts (for [_ (range num-hosts)]
                   (dummy-host :mem {"*" mem} :cpus {"*" cpus} :ports {"*" ports}))
           offer-trigger-chan (chime-ch (util/time-seq (t/now) (t/millis 50)))
-          make-mesos-driver-fn (fn [scheduler _] ;; _ is framework-id
+          make-mesos-driver-fn (fn [config scheduler framework-id] ;; _ is framework-id
                                  (mm/mesos-mock hosts offer-trigger-chan scheduler))]
-      (testutil/setup-fake-test-compute-cluster mesos-datomic-conn)
       (with-cook-scheduler
         mesos-datomic-conn make-mesos-driver-fn {}
         (share/set-share! mesos-datomic-conn "default" nil "new cluster settings"

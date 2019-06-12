@@ -35,13 +35,21 @@
       (is (= nil (mcc/get-mesos-cluster-entity-id (d/db conn) mesos-2))))
 
     (testing "Create a cluster. Should be a new cluster"
-      (let [{id1a :db-id :as fetch-mesos-1a} (mcc/get-mesos-compute-cluster conn mesos-1)]
+      (let [{id1a :db-id :as fetch-mesos-1a} (mcc/get-mesos-compute-cluster conn
+                                                                            testutil/create-dummy-mesos-compute-cluster
+                                                                            mesos-1)]
         ; This should create one cluster in the DB, but not the other.
         (is (not= nil (mcc/get-mesos-cluster-entity-id (d/db conn) mesos-1)))
         (is (= nil (mcc/get-mesos-cluster-entity-id (d/db conn) mesos-2)))
-        (let [{id2a :db-id :as fetch-mesos-2a} (mcc/get-mesos-compute-cluster conn mesos-2)
-              {id1b :db-id :as fetch-mesos-1b} (mcc/get-mesos-compute-cluster conn mesos-1)
-              {id2b :db-id :as fetch-mesos-2b} (mcc/get-mesos-compute-cluster conn mesos-2)]
+        (let [{id2a :db-id :as fetch-mesos-2a} (mcc/get-mesos-compute-cluster conn
+                                                                              testutil/create-dummy-mesos-compute-cluster
+                                                                              mesos-2)
+              {id1b :db-id :as fetch-mesos-1b} (mcc/get-mesos-compute-cluster conn
+                                                                              testutil/create-dummy-mesos-compute-cluster
+                                                                              mesos-1)
+              {id2b :db-id :as fetch-mesos-2b} (mcc/get-mesos-compute-cluster conn
+                                                                              testutil/create-dummy-mesos-compute-cluster
+                                                                              mesos-2)]
           ; Should see both clusters created.
           (is (not= nil (mcc/get-mesos-cluster-entity-id (d/db conn) mesos-1)))
           (is (not= nil (mcc/get-mesos-cluster-entity-id (d/db conn) mesos-2)))
@@ -56,7 +64,7 @@
           (is (and id1b (< 0 id1b)))
           (is (and id2b (< 0 id2b)))
 
-          (is (= (dissoc fetch-mesos-1a :db-id :driver-atom)
+          (is (= (select-keys fetch-mesos-1a [:compute-cluster-name :framework-id])
                  {:compute-cluster-name "mesos-1"
                   :framework-id "mesos-1a"})))))))
 
@@ -70,14 +78,16 @@
                                   :framework-id "foo-1a"}
                                  {:compute-cluster-name "foo-1"
                                   :framework-id "foo-1a"}])]
-        (is (thrown-with-msg? IllegalArgumentException #"Multiple" (mcc/setup-compute-cluster-map-from-config conn nil)))))
+        (is (thrown-with-msg? IllegalArgumentException #"Multiple"
+                              (mcc/setup-compute-cluster-map-from-config conn nil
+                                                                         testutil/create-dummy-mesos-compute-cluster)))))
     (testing "Install the clusters per the configuration read and make sure that they can be found"
       (with-redefs [mcc/get-mesos-clusters-from-config
                     (constantly [{:compute-cluster-name "foo-3"
                                   :framework-id "foo-1a"}
                                  {:compute-cluster-name "foo-4"
                                   :framework-id "foo-1a"}])]
-        (mcc/setup-compute-cluster-map-from-config conn nil)
+        (mcc/setup-compute-cluster-map-from-config conn nil testutil/create-dummy-mesos-compute-cluster)
         (is (< 0 (-> "foo-3" cc/compute-cluster-name->ComputeCluster cc/db-id)))
         (is (< 0 (-> "foo-4" cc/compute-cluster-name->ComputeCluster cc/db-id)))
         (is (= nil (cc/compute-cluster-name->ComputeCluster "foo-5")))))))

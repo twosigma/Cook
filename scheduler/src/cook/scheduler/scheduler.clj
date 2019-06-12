@@ -17,10 +17,8 @@
   (:require [chime :refer [chime-at chime-ch]]
             [clj-time.coerce :as tc]
             [clj-time.core :as time]
-            [clj-time.periodic :as periodic]
             [clojure.core.async :as async]
             [clojure.core.cache :as cache]
-            [clojure.data.json :as json]
             [clojure.edn :as edn]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
@@ -30,18 +28,14 @@
             [cook.plugins.completion :as completion]
             [cook.plugins.definitions :as plugins]
             [cook.plugins.launch :as launch-plugin]
-            [cook.plugins.pool :as pool-plugin]
             [cook.scheduler.constraints :as constraints]
             [cook.scheduler.data-locality :as dl]
             [cook.scheduler.dru :as dru]
             [cook.scheduler.fenzo-utils :as fenzo]
             [cook.group :as group]
-            [cook.mesos.heartbeat :as heartbeat]
             [cook.pool :as pool]
-            [cook.progress :as progress]
             [cook.quota :as quota]
             [cook.mesos.reason :as reason]
-            [cook.mesos.sandbox :as sandbox]
             [cook.scheduler.share :as share]
             [cook.mesos.task :as task]
             [cook.tools :as util]
@@ -56,8 +50,7 @@
             [metrics.meters :as meters]
             [metrics.timers :as timers]
             [plumbing.core :as pc])
-  (import [com.netflix.fenzo ConstraintEvaluator ConstraintEvaluator$Result
-                             TaskAssignmentResult TaskRequest TaskScheduler TaskScheduler$Builder
+  (import [com.netflix.fenzo TaskAssignmentResult TaskRequest TaskScheduler TaskScheduler$Builder
                              VirtualMachineLease VirtualMachineLease$Range
                              VirtualMachineCurrentState]
           [com.netflix.fenzo.functions Action1 Func1]))
@@ -100,7 +93,6 @@
     (merge mesos-attributes cook-attributes)))
 
 (timers/deftimer [cook-mesos scheduler handle-status-update-duration])
-(meters/defmeter [cook-mesos scheduler handle-status-update-rate])
 (timers/deftimer [cook-mesos scheduler handle-framework-message-duration])
 (meters/defmeter [cook-mesos scheduler handle-framework-message-rate])
 
@@ -1421,118 +1413,16 @@
                (counters/dec! in-order-queue-counter)
                (body-fn))))))
 
-(defn create-mesos-scheduler
-  "Creates the mesos scheduler which processes status updates asynchronously but in order of receipt."
-  [gpu-enabled? conn heartbeat-ch pool->fenzo pool->offers-chan match-trigger-chan
-   handle-exit-code handle-progress-message sandbox-syncer-state compute-cluster]
-  (let [configured-framework-id (cook.config/framework-id-config)
-        sync-agent-sandboxes-fn #(sandbox/sync-agent-sandboxes sandbox-syncer-state configured-framework-id %1 %2)
-        message-handlers {:handle-exit-code handle-exit-code
-                          :handle-progress-message handle-progress-message}]
-    (mesos/scheduler
-      (registered
-        [this driver framework-id master-info]
-        (log/info "Registered with mesos with framework-id " framework-id)
-        (let [value (-> framework-id mesomatic.types/pb->data :value)]
-          (when (not= configured-framework-id value)
-            (let [message (str "The framework-id provided by Mesos (" value ") "
-                               "does not match the one Cook is configured with (" configured-framework-id ")")]
-              (log/error message)
-              (throw (ex-info message {:framework-id-mesos value :framework-id-cook configured-framework-id})))))
-        (when (and gpu-enabled? (not (re-matches #"1\.\d+\.\d+" (:version master-info))))
-          (binding [*out* *err*]
-            (println "Cannot enable GPU support on pre-mesos 1.0. The version we found was " (:version master-info)))
-          (log/error "Cannot enable GPU support on pre-mesos 1.0. The version we found was " (:version master-info))
-          (Thread/sleep 1000)
-          (System/exit 1))
-        ;; Use future because the thread that runs mesos/scheduler doesn't load classes correctly. for reasons.
-        ;; As Sophie says, you want to future proof your code.
-        (future
-          (try
-            (reconcile-jobs conn)
-            (reconcile-tasks (db conn) driver pool->fenzo)
-            (catch Exception e
-              (log/error e "Reconciliation error")))))
-      (reregistered
-        [this driver master-info]
-        (log/info "Reregistered with new master")
-        (future
-          (try
-            (reconcile-jobs conn)
-            (reconcile-tasks (db conn) driver pool->fenzo)
-            (catch Exception e
-              (log/error e "Reconciliation error")))))
-      ;; Ignore this--we can just wait for new offers
-      (offer-rescinded
-        [this driver offer-id]
-        (comment "TODO: Rescind the offer in fenzo"))
-      (framework-message
-        [this driver executor-id slave-id message]
-        (meters/mark! handle-framework-message-rate)
-        (try
-          (let [{:strs [task-id type] :as parsed-message} (json/read-str (String. ^bytes message "UTF-8"))]
-            (case type
-              "directory" (sandbox/update-sandbox sandbox-syncer-state parsed-message)
-              "heartbeat" (heartbeat/notify-heartbeat heartbeat-ch executor-id slave-id parsed-message)
-              (async-in-order-processing
-                task-id #(handle-framework-message conn message-handlers parsed-message))))
-          (catch Exception e
-            (log/error e "Unable to process framework message"
-                       {:executor-id executor-id, :message message, :slave-id slave-id}))))
-      (disconnected
-        [this driver]
-        (log/error "Disconnected from the previous master"))
-      ;; We don't care about losing slaves or executors--only tasks
-      (slave-lost [this driver slave-id])
-      (executor-lost [this driver executor-id slave-id status])
-      (error
-        [this driver message]
-        (meters/mark! mesos-error)
-        (log/error "Got a mesos error!!!!" message))
-      (resource-offers
-        [this driver raw-offers]
-        (log/debug "Got offers:" raw-offers)
-        (let [offers (map #(assoc % :compute-cluster compute-cluster) raw-offers)
-              pool->offers (group-by (fn [o] (plugins/select-pool pool-plugin/plugin o)) offers)
-              using-pools? (config/default-pool)]
-          (log/info "Offers by pool:" (pc/map-vals count pool->offers))
-          (run!
-            (fn [[pool-name offers]]
-              (let [offer-count (count offers)]
-                (if using-pools?
-                  (if-let [offers-chan (get pool->offers-chan pool-name)]
-                    (do
-                      (log/info "Processing" offer-count "offer(s) for known pool" pool-name)
-                      (receive-offers offers-chan match-trigger-chan driver pool-name offers))
-                    (do
-                      (log/warn "Declining" offer-count "offer(s) for non-existent pool" pool-name)
-                      (decline-offers-safe driver offers)))
-                  (if-let [offers-chan (get pool->offers-chan "no-pool")]
-                    (do
-                      (log/info "Processing" offer-count "offer(s) for pool" pool-name "(not using pools)")
-                      (receive-offers offers-chan match-trigger-chan driver pool-name offers))
-                    (do
-                      (log/error "Declining" offer-count "offer(s) for pool" pool-name "(missing no-pool offer chan)")
-                      (decline-offers-safe driver offers))))))
-            pool->offers)
-          (log/debug "Finished receiving offers for all pools")))
-      (status-update
-        [this driver status]
-        (meters/mark! handle-status-update-rate)
-        (let [task-id (-> status :task-id :value)]
-          (async-in-order-processing
-            task-id #(handle-status-update conn compute-cluster pool->fenzo sync-agent-sandboxes-fn status)))))))
-
 (defn create-datomic-scheduler
-  [{:keys [conn compute-cluster exit-code-syncer-state fenzo-fitness-calculator fenzo-floor-iterations-before-reset
+  [{:keys [conn compute-cluster fenzo-fitness-calculator fenzo-floor-iterations-before-reset
            fenzo-floor-iterations-before-warn fenzo-max-jobs-considered fenzo-scaleback good-enough-fitness
-           gpu-enabled? heartbeat-ch mea-culpa-failure-limit mesos-run-as-user agent-attributes-cache offer-incubate-time-ms
-           pool-name->pending-jobs-atom progress-config rebalancer-reservation-atom sandbox-syncer-state task-constraints
+           mea-culpa-failure-limit mesos-run-as-user agent-attributes-cache offer-incubate-time-ms
+           pool-name->pending-jobs-atom rebalancer-reservation-atom task-constraints
            trigger-chans]}]
 
   (persist-mea-culpa-failure-limit! conn mea-culpa-failure-limit)
 
-  (let [{:keys [match-trigger-chan progress-updater-trigger-chan rank-trigger-chan]} trigger-chans
+  (let [{:keys [match-trigger-chan rank-trigger-chan]} trigger-chans
         pools (pool/all-pools (d/db conn))
         pools' (if (-> pools count pos?)
                  pools
@@ -1552,17 +1442,9 @@
                         (assoc-in [:pool->offers-chan pool-name] offers-chan)
                         (assoc-in [:pool->resources-atom pool-name] resources-atom))))
                 {}
-                pools')
-        {:keys [batch-size]} progress-config
-        {:keys [progress-state-chan]} (progress/progress-update-transactor progress-updater-trigger-chan batch-size conn)
-        progress-aggregator-chan (progress/progress-update-aggregator progress-config progress-state-chan)
-        handle-progress-message (fn handle-progress-message-curried [progress-message-map]
-                                  (progress/handle-progress-message! progress-aggregator-chan progress-message-map))
-        handle-exit-code (fn handle-exit-code [task-id exit-code]
-                           (sandbox/aggregate-exit-code exit-code-syncer-state task-id exit-code))]
+                pools')]
     (start-jobs-prioritizer! conn pool-name->pending-jobs-atom task-constraints rank-trigger-chan)
-    {:scheduler (create-mesos-scheduler gpu-enabled? conn heartbeat-ch pool-name->fenzo pool->offers-chan
-                                        match-trigger-chan handle-exit-code handle-progress-message sandbox-syncer-state
-                                        compute-cluster)
+    {:pool-name->fenzo pool-name->fenzo
+     :pool->offers-chan pool->offers-chan
      :view-incubating-offers (fn get-resources-atom [p]
                                (deref (get pool->resources-atom p)))}))

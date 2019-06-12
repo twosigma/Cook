@@ -38,17 +38,34 @@
   (:import (java.util UUID)
            (org.apache.log4j ConsoleAppender Logger PatternLayout)))
 
+(defn create-dummy-mesos-compute-cluster
+  [compute-cluster-name framework-id db-id driver-atom]
+  (let [sandbox-syncer-state nil
+        exit-code-syncer-state nil
+        mesos-heartbeat-chan nil
+        trigger-chans nil]
+    (mcc/->MesosComputeCluster compute-cluster-name
+                               framework-id
+                               db-id
+                               driver-atom
+                               sandbox-syncer-state
+                               exit-code-syncer-state
+                               mesos-heartbeat-chan
+                               trigger-chans)))
+
 (defn fake-test-compute-cluster-with-driver
   "Create a test compute cluster with associated driver attached to it. Returns the compute cluster."
-  [conn compute-cluster-name driver]
-  {:pre [compute-cluster-name]}
-  (let [existing-compute-cluster (get @cc/cluster-name->compute-cluster-atom compute-cluster-name)
-        compute-cluster-mesos-map {:framework-id (str compute-cluster-name "-framework")
-                                   :compute-cluster-name compute-cluster-name}
-        compute-cluster (mcc/get-mesos-compute-cluster conn compute-cluster-mesos-map)]
-    (cc/register-compute-cluster! compute-cluster)
-    (cc/set-mesos-driver-atom-hack! compute-cluster driver)
-    compute-cluster))
+  ([conn compute-cluster-name driver]
+   (fake-test-compute-cluster-with-driver conn compute-cluster-name driver create-dummy-mesos-compute-cluster
+                                          (str compute-cluster-name "-framework")))
+  ([conn compute-cluster-name driver mesos-compute-cluster-factory framework-id]
+   {:pre [compute-cluster-name]}
+   (let [compute-cluster-mesos-map {:framework-id framework-id
+                                    :compute-cluster-name compute-cluster-name}
+         compute-cluster (mcc/get-mesos-compute-cluster conn mesos-compute-cluster-factory compute-cluster-mesos-map
+                                                        driver)]
+     (cc/register-compute-cluster! compute-cluster)
+     compute-cluster)))
 
 ; The name of the fake compute cluster to use.
 (def fake-test-compute-cluster-name "unittest-default-compute-cluster-name")

@@ -16,8 +16,7 @@
 (ns cook.compute-cluster
   (:require [clojure.tools.logging :as log]
             [cook.config :as config]
-            [datomic.api :as d]
-            [mesomatic.scheduler :as mesos]))
+            [datomic.api :as d]))
 
 (defprotocol ComputeCluster
   ; These methods should accept bulk data and process in batches.
@@ -28,10 +27,17 @@
   (db-id [this]
     "Get a database entity-id for this compute cluster (used for putting it into a task structure).")
 
+  (initialize-cluster [this pool->fenzo pool->offers-chan]
+    "Initializes the cluster. Returns a channel that will be delivered on when the cluster loses leadership.
+     We expect Cook to give up leadership when a compute cluster loses leadership, so leadership is not expected to be regained.
+     The channel result will be an exception if an error occurred, or a status message if leadership was lost normally.")
+
+  (current-leader? [this]
+    "Returns true if this cook instance is currently the leader for the compute cluster")
+
+  ; TODO - remove
   (get-mesos-driver-hack [this]
-    "Get the mesos driver. Hack; any funciton invoking this should be put within the compute-cluster implementation")
-  (set-mesos-driver-atom-hack! [this driver]
-    "Hack to overwrite the driver. Used until we fix the initialization order of compute-cluster"))
+    "Get the mesos driver. Hack; any function invoking this should be put within the compute-cluster implementation"))
 
 ; Internal method
 (defn write-compute-cluster
