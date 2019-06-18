@@ -2796,7 +2796,15 @@ class CookTest(util.CookTest):
 
     @unittest.skipUnless(util.supports_mesos_containerizer_images(), "Requires support for docker images in mesos containerizer")
     def test_mesos_containerizer_image_support(self):
-        job_uuid, resp = util.submit_job(self.cook_url, executor='mesos', container={'type': 'mesos', 'mesos': {'image': 'alpine'}})
+        container = {'type': 'mesos', 'mesos': {'image': 'alpine'}}
+        settings = util.settings(self.cook_url)
+        default_volumes = util.get_in(settings, 'container-defaults', 'volumes')
+        if default_volumes is not None:
+            volumes = [{'container-path': v['container-path'], 'host-path': '/tmp'}
+                       for v in default_volumes]
+            self.logger.info(f'Setting override volumes {volumes}')
+            container['volumes'] = volumes
+        job_uuid, resp = util.submit_job(self.cook_url, executor='mesos', container=container)
         try:
             self.assertEqual(201, resp.status_code, resp.text)
             instance = util.wait_for_instance(self.cook_url, job_uuid, status='success')
@@ -2838,3 +2846,36 @@ class CookTest(util.CookTest):
                 util.wait_for_instance(self.cook_url, uuid, status='success')
         finally:
             util.kill_jobs(self.cook_url, job_uuids, assert_response=False)
+
+
+    @unittest.skipUnless(util.docker_tests_enabled(), "Requires docker support")
+    def test_default_container_volumes(self):
+        settings = util.settings(self.cook_url)
+        default_volumes = util.get_in(settings, 'container-defaults', 'volumes')
+        if default_volumes is None or len(default_volumes) == 0:
+            unittest.skip('Requires a default volume configured')
+        default_volume = default_volumes[0]
+        if not os.path.exists(default_volume['host-path']):
+            os.mkdir(default_volume['host-path'])
+        image = util.docker_image()
+        file_name = str(uuid.uuid4())
+        container_file = os.path.join(default_volume['container-path'], file_name)
+        host_file = os.path.join(default_volume['host-path'], file_name)
+        job_uuid, resp = util.submit_job(self.cook_url,
+                                         command=f'echo "test_default_container_volumes" >> {container_file}',
+                                         executor='mesos',
+                                         container={'type': 'DOCKER',
+                                                    'docker': {'image': image}})
+        self.assertEqual(resp.status_code, 201, resp.content)
+        try:
+            util.wait_for_job(self.cook_url, job_uuid, 'completed')
+            def check_host_path():
+                exists = os.path.exists(host_file)
+                self.logger.info(f'Path {host_file} exists: {exists}')
+                return exists
+            util.wait_until(check_host_path, lambda exists: exists)
+            self.assertTrue(os.path.exists(host_file), f'Expected container to write {host_file}')
+            with open(host_file, 'r') as f:
+                self.assertEqual('test_default_container_volumes', f.readline().strip())
+        finally:
+            util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)

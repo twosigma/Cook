@@ -77,10 +77,30 @@
             (assoc "EXECUTOR_PROGRESS_OUTPUT_FILE_ENV" "EXECUTOR_PROGRESS_OUTPUT_FILE_NAME"
                    "EXECUTOR_PROGRESS_OUTPUT_FILE_NAME" progress-output-file))))
 
+(defn merge-container-defaults
+  "Takes a job container specification and applies any defaults from the config.
+   Currently only supports volumes."
+  [container]
+  (when container
+    (let [{:keys [volumes]} (config/container-defaults)
+          get-path (fn [{:keys [container-path host-path]}]
+                     (or container-path
+                         host-path))]
+      (cond-> container
+        volumes
+        (update :volumes (fn [container-volumes]
+                           (let [volumes-to-add (filter (fn [default-volume]
+                                                          (not-any? (fn [container-volume]
+                                                                      (.startsWith (get-path default-volume)
+                                                                                   (get-path container-volume)))
+                                                                    container-volumes))
+                                                        volumes)]
+                             (into (vec container-volumes) volumes-to-add))))))))
+
 (defn job->executor-key
   "Extract the executor key value from the job"
-  [db job-ent]
-  (let [container (util/job-ent->container db job-ent)
+  [job-ent]
+  (let [container (util/job-ent->container job-ent)
         ;; If the custom-executor attr isn't set, we default to using a custom
         ;; executor in order to support jobs submitted before we added this field
         custom-executor? (use-custom-executor? job-ent)
@@ -108,9 +128,11 @@
 (defn job->task-metadata
   "Takes a job entity, returns task metadata"
   [db mesos-run-as-user job-ent task-id]
-  (let [container (util/job-ent->container db job-ent)
+  (let [container (-> job-ent
+                      util/job-ent->container
+                      merge-container-defaults)
         cook-executor? (use-cook-executor? job-ent)
-        executor-key (job->executor-key db job-ent)
+        executor-key (job->executor-key job-ent)
         executor (executor-key->executor executor-key)
         resources (util/job-ent->resources job-ent)
         group-uuid (util/job-ent->group-uuid job-ent)

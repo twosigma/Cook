@@ -25,7 +25,8 @@
             [cook.util :as util]
             [mount.core :as mount]
             [plumbing.core :refer (fnk)]
-            [plumbing.graph :as graph])
+            [plumbing.graph :as graph]
+            [schema.core :as s])
   (:import (com.google.common.io Files)
            (com.netflix.fenzo VMTaskFitnessCalculator)
            (java.io File)
@@ -138,13 +139,15 @@
                             {:max-size 5000
                              :ttl-ms (* 60 1000)}
                             agent-query-cache))
+     :container-defaults (fnk [[:config {container-defaults {}}]]
+                           container-defaults)
      :cors-origins (fnk [[:config {cors-origins nil}]]
                      (map re-pattern (or cors-origins [])))
      :exit-code-syncer (fnk [[:config {exit-code-syncer nil}]]
-                       (merge
-                         {:publish-batch-size 100
-                          :publish-interval-ms 2500}
-                         exit-code-syncer))
+                         (merge
+                           {:publish-batch-size 100
+                            :publish-interval-ms 2500}
+                           exit-code-syncer))
      :sandbox-syncer (fnk [[:config {sandbox-syncer nil}]]
                        (merge
                          {:max-consecutive-sync-failure 15
@@ -287,9 +290,9 @@
      :mea-culpa-failure-limit (fnk [[:config {scheduler nil}]]
                                 (:mea-culpa-failure-limit scheduler))
      :max-over-quota-jobs (fnk [[:config {scheduler nil}]]
-                               (or (when scheduler
-                                     (:max-over-quota-jobs scheduler))
-                                   100))
+                            (or (when scheduler
+                                  (:max-over-quota-jobs scheduler))
+                                100))
      :fenzo-max-jobs-considered (fnk [[:config {scheduler nil}]]
                                   (when scheduler
                                     (or (:fenzo-max-jobs-considered scheduler) 1000)))
@@ -404,19 +407,19 @@
                                         (merge {:agent-start-grace-period-mins 10}
                                                estimated-completion-constraint))
      :data-local-fitness-calculator (fnk [[:config {data-local {}}]]
-                                         (let [fitness-calculator (get data-local :fitness-calculator {})]
-                                           {:auth (get fitness-calculator :auth nil)
-                                            :base-calculator (config-string->fitness-calculator
-                                                              (get fitness-calculator :base-calculator  "com.netflix.fenzo.plugins.BinPackingFitnessCalculators/cpuMemBinPacker"))
-                                            :batch-size (get fitness-calculator :batch-size 500)
-                                            :cache-ttl-ms (get fitness-calculator :cache-ttl-ms 300000)
-                                            :cost-endpoint (get fitness-calculator :cost-endpoint nil)
-                                            :data-locality-weight (get fitness-calculator :data-locality-weight 0.95)
-                                            :launch-wait-seconds (get fitness-calculator :launch-wait-seconds 60)
-                                            :update-interval-ms (get fitness-calculator :update-interval-ms nil)}))
+                                      (let [fitness-calculator (get data-local :fitness-calculator {})]
+                                        {:auth (get fitness-calculator :auth nil)
+                                         :base-calculator (config-string->fitness-calculator
+                                                            (get fitness-calculator :base-calculator "com.netflix.fenzo.plugins.BinPackingFitnessCalculators/cpuMemBinPacker"))
+                                         :batch-size (get fitness-calculator :batch-size 500)
+                                         :cache-ttl-ms (get fitness-calculator :cache-ttl-ms 300000)
+                                         :cost-endpoint (get fitness-calculator :cost-endpoint nil)
+                                         :data-locality-weight (get fitness-calculator :data-locality-weight 0.95)
+                                         :launch-wait-seconds (get fitness-calculator :launch-wait-seconds 60)
+                                         :update-interval-ms (get fitness-calculator :update-interval-ms nil)}))
      :plugins (fnk [[:config {plugins {}}]]
-                 (let [{:keys [job-launch-filter job-submission-validator
-                               pool-selection]} plugins]
+                (let [{:keys [job-launch-filter job-submission-validator
+                              pool-selection]} plugins]
                   (merge plugins
                          {:job-launch-filter
                           (merge
@@ -538,3 +541,7 @@
 (defn max-over-quota-jobs
   []
   (get-in config [:settings :max-over-quota-jobs]))
+
+(defn container-defaults
+  []
+  (get-in config [:settings :container-defaults]))

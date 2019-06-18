@@ -16,6 +16,9 @@
                         :admins #{"root" "travis"}
                         ;; users that are allowed to do things on behalf of others
                         :impersonators #{"poser" "travis"}}
+ :container-defaults {:volumes [{:host-path "/tmp/cook-integration-mount"
+                                 :container-path "/mnt/cook-integration"
+                                 :mode "RW"}]}
  :cors-origins ["https?://cors.example.com"]
  :data-local {:fitness-calculator {:cache-ttl-ms 20000
                                    :cost-endpoint #config/env "DATA_LOCAL_ENDPOINT"

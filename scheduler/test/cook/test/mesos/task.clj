@@ -3,6 +3,7 @@
   (:require [clojure.data.json :as json]
             [clojure.edn :as edn]
             [clojure.string :as str]
+            [cook.config :as config]
             [cook.scheduler.scheduler :as sched]
             [cook.mesos.task :as task]
             [cook.test.testutil :as tu]
@@ -875,3 +876,57 @@
                           :job/progress-sample-interval-ms 5000000}]
              (with-redefs [cook.config/executor-config (constantly executor-config)]
                (task/build-executor-environment job-ent)))))))
+
+(deftest test-merge-container-defaults
+  (testing "does not add docker info if missing"
+    (with-redefs [config/container-defaults (constantly {:docker {:parameters {"foo" "bar"}}})]
+      (is (= {:mesos {:image "baz"}} (task/merge-container-defaults {:mesos {:image "baz"}})))))
+  (testing "adds volumes even when missing"
+    (let [volumes [{:container-path "/foo"
+                    :host-path "/foo"}]]
+      (with-redefs [config/container-defaults (constantly {:volumes volumes})]
+        (is (= {:mesos {:image "baz"}
+                :volumes volumes}
+               (task/merge-container-defaults {:mesos {:image "baz"}}))))))
+  (testing "merges volumes"
+    (with-redefs [config/container-defaults (constantly {:volumes [{:host-path "/h/a"
+                                                                    :container-path "/c/a"
+                                                                    :mode "rw"}
+                                                                   {:host-path "/mnt/app/data"
+                                                                    :mode "r"}]})]
+      (is (= nil (task/merge-container-defaults nil)))
+      (is (= {:docker {:image "foo"}
+              :volumes [{:host-path "/h/a"
+                         :container-path "/c/a"
+                         :mode "rw"}
+                        {:host-path "/mnt/app/data"
+                         :mode "r"}]}
+             (task/merge-container-defaults {:docker {:image "foo"}})))
+      (is (= {:docker {:image "foo"}
+              :volumes [{:host-path "/mnt/app"
+                         :mode "rw"}
+                        {:host-path "/h/a"
+                         :container-path "/c/a"
+                         :mode "rw"}]}
+             (task/merge-container-defaults {:docker {:image "foo"}
+                                             :volumes [{:host-path "/mnt/app"
+                                                        :mode "rw"}]})))
+      (is (= {:docker {:image "foo"}
+              :volumes [{:host-path "/diff/a"
+                         :container-path "/c/a"}
+                        {:host-path "/mnt/app/data"
+                         :mode "r"}]}
+             (task/merge-container-defaults {:docker {:image "foo"}
+                                             :volumes [{:host-path "/diff/a"
+                                                        :container-path "/c/a"}]})))
+      (is (= {:docker {:image "foo"}
+              :volumes [{:host-path "/diff/a"
+                         :container-path "/c/a/b"}
+                        {:host-path "/h/a"
+                         :container-path "/c/a"
+                         :mode "rw"}
+                        {:host-path "/mnt/app/data"
+                         :mode "r"}]}
+             (task/merge-container-defaults {:docker {:image "foo"}
+                                             :volumes [{:host-path "/diff/a"
+                                                        :container-path "/c/a/b"}]}))))))
