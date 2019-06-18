@@ -2840,66 +2840,36 @@ class CookTest(util.CookTest):
             util.kill_jobs(self.cook_url, job_uuids, assert_response=False)
 
 
-    @unittest.skipUnless(util.has_docker_service() and util.docker_tests_enabled(), "Requires `docker inspect`")
+    @unittest.skipUnless(util.docker_tests_enabled(), "Requires docker support")
     def test_default_container_volumes(self):
         settings = util.settings(self.cook_url)
         default_volumes = util.get_in(settings, 'container-defaults', 'volumes')
         if default_volumes is None or len(default_volumes) == 0:
             unittest.skip('Requires a default volume configured')
         default_volume = default_volumes[0]
+        if not os.path.exists(default_volume['host-path']):
+            os.mkdir(default_volume['host-path'])
         image = util.docker_image()
+        file_name = str(uuid.uuid4())
+        container_file = os.path.join(default_volume['container-path'], file_name)
+        host_file = os.path.join(default_volume['host-path'], file_name)
         job_uuid, resp = util.submit_job(self.cook_url,
-                                         command='sleep 300',
+                                         command=f'echo "test_default_container_volumes" >> {container_file}',
+                                         executor='mesos',
                                          container={'type': 'DOCKER',
                                                     'docker': {'image': image}})
         self.assertEqual(resp.status_code, 201, resp.content)
-        instance = util.wait_for_instance(self.cook_url, job_uuid, status='running')
-        self.logger.debug('instance: %s' % instance)
         try:
-            # Get agent host/port
-            state = util.get_mesos_state(self.mesos_url)
-            agent = [agent for agent in state['slaves']
-                       if agent['hostname'] == instance['hostname']][0]
-
-            # Get container ID from agent
-            def agent_query():
-                return util.session.get(util.get_agent_endpoint(state, instance['hostname']))
-
-            def contains_executor_predicate(agent_response):
-                agent_state = agent_response.json()
-                executor = util.get_executor(agent_state, instance['executor_id'])
-                if executor is None:
-                    self.logger.warning(f"Could not find executor {instance['executor_id']} in agent state")
-                    self.logger.warning(f"agent_state: {agent_state}")
-                return executor is not None
-
-            agent_state = util.wait_until(agent_query, contains_executor_predicate).json()
-            executor = util.get_executor(agent_state, instance['executor_id'])
-
-            container_name = 'mesos-%s.%s' % (agent['id'], executor['container'])
-            self.logger.debug(f'Container name: {container_name}')
-
-            @retry(stop_max_delay=60000, wait_fixed=1000)  # Wait for docker container to start
-            def get_docker_info():
-                job = util.load_job(self.cook_url, job_uuid)
-                self.logger.info(f'Job status is {job["status"]}: {job}')
-                containers = subprocess.check_output(['docker', 'ps', '--all', '--last', '10']).decode('utf-8')
-                self.logger.info(f'Last 10 containers: {containers}')
-                docker_ps = ['docker', 'ps', '--all', '--filter', f'name={container_name}', '--format', '{{.ID}}']
-                container_id = subprocess.check_output(docker_ps).decode('utf-8').strip()
-                self.logger.debug(f'Container ID: [{container_id}]')
-                container_json = subprocess.check_output(['docker', 'inspect', container_id]).decode('utf-8')
-                self.logger.debug(f'Container JSON: {container_json}')
-                return json.loads(container_json)
-
-            docker_info = get_docker_info()
-            mounts = docker_info[0]['Mounts']
-            self.logger.debug('mounts: %s' % mounts)
-            self.assertTrue(any([m['Source'] == default_volume['host-path'] and m['Destination'] == default_volume['container-path']
-                                 for m in mounts]), f'Unable to find Source {default_volume["host-path"]} and Destination {default_volume["container-path"]} in {mounts}')
+            util.wait_for_job(self.cook_url, job_uuid, 'completed')
+            def check_host_path():
+                exists = os.path.exists(host_file)
+                self.logger.info(f'Path {host_file} exists: {exists}')
+                return exists
+            util.wait_until(check_host_path, lambda exists: exists)
+            self.assertTrue(os.path.exists(host_file), f'Expected container to write {host_file}')
+            with open(host_file, 'r') as f:
+                self.assertEqual('test_default_container_volumes', f.readline().strip())
         finally:
-            job = util.load_job(self.cook_url, job_uuid)
-            self.logger.info(f'Job status is {job["status"]}: {job}')
-            util.session.delete('%s/rawscheduler?job=%s' % (self.cook_url, job_uuid))
-            mesos.dump_sandbox_files(util.session, instance, job)
-
+            if os.path.exists(host_file):
+                os.remove(host_file)
+            util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)

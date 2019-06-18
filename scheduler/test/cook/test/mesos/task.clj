@@ -918,4 +918,15 @@
                          :mode "r"}]}
              (task/merge-container-defaults {:docker {:image "foo"}
                                              :volumes [{:host-path "/diff/a"
-                                                        :container-path "/c/a"}]}))))))
+                                                        :container-path "/c/a"}]})))
+      (is (= {:docker {:image "foo"}
+              :volumes [{:host-path "/diff/a"
+                         :container-path "/c/a/b"}
+                        {:host-path "/h/a"
+                         :container-path "/c/a"
+                         :mode "rw"}
+                        {:host-path "/mnt/app/data"
+                         :mode "r"}]}
+             (task/merge-container-defaults {:docker {:image "foo"}
+                                             :volumes [{:host-path "/diff/a"
+                                                        :container-path "/c/a/b"}]}))))))

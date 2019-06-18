@@ -78,21 +78,24 @@
                    "EXECUTOR_PROGRESS_OUTPUT_FILE_NAME" progress-output-file))))
 
 (defn merge-container-defaults
-  "Takes a job container specification and applies any defaults from the config"
+  "Takes a job container specification and applies any defaults from the config.
+   Currently only supports volumes."
   [container]
   (when container
     (let [{:keys [volumes]} (config/container-defaults)
-          get-path (fn [volume] (or (:container-path volume)
-                                    (:host-path volume)))]
+          get-path (fn [{:keys [container-path host-path]}]
+                     (or container-path
+                         host-path))]
       (cond-> container
-              volumes
-              (update :volumes (fn [container-volumes]
-                                 (let [volumes-to-add (filter (fn [default-volume]
-                                                              (not-any? (fn [container-volume]
-                                                                          (.startsWith (get-path default-volume)
-                                                                                       (get-path container-volume))) container-volumes))
-                                                            volumes)]
-                                   (into (vec container-volumes) volumes-to-add))))))))
+        volumes
+        (update :volumes (fn [container-volumes]
+                           (let [volumes-to-add (filter (fn [default-volume]
+                                                          (not-any? (fn [container-volume]
+                                                                      (.startsWith (get-path default-volume)
+                                                                                   (get-path container-volume)))
+                                                                    container-volumes))
+                                                        volumes)]
+                             (into (vec container-volumes) volumes-to-add))))))))
 
 (defn job->executor-key
   "Extract the executor key value from the job"
