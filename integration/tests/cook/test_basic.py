@@ -2796,7 +2796,15 @@ class CookTest(util.CookTest):
 
     @unittest.skipUnless(util.supports_mesos_containerizer_images(), "Requires support for docker images in mesos containerizer")
     def test_mesos_containerizer_image_support(self):
-        job_uuid, resp = util.submit_job(self.cook_url, executor='mesos', container={'type': 'mesos', 'mesos': {'image': 'alpine'}})
+        container = {'type': 'mesos', 'mesos': {'image': 'alpine'}}
+        settings = util.settings(self.cook_url)
+        default_volumes = util.get_in(settings, 'container-defaults', 'volumes')
+        if default_volumes is not None:
+            volumes = [{'container-path': v['container-path'], 'host-path': '/tmp'}
+                       for v in default_volumes]
+            self.logger.info(f'Setting override volumes {volumes}')
+            container['volumes'] = volumes
+        job_uuid, resp = util.submit_job(self.cook_url, executor='mesos', container=container)
         try:
             self.assertEqual(201, resp.status_code, resp.text)
             instance = util.wait_for_instance(self.cook_url, job_uuid, status='success')
@@ -2870,6 +2878,4 @@ class CookTest(util.CookTest):
             with open(host_file, 'r') as f:
                 self.assertEqual('test_default_container_volumes', f.readline().strip())
         finally:
-            if os.path.exists(host_file):
-                os.remove(host_file)
             util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
