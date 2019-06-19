@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.32.0] - 2019-06-19
+### Added
+- Support for default container volumes, from @pschorf
+### Changed
+- Limit number of jobs eligible for matching for out of quota users, from @pschorf
+
 ## [1.31.0] - 2019-05-09
 ### Added
 - Compute cluster on task objects, from @scrosby
