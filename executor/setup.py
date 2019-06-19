@@ -27,5 +27,8 @@ setup(
         'console_scripts': [
             'cook-executor = cook.__main__:main'
         ]
-    }
+    },
+    classifiers=[
+        "Programming Language :: Python :: 3.5"
+    ]
 )
