@@ -187,14 +187,14 @@
                                     (cook.scheduler.scheduler/cancelled-task-killer mesos-datomic-conn (cc/get-mesos-driver-hack compute-cluster)
                                                                                     cancelled-task-trigger-chan)
                                     (cook.mesos.heartbeat/start-heartbeat-watcher! mesos-datomic-conn mesos-heartbeat-chan)
-                                    (cook.rebalancer/start-rebalancer! {:config rebalancer-config
-                                                                              :conn mesos-datomic-conn
-                                                                              :driver (cc/get-mesos-driver-hack compute-cluster)
-                                                                              :agent-attributes-cache agent-attributes-cache
-                                                                              :pool-name->pending-jobs-atom pool-name->pending-jobs-atom
-                                                                              :rebalancer-reservation-atom rebalancer-reservation-atom
-                                                                              :trigger-chan rebalancer-trigger-chan
-                                                                              :view-incubating-offers view-incubating-offers})
+                                    (cook.rebalancer/start-rebalancer! {:compute-cluster compute-cluster
+                                                                        :config rebalancer-config
+                                                                        :conn mesos-datomic-conn
+                                                                        :agent-attributes-cache agent-attributes-cache
+                                                                        :pool-name->pending-jobs-atom pool-name->pending-jobs-atom
+                                                                        :rebalancer-reservation-atom rebalancer-reservation-atom
+                                                                        :trigger-chan rebalancer-trigger-chan
+                                                                        :view-incubating-offers view-incubating-offers})
                                     (when (seq optimizer-config)
                                       (cook.scheduler.optimizer/start-optimizer-cycles! (fn get-queue []
                                                                                       ;; TODO Use filter of queue that scheduler uses to filter to considerable.
