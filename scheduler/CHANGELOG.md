@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.32.1] - 2019-06-20
+### Fixed
+- Fixed rebalancer bug, from @pschorf
+
 ## [1.32.0] - 2019-06-19
 ### Added
 - Support for default container volumes, from @pschorf
