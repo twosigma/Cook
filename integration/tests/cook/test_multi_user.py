@@ -432,7 +432,8 @@ class MultiUserCookTest(util.CookTest):
                 def job_was_preempted(job):
                     for instance in job['instances']:
                         self.logger.debug(f'Checking if instance was preempted: {instance}')
-                        if instance.get('reason_string') == 'Preempted by rebalancer':
+                        # Rebalancing marks the instance failed eagerly, so also wait for end_time to ensure it was actually killed
+                        if instance.get('reason_string') == 'Preempted by rebalancer' and instance.get('end_time') is not None:
                             return True
                     self.logger.info(f'Job has not been preempted: {job}')
                     return False
