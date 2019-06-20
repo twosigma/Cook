@@ -2853,7 +2853,7 @@ class CookTest(util.CookTest):
         settings = util.settings(self.cook_url)
         default_volumes = util.get_in(settings, 'container-defaults', 'volumes')
         if default_volumes is None or len(default_volumes) == 0:
-            unittest.skip('Requires a default volume configured')
+            self.skipTest('Requires a default volume configured')
         default_volume = default_volumes[0]
         if not os.path.exists(default_volume['host-path']):
             os.mkdir(default_volume['host-path'])
