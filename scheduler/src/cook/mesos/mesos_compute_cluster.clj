@@ -250,7 +250,7 @@
          framework-id]}
   (let [query-result
         (d/q '[:find [?c]
-               :in $ ?cluster-name? ?mesos-id?
+               :in $ ?cluster-name? ?framework-id?
                :where
                [?c :compute-cluster/type :compute-cluster.type/mesos]
                [?c :compute-cluster/cluster-name ?cluster-name?]
@@ -258,69 +258,37 @@
              unfiltered-db compute-cluster-name framework-id)]
     (first query-result)))
 
-; Internal method.
-(defn get-mesos-compute-cluster
-  "Process one mesos cluster specification, returning the entity id of the corresponding compute-cluster,
-  creating the cluster if it does not exist. Warning: Not idempotent. Only call once "
-  ([conn mesos-compute-cluster-factory mesos-cluster]
-    (get-mesos-compute-cluster conn mesos-compute-cluster-factory mesos-cluster nil))
-  ([conn mesos-compute-cluster-factory {:keys [compute-cluster-name framework-id] :as mesos-cluster} driver] ; driver argument for unit tests
-   {:pre [compute-cluster-name
-          framework-id]}
-   (let [cluster-entity-id (get-mesos-cluster-entity-id (d/db conn) mesos-cluster)]
-     (when-not cluster-entity-id
-       (cc/write-compute-cluster conn (mesos-cluster->compute-cluster-map-for-datomic mesos-cluster)))
-     (mesos-compute-cluster-factory compute-cluster-name
-                                   framework-id
-                                   (or cluster-entity-id (get-mesos-cluster-entity-id (d/db conn) mesos-cluster))
-                                   (atom driver)))))
-
-(defn- get-mesos-clusters-from-config
-  "Get all of the mesos clusters defined in the configuration.
-  In config.edn, we put all of the mesos keys under one toplevel dictionary.
-
-  E.g.:
-
-  {:failover-timeout-ms nil
-   :framework-id #config/env \"COOK_FRAMEWORK_ID\"
-   :master #config/env \"MESOS_MASTER\"
-   ...
-   }
-
-  However, in config.clj, we split this up into lots of different keys at the toplevel:
-
-  :mesos-master (fnk [[:config {mesos nil}]]
-      ...)
-  :mesos-framework-id (fnk [[:config {mesos ....
-
-  This function undoes this shattering of the :mesos {...} into separate keys that
-  occurs in config.clj. Long term, we need to fix config.clj to not to that, probably
-  as part of global cook, at which time, this probably won't need to exist. Until then however....."
-  [{:keys [mesos-compute-cluster-name mesos-framework-id]}]
-  [{:compute-cluster-name mesos-compute-cluster-name :framework-id mesos-framework-id}])
-
-
-(defn setup-compute-cluster-map-from-config
-  "Setup the cluster-map configs, linking a cluster name to the associated metadata needed
-  to represent/process it."
-  [conn settings create-mesos-compute-cluster]
-  (let [compute-clusters (->> (get-mesos-clusters-from-config settings)
-                              (map (partial get-mesos-compute-cluster conn create-mesos-compute-cluster))
-                              (map cc/register-compute-cluster!))]
-    (doall compute-clusters)))
-
-
-; A hack to store the mesos cluster, until we refactor the code so that we support multiple clusters. In the long term future
-; this is probably replaced with a function from driver->cluster-id, or the cluster name is propagated by function arguments and
-; closed over.
-(defn mesos-cluster-hack
-  "A hack to store the mesos cluster, until we refactor the code so that we support multiple clusters. In the
-  long term future the cluster is propagated by function arguments and closed over."
-  []
-  {:post [%]} ; Never returns nil.
-  (-> config/config
-      :settings
-      :mesos-compute-cluster-name
-      cc/compute-cluster-name->ComputeCluster))
-
+(defn get-or-create-cluster-entity-id
+  [conn compute-cluster-name framework-id]
+  (let [compute-cluster-entity-id (get-mesos-cluster-entity-id (d/db conn)
+                                                               {:compute-cluster-name compute-cluster-name
+                                                                :framework-id framework-id})]
+    (if compute-cluster-entity-id
+      compute-cluster-entity-id
+      (cc/write-compute-cluster conn (mesos-cluster->compute-cluster-map-for-datomic {:compute-cluster-name compute-cluster-name
+                                                                                      :framework-id framework-id})))))
+(defn factory-fn
+  [{:keys [compute-cluster-name
+           framework-id]}
+   {:keys [exit-code-syncer-state
+           mesos-heartbeat-chan
+           sandbox-syncer-state
+           trigger-chans]}]
+  (try
+    (let [conn cook.datomic/conn
+          cluster-entity-id (get-or-create-cluster-entity-id conn compute-cluster-name framework-id)
+          mesos-compute-cluster (->MesosComputeCluster compute-cluster-name
+                                                       framework-id
+                                                       cluster-entity-id
+                                                       (atom nil)
+                                                       sandbox-syncer-state
+                                                       exit-code-syncer-state
+                                                       mesos-heartbeat-chan
+                                                       trigger-chans)]
+      (log/info "Registering compute cluster" mesos-compute-cluster)
+      (cc/register-compute-cluster! mesos-compute-cluster)
+      mesos-compute-cluster)
+    (catch Throwable t
+      (log/error t "Failed to construct mesos compute cluster")
+      (throw t))))
 

@@ -15,6 +15,9 @@
  :container-defaults {:volumes [{:host-path "/tmp/cook-integration-mount"
                                  :container-path "/mnt/cook-integration"
                                  :mode "RW"}]}
+ :compute-clusters [{:factory-fn cook.mesos.mesos-compute-cluster/factory-fn
+                     :config {:framework-id #config/env "COOK_FRAMEWORK_ID"
+                              :compute-cluster-name "local-mesos"}}]
  :cors-origins ["https?://cors.example.com"]
  :data-local {:fitness-calculator {:cache-ttl-ms 60000
                                    :cost-endpoint #config/env "DATA_LOCAL_ENDPOINT"
@@ -46,7 +49,6 @@
  :metrics {:jmx true
            :user-metrics-interval-seconds 60}
  :mesos {:failover-timeout-ms nil ; When we close the instance of Cook, all its tasks are killed by Mesos
-         :framework-id #config/env "COOK_FRAMEWORK_ID"
          :leader-path "/cook-scheduler"
          :master #config/env "MESOS_MASTER"}
  :nrepl {:enabled? true

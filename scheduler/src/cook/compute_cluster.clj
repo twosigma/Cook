@@ -44,9 +44,11 @@
   "Create a missing compute-cluster for one that's not yet in the database."
   [conn compute-cluster]
   (log/info "Installing a new compute cluster in datomic for " compute-cluster)
-  @(d/transact
-     conn
-     [(assoc compute-cluster :db/id (d/tempid :db.part/user))]))
+  (let [tempid (d/tempid :db.part/user)
+        result @(d/transact
+                 conn
+                 [(assoc compute-cluster :db/id tempid)])]
+    (d/resolve-tempid (d/db conn) (:tempids result) tempid)))
 
 ; Internal variable
 (def cluster-name->compute-cluster-atom (atom {}))
@@ -77,8 +79,10 @@
   TODO: Will want this to be configurable when we support multiple mesos clusters."
   []
   {:post [%]} ; Never returns nil.
-  (-> config/config
-      :settings
-      :mesos-compute-cluster-name
-      compute-cluster-name->ComputeCluster))
+  (let [first-cluster-name (->> config/config
+                                :settings
+                                :compute-clusters
+                                (map (fn [{:keys [config]}] (:compute-cluster-name config)))
+                                first)]
+    (compute-cluster-name->ComputeCluster first-cluster-name)))
 

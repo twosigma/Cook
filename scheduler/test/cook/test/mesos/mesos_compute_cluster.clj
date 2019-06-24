@@ -1,11 +1,13 @@
 (ns cook.test.mesos.mesos-compute-cluster
-  (:require [clojure.test :refer :all]
-            [cook.scheduler.scheduler :as sched]
+  (:require [clojure.data.json :as json]
+            [clojure.test :refer :all]
+            [cook.mesos.heartbeat :as heartbeat]
             [cook.mesos.mesos-compute-cluster :as mcc]
-            [mesomatic.types :as mtypes]
-            [clojure.data.json :as json]
             [cook.mesos.sandbox :as sandbox]
-            [cook.mesos.heartbeat :as heartbeat])
+            [cook.scheduler.scheduler :as sched]
+            [cook.test.testutil :as testutil]
+            [datomic.api :as d]
+            [mesomatic.types :as mtypes])
   (:import (java.util.concurrent CountDownLatch TimeUnit)))
 
 (deftest test-in-order-status-update-processing
@@ -116,3 +118,33 @@
         (is (= [foo bar] (->> "T2" (get @messages-store) vec)))
         (is (= [foo bar fie] (->> "T3" (get @messages-store) vec)))
         (is (= [foo] (->> "T4" (get @messages-store) vec)))))))
+
+(deftest test-get-or-create-entity-id
+  (let [conn (testutil/restore-fresh-database! "datomic:mem://compute-cluster-factory")
+        mesos-1 {:compute-cluster-name "mesos-1" :framework-id "mesos-1a"}
+        mesos-2 {:compute-cluster-name "mesos-2" :framework-id "mesos-1a"}]
+    (testing "Start with no clusters"
+      (is (= nil (mcc/get-mesos-cluster-entity-id (d/db conn) mesos-1)))
+      (is (= nil (mcc/get-mesos-cluster-entity-id (d/db conn) mesos-2))))
+
+    (testing "Create a cluster. Should be a new cluster"
+      (let [id1a (mcc/get-or-create-cluster-entity-id conn (:compute-cluster-name mesos-1) (:framework-id mesos-1))]
+        ; This should create one cluster in the DB, but not the other.
+        (is (not= nil (mcc/get-mesos-cluster-entity-id (d/db conn) mesos-1)))
+        (is (= nil (mcc/get-mesos-cluster-entity-id (d/db conn) mesos-2)))
+        (let [id2a (mcc/get-or-create-cluster-entity-id conn (:compute-cluster-name mesos-2) (:framework-id mesos-2))
+              id1b (mcc/get-or-create-cluster-entity-id conn (:compute-cluster-name mesos-1) (:framework-id mesos-1))
+              id2b (mcc/get-or-create-cluster-entity-id conn (:compute-cluster-name mesos-2) (:framework-id mesos-2))]
+          ; Should see both clusters created.
+          (is (not= nil (mcc/get-mesos-cluster-entity-id (d/db conn) mesos-1)))
+          (is (not= nil (mcc/get-mesos-cluster-entity-id (d/db conn) mesos-2)))
+          (is (not= (mcc/get-mesos-cluster-entity-id (d/db conn) mesos-1)
+                    (mcc/get-mesos-cluster-entity-id (d/db conn) mesos-2)))
+          ; Now, we should only have two unique db-id's.
+          (is (= id1a id1b))
+          (is (= id2a id2b))
+
+          (is (and id1a (< 0 id1a)))
+          (is (and id2a (< 0 id2a)))
+          (is (and id1b (< 0 id1b)))
+          (is (and id2b (< 0 id2b))))))))

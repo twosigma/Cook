@@ -60,10 +60,8 @@
                                           (str compute-cluster-name "-framework")))
   ([conn compute-cluster-name driver mesos-compute-cluster-factory framework-id]
    {:pre [compute-cluster-name]}
-   (let [compute-cluster-mesos-map {:framework-id framework-id
-                                    :compute-cluster-name compute-cluster-name}
-         compute-cluster (mcc/get-mesos-compute-cluster conn mesos-compute-cluster-factory compute-cluster-mesos-map
-                                                        driver)]
+   (let [entity-id (mcc/get-or-create-cluster-entity-id conn compute-cluster-name framework-id)
+         compute-cluster (mesos-compute-cluster-factory compute-cluster-name framework-id entity-id (atom driver))]
      (cc/register-compute-cluster! compute-cluster)
      compute-cluster)))
 
@@ -82,9 +80,11 @@
     (or compute-cluster (cc/compute-cluster-name->ComputeCluster cluster-name))))
 
 (let [minimal-config {:authorization {:one-user ""}
+                      :compute-clusters [{:factory-fn cook.mesos.mesos-compute-cluster/factory-fn
+                                          :config {:compute-cluster-name fake-test-compute-cluster-name}}]
                       :database {:datomic-uri ""}
                       :log {}
-                      :mesos {:leader-path "", :master "" :compute-cluster-name fake-test-compute-cluster-name}
+                      :mesos {:leader-path "", :master ""}
                       :metrics {}
                       :nrepl {}
                       :port 80

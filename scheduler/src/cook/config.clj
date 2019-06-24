@@ -139,6 +139,8 @@
                             {:max-size 5000
                              :ttl-ms (* 60 1000)}
                             agent-query-cache))
+     :compute-clusters (fnk [[:config {compute-clusters []}]]
+                         compute-clusters)
      :container-defaults (fnk [[:config {container-defaults {}}]]
                            container-defaults)
      :cors-origins (fnk [[:config {cors-origins nil}]]
@@ -335,11 +337,13 @@
      :mesos-framework-name (fnk [[:config {mesos nil}]]
                              (when mesos
                                (or (:framework-name mesos) "Cook")))
-     :mesos-framework-id (fnk [[:config {mesos nil}]]
-                           (:framework-id mesos))
-     :mesos-compute-cluster-name (fnk [[:config {mesos nil}]]
-                                   (or (:compute-cluster-name mesos) "default-compute-cluster-from-config-defaulting"))
-
+     ; TODO(pschorf): Remove
+     :mesos-framework-id (fnk [[:config {mesos nil} {compute-clusters []}]]
+                           (or (:framework-id mesos)
+                               (->> compute-clusters
+                                    (filter (fn [{:keys [config]}] (contains? config :framework-id)))
+                                    (map (fn [{:keys [config]}] (:framework-id config)))
+                                    first)))
      :jmx-metrics (fnk [[:config [:metrics {jmx false}]]]
                     (when jmx
                       ((util/lazy-load-var 'cook.reporter/jmx-reporter))))

@@ -261,11 +261,11 @@
                                            :configurator configure-jet-logging
                                            :max-threads 200
                                            :request-header-size 32768}
-                                          server-port (assoc :port server-port)
-                                          server-https-port (assoc :ssl-port server-https-port)
-                                          server-keystore-pass (assoc :key-password server-keystore-pass)
-                                          server-keystore-path (assoc :keystore server-keystore-path)
-                                          server-keystore-type (assoc :keystore-type server-keystore-type)))]
+                                    server-port (assoc :port server-port)
+                                    server-https-port (assoc :ssl-port server-https-port)
+                                    server-keystore-pass (assoc :key-password server-keystore-pass)
+                                    server-keystore-path (assoc :keystore server-keystore-path)
+                                    server-keystore-type (assoc :keystore-type server-keystore-type)))]
                       (fn [] (.stop jetty))))
      ; If the framework id was not found in the configuration settings, we attempt reading it from
      ; ZooKeeper. The read from ZK is present for backwards compatibility (the framework id used to
@@ -285,18 +285,14 @@
                              sandbox-syncer-state
                              settings
                              trigger-chans]
-                         (let [constructor (util/lazy-load-var 'cook.mesos.mesos-compute-cluster/->MesosComputeCluster)
-                               create-mesos-compute-cluster (fn [compute-cluster-name framework-id db-id driver-atom]
-                                                              (constructor compute-cluster-name
-                                                                           framework-id
-                                                                           db-id
-                                                                           driver-atom
-                                                                           sandbox-syncer-state
-                                                                           exit-code-syncer-state
-                                                                           mesos-heartbeat-chan
-                                                                           trigger-chans))]
-                           ((util/lazy-load-var 'cook.mesos.mesos-compute-cluster/setup-compute-cluster-map-from-config) datomic/conn settings
-                             create-mesos-compute-cluster)))
+                         (doall (map (fn [{:keys [factory-fn config]}]
+                                       (let [resolved (util/lazy-load-var factory-fn)]
+                                         (log/info "Calling compute cluster factory fn" factory-fn "with config" config)
+                                         (resolved config {:exit-code-syncer-state exit-code-syncer-state
+                                                           :mesos-heartbeat-chan mesos-heartbeat-chan
+                                                           :sandbox-syncer-state sandbox-syncer-state
+                                                           :trigger-chans trigger-chans})))
+                                     (:compute-clusters settings))))
      :mesos-datomic-mult (fnk []
                            (first ((util/lazy-load-var 'cook.datomic/create-tx-report-mult) datomic/conn)))
      ; TODO(pschorf): Remove hearbeat support

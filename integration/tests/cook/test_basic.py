@@ -214,8 +214,8 @@ class CookTest(util.CookTest):
         # For now, we only have one compute cluster. This could be wrong with future
         # refactors, but for now, this is the only compute cluster we have, so we should
         # expect it.
-        expected_compute_cluster = settings_dict['mesos-compute-cluster-name']
-        expected_mesos_framework = settings_dict['mesos-framework-id']
+        expected_compute_cluster = settings_dict['compute-clusters'][0]['config']['compute-cluster-name']
+        expected_mesos_framework = settings_dict['compute-clusters'][0]['config']['framework-id']
         job_uuid, resp = util.submit_job(self.cook_url)
 
         try:
