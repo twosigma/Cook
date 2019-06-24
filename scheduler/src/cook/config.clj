@@ -139,8 +139,14 @@
                             {:max-size 5000
                              :ttl-ms (* 60 1000)}
                             agent-query-cache))
-     :compute-clusters (fnk [[:config {compute-clusters []}]]
-                         compute-clusters)
+     :compute-clusters (fnk [[:config {compute-clusters []}
+                              {mesos nil}]]
+                         (if (seq compute-clusters)
+                           compute-clusters
+                           [{:factory-fn 'cook.mesos.mesos-compute-cluster/factory-fn
+                             :config {:compute-cluster-name (or (:compute-cluster-name mesos)
+                                                                "default-compute-cluster-from-config-defaulting")
+                                      :framework-id (:framework-id mesos)}}]))
      :container-defaults (fnk [[:config {container-defaults {}}]]
                            container-defaults)
      :cors-origins (fnk [[:config {cors-origins nil}]]
