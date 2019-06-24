@@ -259,6 +259,8 @@
     (first query-result)))
 
 (defn get-or-create-cluster-entity-id
+  "Checks datomic for a compute cluster with the given name and framework-id. If present, returns the entity id.
+   If missing, installs in datomic and returns the entity id."
   [conn compute-cluster-name framework-id]
   (let [compute-cluster-entity-id (get-mesos-cluster-entity-id (d/db conn)
                                                                {:compute-cluster-name compute-cluster-name
@@ -268,6 +270,7 @@
       (cc/write-compute-cluster conn (mesos-cluster->compute-cluster-map-for-datomic {:compute-cluster-name compute-cluster-name
                                                                                       :framework-id framework-id})))))
 (defn factory-fn
+  "Constructs a new MesosComputeCluster and registers it."
   [{:keys [compute-cluster-name
            framework-id]}
    {:keys [exit-code-syncer-state
