@@ -15,8 +15,11 @@
  :container-defaults {:volumes [{:host-path "/tmp/cook-integration-mount"
                                  :container-path "/mnt/cook-integration"
                                  :mode "RW"}]}
+ :mesos {:leader-path "/cook-scheduler"}
  :compute-clusters [{:factory-fn cook.mesos.mesos-compute-cluster/factory-fn
-                     :config {:framework-id #config/env "COOK_FRAMEWORK_ID"
+                     :config {:failover-timeout-ms nil ; When we close the instance of Cook, all its tasks are killed by Mesos
+                              :master #config/env "MESOS_MASTER"
+                              :framework-id #config/env "COOK_FRAMEWORK_ID"
                               :compute-cluster-name "local-mesos"}}]
  :cors-origins ["https?://cors.example.com"]
  :data-local {:fitness-calculator {:cache-ttl-ms 60000
@@ -48,9 +51,6 @@
                 :default :info}}
  :metrics {:jmx true
            :user-metrics-interval-seconds 60}
- :mesos {:failover-timeout-ms nil ; When we close the instance of Cook, all its tasks are killed by Mesos
-         :leader-path "/cook-scheduler"
-         :master #config/env "MESOS_MASTER"}
  :nrepl {:enabled? true
          :port #config/env-int "COOK_NREPL_PORT"}
  :pools {:default "gamma"}

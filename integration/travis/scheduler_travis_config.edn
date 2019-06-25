@@ -18,7 +18,10 @@
                         :impersonators #{"poser" "travis"}}
  :compute-clusters [{:factory-fn cook.mesos.mesos-compute-cluster/factory-fn
                      :config {:framework-id #config/env "COOK_FRAMEWORK_ID"
-                              :compute-cluster-name "local-mesos"}}]
+                              :compute-cluster-name "local-mesos"
+                              :master #config/env "MINIMESOS_ZOOKEEPER"
+                              :failover-timeout-ms nil
+                              :role "cook"}}]
  :container-defaults {:volumes [{:host-path "/tmp/cook-integration-mount"
                                  :container-path "/mnt/cook-integration"
                                  :mode "RW"}]}
@@ -61,10 +64,7 @@
               :max-preemption 500.0
               :min-dru-diff 1.0
               :safe-dru-threshold 1.0}
- :mesos {:master #config/env "MINIMESOS_ZOOKEEPER"
-         :failover-timeout-ms nil
-         :leader-path "/cook-scheduler"
-         :role "cook"}
+ :mesos {:leader-path "/cook-scheduler"}
  :executor {:command #config/env "COOK_EXECUTOR_COMMAND"
             :environment {"EXECUTOR_DEFAULT_PROGRESS_OUTPUT_NAME" "stdout"}
             :portion #config/env-int-default ["COOK_EXECUTOR_PORTION" 0]}

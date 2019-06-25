@@ -174,7 +174,7 @@
 
 (defrecord MesosComputeCluster [compute-cluster-name framework-id db-id driver-atom
                                 sandbox-syncer-state exit-code-syncer-state mesos-heartbeat-chan
-                                trigger-chans]
+                                trigger-chans mesos-config]
   cc/ComputeCluster
   (compute-cluster-name [this]
     compute-cluster-name)
@@ -192,12 +192,7 @@
 
   (initialize-cluster [this pool->fenzo pool->offers-chan]
     (let [settings (:settings config/config)
-          mesos-config (select-keys settings [:mesos-master
-                                              :mesos-failover-timeout
-                                              :mesos-principal
-                                              :mesos-role
-                                              :mesos-framework-name
-                                              :gpu-enabled?])
+
           progress-config (:progress settings)
           conn cook.datomic/conn
           {:keys [match-trigger-chan progress-updater-trigger-chan]} trigger-chans
@@ -267,12 +262,20 @@
                                                                 :framework-id framework-id})]
     (if compute-cluster-entity-id
       compute-cluster-entity-id
-      (cc/write-compute-cluster conn (mesos-cluster->compute-cluster-map-for-datomic {:compute-cluster-name compute-cluster-name
-                                                                                      :framework-id framework-id})))))
+      (cc/write-compute-cluster conn (mesos-cluster->compute-cluster-map-for-datomic
+                                       {:compute-cluster-name compute-cluster-name
+                                        :framework-id framework-id})))))
+
 (defn factory-fn
   "Constructs a new MesosComputeCluster and registers it."
   [{:keys [compute-cluster-name
-           framework-id]}
+           framework-id
+           master
+           failover-timeout
+           principal
+           role
+           framework-name
+           gpu-enabled?]}
    {:keys [exit-code-syncer-state
            mesos-heartbeat-chan
            sandbox-syncer-state
@@ -280,6 +283,12 @@
   (try
     (let [conn cook.datomic/conn
           cluster-entity-id (get-or-create-cluster-entity-id conn compute-cluster-name framework-id)
+          mesos-config {:mesos-master master
+                        :mesos-failover-timeout failover-timeout
+                        :mesos-principal principal
+                        :mesos-role (or role "*")
+                        :mesos-framework-name (or framework-name "Cook")
+                        :gpu-enabled? gpu-enabled?}
           mesos-compute-cluster (->MesosComputeCluster compute-cluster-name
                                                        framework-id
                                                        cluster-entity-id
@@ -287,7 +296,8 @@
                                                        sandbox-syncer-state
                                                        exit-code-syncer-state
                                                        mesos-heartbeat-chan
-                                                       trigger-chans)]
+                                                       trigger-chans
+                                                       mesos-config)]
       (log/info "Registering compute cluster" mesos-compute-cluster)
       (cc/register-compute-cluster! mesos-compute-cluster)
       mesos-compute-cluster)
