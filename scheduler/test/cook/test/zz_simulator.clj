@@ -137,7 +137,8 @@
                                                               sandbox-syncer-state#
                                                               exit-code-syncer-state#
                                                               mesos-heartbeat-chan#
-                                                              trigger-chans#))]
+                                                              trigger-chans#
+                                                              {}))]
      (try
        (with-redefs [executor-config (constantly executor-config#)
                      completion/plugin completion/no-op

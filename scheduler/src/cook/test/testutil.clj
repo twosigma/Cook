@@ -51,7 +51,8 @@
                                sandbox-syncer-state
                                exit-code-syncer-state
                                mesos-heartbeat-chan
-                               trigger-chans)))
+                               trigger-chans
+                               {})))
 
 (defn fake-test-compute-cluster-with-driver
   "Create a test compute cluster with associated driver attached to it. Returns the compute cluster."
