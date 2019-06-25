@@ -113,7 +113,9 @@
                  [org.apache.curator/curator-test "2.7.1"]
 
                  ;; Dependency management
-                 [mount "0.1.12"]]
+                 [mount "0.1.12"]
+
+                 [io.kubernetes/client-java "4.0.0"]]
 
   :repositories {"maven2" {:url "https://files.couchbase.com/maven2/"}
                  "sonatype-oss-public" "https://oss.sonatype.org/content/groups/public/"}
