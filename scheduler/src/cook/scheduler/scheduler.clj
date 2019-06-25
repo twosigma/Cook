@@ -275,7 +275,7 @@
                        "as instance" instance "with" prior-job-state "and" prior-instance-status
                        "should've been put down already")
              (meters/mark! (meters/meter (metric-title "tasks-killed-in-status-update" pool-name)))
-             (mesos/kill-task! (cc/get-mesos-driver-hack compute-cluster) {:value task-id}))
+             (cc/kill-task compute-cluster task-id))
            (when-not (nil? instance)
              (when (and (#{:task-starting :task-running} task-state)
                         (not= :executor/cook (:instance/executor instance-ent)))
@@ -377,7 +377,7 @@
           (try
             (log/info "Attempting to kill task" task-id "in" compute-cluster-name "from already completed job")
             (meters/mark! tx-report-queue-tasks-killed)
-            (mesos/kill-task! (cc/get-mesos-driver-hack compute-cluster) {:value task-id})
+            (cc/kill-task compute-cluster task-id)
             (catch Exception e
               (log/error e (str "Failed to kill task" task-id))))
           (log/warn "Unable to kill task" task-id "with unknown cluster" compute-cluster-name))))
@@ -411,7 +411,7 @@
                                                (if-let [compute-cluster (cc/compute-cluster-name->ComputeCluster compute-cluster-name)]
                                                  (do (log/info "Attempting to kill task" task-id "in" compute-cluster-name "due to job completion")
                                                      (meters/mark! tx-report-queue-tasks-killed)
-                                                     (mesos/kill-task! (cc/get-mesos-driver-hack compute-cluster) {:value task-id}))
+                                                     (cc/kill-task compute-cluster task-id))
                                                  (log/error "Couldn't kill task" task-id "due to no Mesos driver for compute cluster" compute-cluster-name "!")))))
                                          (catch Exception e
                                            (log/error e "Unexpected exception on tx report queue processor")))))))))
@@ -547,11 +547,11 @@
 
 (defn decline-offers
   "declines a collection of offer ids"
-  [driver offer-ids]
+  [compute-cluster offer-ids]
   (log/debug "Declining offers:" offer-ids)
   (doseq [id offer-ids]
     (meters/mark! scheduler-offer-declined)
-    (mesos/decline-offer driver id)))
+    (cc/decline-offer compute-cluster id)))
 
 (histograms/defhistogram [cook-mesos scheduler number-tasks-matched])
 (histograms/defhistogram [cook-mesos-scheduler number-offers-matched])
@@ -1005,7 +1005,7 @@
 
 ; TODO: Should get the compute-cluster from the task structure, and kill based on that.
 (defn kill-lingering-tasks
-  [now conn driver config]
+  [now conn compute-cluster config]
   (let [{:keys [max-timeout-hours
                 default-timeout-hours
                 timeout-hours]} config
@@ -1024,7 +1024,7 @@
         ;; Note that we probably should update db to mark a task failed as well.
         ;; However in the case that we fail to kill a particular task in Mesos,
         ;; we could lose the chances to kill this task again.
-        (mesos/kill-task! driver {:value task-id})
+        (cc/kill-task compute-cluster task-id)
         ;; BUG - the following transaction races with the update that is triggered
         ;; when the task is actually killed and sends its exit status code.
         ;; See issue #515 on GitHub.
@@ -1039,12 +1039,12 @@
 
    The config is a map with optional keys where
    :timout-hours specifies the timeout hours for lingering tasks"
-  [conn driver config trigger-chan]
+  [conn compute-cluster config trigger-chan]
   (let [config (merge {:timeout-hours (* 2 24)}
                       config)]
     (util/chime-at-ch trigger-chan
                       (fn kill-linger-task-event []
-                        (kill-lingering-tasks (time/now) conn driver config))
+                        (kill-lingering-tasks (time/now) conn compute-cluster config))
                       {:error-handler (fn [e]
                                         (log/error e "Failed to reap timeout tasks!"))})))
 
@@ -1072,10 +1072,10 @@
 (defn straggler-handler
   "Periodically checks for running jobs that are in groups and runs the associated
    straggler handler."
-  [conn driver trigger-chan]
+  [conn compute-cluster trigger-chan]
   (util/chime-at-ch trigger-chan
                     (fn straggler-handler-event []
-                      (handle-stragglers conn #(mesos/kill-task! driver {:value (:instance/task-id %)})))
+                      (handle-stragglers conn #(cc/kill-task compute-cluster (:instance/task-id %))))
                     {:error-handler (fn [e]
                                       (log/error e "Failed to handle stragglers"))}))
 
@@ -1093,7 +1093,7 @@
 
 (defn cancelled-task-killer
   "Every trigger, kill tasks that have been cancelled (e.g. via the API)."
-  [conn driver trigger-chan]
+  [conn compute-cluster trigger-chan]
   (util/chime-at-ch
     trigger-chan
     (fn cancelled-task-killer-event []
@@ -1103,7 +1103,7 @@
           (log/warn "killing cancelled task " (:instance/task-id task))
           @(d/transact conn [[:db/add (:db/id task) :instance/reason
                               [:reason/name :mesos-executor-terminated]]])
-          (mesos/kill-task! driver {:value (:instance/task-id task)}))))
+          (cc/kill-task compute-cluster (:instance/task-id task)))))
     {:error-handler (fn [e]
                       (log/error e "Failed to kill cancelled tasks!"))}))
 
@@ -1344,7 +1344,7 @@
                                        id (:id offer)]
                                    (log/debug "Fenzo is declining offer" offer)
                                    (try
-                                     (decline-offers (cc/get-mesos-driver-hack compute-cluster) [id])
+                                     (decline-offers compute-cluster [id])
                                      (catch Exception e
                                        (log/error e "Unable to decline fenzos rejected offers")))))))
       (build)))
@@ -1369,14 +1369,14 @@
 
 (defn decline-offers-safe
   "Declines a collection of offers, catching exceptions"
-  [driver offers]
+  [compute-cluster offers]
   (try
-    (decline-offers driver (map :id offers))
+    (decline-offers compute-cluster (map :id offers))
     (catch Exception e
       (log/error e "Unable to decline offers!"))))
 
 (defn receive-offers
-  [offers-chan match-trigger-chan driver pool-name offers]
+  [offers-chan match-trigger-chan compute-cluster pool-name offers]
   (doseq [offer offers]
     (histograms/update! (histograms/histogram (metric-title "offer-size-cpus" pool-name)) (get-in offer [:resources :cpus] 0))
     (histograms/update! (histograms/histogram (metric-title "offer-size-mem" pool-name)) (get-in offer [:resources :mem] 0)))
@@ -1387,7 +1387,7 @@
     (do (log/warn "Offer chan is full. Are we not handling offers fast enough?")
         (meters/mark! offer-chan-full-error)
         (future
-          (decline-offers-safe driver offers)))))
+          (decline-offers-safe compute-cluster offers)))))
 
 (let [in-order-queue-counter (counters/counter ["cook-mesos" "scheduler" "in-order-queue-size"])
       in-order-queue-timer (timers/timer ["cook-mesos" "scheduler" "in-order-queue-delay-duration"])

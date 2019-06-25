@@ -117,14 +117,14 @@
                   (if-let [offers-chan (get pool->offers-chan pool-name)]
                     (do
                       (log/info "Processing" offer-count "offer(s) for known pool" pool-name)
-                      (sched/receive-offers offers-chan match-trigger-chan driver pool-name offers))
+                      (sched/receive-offers offers-chan match-trigger-chan this pool-name offers))
                     (do
                       (log/warn "Declining" offer-count "offer(s) for non-existent pool" pool-name)
                       (sched/decline-offers-safe driver offers)))
                   (if-let [offers-chan (get pool->offers-chan "no-pool")]
                     (do
                       (log/info "Processing" offer-count "offer(s) for pool" pool-name "(not using pools)")
-                      (sched/receive-offers offers-chan match-trigger-chan driver pool-name offers))
+                      (sched/receive-offers offers-chan match-trigger-chan this pool-name offers))
                     (do
                       (log/error "Declining" offer-count "offer(s) for pool" pool-name "(missing no-pool offer chan)")
                       (sched/decline-offers-safe driver offers))))))
@@ -178,12 +178,18 @@
   cc/ComputeCluster
   (compute-cluster-name [this]
     compute-cluster-name)
-  (get-mesos-driver-hack [this]
-    @driver-atom)
+
   (launch-tasks [this offers task-metadata-seq]
     (mesos/launch-tasks! @driver-atom
                          (mapv :id offers)
                          (task/compile-mesos-messages framework-id offers task-metadata-seq)))
+
+  (kill-task [this task-id]
+    (mesos/kill-task! @driver-atom {:value task-id}))
+
+  (decline-offer [this offer-id]
+    (mesos/decline-offer @driver-atom offer-id))
+
   (db-id [this]
     db-id)
 

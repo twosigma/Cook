@@ -486,7 +486,7 @@
             (catch Throwable e
               (log/warn e "Failed to transact preemption")))
           (when-let [task-id (:instance/task-id task-ent)]
-            (mesos/kill-task! (cc/get-mesos-driver-hack compute-cluster) {:value task-id})))))))
+            (cc/kill-task compute-cluster task-id)))))))
 
 
 
