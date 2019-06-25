@@ -325,7 +325,7 @@ def retrieve_mesos_url(varname='MESOS_PORT', value='5050'):
         if os.getenv('COOK_TEST_DERIVE_MESOS_HOST') is not None:
             cook_url = retrieve_cook_url()
             _wait_for_cook(cook_url)
-            mesos_master = settings(cook_url).get('mesos-master')
+            mesos_master = settings(cook_url)['compute-clusters'][0]['config'].get('master')
             if not mesos_master:
                 raise RuntimeError('Unable to derive Mesos host, mesos-master is not present in settings')
 

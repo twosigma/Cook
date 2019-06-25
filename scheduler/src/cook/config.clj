@@ -139,6 +139,19 @@
                             {:max-size 5000
                              :ttl-ms (* 60 1000)}
                             agent-query-cache))
+     :compute-clusters (fnk [[:config {compute-clusters []}
+                              {mesos nil}]]
+                         (if (seq compute-clusters)
+                           compute-clusters
+                           [{:factory-fn 'cook.mesos.mesos-compute-cluster/factory-fn
+                             :config {:compute-cluster-name (or (:compute-cluster-name mesos)
+                                                                "default-compute-cluster-from-config-defaulting")
+                                      :framework-id (:framework-id mesos)
+                                      :master (:master mesos)
+                                      :failover-timeout (:failover-timeout-ms mesos)
+                                      :principal (:principal mesos)
+                                      :role (:role mesos)
+                                      :framework-name (:framework-name mesos)}}]))
      :container-defaults (fnk [[:config {container-defaults {}}]]
                            container-defaults)
      :cors-origins (fnk [[:config {cors-origins nil}]]
@@ -314,32 +327,21 @@
      :good-enough-fitness (fnk [[:config {scheduler nil}]]
                             (when scheduler
                               (or (:good-enough-fitness scheduler) 0.8)))
-     :mesos-master (fnk [[:config {mesos nil}]]
-                     (when (:master-hosts mesos)
-                       (log/warn "The :master-hosts configuration field is no longer used"))
-                     (when mesos
-                       (:master mesos)))
-     :mesos-failover-timeout (fnk [[:config {mesos nil}]]
-                               (:failover-timeout-ms mesos))
+     ; TODO(pschorf): Rename
      :mesos-leader-path (fnk [[:config {mesos nil}]]
                           (:leader-path mesos))
-     :mesos-principal (fnk [[:config {mesos nil}]]
-                        (:principal mesos))
-     :mesos-role (fnk [[:config {mesos nil}]]
-                   (when mesos
-                     (or (:role mesos) "*")))
+     ; TODO(pschorf): Rename
      :mesos-run-as-user (fnk [[:config {mesos nil}]]
                           (when (:run-as-user mesos)
                             (log/warn "Tasks launched in Mesos will ignore user specified in the job and run as" (:run-as-user mesos)))
                           (:run-as-user mesos))
-     :mesos-framework-name (fnk [[:config {mesos nil}]]
-                             (when mesos
-                               (or (:framework-name mesos) "Cook")))
-     :mesos-framework-id (fnk [[:config {mesos nil}]]
-                           (:framework-id mesos))
-     :mesos-compute-cluster-name (fnk [[:config {mesos nil}]]
-                                   (or (:compute-cluster-name mesos) "default-compute-cluster-from-config-defaulting"))
-
+     ; TODO(pschorf): Remove
+     :mesos-framework-id (fnk [[:config {mesos nil} {compute-clusters []}]]
+                           (or (:framework-id mesos)
+                               (->> compute-clusters
+                                    (filter (fn [{:keys [config]}] (contains? config :framework-id)))
+                                    (map (fn [{:keys [config]}] (:framework-id config)))
+                                    first)))
      :jmx-metrics (fnk [[:config [:metrics {jmx false}]]]
                     (when jmx
                       ((util/lazy-load-var 'cook.reporter/jmx-reporter))))

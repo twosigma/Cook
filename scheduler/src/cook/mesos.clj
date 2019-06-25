@@ -143,7 +143,7 @@
         {:keys [hostname server-port server-https-port]} server-config
         datomic-report-chan (async/chan (async/sliding-buffer 4096))
 
-        compute-cluster (mcc/mesos-cluster-hack)
+        compute-cluster (cc/get-default-cluster-for-legacy)
         rebalancer-reservation-atom (atom {})
         leader-selector (LeaderSelector.
                           curator-framework
