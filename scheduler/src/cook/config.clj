@@ -335,13 +335,6 @@
                           (when (:run-as-user mesos)
                             (log/warn "Tasks launched in Mesos will ignore user specified in the job and run as" (:run-as-user mesos)))
                           (:run-as-user mesos))
-     ; TODO(pschorf): Remove
-     :mesos-framework-id (fnk [[:config {mesos nil} {compute-clusters []}]]
-                           (or (:framework-id mesos)
-                               (->> compute-clusters
-                                    (filter (fn [{:keys [config]}] (contains? config :framework-id)))
-                                    (map (fn [{:keys [config]}] (:framework-id config)))
-                                    first)))
      :jmx-metrics (fnk [[:config [:metrics {jmx false}]]]
                     (when jmx
                       ((util/lazy-load-var 'cook.reporter/jmx-reporter))))
@@ -534,12 +527,6 @@
   []
   (-> config :settings :plugins :job-launch-filter :age-out-seen-count))
 
-; TODO: Temporary place to stuff the framework-id for the few remaining direct uses of it.
-(defn framework-id-config
-  "Used to get the fremework-id"
-  []
-  (get-in config [:settings :mesos-framework-id]))
-
 (defn max-over-quota-jobs
   []
   (get-in config [:settings :max-over-quota-jobs]))
@@ -547,3 +534,7 @@
 (defn container-defaults
   []
   (get-in config [:settings :container-defaults]))
+
+(defn compute-clusters
+  []
+  (get-in config [:settings :compute-clusters]))

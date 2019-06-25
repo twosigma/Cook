@@ -1036,6 +1036,15 @@
           mesos (assoc :mesos (mesos->response-map mesos))
           volumes (assoc :volumes (map container-volume->response-map volumes))))
 
+(defn guess-framework-id
+  "If there is only one mesos compute cluster, returns it's framework id. Otherwise, returns \"unsupported\""
+  []
+  (let [compute-clusters (config/compute-clusters)]
+    (if (and (= 1 (count compute-clusters))
+             (-> compute-clusters first :config :framework-id))
+      (-> compute-clusters first :config :framework-id)
+      "unsupported")))
+
 (defn fetch-job-map
   [db job-uuid]
   (timers/time!
@@ -1067,15 +1076,7 @@
                    :cpus (:cpus resources)
                    :disable_mea_culpa_retries (:job/disable-mea-culpa-retries job false)
                    :env (util/job-ent->env job)
-                   ;; The framework information is task-level information, not job-level information.
-                   ;; It should not be here.
-                   ;;
-                   ;; It is not used within the cook scheduler. We need to keep it here temporarily
-                   ;; because direct queries to the mesos agents need the framework-id. In particular, the CLI code and
-                   ;; sandbox-related integration tests are making those queries. They need the framework ID and are
-                   ;; getting it out of the job. Once we put the framework into the task structure and fix those
-                   ;; uses, we can get rid of it.
-                   :framework_id (cook.config/framework-id-config)
+                   :framework_id (guess-framework-id)
                    :gpus (int (:gpus resources 0))
                    :instances instances
                    :labels (util/job-ent->label job)

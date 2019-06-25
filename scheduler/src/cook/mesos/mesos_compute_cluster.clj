@@ -192,7 +192,6 @@
 
   (initialize-cluster [this pool->fenzo pool->offers-chan]
     (let [settings (:settings config/config)
-
           progress-config (:progress settings)
           conn cook.datomic/conn
           {:keys [match-trigger-chan progress-updater-trigger-chan]} trigger-chans
@@ -277,12 +276,20 @@
            framework-name
            gpu-enabled?]}
    {:keys [exit-code-syncer-state
+           mesos-agent-query-cache
            mesos-heartbeat-chan
-           sandbox-syncer-state
+           sandbox-syncer-config
            trigger-chans]}]
   (try
     (let [conn cook.datomic/conn
           cluster-entity-id (get-or-create-cluster-entity-id conn compute-cluster-name framework-id)
+          {:keys [max-consecutive-sync-failure
+                  publish-batch-size
+                  publish-interval-ms
+                  sync-interval-ms]} sandbox-syncer-config
+          sandbox-syncer-state (sandbox/prepare-sandbox-publisher framework-id conn publish-batch-size
+                                                                  publish-interval-ms sync-interval-ms
+                                                                  max-consecutive-sync-failure mesos-agent-query-cache)
           mesos-config {:mesos-master master
                         :mesos-failover-timeout failover-timeout
                         :mesos-principal principal

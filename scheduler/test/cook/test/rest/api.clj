@@ -1164,73 +1164,49 @@
    :mem 128.
    :user "user"})
 
-(deftest test-job-schema
-  (testing "Job schema validation"
-    (let [min-job (minimal-job)]
-
-      (testing "should require the minimal set of fields"
-        (is (s/validate api/Job min-job))
-        (is (thrown? Exception (s/validate api/Job (dissoc min-job :uuid))))
-        (is (thrown? Exception (s/validate api/Job (dissoc min-job :command))))
-        (is (thrown? Exception (s/validate api/Job (dissoc min-job :name))))
-        (is (thrown? Exception (s/validate api/Job (dissoc min-job :priority))))
-        (is (thrown? Exception (s/validate api/Job (dissoc min-job :max-retries))))
-        (is (thrown? Exception (s/validate api/Job (dissoc min-job :max-runtime))))
-        (is (thrown? Exception (s/validate api/Job (dissoc min-job :cpus))))
-        (is (thrown? Exception (s/validate api/Job (dissoc min-job :mem))))
-        (is (thrown? Exception (s/validate api/Job (dissoc min-job :user)))))
-
-      (testing "should allow an optional application field"
-        (is (s/validate api/Job (assoc min-job :application {:name "foo-app", :version "0.1.0"})))
-        (is (thrown? Exception (s/validate api/Job (assoc min-job :application {:name "", :version "0.2.0"}))))
-        (is (thrown? Exception (s/validate api/Job (assoc min-job :application {:name "bar-app", :version ""})))))
-
-      (testing "should allow an optional expected-runtime field"
-        (is (s/validate api/Job (assoc min-job :expected-runtime 2 :max-runtime 3)))
-        (is (s/validate api/Job (assoc min-job :expected-runtime 2 :max-runtime 2)))
-        (is (thrown? Exception (s/validate api/Job (assoc min-job :expected-runtime 3 :max-runtime 2))))))))
-
 (deftest test-create-jobs!
   (cook.test.testutil/flush-caches!)
-  (with-redefs [dl/job-uuid->dataset-maps-cache (util/new-cache)
-                config/framework-id-config (constantly "fake_framework_id_3")]
-    (let [expected-job-map
-          (fn
-            ; Converts the provided job to the job-map we expect to get back from
-            ; api/fetch-job-map. Note that we don't include the submit_time field here, so assertions below
-            ; will have to dissoc it.
-            [{:keys [mem max-retries max-runtime expected-runtime name gpus
-                     command ports priority uuid user cpus application
-                     disable-mea-culpa-retries executor datasets]
-              :or {disable-mea-culpa-retries false}}]
-            (cond-> {;; Fields we will fill in from the provided args:
-                     :command command
-                     :cpus cpus
-                     :disable_mea_culpa_retries disable-mea-culpa-retries
-                     :framework_id "fake_framework_id_3"
-                     :gpus (or gpus 0)
-                     :max_retries max-retries
-                     :max_runtime max-runtime
-                     :mem mem
-                     :name name
-                     :ports (or ports 0)
-                     :priority priority
-                     :user user
-                     :uuid uuid
-                     ;; Fields we will simply hardcode for this test:
-                     :constraints []
-                     :env {}
-                     :instances ()
-                     :labels {}
-                     :retries_remaining 1
-                     :state "waiting"
-                     :status "waiting"
-                     :uris nil}
-                    ;; Only assoc these fields if the job specifies one
-                    application (assoc :application application)
-                    expected-runtime (assoc :expected-runtime expected-runtime)
-                    executor (assoc :executor executor)
-                    datasets (assoc :datasets datasets)))]
+
+  (let [expected-job-map
+        (fn
+          ; Converts the provided job to the job-map we expect to get back from
+          ; api/fetch-job-map. Note that we don't include the submit_time field here, so assertions below
+          ; will have to dissoc it.
+          [{:keys [mem max-retries max-runtime expected-runtime name gpus
+                   command ports priority uuid user cpus application
+                   disable-mea-culpa-retries executor datasets]
+            :or {disable-mea-culpa-retries false}}]
+          (cond-> {;; Fields we will fill in from the provided args:
+                   :command command
+                   :cpus cpus
+                   :disable_mea_culpa_retries disable-mea-culpa-retries
+                   :framework_id "test-framework"
+                   :gpus (or gpus 0)
+                   :max_retries max-retries
+                   :max_runtime max-runtime
+                   :mem mem
+                   :name name
+                   :ports (or ports 0)
+                   :priority priority
+                   :user user
+                   :uuid uuid
+                   ;; Fields we will simply hardcode for this test:
+                   :constraints []
+                   :env {}
+                   :instances ()
+                   :labels {}
+                   :retries_remaining 1
+                   :state "waiting"
+                   :status "waiting"
+                   :uris nil}
+            ;; Only assoc these fields if the job specifies one
+            application (assoc :application application)
+            expected-runtime (assoc :expected-runtime expected-runtime)
+            executor (assoc :executor executor)
+            datasets (assoc :datasets datasets)))]
+    (with-redefs [dl/job-uuid->dataset-maps-cache (util/new-cache)
+                  config/compute-clusters (constantly [{:factory-fn 'cook.mesos.mesos-compute-cluster/factory-fn
+                                                        :config {:framework-id "test-framework"}}])]
 
       (testing "Job creation"
         (testing "should work with a minimal job manually inserted"
@@ -1340,7 +1316,44 @@
                    (testutil/create-jobs! conn {::api/jobs [job]})))
             (is (= (expected-job-map job)
                    (-> (api/fetch-job-map (db conn) uuid)
-                       (dissoc :submit_time))))))))))
+                       (dissoc :submit_time))))))))
+    (testing "returns unsupported for multiple compute clusters"
+      (with-redefs [config/compute-clusters (constantly [{:factory-fn 'cook.mesos.mesos-compute-cluster/factory-fn
+                                                          :config {:factory-fn "first"}}
+                                                         {:factory-fn 'cook.mesos.mesos-compute-cluster/factory-fn
+                                                          :config {:factory-fn "second"}}])]
+        (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
+              {:keys [uuid] :as job} (minimal-job)]
+          (is (= {::api/results (str "submitted jobs " uuid)}
+                 (testutil/create-jobs! conn {::api/jobs [job]})))
+          (is (= (assoc (expected-job-map job) :framework_id "unsupported")
+                 (dissoc (api/fetch-job-map (db conn) uuid) :submit_time))))))))
+
+(deftest test-job-schema
+  (testing "Job schema validation"
+    (let [min-job (minimal-job)]
+
+      (testing "should require the minimal set of fields"
+        (is (s/validate api/Job min-job))
+        (is (thrown? Exception (s/validate api/Job (dissoc min-job :uuid))))
+        (is (thrown? Exception (s/validate api/Job (dissoc min-job :command))))
+        (is (thrown? Exception (s/validate api/Job (dissoc min-job :name))))
+        (is (thrown? Exception (s/validate api/Job (dissoc min-job :priority))))
+        (is (thrown? Exception (s/validate api/Job (dissoc min-job :max-retries))))
+        (is (thrown? Exception (s/validate api/Job (dissoc min-job :max-runtime))))
+        (is (thrown? Exception (s/validate api/Job (dissoc min-job :cpus))))
+        (is (thrown? Exception (s/validate api/Job (dissoc min-job :mem))))
+        (is (thrown? Exception (s/validate api/Job (dissoc min-job :user)))))
+
+      (testing "should allow an optional application field"
+        (is (s/validate api/Job (assoc min-job :application {:name "foo-app", :version "0.1.0"})))
+        (is (thrown? Exception (s/validate api/Job (assoc min-job :application {:name "", :version "0.2.0"}))))
+        (is (thrown? Exception (s/validate api/Job (assoc min-job :application {:name "bar-app", :version ""})))))
+
+      (testing "should allow an optional expected-runtime field"
+        (is (s/validate api/Job (assoc min-job :expected-runtime 2 :max-runtime 3)))
+        (is (s/validate api/Job (assoc min-job :expected-runtime 2 :max-runtime 2)))
+        (is (thrown? Exception (s/validate api/Job (assoc min-job :expected-runtime 3 :max-runtime 2))))))))
 
 (deftest test-destroy-jobs
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")

@@ -77,7 +77,7 @@
                 "max-age=0"))))
 
 (def raw-scheduler-routes
-  {:scheduler (fnk [mesos mesos-leadership-atom pool-name->pending-jobs-atom framework-id settings]
+  {:scheduler (fnk [mesos mesos-leadership-atom pool-name->pending-jobs-atom settings]
                 ((util/lazy-load-var 'cook.rest.api/main-handler)
                   datomic/conn
                   (fn [] @pool-name->pending-jobs-atom)
@@ -202,14 +202,6 @@
                                                     (.setPreferProxiedForAddress true)))
                                   (.setServer server)))))))
 
-(defn framework-id-from-zk
-  "Returns the framework id from ZooKeeper, or nil if not present"
-  [curator-framework mesos-leader-path]
-  (when-let [bytes (curator/get-or-nil curator-framework (str mesos-leader-path "/framework-id"))]
-    (let [framework-id (String. bytes)]
-      (log/info "Found framework id in zookeeper:" framework-id)
-      framework-id)))
-
 (defn conditional-auth-bypass
   "Skip authentication on some hard-coded endpoints."
   [h auth-middleware]
@@ -267,30 +259,18 @@
                                     server-keystore-path (assoc :keystore server-keystore-path)
                                     server-keystore-type (assoc :keystore-type server-keystore-type)))]
                       (fn [] (.stop jetty))))
-     ; If the framework id was not found in the configuration settings, we attempt reading it from
-     ; ZooKeeper. The read from ZK is present for backwards compatibility (the framework id used to
-     ; get written to ZK as well). Without this, Cook would connect to mesos with a different
-     ; framework id and mark all jobs that were running failed because mesos wouldn't have tasks for
-     ; those jobs under the new framework id.
-     :framework-id (fnk [curator-framework [:settings mesos-leader-path mesos-framework-id]]
-                     (when curator-framework
-                       (let [framework-id (or mesos-framework-id
-                                              (framework-id-from-zk curator-framework mesos-leader-path))]
-                         (when-not framework-id
-                           (throw (ex-info "Framework id not configured and not in ZooKeeper" {})))
-                         (log/info "Using framework id:" framework-id)
-                         framework-id)))
      :compute-clusters (fnk [exit-code-syncer-state
+                             mesos-agent-query-cache
                              mesos-heartbeat-chan
-                             sandbox-syncer-state
                              settings
                              trigger-chans]
                          (doall (map (fn [{:keys [factory-fn config]}]
                                        (let [resolved (util/lazy-load-var factory-fn)]
                                          (log/info "Calling compute cluster factory fn" factory-fn "with config" config)
                                          (resolved config {:exit-code-syncer-state exit-code-syncer-state
+                                                           :mesos-agent-query-cache mesos-agent-query-cache
                                                            :mesos-heartbeat-chan mesos-heartbeat-chan
-                                                           :sandbox-syncer-state sandbox-syncer-state
+                                                           :sandbox-syncer-config (:sandbox-syncer settings)
                                                            :trigger-chans trigger-chans})))
                                      (:compute-clusters settings))))
      :mesos-datomic-mult (fnk []
@@ -311,13 +291,6 @@
      :exit-code-syncer-state (fnk [[:settings [:exit-code-syncer publish-batch-size publish-interval-ms]]]
                                ((util/lazy-load-var 'cook.mesos.sandbox/prepare-exit-code-publisher)
                                  datomic/conn publish-batch-size publish-interval-ms))
-     :sandbox-syncer-state (fnk [[:settings [:sandbox-syncer max-consecutive-sync-failure
-                                             publish-batch-size publish-interval-ms sync-interval-ms]]
-                                 framework-id mesos-agent-query-cache]
-                             (when framework-id
-                               ((util/lazy-load-var 'cook.mesos.sandbox/prepare-sandbox-publisher)
-                                 framework-id datomic/conn publish-batch-size publish-interval-ms sync-interval-ms
-                                 max-consecutive-sync-failure mesos-agent-query-cache)))
      :trigger-chans (fnk [[:settings rebalancer progress optimizer task-constraints]]
                       ((util/lazy-load-var 'cook.mesos/make-trigger-chans) rebalancer progress optimizer task-constraints))
      :clear-uncommitted-canceler (fnk [mesos-leadership-atom]
@@ -346,8 +319,7 @@
     (metrics-jvm/instrument-jvm)
     (let [server (scheduler-server config)]
       (intern 'user 'main-graph server)
-      (log/info "Started Cook, stored variable in user/main-graph")
-      (log/info "Framework-id" (cook.config/framework-id-config)))
+      (log/info "Started Cook, stored variable in user/main-graph"))
     (catch Throwable t
       (log/error t "Failed to start Cook")
       (System/exit 1))))
