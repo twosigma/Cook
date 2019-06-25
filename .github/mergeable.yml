@@ -1,0 +1,9 @@
+version: 2
+mergeable:
+  - when: pull_request.*
+    validate:
+      - do: label
+        must_include:
+          regex: '^internal-green$'
+        must_exclude:
+          regex: '^wip$'
