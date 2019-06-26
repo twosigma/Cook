@@ -35,9 +35,11 @@
   (current-leader? [this]
     "Returns true if this cook instance is currently the leader for the compute cluster")
 
-  ; TODO - remove
-  (get-mesos-driver-hack [this]
-    "Get the mesos driver. Hack; any function invoking this should be put within the compute-cluster implementation"))
+  (kill-task [this task-id]
+    "Kill the task with the given task id")
+
+  (decline-offer [this offer-id]
+    "Decline the given offer"))
 
 ; Internal method
 (defn write-compute-cluster

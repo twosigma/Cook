@@ -548,11 +548,11 @@
                                              :instance-status :instance.status/running
                                              :task-id "task-3"
                                              :start-time start-time-3)
-        test-db (d/db conn)
         config {:timeout-hours timeout-hours}
-        dummy-driver (reify msched/SchedulerDriver (kill-task! [_ _] nil))]
+        dummy-driver (reify msched/SchedulerDriver (kill-task! [_ _] nil))
+        compute-cluster (testutil/fake-test-compute-cluster-with-driver conn uri dummy-driver)]
 
-    (sched/kill-lingering-tasks (t/now) conn dummy-driver config)
+    (sched/kill-lingering-tasks (t/now) conn compute-cluster config)
 
     (is (= :instance.status/failed
            (ffirst (q '[:find ?status
@@ -1275,19 +1275,22 @@
         (sched/handle-stragglers conn kill-fn)))))
 
 (deftest test-receive-offers
-  (let [declined-offer-ids-atom (atom [])
+  (let [conn (restore-fresh-database! "datomic:mem://test-receive-offers")
+        declined-offer-ids-atom (atom [])
         offers-chan (async/chan (async/buffer 1))
         match-trigger-chan (async/chan (async/sliding-buffer 5))
         mock-driver (reify msched/SchedulerDriver
                       (decline-offer [driver id]
                         (swap! declined-offer-ids-atom conj id)))
+        compute-cluster (testutil/fake-test-compute-cluster-with-driver
+                          conn testutil/fake-test-compute-cluster-name mock-driver)
         offer-1 {:id {:value "foo"}}
         offer-2 {:id {:value "bar"}}
         offer-3 {:id {:value "baz"}}]
     (testing "offer chan overflow"
-      (sched/receive-offers offers-chan match-trigger-chan mock-driver "no-pool" [offer-1])
-      @(sched/receive-offers offers-chan match-trigger-chan mock-driver "no-pool" [offer-2])
-      @(sched/receive-offers offers-chan match-trigger-chan mock-driver "no-pool" [offer-3])
+      (sched/receive-offers offers-chan match-trigger-chan compute-cluster "no-pool" [offer-1])
+      @(sched/receive-offers offers-chan match-trigger-chan compute-cluster "no-pool" [offer-2])
+      @(sched/receive-offers offers-chan match-trigger-chan compute-cluster "no-pool" [offer-3])
       (is (= @declined-offer-ids-atom [(:id offer-2) (:id offer-3)]))
       (async/close! match-trigger-chan)
       (is (= (count (async/<!! (async/into [] match-trigger-chan))) 1)))))
