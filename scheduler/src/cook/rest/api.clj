@@ -1076,6 +1076,7 @@
                    :cpus (:cpus resources)
                    :disable_mea_culpa_retries (:job/disable-mea-culpa-retries job false)
                    :env (util/job-ent->env job)
+                   ; TODO(pschorf): Remove field
                    :framework_id (guess-framework-id)
                    :gpus (int (:gpus resources 0))
                    :instances instances
