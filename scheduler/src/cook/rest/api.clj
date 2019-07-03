@@ -984,7 +984,7 @@
         exit-code (:instance/exit-code instance)
         progress (:instance/progress instance)
         progress-message (:instance/progress-message instance)
-        file-url nil]
+        file-url (plugins/file-url file-plugin/plugin instance)]
     (cond-> {:backfilled false ;; Backfill has been deprecated
              :compute-cluster (fetch-compute-cluster-map db (:instance/compute-cluster instance))
              :executor_id (:instance/executor-id instance)

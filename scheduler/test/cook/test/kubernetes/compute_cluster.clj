@@ -3,7 +3,7 @@
             [cook.kubernetes.compute-cluster :as kcc]
             [cook.test.testutil :as tu]
             [datomic.api :as d])
-  (:import (io.kubernetes.client.models V1Pod V1ObjectMeta V1PodSpec V1Container V1ResourceRequirements V1Node V1NodeStatus)
+  (:import (io.kubernetes.client.models V1Pod V1ObjectMeta V1PodSpec V1Container V1ResourceRequirements V1Node V1NodeStatus V1EnvVar V1PodStatus V1ContainerStatus V1ContainerState V1ContainerStateWaiting)
            (io.kubernetes.client.custom Quantity Quantity$Format)
            (java.math BigDecimal)))
 
@@ -104,7 +104,7 @@
            (kcc/get-capacity node-name->node)))))
 
 (deftest test-generate-offers
-  (let [compute-cluster (kcc/->KubernetesComputeCluster nil "kubecompute" nil nil)
+  (let [compute-cluster (kcc/->KubernetesComputeCluster nil "kubecompute" nil nil nil)
         node-name->node {"nodeA" (node-helper "nodeA" 1.0 1000.0)
                          "nodeB" (node-helper "nodeB" 1.0 1000.0)
                          "nodeC" (node-helper "nodeC" 1.0 1000.0)}
@@ -135,3 +135,62 @@
               {:name "cpus" :type :value-scalar :scalar 0.0}
               {:name "disk" :type :value-scalar :scalar 0.0}]
              (:resources offer))))))
+
+(deftest test-task-metadata->pod
+  (let [task-metadata {:task-id "my-task"
+                       :command {:value "foo && bar"
+                                 :environment {"FOO" "BAR"}}
+                       :container {:type :docker
+                                   :docker {:image "alpine:latest"}}
+                       :task-request {:resources {:mem 512
+                                                  :cpus 1.0}}
+                       :hostname "kubehost"}
+        pod (kcc/task-metadata->pod task-metadata)]
+    (is (= "my-task" (-> pod .getMetadata .getName)))
+    (is (= "Never" (-> pod .getSpec .getRestartPolicy)))
+    (is (= "kubehost" (-> pod .getSpec .getNodeName)))
+    (is (= 1 (count (-> pod .getSpec .getContainers))))
+
+    (let [^V1Container container (-> pod .getSpec .getContainers first)]
+      (is (= "job" (.getName container)))
+      (is (= ["/bin/sh" "-c" "foo && bar"] (.getCommand container)))
+      (is (= "alpine:latest" (.getImage container)))
+      (is (= 1 (count (.getEnv container))))
+
+      (let [^V1EnvVar variable (-> container .getEnv first)]
+        (is (= "FOO" (.getName variable)))
+        (is (= "BAR" (.getValue variable))))
+
+      (let [resources (-> container .getResources)]
+        (is (= 1.0 (-> resources .getRequests (get "cpu") .getNumber .doubleValue)))
+        (is (= (* 512.0 1024 1024) (-> resources .getRequests (get "memory") .getNumber .doubleValue)))
+        (is (= (* 512.0 1024 1024) (-> resources .getLimits (get "memory") .getNumber .doubleValue)))))))
+
+(deftest test-pod->pod-state
+  (testing "returns nil for empty pod"
+    (is (nil? (kcc/pod->pod-state nil))))
+
+  (testing "no container status -> waiting"
+    (let [pod (V1Pod.)
+          pod-status (V1PodStatus.)]
+      (.setStatus pod pod-status)
+      (is (= {:state :pod/waiting
+              :reason "Pending"}
+             (kcc/pod->pod-state pod)))))
+
+  (testing "waiting"
+    (let [pod (V1Pod.)
+          pod-status (V1PodStatus.)
+          container-status (V1ContainerStatus.)
+          container-state (V1ContainerState.)
+          waiting (V1ContainerStateWaiting.)]
+      (.setReason waiting "waiting")
+      (.setWaiting container-state waiting)
+      (.setState container-status container-state)
+      (.setName container-status "job")
+      (.setContainerStatuses pod-status [container-status])
+      (.setStatus pod pod-status)
+
+      (is (= {:state :pod/waiting
+              :reason "waiting"}
+             (kcc/pod->pod-state pod))))))
