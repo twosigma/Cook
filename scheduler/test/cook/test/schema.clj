@@ -41,7 +41,7 @@
     (testing "URU"
         (verify-state-transition :instance.status/unknown :instance.status/running :instance.status/running))
     (testing "USU"
-        (verify-state-transition :instance.status/unknown :instance.status/success :instance.status/unknown))
+        (verify-state-transition :instance.status/unknown :instance.status/success :instance.status/success))
     (testing "UFF"
         (verify-state-transition :instance.status/unknown :instance.status/failed :instance.status/failed))
 
@@ -216,7 +216,7 @@
     (testing "Instance initially unknown"
         (verify-job-state-transition [:instance.status/unknown] [:instance.status/unknown] :old-job-state :job.state/running :new-job-state :job.state/running)
         (verify-job-state-transition [:instance.status/unknown] [:instance.status/running] :old-job-state :job.state/running :new-job-state :job.state/running)
-        (verify-job-state-transition [:instance.status/unknown] [:instance.status/success] :old-job-state :job.state/running :new-job-state :job.state/running)
+        (verify-job-state-transition [:instance.status/unknown] [:instance.status/success] :old-job-state :job.state/running :new-job-state :job.state/completed)
         (verify-job-state-transition [:instance.status/unknown] [:instance.status/failed] :old-job-state :job.state/running :new-job-state :job.state/waiting))
 
     (testing "Instance intially running"
@@ -245,7 +245,7 @@
       (verify-job-state-transition [:instance.status/failed :instance.status/running] [nil :instance.status/running] :old-job-state :job.state/running :new-job-state :job.state/running))
 
     (testing "Instances initially failed and unknown"
-      (verify-job-state-transition [:instance.status/failed :instance.status/unknown] [nil :instance.status/success] :old-job-state :job.state/running :new-job-state :job.state/running)
+      (verify-job-state-transition [:instance.status/failed :instance.status/unknown] [nil :instance.status/success] :old-job-state :job.state/running :new-job-state :job.state/completed)
       (verify-job-state-transition [:instance.status/failed :instance.status/unknown] [nil :instance.status/failed] :old-job-state :job.state/running :new-job-state :job.state/waiting)
       (verify-job-state-transition [:instance.status/failed :instance.status/unknown] [nil :instance.status/unknown] :old-job-state :job.state/running :new-job-state :job.state/running)
       (verify-job-state-transition [:instance.status/failed :instance.status/unknown] [nil :instance.status/running] :old-job-state :job.state/running :new-job-state :job.state/running))
