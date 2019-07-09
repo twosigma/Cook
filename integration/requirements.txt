@@ -12,3 +12,4 @@ python-dateutil==2.6.1
 requests==2.20.0
 retrying==1.3.3
 file:../cli#egg=cook_client
+pygit2==0.28.2
