@@ -36,9 +36,6 @@ class CookTest(util.CookTest):
         self.logger = logging.getLogger(__name__)
         self.cors_origin = os.getenv('COOK_ALLOWED_ORIGIN', 'http://cors.example.com')
 
-    def test_scheduler_foo(self):
-        self.fail('FOO!')
-
     def test_scheduler_info(self):
         info = util.scheduler_info(self.cook_url)
         info_details = json.dumps(info, sort_keys=True)
