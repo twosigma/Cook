@@ -109,7 +109,7 @@ def record_test_metric(request):
                 'runtime-milliseconds': (end - start)*1000
             }
             logging.info(f'Updating test metrics: {json.dumps(metrics, indent=2)}')
-            resp = util.session.post(f'{elastic_search_url}/{index}/test/{doc_id}', json=metrics)
+            resp = util.session.post(f'{elastic_search_url}/{index}/test-result/{doc_id}', json=metrics)
             logging.info(f'Response from updating test metrics: {json.dumps(resp.json(), indent=2)}')
         except:
             logging.exception('Encountered exception while recording test metrics')
