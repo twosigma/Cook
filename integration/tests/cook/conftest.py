@@ -110,7 +110,7 @@ def record_test_metric(request):
             }
             logging.info(f'Updating test metrics: {json.dumps(metrics, indent=2)}')
             resp = util.session.post(f'{elastic_search_url}/{index}/test-result/{doc_id}', json=metrics)
-            logging.info(f'Response from updating test metrics: {json.dumps(resp.json(), indent=2)}')
+            logging.info(f'Response from updating test metrics: {resp.text}')
         except:
             logging.exception('Encountered exception while recording test metrics')
     else:
