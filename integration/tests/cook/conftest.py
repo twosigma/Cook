@@ -75,7 +75,7 @@ def record_test_metric(request):
         yield
         try:
             end = timer()
-            elastic_search_url = os.getenv('TEST_METRICS_ES_URL')
+            elastic_search_url = os.getenv('TEST_METRICS_ES_URL').rstrip('/')
             now = datetime.datetime.utcnow()
             index = f'cook-tests-{now.strftime("%Y%m%d")}'
             test_namespace = '.'.join(request.node._nodeid.split('::')[:-1]).replace('/', '.').replace('.py', '')
