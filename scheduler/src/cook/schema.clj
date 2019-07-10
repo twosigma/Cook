@@ -1070,7 +1070,8 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
                    :requires [[metatransaction.core :as mt]]
                    :code
                    (let [db (mt/filter-committed db)
-                         state-transitions {:instance.status/unknown #{:instance.status/running :instance.status/failed}
+                         state-transitions {:instance.status/unknown #{:instance.status/running :instance.status/failed
+                                                                       :instance.status/success}
                                             :instance.status/running #{:instance.status/failed :instance.status/success}
                                             ;; terminal states
                                             :instance.status/success #{}

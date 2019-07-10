@@ -533,6 +533,12 @@
                  (.scheduleOnce fenzo requests leases))
         failure-results (.. result getFailures values)
         assignments (.. result getResultMap values)]
+    (doall (map (fn [^VirtualMachineLease lease]
+                  (when (-> lease :offer :reject-after-match-attempt)
+                    (log/info "Retracting lease" (-> lease :offer :id))
+                    (locking fenzo
+                      (.expireLease fenzo (.getId lease)))))
+                leases))
 
     (log/debug "Found this assignment:" result)
 
@@ -684,6 +690,7 @@
   [matches conn db fenzo mesos-run-as-user pool-name]
   (let [matches (map #(update-match-with-task-metadata-seq % db mesos-run-as-user) matches)
         task-txns (matches->task-txns matches)]
+    (log/info "Writing tasks" task-txns)
     ;; Note that this transaction can fail if a job was scheduled
     ;; during a race. If that happens, then other jobs that should
     ;; be scheduled will not be eligible for rescheduling until

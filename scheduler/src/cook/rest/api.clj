@@ -953,7 +953,9 @@
   (cond-> {:name (:compute-cluster/cluster-name entity)}
     (= :compute-cluster.type/mesos (:compute-cluster/type entity))
     (-> (assoc :mesos {:framework-id (:compute-cluster/mesos-framework-id entity)})
-        (assoc :type :mesos))))
+        (assoc :type :mesos))
+    (= :compute-cluster.type/kubernetes (:compute-cluster/type entity))
+    (assoc :type :kubernetes)))
 
 (defn fetch-compute-cluster-map
   "Converts a compute cluster entity as a map representing the fields. For legacy instances
