@@ -11,14 +11,15 @@
             [cook.scheduler.scheduler :as scheduler]
             [datomic.api :as d]
             [plumbing.core :as pc])
-  (:import (io.kubernetes.client ApiClient ApiException)
-           (io.kubernetes.client.util Config Watch)
+  (:import (com.twosigma.cook.kubernetes WatchHelper)
+           (io.kubernetes.client ApiClient ApiException)
            (io.kubernetes.client.apis CoreV1Api)
-           (io.kubernetes.client.models V1Pod V1Node V1Container V1ObjectMeta V1EnvVar V1ResourceRequirements V1PodSpec V1PodStatus V1ContainerState)
-           (com.twosigma.cook.kubernetes WatchHelper)
-           (java.util.concurrent Executors ExecutorService)
            (io.kubernetes.client.custom Quantity Quantity$Format)
-           (java.util UUID)))
+           (io.kubernetes.client.models V1Pod V1Node V1Container V1ObjectMeta V1EnvVar V1ResourceRequirements
+                                        V1PodSpec V1PodStatus V1ContainerState)
+           (io.kubernetes.client.util Config Watch)
+           (java.util UUID)
+           (java.util.concurrent Executors ExecutorService)))
 
 (def ^ExecutorService kubernetes-executor (Executors/newFixedThreadPool 2))
 
@@ -71,6 +72,7 @@
               (log/error e "Error during watch")
               (.close watch)
               (initialize-pod-watch api-client pod-callback))))))))
+
   (defn get-pods
     []
     @current-pods-atom))
@@ -169,7 +171,7 @@
             :attributes []
             :executor-ids []
             :compute-cluster compute-cluster
-            :reject-after-match true})
+            :reject-after-match-attempt true})
          node-name->available)))
 
 (defn task-metadata->pod

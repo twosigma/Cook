@@ -126,7 +126,7 @@
               {:name "cpus" :type :value-scalar :scalar 0.4}
               {:name "disk" :type :value-scalar :scalar 0.0}]
              (:resources offer)))
-      (is (:reject-after-match offer)))
+      (is (:reject-after-match-attempt offer)))
 
     (let [offer (first (filter #(= "nodeB" (:hostname %))
                                      offers))]
