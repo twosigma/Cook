@@ -12,10 +12,10 @@ import subprocess
 import threading
 import time
 import uuid
+from timeit import default_timer as timer
 
 import pytest
 from pygit2 import Repository
-from timeit import default_timer as timer
 
 from tests.cook import util
 
@@ -78,11 +78,13 @@ def record_test_metric(request):
             elastic_search_url = os.getenv('TEST_METRICS_ES_URL').rstrip('/')
             now = datetime.datetime.utcnow()
             index = f'cook-tests-{now.strftime("%Y%m%d")}'
-            test_namespace = '.'.join(request.node._nodeid.split('::')[:-1]).replace('/', '.').replace('.py', '')
-            test_name = request.node.name
+            request_node = request.node
+            xfail_mark = request_node._evalxfail._mark
+            test_namespace = '.'.join(request_node._nodeid.split('::')[:-1]).replace('/', '.').replace('.py', '')
+            test_name = request_node.name
             doc_id = f'{test_namespace}-{test_name}-{now.strftime("%s")}-{uuid.uuid4()}'
-            setup = request.node.rep_setup
-            call = request.node.rep_call
+            setup = request_node.rep_setup
+            call = request_node.rep_call
             if setup.failed or call.failed:
                 result = 'failed'
             elif setup.passed and call.passed:
@@ -106,7 +108,8 @@ def record_test_metric(request):
                 'run-id': os.getenv('TEST_METRICS_RUN_ID', None),
                 'build-id': os.getenv('TEST_METRICS_BUILD_ID', None),
                 'result': result,
-                'runtime-milliseconds': (end - start)*1000
+                'runtime-milliseconds': (end - start)*1000,
+                'expected-to-fail': xfail_mark is not None and xfail_mark.name == 'xfail'
             }
             logging.info(f'Updating test metrics: {json.dumps(metrics, indent=2)}')
             resp = util.session.post(f'{elastic_search_url}/{index}/test-result/{doc_id}', json=metrics)
