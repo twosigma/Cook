@@ -60,7 +60,7 @@ if util.kerberos_enabled() and os.getenv('COOK_MAX_TEST_USERS'):
         assert False, f'{switch_user_mode} is not a valid value for COOK_SWITCH_USER_MODE'
 
 
-repository_path = os.path.abspath(f'{os.path.dirname(os.path.abspath(__file__))}/../../..')
+repository_path = os.path.abspath(f'{os.path.dirname(os.path.abspath(__file__))}/../..')
 repo = Repository(repository_path)
 head = repo.head
 commit = repo.revparse_single('HEAD')
