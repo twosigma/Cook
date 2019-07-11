@@ -70,19 +70,18 @@ git_commit_hex = commit.hex
 
 @pytest.fixture()
 def record_test_metric(request):
-    if 'TEST_METRICS_ES_URL' in os.environ:
+    if 'TEST_METRICS_URL' in os.environ:
         start = timer()
         yield
         try:
             end = timer()
-            elastic_search_url = os.getenv('TEST_METRICS_ES_URL').rstrip('/')
+            elastic_search_url = os.getenv('TEST_METRICS_URL').rstrip('/')
             now = datetime.datetime.utcnow()
             index = f'cook-tests-{now.strftime("%Y%m%d")}'
             request_node = request.node
             xfail_mark = request_node._evalxfail._mark
             test_namespace = '.'.join(request_node._nodeid.split('::')[:-1]).replace('/', '.').replace('.py', '')
             test_name = request_node.name
-            doc_id = f'{test_namespace}-{test_name}-{now.strftime("%s")}-{uuid.uuid4()}'
             setup = request_node.rep_setup
             call = request_node.rep_call
             if setup.failed or call.failed:
@@ -112,7 +111,7 @@ def record_test_metric(request):
                 'expected-to-fail': xfail_mark is not None and xfail_mark.name == 'xfail'
             }
             logging.info(f'Updating test metrics: {json.dumps(metrics, indent=2)}')
-            resp = util.session.post(f'{elastic_search_url}/{index}/test-result/{doc_id}', json=metrics)
+            resp = util.session.post(f'{elastic_search_url}/{index}/test-result', json=metrics)
             logging.info(f'Response from updating test metrics: {resp.text}')
         except:
             logging.exception('Encountered exception while recording test metrics')
