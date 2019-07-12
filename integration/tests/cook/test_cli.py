@@ -1833,6 +1833,7 @@ def dummy_ls_entries(_, __, ___):
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(bytes(i for i in range(0, 256)), cp.stdout)
 
+    @pytest.mark.xfail
     def test_cat_with_plugin(self):
         # User defined plugin to print dummy file content from a file
         with tempfile.NamedTemporaryFile(suffix='.py', delete=True) as temp:
