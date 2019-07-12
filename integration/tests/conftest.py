@@ -60,6 +60,7 @@ if 'TEST_METRICS_URL' in os.environ:
                 'host': socket.gethostname(),
                 'user': getpass.getuser(),
                 'run-id': os.getenv('TEST_METRICS_RUN_ID', None),
+                'run-description': os.getenv('TEST_METRICS_RUN_DESCRIPTION', 'open source integration tests'),
                 'build-id': os.getenv('TEST_METRICS_BUILD_ID', None),
                 'result': result,
                 'runtime-milliseconds': (end - start)*1000,
