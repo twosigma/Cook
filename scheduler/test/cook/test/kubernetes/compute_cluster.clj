@@ -1,5 +1,6 @@
 (ns cook.test.kubernetes.compute-cluster
   (:require [clojure.test :refer :all]
+            [cook.kubernetes.api :as api]
             [cook.kubernetes.compute-cluster :as kcc]
             [cook.test.testutil :as tu]
             [datomic.api :as d])
@@ -66,7 +67,7 @@
     (let [pod-name->pod {"podA" (pod-helper "podA" "hostA" {:cpus 1.0 :mem 100.0})}]
       (is (= {"hostA" {:cpus 1.0
                        :mem 100.0}}
-             (kcc/get-consumption pod-name->pod)))))
+             (api/get-consumption pod-name->pod)))))
 
   (testing "correctly computes consumption for a pod with multiple containers"
     (let [pod-name->pod {"podA" (pod-helper "podA" "hostA"
@@ -75,7 +76,7 @@
                                             {:mem 100.0})}]
       (is (= {"hostA" {:cpus 2.0
                        :mem 200.0}}
-             (kcc/get-consumption pod-name->pod)))))
+             (api/get-consumption pod-name->pod)))))
 
   (testing "correctly aggregates pods by node name"
     (let [pod-name->pod {"podA" (pod-helper "podA" "hostA"
@@ -90,7 +91,7 @@
       (is (= {"hostA" {:cpus 2.0 :mem 100.0}
               "hostB" {:cpus 1.0 :mem 100.0}
               "hostC" {:cpus 1.0 :mem 0.0}}
-             (kcc/get-consumption pod-name->pod))))))
+             (api/get-consumption pod-name->pod))))))
 
 (deftest test-get-capacity
   (let [node-name->node {"nodeA" (node-helper "nodeA" 1.0 100.0)
@@ -101,7 +102,7 @@
             "nodeB" {:cpus 1.0 :mem 0.0}
             "nodeC" {:cpus 0.0 :mem 100.0}
             "nodeD" {:cpus 0.0 :mem 0.0}}
-           (kcc/get-capacity node-name->node)))))
+           (api/get-capacity node-name->node)))))
 
 (deftest test-generate-offers
   (let [compute-cluster (kcc/->KubernetesComputeCluster nil "kubecompute" nil nil nil (atom {}) (atom {}))
@@ -145,7 +146,7 @@
                        :task-request {:resources {:mem 512
                                                   :cpus 1.0}}
                        :hostname "kubehost"}
-        pod (kcc/task-metadata->pod task-metadata)]
+        pod (api/task-metadata->pod task-metadata)]
     (is (= "my-task" (-> pod .getMetadata .getName)))
     (is (= "Never" (-> pod .getSpec .getRestartPolicy)))
     (is (= "kubehost" (-> pod .getSpec .getNodeName)))
