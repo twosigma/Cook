@@ -506,11 +506,9 @@
             :failures (list of unmatched tasks, and why they weren't matched)}"
   [db ^TaskScheduler fenzo considerable offers rebalancer-reservation-atom]
   (log/info "Matching" (count offers) "offers to" (count considerable) "jobs with fenzo")
-  (log/debug "offers to scheduleOnce" offers)
   (log/debug "tasks to scheduleOnce" considerable)
   (dl/update-cost-staleness-metric considerable)
   (let [t (System/currentTimeMillis)
-        _ (log/debug "offer to scheduleOnce" offers)
         _ (log/debug "tasks to scheduleOnce" considerable)
         leases (mapv #(->VirtualMachineLeaseAdapter % t) offers)
         considerable->task-id (plumbing.core/map-from-keys (fn [_] (str (d/squuid))) considerable)
@@ -870,7 +868,6 @@
                                                           (if (cache/has? c slave-id)
                                                             (cache/hit c slave-id)
                                                             (cache/miss c slave-id attrs)))))
-                      _ (log/debug "In" pool-name "pool, passing following offers to handle-resource-offers!" offers)
                       using-pools? (not (nil? (config/default-pool)))
                       user->quota (quota/create-user->quota-fn (d/db conn) (if using-pools? pool-name nil))
                       matched-head? (handle-resource-offers! conn fenzo pool-name->pending-jobs-atom

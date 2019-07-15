@@ -36,7 +36,9 @@
             [qbits.jet.server :refer (run-jetty)]
             [ring.middleware.params :refer (wrap-params)])
   (:import (java.util UUID)
-           (org.apache.log4j ConsoleAppender Logger PatternLayout)))
+           (org.apache.log4j ConsoleAppender Logger PatternLayout)
+           (io.kubernetes.client.custom Quantity$Format Quantity)
+           (io.kubernetes.client.models V1Container V1ResourceRequirements V1Pod V1ObjectMeta V1PodSpec V1Node V1NodeStatus)))
 
 (defn create-dummy-mesos-compute-cluster
   [compute-cluster-name framework-id db-id driver-atom]
@@ -425,3 +427,46 @@
   (reify JobLaunchFilter
     (check-job-launch [this _]
       {:status :accepted :message "Explicit-accept by test plugin" :cache-expires-at (-> -1 t/seconds t/from-now)})))
+
+
+(defn pod-helper [pod-name node-name & requests]
+  "Make a fake node for kubernetes unit tests"
+  (let [pod (V1Pod.)
+        metadata (V1ObjectMeta.)
+        spec (V1PodSpec.)]
+    (doall (for [{:keys [mem cpus]} requests]
+             (let [container (V1Container.)
+                   resources (V1ResourceRequirements.)]
+               (when mem
+                 (.putRequestsItem resources
+                                   "memory"
+                                   (Quantity. (BigDecimal. ^double (* 1024 1024 mem))
+                                              Quantity$Format/DECIMAL_SI)))
+               (when cpus
+                 (.putRequestsItem resources
+                                   "cpu"
+                                   (Quantity. (BigDecimal. cpus)
+                                              Quantity$Format/DECIMAL_SI)))
+               (.setResources container resources)
+               (.addContainersItem spec container))))
+    (.setNodeName spec node-name)
+    (.setName metadata pod-name)
+    (.setMetadata pod metadata)
+    (.setSpec pod spec)
+    pod))
+
+(defn node-helper [node-name cpus mem]
+  "Make a fake node for kubernetes unit tests"
+  (let [node (V1Node.)
+        status (V1NodeStatus.)
+        metadata (V1ObjectMeta.)]
+    (when cpus
+      (.putCapacityItem status "cpu" (Quantity. (BigDecimal. cpus)
+                                                Quantity$Format/DECIMAL_SI)))
+    (when mem
+      (.putCapacityItem status "memory" (Quantity. (BigDecimal. (* 1024 1024 mem))
+                                                   Quantity$Format/DECIMAL_SI)))
+    (.setStatus node status)
+    (.setName metadata node-name)
+    (.setMetadata node metadata)
+    node))
