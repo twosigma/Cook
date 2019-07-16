@@ -127,12 +127,15 @@
       (catch Exception e
         (log/error e "Error processing status update")))))
 
-(defrecord KubernetesComputeCluster [^ApiClient api-client name entity-id match-trigger-chan exit-code-syncer-state current-pods-atom current-nodes-atom]
+(defrecord KubernetesComputeCluster [^ApiClient api-client name entity-id match-trigger-chan exit-code-syncer-state current-pods-atom current-nodes-atom expected-state-map existing-state-map]
   cc/ComputeCluster
   (launch-tasks [this offers task-metadata-seq]
-    (let [api (CoreV1Api. api-client)
-          pods (map api/task-metadata->pod task-metadata-seq)]
-      (doseq [pod pods]
+    (let [api (CoreV1Api. api-client)]
+      (doseq [task-metadata task-metadata-seq]
+        (update-expected-state
+          expected-state-map
+          (:task/uuid task-metadata)
+          {:expected-state :expected/running :launch-pod (task-metadata->pod pod)})
         (log/debug "Launching pod" pod)
         (try
           (.createNamespacedPod api "cook" pod nil nil nil)
