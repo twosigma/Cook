@@ -4,7 +4,7 @@
   (:import (io.kubernetes.client.models V1Pod V1PodBuilder V1Container)
            (java.util UUID)
            (io.kubernetes.client.custom Quantity)
-           (io.kubernetes.client ApiClient Configuration)
+           (io.kubernetes.client ApiClient Configuration ApiException)
            (io.kubernetes.client.util Config Watch)
            (io.kubernetes.client.apis CoreV1Api)
            (io.kubernetes.client.models V1Node V1Pod V1Container V1ResourceRequirements V1PodBuilder V1EnvVar V1ObjectMeta V1PodSpec)
@@ -239,27 +239,17 @@
 
 (defn launch-task
   "Given a pod-name use lookup the associated task, extract the parts needed to syntehsize the kubenretes object and go"
-  [api {:keys [launch-metadata] :as expected-state-dict}]
-  (let [{:keys [uuid]} launch-metadata
-        ; TODO: Get the task information, generate a pod.
-        v1pod
-        (-> (V1PodBuilder.)
-            (.withNewMetadata)
-            (.withName (task-uuid->pod-name uuid))
-            (.withFinalizers "cook-copystateback-finalizer")
-            (.endMetadata)
-            (.withNewSpec)
-            (.withNewContainer)
-            (.withName "xxx")
-            (.withImage "Imm")
-            (.endContainer)
-            (.endSpec)
-            (.build))]
-
-    ;; TODO: IF there's an error, log it and move on. We'll try again later.
+  [api {:keys [launch-pod] :as expected-state-dict}]
+  ;; TODO: IF there's an error, log it and move on. We'll try again later.
+  (log/debug "Launching pod" launch-pod)
+  (try
     (-> api
-        ; TODO
-        (.createNamespacedPod "NamespaceTODO" v1pod nil nil nil))))
+        (.createNamespacedPod "cook" launch-pod nil nil nil))
+    (catch ApiException e
+      (log/error e "Error creating pod:" (.getResponseBody e)))))
+
+;; TODO: Need the 'stuck pod scanner' to detect stuck states and move them into killed.
+
 
 (defn rebuild-watch-pods
   ;;   We treat 'finalization removed' on a failed/succeeded task the same as if it didn't exist in kubernetes at all.
