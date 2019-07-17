@@ -172,7 +172,7 @@
                               offers (generate-offers nodes pods this)
                               pool (config/default-pool)
                               chan (pool->offers-chan pool)] ; TODO(pschorf): Support pools
-                          (log/info "Processing offers:" offers)
+                          ;(log/info "Processing offers:" offers)
                           (scheduler/receive-offers chan match-trigger-chan this pool offers))
                         (catch Exception e
                           (log/error e "Exception while forwarding offers")))))
