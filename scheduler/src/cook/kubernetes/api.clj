@@ -60,7 +60,7 @@
         (try
           (handle-watch-updates current-pods-atom watch (fn [p] (-> p .getMetadata .getName)) pod-callback)
           (catch Exception e
-            (log/error e "Error during watch")
+            (log/error "Error during watch: " (-> e .toString))
             (.close watch)
             (initialize-pod-watch api-client current-pods-atom pod-callback))))))))
 
