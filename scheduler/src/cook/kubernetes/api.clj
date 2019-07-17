@@ -220,33 +220,35 @@
 
 (defn remove-finalization-if-set
   "Remove finalization for a pod if its there. No-op if its not there."
-  [api ^V1Pod pod]
+  [api-client ^V1Pod pod]
   (TODO))
 
 (defn kill-task
   "Kill this kubernetes pod"
-  [api ^V1Pod pod]
-  (.deleteNamespacedPod ; TODO: Double check arguments.
-    api
-    (-> pod .getMetadata .getName)
-    (-> pod .getMetadata .getNamespace)
-    nil
-    nil
-    nil
-    nil
-    nil
-    nil))
+  [^ApiClient api-client ^V1Pod pod]
+  (let [api (CoreV1Api. api-client)]
+    (.deleteNamespacedPod ; TODO: Double check arguments.
+      api
+      (-> pod .getMetadata .getName)
+      (-> pod .getMetadata .getNamespace)
+      nil
+      nil
+      nil
+      nil
+      nil
+      nil)))
 
 (defn launch-task
   "Given a pod-name use lookup the associated task, extract the parts needed to syntehsize the kubenretes object and go"
-  [api {:keys [launch-pod] :as expected-state-dict}]
+  [api-client {:keys [launch-pod] :as expected-state-dict}]
   ;; TODO: IF there's an error, log it and move on. We'll try again later.
-  (log/debug "Launching pod" launch-pod)
-  (try
-    (-> api
-        (.createNamespacedPod "cook" launch-pod nil nil nil))
-    (catch ApiException e
-      (log/error e "Error creating pod:" (.getResponseBody e)))))
+  (let [api (CoreV1Api. api-client)]
+    (log/info "Launching pod" api launch-pod)
+    (try
+      (-> api
+          (.createNamespacedPod "cook" launch-pod nil nil nil))
+      (catch ApiException e
+        (log/error e "Error submitting pod:" (.getResponseBody e))))))
 
 ;; TODO: Need the 'stuck pod scanner' to detect stuck states and move them into killed.
 
