@@ -7,6 +7,7 @@
             [cook.config :as config]
             [cook.datomic]
             [cook.kubernetes.api :as api]
+            [cook.kubernetes.controller :as controller]
             [cook.pool]
             [cook.mesos.sandbox :as sandbox]
             [cook.scheduler.scheduler :as scheduler]
@@ -132,16 +133,10 @@
   (launch-tasks [this offers task-metadata-seq]
     (let [api (CoreV1Api. api-client)]
       (doseq [task-metadata task-metadata-seq]
-        (update-expected-state
-          expected-state-map
-          (:task/uuid task-metadata)
-          {:expected-state :expected/running :launch-pod (task-metadata->pod pod)})
-        (log/debug "Launching pod" pod)
-        (try
-          (.createNamespacedPod api "cook" pod nil nil nil)
-          (catch ApiException e
-            (log/error e "Error creating pod:" (.getResponseBody e))
-            (throw e))))))
+        (controller/update-expected-state
+          this
+          (:task-id task-metadata)
+          {:expected-state :expected/running :launch-pod (api/task-metadata->pod task-metadata)}))))
 
   (kill-task [this task-id]
     (throw (UnsupportedOperationException. "Cannot kill tasks")))
@@ -208,6 +203,6 @@
         api-client (Config/fromConfig config-file)
         compute-cluster (->KubernetesComputeCluster api-client compute-cluster-name cluster-entity-id
                                                     (:match-trigger-chan trigger-chans)
-                                                    exit-code-syncer-state (atom {}) (atom {}))]
+                                                    exit-code-syncer-state (atom {}) (atom {}) (atom {:type :expected-state-map}) (atom {:type :existing-state-map}))]
     (cc/register-compute-cluster! compute-cluster)
     compute-cluster))
