@@ -1,0 +1,83 @@
+{:agent-query-cache {:ttl-ms 1000}
+ :authorization {;; Note that internally, Cook will select :http-basic if it's set to true,
+                 ;; and fall back to :one-user only if :http-basic is false.
+                 :http-basic #config/env-bool "COOK_HTTP_BASIC_AUTH"
+                 :one-user #config/env "COOK_ONE_USER_AUTH"}
+ :authorization-config {;; These users have admin privileges when using configfile-admins-auth;
+                        ;; e.g., they can view and modify other users' jobs.
+                        ;; Sets "admin" and the user defined in "COOK_ONE_USER_AUTH" to be admins for local development.
+                        :admins #{"admin" #config/env "COOK_ONE_USER_AUTH"}
+                        ;; What function should be used to perform user authorization?
+                        ;; See the docstring in cook.rest.authorization for details.
+                        :authorization-fn cook.rest.authorization/configfile-admins-auth-open-gets
+                        ;; users that are allowed to do things on behalf of others
+                        :impersonators #{"poser" "other-impersonator"}}
+ :container-defaults {:volumes [{:host-path "/tmp/cook-integration-mount"
+                                 :container-path "/mnt/cook-integration"
+                                 :mode "RW"}]}
+ :mesos {:leader-path "/cook-scheduler"}
+ :compute-clusters [{:factory-fn cook.kubernetes.compute-cluster/factory-fn
+                     :config {:compute-cluster-name "minikube"
+                              ;; Location of the kubernetes config file, e.g. $HOME/.kube/config
+                              :config-file #config/env "COOK_K8S_CONFIG_FILE"}}]
+ :cors-origins ["https?://cors.example.com"]
+ :data-local {:fitness-calculator {:cache-ttl-ms 60000
+                                   :cost-endpoint #config/env "DATA_LOCAL_ENDPOINT"
+                                   :update-interval-ms 1000}}
+ :database {:datomic-uri #config/env "COOK_DATOMIC_URI"}
+ :plugins {:job-submission-validator {:batch-timeout-seconds 40
+                                      :factory-fn "cook.plugins.demo-plugin/submission-factory"}
+           :job-launch-filter {:age-out-last-seen-deadline-minutes 10
+                               :age-out-first-seen-deadline-minutes 10000
+                               :age-out-seen-count 10
+                               :factory-fn "cook.plugins.demo-plugin/launch-factory"}}
+ :hostname #config/env "COOK_HOSTNAME"
+ :log {:file #config/env "COOK_LOG_FILE"
+       :levels {"datomic.db" :warn
+                "datomic.kv-cluster" :warn
+                "datomic.peer" :warn
+                "cook.scheduler.data-locality" :debug
+                "cook.mesos.fenzo-utils" :debug
+                "cook.scheduler.rebalancer" :debug
+                "cook.scheduler.scheduler" :debug
+                "cook.kubernetes.compute-cluster" :debug
+                :default :info}}
+ :metrics {:jmx true
+           :user-metrics-interval-seconds 60}
+ :nrepl {:enabled? true
+         :port #config/env-int "COOK_NREPL_PORT"}
+ :pools {:default "gamma"}
+ :port #config/env-int "COOK_PORT"
+ :ssl {:port #config/env-int "COOK_SSL_PORT"
+       :keystore-path #config/env "COOK_KEYSTORE_PATH"
+       :keystore-type "pkcs12"
+       :keystore-pass "cookstore"}
+ :rate-limit {:expire-minutes 1200 ; Expire unused rate limit entries after 20 hours.
+              ; Keep these job-launch and job-submission values as they are for integration tests. Making them smaller can cause
+              ; spurious failures, and making them larger will cause test_rate_limit_launching_jobs to skip itself.
+              :global-job-launch {:bucket-size 10000
+                                  :enforce? true
+                                  :tokens-replenished-per-minute 5000}
+              :job-launch {:bucket-size 10000
+                           :enforce? true
+                           :tokens-replenished-per-minute 5000}
+              :job-submission {:bucket-size 1000
+                               :enforce? true
+                               :tokens-replenished-per-minute 600}
+              :user-limit-per-m 1000000}
+ :rebalancer {:dru-scale 1
+              :interval-seconds 30
+              :max-preemption 500.0
+              :min-dru-diff 1.0
+              :safe-dru-threshold 1.0}
+ :sandbox-syncer {:sync-interval-ms 1000}
+ :scheduler {:fenzo-fitness-calculator "cook.scheduler.data-locality/make-data-local-fitness-calculator"
+             :offer-incubate-ms 15000
+             :task-constraints {:cpus 10
+                                :memory-gb 48
+                                :retry-limit 15
+                                :timeout-hours 1
+                                :timeout-interval-minutes 1}}
+ :unhandled-exceptions {:log-level :error}
+ :zookeeper {:local? #config/env-bool "COOK_ZOOKEEPER_LOCAL"
+             :connection #config/env "COOK_ZOOKEEPER"}}
