@@ -76,7 +76,7 @@
                :level default}
               overrides))
      (catch Throwable t
-       (.println System/err "Failed to initialize logging!")
+       (.println System/err (str "Failed to initialize logging! Error: " (.toString t)))
        (stacktrace/print-cause-trace t)
        (throw t)))))
 
