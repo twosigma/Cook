@@ -104,7 +104,7 @@
            (kcc/get-capacity node-name->node)))))
 
 (deftest test-generate-offers
-  (let [compute-cluster (kcc/->KubernetesComputeCluster nil "kubecompute" nil nil nil)
+  (let [compute-cluster (kcc/->KubernetesComputeCluster nil "kubecompute" nil nil nil (atom {}) (atom {}))
         node-name->node {"nodeA" (node-helper "nodeA" 1.0 1000.0)
                          "nodeB" (node-helper "nodeB" 1.0 1000.0)
                          "nodeC" (node-helper "nodeC" 1.0 1000.0)}

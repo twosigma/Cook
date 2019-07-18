@@ -39,77 +39,66 @@
           (catch Exception e
             (log/error e "Error while processing callback")))))))
 
-(let [current-pods-atom (atom {})]
-  (defn initialize-pod-watch
-    [^ApiClient api-client pod-callback]
-    (let [api (CoreV1Api. api-client)
-          current-pods (.listPodForAllNamespaces api
-                                                 nil ; continue
-                                                 nil ; fieldSelector
-                                                 nil ; includeUninitialized
-                                                 nil ; labelSelector
-                                                 nil ; limit
-                                                 nil ; pretty
-                                                 nil ; resourceVersion
-                                                 nil ; timeoutSeconds
-                                                 nil ; watch
-                                                 )
-          pod-name->pod (pc/map-from-vals (fn [^V1Pod pod]
-                                            (-> pod
-                                                .getMetadata
-                                                .getName))
-                                          (.getItems current-pods))]
-      (log/info "Updating current-pods-atom with pods" (keys pod-name->pod))
-      (reset! current-pods-atom pod-name->pod)
-      (let [watch (WatchHelper/createPodWatch api-client (-> current-pods
-                                                             .getMetadata
-                                                             .getResourceVersion))]
-        (.submit kubernetes-executor ^Callable
-        (fn []
-          (try
-            (handle-watch-updates current-pods-atom watch (fn [p] (-> p .getMetadata .getName)) pod-callback)
-            (catch Exception e
-              (log/error e "Error during watch")
-              (.close watch)
-              (initialize-pod-watch api-client pod-callback))))))))
+(defn initialize-pod-watch
+  [^ApiClient api-client current-pods-atom pod-callback]
+  (let [api (CoreV1Api. api-client)
+        current-pods (.listPodForAllNamespaces api
+                                               nil ; continue
+                                               nil ; fieldSelector
+                                               nil ; includeUninitialized
+                                               nil ; labelSelector
+                                               nil ; limit
+                                               nil ; pretty
+                                               nil ; resourceVersion
+                                               nil ; timeoutSeconds
+                                               nil ; watch
+                                               )
+        pod-name->pod (pc/map-from-vals (fn [^V1Pod pod]
+                                          (-> pod
+                                              .getMetadata
+                                              .getName))
+                                        (.getItems current-pods))]
+    (log/info "Updating current-pods-atom with pods" (keys pod-name->pod))
+    (reset! current-pods-atom pod-name->pod)
+    (let [watch (WatchHelper/createPodWatch api-client (-> current-pods
+                                                           .getMetadata
+                                                           .getResourceVersion))]
+      (.submit kubernetes-executor ^Callable
+      (fn []
+        (try
+          (handle-watch-updates current-pods-atom watch (fn [p] (-> p .getMetadata .getName)) pod-callback)
+          (catch Exception e
+            (log/error e "Error during watch")
+            (.close watch)
+            (initialize-pod-watch api-client current-pods-atom pod-callback))))))))
 
-  (defn get-pods
-    []
-    @current-pods-atom))
-
-
-(let [current-nodes-atom (atom {})]
-  (defn initialize-node-watch [^ApiClient api-client]
-    (let [api (CoreV1Api. api-client)
-          current-nodes (.listNode api
-                                   nil ; includeUninitialized
-                                   nil ; pretty
-                                   nil ; continue
-                                   nil ; fieldSelector
-                                   nil ; labelSelector
-                                   nil ; limit
-                                   nil ; resourceVersion
-                                   nil ; timeoutSeconds
-                                   nil ; watch
-                                   )
-          node-name->node (pc/map-from-vals (fn [^V1Node node]
-                                              (-> node .getMetadata .getName))
-                                            (.getItems current-nodes))]
-      (reset! current-nodes-atom node-name->node)
-      (let [watch (WatchHelper/createNodeWatch api-client (-> current-nodes .getMetadata .getResourceVersion))]
-        (.submit kubernetes-executor ^Callable
-          (fn []
-            (try
-              (handle-watch-updates current-nodes-atom watch (fn [n] (-> n .getMetadata .getName)) nil)
-              (catch Exception e
-                (log/warn e "Error during node watch")
-                (initialize-node-watch api-client))
-              (finally
-                (.close watch))))))))
-
-  (defn get-nodes
-    []
-    @current-nodes-atom))
+(defn initialize-node-watch [^ApiClient api-client current-nodes-atom]
+  (let [api (CoreV1Api. api-client)
+        current-nodes (.listNode api
+                                 nil ; includeUninitialized
+                                 nil ; pretty
+                                 nil ; continue
+                                 nil ; fieldSelector
+                                 nil ; labelSelector
+                                 nil ; limit
+                                 nil ; resourceVersion
+                                 nil ; timeoutSeconds
+                                 nil ; watch
+                                 )
+        node-name->node (pc/map-from-vals (fn [^V1Node node]
+                                            (-> node .getMetadata .getName))
+                                          (.getItems current-nodes))]
+    (reset! current-nodes-atom node-name->node)
+    (let [watch (WatchHelper/createNodeWatch api-client (-> current-nodes .getMetadata .getResourceVersion))]
+      (.submit kubernetes-executor ^Callable
+      (fn []
+        (try
+          (handle-watch-updates current-nodes-atom watch (fn [n] (-> n .getMetadata .getName)) nil)
+          (catch Exception e
+            (log/warn e "Error during node watch")
+            (initialize-node-watch api-client current-nodes-atom))
+          (finally
+            (.close watch))))))))
 
 (defn to-double
   [^Quantity q]
@@ -304,7 +293,7 @@
       (catch Exception e
         (log/error e "Error processing status update")))))
 
-(defrecord KubernetesComputeCluster [^ApiClient api-client name entity-id match-trigger-chan exit-code-syncer-state]
+(defrecord KubernetesComputeCluster [^ApiClient api-client name entity-id match-trigger-chan exit-code-syncer-state current-pods-atom current-nodes-atom]
   cc/ComputeCluster
   (launch-tasks [this offers task-metadata-seq]
     (let [api (CoreV1Api. api-client)
@@ -339,15 +328,15 @@
                                                                  (constantly nil) ; no sandboxes to sync
                                                                  status))
           pod-callback (make-pod-watch-callback handle-status-update handle-exit-code)]
-      (initialize-pod-watch api-client pod-callback))
-    (initialize-node-watch api-client)
+      (initialize-pod-watch api-client current-pods-atom pod-callback))
+    (initialize-node-watch api-client current-nodes-atom)
 
     ; TODO(pschorf): Figure out a better way to plumb these through
     (chime/chime-at (tp/periodic-seq (t/now) (t/seconds 2))
                     (fn [_]
                       (try
-                        (let [nodes (get-nodes)
-                              pods (get-pods)
+                        (let [nodes @current-nodes-atom
+                              pods @current-pods-atom
                               offers (generate-offers nodes pods this)
                               pool (config/default-pool)
                               chan (pool->offers-chan pool)] ; TODO(pschorf): Support pools
@@ -382,6 +371,6 @@
         api-client (Config/fromConfig config-file)
         compute-cluster (->KubernetesComputeCluster api-client compute-cluster-name cluster-entity-id
                                                     (:match-trigger-chan trigger-chans)
-                                                    exit-code-syncer-state)]
+                                                    exit-code-syncer-state (atom {}) (atom {}))]
     (cc/register-compute-cluster! compute-cluster)
     compute-cluster))
