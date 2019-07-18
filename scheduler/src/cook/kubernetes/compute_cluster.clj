@@ -13,15 +13,11 @@
             [cook.scheduler.scheduler :as scheduler]
             [datomic.api :as d]
             [plumbing.core :as pc])
-  (:import (com.twosigma.cook.kubernetes WatchHelper)
-           (io.kubernetes.client ApiClient ApiException)
+  (:import (io.kubernetes.client ApiClient)
            (io.kubernetes.client.apis CoreV1Api)
-           (io.kubernetes.client.custom Quantity Quantity$Format)
-           (io.kubernetes.client.models V1Pod V1Node V1Container V1ObjectMeta V1EnvVar V1ResourceRequirements
-                                        V1PodSpec V1PodStatus V1ContainerState)
-           (io.kubernetes.client.util Config Watch)
-           (java.util UUID)
-           (java.util.concurrent Executors ExecutorService)))
+           (io.kubernetes.client.models V1PodStatus V1ContainerState)
+           (io.kubernetes.client.util Config)
+           (java.util UUID)))
 
 (defn generate-offers
   [node-name->node pod-name->pod compute-cluster]
@@ -136,7 +132,7 @@
         (controller/update-expected-state
           this
           (:task-id task-metadata)
-          {:expected-state :expected/running :launch-pod (api/task-metadata->pod task-metadata)}))))
+          {:expected-state :expected/starting :launch-pod (api/task-metadata->pod task-metadata)}))))
 
   (kill-task [this task-id]
     (throw (UnsupportedOperationException. "Cannot kill tasks")))
