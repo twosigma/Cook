@@ -72,7 +72,7 @@
 (defn pod-has-started
   "A pod has completed."
   [{:keys [synthesized-state pod] :as existing-state-dictionary}]
-  (TODO); TODO Update datomic state to instance.state/running.
+  (api/TODO); TODO Update datomic state to instance.state/running.
   :existing/running)
 
 
@@ -83,7 +83,7 @@
   (let [{:keys [expected-state] :as expected-state-dict} (get @expected-state-map pod-name)
         {:keys [synthesized-existing-state pod] :as existing-state-dict} (get @existing-state-map pod-name)]
     (log/info "Processing " pod-name ": ((" (prepare-expected-state-dict-for-logging expected-state-dict) " ===== " existing-state-dict "))")
-    (TODO) ; We added an :expected/starting state to the machine, to represent when a pod is starting. We map instance.status/unknown to that state.
+    (api/TODO) ; We added an :expected/starting state to the machine, to represent when a pod is starting. We map instance.status/unknown to that state.
            ; The todo is to add in cases for [:expected/starting *] for those other states.
     (let
         [new-expected-state (case (vector (or expected-state :missing) (or synthesized-existing-state :missing))
