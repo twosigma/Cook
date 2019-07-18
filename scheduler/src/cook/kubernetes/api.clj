@@ -1,16 +1,18 @@
 (ns cook.kubernetes.api
   (:require [clojure.tools.logging :as log]
             [plumbing.core :as pc])
-  (:import (io.kubernetes.client.models V1Pod V1PodBuilder V1Container)
-           (java.util UUID)
+  (:import
+    (com.twosigma.cook.kubernetes WatchHelper)
+    (io.kubernetes.client.models V1Pod V1PodBuilder V1Container)
            (io.kubernetes.client.custom Quantity)
            (io.kubernetes.client ApiClient Configuration ApiException)
            (io.kubernetes.client.util Config Watch)
            (io.kubernetes.client.apis CoreV1Api)
            (io.kubernetes.client.models V1Node V1Pod V1Container V1ResourceRequirements V1PodBuilder V1EnvVar V1ObjectMeta V1PodSpec)
            (io.kubernetes.client.custom Quantity Quantity$Format)
+           (java.util UUID)
            (java.util.concurrent Executors ExecutorService)
-           (com.twosigma.cook.kubernetes WatchHelper)))
+           ))
 
 
 (def ^ExecutorService kubernetes-executor (Executors/newFixedThreadPool 2))
@@ -181,17 +183,13 @@
     (.setSpec pod pod-spec)
 
     pod))
-
-
-
-
 ;;
 ;;  This file contains accessor functions for all kubernetes API. That way we can conveniently mock these functions in clojure.
 ;;
 
 (defn TODO
   []
-  (throw (Exception.)))
+  (throw (UnsupportedOperationException. "TODO")))
 
 (defn V1Pod->name
   "Extract the name of a pod from the pod itself"
@@ -218,7 +216,7 @@
   [task-uuid]
   "TODO: Implement task-uuid->pod-name") ; TODO
 
-(defn remove-finalization-if-set
+(defn remove-finalization-if-set-and-delete
   "Remove finalization for a pod if its there. No-op if its not there."
   [api-client ^V1Pod pod]
   (TODO))
