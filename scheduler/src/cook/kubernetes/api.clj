@@ -213,30 +213,34 @@
           ; * A job may have additional containers with the name aux-*
           job-status (first (filter (fn [c] (= "required-cook-job-container" (.getName c)))
                                     container-statuses))]
-      (if job-status
-        (let [^V1ContainerState state (.getState job-status)]
-          (cond
-            (.getWaiting state)
-            {:state :pod/waiting
-             :reason (-> state .getWaiting .getReason)}
-            (.getRunning state)
-            {:state :pod/running
-             :reason "Running"}
-            (.getTerminated state)
-            (let [exit-code (-> state .getTerminated .getExitCode)]
-              (if (= 0 exit-code)
-                {:state :pod/succeeded
-                 :exit exit-code
-                 :reason (-> state .getTerminated .getReason)}
-                {:state :pod/failed
-                 :exit exit-code
-                 :reason (-> state .getTerminated .getReason)}))
-            :default
-            {:state :pod/unknown
-             :reason "Unknown"}))
+      (if (not (-> pod .getMetadata .getDeletionTimestamp nil?))
+        ; If a pod has been ordered deleted, treat it as if it was gone, Its being async removed.
+        {:state :missing :reason "Pod was explicitly deleted"}
+        ; If pod isn't being async removed, then look at the containers inside it....
+        (if job-status
+          (let [^V1ContainerState state (.getState job-status)]
+            (cond
+              (.getWaiting state)
+              {:state :pod/waiting
+               :reason (-> state .getWaiting .getReason)}
+              (.getRunning state)
+              {:state :pod/running
+               :reason "Running"}
+              (.getTerminated state)
+              (let [exit-code (-> state .getTerminated .getExitCode)]
+                (if (= 0 exit-code)
+                  {:state :pod/succeeded
+                   :exit exit-code
+                   :reason (-> state .getTerminated .getReason)}
+                  {:state :pod/failed
+                   :exit exit-code
+                   :reason (-> state .getTerminated .getReason)}))
+              :default
+              {:state :pod/unknown
+               :reason "Unknown"}))
 
-        {:state :pod/waiting
-         :reason "Pending"}))))
+          {:state :pod/waiting
+           :reason "Pending"})))))
 
 (defn synthesize-node-state
   "Given the current node metadata/information, synthesize the node state -- whether or not we can/should launch things on it."

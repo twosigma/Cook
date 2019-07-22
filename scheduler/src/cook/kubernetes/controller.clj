@@ -24,7 +24,7 @@
 (defn existing-state-equivalent?
   "Is the old and new state equivalent?"
   [old-state new-state]
-  (= old-state new-state) ; TODO
+  (= old-state new-state) ; TODO. This is not right. We need to tune/tweak this to suppress otherwise identical states so we dno't spam.
   )
 
 (defn remove-finalization-if-set-and-delete
@@ -85,7 +85,7 @@
     (let
       [cooked-expected-state (or expected-state :missing)
        cooked-existing-state (or (:state synthesized-state) :missing)]
-      (log/info "Processing: " pod-name ": ((" (prepare-expected-state-dict-for-logging expected-state-dict) " ===== " cooked-existing-state "))")
+      (log/info "Processing: " pod-name ": ((" (prepare-expected-state-dict-for-logging expected-state-dict) " ===== " cooked-existing-state  "///" existing-state-dict  "))")
       ; TODO: We added an :expected/starting state to the machine, to represent when a pod is starting. We map instance.status/unknown to that state
       ; The todo is to add in cases for [:expected/starting *] for those other states.
       (let

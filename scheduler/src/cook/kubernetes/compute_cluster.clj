@@ -107,7 +107,7 @@
           {:expected-state :expected/starting :launch-pod (api/task-metadata->pod task-metadata)}))))
 
   (kill-task [this task-id]
-    (throw (UnsupportedOperationException. "Cannot kill tasks")))
+    (controller/update-expected-state this task-id {:expected-state :expected/killed}))
 
   (decline-offer [this offer-id])
 
