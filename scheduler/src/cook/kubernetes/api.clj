@@ -8,7 +8,7 @@
            (io.kubernetes.client ApiClient Configuration ApiException)
            (io.kubernetes.client.util Config Watch)
            (io.kubernetes.client.apis CoreV1Api)
-    (io.kubernetes.client.models V1Node V1Pod V1Container V1ResourceRequirements V1PodBuilder V1EnvVar V1ObjectMeta V1PodSpec V1PodStatus V1ContainerState)
+    (io.kubernetes.client.models V1Node V1Pod V1Container V1ResourceRequirements V1PodBuilder V1EnvVar V1ObjectMeta V1PodSpec V1PodStatus V1ContainerState V1DeleteOptionsBuilder)
            (io.kubernetes.client.custom Quantity Quantity$Format)
            (java.util UUID)
            (java.util.concurrent Executors ExecutorService)
@@ -253,25 +253,28 @@
   [task-uuid]
   "TODO: Implement task-uuid->pod-name") ; TODO
 
-(defn remove-finalization-if-set-and-delete
-  "Remove finalization for a pod if its there. No-op if its not there."
-  [api-client ^V1Pod pod]
-  (TODO))
-
 (defn kill-task
   "Kill this kubernetes pod"
   [^ApiClient api-client ^V1Pod pod]
-  (let [api (CoreV1Api. api-client)]
+  (let [api (CoreV1Api. api-client)
+        deleteOptions (-> (V1DeleteOptionsBuilder.) (.withPropagationPolicy "Background") .build)
+        ]
     (.deleteNamespacedPod ; TODO: Double check arguments.
       api
       (-> pod .getMetadata .getName)
       (-> pod .getMetadata .getNamespace)
-      nil
+      deleteOptions
       nil
       nil
       nil
       nil
       nil)))
+
+(defn remove-finalization-if-set-and-delete
+  "Remove finalization for a pod if its there. No-op if its not there.
+  We always delete unconditionally, so finalization doesn't matter."
+  [^ApiClient api-client ^V1Pod pod]
+  (kill-task api-client pod))
 
 (defn launch-task
   "Given a pod-name use lookup the associated task, extract the parts needed to syntehsize the kubenretes object and go"
