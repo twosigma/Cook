@@ -4,15 +4,15 @@
   (:import
     (com.twosigma.cook.kubernetes WatchHelper)
     (io.kubernetes.client.models V1Pod V1PodBuilder V1Container)
-           (io.kubernetes.client.custom Quantity)
-           (io.kubernetes.client ApiClient Configuration ApiException)
-           (io.kubernetes.client.util Config Watch)
-           (io.kubernetes.client.apis CoreV1Api)
-    (io.kubernetes.client.models V1Node V1Pod V1Container V1ResourceRequirements V1PodBuilder V1EnvVar V1ObjectMeta V1PodSpec V1PodStatus V1ContainerState V1DeleteOptionsBuilder)
-           (io.kubernetes.client.custom Quantity Quantity$Format)
-           (java.util UUID)
-           (java.util.concurrent Executors ExecutorService)
-           ))
+    (io.kubernetes.client.custom Quantity)
+    (io.kubernetes.client ApiClient Configuration ApiException)
+    (io.kubernetes.client.util Config Watch)
+    (io.kubernetes.client.apis CoreV1Api)
+    (io.kubernetes.client.models V1Node V1Pod V1Container V1ResourceRequirements V1PodBuilder V1EnvVar V1ObjectMeta V1PodSpec V1PodStatus V1ContainerState V1DeleteOptionsBuilder V1DeleteOptions)
+    (io.kubernetes.client.custom Quantity Quantity$Format)
+    (java.util UUID)
+    (java.util.concurrent Executors ExecutorService)
+    (com.google.gson JsonSyntaxException)))
 
 
 (def ^ExecutorService kubernetes-executor (Executors/newFixedThreadPool 2))
@@ -257,23 +257,37 @@
   "Kill this kubernetes pod"
   [^ApiClient api-client ^V1Pod pod]
   (let [api (CoreV1Api. api-client)
-        deleteOptions (-> (V1DeleteOptionsBuilder.) (.withPropagationPolicy "Background") .build)
+        ^V1DeleteOptions deleteOptions (-> (V1DeleteOptionsBuilder.) (.withPropagationPolicy "Background") .build)
         ]
-    (.deleteNamespacedPod ; TODO: Double check arguments.
-      api
-      (-> pod .getMetadata .getName)
-      (-> pod .getMetadata .getNamespace)
-      deleteOptions
-      nil
-      nil
-      nil
-      nil
-      nil)))
+    (try
+      (.deleteNamespacedPod ; TODO: Double check arguments.
+        api
+        (-> pod .getMetadata .getName)
+        (-> pod .getMetadata .getNamespace)
+        deleteOptions
+        nil
+        nil
+        nil
+        nil
+        nil)
+      (catch JsonSyntaxException e
+        ; Silently gobble this exception.
+        ;
+        ; The java API can throw a a JsonSyntaxException parsing the kubernetes reply!
+        ; https://github.com/kubernetes-client/java/issues/252
+        ; https://github.com/kubernetes-client/java/issues/86
+        ;
+        ; They actually advise catching the exception and moving on!
+        ;
+        ))))
+
 
 (defn remove-finalization-if-set-and-delete
   "Remove finalization for a pod if its there. No-op if its not there.
   We always delete unconditionally, so finalization doesn't matter."
   [^ApiClient api-client ^V1Pod pod]
+  ; TODO: This likes to noisily throw NotFound multiple times as we delete away from kubernetes.
+  ; I suspect our predicate of existing-states-equivalent needs tweaking.
   (kill-task api-client pod))
 
 (defn launch-task
