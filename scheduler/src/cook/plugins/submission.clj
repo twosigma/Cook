@@ -67,11 +67,15 @@
   (if factory-fns
     (let [resolved-fns (doall (map (fn [f] (if-let [resolved (cook.plugins.util/resolve-symbol (symbol f))]
                                              resolved
-                                             (throw (ex-info "Unable to resolve factory function" factory-fn))))))
+                                             (throw (ex-info "Unable to resolve factory function" factory-fn))))
+                                   factory-fns))
           plugins (map (fn [f] (f)) resolved-fns)]
+      (log/info "Creating composite plugin with components" resolved-fns)
       (->CompositeSubmissionPlugin plugins))
     (if-let [resolved-fn (cook.plugins.util/resolve-symbol (symbol factory-fn))]
-      (resolved-fn)
+      (do
+         (log/info "Using plugin" resolved-fn)
+        (resolved-fn))
       (throw (ex-info "Unable to resolve factory function" factory-fn)))))
 
 (defn create-default-plugin-object
