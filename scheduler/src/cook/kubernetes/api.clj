@@ -8,7 +8,7 @@
            (io.kubernetes.client ApiClient Configuration ApiException)
            (io.kubernetes.client.util Config Watch)
            (io.kubernetes.client.apis CoreV1Api)
-           (io.kubernetes.client.models V1Node V1Pod V1Container V1ResourceRequirements V1PodBuilder V1EnvVar V1ObjectMeta V1PodSpec)
+    (io.kubernetes.client.models V1Node V1Pod V1Container V1ResourceRequirements V1PodBuilder V1EnvVar V1ObjectMeta V1PodSpec V1PodStatus V1ContainerState)
            (io.kubernetes.client.custom Quantity Quantity$Format)
            (java.util UUID)
            (java.util.concurrent Executors ExecutorService)
@@ -155,7 +155,7 @@
     (.setName metadata (str task-id))
 
     ; container
-    (.setName container "job")
+    (.setName container "required-cook-job-container")
     (.setCommand container
                  ["/bin/sh" "-c" (:value command)])
 
@@ -196,10 +196,47 @@
   [^V1Pod pod]
   (-> pod .getMetadata .getName))
 
-(defn synthesize-pod-state
-  "Given the current pod metadata/information, synthesize the pod state (running, pending, doomed etc.)"
+
+(defn pod->synthesized-pod-state
   [^V1Pod pod]
-  :synthesized/TODO-pod) ; TOOD
+  (when pod
+    (let [^V1PodStatus pod-status (.getStatus pod)
+          container-statuses (.getContainerStatuses pod-status)
+          ; TODO: We want the generation of the pod status to reflect the container status:
+          ; Right now, we only look at one container, the required-cook-job-container container in a pod.
+          ; * In the future, we want support for cook sidecars. In order to determine the pod status
+          ;   from the main cook job status and the sidecar statuses, we'll use a naming scheme for sidecars
+          ; * A pod will be considered complete if all containers with name required-* are complete.
+          ; * The main job container will always be named required-cookJobContainer
+          ; * We want a pod to be considered failed if any container with the name required-* fails or any container
+          ;   with the name extra-* fails.
+          ; * A job may have additional containers with the name aux-*
+          job-status (first (filter (fn [c] (= "required-cook-job-container" (.getName c)))
+                                    container-statuses))]
+      (if job-status
+        (let [^V1ContainerState state (.getState job-status)]
+          (cond
+            (.getWaiting state)
+            {:state :pod/waiting
+             :reason (-> state .getWaiting .getReason)}
+            (.getRunning state)
+            {:state :pod/running
+             :reason "Running"}
+            (.getTerminated state)
+            (let [exit-code (-> state .getTerminated .getExitCode)]
+              (if (= 0 exit-code)
+                {:state :pod/succeeded
+                 :exit exit-code
+                 :reason (-> state .getTerminated .getReason)}
+                {:state :pod/failed
+                 :exit exit-code
+                 :reason (-> state .getTerminated .getReason)}))
+            :default
+            {:state :pod/unknown
+             :reason "Unknown"}))
+
+        {:state :pod/waiting
+         :reason "Pending"}))))
 
 (defn synthesize-node-state
   "Given the current node metadata/information, synthesize the node state -- whether or not we can/should launch things on it."

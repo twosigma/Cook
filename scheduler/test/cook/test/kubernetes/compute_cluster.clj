@@ -55,7 +55,7 @@
 
 (deftest test-pod->pod-state
   (testing "returns nil for empty pod"
-    (is (nil? (kcc/pod->pod-state nil))))
+    (is (nil? (api/pod->synthesized-pod-state nil))))
 
   (testing "no container status -> waiting"
     (let [pod (V1Pod.)
@@ -63,7 +63,7 @@
       (.setStatus pod pod-status)
       (is (= {:state :pod/waiting
               :reason "Pending"}
-             (kcc/pod->pod-state pod)))))
+             (api/pod->synthesized-pod-state pod)))))
 
   (testing "waiting"
     (let [pod (V1Pod.)
@@ -80,4 +80,4 @@
 
       (is (= {:state :pod/waiting
               :reason "waiting"}
-             (kcc/pod->pod-state pod))))))
+             (api/pod->synthesized-pod-state pod))))))
