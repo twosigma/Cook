@@ -223,6 +223,20 @@
             (log/error e "Unable to consume request stream"))))
       resp)))
 
+(defn- wrap-exception-logging
+  [handler]
+  (fn wrap-exception-logging [request]
+    (try
+      (handler request)
+      (catch Exception e
+        (let [{:keys [params remote-addr :authorization/user uri request-method]} request]
+          (log/error e "Unhandled exception in ring handler" {:params params
+                                                              :remote-addr remote-addr
+                                                              :user user
+                                                              :uri uri
+                                                              :request-method request-method}))
+        (throw e)))))
+
 (def scheduler-server
   (graph/eager-compile
     {:route full-routes
@@ -241,6 +255,7 @@
                                                                                  :limit user-limit})
                                                                impersonation-middleware
                                                                (conditional-auth-bypass authorization-middleware)
+                                                               wrap-exception-logging
                                                                wrap-stacktrace
                                                                wrap-no-cache
                                                                wrap-cookies

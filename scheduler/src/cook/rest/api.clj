@@ -87,7 +87,7 @@
 (defn render-error
   [{:keys [::error request]}]
   (try
-    (let [{:keys [params remote-addr user uri request-method]} request]
+    (let [{:keys [params remote-addr :authorization/user uri request-method]} request]
       (log/info "Handling error" {:error error
                                   :params params
                                   :remote-addr remote-addr
