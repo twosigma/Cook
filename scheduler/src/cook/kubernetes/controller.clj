@@ -46,13 +46,13 @@
   [^IAtom map-atom key value]
   (if (nil? value)
     (swap! map-atom dissoc key)
-    (swap! map-atom update key value)))
+    (swap! map-atom assoc key value)))
 
 ;; REVIEW: Review handle-status-update
 (defn pod-has-just-completed
   "A pod has completed."
   [{:keys [synthesized-state pod] :as existing-state-dictionary}]
-  (case synthesized-state
+  (case (:state synthesized-state)
     :pod/failed
     (do
       ; TODO: Extract failure reason, etc and store in datomic, via refactored handle-status-update.
@@ -93,6 +93,9 @@
                                  [:expected/starting :missing] (launch-task api-client expected-state-dict)
                                  [:expected/starting :pod/running] (pod-has-started existing-state-dict)
                                  ; TODO We need to add cases for the other [:expected/starting *] states in.
+                                 [:expected/starting :pod/waiting] expected-state-dict
+                                 [:expected/starting :pod/succeeded] (pod-has-just-completed existing-state-dict)
+                                 [:expected/starting :pod/failed] (pod-has-just-completed existing-state-dict)
                                  [:expected/running :pod/running] expected-state-dict
                                  [:expected/running :pod/succeeded] (pod-has-just-completed existing-state-dict)
                                  [:expected/completed :pod/succeeded] (remove-finalization-if-set-and-delete api-client expected-state-dict pod)
@@ -114,7 +117,6 @@
                                  [:missing :pod/need-to-fail] (kill-task api-client expected-state-dict pod)
                                  [:missing :pod/succeeded] (remove-finalization-if-set-and-delete api-client expected-state-dict pod)
                                  [:missing :pod/failed] (remove-finalization-if-set-and-delete api-client expected-state-dict pod))]
-      (log/info "Processing: " pod-name " done. New state ====> " (prepare-expected-state-dict-for-logging new-expected-state-dict))
       (when-not (expected-state-equivalent? expected-state-dict new-expected-state-dict)
         (update-or-delete! expected-state-map pod-name new-expected-state-dict)
         (log/info "Processing: WANT TO RECUR")
