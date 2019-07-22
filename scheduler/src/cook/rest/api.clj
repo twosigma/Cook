@@ -85,8 +85,18 @@
     (str/trim (_id "-g" user-name))))
 
 (defn render-error
-  [ctx]
-  {:error (::error ctx)})
+  [{:keys [::error request]}]
+  (try
+    (let [{:keys [params remote-addr user uri request-method]} request]
+      (log/info "Handling error" {:error error
+                                  :params params
+                                  :remote-addr remote-addr
+                                  :user user
+                                  :uri uri
+                                  :request-method request-method}))
+    (catch Exception e
+      (log/error e "Error while logging in render-error")))
+  {:error error})
 
 (def cook-liberator-attrs
   {:available-media-types ["application/json"]
