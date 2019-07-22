@@ -71,8 +71,8 @@
                           .getMetadata
                           .getNamespace)]
         (if (nil? pod)
-        (controller/pod-deleted kcc prev-pod)
-        (controller/pod-update kcc pod))
+          (controller/pod-deleted kcc prev-pod)
+          (controller/pod-update kcc pod))
 
         '(if (= namespace "cook")
           (when (not (= prev-state state))
