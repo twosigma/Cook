@@ -24,7 +24,7 @@
 (defn existing-state-equivalent?
   "Is the old and new state equivalent?"
   [old-state new-state]
-  (= old-state new-state) ; TODO. This is not right. We need to tune/tweak this to suppress otherwise identical states so we dno't spam.
+  (= old-state new-state) ; TODO. This is not right. We need to tune/tweak this to suppress otherwise identical states so we don't spam.
   )
 
 (defn remove-finalization-if-set-and-delete
