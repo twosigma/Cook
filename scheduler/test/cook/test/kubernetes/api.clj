@@ -3,7 +3,7 @@
             [cook.kubernetes.api :as api]
             [cook.test.testutil :as tu]
             [datomic.api :as d])
-  (:import (io.kubernetes.client.models V1Container V1EnvVar)))
+  (:import (io.kubernetes.client.models V1Container V1EnvVar V1Pod V1PodStatus V1ContainerStatus V1ContainerState V1ContainerStateWaiting)))
 
 (deftest test-get-consumption
   (testing "correctly computes consumption for a single pod"
@@ -63,7 +63,7 @@
     (is (= 1 (count (-> pod .getSpec .getContainers))))
 
     (let [^V1Container container (-> pod .getSpec .getContainers first)]
-      (is (= "job" (.getName container)))
+      (is (= "required-cook-job-container" (.getName container)))
       (is (= ["/bin/sh" "-c" "foo && bar"] (.getCommand container)))
       (is (= "alpine:latest" (.getImage container)))
       (is (= 1 (count (.getEnv container))))
@@ -98,7 +98,7 @@
       (.setReason waiting "waiting")
       (.setWaiting container-state waiting)
       (.setState container-status container-state)
-      (.setName container-status "job")
+      (.setName container-status "required-cook-job-container")
       (.setContainerStatuses pod-status [container-status])
       (.setStatus pod pod-status)
 

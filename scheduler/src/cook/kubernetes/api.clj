@@ -213,7 +213,7 @@
           ; * A job may have additional containers with the name aux-*
           job-status (first (filter (fn [c] (= "required-cook-job-container" (.getName c)))
                                     container-statuses))]
-      (if (not (-> pod .getMetadata .getDeletionTimestamp nil?))
+      (if (some-> pod .getMetadata .getDeletionTimestamp)
         ; If a pod has been ordered deleted, treat it as if it was gone, Its being async removed.
         {:state :missing :reason "Pod was explicitly deleted"}
         ; If pod isn't being async removed, then look at the containers inside it....
