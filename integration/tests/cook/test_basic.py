@@ -2632,7 +2632,7 @@ class CookTest(util.CookTest):
                 self.assertFalse('pools' in resp.json())
 
     def test_submit_plugin(self):
-        if not util.demo_plugin_is_configured(self.cook_url):
+        if not util.demo_plugins_are_configured(self.cook_url):
             self.skipTest("Requires demo plugin to be configured")
         job_uuids = []
         try:
@@ -2660,7 +2660,7 @@ class CookTest(util.CookTest):
             util.kill_jobs(self.cook_url, [job_uuids], assert_response=False)
 
     def test_launch_plugin(self):
-        if not util.demo_plugin_is_configured(self.cook_url):
+        if not util.demo_plugins_are_configured(self.cook_url):
             self.skipTest("Requires demo plugin to be configured")
         job_uuid = None
         try:

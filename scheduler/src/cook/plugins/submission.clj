@@ -74,7 +74,7 @@
       (->CompositeSubmissionPlugin plugins))
     (if-let [resolved-fn (cook.plugins.util/resolve-symbol (symbol factory-fn))]
       (do
-         (log/info "Using plugin" resolved-fn)
+        (log/info "Using plugin" resolved-fn)
         (resolved-fn))
       (throw (ex-info "Unable to resolve factory function" factory-fn)))))
 
