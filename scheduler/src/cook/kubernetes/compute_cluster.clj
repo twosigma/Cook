@@ -74,25 +74,26 @@
           (controller/pod-deleted kcc prev-pod)
           (controller/pod-update kcc pod))
 
-        '(if (= namespace "cook")
-          (when (not (= prev-state state))
-            (log/debug "Updating state for" task-id "from" prev-state "to" state)
-            (case (:state state)
-              :pod/running
-              (handle-status-update (synthesized-pod-state->task-status pod state))
-              :pod/waiting
-              (handle-status-update (synthesized-pod-state->task-status pod state))
-              :pod/succeeded
-              (do
-                (handle-status-update (synthesized-pod-state->task-status pod state))
-                (handle-exit-code task-id (:exit state)))
-              :pod/failed
-              (do
-                (handle-status-update (synthesized-pod-state->task-status pod state))
-                (handle-exit-code task-id (:exit state)))
-              :pod/unknown
-              (log/error "Unable to determine pod status in callback")))
-          (log/debug "Skipping state update for" task-id)))
+        ;(if (= namespace "cook")
+        ;  (when (not (= prev-state state))
+        ;    (log/debug "Updating state for" task-id "from" prev-state "to" state)
+        ;    (case (:state state)
+        ;      :pod/running
+        ;      (handle-status-update (synthesized-pod-state->task-status pod state))
+        ;      :pod/waiting
+        ;      (handle-status-update (synthesized-pod-state->task-status pod state))
+        ;      :pod/succeeded
+        ;      (do
+        ;        (handle-status-update (synthesized-pod-state->task-status pod state))
+        ;        (handle-exit-code task-id (:exit state)))
+        ;      :pod/failed
+        ;      (do
+        ;        (handle-status-update (synthesized-pod-state->task-status pod state))
+        ;        (handle-exit-code task-id (:exit state)))
+        ;      :pod/unknown
+        ;      (log/error "Unable to determine pod status in callback")))
+        ;  (log/debug "Skipping state update for" task-id))
+        )
       (catch Exception e
         (log/error e "Error processing status update")))))
 

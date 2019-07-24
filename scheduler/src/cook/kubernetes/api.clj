@@ -2,17 +2,16 @@
   (:require [clojure.tools.logging :as log]
             [plumbing.core :as pc])
   (:import
+    (com.google.gson JsonSyntaxException)
     (com.twosigma.cook.kubernetes WatchHelper)
-    (io.kubernetes.client.models V1Pod V1PodBuilder V1Container)
-    (io.kubernetes.client.custom Quantity)
-    (io.kubernetes.client ApiClient Configuration ApiException)
-    (io.kubernetes.client.util Config Watch)
+    (io.kubernetes.client ApiClient ApiException)
     (io.kubernetes.client.apis CoreV1Api)
-    (io.kubernetes.client.models V1Node V1Pod V1Container V1ResourceRequirements V1PodBuilder V1EnvVar V1ObjectMeta V1PodSpec V1PodStatus V1ContainerState V1DeleteOptionsBuilder V1DeleteOptions)
+    (io.kubernetes.client.custom Quantity)
+    (io.kubernetes.client.models V1Pod V1Container V1Node V1Pod V1Container V1ResourceRequirements V1EnvVar V1ObjectMeta V1PodSpec V1PodStatus V1ContainerState V1DeleteOptionsBuilder V1DeleteOptions)
+    (io.kubernetes.client.util Watch)
     (io.kubernetes.client.custom Quantity Quantity$Format)
     (java.util UUID)
-    (java.util.concurrent Executors ExecutorService)
-    (com.google.gson JsonSyntaxException)))
+    (java.util.concurrent Executors ExecutorService)))
 
 
 (def ^ExecutorService kubernetes-executor (Executors/newFixedThreadPool 2))
@@ -132,7 +131,8 @@
                                          node-name->pods)]
     node-name->requests))
 
-
+(def cook-container-name-for-job
+  "required-cook-job-container")
 
 (defn task-metadata->pod
   [{:keys [task-id command container task-request hostname]}]
@@ -155,7 +155,7 @@
     (.setName metadata (str task-id))
 
     ; container
-    (.setName container "required-cook-job-container")
+    (.setName container cook-container-name-for-job)
     (.setCommand container
                  ["/bin/sh" "-c" (:value command)])
 
@@ -211,7 +211,7 @@
           ; * We want a pod to be considered failed if any container with the name required-* fails or any container
           ;   with the name extra-* fails.
           ; * A job may have additional containers with the name aux-*
-          job-status (first (filter (fn [c] (= "required-cook-job-container" (.getName c)))
+          job-status (first (filter (fn [c] (= cook-container-name-for-job (.getName c)))
                                     container-statuses))]
       (if (some-> pod .getMetadata .getDeletionTimestamp)
         ; If a pod has been ordered deleted, treat it as if it was gone, Its being async removed.
@@ -261,10 +261,9 @@
   "Kill this kubernetes pod"
   [^ApiClient api-client ^V1Pod pod]
   (let [api (CoreV1Api. api-client)
-        ^V1DeleteOptions deleteOptions (-> (V1DeleteOptionsBuilder.) (.withPropagationPolicy "Background") .build)
-        ]
+        ^V1DeleteOptions deleteOptions (-> (V1DeleteOptionsBuilder.) (.withPropagationPolicy "Background") .build)]
     (try
-      (.deleteNamespacedPod ; TODO: Double check arguments.
+      (.deleteNamespacedPod
         api
         (-> pod .getMetadata .getName)
         (-> pod .getMetadata .getNamespace)
@@ -275,6 +274,7 @@
         nil
         nil)
       (catch JsonSyntaxException e
+        (log/info "Caught the https://github.com/kubernetes-client/java/issues/252 exception.")
         ; Silently gobble this exception.
         ;
         ; The java API can throw a a JsonSyntaxException parsing the kubernetes reply!

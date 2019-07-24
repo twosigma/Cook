@@ -1,8 +1,8 @@
 (ns cook.kubernetes.controller
   (:require [clojure.tools.logging :as log]
             [cook.kubernetes.api :as api])
-  (:import (io.kubernetes.client.models V1Pod)
-           (clojure.lang IAtom)))
+  (:import (clojure.lang IAtom)
+           (io.kubernetes.client.models V1Pod)))
 
 ;
 ;   Wire up a store with the results.
@@ -85,6 +85,7 @@
     (let
       [cooked-expected-state (or expected-state :missing)
        cooked-existing-state (or (:state synthesized-state) :missing)]
+      ;; TODO: REmvoe the existing-state-dict once we test on real kubernetes and get synthesized-pod-state robust.
       (log/info "Processing: " pod-name ": ((" (prepare-expected-state-dict-for-logging expected-state-dict) " ===== " cooked-existing-state  "///" existing-state-dict  "))")
       ; TODO: We added an :expected/starting state to the machine, to represent when a pod is starting. We map instance.status/unknown to that state
       ; The todo is to add in cases for [:expected/starting *] for those other states.
