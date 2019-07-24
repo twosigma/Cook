@@ -80,7 +80,8 @@
  :sandbox-syncer {:sync-interval-ms 1000}
  :scheduler {:fenzo-fitness-calculator "cook.scheduler.data-locality/make-data-local-fitness-calculator"
              :offer-incubate-ms 15000
-             :task-constraints {:cpus 10
+             :task-constraints {:command-length-limit 1024
+                                :cpus 10
                                 :memory-gb 48
                                 :retry-limit 15
                                 :timeout-hours 1

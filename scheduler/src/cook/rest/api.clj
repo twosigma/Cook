@@ -908,6 +908,12 @@
       (throw (ex-info (str "Requested " max-retries " exceeds the maximum retry limit")
                       {:constraints task-constraints
                        :job job})))
+    (when (and (:command-length-limit task-constraints)
+               (> (.length command) (:command-length-limit task-constraints)))
+      (throw (ex-info (str "Job command length of " (.length command) " is greater than the maximum command length ("
+                           (:command-length-limit task-constraints) ")")
+                      {:command-length-limit (:command-length-limit task-constraints)
+                       :job job})))
     (doseq [{:keys [executable? extract?] :as uri} (:uris munged)
             :when (and (not (nil? executable?)) (not (nil? extract?)))]
       (throw (ex-info "Uri cannot set executable and extract" uri)))
