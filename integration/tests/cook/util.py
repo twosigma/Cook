@@ -1301,11 +1301,11 @@ def data_local_service_is_set():
     return os.getenv('DATA_LOCAL_SERVICE', None) is not None
 
 
-def demo_plugin_is_configured(cook_url):
+def demo_plugins_are_configured(cook_url):
     settings_dict = settings(cook_url)
     # Because we always create plugin configuration in config.clj, the first keys always exist.
     # The actual factory-fn keys are not set unless the user specifies them.
-    if settings_dict['plugins']['job-submission-validator'].get('factory-fn') != "cook.plugins.demo-plugin/submission-factory":
+    if settings_dict['plugins']['job-submission-validator'].get('factory-fns') != ["cook.plugins.demo-plugin/submission-factory", "cook.plugins.demo-plugin/submission-factory2"]:
         return False
     if settings_dict['plugins']['job-launch-filter'].get('factory-fn') != "cook.plugins.demo-plugin/launch-factory":
         return False

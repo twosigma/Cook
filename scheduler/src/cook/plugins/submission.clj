@@ -14,16 +14,15 @@
 ;; limitations under the License.
 ;;
 (ns cook.plugins.submission
-  (:require [clj-time.core :as t]
+  (:require [clj-time.coerce :as tc]
+            [clj-time.core :as t]
             [clj-time.periodic]
-            [chime :as chime]
-            [cook.cache :as ccache]
             [cook.config :as config]
-            [cook.datomic :as datomic]
             [cook.plugins.definitions :refer [JobSubmissionValidator check-job-submission check-job-submission-default]]
             [cook.plugins.util]
             [mount.core :as mount]
-            [clojure.tools.logging :as log])
+            [clojure.tools.logging :as log]
+            [clojure.string :as str])
   (:import (com.google.common.cache Cache CacheBuilder)
            (java.util.concurrent TimeUnit)))
 
@@ -38,21 +37,57 @@
     (check-job-submission-default [_] default-accept)
     (check-job-submission [_ _] default-accept)))
 
+(defn- minimum-time
+  "Takes a list of clojure time objects and returns the earliest"
+  [ts]
+  (->> ts
+       (sort-by tc/to-long)
+       first))
+
+(defrecord CompositeSubmissionPlugin [plugins]
+  JobSubmissionValidator
+  (check-job-submission-default [this]
+    (check-job-submission-default (first plugins)))
+  (check-job-submission [this job-map]
+    (let [component-checks (map (fn [plugin] (check-job-submission plugin job-map))
+                                plugins)]
+      (if (every? (fn [{:keys [status]}] (= :accepted status)) component-checks)
+        (let [composite-expiry (minimum-time (map :cache-expires-at component-checks))]
+          {:status :accepted
+           :cache-expires-at composite-expiry})
+        (let [failed-checks (filter (fn [{:keys [status]}] (= status :rejected)) component-checks)
+              composite-message (str/join "\n" (map :message failed-checks))
+              composite-expiry (minimum-time (map :cache-expires-at component-checks))]
+          {:status :rejected
+           :message composite-message
+           :cache-expires-at composite-expiry})))))
+
+(defn- resolve-factory-fn
+  [factory-fn factory-fns]
+  (if factory-fns
+    (let [resolved-fns (doall (map (fn [f] (if-let [resolved (cook.plugins.util/resolve-symbol (symbol f))]
+                                             resolved
+                                             (throw (ex-info "Unable to resolve factory function" factory-fn))))
+                                   factory-fns))
+          plugins (map (fn [f] (f)) resolved-fns)]
+      (log/info "Creating composite plugin with components" resolved-fns)
+      (->CompositeSubmissionPlugin plugins))
+    (if-let [resolved-fn (cook.plugins.util/resolve-symbol (symbol factory-fn))]
+      (do
+        (log/info "Using plugin" resolved-fn)
+        (resolved-fn))
+      (throw (ex-info "Unable to resolve factory function" factory-fn)))))
+
 (defn create-default-plugin-object
   "Returns the plugin object. If no submission plugin factory defined, returns an always-accept plugin object."
   [config]
   (let [{:keys [settings]} config
         {:keys [plugins]} settings
         {:keys [job-submission-validator]} plugins
-        {:keys [factory-fn]} job-submission-validator]
+        {:keys [factory-fn factory-fns]} job-submission-validator]
     (log/info (str "Setting up submission plugins with factory config: " job-submission-validator " and factory-fn " factory-fn))
-    (if factory-fn
-      (do
-        (if-let [resolved-fn (cook.plugins.util/resolve-symbol (symbol factory-fn))]
-          (do
-            (log/info (str "Resolved as " resolved-fn))
-            (resolved-fn))
-          (throw (ex-info "Unable to resolve factory function" (assoc job-submission-validator :ns (namespace factory-fn))))))
+    (if (or factory-fns factory-fn)
+      (resolve-factory-fn factory-fn factory-fns)
       (accept-all-plugin-factory))))
 
 ;  Contains the plugin object that matches to a given job map. This code may create a new plugin object or re-use an existing one.

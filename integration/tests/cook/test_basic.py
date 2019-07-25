@@ -2632,7 +2632,7 @@ class CookTest(util.CookTest):
                 self.assertFalse('pools' in resp.json())
 
     def test_submit_plugin(self):
-        if not util.demo_plugin_is_configured(self.cook_url):
+        if not util.demo_plugins_are_configured(self.cook_url):
             self.skipTest("Requires demo plugin to be configured")
         job_uuids = []
         try:
@@ -2643,16 +2643,24 @@ class CookTest(util.CookTest):
             self.assertEqual(resp.content, str.encode(f"submitted jobs {job_uuid1}"))
             job = util.wait_for_job_in_statuses(self.cook_url, job_uuid1, ['completed', 'running'])
 
-            # This should now fail to submit (demo plugin looks at job name)
+            # This should now fail to submit due to one of the demo plugins
             job_uuid2, resp = util.submit_job(self.cook_url, name='plugin_test.submit_fail')
             job_uuids.append(job_uuid2)
             self.assertEqual(resp.status_code, 400, msg=resp.content)
             self.assertTrue(b"Message1- Fail to submit" in resp.content, msg=resp.content)
+            self.assertFalse(b"Message5- Plugin2 failed" in resp.content, msg=resp.content)
+
+            # This should now fail to submit due to both demo plugins
+            job_uuid3, resp = util.submit_job(self.cook_url, name='plugin_test.submit_fail2')
+            job_uuids.append(job_uuid3)
+            self.assertEqual(resp.status_code, 400, msg=resp.content)
+            self.assertTrue(b"Message1- Fail to submit" in resp.content, msg=resp.content)
+            self.assertTrue(b"Message5- Plugin2 failed" in resp.content, msg=resp.content)
         finally:
             util.kill_jobs(self.cook_url, [job_uuids], assert_response=False)
 
     def test_launch_plugin(self):
-        if not util.demo_plugin_is_configured(self.cook_url):
+        if not util.demo_plugins_are_configured(self.cook_url):
             self.skipTest("Requires demo plugin to be configured")
         job_uuid = None
         try:
