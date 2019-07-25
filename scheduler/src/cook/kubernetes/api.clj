@@ -2,17 +2,15 @@
   (:require [clojure.tools.logging :as log]
             [plumbing.core :as pc])
   (:import
+    (com.google.gson JsonSyntaxException)
     (com.twosigma.cook.kubernetes WatchHelper)
-    (io.kubernetes.client.models V1Pod V1PodBuilder V1Container)
-           (io.kubernetes.client.custom Quantity)
-           (io.kubernetes.client ApiClient Configuration ApiException)
-           (io.kubernetes.client.util Config Watch)
-           (io.kubernetes.client.apis CoreV1Api)
-           (io.kubernetes.client.models V1Node V1Pod V1Container V1ResourceRequirements V1PodBuilder V1EnvVar V1ObjectMeta V1PodSpec)
-           (io.kubernetes.client.custom Quantity Quantity$Format)
-           (java.util UUID)
-           (java.util.concurrent Executors ExecutorService)
-           ))
+    (io.kubernetes.client ApiClient ApiException)
+    (io.kubernetes.client.apis CoreV1Api)
+    (io.kubernetes.client.custom Quantity Quantity$Format)
+    (io.kubernetes.client.models V1Pod V1Container V1Node V1Pod V1Container V1ResourceRequirements V1EnvVar V1ObjectMeta V1PodSpec V1PodStatus V1ContainerState V1DeleteOptionsBuilder V1DeleteOptions)
+    (io.kubernetes.client.util Watch)
+    (java.util UUID)
+    (java.util.concurrent Executors ExecutorService)))
 
 
 (def ^ExecutorService kubernetes-executor (Executors/newFixedThreadPool 2))
@@ -132,7 +130,8 @@
                                          node-name->pods)]
     node-name->requests))
 
-
+(def cook-container-name-for-job
+  "required-cook-job-container")
 
 (defn task-metadata->pod
   [{:keys [task-id command container task-request hostname]}]
@@ -155,7 +154,7 @@
     (.setName metadata (str task-id))
 
     ; container
-    (.setName container "job")
+    (.setName container cook-container-name-for-job)
     (.setCommand container
                  ["/bin/sh" "-c" (:value command)])
 
@@ -196,10 +195,51 @@
   [^V1Pod pod]
   (-> pod .getMetadata .getName))
 
-(defn synthesize-pod-state
-  "Given the current pod metadata/information, synthesize the pod state (running, pending, doomed etc.)"
+
+(defn pod->synthesized-pod-state
   [^V1Pod pod]
-  :synthesized/TODO-pod) ; TOOD
+  (when pod
+    (let [^V1PodStatus pod-status (.getStatus pod)
+          container-statuses (.getContainerStatuses pod-status)
+          ; TODO: We want the generation of the pod status to reflect the container status:
+          ; Right now, we only look at one container, the required-cook-job-container container in a pod.
+          ; * In the future, we want support for cook sidecars. In order to determine the pod status
+          ;   from the main cook job status and the sidecar statuses, we'll use a naming scheme for sidecars
+          ; * A pod will be considered complete if all containers with name required-* are complete.
+          ; * The main job container will always be named required-cookJobContainer
+          ; * We want a pod to be considered failed if any container with the name required-* fails or any container
+          ;   with the name extra-* fails.
+          ; * A job may have additional containers with the name aux-*
+          job-status (first (filter (fn [c] (= cook-container-name-for-job (.getName c)))
+                                    container-statuses))]
+      (if (some-> pod .getMetadata .getDeletionTimestamp)
+        ; If a pod has been ordered deleted, treat it as if it was gone, Its being async removed.
+        {:state :missing :reason "Pod was explicitly deleted"}
+        ; If pod isn't being async removed, then look at the containers inside it....
+        (if job-status
+          (let [^V1ContainerState state (.getState job-status)]
+            (cond
+              (.getWaiting state)
+              {:state :pod/waiting
+               :reason (-> state .getWaiting .getReason)}
+              (.getRunning state)
+              {:state :pod/running
+               :reason "Running"}
+              (.getTerminated state)
+              (let [exit-code (-> state .getTerminated .getExitCode)]
+                (if (= 0 exit-code)
+                  {:state :pod/succeeded
+                   :exit exit-code
+                   :reason (-> state .getTerminated .getReason)}
+                  {:state :pod/failed
+                   :exit exit-code
+                   :reason (-> state .getTerminated .getReason)}))
+              :default
+              {:state :pod/unknown
+               :reason "Unknown"}))
+
+          {:state :pod/waiting
+           :reason "Pending"})))))
 
 (defn synthesize-node-state
   "Given the current node metadata/information, synthesize the node state -- whether or not we can/should launch things on it."
@@ -216,25 +256,42 @@
   [task-uuid]
   "TODO: Implement task-uuid->pod-name") ; TODO
 
-(defn remove-finalization-if-set-and-delete
-  "Remove finalization for a pod if its there. No-op if its not there."
-  [api-client ^V1Pod pod]
-  (TODO))
-
 (defn kill-task
   "Kill this kubernetes pod"
   [^ApiClient api-client ^V1Pod pod]
-  (let [api (CoreV1Api. api-client)]
-    (.deleteNamespacedPod ; TODO: Double check arguments.
-      api
-      (-> pod .getMetadata .getName)
-      (-> pod .getMetadata .getNamespace)
-      nil
-      nil
-      nil
-      nil
-      nil
-      nil)))
+  (let [api (CoreV1Api. api-client)
+        ^V1DeleteOptions deleteOptions (-> (V1DeleteOptionsBuilder.) (.withPropagationPolicy "Background") .build)]
+    (try
+      (.deleteNamespacedPod
+        api
+        (-> pod .getMetadata .getName)
+        (-> pod .getMetadata .getNamespace)
+        deleteOptions
+        nil
+        nil
+        nil
+        nil
+        nil)
+      (catch JsonSyntaxException e
+        (log/info "Caught the https://github.com/kubernetes-client/java/issues/252 exception.")
+        ; Silently gobble this exception.
+        ;
+        ; The java API can throw a a JsonSyntaxException parsing the kubernetes reply!
+        ; https://github.com/kubernetes-client/java/issues/252
+        ; https://github.com/kubernetes-client/java/issues/86
+        ;
+        ; They actually advise catching the exception and moving on!
+        ;
+        ))))
+
+
+(defn remove-finalization-if-set-and-delete
+  "Remove finalization for a pod if its there. No-op if its not there.
+  We always delete unconditionally, so finalization doesn't matter."
+  [^ApiClient api-client ^V1Pod pod]
+  ; TODO: This likes to noisily throw NotFound multiple times as we delete away from kubernetes.
+  ; I suspect our predicate of existing-states-equivalent needs tweaking.
+  (kill-task api-client pod))
 
 (defn launch-task
   "Given a pod-name use lookup the associated task, extract the parts needed to syntehsize the kubenretes object and go"
