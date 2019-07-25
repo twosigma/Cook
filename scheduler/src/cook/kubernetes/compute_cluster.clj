@@ -44,40 +44,8 @@
             :reject-after-match-attempt true})
          node-name->available)))
 
-(defn pod->pod-state
-  [pod]
-  (when pod
-    (let [^V1PodStatus pod-status (.getStatus pod)
-          container-statuses (.getContainerStatuses pod-status)
-          job-status (first (filter (fn [c] (= "job" (.getName c)))
-                                    container-statuses))]
-      (if job-status
-        (let [^V1ContainerState state (.getState job-status)]
-          (cond
-            (.getWaiting state)
-            {:state :pod/waiting
-             :reason (-> state .getWaiting .getReason)}
-            (.getRunning state)
-            {:state :pod/running
-             :reason "Running"}
-            (.getTerminated state)
-            (let [exit-code (-> state .getTerminated .getExitCode)]
-              (if (= 0 exit-code)
-                {:state :pod/succeeded
-                 :exit exit-code
-                 :reason (-> state .getTerminated .getReason)}
-                {:state :pod/failed
-                 :exit exit-code
-                 :reason (-> state .getTerminated .getReason)}))
-            :default
-            {:state :pod/unknown
-             :reason "Unknown"}))
 
-        {:state :pod/waiting
-         :reason "Pending"}))))
-
-
-(defn pod-state->task-status
+(defn synthesized-pod-state->task-status
   [pod {:keys [state reason]}]
   (let [task-state (case state
                      :pod/waiting :task-staging
@@ -91,36 +59,41 @@
      :state task-state}))
 
 (defn make-pod-watch-callback
-  [handle-status-update handle-exit-code]
+  [kcc handle-status-update handle-exit-code]
   (fn pod-watch-callback
     [prev-pod pod]
     (try
-      (let [prev-state (pod->pod-state prev-pod)
-            state (pod->pod-state pod)
+      (let [prev-state (api/pod->synthesized-pod-state prev-pod)
+            state (api/pod->synthesized-pod-state pod)
             task-id (-> (or pod prev-pod)
                         .getMetadata .getName)
             namespace (-> (or pod prev-pod)
                           .getMetadata
                           .getNamespace)]
-        (if (= namespace "cook")
-          (when (not (= prev-state state))
-            (log/debug "Updating state for" task-id "from" prev-state "to" state)
-            (case (:state state)
-              :pod/running
-              (handle-status-update (pod-state->task-status pod state))
-              :pod/waiting
-              (handle-status-update (pod-state->task-status pod state))
-              :pod/succeeded
-              (do
-                (handle-status-update (pod-state->task-status pod state))
-                (handle-exit-code task-id (:exit state)))
-              :pod/failed
-              (do
-                (handle-status-update (pod-state->task-status pod state))
-                (handle-exit-code task-id (:exit state)))
-              :pod/unknown
-              (log/error "Unable to determine pod status in callback")))
-          (log/debug "Skipping state update for" task-id)))
+        (if (nil? pod)
+          (controller/pod-deleted kcc prev-pod)
+          (controller/pod-update kcc pod))
+
+        ;(if (= namespace "cook")
+        ;  (when (not (= prev-state state))
+        ;    (log/debug "Updating state for" task-id "from" prev-state "to" state)
+        ;    (case (:state state)
+        ;      :pod/running
+        ;      (handle-status-update (synthesized-pod-state->task-status pod state))
+        ;      :pod/waiting
+        ;      (handle-status-update (synthesized-pod-state->task-status pod state))
+        ;      :pod/succeeded
+        ;      (do
+        ;        (handle-status-update (synthesized-pod-state->task-status pod state))
+        ;        (handle-exit-code task-id (:exit state)))
+        ;      :pod/failed
+        ;      (do
+        ;        (handle-status-update (synthesized-pod-state->task-status pod state))
+        ;        (handle-exit-code task-id (:exit state)))
+        ;      :pod/unknown
+        ;      (log/error "Unable to determine pod status in callback")))
+        ;  (log/debug "Skipping state update for" task-id))
+        )
       (catch Exception e
         (log/error e "Error processing status update")))))
 
@@ -135,7 +108,7 @@
           {:expected-state :expected/starting :launch-pod (api/task-metadata->pod task-metadata)}))))
 
   (kill-task [this task-id]
-    (throw (UnsupportedOperationException. "Cannot kill tasks")))
+    (controller/update-expected-state this task-id {:expected-state :expected/killed}))
 
   (decline-offer [this offer-id])
 
@@ -146,6 +119,7 @@
     name)
 
   (initialize-cluster [this pool->fenzo pool->offers-chan]
+    ; Initialize the pod watch path.
     (let [conn cook.datomic/conn
           handle-exit-code (fn handle-exit-code [task-id exit-code]
                              (sandbox/aggregate-exit-code exit-code-syncer-state task-id exit-code))
@@ -155,8 +129,10 @@
                                                                  pool->fenzo
                                                                  (constantly nil) ; no sandboxes to sync
                                                                  status))
-          pod-callback (make-pod-watch-callback handle-status-update handle-exit-code)]
+          pod-callback (make-pod-watch-callback this handle-status-update handle-exit-code)]
       (api/initialize-pod-watch api-client current-pods-atom pod-callback))
+
+    ; Initialize the node watch path.
     (api/initialize-node-watch api-client current-nodes-atom)
 
     ; TODO(pschorf): Figure out a better way to plumb these through
