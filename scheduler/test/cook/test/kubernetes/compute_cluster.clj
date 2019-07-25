@@ -52,32 +52,3 @@
               {:name "cpus" :type :value-scalar :scalar 0.0}
               {:name "disk" :type :value-scalar :scalar 0.0}]
              (:resources offer))))))
-
-(deftest test-pod->pod-state
-  (testing "returns nil for empty pod"
-    (is (nil? (kcc/pod->pod-state nil))))
-
-  (testing "no container status -> waiting"
-    (let [pod (V1Pod.)
-          pod-status (V1PodStatus.)]
-      (.setStatus pod pod-status)
-      (is (= {:state :pod/waiting
-              :reason "Pending"}
-             (kcc/pod->pod-state pod)))))
-
-  (testing "waiting"
-    (let [pod (V1Pod.)
-          pod-status (V1PodStatus.)
-          container-status (V1ContainerStatus.)
-          container-state (V1ContainerState.)
-          waiting (V1ContainerStateWaiting.)]
-      (.setReason waiting "waiting")
-      (.setWaiting container-state waiting)
-      (.setState container-status container-state)
-      (.setName container-status "job")
-      (.setContainerStatuses pod-status [container-status])
-      (.setStatus pod pod-status)
-
-      (is (= {:state :pod/waiting
-              :reason "waiting"}
-             (kcc/pod->pod-state pod))))))
