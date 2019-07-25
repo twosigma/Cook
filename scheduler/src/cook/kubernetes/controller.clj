@@ -82,48 +82,46 @@
   [{:keys [api-client existing-state-map expected-state-map] :as kcc} pod-name]
   (loop [{:keys [expected-state] :as expected-state-dict} (get @expected-state-map pod-name)
          {:keys [synthesized-state pod] :as existing-state-dict} (get @existing-state-map pod-name)]
+    ;; TODO: Remove the printing of existing-state-dict once we test on real kubernetes and get synthesized-pod-state robust.
+    (log/info "Processing: " pod-name ": ((" (prepare-expected-state-dict-for-logging expected-state-dict)
+              " ===== " (or (:state synthesized-state) :missing)  "///" existing-state-dict  "))")
+    ; TODO: We added an :expected/starting state to the machine, to represent when a pod is starting. We map instance.status/unknown to that state
+    ; The todo is to add in cases for [:expected/starting *] for those other states.
     (let
-      [cooked-expected-state (or expected-state :missing)
-       cooked-existing-state (or (:state synthesized-state) :missing)]
-      ;; TODO: REmvoe the existing-state-dict once we test on real kubernetes and get synthesized-pod-state robust.
-      (log/info "Processing: " pod-name ": ((" (prepare-expected-state-dict-for-logging expected-state-dict) " ===== " cooked-existing-state  "///" existing-state-dict  "))")
-      ; TODO: We added an :expected/starting state to the machine, to represent when a pod is starting. We map instance.status/unknown to that state
-      ; The todo is to add in cases for [:expected/starting *] for those other states.
-      (let
-        [new-expected-state-dict (case (vector cooked-expected-state cooked-existing-state)
-                                   [:expected/starting :missing] (launch-task api-client expected-state-dict)
-                                   [:expected/starting :pod/running] (pod-has-started existing-state-dict)
-                                   ; TODO We need to add cases for the other [:expected/starting *] states in.
-                                   [:expected/starting :pod/waiting] expected-state-dict
-                                   [:expected/starting :pod/succeeded] (pod-has-just-completed existing-state-dict)
-                                   [:expected/starting :pod/failed] (pod-has-just-completed existing-state-dict)
-                                   [:expected/running :pod/running] expected-state-dict
-                                   [:expected/running :pod/succeeded] (pod-has-just-completed existing-state-dict)
-                                   [:expected/completed :pod/succeeded] (remove-finalization-if-set-and-delete api-client expected-state-dict pod)
-                                   [:expected/running :pod/failed] (pod-has-just-completed existing-state-dict)
-                                   [:expected/completed :pod/failed] (remove-finalization-if-set-and-delete api-client expected-state-dict pod)
-                                   [:expected/completed :missing] nil ; Cause it to be deleted.
-                                   [:expected/killed :pod/running] (kill-task api-client expected-state-dict pod) ; TODO: Where does the datomic update occur? Do we do it when we do [expected/killed :pod/failed], to be similar to mesos, we update it only when the backend says its dead?
+      [new-expected-state-dict (case (vector (or expected-state :missing) (or (:state synthesized-state) :missing))
+                                 [:expected/starting :missing] (launch-task api-client expected-state-dict)
+                                 [:expected/starting :pod/running] (pod-has-started existing-state-dict)
+                                 ; TODO We need to add cases for the other [:expected/starting *] states in.
+                                 [:expected/starting :pod/waiting] expected-state-dict
+                                 [:expected/starting :pod/succeeded] (pod-has-just-completed existing-state-dict)
+                                 [:expected/starting :pod/failed] (pod-has-just-completed existing-state-dict)
+                                 [:expected/running :pod/running] expected-state-dict
+                                 [:expected/running :pod/succeeded] (pod-has-just-completed existing-state-dict)
+                                 [:expected/completed :pod/succeeded] (remove-finalization-if-set-and-delete api-client expected-state-dict pod)
+                                 [:expected/running :pod/failed] (pod-has-just-completed existing-state-dict)
+                                 [:expected/completed :pod/failed] (remove-finalization-if-set-and-delete api-client expected-state-dict pod)
+                                 [:expected/completed :missing] nil ; Cause it to be deleted.
+                                 [:expected/killed :pod/running] (kill-task api-client expected-state-dict pod) ; TODO: Where does the datomic update occur? Do we do it when we do [expected/killed :pod/failed], to be similar to mesos, we update it only when the backend says its dead?
 
-                                   [:expected/killed :pod/succeeded] (remove-finalization-if-set-and-delete api-client expected-state-dict pod)
-                                   [:expected/killed :pod/failed]
-                                   (do ; TODO: Invoke handle-status-update.
-                                     (remove-finalization-if-set-and-delete api-client expected-state-dict pod))
-                                   [:expected/killed :missing] nil
-                                   ; TODO: Implement :pod/unknown cases.
-                                   ; TODO: Implement :pod/pending cases.
-                                   ; TODO: Implement :pod/need-to-fail cases.
-                                   [:missing :pod/running] (kill-task api-client expected-state-dict pod)
-                                   [:missing :pod/pending] (kill-task api-client expected-state-dict pod)
-                                   [:missing :pod/need-to-fail] (kill-task api-client expected-state-dict pod)
-                                   [:missing :pod/succeeded] (remove-finalization-if-set-and-delete api-client expected-state-dict pod)
-                                   [:missing :pod/failed] (remove-finalization-if-set-and-delete api-client expected-state-dict pod))]
-        (when-not (expected-state-equivalent? expected-state-dict new-expected-state-dict)
-          (update-or-delete! expected-state-map pod-name new-expected-state-dict)
-          (log/info "Processing: WANT TO RECUR" new-expected-state-dict " ---- " existing-state-dict)
-          (recur new-expected-state-dict existing-state-dict)
-          ; TODO: Recur. We hay have changed the expected state, so we should reprocess it.
-          )))))
+                                 [:expected/killed :pod/succeeded] (remove-finalization-if-set-and-delete api-client expected-state-dict pod)
+                                 [:expected/killed :pod/failed]
+                                 (do ; TODO: Invoke handle-status-update.
+                                   (remove-finalization-if-set-and-delete api-client expected-state-dict pod))
+                                 [:expected/killed :missing] nil
+                                 ; TODO: Implement :pod/unknown cases.
+                                 ; TODO: Implement :pod/pending cases.
+                                 ; TODO: Implement :pod/need-to-fail cases.
+                                 [:missing :pod/running] (kill-task api-client expected-state-dict pod)
+                                 [:missing :pod/pending] (kill-task api-client expected-state-dict pod)
+                                 [:missing :pod/need-to-fail] (kill-task api-client expected-state-dict pod)
+                                 [:missing :pod/succeeded] (remove-finalization-if-set-and-delete api-client expected-state-dict pod)
+                                 [:missing :pod/failed] (remove-finalization-if-set-and-delete api-client expected-state-dict pod))]
+      (when-not (expected-state-equivalent? expected-state-dict new-expected-state-dict)
+        (update-or-delete! expected-state-map pod-name new-expected-state-dict)
+        (log/info "Processing: WANT TO RECUR" new-expected-state-dict " ---- " existing-state-dict)
+        (recur new-expected-state-dict existing-state-dict)
+        ; TODO: Recur. We hay have changed the expected state, so we should reprocess it.
+        ))))
 
 (defn pod-update
   "Update the existing state for a pod. Include some business logic to e.g., not change a state to the same value more than once.

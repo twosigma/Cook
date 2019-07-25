@@ -6,10 +6,9 @@
     (com.twosigma.cook.kubernetes WatchHelper)
     (io.kubernetes.client ApiClient ApiException)
     (io.kubernetes.client.apis CoreV1Api)
-    (io.kubernetes.client.custom Quantity)
+    (io.kubernetes.client.custom Quantity Quantity$Format)
     (io.kubernetes.client.models V1Pod V1Container V1Node V1Pod V1Container V1ResourceRequirements V1EnvVar V1ObjectMeta V1PodSpec V1PodStatus V1ContainerState V1DeleteOptionsBuilder V1DeleteOptions)
     (io.kubernetes.client.util Watch)
-    (io.kubernetes.client.custom Quantity Quantity$Format)
     (java.util UUID)
     (java.util.concurrent Executors ExecutorService)))
 
