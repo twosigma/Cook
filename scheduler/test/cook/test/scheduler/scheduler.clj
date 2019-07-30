@@ -865,7 +865,7 @@
         ;        group-id (create-dummy-group conn)
         jobs (doall (take 200 (repeatedly (fn [] (create-dummy-job conn :group group-id)))))
         group (d/entity (d/db conn) group-id)]
-    (println  "============ match offers with group constraints timing ============")
+    (println "============ match offers with group constraints timing ============")
     (crit/bench (schedule-and-run-jobs conn scheduler (make-offers) jobs))))
 
 (deftest test-gpu-share-prioritization
@@ -946,7 +946,7 @@
                                                  :task-id task-id)]
                                         ; Wait for async database transaction inside handle-status-update
           (->> (make-dummy-status-update task-id :reason-gc-error :task-killed)
-               (sched/handle-status-update conn compute-cluster (constantly fenzo) sync-agent-sandboxes-fn)
+               (sched/write-status-to-datomic conn (constantly fenzo))
                async/<!!)
 
           (is (= :instance.status/failed
@@ -971,7 +971,7 @@
                 original-end-time (get-end-time)]
             (Thread/sleep 100)
             (->> (make-dummy-status-update task-id :reason-gc-error :task-killed)
-                 (sched/handle-status-update conn compute-cluster (constantly fenzo) sync-agent-sandboxes-fn)
+                 (sched/write-status-to-datomic conn (constantly fenzo))
                  async/<!!)
             (is (= original-end-time (get-end-time))))))
 
@@ -996,7 +996,7 @@
                                                  :reason :max-runtime-exceeded)] ; Previous reason is not mea-culpa
                                         ; Status update says slave got restarted (mea-culpa)
           (->> (make-dummy-status-update task-id :mesos-slave-restarted :task-killed)
-               (sched/handle-status-update conn compute-cluster (constantly fenzo) sync-agent-sandboxes-fn)
+               (sched/write-status-to-datomic conn (constantly fenzo))
                async/<!!)
                                         ; Assert old reason persists
           (is (= :max-runtime-exceeded
@@ -1015,29 +1015,6 @@
                               [?s :db/ident ?state]]
                             (db conn) job-id))))))
 
-      (testing "Tasks of completed jobs are killed"
-        (let [job-id (create-dummy-job conn
-                                       :user "tsram"
-                                       :job-state :job.state/completed
-                                       :retry-count 3)
-              task-id-a "taska"
-              task-id-b "taskb"]
-          (create-dummy-instance conn job-id
-                                 :hostname "www.test-host.com"
-                                 :instance-status :instance.status/running
-                                 :task-id task-id-a
-                                 :reason :unknown)
-          (create-dummy-instance conn job-id
-                                 :instance-status :instance.status/success
-                                 :task-id task-id-b
-                                 :reason :unknown)
-          (reset! synced-agents-atom [])
-          (->> (make-dummy-status-update task-id-a :mesos-slave-restarted :task-running)
-               (sched/handle-status-update conn compute-cluster (constantly fenzo) sync-agent-sandboxes-fn)
-               async/<!!)
-          (is (true? (contains? @tasks-killed task-id-a)))
-          (is (= ["www.test-host.com"] @synced-agents-atom))))
-
       (testing "instance persists mesos-start-time when task is first known to be starting or running"
         (let [job-id (create-dummy-job conn
                                        :user "mforsyth"
@@ -1055,19 +1032,18 @@
                                  :task-id task-id)
           (is (nil? (mesos-start-time)))
           (->> (make-dummy-status-update task-id :unknown :task-staging)
-               (sched/handle-status-update conn compute-cluster (constantly fenzo) sync-agent-sandboxes-fn)
+               (sched/write-status-to-datomic conn (constantly fenzo))
                async/<!!)
           (is (nil? (mesos-start-time)))
           (reset! synced-agents-atom [])
           (->> (make-dummy-status-update task-id :unknown :task-running)
-               (sched/handle-status-update conn driver (constantly fenzo) sync-agent-sandboxes-fn)
+               (sched/write-status-to-datomic conn (constantly fenzo))
                async/<!!)
-          (is (= ["www.test-host.com"] @synced-agents-atom))
           (is (not (nil? (mesos-start-time))))
           (let [first-observed-start-time (.getTime (mesos-start-time))]
             (is (not (nil? first-observed-start-time)))
             (->> (make-dummy-status-update task-id :unknown :task-running)
-                 (sched/handle-status-update conn compute-cluster (constantly fenzo) sync-agent-sandboxes-fn)
+                 (sched/write-status-to-datomic conn (constantly fenzo))
                  async/<!!)
             (is (= first-observed-start-time (.getTime (mesos-start-time))))))))))
 
@@ -1092,13 +1068,13 @@
                                                  :instance-status :instance.status/unknown
                                                  :task-id task-id)]
           (->> (make-dummy-status-update task-id :reason-command-executor-failed :task-running)
-               (sched/handle-status-update conn driver (constantly fenzo) (constantly nil))
+               (sched/write-status-to-datomic conn (constantly fenzo))
                async/<!!)
           ; instance not complete, plugin should not have been invoked
           (is (= {} @plugin-invocation-atom))
 
           (->> (make-dummy-status-update task-id :reason-command-executor-failed :task-killed)
-               (sched/handle-status-update conn driver (constantly fenzo) (constantly nil))
+               (sched/write-status-to-datomic conn (constantly fenzo))
                async/<!!)
           ; instance complete, plugin should have been invoked with resulting job/instance
           (let [job (:job @plugin-invocation-atom)
@@ -1885,107 +1861,6 @@
             (is (= (:slave-id offer-1) (:slave-id task-1)))
             (is (= (:slave-id offer-2) (:slave-id task-2)))))))))
 
-(defn- task-id->instance-entity
-  [db-conn task-id]
-  (let [datomic-db (d/db db-conn)]
-    (->> task-id
-         (d/q '[:find ?i
-                :in $ ?task-id
-                :where [?i :instance/task-id ?task-id]]
-              datomic-db)
-         ffirst
-         (d/entity (d/db db-conn))
-         d/touch)))
-
-(deftest test-sandbox-directory-population-for-mesos-executor-tasks
-  (let [db-conn (restore-fresh-database! "datomic:mem://test-sandbox-directory-population")
-        executing-tasks-atom (atom #{})
-        num-jobs 25
-        cache-timeout-ms 65
-        get-task-id #(str "task-test-sandbox-directory-population-" %)]
-    (dotimes [n num-jobs]
-      (let [task-id (get-task-id n)
-            job (create-dummy-job db-conn :task-id task-id)]
-        (create-dummy-instance db-conn job :executor :executor/mesos :executor-id task-id :task-id task-id)))
-
-    (with-redefs [sandbox/retrieve-sandbox-directories-on-agent
-                  (fn [_ _]
-                    (pc/map-from-keys #(str "/sandbox/for/" %) @executing-tasks-atom))]
-      (let [framework-id "test-framework-id"
-            publish-batch-size 10
-            publish-interval-ms 20
-            sync-interval-ms 20
-            max-consecutive-sync-failure 5
-            agent-query-cache (-> {} (cache/ttl-cache-factory :ttl cache-timeout-ms) atom)
-            {:keys [pending-sync-agent publisher-cancel-fn syncer-cancel-fn task-id->sandbox-agent] :as sandbox-syncer-state}
-            (sandbox/prepare-sandbox-publisher
-              framework-id db-conn publish-batch-size publish-interval-ms sync-interval-ms max-consecutive-sync-failure
-              agent-query-cache)
-            sync-agent-sandboxes-fn
-            (fn [hostname task-id]
-              (sandbox/sync-agent-sandboxes sandbox-syncer-state framework-id hostname task-id))]
-        (try
-          (-> (dotimes [n num-jobs]
-                (let [task-id (get-task-id n)]
-                  (swap! executing-tasks-atom conj task-id)
-                  (->> {:task-id {:value task-id}, :state :task-running}
-                       (sched/handle-status-update db-conn nil {} sync-agent-sandboxes-fn)))
-                (Thread/sleep 5))
-              async/thread
-              async/<!!)
-
-          (dotimes [n num-jobs]
-            (let [task-id (get-task-id n)
-                  instance-ent (task-id->instance-entity db-conn task-id)]
-              (is (= "localhost" (:instance/hostname instance-ent)))
-              (is (= :instance.status/running (:instance/status instance-ent)))
-              (is (= :executor/mesos (:instance/executor instance-ent)))))
-
-          (Thread/sleep (+ cache-timeout-ms sync-interval-ms))
-          (await pending-sync-agent)
-          (Thread/sleep (* 2 publish-interval-ms))
-          (await task-id->sandbox-agent)
-
-          ;; verify the sandbox-directory stored into the db
-          (dotimes [n num-jobs]
-            (let [task-id (get-task-id n)
-                  instance-ent (task-id->instance-entity db-conn task-id)]
-              (is (= (str "/sandbox/for/" task-id) (:instance/sandbox-directory instance-ent)))))
-
-          (finally
-            (publisher-cancel-fn)
-            (syncer-cancel-fn)))))))
-
-(deftest test-no-sandbox-directory-population-for-cook-executor-tasks
-  (let [db-conn (restore-fresh-database! "datomic:mem://test-sandbox-directory-population")
-        executing-tasks-atom (atom #{})
-        num-jobs 25
-        get-task-id #(str "task-test-sandbox-directory-population-" %)
-        sync-agent-sandboxes-fn (fn [_] (throw (Exception. "Unexpected call for cook executor task")))]
-    (dotimes [n num-jobs]
-      (let [task-id (get-task-id n)
-            job (create-dummy-job db-conn :task-id task-id)]
-        (create-dummy-instance db-conn job :executor :executor/cook :executor-id task-id :task-id task-id)))
-
-    (try
-      (-> (dotimes [n num-jobs]
-            (let [task-id (get-task-id n)]
-              (swap! executing-tasks-atom conj task-id)
-              (->> {:task-id {:value task-id}, :state :task-running}
-                   (sched/handle-status-update db-conn nil (constantly nil) sync-agent-sandboxes-fn)))
-            (Thread/sleep 5))
-          async/thread
-          async/<!!)
-
-      ;; verify the instance state
-      (dotimes [n num-jobs]
-        (let [task-id (get-task-id n)
-              instance-ent (task-id->instance-entity db-conn task-id)]
-          (is (= "localhost" (:instance/hostname instance-ent)))
-          (is (= :instance.status/running (:instance/status instance-ent)))
-          (is (= :executor/cook (:instance/executor instance-ent)))
-          (is (nil? (:instance/sandbox-directory instance-ent))))))))
-
 (deftest test-monitor-tx-report-queue
   (let [uri "datomic:mem://test-monitor-tx-report-queue"
         conn (restore-fresh-database! uri)
@@ -2006,7 +1881,7 @@
     (let [[report-mult close-fn] (cook.datomic/create-tx-report-mult conn)
           transaction-chan (async/chan (async/sliding-buffer 4096))
           _ (async/tap report-mult transaction-chan)
-          kill-fn (cook.scheduler.scheduler/monitor-tx-report-queue transaction-chan conn)]
+          _ (cook.scheduler.scheduler/monitor-tx-report-queue transaction-chan conn)]
       (cook.mesos/kill-job conn [(:job/uuid (d/entity (d/db conn) job-id-2))])
       (let [expected-tasks-killed [{:value (:instance/task-id (d/entity (d/db conn) instance-id-1))}
                                    {:value (:instance/task-id (d/entity (d/db conn) instance-id-2))}]

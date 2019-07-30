@@ -44,60 +44,20 @@
             :reject-after-match-attempt true})
          node-name->available)))
 
-
-(defn synthesized-pod-state->task-status
-  [pod {:keys [state reason]}]
-  (let [task-state (case state
-                     :pod/waiting :task-staging
-                     :pod/running :task-running
-                     :pod/succeeded :task-finished
-                     :pod/failed :task-failed)
-        task-id (-> pod .getMetadata .getName)]
-
-    {:task-id {:value task-id}
-     :reason reason ; TODO(pschorf): Map as best as possible to mesos reasons
-     :state task-state}))
-
 (defn make-pod-watch-callback
-  [kcc handle-status-update handle-exit-code]
+  [kcc]
   (fn pod-watch-callback
     [prev-pod pod]
     (try
-      (let [prev-state (api/pod->synthesized-pod-state prev-pod)
-            state (api/pod->synthesized-pod-state pod)
-            task-id (-> (or pod prev-pod)
-                        .getMetadata .getName)
-            namespace (-> (or pod prev-pod)
-                          .getMetadata
-                          .getNamespace)]
-        (if (nil? pod)
-          (controller/pod-deleted kcc prev-pod)
-          (controller/pod-update kcc pod))
-
-        ;(if (= namespace "cook")
-        ;  (when (not (= prev-state state))
-        ;    (log/debug "Updating state for" task-id "from" prev-state "to" state)
-        ;    (case (:state state)
-        ;      :pod/running
-        ;      (handle-status-update (synthesized-pod-state->task-status pod state))
-        ;      :pod/waiting
-        ;      (handle-status-update (synthesized-pod-state->task-status pod state))
-        ;      :pod/succeeded
-        ;      (do
-        ;        (handle-status-update (synthesized-pod-state->task-status pod state))
-        ;        (handle-exit-code task-id (:exit state)))
-        ;      :pod/failed
-        ;      (do
-        ;        (handle-status-update (synthesized-pod-state->task-status pod state))
-        ;        (handle-exit-code task-id (:exit state)))
-        ;      :pod/unknown
-        ;      (log/error "Unable to determine pod status in callback")))
-        ;  (log/debug "Skipping state update for" task-id))
-        )
+      (if (nil? pod)
+        (controller/pod-deleted kcc prev-pod)
+        (controller/pod-update kcc pod))
       (catch Exception e
         (log/error e "Error processing status update")))))
 
-(defrecord KubernetesComputeCluster [^ApiClient api-client name entity-id match-trigger-chan exit-code-syncer-state current-pods-atom current-nodes-atom expected-state-map existing-state-map]
+(defrecord KubernetesComputeCluster [^ApiClient api-client name entity-id match-trigger-chan exit-code-syncer-state
+                                     current-pods-atom current-nodes-atom expected-state-map existing-state-map
+                                     pool->fenzo-atom]
   cc/ComputeCluster
   (launch-tasks [this offers task-metadata-seq]
     (let [api (CoreV1Api. api-client)]
@@ -120,20 +80,12 @@
 
   (initialize-cluster [this pool->fenzo pool->offers-chan]
     ; Initialize the pod watch path.
-    (let [conn cook.datomic/conn
-          handle-exit-code (fn handle-exit-code [task-id exit-code]
-                             (sandbox/aggregate-exit-code exit-code-syncer-state task-id exit-code))
-          handle-status-update (fn handle-status-update [status]
-                                 (scheduler/handle-status-update conn
-                                                                 this
-                                                                 pool->fenzo
-                                                                 (constantly nil) ; no sandboxes to sync
-                                                                 status))
-          pod-callback (make-pod-watch-callback this handle-status-update handle-exit-code)]
+    (let [pod-callback (make-pod-watch-callback this)]
       (api/initialize-pod-watch api-client current-pods-atom pod-callback))
 
     ; Initialize the node watch path.
     (api/initialize-node-watch api-client current-nodes-atom)
+    (reset! pool->fenzo-atom pool->fenzo)
 
     ; TODO(pschorf): Figure out a better way to plumb these through
     (chime/chime-at (tp/periodic-seq (t/now) (t/seconds 2))
@@ -142,7 +94,7 @@
                         (let [nodes @current-nodes-atom
                               pods @current-pods-atom
                               offers (generate-offers nodes pods this)
-                              pool (config/default-pool)
+                              pool (or (config/default-pool) "no-pool")
                               chan (pool->offers-chan pool)] ; TODO(pschorf): Support pools
                           ;(log/info "Processing offers:" offers)
                           (scheduler/receive-offers chan match-trigger-chan this pool offers))
@@ -175,6 +127,9 @@
         api-client (Config/fromConfig config-file)
         compute-cluster (->KubernetesComputeCluster api-client compute-cluster-name cluster-entity-id
                                                     (:match-trigger-chan trigger-chans)
-                                                    exit-code-syncer-state (atom {}) (atom {}) (atom {:type :expected-state-map}) (atom {:type :existing-state-map}))]
+                                                    exit-code-syncer-state (atom {}) (atom {})
+                                                    (atom {:type :expected-state-map})
+                                                    (atom {:type :existing-state-map})
+                                                    (atom nil))]
     (cc/register-compute-cluster! compute-cluster)
     compute-cluster))
