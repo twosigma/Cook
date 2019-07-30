@@ -1455,9 +1455,8 @@
                                            :data (ByteString/copyFrom (.getBytes (pr-str {:percent progress}) "UTF-8"))}]
                                  task))
           job-id (create-dummy-job conn :user "user" :job-state :job.state/running)
-          sync-agent-sandboxes-fn (constantly true)
           send-status-update #(->> (make-status-update "task1" :unknown :task-running %)
-                                   (sched/handle-status-update conn driver {} sync-agent-sandboxes-fn)
+                                   (sched/handle-status-update conn {})
                                    async/<!!)
           instance-id (create-dummy-instance conn job-id
                                              :instance-status :instance.status/running

@@ -2,6 +2,7 @@
   (:require [clojure.tools.logging :as log]
             [cook.datomic :as datomic]
             [cook.kubernetes.api :as api]
+            [cook.mesos.sandbox :as sandbox]
             [cook.scheduler.scheduler :as scheduler])
   (:import (clojure.lang IAtom)
            (io.kubernetes.client.models V1Pod V1ContainerStatus V1PodStatus)))
@@ -84,7 +85,7 @@
                 :reason (container-status->failure-reason (.getStatus pod) job-container-status)}
         exit-code (-> job-container-status .getState .getTerminated .getExitCode)]
     (handle-status-update kcc status)
-    (cook.mesos.sandbox/aggregate-exit-code (:exit-code-syncer-state kcc) task-id exit-code)
+    (sandbox/aggregate-exit-code (:exit-code-syncer-state kcc) task-id exit-code)
     {:expected-state :expected/completed}))
 
 (defn prepare-expected-state-dict-for-logging
@@ -110,7 +111,7 @@
                 :state :task-failed
                 :reason :reason-command-executor-failed}]
     (handle-status-update kcc status)
-    (cook.mesos.sandbox/aggregate-exit-code (:exit-code-syncer-state kcc) task-id 143)
+    (sandbox/aggregate-exit-code (:exit-code-syncer-state kcc) task-id 143)
     {:expected-state :expected/completed}))
 
 (defn process

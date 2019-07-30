@@ -1,10 +1,8 @@
 (ns cook.test.kubernetes.compute-cluster
   (:require [clojure.test :refer :all]
-            [cook.kubernetes.api :as api]
             [cook.kubernetes.compute-cluster :as kcc]
             [cook.test.testutil :as tu]
-            [datomic.api :as d])
-  (:import (io.kubernetes.client.models V1Pod V1PodStatus V1ContainerStatus V1ContainerState V1ContainerStateWaiting)))
+            [datomic.api :as d]))
 
 (deftest test-get-or-create-cluster-entity-id
   (let [conn (tu/restore-fresh-database! "datomic:mem://test-get-or-create-cluster-entity-id")]
@@ -21,7 +19,8 @@
         (is (= eid eid2))))))
 
 (deftest test-generate-offers
-  (let [compute-cluster (kcc/->KubernetesComputeCluster nil "kubecompute" nil nil nil (atom {}) (atom {}) (atom {}) (atom {}))
+  (let [compute-cluster (kcc/->KubernetesComputeCluster nil "kubecompute" nil nil nil
+                                                        (atom {}) (atom {}) (atom {}) (atom {}) (atom nil))
         node-name->node {"nodeA" (tu/node-helper "nodeA" 1.0 1000.0)
                          "nodeB" (tu/node-helper "nodeB" 1.0 1000.0)
                          "nodeC" (tu/node-helper "nodeC" 1.0 1000.0)}
