@@ -26,6 +26,7 @@
             [cook.plugins.pool :as pool-plugin]
             [cook.progress :as progress]
             [cook.scheduler.scheduler :as sched]
+            [cook.tools :as tools]
             [datomic.api :as d]
             [mesomatic.scheduler :as mesos]
             [metrics.meters :as meters]
@@ -35,6 +36,40 @@
 (meters/defmeter [cook-mesos scheduler handle-framework-message-rate])
 (meters/defmeter [cook-mesos scheduler handle-status-update-rate])
 
+
+(defn conditionally-sync-sandbox
+  "For non cook executor tasks, call sync-agent-sandboxes-fn"
+  [conn task-id task-state sync-agent-sandboxes-fn]
+  (let [instance-ent (d/entity (d/db conn) [:instance/task-id task-id])]
+    (when (and (#{:task-starting :task-running} task-state)
+               (not= :executor/cook (:instance/executor instance-ent)))
+      ;; cook executor tasks should automatically get sandbox directory updates
+      (sync-agent-sandboxes-fn (:instance/hostname instance-ent) task-id))))
+
+(defn handle-status-update
+  [conn compute-cluster sync-agent-sandboxes-fn pool->fenzo {:keys [state] :as status}]
+  (let [task-id (-> status :task-id :value)
+        instance (d/entity (d/db conn) [:instance/task-id task-id])
+        prior-job-state (:job/state (:job/_instance instance))
+        prior-instance-status (:instance/status instance)
+        pool-name (tools/job->pool-name (:job/_instance instance))]
+    (if (and
+            (or (nil? instance) ; We could know nothing about the task, meaning a DB error happened and it's a waste to finish
+                (= prior-job-state :job.state/completed) ; The task is attached to a failed job, possibly due to instances running on multiple hosts
+                (= prior-instance-status :instance.status/failed)) ; The kill-task message could've been glitched on the network
+            (contains? #{:task-running
+                         :task-staging
+                         :task-starting}
+                       state)) ; killing an unknown task causes a TASK_LOST message. Break the cycle! Only kill non-terminal tasks
+      (do
+
+        (log/warn "Attempting to kill task" task-id
+                  "as instance" instance "with" prior-job-state "and" prior-instance-status
+                  "should've been put down already")
+        (meters/mark! (meters/meter (sched/metric-title "tasks-killed-in-status-update" pool-name)))
+        (cc/kill-task compute-cluster task-id))
+      (sched/write-status-to-datomic conn pool->fenzo status))
+    (conditionally-sync-sandbox conn task-id (:state status) sync-agent-sandboxes-fn)))
 
 (defn create-mesos-scheduler
   "Creates the mesos scheduler which processes status updates asynchronously but in order of receipt."
@@ -135,7 +170,7 @@
         (meters/mark! handle-status-update-rate)
         (let [task-id (-> status :task-id :value)]
           (sched/async-in-order-processing
-            task-id #(sched/handle-status-update conn compute-cluster pool->fenzo sync-agent-sandboxes-fn status)))))))
+            task-id (fn [] (handle-status-update conn compute-cluster sync-agent-sandboxes-fn pool->fenzo status))))))))
 
 
 (defn make-mesos-driver

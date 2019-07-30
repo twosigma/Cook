@@ -203,9 +203,9 @@
     (update-metrics! "cpu-times" (* instance-runtime-seconds cpus))
     (update-metrics! "mem-times" (* instance-runtime-seconds mem-gb))))
 
-(defn handle-status-update
+(defn write-status-to-datomic
   "Takes a status update from mesos."
-  [conn compute-cluster pool->fenzo sync-agent-sandboxes-fn status]
+  [conn pool->fenzo status]
   (log/info "Mesos status is:" status)
   (timers/time!
     handle-status-update-duration
@@ -262,25 +262,7 @@
              (handle-throughput-metrics job-resources instance-runtime :completed pool-name)
              (when-not previous-reason
                (update-reason-metrics! db reason instance-runtime job-resources)))
-           ;; This code kills any task that "shouldn't" be running
-           (when (and
-                   (or (nil? instance) ; We could know nothing about the task, meaning a DB error happened and it's a waste to finish
-                       (= prior-job-state :job.state/completed) ; The task is attached to a failed job, possibly due to instances running on multiple hosts
-                       (= prior-instance-status :instance.status/failed)) ; The kill-task message could've been glitched on the network
-                   (contains? #{:task-running
-                                :task-staging
-                                :task-starting}
-                              task-state)) ; killing an unknown task causes a TASK_LOST message. Break the cycle! Only kill non-terminal tasks
-             (log/warn "Attempting to kill task" task-id
-                       "as instance" instance "with" prior-job-state "and" prior-instance-status
-                       "should've been put down already")
-             (meters/mark! (meters/meter (metric-title "tasks-killed-in-status-update" pool-name)))
-             (cc/kill-task compute-cluster task-id))
            (when-not (nil? instance)
-             (when (and (#{:task-starting :task-running} task-state)
-                        (not= :executor/cook (:instance/executor instance-ent)))
-               ;; cook executor tasks should automatically get sandbox directory updates
-               (sync-agent-sandboxes-fn (:instance/hostname instance-ent) task-id))
              ;; (println "update:" task-id task-state job instance instance-status prior-job-state)
              (log/debug "Transacting updated state for instance" instance "to status" instance-status)
              ;; The database can become inconsistent if we make multiple calls to :instance/update-state in a single

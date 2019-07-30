@@ -1,8 +1,11 @@
 (ns cook.kubernetes.controller
   (:require [clojure.tools.logging :as log]
-            [cook.kubernetes.api :as api])
+            [cook.datomic :as datomic]
+            [cook.kubernetes.api :as api]
+            [cook.mesos.sandbox :as sandbox]
+            [cook.scheduler.scheduler :as scheduler])
   (:import (clojure.lang IAtom)
-           (io.kubernetes.client.models V1Pod)))
+           (io.kubernetes.client.models V1Pod V1ContainerStatus V1PodStatus)))
 
 ;
 ;   Wire up a store with the results.
@@ -48,19 +51,52 @@
     (swap! map-atom dissoc key)
     (swap! map-atom assoc key value)))
 
-;; REVIEW: Review handle-status-update
+(defn container-status->failure-reason
+  "Maps kubernetes failure reasons to cook failure reasons"
+  [^V1PodStatus pod-status ^V1ContainerStatus status]
+  ; TODO map additional kubernetes failure reasons
+  (let [terminated (-> status .getState .getTerminated)]
+    (cond
+      (= "OutOfMemory" (.getReason pod-status)) :reason-container-limitation-memory
+      (= "Error" (.getReason terminated)) :reason-command-executor-failed
+      (= "OOMKilled" (.getReason terminated)) :reason-container-limitation-memory
+      :default (do
+                 (log/warn "Unable to determine kubernetes state for pod" {:pod-status pod-status
+                                                                           :container-status status})
+                 :unknown))))
+
+(defn handle-status-update
+  "Helper function for calling scheduler/handle-status-update"
+  [kcc mesos-status]
+  (scheduler/write-status-to-datomic datomic/conn
+                                     @(:pool->fenzo-atom kcc)
+                                     mesos-status))
+
+(defn- get-job-container-status
+  "Extract the constainer status for the api/cook-container-name-for-job container"
+  [^V1PodStatus pod-status]
+  (->> pod-status
+       .getContainerStatuses
+       (filter (fn [container-status] (= api/cook-container-name-for-job
+                                         (.getName container-status))))
+       first))
+
 (defn pod-has-just-completed
   "A pod has completed."
-  [{:keys [synthesized-state pod] :as existing-state-dictionary}]
-  (case (:state synthesized-state)
-    :pod/failed
-    (do
-      ; TODO: Extract failure reason, etc and store in datomic, via refactored handle-status-update.
-      {:expected-state :expected/completed})
-    :pod/succeeded
-    (do
-      ; TODO: Mark job as success in datomic, via refactored handle-status-update.
-      {:expected-state :expected/completed})))
+  [kcc {:keys [synthesized-state pod] :as existing-state-dictionary}]
+  (let [task-id (-> pod .getMetadata .getName)
+        pod-status (.getStatus pod)
+        ^V1ContainerStatus job-container-status (get-job-container-status pod-status)
+        mesos-state (case (:state synthesized-state)
+                      :pod/failed :task-failed
+                      :pod/succeeded :task-finished)
+        status {:task-id {:value task-id}
+                :state mesos-state
+                :reason (container-status->failure-reason pod-status job-container-status)}
+        exit-code (-> job-container-status .getState .getTerminated .getExitCode)]
+    (handle-status-update kcc status)
+    (sandbox/aggregate-exit-code (:exit-code-syncer-state kcc) task-id exit-code)
+    {:expected-state :expected/completed}))
 
 (defn prepare-expected-state-dict-for-logging
   [expected-state-dict]
@@ -69,12 +105,24 @@
     (assoc expected-state-dict :launch-pod [:elided-for-brevity])
     expected-state-dict))
 
-;; REVIEW: Review handle-status-update
 (defn pod-has-started
   "A pod has started."
-  [{:keys [synthesized-state pod] :as existing-state-dictionary}]
-  ;(api/TODO); TODO Update datomic state to instance.state/running.
-  {:expected-state :expected/running})
+  [kcc {:keys [pod] :as existing-state-dictionary}]
+  (let [task-id (-> pod .getMetadata .getName)
+        status {:task-id {:value task-id}
+                :state :task-running}]
+    (handle-status-update kcc status)
+    {:expected-state :expected/running}))
+
+(defn pod-was-killed
+  [kcc {:keys [pod] :as existing-state-dictionary}]
+  (let [task-id (-> pod .getMetadata .getName)
+        status {:task-id {:value task-id}
+                :state :task-failed
+                :reason :reason-command-executor-failed}]
+    (handle-status-update kcc status)
+    (sandbox/aggregate-exit-code (:exit-code-syncer-state kcc) task-id 143)
+    {:expected-state :expected/completed}))
 
 (defn process
   "Visit this pod-name, processing the new level-state. Returns the new expected state. Returns
@@ -90,24 +138,28 @@
     (let
       [new-expected-state-dict (case (vector (or expected-state :missing) (or (:state synthesized-state) :missing))
                                  [:expected/starting :missing] (launch-task api-client expected-state-dict)
-                                 [:expected/starting :pod/running] (pod-has-started existing-state-dict)
+                                 [:expected/starting :pod/running] (pod-has-started kcc existing-state-dict)
                                  ; TODO We need to add cases for the other [:expected/starting *] states in.
                                  [:expected/starting :pod/waiting] expected-state-dict
-                                 [:expected/starting :pod/succeeded] (pod-has-just-completed existing-state-dict)
-                                 [:expected/starting :pod/failed] (pod-has-just-completed existing-state-dict)
+                                 [:expected/starting :pod/succeeded] (pod-has-just-completed kcc existing-state-dict)
+                                 [:expected/starting :pod/failed] (pod-has-just-completed kcc existing-state-dict)
                                  [:expected/running :pod/running] expected-state-dict
-                                 [:expected/running :pod/succeeded] (pod-has-just-completed existing-state-dict)
+                                 [:expected/running :pod/succeeded] (pod-has-just-completed kcc existing-state-dict)
                                  [:expected/completed :pod/succeeded] (remove-finalization-if-set-and-delete api-client expected-state-dict pod)
-                                 [:expected/running :pod/failed] (pod-has-just-completed existing-state-dict)
+                                 [:expected/running :pod/failed] (pod-has-just-completed kcc existing-state-dict)
                                  [:expected/completed :pod/failed] (remove-finalization-if-set-and-delete api-client expected-state-dict pod)
                                  [:expected/completed :missing] nil ; Cause it to be deleted.
+                                 [:expected/killed :pod/waiting] (kill-task api-client expected-state-dict pod)
                                  [:expected/killed :pod/running] (kill-task api-client expected-state-dict pod) ; TODO: Where does the datomic update occur? Do we do it when we do [expected/killed :pod/failed], to be similar to mesos, we update it only when the backend says its dead?
 
-                                 [:expected/killed :pod/succeeded] (remove-finalization-if-set-and-delete api-client expected-state-dict pod)
+                                 [:expected/killed :pod/succeeded] (do
+                                                                     (pod-has-just-completed kcc existing-state-dict)
+                                                                     (remove-finalization-if-set-and-delete api-client expected-state-dict pod))
                                  [:expected/killed :pod/failed]
-                                 (do ; TODO: Invoke handle-status-update.
+                                 (do
+                                   (pod-has-just-completed kcc existing-state-dict)
                                    (remove-finalization-if-set-and-delete api-client expected-state-dict pod))
-                                 [:expected/killed :missing] nil
+                                 [:expected/killed :missing] (pod-was-killed kcc existing-state-dict)
                                  ; TODO: Implement :pod/unknown cases.
                                  ; TODO: Implement :pod/pending cases.
                                  ; TODO: Implement :pod/need-to-fail cases.
@@ -115,7 +167,13 @@
                                  [:missing :pod/pending] (kill-task api-client expected-state-dict pod)
                                  [:missing :pod/need-to-fail] (kill-task api-client expected-state-dict pod)
                                  [:missing :pod/succeeded] (remove-finalization-if-set-and-delete api-client expected-state-dict pod)
-                                 [:missing :pod/failed] (remove-finalization-if-set-and-delete api-client expected-state-dict pod))]
+                                 [:missing :pod/failed] (remove-finalization-if-set-and-delete api-client expected-state-dict pod)
+                                 [:missing :missing] nil ; this can come up due to the recur at the end
+                                 (do
+                                   (log/error "Unexpected state: "
+                                              (vector (or expected-state :missing) (or (:state synthesized-state) :missing))
+                                              "for pod" pod-name)
+                                   expected-state-dict))]
       (when-not (expected-state-equivalent? expected-state-dict new-expected-state-dict)
         (update-or-delete! expected-state-map pod-name new-expected-state-dict)
         (log/info "Processing: WANT TO RECUR" new-expected-state-dict " ---- " existing-state-dict)
