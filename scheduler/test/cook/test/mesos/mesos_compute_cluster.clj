@@ -1,5 +1,6 @@
 (ns cook.test.mesos.mesos-compute-cluster
   (:require [clojure.core.async :as async]
+            [clojure.core.cache :as cache]
             [clojure.data.json :as json]
             [clojure.test :refer :all]
             [cook.mesos.heartbeat :as heartbeat]
@@ -10,8 +11,7 @@
             [datomic.api :as d]
             [mesomatic.types :as mtypes]
             [mesomatic.scheduler :as msched]
-            [plumbing.core :as pc]
-            [clojure.core.cache :as cache])
+            [plumbing.core :as pc])
   (:import (java.util.concurrent CountDownLatch TimeUnit)))
 
 (deftest test-in-order-status-update-processing
