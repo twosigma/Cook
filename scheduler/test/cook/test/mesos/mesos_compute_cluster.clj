@@ -1,19 +1,23 @@
 (ns cook.test.mesos.mesos-compute-cluster
-  (:require [clojure.data.json :as json]
+  (:require [clojure.core.async :as async]
+            [clojure.data.json :as json]
             [clojure.test :refer :all]
             [cook.mesos.heartbeat :as heartbeat]
             [cook.mesos.mesos-compute-cluster :as mcc]
             [cook.mesos.sandbox :as sandbox]
             [cook.scheduler.scheduler :as sched]
-            [cook.test.testutil :as testutil]
+            [cook.test.testutil :as testutil :refer [create-dummy-job create-dummy-instance]]
             [datomic.api :as d]
-            [mesomatic.types :as mtypes])
+            [mesomatic.types :as mtypes]
+            [mesomatic.scheduler :as msched]
+            [plumbing.core :as pc]
+            [clojure.core.cache :as cache])
   (:import (java.util.concurrent CountDownLatch TimeUnit)))
 
 (deftest test-in-order-status-update-processing
   (let [status-store (atom {})
         latch (CountDownLatch. 11)]
-    (with-redefs [sched/handle-status-update
+    (with-redefs [mcc/handle-status-update
                   (fn [_ _ _ _ status]
                     (let [task-id (-> status :task-id :value str)]
                       (swap! status-store update task-id
@@ -148,3 +152,143 @@
           (is (and id2a (< 0 id2a)))
           (is (and id1b (< 0 id1b)))
           (is (and id2b (< 0 id2b))))))))
+
+(defn make-dummy-status-update
+  [task-id reason state & {:keys [progress] :or {progress nil}}]
+  {:task-id {:value task-id}
+   :reason reason
+   :state state})
+
+(deftest test-handle-status-update
+  (let [uri "datomic:mem://test-handle-status-update"
+        conn (testutil/restore-fresh-database! uri)
+        tasks-killed (atom #{})
+        driver (reify msched/SchedulerDriver
+                 (kill-task! [_ task] (swap! tasks-killed conj (:value task)))) ; Conjoin the task-id
+        compute-cluster (testutil/fake-test-compute-cluster-with-driver conn uri driver)
+        fenzo (sched/make-fenzo-scheduler compute-cluster 1500 nil 0.8)
+        synced-agents-atom (atom [])
+        sync-agent-sandboxes-fn (fn sync-agent-sandboxes-fn [hostname _]
+                                  (swap! synced-agents-atom conj hostname))]
+    (testing "Tasks of completed jobs are killed"
+      (let [job-id (create-dummy-job conn
+                                     :user "tsram"
+                                     :job-state :job.state/completed
+                                     :retry-count 3)
+            task-id-a "taska"
+            task-id-b "taskb"]
+        (create-dummy-instance conn job-id
+                               :hostname "www.test-host.com"
+                               :instance-status :instance.status/running
+                               :task-id task-id-a
+                               :reason :unknown)
+        (create-dummy-instance conn job-id
+                               :instance-status :instance.status/success
+                               :task-id task-id-b
+                               :reason :unknown)
+        (reset! synced-agents-atom [])
+        (->> (make-dummy-status-update task-id-a :mesos-slave-restarted :task-running)
+             (mcc/handle-status-update conn compute-cluster sync-agent-sandboxes-fn (constantly fenzo)))
+        (is (true? (contains? @tasks-killed task-id-a)))
+        (is (= ["www.test-host.com"] @synced-agents-atom))))))
+
+(defn- task-id->instance-entity
+  [db-conn task-id]
+  (let [datomic-db (d/db db-conn)]
+    (->> task-id
+         (d/q '[:find ?i
+                :in $ ?task-id
+                :where [?i :instance/task-id ?task-id]]
+              datomic-db)
+         ffirst
+         (d/entity (d/db db-conn))
+         d/touch)))
+
+(deftest test-sandbox-directory-population-for-mesos-executor-tasks
+  (let [db-conn (testutil/restore-fresh-database! "datomic:mem://test-sandbox-directory-population")
+        executing-tasks-atom (atom #{})
+        num-jobs 25
+        cache-timeout-ms 65
+        get-task-id #(str "task-test-sandbox-directory-population-" %)]
+    (dotimes [n num-jobs]
+      (let [task-id (get-task-id n)
+            job (create-dummy-job db-conn :task-id task-id)]
+        (create-dummy-instance db-conn job :executor :executor/mesos :executor-id task-id :task-id task-id)))
+
+    (with-redefs [sandbox/retrieve-sandbox-directories-on-agent
+                  (fn [_ _]
+                    (pc/map-from-keys #(str "/sandbox/for/" %) @executing-tasks-atom))]
+      (let [framework-id "test-framework-id"
+            publish-batch-size 10
+            publish-interval-ms 20
+            sync-interval-ms 20
+            max-consecutive-sync-failure 5
+            agent-query-cache (-> {} (cache/ttl-cache-factory :ttl cache-timeout-ms) atom)
+            {:keys [pending-sync-agent publisher-cancel-fn syncer-cancel-fn task-id->sandbox-agent] :as sandbox-syncer-state}
+            (sandbox/prepare-sandbox-publisher
+              framework-id db-conn publish-batch-size publish-interval-ms sync-interval-ms max-consecutive-sync-failure
+              agent-query-cache)
+            sync-agent-sandboxes-fn
+            (fn [hostname task-id]
+              (sandbox/sync-agent-sandboxes sandbox-syncer-state framework-id hostname task-id))]
+        (try
+          (-> (dotimes [n num-jobs]
+                (let [task-id (get-task-id n)]
+                  (swap! executing-tasks-atom conj task-id)
+                  (->> {:task-id {:value task-id}, :state :task-running}
+                       (mcc/handle-status-update db-conn nil sync-agent-sandboxes-fn {})))
+                (Thread/sleep 5))
+              async/thread
+              async/<!!)
+
+          (dotimes [n num-jobs]
+            (let [task-id (get-task-id n)
+                  instance-ent (task-id->instance-entity db-conn task-id)]
+              (is (= "localhost" (:instance/hostname instance-ent)))
+              (is (= :instance.status/running (:instance/status instance-ent)))
+              (is (= :executor/mesos (:instance/executor instance-ent)))))
+
+          (Thread/sleep (+ cache-timeout-ms sync-interval-ms))
+          (await pending-sync-agent)
+          (Thread/sleep (* 2 publish-interval-ms))
+          (await task-id->sandbox-agent)
+
+          ;; verify the sandbox-directory stored into the db
+          (dotimes [n num-jobs]
+            (let [task-id (get-task-id n)
+                  instance-ent (task-id->instance-entity db-conn task-id)]
+              (is (= (str "/sandbox/for/" task-id) (:instance/sandbox-directory instance-ent)))))
+
+          (finally
+            (publisher-cancel-fn)
+            (syncer-cancel-fn)))))))
+
+(deftest test-no-sandbox-directory-population-for-cook-executor-tasks
+  (let [db-conn (testutil/restore-fresh-database! "datomic:mem://test-sandbox-directory-population")
+        executing-tasks-atom (atom #{})
+        num-jobs 25
+        get-task-id #(str "task-test-sandbox-directory-population-" %)
+        sync-agent-sandboxes-fn (fn [_] (throw (Exception. "Unexpected call for cook executor task")))]
+    (dotimes [n num-jobs]
+      (let [task-id (get-task-id n)
+            job (create-dummy-job db-conn :task-id task-id)]
+        (create-dummy-instance db-conn job :executor :executor/cook :executor-id task-id :task-id task-id)))
+
+    (try
+      (-> (dotimes [n num-jobs]
+            (let [task-id (get-task-id n)]
+              (swap! executing-tasks-atom conj task-id)
+              (->> {:task-id {:value task-id}, :state :task-running}
+                   (mcc/handle-status-update db-conn nil sync-agent-sandboxes-fn (constantly nil))))
+            (Thread/sleep 5))
+          async/thread
+          async/<!!)
+
+      ;; verify the instance state
+      (dotimes [n num-jobs]
+        (let [task-id (get-task-id n)
+              instance-ent (task-id->instance-entity db-conn task-id)]
+          (is (= "localhost" (:instance/hostname instance-ent)))
+          (is (= :instance.status/running (:instance/status instance-ent)))
+          (is (= :executor/cook (:instance/executor instance-ent)))
+          (is (nil? (:instance/sandbox-directory instance-ent))))))))
