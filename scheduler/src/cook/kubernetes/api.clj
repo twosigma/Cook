@@ -176,6 +176,7 @@
     (.addContainersItem pod-spec container)
     (.setNodeName pod-spec hostname)
     (.setRestartPolicy pod-spec "Never")
+    (.setTerminationGracePeriodSeconds pod-spec 1)
 
     ; pod
     (.setMetadata pod metadata)
