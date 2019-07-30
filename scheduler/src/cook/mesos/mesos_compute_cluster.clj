@@ -26,12 +26,11 @@
             [cook.plugins.pool :as pool-plugin]
             [cook.progress :as progress]
             [cook.scheduler.scheduler :as sched]
+            [cook.tools :as util]
             [datomic.api :as d]
             [mesomatic.scheduler :as mesos]
             [metrics.meters :as meters]
-            [plumbing.core :as pc]
-            [cook.tools :as util]
-            [cook.scheduler.scheduler :as scheduler]))
+            [plumbing.core :as pc]))
 
 (meters/defmeter [cook-mesos scheduler mesos-error])
 (meters/defmeter [cook-mesos scheduler handle-framework-message-rate])
@@ -66,7 +65,7 @@
         (log/warn "Attempting to kill task" task-id
                   "as instance" instance "with" prior-job-state "and" prior-instance-status
                   "should've been put down already")
-        (meters/mark! (meters/meter (scheduler/metric-title "tasks-killed-in-status-update" pool-name)))
+        (meters/mark! (meters/meter (sched/metric-title "tasks-killed-in-status-update" pool-name)))
         (cc/kill-task compute-cluster task-id))
       (sched/handle-status-update conn pool->fenzo status))
     (conditionally-sync-sandbox conn task-id (:state status) sync-agent-sandboxes-fn)))

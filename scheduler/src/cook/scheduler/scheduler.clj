@@ -565,11 +565,6 @@
 ;Shared as we use this for unscheduled too.
 (defonce pool->user->number-jobs (atom {}))
 
-(defn log-and-return
-  [msg obj]
-  (log/debug msg (count obj))
-  obj)
-
 (defn pending-jobs->considerable-jobs
   "Limit the pending jobs to considerable jobs based on usage and quota.
    Further limit the considerable jobs to a maximum of num-considerable jobs."
@@ -592,15 +587,10 @@
         considerable-jobs
         (->> pending-jobs
              (util/filter-based-on-quota user->quota user->usage)
-             (log-and-return "after quota filtering")
              (filter (fn [job] (util/job-allowed-to-start? db job)))
-             (log-and-return "after allowed to start")
              (filter user-within-launch-rate-limit?-fn)
-             (log-and-return "after rate limit")
              (filter launch-plugin/filter-job-launches)
-             (log-and-return "after plugin")
              (take num-considerable)
-             (log-and-return "after take")
              ; Force this to be taken eagerly so that the log line is accurate.
              (doall))]
     (swap! pool->user->number-jobs update pool-name (constantly @user->number-jobs))
