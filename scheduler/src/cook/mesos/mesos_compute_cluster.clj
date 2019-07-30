@@ -47,7 +47,7 @@
       (sync-agent-sandboxes-fn (:instance/hostname instance-ent) task-id))))
 
 (defn handle-status-update
-  [conn {:keys [state] :as status} compute-cluster sync-agent-sandboxes-fn pool->fenzo]
+  [conn compute-cluster sync-agent-sandboxes-fn pool->fenzo {:keys [state] :as status}]
   (let [task-id (-> status :task-id :value)
         instance (d/entity (d/db conn) [:instance/task-id task-id])
         prior-job-state (:job/state (:job/_instance instance))
@@ -170,7 +170,7 @@
         (meters/mark! handle-status-update-rate)
         (let [task-id (-> status :task-id :value)]
           (sched/async-in-order-processing
-            task-id (fn [] (handle-status-update conn status compute-cluster sync-agent-sandboxes-fn pool->fenzo))))))))
+            task-id (fn [] (handle-status-update conn compute-cluster sync-agent-sandboxes-fn pool->fenzo status))))))))
 
 
 (defn make-mesos-driver
