@@ -139,7 +139,8 @@
 ;;; preemption-decision {:hostname String :task [task-ent] :dru Double :mem Double :cpus Double}
 ;;; preemption-candidates [{:task task-ent :dru Double :mem Double :cpus Double}]
 
-(defrecord State [task->scored-task user->sorted-running-task-ents host->spare-resources user->dru-divisors compute-pending-job-dru preempted-tasks])
+(defrecord State [task->scored-task user->sorted-running-task-ents host->spare-resources user->dru-divisors
+                  compute-pending-job-dru preempted-tasks user->quota-fn])
 
 (defn metric-title [metric-name pool]
   ["cook-mesos" "rebalancer" metric-name (str "pool-" pool)])
@@ -200,6 +201,26 @@
 
     pending-job-dru))
 
+(defn filter-decision-by-quota
+  "Takes a potential preemption decision, and if the new job would put a user out of quota only allows
+   preempting jobs running for that user"
+  [{:keys [user->quota-fn user->sorted-running-task-ents] :as state} to-make-room-for scored-tasks]
+  (let [user (:job/user to-make-room-for)
+        running-jobs (map :job/_instance (user->sorted-running-task-ents user))
+        future-running (conj running-jobs to-make-room-for)
+        future-usage (->> future-running
+                          (map util/job->usage)
+                          (apply merge-with +))
+        user-quota (user->quota-fn user)
+        within-quota? (util/below-quota? user-quota future-usage)]
+    (if within-quota?
+      scored-tasks
+      (filter (fn [scored-task] (= (-> scored-task
+                                       :task
+                                       :job/_instance
+                                       :job/user)
+                                   user)) scored-tasks))))
+
 (defn init-state
   "Initializes state. State consists of:
    task->scored-task A priority from task entities to ScoredTasks, sorted from high dru to low dru
@@ -234,7 +255,8 @@
                                                           :pool.dru-mode/default (juxt (comp - :dru)
                                                                                        (comp util/task-ent->user :task))
                                                           :pool.dru-mode/gpu (fnil - 0)))
-                                 scored-task-pairs)]
+                                 scored-task-pairs)
+         user->quota-fn (cook.quota/create-user->quota-fn db (if using-pools? pool-name nil))]
      (->State task->scored-task
               user->sorted-running-task-ents
               host->spare-resources
@@ -242,13 +264,15 @@
               (case dru-mode
                 :pool.dru-mode/default compute-pending-default-job-dru
                 :pool.dru-mode/gpu compute-pending-gpu-job-dru)
-              preempted-tasks))))
+              preempted-tasks
+              user->quota-fn))))
 
 
 
 (defn next-state
   "Takes state, a pending job entity to launch and a preemption decision, returns the next state"
-  [{:keys [task->scored-task user->sorted-running-task-ents host->spare-resources user->dru-divisors compute-pending-job-dru preempted-tasks] :as state}
+  [{:keys [task->scored-task user->sorted-running-task-ents host->spare-resources user->dru-divisors
+           compute-pending-job-dru preempted-tasks user->quota-fn] :as state}
    pending-job-ent
    preemption-decision]
   {:pre [(not (nil? preemption-decision))]}
@@ -282,7 +306,8 @@
                                        :gpus (- (:gpus preemption-decision 0.0) (or gpus-req 0.0))
                                        :cpus (- (:cpus preemption-decision) cpus-req)})
         preempted-tasks' (into preempted-tasks preempted-task-ents)
-        state' (->State task->scored-task' user->sorted-running-task-ents' host->spare-resources' user->dru-divisors' compute-pending-job-dru preempted-tasks')]
+        state' (->State task->scored-task' user->sorted-running-task-ents' host->spare-resources' user->dru-divisors'
+                        compute-pending-job-dru preempted-tasks' user->quota-fn)]
     state'))
 
 (defn exceeds-min-diff?
@@ -345,6 +370,9 @@
          ;; tasks on a specific host.
          ;; We try to find a preemption decision where the minimum dru of tasks to be preempted is maximum
          preemption-decision (->> (merge-with into host->formatted-spare-resources host->scored-tasks)
+                                  (map (fn [[host scored-tasks]]
+                                         [host (filter-decision-by-quota state pending-job-ent scored-tasks)]))
+                                  (into {})
                                   ; Only evaluate tasks in unconstrained slaves
                                   (filter (comp passes-constraints? key))
                                   (sort-by first)

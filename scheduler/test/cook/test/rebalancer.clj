@@ -18,6 +18,7 @@
   (:require [clojure.core.cache :as cache]
             [clojure.test.check.generators :as gen]
             [cook.scheduler.dru :as dru]
+            [cook.quota :as quota]
             [cook.rebalancer :as rebalancer :refer (->State)]
             [cook.scheduler.scheduler :as sched]
             [cook.scheduler.share :as share]
@@ -237,7 +238,8 @@
           db (d/db conn)
           pending-job-ids (list job9 job10 job11 job12 job13 job14)
           [task->scored-task user->sorted-running-task-ents user->dru-divisors]
-            (initialize-rebalancer db pending-job-ids)]
+            (initialize-rebalancer db pending-job-ids)
+          user->quota-fn (quota/create-user->quota-fn db nil)]
 
       (comment all-decisions-without-spare-resources
         {"hostA" [{:dru 1.12 :task [task-ent7] :mem 10.0 :cpus 10.0}]
@@ -252,7 +254,8 @@
                                                               {}
                                                               user->dru-divisors
                                                               rebalancer/compute-pending-default-job-dru
-                                                              [])
+                                                              []
+                                                              user->quota-fn)
                                                      {:min-dru-diff 0.05 :safe-dru-threshold 1.0}
                                                      "no-pool"
                                                      (d/entity db job9)
@@ -265,7 +268,8 @@
                                                               {"hostB" {:mem 15.0 :cpus 15.0}}
                                                               user->dru-divisors
                                                               rebalancer/compute-pending-default-job-dru
-                                                              [])
+                                                              []
+                                                              user->quota-fn)
                                                      {:min-dru-diff 0.5 :safe-dru-threshold 1.0}
                                                      "no-pool"
                                                      (d/entity db job9)
@@ -279,7 +283,8 @@
                                                                "hostB" {:mem 10.0 :cpus 10.0}}
                                                               user->dru-divisors
                                                               rebalancer/compute-pending-default-job-dru
-                                                              [])
+                                                              []
+                                                              user->quota-fn)
                                                      {:min-dru-diff 0.5 :safe-dru-threshold 1.0}
                                                      "no-pool"
                                                      (d/entity db job9)
@@ -293,7 +298,8 @@
                                                                "hostB" {:mem 10.0 :cpus 10.0}}
                                                               user->dru-divisors
                                                               rebalancer/compute-pending-default-job-dru
-                                                              [])
+                                                              []
+                                                              user->quota-fn)
                                                      {:min-dru-diff 0.0 :safe-dru-threshold 1.0}
                                                      "no-pool"
                                                      (d/entity db job9)
@@ -306,7 +312,8 @@
                                                               {}
                                                               user->dru-divisors
                                                               rebalancer/compute-pending-default-job-dru
-                                                              [])
+                                                              []
+                                                              user->quota-fn)
                                                      {:min-dru-diff 0.5 :safe-dru-threshold 1.0}
                                                      "no-pool"
                                                      (d/entity db job10)
@@ -319,7 +326,8 @@
                                                               {}
                                                               user->dru-divisors
                                                               rebalancer/compute-pending-default-job-dru
-                                                              [])
+                                                              []
+                                                              user->quota-fn)
                                                      {:min-dru-diff 0.5 :safe-dru-threshold 1.0}
                                                      "no-pool"
                                                      (d/entity db job11)
@@ -332,7 +340,8 @@
                                                               {}
                                                               user->dru-divisors
                                                               rebalancer/compute-pending-default-job-dru
-                                                              [])
+                                                              []
+                                                              user->quota-fn)
                                                      {:min-dru-diff 0.0 :safe-dru-threshold 1.0}
                                                      "no-pool"
                                                      (d/entity db job12)
@@ -345,7 +354,8 @@
                                                               {"hostA" {:mem 40.0 :cpus 40.0}}
                                                               user->dru-divisors
                                                               rebalancer/compute-pending-default-job-dru
-                                                              [])
+                                                              []
+                                                              user->quota-fn)
                                                      {:min-dru-diff 0.5 :safe-dru-threshold 1.0}
                                                      "no-pool"
                                                      (d/entity db job12)
@@ -358,7 +368,8 @@
                                                               {"hostA" {:mem 35.0 :cpus 35.0}}
                                                               user->dru-divisors
                                                               rebalancer/compute-pending-default-job-dru
-                                                              [])
+                                                              []
+                                                              user->quota-fn)
                                                      {:min-dru-diff 0.0 :safe-dru-threshold 1.0}
                                                      "no-pool"
                                                      (d/entity db job12)
@@ -372,7 +383,8 @@
                                                                "hostB" {:mem 30.0 :cpus 30.0}}
                                                               user->dru-divisors
                                                               rebalancer/compute-pending-default-job-dru
-                                                              [])
+                                                              []
+                                                              user->quota-fn)
                                                      {:min-dru-diff 0.5 :safe-dru-threshold 1.0}
                                                      "no-pool"
                                                      (d/entity db job12)
@@ -385,7 +397,8 @@
                                                               {}
                                                               user->dru-divisors
                                                               rebalancer/compute-pending-default-job-dru
-                                                              [])
+                                                              []
+                                                              user->quota-fn)
                                                      {:min-dru-diff 0.5 :safe-dru-threshold 1.0}
                                                      "no-pool"
                                                      (d/entity db job13)
@@ -398,7 +411,8 @@
                                                               {}
                                                               user->dru-divisors
                                                               rebalancer/compute-pending-default-job-dru
-                                                              [])
+                                                              []
+                                                              user->quota-fn)
                                                      {:min-dru-diff 2.0 :safe-dru-threshold 1.0}
                                                      "no-pool"
                                                      (d/entity db job13)
@@ -411,7 +425,8 @@
                                                               {}
                                                               user->dru-divisors
                                                               rebalancer/compute-pending-default-job-dru
-                                                              [])
+                                                              []
+                                                              user->quota-fn)
                                                      {:min-dru-diff 0.5 :safe-dru-threshold 1.0}
                                                      "no-pool"
                                                      (d/entity db job14)
@@ -444,7 +459,8 @@
                               :job-state :job.state/waiting) ["straw" "sticks" "bricks"]))
               db (d/db conn)
               [task->scored-task user->sorted-running-task-ents user->dru-divisors]
-                (initialize-rebalancer db (list pending-job))]
+                (initialize-rebalancer db (list pending-job))
+              user->quota-fn (quota/create-user->quota-fn db nil)]
           (is (= "rebar"
                 (:hostname (rebalancer/compute-preemption-decision db agent-attributes-cache
                                                                    (->State task->scored-task
@@ -452,7 +468,8 @@
                                                                             {}
                                                                             user->dru-divisors
                                                                             rebalancer/compute-pending-default-job-dru
-                                                                            [])
+                                                                            []
+                                                                            user->quota-fn)
                                                                    {:min-dru-diff 0.05 :safe-dru-threshold 1.0}
                                                                    "no-pool"
                                                                    (d/entity db pending-job)
@@ -471,7 +488,8 @@
                               :job-state :job.state/waiting) ["straw" "sticks" "bricks" "rebar"]))
               db (d/db conn)
               [task->scored-task user->sorted-running-task-ents user->dru-divisors]
-                (initialize-rebalancer db (list pending-job))]
+                (initialize-rebalancer db (list pending-job))
+              user->quota-fn (quota/create-user->quota-fn db nil)]
           (is (= "rebar"
                 (:hostname (rebalancer/compute-preemption-decision db agent-attributes-cache
                                                                    (->State task->scored-task
@@ -479,7 +497,8 @@
                                                                             {}
                                                                             user->dru-divisors
                                                                             rebalancer/compute-pending-default-job-dru
-                                                                            [])
+                                                                            []
+                                                                            user->quota-fn)
                                                                    {:min-dru-diff 0.05 :safe-dru-threshold 1.0}
                                                                    "no-pool"
                                                                    (d/entity db pending-job)
@@ -488,7 +507,8 @@
         (let [pending-job (create-dummy-job conn :user "diego" :ncpus 1.0)
               db (d/db conn)
               [task->scored-task user->sorted-running-task-ents user->dru-divisors]
-                (initialize-rebalancer db (list pending-job))]
+                (initialize-rebalancer db (list pending-job))
+              user->quota-fn (quota/create-user->quota-fn db nil)]
           (is (not (nil?
                  (:hostname (rebalancer/compute-preemption-decision db agent-attributes-cache
                                                                  (->State task->scored-task
@@ -496,7 +516,8 @@
                                                                           {}
                                                                           user->dru-divisors
                                                                           rebalancer/compute-pending-default-job-dru
-                                                                          [])
+                                                                          []
+                                                                          user->quota-fn)
                                                                  {:min-dru-diff 0.05 :safe-dru-threshold 1.0}
                                                                  "no-pool"
                                                                  (d/entity db pending-job)
@@ -514,7 +535,8 @@
                        "bricks" {"HOSTNAME" "bricks"}
                        "rebar" {"HOSTNAME" "rebar"}}
           agent-attributes-cache (init-agent-attributes-cache)
-          cotask-cache (atom (cache/fifo-cache-factory {} :threshold 100))]
+          cotask-cache (atom (cache/fifo-cache-factory {} :threshold 100))
+          user->quota-fn (quota/create-user->quota-fn (d/db conn) nil)]
       (share/set-share! conn "default" nil "new cluster settings"
                         :mem 10.0 :cpus 10.0 :gpus 1.0)
       ; Fill up hosts with preemptable tasks
@@ -536,7 +558,8 @@
                                                                             {}
                                                                             user->dru-divisors
                                                                             rebalancer/compute-pending-default-job-dru
-                                                                            [])
+                                                                            []
+                                                                            user->quota-fn)
                                                                    {:min-dru-diff 0.05 :safe-dru-threshold 1.0}
                                                                    "no-pool"
                                                                    (d/entity db pending-job)
@@ -558,7 +581,8 @@
                                                                  {}
                                                                  user->dru-divisors
                                                                  rebalancer/compute-pending-default-job-dru
-                                                                 [])
+                                                                 []
+                                                                 user->quota-fn)
                                                         {:min-dru-diff 0.05 :safe-dru-threshold 1.0}
                                                         "no-pool"
                                                         (d/entity db pending-job)
@@ -596,7 +620,8 @@
               pending-job (create-dummy-job conn :user "diego" :ncpus 1.0 :group group-id)
               db (d/db conn)
               [task->scored-task user->sorted-running-task-ents user->dru-divisors]
-                (initialize-rebalancer db (list pending-job))]
+                (initialize-rebalancer db (list pending-job))
+              user->quota-fn (quota/create-user->quota-fn db nil)]
           (is (= "rebar"
                 (:hostname (rebalancer/compute-preemption-decision db agent-attributes-cache
                                                                    (->State task->scored-task
@@ -604,7 +629,8 @@
                                                                             {}
                                                                             user->dru-divisors
                                                                             rebalancer/compute-pending-default-job-dru
-                                                                            [])
+                                                                            []
+                                                                            user->quota-fn)
                                                                    {:min-dru-diff 0.05 :safe-dru-threshold 1.0}
                                                                    "no-pool"
                                                                    (d/entity db pending-job)
@@ -621,7 +647,8 @@
               pending-job (create-dummy-job conn :user "diego" :ncpus 1.0 :group group-id)
               db (d/db conn)
               [task->scored-task user->sorted-running-task-ents user->dru-divisors]
-                (initialize-rebalancer db (list pending-job))]
+                (initialize-rebalancer db (list pending-job))
+              user->quota-fn (quota/create-user->quota-fn db nil)]
           (is (= nil
                 (rebalancer/compute-preemption-decision db agent-attributes-cache
                                                         (->State task->scored-task
@@ -629,7 +656,8 @@
                                                                  {}
                                                                  user->dru-divisors
                                                                  rebalancer/compute-pending-default-job-dru
-                                                                 [])
+                                                                 []
+                                                                 user->quota-fn)
                                                         {:min-dru-diff 0.05 :safe-dru-threshold 1.0}
                                                         "no-pool"
                                                         (d/entity db pending-job)
@@ -678,7 +706,8 @@
               pending-job (create-dummy-job conn :user "diego" :ncpus 1.0 :group group-id)
               db (d/db conn)
               [task->scored-task user->sorted-running-task-ents user->dru-divisors]
-                (initialize-rebalancer db (list pending-job))]
+                (initialize-rebalancer db (list pending-job))
+              user->quota-fn (quota/create-user->quota-fn db nil)]
           (let [preempted-host (:hostname (rebalancer/compute-preemption-decision
                                              db
                                              agent-attributes-cache
@@ -687,7 +716,8 @@
                                                       {}
                                                       user->dru-divisors
                                                       rebalancer/compute-pending-default-job-dru
-                                                      [])
+                                                      []
+                                                      user->quota-fn)
                                              {:min-dru-diff 0.05 :safe-dru-threshold 1.0}
                                              "no-pool"
                                              (d/entity db pending-job)
@@ -718,7 +748,8 @@
               pending-job (create-dummy-job conn :user "diego" :ncpus 1.0 :group group-id)
               db (d/db conn)
               [task->scored-task user->sorted-running-task-ents user->dru-divisors]
-                (initialize-rebalancer db (list pending-job))]
+                (initialize-rebalancer db (list pending-job))
+              user->quota-fn (quota/create-user->quota-fn db nil)]
           (let [preempted-host (:hostname (rebalancer/compute-preemption-decision
                                              db
                                              agent-attributes-cache
@@ -727,12 +758,50 @@
                                                       {}
                                                       user->dru-divisors
                                                       rebalancer/compute-pending-default-job-dru
-                                                      [task-preempted-this-cycle])
+                                                      [task-preempted-this-cycle]
+                                                      user->quota-fn)
                                              {:min-dru-diff 0.05 :safe-dru-threshold 1.0}
                                              "no-pool"
                                              (d/entity db pending-job)
                                              cotask-cache))]
-            (is (true? (or (= "bricks" preempted-host) (= "gold" preempted-host))))))))))
+            (is (true? (or (= "bricks" preempted-host) (= "gold" preempted-host)))))))))
+
+  (testing "compute preemption decision for user under quota"
+    (let [conn (restore-fresh-database! "datomic:mem://compute-preemption-decision-quota")
+          agent-attributes-cache (init-agent-attributes-cache)
+          cotask-cache (atom (cache/fifo-cache-factory {} :threshold 100))
+          _ (share/set-share! conn "testA" nil "test user" :mem 1.0 :cpus 1.0)
+          _ (share/set-share! conn "testB" nil "test user" :mem 1.0 :cpus 1.0)
+          _ (quota/set-quota! conn "testA" nil "test user" :count 1)
+          job-id-1 (create-dummy-job conn :user "testA" :memory 100.0 :ncpus 100.0 :priority 1)
+          job-id-2 (create-dummy-job conn :user "testB" :memory 200.0 :ncpus 200.0)
+          job-id-3 (create-dummy-job conn :user "testA" :memory 1.0 :ncpus 1.0)
+          _ (create-dummy-instance conn job-id-1 :instance/status :instance.status/running :slave-id "testA"
+                                   :hostname "hostA")
+          _ (create-dummy-instance conn job-id-2 :instance/status :instance.status/running :slave-id "testA"
+                                   :hostname "hostA")
+          db (d/db conn)
+          state (rebalancer/init-state db
+                                       (util/get-running-task-ents db)
+                                       (util/get-pending-job-ents db)
+                                       {}
+                                       {:pool/name "no-pool" :pool/dru-mode :pool.dru-mode/default})
+          decision (rebalancer/compute-preemption-decision
+                     db
+                     agent-attributes-cache
+                     state
+                     {:min-dru-diff 0.5 :safe-dru-threshold 1.0}
+                     "no-pool"
+                     (d/entity db job-id-3)
+                     cotask-cache)]
+      (is (= "hostA" (:hostname decision)))
+      (is (= 100.0 (:dru decision)))
+      (is (= 1 (count (:task decision))))
+      (is (= "testA" (-> decision
+                         :task
+                         first
+                         :job/_instance
+                         :job/user))))))
 
 (deftest test-next-state
   (testing "test1"
@@ -1256,5 +1325,37 @@
       (rebalancer/reserve-hosts! rebalancer-reservation-atom second-decision)
       (is (= {}) (:job-uuid->reserved-host @rebalancer-reservation-atom))
       (is (= #{}) (:launched-job-uuids @rebalancer-reservation-atom)))))
+
+(deftest filter-decision-by-quota
+  (let [conn (restore-fresh-database! "datomic:mem://test-filter-decision-by-quota")
+        _ (cook.quota/set-quota! conn "testA" nil  "test quota" :count 1)
+        job-id-1 (create-dummy-job conn :user "testA")
+        task1 (create-dummy-instance conn
+                                     job-id-1
+                                     :instance-status :instance.status/running
+                                     :hostname "hostA")
+        job-id-2 (create-dummy-job conn :user "testB")
+        task2 (create-dummy-instance conn
+                                     job-id-2
+                                     :instance-status :instance.status/running
+                                     :hostname "hostA")
+        a-waiting-job-id (create-dummy-job conn :user "testA")
+        b-waiting-job-id (create-dummy-job conn :user "testB")
+        db (d/db conn)
+        job1 (d/entity db job-id-1)
+        job2 (d/entity db job-id-2)
+        scored-task-1 {:task (d/entity db task1)}
+        scored-task-2 {:task (d/entity db task2)}
+        a-waiting-job (d/entity db a-waiting-job-id)
+        b-waiting-job (d/entity db b-waiting-job-id)
+        state (rebalancer/init-state db
+                                     (util/get-running-task-ents db)
+                                     (util/get-pending-job-ents db)
+                                     {}
+                                     {:pool/name "no-pool" :pool/dru-mode :pool.dru-mode/default})]
+    (is (= (rebalancer/filter-decision-by-quota state a-waiting-job [scored-task-2 scored-task-1])
+           [scored-task-1]))
+    (is (= (rebalancer/filter-decision-by-quota state b-waiting-job [scored-task-2 scored-task-1])
+           [scored-task-2 scored-task-1]))))
 
 (comment (run-tests))
