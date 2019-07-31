@@ -52,37 +52,47 @@
     (swap! map-atom assoc key value)))
 
 (defn container-status->failure-reason
+  "Maps kubernetes failure reasons to cook failure reasons"
   [^V1PodStatus pod-status ^V1ContainerStatus status]
-  ; TODO map kubernetes failure reasons
+  ; TODO map additional kubernetes failure reasons
   (let [terminated (-> status .getState .getTerminated)]
     (cond
       (= "OutOfMemory" (.getReason pod-status)) :reason-container-limitation-memory
       (= "Error" (.getReason terminated)) :reason-command-executor-failed
       (= "OOMKilled" (.getReason terminated)) :reason-container-limitation-memory
-      :default :unknown)))
+      :default (do
+                 (log/warn "Unable to determine kubernetes state for pod" {:pod-status pod-status
+                                                                           :container-status status})
+                 :unknown))))
 
 (defn handle-status-update
+  "Helper function for calling scheduler/handle-status-update"
   [kcc mesos-status]
   (scheduler/handle-status-update datomic/conn
                                   @(:pool->fenzo-atom kcc)
                                   mesos-status))
 
+(defn- get-job-container-status
+  "Extract the constainer status for the api/cook-container-name-for-job container"
+  [^V1PodStatus pod-status]
+  (->> pod-status
+       .getContainerStatuses
+       (filter (fn [container-status] (= api/cook-container-name-for-job
+                                         (.getName container-status))))
+       first))
+
 (defn pod-has-just-completed
   "A pod has completed."
   [kcc {:keys [synthesized-state pod] :as existing-state-dictionary}]
   (let [task-id (-> pod .getMetadata .getName)
-        ^V1ContainerStatus job-container-status (->> pod
-                                                     .getStatus
-                                                     .getContainerStatuses
-                                                     (filter (fn [container-status] (= api/cook-container-name-for-job
-                                                                                       (.getName container-status))))
-                                                     first)
+        pod-status (.getStatus pod)
+        ^V1ContainerStatus job-container-status (get-job-container-status pod-status)
         mesos-state (case (:state synthesized-state)
                       :pod/failed :task-failed
                       :pod/succeeded :task-finished)
         status {:task-id {:value task-id}
                 :state mesos-state
-                :reason (container-status->failure-reason (.getStatus pod) job-container-status)}
+                :reason (container-status->failure-reason pod-status job-container-status)}
         exit-code (-> job-container-status .getState .getTerminated .getExitCode)]
     (handle-status-update kcc status)
     (sandbox/aggregate-exit-code (:exit-code-syncer-state kcc) task-id exit-code)
@@ -158,7 +168,7 @@
                                  [:missing :pod/need-to-fail] (kill-task api-client expected-state-dict pod)
                                  [:missing :pod/succeeded] (remove-finalization-if-set-and-delete api-client expected-state-dict pod)
                                  [:missing :pod/failed] (remove-finalization-if-set-and-delete api-client expected-state-dict pod)
-                                 [:missing :missing] nil
+                                 [:missing :missing] nil ; this can come up due to the recur at the end
                                  (do
                                    (log/error "Unexpected state: "
                                               (vector (or expected-state :missing) (or (:state synthesized-state) :missing))
