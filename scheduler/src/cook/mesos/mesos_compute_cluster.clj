@@ -39,7 +39,7 @@
 (meters/defmeter [cook-mesos scheduler handle-status-update-rate])
 (counters/defcounter [cook-mesos scheduler offer-chan-depth])
 
-(def offer-chan-depth 100)
+(def offer-chan-size 100)
 
 (defn conditionally-sync-sandbox
   "For non cook executor tasks, call sync-agent-sandboxes-fn"
@@ -274,7 +274,7 @@
             (reset! driver-atom nil))))))
 
   (pending-offers [this pool-name]
-    (->> (util/read-chan (pool->offers-chan pool-name) offer-chan-depth)
+    (->> (util/read-chan (pool->offers-chan pool-name) offer-chan-size)
          ((fn decrement-offer-chan-depth [offer-lists]
             (counters/dec! offer-chan-depth (count offer-lists))
             offer-lists))
@@ -358,7 +358,7 @@
                               db-pools
                               [{:pool/name "no-pool"}])
           pool->offer-chan (pc/map-from-keys (fn [_]
-                                               (async/chan offer-chan-depth))
+                                               (async/chan offer-chan-size))
                                              (map :pool/name synthesized-pools))
           mesos-compute-cluster (->MesosComputeCluster compute-cluster-name
                                                        framework-id
