@@ -176,7 +176,7 @@
     (.addContainersItem pod-spec container)
     (.setNodeName pod-spec hostname)
     (.setRestartPolicy pod-spec "Never")
-    (.setTerminationGracePeriodSeconds pod-spec 1)
+    (.setTerminationGracePeriodSeconds pod-spec 1) ; TODO(pschorf): make configurable/remove
 
     ; pod
     (.setMetadata pod metadata)

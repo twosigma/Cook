@@ -26,7 +26,7 @@
             [cook.plugins.pool :as pool-plugin]
             [cook.progress :as progress]
             [cook.scheduler.scheduler :as sched]
-            [cook.tools :as util]
+            [cook.tools :as tools]
             [datomic.api :as d]
             [mesomatic.scheduler :as mesos]
             [metrics.meters :as meters]
@@ -38,6 +38,7 @@
 
 
 (defn conditionally-sync-sandbox
+  "For non cook executor tasks, call sync-agent-sandboxes-fn"
   [conn task-id task-state sync-agent-sandboxes-fn]
   (let [instance-ent (d/entity (d/db conn) [:instance/task-id task-id])]
     (when (and (#{:task-starting :task-running} task-state)
@@ -51,7 +52,7 @@
         instance (d/entity (d/db conn) [:instance/task-id task-id])
         prior-job-state (:job/state (:job/_instance instance))
         prior-instance-status (:instance/status instance)
-        pool-name (util/job->pool-name (:job/_instance instance))]
+        pool-name (tools/job->pool-name (:job/_instance instance))]
     (if (and
             (or (nil? instance) ; We could know nothing about the task, meaning a DB error happened and it's a waste to finish
                 (= prior-job-state :job.state/completed) ; The task is attached to a failed job, possibly due to instances running on multiple hosts
