@@ -70,7 +70,8 @@
   (kill-task [this task-id]
     (controller/update-expected-state this task-id {:expected-state :expected/killed}))
 
-  (decline-offer [this offer-id])
+  (decline-offers [this offer-ids]
+    (log/debug "Rejecting offer ids" offer-ids))
 
   (db-id [this]
     entity-id)
@@ -78,7 +79,7 @@
   (compute-cluster-name [this]
     name)
 
-  (initialize-cluster [this pool->fenzo pool->offers-chan]
+  (initialize-cluster [this pool->fenzo]
     ; Initialize the pod watch path.
     (let [pod-callback (make-pod-watch-callback this)]
       (api/initialize-pod-watch api-client current-pods-atom pod-callback))
@@ -87,24 +88,21 @@
     (api/initialize-node-watch api-client current-nodes-atom)
     (reset! pool->fenzo-atom pool->fenzo)
 
-    ; TODO(pschorf): Figure out a better way to plumb these through
-    (chime/chime-at (tp/periodic-seq (t/now) (t/seconds 2))
-                    (fn [_]
-                      (try
-                        (let [nodes @current-nodes-atom
-                              pods @current-pods-atom
-                              offers (generate-offers nodes pods this)
-                              pool (or (config/default-pool) "no-pool")
-                              chan (pool->offers-chan pool)] ; TODO(pschorf): Support pools
-                          ;(log/info "Processing offers:" offers)
-                          (scheduler/receive-offers chan match-trigger-chan this pool offers))
-                        (catch Exception e
-                          (log/error e "Exception while forwarding offers")))))
     ; TODO(pschorf): Deliver when leadership lost
     (async/chan 1))
 
   (current-leader? [this]
-    true))
+    true)
+
+  (pending-offers [this pool-name]
+    (if (or (= pool-name (config/default-pool)) ; TODO(pschorf): Support pools
+            (= pool-name "no-pool"))
+      (let [nodes @current-nodes-atom
+            pods @current-pods-atom]
+        (generate-offers nodes pods this))
+      []))
+
+  (restore-offers [this pool-name offers]))
 
 (defn get-or-create-cluster-entity-id
   [conn compute-cluster-name]
