@@ -274,7 +274,7 @@
             (reset! driver-atom nil))))))
 
   (pending-offers [this pool-name]
-    (->> (util/read-chan (pool->offers-chan pool-name) offer-chan-size)
+    (->> (tools/read-chan (pool->offers-chan pool-name) offer-chan-size)
          ((fn decrement-offer-chan-depth [offer-lists]
             (counters/dec! offer-chan-depth (count offer-lists))
             offer-lists))
