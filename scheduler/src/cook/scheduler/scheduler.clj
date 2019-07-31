@@ -535,9 +535,8 @@
   "declines a collection of offer ids"
   [compute-cluster offer-ids]
   (log/debug "Declining offers:" offer-ids)
-  (doseq [id offer-ids]
-    (meters/mark! scheduler-offer-declined)
-    (cc/decline-offer compute-cluster id)))
+  (meters/mark! scheduler-offer-declined (count offer-ids))
+  (cc/decline-offers compute-cluster offer-ids))
 
 (histograms/defhistogram [cook-mesos scheduler number-tasks-matched])
 (histograms/defhistogram [cook-mesos-scheduler number-offers-matched])
@@ -729,7 +728,7 @@
   "Gets a list of offers from mesos. Decides what to do with them all--they should all
    be accepted or rejected at the end of the function."
   [conn ^TaskScheduler fenzo pool-name->pending-jobs-atom mesos-run-as-user
-   user->usage user->quota num-considerable offers-chan offers rebalancer-reservation-atom pool-name]
+   user->usage user->quota num-considerable compute-cluster offers rebalancer-reservation-atom pool-name]
   (log/debug "In" pool-name "pool, invoked handle-resource-offers!")
   (let [offer-stash (atom nil)] ;; This is a way to ensure we never lose offers fenzo assigned if an error occurs in the middle of processing
     ;; TODO: It is possible to have an offer expire by mesos because we recycle it a bunch of times.
@@ -781,8 +780,7 @@
           (meters/mark! handle-resource-offer!-errors)
           (log/error t "In" pool-name "pool, error in match:" (ex-data t))
           (when-let [offers @offer-stash]
-            (async/go
-              (async/>! offers-chan offers)))
+            (cc/restore-offers compute-cluster pool-name offers))
           ; if an error happened, it doesn't mean we need to penalize Fenzo
           true)))))
 
@@ -806,10 +804,8 @@
 (defn make-offer-handler
   [conn fenzo pool-name->pending-jobs-atom agent-attributes-cache max-considerable scaleback
    floor-iterations-before-warn floor-iterations-before-reset trigger-chan rebalancer-reservation-atom
-   mesos-run-as-user pool-name]
-  (let [chan-length 100
-        offers-chan (async/chan (async/buffer chan-length))
-        resources-atom (atom (view-incubating-offers fenzo))]
+   mesos-run-as-user pool-name compute-cluster]
+  (let [resources-atom (atom (view-incubating-offers fenzo))]
     (reset! fenzo-num-considerable-atom max-considerable)
     (util/chime-at-ch
       trigger-chan
@@ -837,11 +833,7 @@
                       ;;     When this happens, users should never exceed their quota
                       user->usage-future (future (generate-user-usage-map (d/db conn) pool-name))
                       ;; Try to clear the channel
-                      offers (->> (util/read-chan offers-chan chan-length)
-                                  ((fn decrement-offer-chan-depth [offer-lists]
-                                     (counters/dec! offer-chan-depth (count offer-lists))
-                                     offer-lists))
-                                  (reduce into []))
+                      offers (cc/pending-offers compute-cluster pool-name)
                       _ (doseq [offer offers
                                 :let [slave-id (-> offer :slave-id :value)
                                       attrs (get-offer-attr-map offer)]]
@@ -854,7 +846,7 @@
                       user->quota (quota/create-user->quota-fn (d/db conn) (if using-pools? pool-name nil))
                       matched-head? (handle-resource-offers! conn fenzo pool-name->pending-jobs-atom
                                                              mesos-run-as-user @user->usage-future user->quota
-                                                             num-considerable offers-chan offers
+                                                             num-considerable compute-cluster offers
                                                              rebalancer-reservation-atom pool-name)]
                   (when (seq offers)
                     (reset! resources-atom (view-incubating-offers fenzo)))
@@ -894,7 +886,7 @@
                       max-considerable)
                     next-considerable))))
       {:error-handler (fn [ex] (log/error ex "Error occurred in match"))})
-    [offers-chan resources-atom]))
+    resources-atom))
 
 (defn reconcile-jobs
   "Ensure all jobs saw their final state change"
@@ -1415,22 +1407,20 @@
                  [{:pool/name "no-pool"}])
         pool-name->fenzo (pool-map pools' (fn [_] (make-fenzo-scheduler compute-cluster offer-incubate-time-ms
                                                                         fenzo-fitness-calculator good-enough-fitness)))
-        {:keys [pool->offers-chan pool->resources-atom]}
+        {:keys [pool->resources-atom]}
         (reduce (fn [m pool-ent]
                   (let [pool-name (:pool/name pool-ent)
                         fenzo (pool-name->fenzo pool-name)
-                        [offers-chan resources-atom]
+                        resources-atom
                         (make-offer-handler
                           conn fenzo pool-name->pending-jobs-atom agent-attributes-cache fenzo-max-jobs-considered
                           fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset
-                          match-trigger-chan rebalancer-reservation-atom mesos-run-as-user pool-name)]
+                          match-trigger-chan rebalancer-reservation-atom mesos-run-as-user pool-name compute-cluster)]
                     (-> m
-                        (assoc-in [:pool->offers-chan pool-name] offers-chan)
                         (assoc-in [:pool->resources-atom pool-name] resources-atom))))
                 {}
                 pools')]
     (start-jobs-prioritizer! conn pool-name->pending-jobs-atom task-constraints rank-trigger-chan)
     {:pool-name->fenzo pool-name->fenzo
-     :pool->offers-chan pool->offers-chan
      :view-incubating-offers (fn get-resources-atom [p]
                                (deref (get pool->resources-atom p)))}))

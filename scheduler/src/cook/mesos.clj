@@ -157,7 +157,7 @@
                               ;; TODO: get the framework ID and try to reregister
                               (let [normal-exit (atom true)]
                                 (try
-                                  (let [{:keys [pool-name->fenzo pool->offers-chan view-incubating-offers]}
+                                  (let [{:keys [pool-name->fenzo view-incubating-offers]}
                                         (sched/create-datomic-scheduler
                                          {:conn mesos-datomic-conn
                                           :compute-cluster compute-cluster
@@ -176,8 +176,7 @@
                                           :task-constraints task-constraints
                                           :trigger-chans trigger-chans})
                                         cluster-leadership-chan (cc/initialize-cluster compute-cluster
-                                                                                          pool-name->fenzo
-                                                                                          pool->offers-chan)]
+                                                                                          pool-name->fenzo)]
                                     (cook.monitor/start-collecting-stats)
                                     ; Many of these should look at the compute-cluster of the underlying jobs, and not use driver at all.
                                     (cook.scheduler.scheduler/lingering-task-killer mesos-datomic-conn compute-cluster

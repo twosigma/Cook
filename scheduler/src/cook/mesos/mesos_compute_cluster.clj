@@ -24,18 +24,22 @@
             [cook.mesos.task :as task]
             [cook.plugins.definitions :as plugins]
             [cook.plugins.pool :as pool-plugin]
+            [cook.pool :as pool]
             [cook.progress :as progress]
             [cook.scheduler.scheduler :as sched]
             [cook.tools :as tools]
             [datomic.api :as d]
             [mesomatic.scheduler :as mesos]
             [metrics.meters :as meters]
-            [plumbing.core :as pc]))
+            [plumbing.core :as pc]
+            [metrics.counters :as counters]))
 
 (meters/defmeter [cook-mesos scheduler mesos-error])
 (meters/defmeter [cook-mesos scheduler handle-framework-message-rate])
 (meters/defmeter [cook-mesos scheduler handle-status-update-rate])
+(counters/defcounter [cook-mesos scheduler offer-chan-depth])
 
+(def offer-chan-size 100)
 
 (defn conditionally-sync-sandbox
   "For non cook executor tasks, call sync-agent-sandboxes-fn"
@@ -209,7 +213,7 @@
 
 (defrecord MesosComputeCluster [compute-cluster-name framework-id db-id driver-atom
                                 sandbox-syncer-state exit-code-syncer-state mesos-heartbeat-chan
-                                trigger-chans mesos-config]
+                                trigger-chans mesos-config pool->offers-chan]
   cc/ComputeCluster
   (compute-cluster-name [this]
     compute-cluster-name)
@@ -222,8 +226,9 @@
   (kill-task [this task-id]
     (mesos/kill-task! @driver-atom {:value task-id}))
 
-  (decline-offer [this offer-id]
-    (mesos/decline-offer @driver-atom offer-id))
+  (decline-offers [this offer-ids]
+    (doseq [id offer-ids]
+      (mesos/decline-offer @driver-atom id)))
 
   (db-id [this]
     db-id)
@@ -231,7 +236,7 @@
   (current-leader? [this]
     (not (nil? @driver-atom)))
 
-  (initialize-cluster [this pool->fenzo pool->offers-chan]
+  (initialize-cluster [this pool->fenzo]
     (let [settings (:settings config/config)
           progress-config (:progress settings)
           conn cook.datomic/conn
@@ -266,7 +271,18 @@
           (catch Exception e
             e)
           (finally
-            (reset! driver-atom nil)))))))
+            (reset! driver-atom nil))))))
+
+  (pending-offers [this pool-name]
+    (->> (tools/read-chan (pool->offers-chan pool-name) offer-chan-size)
+         ((fn decrement-offer-chan-depth [offer-lists]
+            (counters/dec! offer-chan-depth (count offer-lists))
+            offer-lists))
+         (reduce into [])))
+
+  (restore-offers [this pool-name offers]
+    (async/go
+      (async/>! (pool->offers-chan pool-name) offers))))
 
 ; Internal method
 (defn- mesos-cluster->compute-cluster-map-for-datomic
@@ -337,6 +353,13 @@
                         :mesos-role (or role "*")
                         :mesos-framework-name (or framework-name "Cook")
                         :gpu-enabled? gpu-enabled?}
+          db-pools (pool/all-pools (d/db conn))
+          synthesized-pools (if (-> db-pools count pos?)
+                              db-pools
+                              [{:pool/name "no-pool"}])
+          pool->offer-chan (pc/map-from-keys (fn [_]
+                                               (async/chan offer-chan-size))
+                                             (map :pool/name synthesized-pools))
           mesos-compute-cluster (->MesosComputeCluster compute-cluster-name
                                                        framework-id
                                                        cluster-entity-id
@@ -345,7 +368,8 @@
                                                        exit-code-syncer-state
                                                        mesos-heartbeat-chan
                                                        trigger-chans
-                                                       mesos-config)]
+                                                       mesos-config
+                                                       pool->offer-chan)]
       (log/info "Registering compute cluster" mesos-compute-cluster)
       (cc/register-compute-cluster! mesos-compute-cluster)
       mesos-compute-cluster)
