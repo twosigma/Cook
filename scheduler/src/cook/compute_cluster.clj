@@ -27,7 +27,7 @@
   (db-id [this]
     "Get a database entity-id for this compute cluster (used for putting it into a task structure).")
 
-  (initialize-cluster [this pool->fenzo pool->offers-chan]
+  (initialize-cluster [this pool->fenzo]
     "Initializes the cluster. Returns a channel that will be delivered on when the cluster loses leadership.
      We expect Cook to give up leadership when a compute cluster loses leadership, so leadership is not expected to be regained.
      The channel result will be an exception if an error occurred, or a status message if leadership was lost normally.")
@@ -38,8 +38,14 @@
   (kill-task [this task-id]
     "Kill the task with the given task id")
 
-  (decline-offer [this offer-id]
-    "Decline the given offer"))
+  (decline-offers [this offer-ids]
+    "Decline the given offer ids")
+
+  (pending-offers [this pool-name]
+    "Retrieve pending offers for the given pool")
+
+  (restore-offers [this pool-name offers]
+    "Called when offers are not processed to ensure they're still available."))
 
 ; Internal method
 (defn write-compute-cluster
