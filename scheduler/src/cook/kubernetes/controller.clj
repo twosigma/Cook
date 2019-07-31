@@ -68,9 +68,9 @@
 (defn handle-status-update
   "Helper function for calling scheduler/handle-status-update"
   [kcc mesos-status]
-  (scheduler/handle-status-update datomic/conn
-                                  @(:pool->fenzo-atom kcc)
-                                  mesos-status))
+  (scheduler/write-status-to-datomic datomic/conn
+                                     @(:pool->fenzo-atom kcc)
+                                     mesos-status))
 
 (defn- get-job-container-status
   "Extract the constainer status for the api/cook-container-name-for-job container"

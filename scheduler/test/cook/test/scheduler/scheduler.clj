@@ -946,7 +946,7 @@
                                                  :task-id task-id)]
                                         ; Wait for async database transaction inside handle-status-update
           (->> (make-dummy-status-update task-id :reason-gc-error :task-killed)
-               (sched/handle-status-update conn (constantly fenzo))
+               (sched/write-status-to-datomic conn (constantly fenzo))
                async/<!!)
 
           (is (= :instance.status/failed
@@ -971,7 +971,7 @@
                 original-end-time (get-end-time)]
             (Thread/sleep 100)
             (->> (make-dummy-status-update task-id :reason-gc-error :task-killed)
-                 (sched/handle-status-update conn (constantly fenzo))
+                 (sched/write-status-to-datomic conn (constantly fenzo))
                  async/<!!)
             (is (= original-end-time (get-end-time))))))
 
@@ -996,7 +996,7 @@
                                                  :reason :max-runtime-exceeded)] ; Previous reason is not mea-culpa
                                         ; Status update says slave got restarted (mea-culpa)
           (->> (make-dummy-status-update task-id :mesos-slave-restarted :task-killed)
-               (sched/handle-status-update conn (constantly fenzo))
+               (sched/write-status-to-datomic conn (constantly fenzo))
                async/<!!)
                                         ; Assert old reason persists
           (is (= :max-runtime-exceeded
@@ -1032,18 +1032,18 @@
                                  :task-id task-id)
           (is (nil? (mesos-start-time)))
           (->> (make-dummy-status-update task-id :unknown :task-staging)
-               (sched/handle-status-update conn (constantly fenzo))
+               (sched/write-status-to-datomic conn (constantly fenzo))
                async/<!!)
           (is (nil? (mesos-start-time)))
           (reset! synced-agents-atom [])
           (->> (make-dummy-status-update task-id :unknown :task-running)
-               (sched/handle-status-update conn (constantly fenzo))
+               (sched/write-status-to-datomic conn (constantly fenzo))
                async/<!!)
           (is (not (nil? (mesos-start-time))))
           (let [first-observed-start-time (.getTime (mesos-start-time))]
             (is (not (nil? first-observed-start-time)))
             (->> (make-dummy-status-update task-id :unknown :task-running)
-                 (sched/handle-status-update conn (constantly fenzo))
+                 (sched/write-status-to-datomic conn (constantly fenzo))
                  async/<!!)
             (is (= first-observed-start-time (.getTime (mesos-start-time))))))))))
 
@@ -1068,13 +1068,13 @@
                                                  :instance-status :instance.status/unknown
                                                  :task-id task-id)]
           (->> (make-dummy-status-update task-id :reason-command-executor-failed :task-running)
-               (sched/handle-status-update conn (constantly fenzo))
+               (sched/write-status-to-datomic conn (constantly fenzo))
                async/<!!)
           ; instance not complete, plugin should not have been invoked
           (is (= {} @plugin-invocation-atom))
 
           (->> (make-dummy-status-update task-id :reason-command-executor-failed :task-killed)
-               (sched/handle-status-update conn (constantly fenzo))
+               (sched/write-status-to-datomic conn (constantly fenzo))
                async/<!!)
           ; instance complete, plugin should have been invoked with resulting job/instance
           (let [job (:job @plugin-invocation-atom)

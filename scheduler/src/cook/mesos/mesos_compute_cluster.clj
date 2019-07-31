@@ -68,7 +68,7 @@
                   "should've been put down already")
         (meters/mark! (meters/meter (sched/metric-title "tasks-killed-in-status-update" pool-name)))
         (cc/kill-task compute-cluster task-id))
-      (sched/handle-status-update conn pool->fenzo status))
+      (sched/write-status-to-datomic conn pool->fenzo status))
     (conditionally-sync-sandbox conn task-id (:state status) sync-agent-sandboxes-fn)))
 
 (defn create-mesos-scheduler

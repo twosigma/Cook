@@ -203,7 +203,7 @@
     (update-metrics! "cpu-times" (* instance-runtime-seconds cpus))
     (update-metrics! "mem-times" (* instance-runtime-seconds mem-gb))))
 
-(defn handle-status-update
+(defn write-status-to-datomic
   "Takes a status update from mesos."
   [conn pool->fenzo status]
   (log/info "Mesos status is:" status)
