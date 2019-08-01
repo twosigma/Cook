@@ -6,6 +6,7 @@ branches:
   only:
     - master
     - /^build\/.*$/
+    - kubernetes_integration
 
 cache:
   directories:
