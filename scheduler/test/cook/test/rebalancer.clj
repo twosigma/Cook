@@ -1326,8 +1326,8 @@
       (is (= {}) (:job-uuid->reserved-host @rebalancer-reservation-atom))
       (is (= #{}) (:launched-job-uuids @rebalancer-reservation-atom)))))
 
-(deftest filter-decision-by-quota
-  (let [conn (restore-fresh-database! "datomic:mem://test-filter-decision-by-quota")
+(deftest job-below-quota
+  (let [conn (restore-fresh-database! "datomic:mem://test-job-below-quota")
         _ (cook.quota/set-quota! conn "testA" nil  "test quota" :count 1)
         job-id-1 (create-dummy-job conn :user "testA")
         task1 (create-dummy-instance conn
@@ -1353,9 +1353,7 @@
                                      (util/get-pending-job-ents db)
                                      {}
                                      {:pool/name "no-pool" :pool/dru-mode :pool.dru-mode/default})]
-    (is (= (rebalancer/filter-decision-by-quota state a-waiting-job [scored-task-2 scored-task-1])
-           [scored-task-1]))
-    (is (= (rebalancer/filter-decision-by-quota state b-waiting-job [scored-task-2 scored-task-1])
-           [scored-task-2 scored-task-1]))))
+    (is (not (rebalancer/job-below-quota state a-waiting-job)))
+    (is (rebalancer/job-below-quota state b-waiting-job))))
 
 (comment (run-tests))

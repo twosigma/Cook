@@ -201,25 +201,17 @@
 
     pending-job-dru))
 
-(defn filter-decision-by-quota
-  "Takes a potential preemption decision, and if the new job would put a user out of quota only allows
-   preempting jobs running for that user"
-  [{:keys [user->quota-fn user->sorted-running-task-ents] :as state} to-make-room-for scored-tasks]
+(defn job-below-quota
+  "Takes a job to launch and checks if it would exceed the user's quota"
+  [{:keys [user->quota-fn user->sorted-running-task-ents] :as state} to-make-room-for]
   (let [user (:job/user to-make-room-for)
         running-jobs (map :job/_instance (user->sorted-running-task-ents user))
         future-running (conj running-jobs to-make-room-for)
         future-usage (->> future-running
                           (map util/job->usage)
                           (apply merge-with +))
-        user-quota (user->quota-fn user)
-        within-quota? (util/below-quota? user-quota future-usage)]
-    (if within-quota?
-      scored-tasks
-      (filter (fn [scored-task] (= (-> scored-task
-                                       :task
-                                       :job/_instance
-                                       :job/user)
-                                   user)) scored-tasks))))
+        user-quota (user->quota-fn user)]
+    (util/below-quota? user-quota future-usage)))
 
 (defn init-state
   "Initializes state. State consists of:
@@ -330,11 +322,17 @@
   (timers/time!
    (timers/timer (metric-title "compute-preemption-decision-duration" pool-name))
    (let [{pending-job-mem :mem pending-job-cpus :cpus pending-job-gpus :gpus} (util/job-ent->resources pending-job-ent)
+         job-below-quota? (job-below-quota state pending-job-ent)
          pending-job-dru (compute-pending-job-dru state pool-name pending-job-ent)
          _ (log/debug "DRU =" pending-job-dru "for pending job" pending-job-ent)
          ;; This will preserve the ordering of task->scored-task
          host->scored-tasks (->> task->scored-task
                                  vals
+                                 (filter (fn [{:keys [task]}]
+                                           (let [job (:job/_instance task)]
+                                             (or job-below-quota?
+                                                 (= (:job/user job)
+                                                    (:job/user pending-job-ent))))))
                                  (remove #(< (:dru %) safe-dru-threshold))
                                  (filter (partial exceeds-min-diff? pending-job-dru min-dru-diff pool-name))
                                  (group-by (fn [{:keys [task]}]
@@ -370,9 +368,6 @@
          ;; tasks on a specific host.
          ;; We try to find a preemption decision where the minimum dru of tasks to be preempted is maximum
          preemption-decision (->> (merge-with into host->formatted-spare-resources host->scored-tasks)
-                                  (map (fn [[host scored-tasks]]
-                                         [host (filter-decision-by-quota state pending-job-ent scored-tasks)]))
-                                  (into {})
                                   ; Only evaluate tasks in unconstrained slaves
                                   (filter (comp passes-constraints? key))
                                   (sort-by first)
