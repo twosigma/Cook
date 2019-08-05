@@ -127,6 +127,8 @@
 
     ; Initialize the node watch path.
     (api/initialize-node-watch api-client current-nodes-atom)
+    ; TODO: Need to visit every state to refresh (i.e., do a single pass of state scanner)
+
     (reset! pool->fenzo-atom pool->fenzo)
 
     ; TODO(pschorf): Deliver when leadership lost
