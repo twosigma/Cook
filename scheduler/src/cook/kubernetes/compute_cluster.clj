@@ -2,10 +2,10 @@
   (:require [clj-time.core :as t]
             [clj-time.periodic :as tp]
             [clojure.core.async :as async]
+            [clojure.set :as set]
             [clojure.tools.logging :as log]
             [cook.compute-cluster :as cc]
             [cook.config :as config]
-            [cook.datomic]
             [cook.kubernetes.api :as api]
             [cook.kubernetes.controller :as controller]
             [cook.pool]
@@ -55,6 +55,42 @@
       (catch Exception e
         (log/error e "Error processing status update")))))
 
+(defn task-ents->map-by-task-id
+  [task-ents]
+  (->> task-ents
+       (map (fn [task-ent] [(str (:instance/task-id task-ent)) task-ent]))
+       (into {})))
+
+(defn task-ent->expected-state
+  [state]
+  (case (:instance/status state)
+    :instance.status/unknown {:expected-state :expected/starting}
+    :instance.status/running {:expected-state :expected/running}
+    :instance.status/failed {:expected-state :expected/completed}
+    :instance.status/success {:expected-state :expected/completed}))
+
+(defn determine-expected-state
+  "We need to determine everything we should be tracking when we construct the expected state. We should be tracking all tasks that are in the running state as well
+  as all pods in kubernetes. We're given an already existing list of all running tasks entities (via (->> (cook.tools/get-running-task-ents)."
+  [conn compute-cluster-name running-tasks-ents current-pods-atom]
+  (let [db (d/db conn)
+        all-tasks-ids-in-pods (keys @current-pods-atom)
+        _ (log/info "All tasks in pods: " all-tasks-ids-in-pods)
+        running-tasks-in-cc-ents (filter
+                                   #(-> % cook.task/task-entity->compute-cluster-name (= compute-cluster-name))
+                                   running-tasks-ents)
+        _ (log/info "Running tasks in cc in datomic: " running-tasks-in-cc-ents)
+        cc-running-tasks-map (task-ents->map-by-task-id running-tasks-in-cc-ents)
+        _ (log/info "Running tasks map: " cc-running-tasks-map)
+
+        extra-tasks-map (->> (set/difference all-tasks-ids-in-pods (keys cc-running-tasks-map))
+                             (map #([%1 (cook.tools/retrieve-instance db %1)]))
+                             (into {}))
+        all-tasks-ents-map (set/union extra-tasks-map cc-running-tasks-map)]
+
+    (into {}
+          (map (fn [[k v]] [k (task-ent->expected-state v)]) all-tasks-ents-map))))
+
 (defrecord KubernetesComputeCluster [^ApiClient api-client name entity-id match-trigger-chan exit-code-syncer-state
                                      current-pods-atom current-nodes-atom expected-state-map existing-state-map
                                      pool->fenzo-atom]
@@ -79,10 +115,12 @@
   (compute-cluster-name [this]
     name)
 
-  (initialize-cluster [this pool->fenzo]
+  (initialize-cluster [this pool->fenzo running-task-ents]
     ; Initialize the pod watch path.
     (let [pod-callback (make-pod-watch-callback this)]
-      (api/initialize-pod-watch api-client current-pods-atom pod-callback))
+      (api/initialize-pod-watch api-client current-pods-atom pod-callback)
+      ; We require that initialize-pod-watch sets current-pods-atom before completing.
+      (determine-expected-state conn name running-task-ents current-pods-atom))
 
     ; Initialize the node watch path.
     (api/initialize-node-watch api-client current-nodes-atom)

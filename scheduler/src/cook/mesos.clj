@@ -175,8 +175,10 @@
                                           :rebalancer-reservation-atom rebalancer-reservation-atom
                                           :task-constraints task-constraints
                                           :trigger-chans trigger-chans})
+                                        running-tasks-ents (cook.tools/get-running-task-ents (d/db mesos-datomic-conn))
                                         cluster-leadership-chan (cc/initialize-cluster compute-cluster
-                                                                                          pool-name->fenzo)]
+                                                                                       pool-name->fenzo
+                                                                                       running-tasks-ents)]
                                     (cook.monitor/start-collecting-stats)
                                     ; Many of these should look at the compute-cluster of the underlying jobs, and not use driver at all.
                                     (cook.scheduler.scheduler/lingering-task-killer mesos-datomic-conn compute-cluster

@@ -24,10 +24,16 @@
        (d/entity db)
        :instance/task-id))
 
+(defn task-entity->compute-cluster-name
+  "Get the compute-cluster name from a task-entity"
+  [task-ent]
+  (-> task-ent
+      :instance/compute-cluster
+      :compute-cluster/cluster-name))
+
 (defn task-entity-id->compute-cluster-name
   "Given a task entity, what is the compute cluser name associated with it?"
   [db task-entity-id]
   (->> task-entity-id
        (d/entity db)
-       :instance/compute-cluster
-       :compute-cluster/cluster-name))
+       task-entity->compute-cluster-name))
