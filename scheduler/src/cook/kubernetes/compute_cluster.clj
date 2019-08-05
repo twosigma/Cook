@@ -62,8 +62,9 @@
        (into {})))
 
 (defn task-ent->expected-state
-  [state]
-  (case (:instance/status state)
+  [task-ent]
+  
+  (case (:instance/status task-ent)
     :instance.status/unknown {:expected-state :expected/starting}
     :instance.status/running {:expected-state :expected/running}
     :instance.status/failed {:expected-state :expected/completed}
@@ -74,7 +75,7 @@
   as all pods in kubernetes. We're given an already existing list of all running tasks entities (via (->> (cook.tools/get-running-task-ents)."
   [conn compute-cluster-name running-tasks-ents current-pods-atom]
   (let [db (d/db conn)
-        all-tasks-ids-in-pods (keys @current-pods-atom)
+        all-tasks-ids-in-pods (->> @current-pods-atom keys (into #{}))
         _ (log/info "All tasks in pods: " all-tasks-ids-in-pods)
         running-tasks-in-cc-ents (filter
                                    #(-> % cook.task/task-entity->compute-cluster-name (= compute-cluster-name))
@@ -82,12 +83,14 @@
         _ (log/info "Running tasks in cc in datomic: " running-tasks-in-cc-ents)
         cc-running-tasks-map (task-ents->map-by-task-id running-tasks-in-cc-ents)
         _ (log/info "Running tasks map: " cc-running-tasks-map)
-
-        extra-tasks-map (->> (set/difference all-tasks-ids-in-pods (keys cc-running-tasks-map))
-                             (map #([%1 (cook.tools/retrieve-instance db %1)]))
+        cc-running-tasks-ids (->> cc-running-tasks-map keys (into #{}))
+        extra-tasks-map (->> (set/difference all-tasks-ids-in-pods cc-running-tasks-ids)
+                             (map (fn [task-id] [task-id (cook.tools/retrieve-instance db task-id)]))
+                             (filter (fn [[_ task-ent]] (some? task-ent)))
                              (into {}))
         all-tasks-ents-map (set/union extra-tasks-map cc-running-tasks-map)]
-
+    (doseq [[k v] all-tasks-ents-map]
+      (log/info "Doing processing for " k " ---> " v))
     (into {}
           (map (fn [[k v]] [k (task-ent->expected-state v)]) all-tasks-ents-map))))
 
