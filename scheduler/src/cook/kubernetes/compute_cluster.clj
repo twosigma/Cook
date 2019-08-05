@@ -80,9 +80,8 @@
         running-tasks-in-cc-ents (filter
                                    #(-> % cook.task/task-entity->compute-cluster-name (= compute-cluster-name))
                                    running-tasks-ents)
-        _ (log/info "Running tasks in cc in datomic: " running-tasks-in-cc-ents)
+        _ (log/info "Running tasks in compute cluster in datomic: " running-tasks-in-cc-ents)
         cc-running-tasks-map (task-ents->map-by-task-id running-tasks-in-cc-ents)
-        _ (log/info "Running tasks map: " cc-running-tasks-map)
         cc-running-tasks-ids (->> cc-running-tasks-map keys (into #{}))
         extra-tasks-map (->> (set/difference all-tasks-ids-in-pods cc-running-tasks-ids)
                              (map (fn [task-id] [task-id (cook.tools/retrieve-instance db task-id)]))
@@ -90,7 +89,7 @@
                              (into {}))
         all-tasks-ents-map (set/union extra-tasks-map cc-running-tasks-map)]
     (doseq [[k v] all-tasks-ents-map]
-      (log/info "Doing processing for " k " ---> " (task-ent->expected-state v)))
+      (log/info "Setting expected state for " k " ---> " (task-ent->expected-state v)))
     (into {}
           (map (fn [[k v]] [k (task-ent->expected-state v)]) all-tasks-ents-map))))
 
