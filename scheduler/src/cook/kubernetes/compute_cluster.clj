@@ -90,7 +90,7 @@
                              (into {}))
         all-tasks-ents-map (set/union extra-tasks-map cc-running-tasks-map)]
     (doseq [[k v] all-tasks-ents-map]
-      (log/info "Doing processing for " k " ---> " v))
+      (log/info "Doing processing for " k " ---> " (task-ent->expected-state v)))
     (into {}
           (map (fn [[k v]] [k (task-ent->expected-state v)]) all-tasks-ents-map))))
 
@@ -120,10 +120,11 @@
 
   (initialize-cluster [this pool->fenzo running-task-ents]
     ; Initialize the pod watch path.
-    (let [pod-callback (make-pod-watch-callback this)]
+    (let [conn cook.datomic/conn
+          pod-callback (make-pod-watch-callback this)]
       (api/initialize-pod-watch api-client current-pods-atom pod-callback)
       ; We require that initialize-pod-watch sets current-pods-atom before completing.
-      (determine-expected-state conn name running-task-ents current-pods-atom))
+      (reset! expected-state-map (determine-expected-state conn name running-task-ents current-pods-atom)))
 
     ; Initialize the node watch path.
     (api/initialize-node-watch api-client current-nodes-atom)
