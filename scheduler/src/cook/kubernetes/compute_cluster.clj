@@ -76,22 +76,34 @@
   [conn compute-cluster-name running-tasks-ents current-pods-atom]
   (let [db (d/db conn)
         all-tasks-ids-in-pods (->> @current-pods-atom keys (into #{}))
-        _ (log/info "All tasks in pods: " all-tasks-ids-in-pods)
+        _ (log/debug "All tasks in pods: " all-tasks-ids-in-pods)
         running-tasks-in-cc-ents (filter
                                    #(-> % cook.task/task-entity->compute-cluster-name (= compute-cluster-name))
                                    running-tasks-ents)
-        _ (log/info "Running tasks in compute cluster in datomic: " running-tasks-in-cc-ents)
-        cc-running-tasks-map (task-ents->map-by-task-id running-tasks-in-cc-ents)
-        cc-running-tasks-ids (->> cc-running-tasks-map keys (into #{}))
-        extra-tasks-map (->> (set/difference all-tasks-ids-in-pods cc-running-tasks-ids)
+        running-task-id->task (task-ents->map-by-task-id running-tasks-in-cc-ents)
+        cc-running-tasks-ids (->> running-task-id->task keys (into #{}))
+        _ (log/debug "Running tasks in compute cluster in datomic: " cc-running-tasks-ids)
+        ; We already have task entities for everything running, in datomic.
+        ; Now figure out what pods kubernetes has that aren't in that set, and then load those task entities too.
+        extra-tasks-id->task (->> (set/difference all-tasks-ids-in-pods cc-running-tasks-ids)
                              (map (fn [task-id] [task-id (cook.tools/retrieve-instance db task-id)]))
+                                  ; TODO: this filter shouldn't be here. We should be pre-filtering pods
+                                  ; to be cook pods. Then remove this filter as we should kill off anything
+                                  ; unknown.
                              (filter (fn [[_ task-ent]] (some? task-ent)))
                              (into {}))
-        all-tasks-ents-map (set/union extra-tasks-map cc-running-tasks-map)]
-    (doseq [[k v] all-tasks-ents-map]
-      (log/info "Setting expected state for " k " ---> " (task-ent->expected-state v)))
+        all-task-id->task (merge extra-tasks-id->task running-task-id->task)]
+    (log/info "Initialized tasks on startup: "
+              (count all-tasks-ids-in-pods) " tasks in pods and "
+              (count running-task-id->task) " running tasks in this compute cluster in datomic. "
+              "We need to load an extra "
+              (count extra-tasks-id->task) " pods that aren't running in datomic. "
+              "For a total expected state size of "
+              (count all-task-id->task) "tasks in expected state.")
+    (doseq [[k v] all-task-id->task]
+      (log/debug "Setting expected state for " k " ---> " (task-ent->expected-state v)))
     (into {}
-          (map (fn [[k v]] [k (task-ent->expected-state v)]) all-tasks-ents-map))))
+          (map (fn [[k v]] [k (task-ent->expected-state v)]) all-task-id->task))))
 
 (defrecord KubernetesComputeCluster [^ApiClient api-client name entity-id match-trigger-chan exit-code-syncer-state
                                      current-pods-atom current-nodes-atom expected-state-map existing-state-map

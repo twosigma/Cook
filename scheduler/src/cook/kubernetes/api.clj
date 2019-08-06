@@ -250,16 +250,6 @@
   [^V1Node node]
   :synthesized/TODO-node) ; TOOD
 
-(defn ^UUID pod-name->task-uuid
-  "Handles decoding the UUID from the name cook_uuid_43222432_......"
-  [pod-name]
-  (TODO)) ; TODO
-
-(defn ^UUID task-uuid->pod-name
-  "Handles encoding the UUID to the name cook_uuid_43222432_......"
-  [task-uuid]
-  "TODO: Implement task-uuid->pod-name") ; TODO
-
 (defn kill-task
   "Kill this kubernetes pod"
   [^ApiClient api-client ^V1Pod pod]
