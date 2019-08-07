@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.33.0] - 2019-08-07
+### Added
+- Support for multiple submit plugins, from @pschorf
+- Maximum command line length parameter, from @pschorf
+- Improved error logging, from @pschorf
+### Changed
+- Check quota when rebalancing, from @pschorf
+- Optimize the job fetching code to not round-trip to UUID, from @scrosby
+
 ## [1.32.1] - 2019-06-20
 ### Fixed
 - Fixed rebalancer bug, from @pschorf
