@@ -487,6 +487,11 @@
             db [:instance.status/running :instance.status/unknown])
          (map (partial d/entity db)))))
 
+(defn retrieve-instance
+  "Given an instance UUID, return the instance entity."
+  [db instance-uuid]
+  (d/entity db [:instance/task-id (str instance-uuid)]))
+
 (timers/deftimer [cook-mesos scheduler get-user-running-jobs-duration])
 
 (defn get-user-running-job-ents

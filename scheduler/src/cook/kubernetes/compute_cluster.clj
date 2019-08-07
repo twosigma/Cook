@@ -2,10 +2,10 @@
   (:require [clj-time.core :as t]
             [clj-time.periodic :as tp]
             [clojure.core.async :as async]
+            [clojure.set :as set]
             [clojure.tools.logging :as log]
             [cook.compute-cluster :as cc]
             [cook.config :as config]
-            [cook.datomic]
             [cook.kubernetes.api :as api]
             [cook.kubernetes.controller :as controller]
             [cook.pool]
@@ -55,6 +55,56 @@
       (catch Exception e
         (log/error e "Error processing status update")))))
 
+(defn task-ents->map-by-task-id
+  [task-ents]
+  (->> task-ents
+       (map (fn [task-ent] [(str (:instance/task-id task-ent)) task-ent]))
+       (into {})))
+
+(defn task-ent->expected-state
+  [task-ent]
+  
+  (case (:instance/status task-ent)
+    :instance.status/unknown {:expected-state :expected/starting}
+    :instance.status/running {:expected-state :expected/running}
+    :instance.status/failed {:expected-state :expected/completed}
+    :instance.status/success {:expected-state :expected/completed}))
+
+(defn determine-expected-state
+  "We need to determine everything we should be tracking when we construct the expected state. We should be tracking all tasks that are in the running state as well
+  as all pods in kubernetes. We're given an already existing list of all running tasks entities (via (->> (cook.tools/get-running-task-ents)."
+  [conn compute-cluster-name running-tasks-ents current-pods-atom]
+  (let [db (d/db conn)
+        all-tasks-ids-in-pods (->> @current-pods-atom keys (into #{}))
+        _ (log/debug "All tasks in pods: " all-tasks-ids-in-pods)
+        running-tasks-in-cc-ents (filter
+                                   #(-> % cook.task/task-entity->compute-cluster-name (= compute-cluster-name))
+                                   running-tasks-ents)
+        running-task-id->task (task-ents->map-by-task-id running-tasks-in-cc-ents)
+        cc-running-tasks-ids (->> running-task-id->task keys (into #{}))
+        _ (log/debug "Running tasks in compute cluster in datomic: " cc-running-tasks-ids)
+        ; We already have task entities for everything running, in datomic.
+        ; Now figure out what pods kubernetes has that aren't in that set, and then load those task entities too.
+        extra-tasks-id->task (->> (set/difference all-tasks-ids-in-pods cc-running-tasks-ids)
+                             (map (fn [task-id] [task-id (cook.tools/retrieve-instance db task-id)]))
+                                  ; TODO: this filter shouldn't be here. We should be pre-filtering pods
+                                  ; to be cook pods. Then remove this filter as we should kill off anything
+                                  ; unknown.
+                             (filter (fn [[_ task-ent]] (some? task-ent)))
+                             (into {}))
+        all-task-id->task (merge extra-tasks-id->task running-task-id->task)]
+    (log/info "Initialized tasks on startup: "
+              (count all-tasks-ids-in-pods) " tasks in pods and "
+              (count running-task-id->task) " running tasks in this compute cluster in datomic. "
+              "We need to load an extra "
+              (count extra-tasks-id->task) " pods that aren't running in datomic. "
+              "For a total expected state size of "
+              (count all-task-id->task) "tasks in expected state.")
+    (doseq [[k v] all-task-id->task]
+      (log/debug "Setting expected state for " k " ---> " (task-ent->expected-state v)))
+    (into {}
+          (map (fn [[k v]] [k (task-ent->expected-state v)]) all-task-id->task))))
+
 (defrecord KubernetesComputeCluster [^ApiClient api-client name entity-id match-trigger-chan exit-code-syncer-state
                                      current-pods-atom current-nodes-atom expected-state-map existing-state-map
                                      pool->fenzo-atom]
@@ -79,13 +129,18 @@
   (compute-cluster-name [this]
     name)
 
-  (initialize-cluster [this pool->fenzo]
+  (initialize-cluster [this pool->fenzo running-task-ents]
     ; Initialize the pod watch path.
-    (let [pod-callback (make-pod-watch-callback this)]
-      (api/initialize-pod-watch api-client current-pods-atom pod-callback))
+    (let [conn cook.datomic/conn
+          pod-callback (make-pod-watch-callback this)]
+      (api/initialize-pod-watch api-client current-pods-atom pod-callback)
+      ; We require that initialize-pod-watch sets current-pods-atom before completing.
+      (reset! expected-state-map (determine-expected-state conn name running-task-ents current-pods-atom)))
 
     ; Initialize the node watch path.
     (api/initialize-node-watch api-client current-nodes-atom)
+    ; TODO: Need to visit every state to refresh (i.e., do a single pass of state scanner)
+
     (reset! pool->fenzo-atom pool->fenzo)
 
     ; TODO(pschorf): Deliver when leadership lost
