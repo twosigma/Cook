@@ -195,7 +195,7 @@
                      (ApiClient.))]
     (when base-path
       (.setBasePath api-client base-path))
-    (when verifying-ssl
+    (when (some? verifying-ssl)
       (.setVerifyingSsl api-client verifying-ssl))
     (when google-credentials
       (with-open [file-stream (FileInputStream. (File. google-credentials))]
