@@ -120,7 +120,6 @@
         status {:task-id {:value task-id}
                 :state :task-failed
                 :reason :reason-command-executor-failed}]
-    (log/info "Task")
     (handle-status-update kcc status)
     (sandbox/aggregate-exit-code (:exit-code-syncer-state kcc) task-id 143)
     {:expected-state :expected/completed}))
