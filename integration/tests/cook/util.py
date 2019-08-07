@@ -1365,14 +1365,22 @@ def supports_mesos_containerizer_images():
     isolators = _supported_isolators()
     return 'filesystem/linux' in isolators and 'docker/runtime' in isolators
 
-def using_kubernetes():
+@functools.lru_cache()
+def _get_compute_cluster_factory_fn():
     cook_url = retrieve_cook_url()
     _wait_for_cook(cook_url)
     init_cook_session(cook_url)
     compute_clusters = settings(cook_url)['compute-clusters']
-    return compute_clusters[0]['factory-fn'] == 'cook.kubernetes.compute-cluster/factory-fn'
+    return compute_clusters[0]['factory-fn']
 
-def using_minikube():
+def using_kubernetes():
+    return _get_compute_cluster_factory_fn() == 'cook.kubernetes.compute-cluster/factory-fn'
+
+def using_mesos():
+    return _get_compute_cluster_factory_fn() == 'cook.mesos.mesos-compute-cluster/factory-fn'
+
+def has_one_agent():
+    # TODO: Actually check the number of agents.
     cook_url = retrieve_cook_url()
     _wait_for_cook(cook_url)
     init_cook_session(cook_url)

@@ -212,19 +212,15 @@ class CookTest(util.CookTest):
 
     def test_compute_cluster(self):
         settings_dict = util.settings(self.cook_url)
-        expected_compute_cluster = settings_dict['compute-clusters'][0]['config']['compute-cluster-name']
-        compute_cluster_factory_fn = settings_dict['compute-clusters'][0]['factory-fn']
-        if compute_cluster_factory_fn == 'cook.kubernetes.compute-cluster/factory-fn':
+        if util.using_kubernetes():
             expected_compute_cluster_type = 'kubernetes'
-        elif compute_cluster_factory_fn == 'cook.mesos.mesos-compute-cluster/factory-fn':
+        elif util.using_mesos():
             expected_compute_cluster_type = 'mesos'
         else:
-            expected_compute_cluster_type = 'UNKNOWN - TEST WILL FAIL'
-        expected_compute_type = settings_dict['compute-clusters'][0]['config']['compute-cluster-name']
-        if 'framework-id' in settings_dict['compute-clusters'][0]['config']:
-            expected_mesos_framework = settings_dict['compute-clusters'][0]['config']['framework-id']
-        else:
-            expected_mesos_framework = None
+            self.fail('Unable to determine compute cluster type')
+        expected_compute_cluster = settings_dict['compute-clusters'][0]['config']['compute-cluster-name']
+        expected_mesos_framework = settings_dict['compute-clusters'][0]['config'].get('framework-id', None)
+
         job_uuid, resp = util.submit_job(self.cook_url)
 
         try:
@@ -1126,7 +1122,7 @@ class CookTest(util.CookTest):
         finally:
             util.kill_jobs(self.cook_url, job_specs)
 
-    @unittest.skipIf(util.using_minikube(), 'Minikube only has 1 node, and we don\'t (yet) have an alternative test environment')
+    @unittest.skipIf(util.has_one_agent(), 'Test requires multiple agents')
     def test_cancel_instance(self):
         job_uuid, _ = util.submit_job(self.cook_url, command='sleep 10', max_retries=2)
         job = util.wait_for_job(self.cook_url, job_uuid, 'running')
@@ -1538,7 +1534,7 @@ class CookTest(util.CookTest):
             self.assertEqual(job['retries_remaining'], 1, job_details)
             self.assertLessEqual(len(job['instances']), 1, job_details)
 
-    @unittest.skipIf(util.using_minikube(), 'Minikube only has 1 node, and we don\'t (yet) have an alternative test environment')
+    @unittest.skipIf(util.has_one_agent(), 'Test requires multiple agents')
     def test_group_failed_only_change_retries_all_success(self):
         statuses = ['completed']
         jobs = util.group_submit_retry(self.cook_url, command='exit 0', predicate_statuses=statuses)
@@ -1548,7 +1544,7 @@ class CookTest(util.CookTest):
             self.assertEqual(0, job['retries_remaining'], job_details)
             self.assertLessEqual(1, len(job['instances']), job_details)
 
-    @unittest.skipIf(util.using_minikube(), 'Minikube only has 1 node, and we don\'t (yet) have an alternative test environment')
+    @unittest.skipIf(util.has_one_agent(), 'Test requires multiple agents')
     def test_group_failed_only_change_retries_all_failed(self):
         statuses = ['completed']
         jobs = util.group_submit_retry(self.cook_url, command='exit 1', predicate_statuses=statuses)
@@ -2560,7 +2556,7 @@ class CookTest(util.CookTest):
                 job_uuid, resp = util.submit_job(self.cook_url, pool=pool_name, mem=mem_over_quota)
                 self.assertEqual(422, resp.status_code, msg=resp.content)
 
-    @unittest.skipIf(util.using_minikube(), 'Minikube only has 1 node, and we don\'t (yet) have an alternative test environment')
+    @unittest.skipIf(util.has_one_agent(), 'Test requires multiple agents')
     def test_decrease_retries_below_attempts(self):
         uuid, resp = util.submit_job(self.cook_url, command='exit 1', max_retries=2)
         util.wait_for_job(self.cook_url, uuid, 'completed')
@@ -2588,7 +2584,7 @@ class CookTest(util.CookTest):
         finally:
             util.kill_jobs(self.cook_url, [uuid])
 
-    @unittest.skipIf(util.using_minikube(), 'Minikube only has 1 node, and we don\'t (yet) have an alternative test environment')
+    @unittest.skipIf(util.has_one_agent(), 'Test requires multiple agents')
     def test_retries_unchanged_conflict_group(self):
         group_spec = util.minimal_group()
         group_uuid = group_spec['uuid']
