@@ -27,7 +27,7 @@
   (db-id [this]
     "Get a database entity-id for this compute cluster (used for putting it into a task structure).")
 
-  (initialize-cluster [this pool->fenzo]
+  (initialize-cluster [this pool->fenzo running-task-ents]
     "Initializes the cluster. Returns a channel that will be delivered on when the cluster loses leadership.
      We expect Cook to give up leadership when a compute cluster loses leadership, so leadership is not expected to be regained.
      The channel result will be an exception if an error occurred, or a status message if leadership was lost normally.")

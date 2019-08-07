@@ -39,4 +39,4 @@ minikube dashboard
 
 - Submit a test job
 
-cs submit -i alpine:latest -c .01 "echo 200" 
+cs submit -i alpine:latest -c .01 -m 16 "echo 200" 

@@ -32,6 +32,8 @@
             (log/error e "Error while processing callback")))))))
 
 (defn initialize-pod-watch
+  "Initialize the pod watch. We require that this function set the current-pods-atom before it finishes so that
+  cook.kubernetes.compute-cluster/initialize-cluster works correctly."
   [^ApiClient api-client current-pods-atom pod-callback]
   (let [api (CoreV1Api. api-client)
         current-pods (.listPodForAllNamespaces api
@@ -51,6 +53,8 @@
                                               .getName))
                                         (.getItems current-pods))]
     (log/info "Updating current-pods-atom with pods" (keys pod-name->pod))
+    (log/error "TODO: We should have two atoms, one for cook pods (that feeds into the controller) and one for
+    all pods (that feeds into machine utilization then into offer generation)")
     (reset! current-pods-atom pod-name->pod)
     (let [watch (WatchHelper/createPodWatch api-client (-> current-pods
                                                            .getMetadata
@@ -246,16 +250,6 @@
   [^V1Node node]
   :synthesized/TODO-node) ; TOOD
 
-(defn ^UUID pod-name->task-uuid
-  "Handles decoding the UUID from the name cook_uuid_43222432_......"
-  [pod-name]
-  (TODO)) ; TODO
-
-(defn ^UUID task-uuid->pod-name
-  "Handles encoding the UUID to the name cook_uuid_43222432_......"
-  [task-uuid]
-  "TODO: Implement task-uuid->pod-name") ; TODO
-
 (defn kill-task
   "Kill this kubernetes pod"
   [^ApiClient api-client ^V1Pod pod]
@@ -297,15 +291,25 @@
   "Given a pod-name use lookup the associated task, extract the parts needed to syntehsize the kubenretes object and go"
   [api-client {:keys [launch-pod] :as expected-state-dict}]
   ;; TODO: IF there's an error, log it and move on. We'll try again later.
-  (let [api (CoreV1Api. api-client)]
-    (log/info "Launching pod" api launch-pod)
-    (try
-      (-> api
-          (.createNamespacedPod "cook" launch-pod nil nil nil))
-      (catch ApiException e
-        (log/error e "Error submitting pod:" (.getResponseBody e))))))
-
-;; TODO: Need the 'stuck pod scanner' to detect stuck states and move them into killed.
+  (if launch-pod
+    (let [api (CoreV1Api. api-client)]
+      (log/info "Launching pod" api launch-pod)
+      (try
+        (-> api
+            (.createNamespacedPod "cook" launch-pod nil nil nil))
+        (catch ApiException e
+          (log/error e "Error submitting pod:" (.getResponseBody e)))))
+    ; Because of the complicated nature of task-metadata-seq --- we can't easily run the V1Pod creation code for a
+    ; failed-to-start pod on a server restart. Thus, if we create a task, store into datomic, but then the cook scheduler
+    ; fails --- before kubernetes creates a pod (either the message isn't sent, or there's a kubernetes problem), we will
+    ; the inability to create a new V1Pod and we can't retry this at the kubernetes level.
+    ;
+    ; Eventually, the stuck pod detector will recognize the stuck pod, kill the task, and a cook-level retry will make
+    ; a new task.
+    ;
+    ; Because the issue is relatively rare and auto-recoverable, we're going to punt on the task-metadata-seq refactor.
+    (log/warn "Unimplemented Operation to launch a pod for becuause we do not reconstruct on startup.")))
+    ;; TODO: Need the 'stuck pod scanner' to detect stuck states and move them into killed.
 
 
 (defn rebuild-watch-pods

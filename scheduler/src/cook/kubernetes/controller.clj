@@ -115,6 +115,8 @@
     {:expected-state :expected/running}))
 
 (defn pod-was-killed
+  ; TODO: Bug here, this can be called in :expected/killed missing, and NPE's trying to get the pod-name
+  ; out. We should ship the pod-id through instead of extracting from the V1Pod.
   [kcc {:keys [pod] :as existing-state-dictionary}]
   (let [task-id (-> pod .getMetadata .getName)
         status {:task-id {:value task-id}
