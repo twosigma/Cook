@@ -1280,7 +1280,8 @@ def should_expect_sandbox_directory(instance):
     Returns true if we should expect the sandbox directory
     to get populated for the provided instance
     """
-    expect_sandbox = not has_ephemeral_hosts() or instance['executor'] == 'cook'
+    # TODO: remove when kubernetes sandbox support is added
+    expect_sandbox = not using_kubernetes() and (not has_ephemeral_hosts() or instance['executor'] == 'cook')
     if expect_sandbox:
         logging.info('The sandbox directory is expected to get populated')
     else:
@@ -1363,3 +1364,25 @@ def _supported_isolators():
 def supports_mesos_containerizer_images():
     isolators = _supported_isolators()
     return 'filesystem/linux' in isolators and 'docker/runtime' in isolators
+
+@functools.lru_cache()
+def _get_compute_cluster_factory_fn():
+    cook_url = retrieve_cook_url()
+    _wait_for_cook(cook_url)
+    init_cook_session(cook_url)
+    compute_clusters = settings(cook_url)['compute-clusters']
+    return compute_clusters[0]['factory-fn']
+
+def using_kubernetes():
+    return _get_compute_cluster_factory_fn() == 'cook.kubernetes.compute-cluster/factory-fn'
+
+def using_mesos():
+    return _get_compute_cluster_factory_fn() == 'cook.mesos.mesos-compute-cluster/factory-fn'
+
+def has_one_agent():
+    # TODO: Actually check the number of agents.
+    cook_url = retrieve_cook_url()
+    _wait_for_cook(cook_url)
+    init_cook_session(cook_url)
+    compute_clusters = settings(cook_url)['compute-clusters']
+    return compute_clusters[0]['config']['compute-cluster-name'] == 'minikube'
