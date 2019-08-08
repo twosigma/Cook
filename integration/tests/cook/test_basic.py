@@ -66,6 +66,7 @@ class CookTest(util.CookTest):
             self.logger.info(f'Exit code not checked because cook executor was not used for {instance}')
 
 
+    @unittest.skipIf(util.using_kubernetes(), 'Output url is not currently supported on kubernetes')
     def test_output_url(self):
         job_executor_type = util.get_job_executor_type(self.cook_url)
         job_uuid, resp = util.submit_job(self.cook_url, command='sleep 600', executor=job_executor_type)
@@ -211,11 +212,15 @@ class CookTest(util.CookTest):
 
     def test_compute_cluster(self):
         settings_dict = util.settings(self.cook_url)
-        # For now, we only have one compute cluster. This could be wrong with future
-        # refactors, but for now, this is the only compute cluster we have, so we should
-        # expect it.
+        if util.using_kubernetes():
+            expected_compute_cluster_type = 'kubernetes'
+        elif util.using_mesos():
+            expected_compute_cluster_type = 'mesos'
+        else:
+            self.fail('Unable to determine compute cluster type')
         expected_compute_cluster = settings_dict['compute-clusters'][0]['config']['compute-cluster-name']
-        expected_mesos_framework = settings_dict['compute-clusters'][0]['config']['framework-id']
+        expected_mesos_framework = settings_dict['compute-clusters'][0]['config'].get('framework-id', None)
+
         job_uuid, resp = util.submit_job(self.cook_url)
 
         try:
@@ -226,9 +231,10 @@ class CookTest(util.CookTest):
             message = repr(instance)
 
             self.assertIsNotNone(instance['compute-cluster'], message)
-            self.assertEqual('mesos', instance['compute-cluster']['type'], message)
+            self.assertEqual(expected_compute_cluster_type, instance['compute-cluster']['type'], message)
             self.assertEqual(expected_compute_cluster, instance['compute-cluster']['name'], message)
-            self.assertEqual(expected_mesos_framework, instance['compute-cluster']['mesos']['framework-id'], message)
+            if expected_mesos_framework is not None:
+                self.assertEqual(expected_mesos_framework, instance['compute-cluster']['mesos']['framework-id'], message)
         finally:
             util.kill_jobs(self.cook_url, [job_uuid])
 
@@ -1116,6 +1122,7 @@ class CookTest(util.CookTest):
         finally:
             util.kill_jobs(self.cook_url, job_specs)
 
+    @unittest.skipIf(util.has_one_agent(), 'Test requires multiple agents')
     def test_cancel_instance(self):
         job_uuid, _ = util.submit_job(self.cook_url, command='sleep 10', max_retries=2)
         job = util.wait_for_job(self.cook_url, job_uuid, 'running')
@@ -1311,6 +1318,7 @@ class CookTest(util.CookTest):
         self.assertEqual(2, len(resp.json()))
         self.assertEqual([job_uuid_1, job_uuid_2].sort(), [instance['job']['uuid'] for instance in resp.json()].sort())
 
+    @unittest.skipIf(util.using_kubernetes(), 'Ports are not yet supported on kubernetes')
     def test_ports(self):
         job_uuid, resp = util.submit_job(self.cook_url, ports=1)
         instance = util.wait_for_instance(self.cook_url, job_uuid)
@@ -1526,6 +1534,7 @@ class CookTest(util.CookTest):
             self.assertEqual(job['retries_remaining'], 1, job_details)
             self.assertLessEqual(len(job['instances']), 1, job_details)
 
+    @unittest.skipIf(util.has_one_agent(), 'Test requires multiple agents')
     def test_group_failed_only_change_retries_all_success(self):
         statuses = ['completed']
         jobs = util.group_submit_retry(self.cook_url, command='exit 0', predicate_statuses=statuses)
@@ -1535,6 +1544,7 @@ class CookTest(util.CookTest):
             self.assertEqual(0, job['retries_remaining'], job_details)
             self.assertLessEqual(1, len(job['instances']), job_details)
 
+    @unittest.skipIf(util.has_one_agent(), 'Test requires multiple agents')
     def test_group_failed_only_change_retries_all_failed(self):
         statuses = ['completed']
         jobs = util.group_submit_retry(self.cook_url, command='exit 1', predicate_statuses=statuses)
@@ -1590,7 +1600,7 @@ class CookTest(util.CookTest):
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
         self.assertEqual('success', job['instances'][0]['status'])
 
-    @unittest.skipUnless(util.has_docker_service(), "Requires `docker inspect`")
+    @unittest.skipUnless(util.has_docker_service() and not util.using_kubernetes(), "Requires `docker inspect`. On kubernetes, need to add support and write a separate test.")
     def test_docker_port_mapping(self):
         job_uuid, resp = util.submit_job(self.cook_url,
                                          command='python -m http.server 8080',
@@ -1841,6 +1851,7 @@ class CookTest(util.CookTest):
         finally:
             util.kill_jobs(self.cook_url, uuids)
 
+    @unittest.skipIf(util.using_kubernetes(), 'Test loads state from mesos master')
     def test_balanced_host_constraint_can_place(self):
         num_hosts = util.num_hosts_to_consider(self.cook_url, self.mesos_url)
         self.assertLessEqual(2, num_hosts)
@@ -2545,6 +2556,7 @@ class CookTest(util.CookTest):
                 job_uuid, resp = util.submit_job(self.cook_url, pool=pool_name, mem=mem_over_quota)
                 self.assertEqual(422, resp.status_code, msg=resp.content)
 
+    @unittest.skipIf(util.has_one_agent(), 'Test requires multiple agents')
     def test_decrease_retries_below_attempts(self):
         uuid, resp = util.submit_job(self.cook_url, command='exit 1', max_retries=2)
         util.wait_for_job(self.cook_url, uuid, 'completed')
@@ -2572,6 +2584,7 @@ class CookTest(util.CookTest):
         finally:
             util.kill_jobs(self.cook_url, [uuid])
 
+    @unittest.skipIf(util.has_one_agent(), 'Test requires multiple agents')
     def test_retries_unchanged_conflict_group(self):
         group_spec = util.minimal_group()
         group_uuid = group_spec['uuid']
@@ -2688,8 +2701,8 @@ class CookTest(util.CookTest):
             util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
 
 
-    @unittest.skipIf(os.getenv('COOK_TEST_SKIP_RECONCILE') is not None,
-                     'Requires not setting the COOK_TEST_SKIP_RECONCILE environment variable')
+    @unittest.skipIf(os.getenv('COOK_TEST_SKIP_RECONCILE') is not None or util.using_kubernetes(),
+                     'Requires not setting the COOK_TEST_SKIP_RECONCILE environment variable. Currently not supported on kubernetes.')
     def test_reconciliation(self):
         """
         This test relies on 4 running jobs being seeded in Datomic *before* Cook Scheduler starts
@@ -2856,7 +2869,7 @@ class CookTest(util.CookTest):
             util.kill_jobs(self.cook_url, job_uuids, assert_response=False)
 
 
-    @unittest.skipUnless(util.docker_tests_enabled(), "Requires docker support")
+    @unittest.skipUnless(util.docker_tests_enabled() and not util.using_kubernetes(), "Requires docker support. Not currently supported on kubernetes.")
     def test_default_container_volumes(self):
         settings = util.settings(self.cook_url)
         default_volumes = util.get_in(settings, 'container-defaults', 'volumes')

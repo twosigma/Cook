@@ -63,7 +63,7 @@ class MultiUserCookTest(util.CookTest):
                 util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
 
     def test_multi_user_usage(self):
-        users = self.user_factory.new_users(6)
+        users = self.user_factory.new_users(4)
         job_resources = {'cpus': 0.1, 'mem': 123}
         all_job_uuids = []
         pools, _ = util.all_pools(self.cook_url)
