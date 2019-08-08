@@ -15,7 +15,9 @@
            (io.kubernetes.client.util Config)
            (java.io FileInputStream File)
            (java.util UUID)
-           (java.util.concurrent Executors ScheduledExecutorService TimeUnit)))
+           (java.util.concurrent Executors ScheduledExecutorService TimeUnit)
+           (com.squareup.okhttp.logging HttpLoggingInterceptor HttpLoggingInterceptor$Level)
+           (com.squareup.okhttp OkHttpClient)))
 
 (defn generate-offers
   [node-name->node pod-name->pod compute-cluster]
@@ -188,11 +190,22 @@
         (catch Exception ex
           (log/error ex "Error refreshing bearer token"))))))
 
+(defn make-http-client
+  []
+  (let [logging-interceptor (HttpLoggingInterceptor.)
+        _ (.setLevel logging-interceptor HttpLoggingInterceptor$Level/HEADERS)
+        client (OkHttpClient.)
+        _ (-> client
+              .interceptors
+              (.add logging-interceptor))]
+    client))
+
 (defn make-api-client
   [^String config-file base-path ^String google-credentials bearer-token-refresh-seconds verifying-ssl]
   (let [api-client (if (some? config-file)
                      (Config/fromConfig config-file)
-                     (ApiClient.))]
+                     (ApiClient.))
+        _ (.setHttpClient api-client (make-http-client))]
     (when base-path
       (.setBasePath api-client base-path))
     (when (some? verifying-ssl)
