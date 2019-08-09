@@ -7,9 +7,10 @@
     (io.kubernetes.client ApiClient ApiException)
     (io.kubernetes.client.apis CoreV1Api)
     (io.kubernetes.client.custom Quantity Quantity$Format)
-    (io.kubernetes.client.models V1Pod V1Container V1Node V1Pod V1Container V1ResourceRequirements V1EnvVar V1ObjectMeta V1PodSpec V1PodStatus V1ContainerState V1DeleteOptionsBuilder V1DeleteOptions V1Namespace)
+    (io.kubernetes.client.models V1Pod V1Container V1Node V1Pod V1Container V1ResourceRequirements V1EnvVar
+                                 V1ObjectMeta V1PodSpec V1PodStatus V1ContainerState V1DeleteOptionsBuilder
+                                 V1DeleteOptions)
     (io.kubernetes.client.util Watch)
-    (java.util UUID)
     (java.util.concurrent Executors ExecutorService)))
 
 
@@ -287,22 +288,6 @@
   ; I suspect our predicate of existing-states-equivalent needs tweaking.
   (kill-task api-client pod))
 
-(defn create-namespace-if-missing
-  [api-client namespace-name]
-  (let [api (CoreV1Api. api-client)
-        namespaces (.listNamespace api nil nil nil nil nil nil nil nil nil)
-        namespace-exists? (some (fn [namespace]
-                                  (= namespace-name (-> namespace
-                                                        .getMetadata
-                                                        .getName)))
-                                (.getItems namespaces))]
-    (when (not namespace-exists?)
-      (let [namespace (V1Namespace.)
-            metadata (V1ObjectMeta.)]
-        (.setName metadata namespace-name)
-        (.setMetadata namespace metadata)
-        (.createNamespace api namespace false nil nil)))))
-
 (defn launch-task
   "Given a pod-name use lookup the associated task, extract the parts needed to syntehsize the kubenretes object and go"
   [api-client {:keys [launch-pod] :as expected-state-dict}]
@@ -310,7 +295,6 @@
     ;; TODO: IF there's an error, log it and move on. We'll try again later.
     (if launch-pod
       (let [api (CoreV1Api. api-client)]
-        (create-namespace-if-missing api-client namespace)
         (log/info "Launching pod" api launch-pod)
         (try
           (-> api
