@@ -202,7 +202,8 @@
     (when google-credentials
       (with-open [file-stream (FileInputStream. (File. google-credentials))]
         (let [credentials (GoogleCredentials/fromStream file-stream)
-              scoped-credentials (.createScoped credentials ["https://www.googleapis.com/auth/cloud-platform"])
+              scoped-credentials (.createScoped credentials ["https://www.googleapis.com/auth/cloud-platform"
+                                                             "https://www.googleapis.com/auth/userinfo.email"])
               bearer-token (get-bearer-token scoped-credentials)]
           (.scheduleAtFixedRate bearer-token-executor
                                 (make-bearer-token-refresh-task api-client scoped-credentials)
