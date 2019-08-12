@@ -7,9 +7,10 @@
     (io.kubernetes.client ApiClient ApiException)
     (io.kubernetes.client.apis CoreV1Api)
     (io.kubernetes.client.custom Quantity Quantity$Format)
-    (io.kubernetes.client.models V1Pod V1Container V1Node V1Pod V1Container V1ResourceRequirements V1EnvVar V1ObjectMeta V1PodSpec V1PodStatus V1ContainerState V1DeleteOptionsBuilder V1DeleteOptions)
+    (io.kubernetes.client.models V1Pod V1Container V1Node V1Pod V1Container V1ResourceRequirements V1EnvVar
+                                 V1ObjectMeta V1PodSpec V1PodStatus V1ContainerState V1DeleteOptionsBuilder
+                                 V1DeleteOptions)
     (io.kubernetes.client.util Watch)
-    (java.util UUID)
     (java.util.concurrent Executors ExecutorService)))
 
 
@@ -149,8 +150,8 @@
         container (V1Container.)
         env (map (fn [[k v]]
                    (let [env (V1EnvVar.)]
-                     (.setName env k)
-                     (.setValue env v)
+                     (.setName env (str k))
+                     (.setValue env (str v))
                      env))
                  (:environment command))
         resources (V1ResourceRequirements.)]
@@ -290,25 +291,27 @@
 (defn launch-task
   "Given a pod-name use lookup the associated task, extract the parts needed to syntehsize the kubenretes object and go"
   [api-client {:keys [launch-pod] :as expected-state-dict}]
-  ;; TODO: IF there's an error, log it and move on. We'll try again later.
-  (if launch-pod
-    (let [api (CoreV1Api. api-client)]
-      (log/info "Launching pod" api launch-pod)
-      (try
-        (-> api
-            (.createNamespacedPod "cook" launch-pod nil nil nil))
-        (catch ApiException e
-          (log/error e "Error submitting pod:" (.getResponseBody e)))))
-    ; Because of the complicated nature of task-metadata-seq --- we can't easily run the V1Pod creation code for a
-    ; failed-to-start pod on a server restart. Thus, if we create a task, store into datomic, but then the cook scheduler
-    ; fails --- before kubernetes creates a pod (either the message isn't sent, or there's a kubernetes problem), we will
-    ; the inability to create a new V1Pod and we can't retry this at the kubernetes level.
-    ;
-    ; Eventually, the stuck pod detector will recognize the stuck pod, kill the task, and a cook-level retry will make
-    ; a new task.
-    ;
-    ; Because the issue is relatively rare and auto-recoverable, we're going to punt on the task-metadata-seq refactor.
-    (log/warn "Unimplemented Operation to launch a pod for becuause we do not reconstruct on startup.")))
+  ;; TODO: make namespace configurable
+  (let [namespace "cook"]
+    ;; TODO: IF there's an error, log it and move on. We'll try again later.
+    (if launch-pod
+      (let [api (CoreV1Api. api-client)]
+        (log/info "Launching pod" api launch-pod)
+        (try
+          (-> api
+              (.createNamespacedPod namespace launch-pod nil nil nil))
+          (catch ApiException e
+            (log/error e "Error submitting pod:" (.getResponseBody e)))))
+      ; Because of the complicated nature of task-metadata-seq --- we can't easily run the V1Pod creation code for a
+      ; failed-to-start pod on a server restart. Thus, if we create a task, store into datomic, but then the cook scheduler
+      ; fails --- before kubernetes creates a pod (either the message isn't sent, or there's a kubernetes problem), we will
+      ; the inability to create a new V1Pod and we can't retry this at the kubernetes level.
+      ;
+      ; Eventually, the stuck pod detector will recognize the stuck pod, kill the task, and a cook-level retry will make
+      ; a new task.
+      ;
+      ; Because the issue is relatively rare and auto-recoverable, we're going to punt on the task-metadata-seq refactor.
+      (log/warn "Unimplemented Operation to launch a pod for becuause we do not reconstruct on startup."))))
     ;; TODO: Need the 'stuck pod scanner' to detect stuck states and move them into killed.
 
 

@@ -1,7 +1,5 @@
 (ns cook.kubernetes.compute-cluster
-  (:require [clj-time.core :as t]
-            [clj-time.periodic :as tp]
-            [clojure.core.async :as async]
+  (:require [clojure.core.async :as async]
             [clojure.set :as set]
             [clojure.tools.logging :as log]
             [cook.compute-cluster :as cc]
@@ -9,15 +7,15 @@
             [cook.kubernetes.api :as api]
             [cook.kubernetes.controller :as controller]
             [cook.pool]
-            [cook.mesos.sandbox :as sandbox]
-            [cook.scheduler.scheduler :as scheduler]
             [datomic.api :as d]
             [plumbing.core :as pc])
-  (:import (io.kubernetes.client ApiClient)
+  (:import (com.google.auth.oauth2 GoogleCredentials)
+           (io.kubernetes.client ApiClient)
            (io.kubernetes.client.apis CoreV1Api)
-           (io.kubernetes.client.models V1PodStatus V1ContainerState)
            (io.kubernetes.client.util Config)
-           (java.util UUID)))
+           (java.io FileInputStream File)
+           (java.util UUID)
+           (java.util.concurrent Executors ScheduledExecutorService TimeUnit)))
 
 (defn generate-offers
   [node-name->node pod-name->pod compute-cluster]
@@ -172,12 +170,71 @@
       (cc/write-compute-cluster conn {:compute-cluster/type :compute-cluster.type/kubernetes
                                       :compute-cluster/cluster-name compute-cluster-name}))))
 
+(defn get-bearer-token
+  "Takes a GoogleCredentials object and refreshes the credentials, and returns a bearer token suitable for use
+   in an Authorization header."
+  [scoped-credentials]
+  (.refresh scoped-credentials)
+  (str "Bearer " (.getTokenValue (.getAccessToken scoped-credentials))))
+
+(def ^ScheduledExecutorService bearer-token-executor (Executors/newSingleThreadScheduledExecutor))
+
+(defn make-bearer-token-refresh-task
+  "Returns a Runnable which uses scoped-credentials to generate a bearer token and sets it on the api-client"
+  [api-client scoped-credentials]
+  (reify
+    Runnable
+    (run [_]
+      (try
+        (let [bearer-token (get-bearer-token scoped-credentials)]
+          (.setApiKey api-client bearer-token))
+        (catch Exception ex
+          (log/error ex "Error refreshing bearer token"))))))
+
+(defn make-api-client
+  "Builds an ApiClient from the given configuration parameters:
+    - If config-file is specified, initializes the api file from the file at config-file
+    - If base-path is specified, sets the cluster base path
+    - If verifying-ssl is specified, sets verifying ssl
+    - If google-credentials is specified, loads the credentials from the file at google-credentials and generates
+      a bearer token for authenticating with kubernetes
+    - bearer-token-refresh-seconds: interval to refresh the bearer token"
+  [^String config-file base-path ^String google-credentials bearer-token-refresh-seconds verifying-ssl]
+  (let [api-client (if (some? config-file)
+                     (Config/fromConfig config-file)
+                     (ApiClient.))]
+    (when base-path
+      (.setBasePath api-client base-path))
+    (when (some? verifying-ssl)
+      (.setVerifyingSsl api-client verifying-ssl))
+    (when google-credentials
+      (with-open [file-stream (FileInputStream. (File. google-credentials))]
+        (let [credentials (GoogleCredentials/fromStream file-stream)
+              scoped-credentials (.createScoped credentials ["https://www.googleapis.com/auth/cloud-platform"
+                                                             "https://www.googleapis.com/auth/userinfo.email"])
+              bearer-token (get-bearer-token scoped-credentials)]
+          (.scheduleAtFixedRate bearer-token-executor
+                                (make-bearer-token-refresh-task api-client scoped-credentials)
+                                bearer-token-refresh-seconds
+                                bearer-token-refresh-seconds
+                                TimeUnit/SECONDS)
+          (.setApiKey api-client bearer-token))))
+
+    api-client))
+
 (defn factory-fn
-  [{:keys [compute-cluster-name ^String config-file]} {:keys [exit-code-syncer-state
-                                                              trigger-chans]}]
+  [{:keys [compute-cluster-name
+           ^String config-file
+           base-path
+           google-credentials
+           verifying-ssl
+           bearer-token-refresh-seconds]
+    :or {bearer-token-refresh-seconds 300}}
+   {:keys [exit-code-syncer-state
+           trigger-chans]}]
   (let [conn cook.datomic/conn
         cluster-entity-id (get-or-create-cluster-entity-id conn compute-cluster-name)
-        api-client (Config/fromConfig config-file)
+        api-client (make-api-client config-file base-path google-credentials bearer-token-refresh-seconds verifying-ssl)
         compute-cluster (->KubernetesComputeCluster api-client compute-cluster-name cluster-entity-id
                                                     (:match-trigger-chan trigger-chans)
                                                     exit-code-syncer-state (atom {}) (atom {})

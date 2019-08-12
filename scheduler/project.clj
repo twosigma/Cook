@@ -115,7 +115,9 @@
                  ;; Dependency management
                  [mount "0.1.12"]
 
-                 [io.kubernetes/client-java "4.0.0"]]
+                 ;; Kubernetes
+                 [io.kubernetes/client-java "4.0.0"]
+                 [com.google.auth/google-auth-library-oauth2-http "0.16.2"]]
 
   :repositories {"maven2" {:url "https://files.couchbase.com/maven2/"}
                  "sonatype-oss-public" "https://oss.sonatype.org/content/groups/public/"}
