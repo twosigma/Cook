@@ -246,11 +246,6 @@
           {:state :pod/waiting
            :reason "Pending"})))))
 
-(defn synthesize-node-state
-  "Given the current node metadata/information, synthesize the node state -- whether or not we can/should launch things on it."
-  [^V1Node node]
-  :synthesized/TODO-node) ; TOOD
-
 (defn kill-task
   "Kill this kubernetes pod"
   [^ApiClient api-client ^V1Pod pod]
