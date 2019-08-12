@@ -291,6 +291,7 @@
 (defn launch-task
   "Given a pod-name use lookup the associated task, extract the parts needed to syntehsize the kubenretes object and go"
   [api-client {:keys [launch-pod] :as expected-state-dict}]
+  ;; TODO: make namespace configurable
   (let [namespace "cook"]
     ;; TODO: IF there's an error, log it and move on. We'll try again later.
     (if launch-pod

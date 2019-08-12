@@ -15,9 +15,7 @@
            (io.kubernetes.client.util Config)
            (java.io FileInputStream File)
            (java.util UUID)
-           (java.util.concurrent Executors ScheduledExecutorService TimeUnit)
-           (com.squareup.okhttp.logging HttpLoggingInterceptor HttpLoggingInterceptor$Level)
-           (com.squareup.okhttp OkHttpClient)))
+           (java.util.concurrent Executors ScheduledExecutorService TimeUnit)))
 
 (defn generate-offers
   [node-name->node pod-name->pod compute-cluster]
@@ -173,6 +171,8 @@
                                       :compute-cluster/cluster-name compute-cluster-name}))))
 
 (defn get-bearer-token
+  "Takes a GoogleCredentials object and refreshes the credentials, and returns a bearer token suitable for use
+   in an Authorization header."
   [scoped-credentials]
   (.refresh scoped-credentials)
   (str "Bearer " (.getTokenValue (.getAccessToken scoped-credentials))))
@@ -180,6 +180,7 @@
 (def ^ScheduledExecutorService bearer-token-executor (Executors/newSingleThreadScheduledExecutor))
 
 (defn make-bearer-token-refresh-task
+  "Returns a Runnable which uses scoped-credentials to generate a bearer token and sets it on the api-client"
   [api-client scoped-credentials]
   (reify
     Runnable
@@ -191,6 +192,13 @@
           (log/error ex "Error refreshing bearer token"))))))
 
 (defn make-api-client
+  "Builds an ApiClient from the given configuration parameters:
+    - If config-file is specified, initializes the api file from the file at config-file
+    - If base-path is specified, sets the cluster base path
+    - If verifying-ssl is specified, sets verifying ssl
+    - If google-credentials is specified, loads the credentials from the file at google-credentials and generates
+      a bearer token for authenticating with kubernetes
+    - bearer-token-refresh-seconds: interval to refresh the bearer token"
   [^String config-file base-path ^String google-credentials bearer-token-refresh-seconds verifying-ssl]
   (let [api-client (if (some? config-file)
                      (Config/fromConfig config-file)
