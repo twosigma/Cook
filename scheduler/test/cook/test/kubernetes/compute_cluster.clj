@@ -51,3 +51,7 @@
               {:name "cpus" :type :value-scalar :scalar 0.0}
               {:name "disk" :type :value-scalar :scalar 0.0}]
              (:resources offer))))))
+
+(deftest determine-expected-state
+  ; TODO
+  )

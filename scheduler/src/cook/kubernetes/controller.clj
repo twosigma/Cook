@@ -46,6 +46,7 @@
   expected-state-dict)
 
 (defn update-or-delete!
+  "Given a map atom, key, and value, if the value is not nil, set the key to the value in the map. If the value is nil, delete the key entirely."
   [^IAtom map-atom key value]
   (if (nil? value)
     (swap! map-atom dissoc key)
@@ -115,6 +116,7 @@
     {:expected-state :expected/running}))
 
 (defn pod-was-killed
+  "A pod was killed. Write status updates to datomic."
   [kcc pod-name]
   (let [task-id pod-name
         status {:task-id {:value task-id}
