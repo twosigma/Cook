@@ -32,7 +32,8 @@ class CookTest(util.CookTest):
 
     def setUp(self):
         self.cook_url = type(self).cook_url
-        self.mesos_url = util.retrieve_mesos_url()
+        if util.using_mesos():
+            self.mesos_url = util.retrieve_mesos_url()
         self.logger = logging.getLogger(__name__)
         self.cors_origin = os.getenv('COOK_ALLOWED_ORIGIN', 'http://cors.example.com')
 
@@ -1558,6 +1559,7 @@ class CookTest(util.CookTest):
         resp = util.query_groups(self.cook_url)
         self.assertEqual(400, resp.status_code)
 
+    @unittest.skipIf(util.using_kubernetes(), 'Test needs to be rewritten for kubernetes')
     def test_queue_endpoint(self):
         group = {'uuid': str(uuid.uuid4())}
         job_spec = {'group': group['uuid'],
@@ -1667,6 +1669,7 @@ class CookTest(util.CookTest):
             util.session.delete('%s/rawscheduler?job=%s' % (self.cook_url, job_uuid))
             mesos.dump_sandbox_files(util.session, instance, job)
 
+    @unittest.skipIf(util.using_kubernetes(), 'Test needs to be rewritten for kubernetes')
     def test_unscheduled_jobs(self):
         job_spec = {'command': 'sleep 30',
                     'priority': 100,
@@ -1878,6 +1881,7 @@ class CookTest(util.CookTest):
         finally:
             util.kill_jobs(self.cook_url, uuids)
 
+    @unittest.skipIf(util.using_kubernetes(), 'Test needs to be rewritten for kubernetes')
     def test_attribute_equals_hostname_constraint(self):
         max_slave_cpus = util.max_slave_cpus(self.mesos_url)
         task_constraint_cpus = util.task_constraint_cpus(self.cook_url)

@@ -1362,6 +1362,8 @@ def _supported_isolators():
 
 
 def supports_mesos_containerizer_images():
+    if using_kubernetes():
+        return False
     isolators = _supported_isolators()
     return 'filesystem/linux' in isolators and 'docker/runtime' in isolators
 
