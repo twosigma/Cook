@@ -11,11 +11,11 @@ One option is to specify the path to a kubernetes config YAML file, similar to o
 ## GKE cluster config
 For GKE clusters, OAuth is used to authenticate with the cluster. To connect to a GKE cluster, you need two things:
 - Google JSON credential file: https://cloud.google.com/iam/docs/creating-managing-service-account-keys
-- Cluster master url (this will be the api client base URL)
+- Cluster master url (this will be the api client base URL). You can get this from 'gcloud container clusters list' or 'kubectl cluster-info'
 Example:
 ```clojure
 :compute-clusters [{:factory-fn cook.kubernetes.compute-cluster/factory-fn
-                    :config {:base-url "http://127.0.0.1:8000"
+                    :config {:base-url "http://<IP ADDRESS>8000"
                              ;; Location of credential file
                              :google-credentials "/home/myuser/creds.json"}}]
 ```
@@ -27,30 +27,30 @@ Example:
 These are done for you in bin/run-kubernetes-local.sh
 
 
-You'll need to setup several vitual environments to use run-local.sh and run-kubernetes-local.sh.
+In order to run things, you'll need to setup several python virtual environments and pip install their requirements into them:
 * One for building the CLI.
 * One for running run-kubernetes-local.sh
 * One for integration tests
 
 # Setup. Detailed command lines.
 
-- Set up minikube
+- Set up minikube -- See https://kubernetes.io/docs/tasks/tools/install-minikube/
 
-# Run local tidbits
+# Various setup needed to launch for the first time.
 
 - Start datomic:
 
 scheduler/bin/start-datomic.sh
 
-- Seed pools
+- Seed pools -- Only needed if you use pools in config.edn. (Unnecessary with the config.edn used in this example.)
 
 lein exec -p scheduler/datomic/data/seed_pools.clj datomic:free://localhost:4334/jobs
 
-- Make namespace
+- Make namespace -- Needed the first time you use a kubernetes environment.
 
 kubectl create -f docs/make-kubernetes-namespace.json
 
-- Run local. Its OK to free and restart.
+- Run local. It's OK to kill and restart.
 
 COOK_DATOMIC_URI=datomic:free://localhost:4334/jobs scheduler/bin/run-kubernetes-local.sh
 

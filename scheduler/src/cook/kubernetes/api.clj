@@ -17,6 +17,8 @@
 (def ^ExecutorService kubernetes-executor (Executors/newFixedThreadPool 2))
 
 (defn handle-watch-updates
+  "When a watch update occurs (for pods or nodes) update both the state atom as well as
+  invoke the callback on the previous and new values for the key."
   [state-atom ^Watch watch key-fn callback]
   (while (.hasNext watch)
     (let [update (.next watch)
@@ -33,7 +35,9 @@
             (log/error e "Error while processing callback")))))))
 
 (defn initialize-pod-watch
-  "Initialize the pod watch. We require that this function set the current-pods-atom before it finishes so that
+  "Initialize the pod watch. This fills current-pods-atom with data and invokes the callback on pod changes.
+
+  Note that we require that this function set the current-pods-atom before it finishes so that
   cook.kubernetes.compute-cluster/initialize-cluster works correctly."
   [^ApiClient api-client current-pods-atom pod-callback]
   (let [api (CoreV1Api. api-client)
@@ -65,11 +69,14 @@
         (try
           (handle-watch-updates current-pods-atom watch (fn [p] (-> p .getMetadata .getName)) pod-callback)
           (catch Exception e
-            (log/error "Error during watch: " (-> e .toString))
+            (log/error e "Error during watch"))
+          (finally
             (.close watch)
             (initialize-pod-watch api-client current-pods-atom pod-callback))))))))
 
-(defn initialize-node-watch [^ApiClient api-client current-nodes-atom]
+(defn initialize-node-watch
+  "Initialize the node watch. This fills current-nodes-atom with data and invokes the callback on pod changes."
+  [^ApiClient api-client current-nodes-atom]
   (let [api (CoreV1Api. api-client)
         current-nodes (.listNode api
                                  nil ; includeUninitialized
@@ -98,6 +105,7 @@
             (.close watch))))))))
 
 (defn to-double
+  "Map a quantity to a double, whether integer, double, or float."
   [^Quantity q]
   (-> q .getNumber .doubleValue))
 
@@ -111,12 +119,17 @@
            0.0)})
 
 (defn get-capacity
+  "Given a map from node-name to node, generate a map from node-name->resource-type-><capacity>"
   [node-name->node]
   (pc/map-vals (fn [^V1Node node]
                  (-> node .getStatus .getCapacity convert-resource-map))
                node-name->node))
 
 (defn get-consumption
+  "Given a map from pod-name to pod, generate a map from .....
+
+  When accounting for resources, we use resource requests to determine how much is used, not limits.
+  See https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/#resource-requests-and-limits-of-pod-and-container"
   [pod-name->pod]
   (let [node-name->pods (group-by (fn [^V1Pod p] (-> p .getSpec .getNodeName))
                                   (vals pod-name->pod))
@@ -138,7 +151,8 @@
 (def cook-container-name-for-job
   "required-cook-job-container")
 
-(defn task-metadata->pod
+(defn ^V1Pod task-metadata->pod
+  "Given a task-request and other data generate the kubernetes V1Pod to launch that task."
   [{:keys [task-id command container task-request hostname]}]
   (let [{:keys [resources]} task-request
         {:keys [mem cpus]} resources
@@ -187,13 +201,6 @@
     (.setSpec pod pod-spec)
 
     pod))
-;;
-;;  This file contains accessor functions for all kubernetes API. That way we can conveniently mock these functions in clojure.
-;;
-
-(defn TODO
-  []
-  (throw (UnsupportedOperationException. "TODO")))
 
 (defn V1Pod->name
   "Extract the name of a pod from the pod itself"
@@ -202,6 +209,11 @@
 
 
 (defn pod->synthesized-pod-state
+  "From a V1Pod object, determine the state of the pod, waiting running, succeeded, failed or unknown.
+
+   Kubernetes doesn't really have a good notion of 'pod state'. For one thing, that notion can't be universal across
+   applications. Thus, we synthesize that state by looking at the containers within the pod and applying our own
+   business logic."
   [^V1Pod pod]
   (when pod
     (let [^V1PodStatus pod-status (.getStatus pod)
@@ -218,9 +230,9 @@
           job-status (first (filter (fn [c] (= cook-container-name-for-job (.getName c)))
                                     container-statuses))]
       (if (some-> pod .getMetadata .getDeletionTimestamp)
-        ; If a pod has been ordered deleted, treat it as if it was gone, Its being async removed.
+        ; If a pod has been ordered deleted, treat it as if it was gone, It's being async removed.
         {:state :missing :reason "Pod was explicitly deleted"}
-        ; If pod isn't being async removed, then look at the containers inside it....
+        ; If pod isn't being async removed, then look at the containers inside it.
         (if job-status
           (let [^V1ContainerState state (.getState job-status)]
             (cond
@@ -257,11 +269,12 @@
         (-> pod .getMetadata .getName)
         (-> pod .getMetadata .getNamespace)
         deleteOptions
-        nil
-        nil
-        nil
-        nil
-        nil)
+        nil ; pretty
+        nil ; dryRun
+        nil ; gracePeriodSeconds
+        nil ; oprphanDependents
+        nil ; propagationPolicy
+        )
       (catch JsonSyntaxException e
         (log/info "Caught the https://github.com/kubernetes-client/java/issues/252 exception.")
         ; Silently gobble this exception.
@@ -276,7 +289,7 @@
 
 
 (defn remove-finalization-if-set-and-delete
-  "Remove finalization for a pod if its there. No-op if its not there.
+  "Remove finalization for a pod if it's there. No-op if it's not there.
   We always delete unconditionally, so finalization doesn't matter."
   [^ApiClient api-client ^V1Pod pod]
   ; TODO: This likes to noisily throw NotFound multiple times as we delete away from kubernetes.
@@ -284,7 +297,7 @@
   (kill-task api-client pod))
 
 (defn launch-task
-  "Given a pod-name use lookup the associated task, extract the parts needed to syntehsize the kubenretes object and go"
+  "Given a V1Pod, launch it."
   [api-client {:keys [launch-pod] :as expected-state-dict}]
   ;; TODO: make namespace configurable
   (let [namespace "cook"]
@@ -297,20 +310,17 @@
               (.createNamespacedPod namespace launch-pod nil nil nil))
           (catch ApiException e
             (log/error e "Error submitting pod:" (.getResponseBody e)))))
-      ; Because of the complicated nature of task-metadata-seq --- we can't easily run the V1Pod creation code for a
-      ; failed-to-start pod on a server restart. Thus, if we create a task, store into datomic, but then the cook scheduler
-      ; fails --- before kubernetes creates a pod (either the message isn't sent, or there's a kubernetes problem), we will
-      ; the inability to create a new V1Pod and we can't retry this at the kubernetes level.
+      ; Because of the complicated nature of task-metadata-seq, we can't easily run the V1Pod creation code for a
+      ; launching pod on a server restart. Thus, if we create a task, store into datomic, but then the cook scheduler
+      ; fails --- before kubernetes creates a pod (either the message isn't sent, or there's a kubernetes problem) ---
+      ; we will be unable to create a new V1Pod and we can't retry this at the kubernetes level.
       ;
       ; Eventually, the stuck pod detector will recognize the stuck pod, kill the task, and a cook-level retry will make
       ; a new task.
       ;
-      ; Because the issue is relatively rare and auto-recoverable, we're going to punt on the task-metadata-seq refactor.
-      (log/warn "Unimplemented Operation to launch a pod for becuause we do not reconstruct on startup."))))
-    ;; TODO: Need the 'stuck pod scanner' to detect stuck states and move them into killed.
+      ; Because the issue is relatively rare and auto-recoverable, we're going to punt on the task-metadata-seq refactor need
+      ; to handle this situation better.
+      (log/warn "Unimplemented Operation to launch a pod because we do not reconstruct the V1Pod on startup."))))
 
 
-(defn rebuild-watch-pods
-  ;;   We treat 'finalization removed' on a failed/succeeded task the same as if it didn't exist in kubernetes at all.
-  [] ; TODO.
-  )
+;; TODO: Need the 'stuck pod scanner' to detect stuck states and move them into killed.

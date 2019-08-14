@@ -18,6 +18,7 @@
            (java.util.concurrent Executors ScheduledExecutorService TimeUnit)))
 
 (defn generate-offers
+  "Given a compute cluster and maps with node capacity and existing pods, generate mesos-like offers for passing to fenzo."
   [node-name->node pod-name->pod compute-cluster]
   (let [node-name->capacity (api/get-capacity node-name->node)
         node-name->consumed (api/get-consumption pod-name->pod)
@@ -43,6 +44,7 @@
          node-name->available)))
 
 (defn make-pod-watch-callback
+  "Make a callback function that is passed to the pod-watch callback. This callback forwards changes to the cook.kubernetes.controller."
   [kcc]
   (fn pod-watch-callback
     [prev-pod pod]
@@ -54,21 +56,23 @@
         (log/error e "Error processing status update")))))
 
 (defn task-ents->map-by-task-id
+  "Given seq of task entities from datomic, generate a map of task-id -> entity."
   [task-ents]
   (->> task-ents
        (map (fn [task-ent] [(str (:instance/task-id task-ent)) task-ent]))
        (into {})))
 
 (defn task-ent->expected-state
+  "When we startup, we need to initialize the expected state from datomic. This implements a map from datomic's :instance.status/*
+  to the kubernetes expected state."
   [task-ent]
-  
   (case (:instance/status task-ent)
     :instance.status/unknown {:expected-state :expected/starting}
     :instance.status/running {:expected-state :expected/running}
     :instance.status/failed {:expected-state :expected/completed}
     :instance.status/success {:expected-state :expected/completed}))
 
-(defn determine-expected-state
+(defn determine-expected-state-on-startup
   "We need to determine everything we should be tracking when we construct the expected state. We should be tracking all tasks that are in the running state as well
   as all pods in kubernetes. We're given an already existing list of all running tasks entities (via (->> (cook.tools/get-running-task-ents)."
   [conn compute-cluster-name running-tasks-ents current-pods-atom]
@@ -108,12 +112,11 @@
                                      pool->fenzo-atom]
   cc/ComputeCluster
   (launch-tasks [this offers task-metadata-seq]
-    (let [api (CoreV1Api. api-client)]
       (doseq [task-metadata task-metadata-seq]
         (controller/update-expected-state
           this
           (:task-id task-metadata)
-          {:expected-state :expected/starting :launch-pod (api/task-metadata->pod task-metadata)}))))
+          {:expected-state :expected/starting :launch-pod (api/task-metadata->pod task-metadata)})))
 
   (kill-task [this task-id]
     (controller/update-expected-state this task-id {:expected-state :expected/killed}))
@@ -132,8 +135,8 @@
     (let [conn cook.datomic/conn
           pod-callback (make-pod-watch-callback this)]
       (api/initialize-pod-watch api-client current-pods-atom pod-callback)
-      ; We require that initialize-pod-watch sets current-pods-atom before completing.
-      (reset! expected-state-map (determine-expected-state conn name running-task-ents current-pods-atom)))
+      ; Before we execute determine-expected-state-on-startup, we need to ensure that initialize-pod-watch sets current-pods-atom.
+      (reset! expected-state-map (determine-expected-state-on-startup conn name running-task-ents current-pods-atom)))
 
     ; Initialize the node watch path.
     (api/initialize-node-watch api-client current-nodes-atom)
@@ -141,7 +144,7 @@
 
     (reset! pool->fenzo-atom pool->fenzo)
 
-    ; TODO(pschorf): Deliver when leadership lost
+    ; We keep leadership indefinitely in kubernetes.
     (async/chan 1))
 
   (current-leader? [this]
@@ -238,6 +241,8 @@
         compute-cluster (->KubernetesComputeCluster api-client compute-cluster-name cluster-entity-id
                                                     (:match-trigger-chan trigger-chans)
                                                     exit-code-syncer-state (atom {}) (atom {})
+                                                    ; These :type keys are here to make it easier to trace provenance
+                                                    ; when debugging and exist for no other reason.
                                                     (atom {:type :expected-state-map})
                                                     (atom {:type :existing-state-map})
                                                     (atom nil))]
