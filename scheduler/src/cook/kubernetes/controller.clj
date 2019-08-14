@@ -66,15 +66,16 @@
                                                                            :container-status status})
                  :unknown))))
 
-(defn handle-status-update
-  "Helper function for calling scheduler/handle-status-update"
+(defn write-status-to-datomic
+  "Helper function for calling scheduler/write-status-to-datomic"
   [kcc mesos-status]
   (scheduler/write-status-to-datomic datomic/conn
                                      @(:pool->fenzo-atom kcc)
                                      mesos-status))
 
 (defn- get-job-container-status
-  "Extract the constainer status for the api/cook-container-name-for-job container"
+  "Extract the container status for the main cook job container (defined in api/cook-container-name-for-job).
+  We use this because we need the actual state object to determine the failure reason for failed jobs."
   [^V1PodStatus pod-status]
   (->> pod-status
        .getContainerStatuses
@@ -83,7 +84,7 @@
        first))
 
 (defn pod-has-just-completed
-  "A pod has completed."
+  "A pod has completed. So now we need to update the status in datomic and store the exit code."
   [kcc {:keys [synthesized-state pod] :as existing-state-dictionary}]
   (let [task-id (-> pod .getMetadata .getName)
         pod-status (.getStatus pod)
@@ -95,34 +96,34 @@
                 :state mesos-state
                 :reason (container-status->failure-reason pod-status job-container-status)}
         exit-code (-> job-container-status .getState .getTerminated .getExitCode)]
-    (handle-status-update kcc status)
+    (write-status-to-datomic kcc status)
     (sandbox/aggregate-exit-code (:exit-code-syncer-state kcc) task-id exit-code)
     {:expected-state :expected/completed}))
 
 (defn prepare-expected-state-dict-for-logging
-  [expected-state-dict]
   ".toString on a pod is incredibly large. Make a version thats been elided."
+  [expected-state-dict]
   (if (:launch-pod expected-state-dict)
     (assoc expected-state-dict :launch-pod [:elided-for-brevity])
     expected-state-dict))
 
 (defn pod-has-started
-  "A pod has started."
+  "A pod has started. So now we need to update the status in datomic."
   [kcc {:keys [pod] :as existing-state-dictionary}]
   (let [task-id (-> pod .getMetadata .getName)
         status {:task-id {:value task-id}
                 :state :task-running}]
-    (handle-status-update kcc status)
+    (write-status-to-datomic kcc status)
     {:expected-state :expected/running}))
 
 (defn pod-was-killed
-  "A pod was killed. Write status updates to datomic."
+  "A pod was killed. So now we need to update the status in datomic and store the exit code."
   [kcc pod-name]
   (let [task-id pod-name
         status {:task-id {:value task-id}
                 :state :task-failed
                 :reason :reason-command-executor-failed}]
-    (handle-status-update kcc status)
+    (write-status-to-datomic kcc status)
     (sandbox/aggregate-exit-code (:exit-code-syncer-state kcc) task-id 143)
     {:expected-state :expected/completed}))
 
@@ -152,7 +153,7 @@
                                  [:expected/completed :pod/failed] (remove-finalization-if-set-and-delete api-client expected-state-dict pod)
                                  [:expected/completed :missing] nil ; Cause it to be deleted.
                                  [:expected/killed :pod/waiting] (kill-task api-client expected-state-dict pod)
-                                 [:expected/killed :pod/running] (kill-task api-client expected-state-dict pod) ; TODO: Where does the datomic update occur? Do we do it when we do [expected/killed :pod/failed], to be similar to mesos, we update it only when the backend says its dead?
+                                 [:expected/killed :pod/running] (kill-task api-client expected-state-dict pod)
 
                                  [:expected/killed :pod/succeeded] (do
                                                                      (pod-has-just-completed kcc existing-state-dict)
@@ -191,6 +192,7 @@
     (locking (calculate-lock pod-name)
       (let [new-state {:pod new-pod :synthesized-state (api/pod->synthesized-pod-state new-pod)}
             old-state (get @existing-state-map pod-name)]
+        ; We always store the updated state, but only reprocess it if it is genuinely different.
         (swap! existing-state-map assoc pod-name new-state)
         (when-not (existing-state-equivalent? old-state new-state)
           (process kcc pod-name))))))
@@ -213,7 +215,7 @@
         (process kcc pod-name)))))
 
 (defn scan-process
-  "Special verison of process run during scanning."
+  "Special verison of process run during scanning. It grabs the lock before processing the pod."
   [{:keys [api-client existing-state-map expected-state-map] :as kcc} pod-name]
   (locking (calculate-lock pod-name)
     (process kcc pod-name)))

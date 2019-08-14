@@ -51,6 +51,8 @@
       (sync-agent-sandboxes-fn (:instance/hostname instance-ent) task-id))))
 
 (defn handle-status-update
+  "Handles a status update from mesos. When a task/job is in an inconsistent state it may kill the task. It also writes the
+  status back to datomic."
   [conn compute-cluster sync-agent-sandboxes-fn pool->fenzo {:keys [state] :as status}]
   (let [task-id (-> status :task-id :value)
         instance (d/entity (d/db conn) [:instance/task-id task-id])
