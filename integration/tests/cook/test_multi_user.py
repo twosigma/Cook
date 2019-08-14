@@ -22,7 +22,8 @@ class MultiUserCookTest(util.CookTest):
 
     def setUp(self):
         self.cook_url = type(self).cook_url
-        self.mesos_url = util.retrieve_mesos_url()
+        if util.using_mesos():
+            self.mesos_url = util.retrieve_mesos_url()
         self.logger = logging.getLogger(__name__)
         self.user_factory = util.UserFactory(self)
 
