@@ -1559,12 +1559,11 @@ class CookTest(util.CookTest):
         resp = util.query_groups(self.cook_url)
         self.assertEqual(400, resp.status_code)
 
-    @unittest.skipIf(util.using_kubernetes(), 'Test needs to be rewritten for kubernetes')
     def test_queue_endpoint(self):
         group = {'uuid': str(uuid.uuid4())}
         job_spec = {'group': group['uuid'],
                     'command': 'sleep 30',
-                    'cpus': util.max_cpus(self.mesos_url, self.cook_url)}
+                    'cpus': util.max_cpus()}
         uuids, resp = util.submit_jobs(self.cook_url, job_spec, clones=100, groups=[group])
         self.assertEqual(201, resp.status_code, resp.content)
         try:
@@ -1669,11 +1668,10 @@ class CookTest(util.CookTest):
             util.session.delete('%s/rawscheduler?job=%s' % (self.cook_url, job_uuid))
             mesos.dump_sandbox_files(util.session, instance, job)
 
-    @unittest.skipIf(util.using_kubernetes(), 'Test needs to be rewritten for kubernetes')
     def test_unscheduled_jobs(self):
         job_spec = {'command': 'sleep 30',
                     'priority': 100,
-                    'cpus': util.max_cpus(self.mesos_url, self.cook_url)}
+                    'cpus': util.max_cpus()}
         uuids, resp = util.submit_jobs(self.cook_url, job_spec, clones=100)
         self.assertEqual(resp.status_code, 201, resp.content)
         try:
@@ -1881,9 +1879,8 @@ class CookTest(util.CookTest):
         finally:
             util.kill_jobs(self.cook_url, uuids)
 
-    @unittest.skipIf(util.using_kubernetes(), 'Test needs to be rewritten for kubernetes')
     def test_attribute_equals_hostname_constraint(self):
-        max_slave_cpus = util.max_slave_cpus(self.mesos_url)
+        max_slave_cpus = util.max_node_cpus()
         task_constraint_cpus = util.task_constraint_cpus(self.cook_url)
         # The largest job we can submit that actually fits on a slave
         max_cpus = min(max_slave_cpus, task_constraint_cpus)

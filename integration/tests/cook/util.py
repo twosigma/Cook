@@ -1194,22 +1194,50 @@ def slave_pool(cook_url, mesos_url, hostname):
     return pool
 
 
-def max_slave_cpus(mesos_url):
+def max_mesos_slave_cpus(mesos_url):
     """Returns the max cpus of all current Mesos agents"""
     slaves = get_mesos_state(mesos_url)['slaves']
     max_slave_cpus = max([s['resources']['cpus'] for s in slaves])
     return max_slave_cpus
 
+def get_kubernetes_nodes():
+    cook_url = retrieve_cook_url()
+    compute_clusters = settings(cook_url)['compute-clusters']
+    kubernetes_compute_cluster = [cc for cc in compute_clusters
+                                  if cc['factory-fn'] == 'cook.kubernetes.compute-cluster/factory-fn'][0]
+    if 'config-file' in kubernetes_compute_cluster['config']:
+        nodes = subprocess.check_output(['kubectl', '--kubeconfig', kubernetes_compute_cluster['config']['config-file'],
+                                         'get', 'nodes', '-o=json'])
+        node_json = json.loads(nodes)
+
+    else:
+        raise RuntimeError('Unable to get node info for configured kubernetes cluster: ' + str(kubernetes_compute_cluster))
+    logging.info(f'Retrieved kubernetes nodes: {node_json}')
+    return node_json['items']
+
+def max_kubernetes_node_cpus():
+    nodes = get_kubernetes_nodes()
+    return max([float(n['status']['capacity']['cpu'])
+                for n in nodes])
 
 def task_constraint_cpus(cook_url):
     """Returns the max cpus that can be submitted to the cluster"""
     task_constraint_cpus = settings(cook_url)['task-constraints']['cpus']
     return task_constraint_cpus
 
+def max_node_cpus():
+    if using_mesos():
+        return max_mesos_slave_cpus(retrieve_mesos_url())
+    elif using_kubernetes():
+        return max_kubernetes_node_cpus()
+    else:
+        raise RuntimeError('Unable to determine cluster max CPUs')
 
-def max_cpus(mesos_url, cook_url):
+def max_cpus():
     """Returns the maximum cpus we can submit that actually fits on a slave"""
-    slave_cpus = max_slave_cpus(mesos_url)
+    cook_url = retrieve_cook_url()
+    cpu_candidates = [task_constraint_cpus(cook_url)]
+    slave_cpus = max_node_cpus()
     constraint_cpus = task_constraint_cpus(cook_url)
     max_cpus = min(slave_cpus, constraint_cpus)
     logging.debug(f'Max cpus we can submit that will get scheduled is {max_cpus}')
