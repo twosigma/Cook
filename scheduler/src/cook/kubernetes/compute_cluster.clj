@@ -18,7 +18,7 @@
            (java.util.concurrent Executors ScheduledExecutorService TimeUnit)))
 
 (defn generate-offers
-  "Given a compute cluster and maps with node capacity and existing pods, generate mesos-like offers for passing to fenzo."
+  "Given a compute cluster and maps with node capacity and existing pods, return a list of offers."
   [node-name->node pod-name->pod compute-cluster]
   (let [node-name->capacity (api/get-capacity node-name->node)
         node-name->consumed (api/get-consumption pod-name->pod)
