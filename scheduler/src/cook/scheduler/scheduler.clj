@@ -245,6 +245,7 @@
                job-resources (util/job-ent->resources job-ent)
                pool-name (util/job->pool-name job-ent)
                ^TaskScheduler fenzo (get pool->fenzo pool-name)]
+           (log/info "Pool->fenzo:" pool->fenzo)
            (when (#{:instance.status/success :instance.status/failed} instance-status)
              (log/debug "Unassigning task" task-id "from" (:instance/hostname instance-ent))
              (try
