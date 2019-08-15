@@ -1200,11 +1200,19 @@ def max_mesos_slave_cpus(mesos_url):
     max_slave_cpus = max([s['resources']['cpus'] for s in slaves])
     return max_slave_cpus
 
-def get_kubernetes_nodes():
+@functools.lru_cache()
+def get_kubernetes_compute_cluster():
     cook_url = retrieve_cook_url()
     compute_clusters = settings(cook_url)['compute-clusters']
-    kubernetes_compute_cluster = [cc for cc in compute_clusters
-                                  if cc['factory-fn'] == 'cook.kubernetes.compute-cluster/factory-fn'][0]
+    kubernetes_compute_clusters = [cc for cc in compute_clusters
+                                   if cc['factory-fn'] == 'cook.kubernetes.compute-cluster/factory-fn']
+    if len(kubernetes_compute_clusters) > 0:
+        return kubernetes_compute_clusters[0]
+    else:
+        return None
+
+def get_kubernetes_nodes():
+    kubernetes_compute_cluster = get_kubernetes_compute_cluster()
     if 'config-file' in kubernetes_compute_cluster['config']:
         nodes = subprocess.check_output(['kubectl', '--kubeconfig', kubernetes_compute_cluster['config']['config-file'],
                                          'get', 'nodes', '-o=json'])
@@ -1406,7 +1414,7 @@ def _get_compute_cluster_factory_fn():
     return compute_clusters[0]['factory-fn']
 
 def using_kubernetes():
-    return _get_compute_cluster_factory_fn() == 'cook.kubernetes.compute-cluster/factory-fn'
+    return get_kubernetes_compute_cluster() is not None
 
 def using_mesos():
     return _get_compute_cluster_factory_fn() == 'cook.mesos.mesos-compute-cluster/factory-fn'
