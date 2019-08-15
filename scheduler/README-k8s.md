@@ -20,6 +20,19 @@ Example:
                              ;; Location of credential file
                              :google-credentials "/home/myuser/creds.json"}}]
 ```
+## Additional configuration options
+### `:namespace`
+Cook has two ways of configuring the namespace kubernetes pods are launched in:
+- Single static namespace: Cook can be configured to launch all kubernetes pods in a single static namespace. Example:
+```clojure
+:namespace {:kind :static
+            :namespace "cook"}
+```
+- Per-user namespaces: Cook can also be configured to launch each pod in a namespace corresponding to the username of 
+  the user who submitted the job. Example:
+```clojure
+:namespace {:kind :per-user}
+```
 
 # Running with kubernetes has several differences:
 - Use config-k8s.edn instead of config.edn

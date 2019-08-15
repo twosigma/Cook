@@ -107,16 +107,26 @@
     (into {}
           (map (fn [[k v]] [k (task-ent->expected-state v)]) all-task-id->task))))
 
+(defn- get-namespace-from-task-metadata
+  [{:keys [kind namespace]} task-metadata]
+  (case kind
+    :static namespace
+    :per-user (-> task-metadata
+                  :command
+                  :user)))
+
 (defrecord KubernetesComputeCluster [^ApiClient api-client name entity-id match-trigger-chan exit-code-syncer-state
                                      current-pods-atom current-nodes-atom expected-state-map existing-state-map
-                                     pool->fenzo-atom]
+                                     pool->fenzo-atom namespace-config]
   cc/ComputeCluster
   (launch-tasks [this offers task-metadata-seq]
-      (doseq [task-metadata task-metadata-seq]
+    (doseq [task-metadata task-metadata-seq]
+      (let [pod-namespace (get-namespace-from-task-metadata namespace-config task-metadata)]
         (controller/update-expected-state
           this
           (:task-id task-metadata)
-          {:expected-state :expected/starting :launch-pod (api/task-metadata->pod task-metadata)})))
+          {:expected-state :expected/starting :launch-pod {:pod (api/task-metadata->pod task-metadata)
+                                                           :namespace pod-namespace}}))))
 
   (kill-task [this task-id]
     (controller/update-expected-state this task-id {:expected-state :expected/killed}))
@@ -231,8 +241,11 @@
            base-path
            google-credentials
            verifying-ssl
-           bearer-token-refresh-seconds]
-    :or {bearer-token-refresh-seconds 300}}
+           bearer-token-refresh-seconds
+           namespace]
+    :or {bearer-token-refresh-seconds 300
+         namespace {:kind :static
+                    :namespace "cook"}}}
    {:keys [exit-code-syncer-state
            trigger-chans]}]
   (let [conn cook.datomic/conn
@@ -245,6 +258,7 @@
                                                     ; when debugging and exist for no other reason.
                                                     (atom {:type :expected-state-map})
                                                     (atom {:type :existing-state-map})
-                                                    (atom nil))]
+                                                    (atom nil)
+                                                    namespace)]
     (cc/register-compute-cluster! compute-cluster)
     compute-cluster))

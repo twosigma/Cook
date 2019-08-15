@@ -301,14 +301,14 @@
   "Given a V1Pod, launch it."
   [api-client {:keys [launch-pod] :as expected-state-dict}]
   ;; TODO: make namespace configurable
-  (let [namespace "cook"]
+  (let [{:keys [pod namespace]} launch-pod]
     ;; TODO: IF there's an error, log it and move on. We'll try again later.
     (if launch-pod
       (let [api (CoreV1Api. api-client)]
-        (log/info "Launching pod" api launch-pod)
+        (log/info "Launching pod in namespace" namespace pod)
         (try
           (-> api
-              (.createNamespacedPod namespace launch-pod nil nil nil))
+              (.createNamespacedPod namespace pod nil nil nil))
           (catch ApiException e
             (log/error e "Error submitting pod:" (.getResponseBody e)))))
       ; Because of the complicated nature of task-metadata-seq, we can't easily run the V1Pod creation code for a
