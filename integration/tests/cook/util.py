@@ -1210,13 +1210,9 @@ def get_kubernetes_nodes():
                                          'get', 'nodes', '-o=json'])
         node_json = json.loads(nodes)
     elif 'base-path' in kubernetes_compute_cluster['config']:
-        configured_google_credentials = kubernetes_compute_cluster['config'].get('google-credentials')
-        google_credentials = os.getenv('COOK_GKE_CREDENTIALS', configured_google_credentials)
-        subprocess.check_call(['gcloud', 'auth', 'activate-service-account', '--key-file', google_credentials])
-        access_token = subprocess.check_output(['gcloud', 'auth', 'print-access-token']).decode('utf-8').strip()
-        authorization = 'Bearer ' + access_token
+        authorization_header = subprocess.check_output(os.getenv('COOK_KUBERNETES_AUTH_CMD')).decode('utf-8').strip()
         nodes_url = kubernetes_compute_cluster['config']['base-path'] + '/api/v1/nodes'
-        node_json = requests.get(nodes_url, headers={'Authorization': authorization}, verify=False).json()
+        node_json = requests.get(nodes_url, headers={'Authorization': authorization_header}, verify=False).json()
     else:
         raise RuntimeError('Unable to get node info for configured kubernetes cluster: ' + str(kubernetes_compute_cluster))
     logging.info(f'Retrieved kubernetes nodes: {node_json}')
