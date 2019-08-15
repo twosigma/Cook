@@ -1214,7 +1214,7 @@ def get_kubernetes_nodes():
         nodes_url = kubernetes_compute_cluster['config']['base-path'] + '/api/v1/nodes'
         node_json = requests.get(nodes_url, headers={'Authorization': authorization_header}, verify=False).json()
     else:
-        raise RuntimeError('Unable to get node info for configured kubernetes cluster: ' + str(kubernetes_compute_cluster))
+        raise RuntimeError(f'Unable to get node info for configured kubernetes cluster: {kubernetes_compute_cluster}')
     logging.info(f'Retrieved kubernetes nodes: {node_json}')
     return node_json['items']
 
@@ -1239,7 +1239,6 @@ def max_node_cpus():
 def max_cpus():
     """Returns the maximum cpus we can submit that actually fits on a slave"""
     cook_url = retrieve_cook_url()
-    cpu_candidates = [task_constraint_cpus(cook_url)]
     slave_cpus = max_node_cpus()
     constraint_cpus = task_constraint_cpus(cook_url)
     max_cpus = min(slave_cpus, constraint_cpus)
