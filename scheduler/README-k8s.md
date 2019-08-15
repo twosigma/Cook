@@ -15,7 +15,8 @@ For GKE clusters, OAuth is used to authenticate with the cluster. To connect to 
 Example:
 ```clojure
 :compute-clusters [{:factory-fn cook.kubernetes.compute-cluster/factory-fn
-                    :config {:base-url "http://<IP ADDRESS>8000"
+                    :config {:compute-cluster-name "gke"
+                             :base-url "http://<IP ADDRESS>:8000"
                              ;; Location of credential file
                              :google-credentials "/home/myuser/creds.json"}}]
 ```

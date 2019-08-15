@@ -110,6 +110,7 @@
   (-> q .getNumber .doubleValue))
 
 (defn convert-resource-map
+  "Converts a map of Kubernetes resources to a cook resource map {:mem double, :cpus double}"
   [m]
   {:mem (if (get m "memory")
           (-> m (get "memory") to-double (/ (* 1024 1024)))
@@ -126,7 +127,7 @@
                node-name->node))
 
 (defn get-consumption
-  "Given a map from pod-name to pod, generate a map from .....
+  "Given a map from pod-name to pod, generate a map from node-name->resource-type->capacity
 
   When accounting for resources, we use resource requests to determine how much is used, not limits.
   See https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/#resource-requests-and-limits-of-pod-and-container"
@@ -150,6 +151,12 @@
 
 (def cook-container-name-for-job
   "required-cook-job-container")
+
+(defn double->quantity
+  "Converts a double to a Quantity"
+  [^double value]
+  (Quantity. (BigDecimal/valueOf value)
+             Quantity$Format/DECIMAL_SI))
 
 (defn ^V1Pod task-metadata->pod
   "Given a task-request and other data generate the kubernetes V1Pod to launch that task."
@@ -180,15 +187,9 @@
     (.setEnv container (into [] env))
     (.setImage container image)
 
-    (.putRequestsItem resources "memory"
-                      (Quantity. (BigDecimal/valueOf ^double (* 1024 1024 mem))
-                                 Quantity$Format/DECIMAL_SI))
-    (.putLimitsItem resources "memory"
-                    (Quantity. (BigDecimal/valueOf ^double (* 1024 1024 mem))
-                               Quantity$Format/DECIMAL_SI))
-    (.putRequestsItem resources "cpu"
-                      (Quantity. (BigDecimal/valueOf ^double cpus)
-                                 Quantity$Format/DECIMAL_SI))
+    (.putRequestsItem resources "memory" (double->quantity (* 1024 1024 mem)))
+    (.putLimitsItem resources "memory" (double->quantity (* 1024 1024 mem)))
+    (.putRequestsItem resources "cpu" (double->quantity cpus))
     (.setResources container resources)
 
     ; pod-spec
