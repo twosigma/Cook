@@ -107,10 +107,10 @@
     (into {}
           (map (fn [[k v]] [k (task-ent->expected-state v)]) all-task-id->task))))
 
-(defn- get-namespace-for-task-metadata
-  [{:keys [kind] :as namespace-config} task-metadata]
+(defn- get-namespace-from-task-metadata
+  [{:keys [kind namespace]} task-metadata]
   (case kind
-    :static (:namespace namespace-config)
+    :static namespace
     :per-user (-> task-metadata
                   :command
                   :user)))
@@ -121,7 +121,7 @@
   cc/ComputeCluster
   (launch-tasks [this offers task-metadata-seq]
     (doseq [task-metadata task-metadata-seq]
-      (let [pod-namespace (get-namespace-for-task-metadata namespace-config task-metadata)]
+      (let [pod-namespace (get-namespace-from-task-metadata namespace-config task-metadata)]
         (controller/update-expected-state
           this
           (:task-id task-metadata)
