@@ -1210,7 +1210,7 @@ def get_kubernetes_nodes():
                                          'get', 'nodes', '-o=json'])
         node_json = json.loads(nodes)
     elif 'base-path' in kubernetes_compute_cluster['config']:
-        authorization_header = subprocess.check_output(os.getenv('COOK_KUBERNETES_AUTH_CMD')).decode('utf-8').strip()
+        authorization_header = subprocess.check_output(os.getenv('COOK_KUBERNETES_AUTH_CMD'), shell=True).decode('utf-8').strip()
         nodes_url = kubernetes_compute_cluster['config']['base-path'] + '/api/v1/nodes'
         node_json = requests.get(nodes_url, headers={'Authorization': authorization_header}, verify=False).json()
     else:
