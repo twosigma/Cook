@@ -1203,6 +1203,8 @@ def max_mesos_slave_cpus(mesos_url):
 @functools.lru_cache()
 def get_kubernetes_compute_cluster():
     cook_url = retrieve_cook_url()
+    _wait_for_cook(cook_url)
+    init_cook_session(cook_url)
     compute_clusters = settings(cook_url)['compute-clusters']
     kubernetes_compute_clusters = [cc for cc in compute_clusters
                                    if cc['factory-fn'] == 'cook.kubernetes.compute-cluster/factory-fn']
