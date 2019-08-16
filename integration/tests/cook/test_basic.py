@@ -32,7 +32,8 @@ class CookTest(util.CookTest):
 
     def setUp(self):
         self.cook_url = type(self).cook_url
-        self.mesos_url = util.retrieve_mesos_url()
+        if util.using_mesos():
+            self.mesos_url = util.retrieve_mesos_url()
         self.logger = logging.getLogger(__name__)
         self.cors_origin = os.getenv('COOK_ALLOWED_ORIGIN', 'http://cors.example.com')
 
@@ -1562,7 +1563,7 @@ class CookTest(util.CookTest):
         group = {'uuid': str(uuid.uuid4())}
         job_spec = {'group': group['uuid'],
                     'command': 'sleep 30',
-                    'cpus': util.max_cpus(self.mesos_url, self.cook_url)}
+                    'cpus': util.max_cpus()}
         uuids, resp = util.submit_jobs(self.cook_url, job_spec, clones=100, groups=[group])
         self.assertEqual(201, resp.status_code, resp.content)
         try:
@@ -1670,7 +1671,7 @@ class CookTest(util.CookTest):
     def test_unscheduled_jobs(self):
         job_spec = {'command': 'sleep 30',
                     'priority': 100,
-                    'cpus': util.max_cpus(self.mesos_url, self.cook_url)}
+                    'cpus': util.max_cpus()}
         uuids, resp = util.submit_jobs(self.cook_url, job_spec, clones=100)
         self.assertEqual(resp.status_code, 201, resp.content)
         try:
@@ -1879,7 +1880,7 @@ class CookTest(util.CookTest):
             util.kill_jobs(self.cook_url, uuids)
 
     def test_attribute_equals_hostname_constraint(self):
-        max_slave_cpus = util.max_slave_cpus(self.mesos_url)
+        max_slave_cpus = util.max_node_cpus()
         task_constraint_cpus = util.task_constraint_cpus(self.cook_url)
         # The largest job we can submit that actually fits on a slave
         max_cpus = min(max_slave_cpus, task_constraint_cpus)
