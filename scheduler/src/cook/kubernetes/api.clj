@@ -14,32 +14,59 @@
     (java.util.concurrent Executors ExecutorService)))
 
 
+(def cook-pod-label "twosigma.com/cook-scheduler-job")
+
 (def ^ExecutorService kubernetes-executor (Executors/newFixedThreadPool 2))
+
+(defn is-cook-scheduler-pod
+  "Is this a cook pod? Uses some-> so is null-safe."
+  [^V1Pod pod]
+  (some-> pod .getMetadata .getLabels (.get cook-pod-label)))
+
+(defn make-atom-updater
+  "Given a state atom, returns a callback that updates that state-atom when called with a key, prev item, and item."
+  [state-atom]
+  (fn
+    [key prev-item item]
+    (cond
+      (and (nil? prev-item) (not (nil? item))) (swap! state-atom (fn [m] (assoc m key item)))
+      (and (not (nil? prev-item)) (not (nil? item))) (swap! state-atom (fn [m] (assoc m key item)))
+      (and (not (nil? prev-item)) (nil? item)) (swap! state-atom (fn [m] (dissoc m key))))))
+
+(defn cook-pod-callback-wrap
+  "A special wrapping function that, given a callback, key, prev-item, and item, will invoke the callback only
+  if the item is a pod that is a cook scheduler pod. (THe idea is that (partial cook-pod-callback-wrap othercallback)
+  returns a new callback that only invokes othercallback on cook pods."
+  [callback key prev-item item]
+  (when (or (is-cook-scheduler-pod prev-item) (is-cook-scheduler-pod item))
+    (callback key prev-item item)))
 
 (defn handle-watch-updates
   "When a watch update occurs (for pods or nodes) update both the state atom as well as
-  invoke the callback on the previous and new values for the key."
-  [state-atom ^Watch watch key-fn callback]
+  invoke the callbacks on the previous and new values for the key."
+  [state-atom ^Watch watch key-fn callbacks]
   (while (.hasNext watch)
-    (let [update (.next watch)
-          item (.-object update)
-          prev-item (get @state-atom (key-fn item))]
-      (case (.-type update)
-        "ADDED" (swap! state-atom (fn [m] (assoc m (key-fn item) item)))
-        "MODIFIED" (swap! state-atom (fn [m] (assoc m (key-fn item) item)))
-        "DELETED" (swap! state-atom (fn [m] (dissoc m (key-fn item)))))
-      (when callback
+    (let [watch-response (.next watch)
+          item (.-object watch-response)
+          key (key-fn item)
+          prev-item (get @state-atom key)]
+      (doseq [callback callbacks]
         (try
-          (callback prev-item item)
+          (callback key prev-item item)
           (catch Exception e
             (log/error e "Error while processing callback")))))))
 
-(defn initialize-pod-watch
-  "Initialize the pod watch. This fills current-pods-atom with data and invokes the callback on pod changes.
+(defn get-pod-name
+  "Given a V1Pod, return its name"
+  [^V1Pod pod]
+  (-> pod .getMetadata .getName))
 
-  Note that we require that this function set the current-pods-atom before it finishes so that
+(defn initialize-pod-watch
+  "Initialize the pod watch. This fills all-pods-atom with data and invokes the callback on pod changes.
+
+  Note that we require that this function set the all-pods-atom before it finishes so that
   cook.kubernetes.compute-cluster/initialize-cluster works correctly."
-  [^ApiClient api-client current-pods-atom pod-callback]
+  [^ApiClient api-client all-pods-atom cook-pods-atom cook-pod-callback]
   (let [api (CoreV1Api. api-client)
         current-pods (.listPodForAllNamespaces api
                                                nil ; continue
@@ -57,22 +84,30 @@
                                               .getMetadata
                                               .getName))
                                         (.getItems current-pods))]
-    (log/info "Updating current-pods-atom with pods" (keys pod-name->pod))
-    (log/error "TODO: We should have two atoms, one for cook pods (that feeds into the controller) and one for
-    all pods (that feeds into machine utilization then into offer generation)")
-    (reset! current-pods-atom pod-name->pod)
+    (log/info "Updating all-pods-atom with pods" (keys pod-name->pod))
+    (reset! all-pods-atom pod-name->pod)
+    (reset! cook-pods-atom
+            (->> pod-name->pod
+                 (filter (fn [[_ pod]] (is-cook-scheduler-pod pod)))
+                 (into {})))
+    (log/info "Updating cook-pods-atom with pods" (keys @cook-pods-atom))
+
     (let [watch (WatchHelper/createPodWatch api-client (-> current-pods
                                                            .getMetadata
                                                            .getResourceVersion))]
       (.submit kubernetes-executor ^Callable
       (fn []
         (try
-          (handle-watch-updates current-pods-atom watch (fn [p] (-> p .getMetadata .getName)) pod-callback)
+          (handle-watch-updates all-pods-atom watch get-pod-name
+                                ; 3 callbacks;
+                                [(make-atom-updater all-pods-atom) ; Update the set of all pods.
+                                 (partial cook-pod-callback-wrap (make-atom-updater cook-pods-atom)) ; Update the set of cook pods.
+                                 (partial cook-pod-callback-wrap cook-pod-callback)]) ; Invoke the cook-pod-callback if its a cook pod.
           (catch Exception e
             (log/error e "Error during watch"))
           (finally
             (.close watch)
-            (initialize-pod-watch api-client current-pods-atom pod-callback))))))))
+            (initialize-pod-watch api-client all-pods-atom cook-pods-atom cook-pod-callback))))))))
 
 (defn initialize-node-watch
   "Initialize the node watch. This fills current-nodes-atom with data and invokes the callback on pod changes."
@@ -97,7 +132,7 @@
       (.submit kubernetes-executor ^Callable
       (fn []
         (try
-          (handle-watch-updates current-nodes-atom watch (fn [n] (-> n .getMetadata .getName)) nil)
+          (handle-watch-updates current-nodes-atom watch (fn [n] (-> n .getMetadata .getName)) [])
           (catch Exception e
             (log/warn e "Error during node watch")
             (initialize-node-watch api-client current-nodes-atom))
@@ -175,9 +210,12 @@
                      (.setValue env (str v))
                      env))
                  (:environment command))
-        resources (V1ResourceRequirements.)]
+        resources (V1ResourceRequirements.)
+        labels {cook-pod-label "true"}
+        ]
     ; metadata
     (.setName metadata (str task-id))
+    (.setLabels metadata labels)
 
     ; container
     (.setName container cook-container-name-for-job)

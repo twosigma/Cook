@@ -43,11 +43,11 @@
             :reject-after-match-attempt true})
          node-name->available)))
 
-(defn make-pod-watch-callback
+(defn make-cook-pod-watch-callback
   "Make a callback function that is passed to the pod-watch callback. This callback forwards changes to the cook.kubernetes.controller."
   [kcc]
   (fn pod-watch-callback
-    [prev-pod pod]
+    [_ prev-pod pod]
     (try
       (if (nil? pod)
         (controller/pod-deleted kcc prev-pod)
@@ -75,9 +75,9 @@
 (defn determine-expected-state-on-startup
   "We need to determine everything we should be tracking when we construct the expected state. We should be tracking all tasks that are in the running state as well
   as all pods in kubernetes. We're given an already existing list of all running tasks entities (via (->> (cook.tools/get-running-task-ents)."
-  [conn compute-cluster-name running-tasks-ents current-pods-atom]
+  [conn compute-cluster-name running-tasks-ents cook-pods-atom]
   (let [db (d/db conn)
-        all-tasks-ids-in-pods (->> @current-pods-atom keys (into #{}))
+        all-tasks-ids-in-pods (->> @cook-pods-atom keys (into #{}))
         _ (log/debug "All tasks in pods: " all-tasks-ids-in-pods)
         running-tasks-in-cc-ents (filter
                                    #(-> % cook.task/task-entity->compute-cluster-name (= compute-cluster-name))
@@ -116,7 +116,7 @@
                   :user)))
 
 (defrecord KubernetesComputeCluster [^ApiClient api-client name entity-id match-trigger-chan exit-code-syncer-state
-                                     current-pods-atom current-nodes-atom expected-state-map existing-state-map
+                                     all-pods-atom cook-pods-atom current-nodes-atom expected-state-map existing-state-map
                                      pool->fenzo-atom namespace-config]
   cc/ComputeCluster
   (launch-tasks [this offers task-metadata-seq]
@@ -143,10 +143,10 @@
   (initialize-cluster [this pool->fenzo running-task-ents]
     ; Initialize the pod watch path.
     (let [conn cook.datomic/conn
-          pod-callback (make-pod-watch-callback this)]
-      (api/initialize-pod-watch api-client current-pods-atom pod-callback)
-      ; Before we execute determine-expected-state-on-startup, we need to ensure that initialize-pod-watch sets current-pods-atom.
-      (reset! expected-state-map (determine-expected-state-on-startup conn name running-task-ents current-pods-atom)))
+          cook-pod-callback (make-cook-pod-watch-callback this)]
+      (api/initialize-pod-watch api-client all-pods-atom cook-pods-atom cook-pod-callback)
+      ; Before we execute determine-expected-state-on-startup, we need to ensure that initialize-pod-watch sets cook-pods-atom.
+      (reset! expected-state-map (determine-expected-state-on-startup conn name running-task-ents cook-pods-atom)))
 
     ; Initialize the node watch path.
     (api/initialize-node-watch api-client current-nodes-atom)
@@ -164,7 +164,7 @@
     (if (or (= pool-name (config/default-pool)) ; TODO(pschorf): Support pools
             (= pool-name "no-pool"))
       (let [nodes @current-nodes-atom
-            pods @current-pods-atom]
+            pods @all-pods-atom]
         (generate-offers nodes pods this))
       []))
 
@@ -253,7 +253,7 @@
         api-client (make-api-client config-file base-path google-credentials bearer-token-refresh-seconds verifying-ssl)
         compute-cluster (->KubernetesComputeCluster api-client compute-cluster-name cluster-entity-id
                                                     (:match-trigger-chan trigger-chans)
-                                                    exit-code-syncer-state (atom {}) (atom {})
+                                                    exit-code-syncer-state (atom {}) (atom {}) (atom {})
                                                     ; These :type keys are here to make it easier to trace provenance
                                                     ; when debugging and exist for no other reason.
                                                     (atom {:type :expected-state-map})
