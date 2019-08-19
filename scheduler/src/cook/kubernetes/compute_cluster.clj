@@ -216,6 +216,8 @@
   (let [api-client (if (some? config-file)
                      (Config/fromConfig config-file)
                      (ApiClient.))]
+    ; Reset to a more sane timeout from the default 10 seconds.
+    (some-> api-client .getHttpClient (.setReadTimeout 120 TimeUnit/SECONDS))
     (when base-path
       (.setBasePath api-client base-path))
     (when (some? verifying-ssl)
