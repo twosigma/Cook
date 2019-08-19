@@ -76,3 +76,8 @@ minikube dashboard
 - Submit a test job
 
 cs submit -i alpine:latest -c .01 -m 16 "echo 200" 
+
+# Running integration tests
+```bash
+COOK_DEFAULT_JOB_CPUS=0.1 COOK_TEST_DOCKER_IMAGE=python:3.5 pytest -m 'not cli'
+```
