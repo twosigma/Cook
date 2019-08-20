@@ -47,9 +47,17 @@
   [state-atom ^Watch watch key-fn callbacks]
   (while (.hasNext watch)
     (let [watch-response (.next watch)
-          item (.-object watch-response)
+          item (.-object watch-response) ;is always non-nil, even for deleted items.
           key (key-fn item)
-          prev-item (get @state-atom key)]
+          prev-item (get @state-atom key)
+          ; Now we want to re-bind prev-item and item to the real previous and current,
+          ; embedding ADDED/MODIFIED/DELETED based on the location of nils.
+          [prev-item item]
+          (case (.-type watch-response)
+            "ADDED" [nil item]
+            "MODIFIED" [prev-item item]
+            "DELETED" [prev-item nil])]
+
       (doseq [callback callbacks]
         (try
           (callback key prev-item item)
