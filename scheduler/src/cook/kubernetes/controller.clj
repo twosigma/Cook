@@ -63,7 +63,7 @@
       (= "OOMKilled" (.getReason terminated)) :reason-container-limitation-memory
       :default (do
                  (log/warn "Unable to determine kubernetes failure reason for pod" {:pod-status pod-status
-                                                                           :container-status status})
+                                                                                    :container-status status})
                  :unknown))))
 
 (defn write-status-to-datomic
