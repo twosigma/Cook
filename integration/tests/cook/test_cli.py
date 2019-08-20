@@ -866,6 +866,8 @@ class CookCliTest(util.CookTest):
         self.assertEqual(1, cp.returncode, cli.decode(cp.stderr))
         self.assertIn('file was not found', cli.decode(cp.stderr))
 
+    @pytest.mark.xfail
+    # xfailed because of ts-pr-1193 flakiness on jenkins.
     def test_tail_with_plugin(self):
         # User defined plugin to print dummy content from a file
         with tempfile.NamedTemporaryFile(suffix='.py', delete=True) as temp:
