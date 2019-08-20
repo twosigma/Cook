@@ -50,7 +50,7 @@
                                     (reset! launched-pod-atom launch-pod))]
       (testing "static namespace"
         (let [compute-cluster (kcc/->KubernetesComputeCluster nil "kubecompute" nil nil nil
-                                                              (atom {}) (atom {}) (atom {}) (atom {}) (atom nil)
+                                                              (atom {}) (atom {}) (atom {}) (atom {}) (atom {}) (atom nil)
                                                               {:kind :static :namespace "cook"})
               task-metadata (task/TaskAssignmentResult->task-metadata (d/db conn)
                                                                       nil
@@ -62,7 +62,7 @@
 
       (testing "per-user namespace"
         (let [compute-cluster (kcc/->KubernetesComputeCluster nil "kubecompute" nil nil nil
-                                                              (atom {}) (atom {}) (atom {}) (atom {}) (atom nil)
+                                                              (atom {}) (atom {}) (atom {}) (atom {}) (atom {}) (atom nil)
                                                               {:kind :per-user})
               task-metadata (task/TaskAssignmentResult->task-metadata (d/db conn)
                                                                       nil
@@ -73,7 +73,7 @@
 
 (deftest test-generate-offers
   (let [compute-cluster (kcc/->KubernetesComputeCluster nil "kubecompute" nil nil nil
-                                                        (atom {}) (atom {}) (atom {}) (atom {}) (atom nil)
+                                                        (atom {}) (atom {}) (atom {}) (atom {}) (atom {}) (atom nil)
                                                         {:kind :static :namespace "cook"})
         node-name->node {"nodeA" (tu/node-helper "nodeA" 1.0 1000.0)
                          "nodeB" (tu/node-helper "nodeB" 1.0 1000.0)
