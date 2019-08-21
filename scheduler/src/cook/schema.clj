@@ -969,6 +969,21 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
                                                                    :expected v}))))}}
 
    {:db/id (d/tempid :db.part/user)
+    :db/ident :generic/ensure-some
+    :db/doc "Ensures an attribute of an entity is one of the passed values. Throws exception otherwise"
+    :db/fn #db/fn {:lang "clojure"
+                   :params [db e a vs]
+                   :requires [[metatransaction.core :as mt]]
+                   :code
+                   (let [db (mt/filter-committed db)]
+                     (if (some (fn [v] (seq (d/datoms db :eavt e a v)))
+                               vs)
+                       nil
+                       (throw (ex-info "Fail to ensure attribute" {:entity e
+                                                                   :attribute a
+                                                                   :expected vs}))))}}
+
+   {:db/id (d/tempid :db.part/user)
     :db/ident :job/reasons->attempts-consumed
     :db/doc "Determines the amount of attempts consumed by a collection of failure reasons."
     :db/fn #db/fn {:lang "clojure"

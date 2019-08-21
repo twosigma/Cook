@@ -499,17 +499,18 @@
                ;; all over the place.
                (let [job-eid (:db/id (:job/_instance task-ent))
                      task-eid (:db/id task-ent)]
-                 [[:generic/ensure task-eid :instance/status (d/entid db :instance.status/running)]
+                 [[:generic/ensure-some task-eid :instance/status [(d/entid db :instance.status/running)
+                                                                   (d/entid db :instance.status/unknown)]]
                   [:generic/atomic-inc job-eid :job/preemptions 1]
                   ;; The database can become inconsistent if we make multiple calls to :instance/update-state in a single
                   ;; transaction; see the comment in the definition of :instance/update-state for more details
                   [:instance/update-state task-eid :instance.status/failed [:reason/name :preempted-by-rebalancer]]
                   [:db/add task-eid :instance/reason [:reason/name :preempted-by-rebalancer]]
                   [:db/add task-eid :instance/preempted? true]]))
+            (when-let [task-id (:instance/task-id task-ent)]
+              (cc/kill-task compute-cluster task-id))
             (catch Throwable e
-              (log/warn e "Failed to transact preemption")))
-          (when-let [task-id (:instance/task-id task-ent)]
-            (cc/kill-task compute-cluster task-id)))))))
+              (log/warn e "Failed to transact preemption"))))))))
 
 
 
