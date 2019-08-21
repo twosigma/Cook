@@ -387,11 +387,14 @@ def scheduler_info(cook_url):
 def docker_image():
     return os.getenv('COOK_TEST_DOCKER_IMAGE')
 
+def get_default_cpus():
+    return float(os.getenv('COOK_DEFAULT_JOB_CPUS', 1.0))
+
 
 def minimal_job(**kwargs):
     job = {
         'command': 'echo Default Test Command',
-        'cpus': float(os.getenv('COOK_DEFAULT_JOB_CPUS', 1.0)),
+        'cpus': get_default_cpus(),
         'max_retries': 1,
         'mem': int(os.getenv('COOK_DEFAULT_JOB_MEM_MB', 256)),
         'name': 'default_test_job',
