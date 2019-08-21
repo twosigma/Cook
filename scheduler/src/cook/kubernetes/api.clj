@@ -1,5 +1,6 @@
 (ns cook.kubernetes.api
-  (:require [clojure.tools.logging :as log]
+  (:require [clojure.set :as set]
+            [clojure.tools.logging :as log]
             [plumbing.core :as pc])
   (:import
     (com.google.gson JsonSyntaxException)
@@ -69,12 +70,9 @@
   [^V1Pod pod]
   (-> pod .getMetadata .getName))
 
-(defn initialize-pod-watch
-  "Initialize the pod watch. This fills all-pods-atom with data and invokes the callback on pod changes.
-
-  Note that we require that this function set the all-pods-atom before it finishes so that
-  cook.kubernetes.compute-cluster/initialize-cluster works correctly."
-  [^ApiClient api-client all-pods-atom cook-pods-atom cook-pod-callback]
+(defn get-all-pods-in-kubernetes
+  "Get all pods in kubernetes."
+  [api-client]
   (let [api (CoreV1Api. api-client)
         current-pods (.listPodForAllNamespaces api
                                                nil ; continue
@@ -92,13 +90,28 @@
                                               .getMetadata
                                               .getName))
                                         (.getItems current-pods))]
-    (log/info "Updating all-pods-atom with pods" (keys pod-name->pod))
-    (reset! all-pods-atom pod-name->pod)
-    (reset! cook-pods-atom
-            (->> pod-name->pod
-                 (filter (fn [[_ pod]] (is-cook-scheduler-pod pod)))
-                 (into {})))
-    (log/info "Updating cook-pods-atom with pods" (keys @cook-pods-atom))
+    [current-pods pod-name->pod]))
+
+(defn initialize-pod-watch
+  "Initialize the pod watch. This fills all-pods-atom with data and invokes the callback on pod changes."
+  [^ApiClient api-client all-pods-atom cook-pods-atom cook-pod-callback]
+  (let [[current-pods pod-name->pod] (get-all-pods-in-kubernetes api-client)
+        ; 3 callbacks;
+        callbacks
+        [(make-atom-updater all-pods-atom) ; Update the set of all pods.
+         (partial cook-pod-callback-wrap (make-atom-updater cook-pods-atom)) ; Update the set of cook pods.
+         (partial cook-pod-callback-wrap cook-pod-callback)] ; Invoke the cook-pod-callback if its a cook pod.
+        old-all-pods @all-pods-atom]
+    (log/info "Processing pods" (keys pod-name->pod))
+    ; We want to process all changes through the callback process.
+    ; So compute the delta between the old and new and process those via the callbacks.
+    ; Note as a side effect, the callbacks mutate cook-pods-atom and all-pods-atom
+    (doseq [task (set/union (keys pod-name->pod) (keys old-all-pods))]
+      (doseq [callback callbacks]
+        (try
+          (callback task (get old-all-pods task) (get pod-name->pod task))
+          (catch Exception e
+            (log/error e "Error while processing callback for" task)))))
 
     (let [watch (WatchHelper/createPodWatch api-client (-> current-pods
                                                            .getMetadata
@@ -107,10 +120,7 @@
       (fn []
         (try
           (handle-watch-updates all-pods-atom watch get-pod-name
-                                ; 3 callbacks;
-                                [(make-atom-updater all-pods-atom) ; Update the set of all pods.
-                                 (partial cook-pod-callback-wrap (make-atom-updater cook-pods-atom)) ; Update the set of cook pods.
-                                 (partial cook-pod-callback-wrap cook-pod-callback)]) ; Invoke the cook-pod-callback if its a cook pod.
+                                callbacks)
           (catch Exception e
             (log/error e "Error during watch"))
           (finally

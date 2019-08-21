@@ -1,5 +1,8 @@
 (ns cook.kubernetes.compute-cluster
-  (:require [clojure.core.async :as async]
+  (:require [chime :refer [chime-at chime-ch]]
+            [clj-time.core :as time]
+            [clj-time.periodic :refer [periodic-seq]]
+            [clojure.core.async :as async]
             [clojure.set :as set]
             [clojure.tools.logging :as log]
             [cook.compute-cluster :as cc]
@@ -7,6 +10,7 @@
             [cook.kubernetes.api :as api]
             [cook.kubernetes.controller :as controller]
             [cook.pool]
+            [cook.tools :as tools]
             [datomic.api :as d]
             [plumbing.core :as pc])
   (:import (com.google.auth.oauth2 GoogleCredentials)
@@ -42,6 +46,36 @@
             :reject-after-match-attempt true})
          node-name->available)))
 
+(defn states-to-scan
+  "Determine all states to scan by unioning task id's from expected and existing state maps. "
+  [{:keys [expected-state-map existing-state-map] :as kcc}]
+  (->>
+    (set/union (keys @expected-state-map) (keys @existing-state-map))
+    (into #{})))
+
+(defn scan-states
+  "Scan all states. Note: May block or be slow due to rate limits."
+  [kcc]
+  (log/info "Starting state scan: " )
+  ; TODO Add in rate limits; only visit non-running/running states so fast.
+  ; TODO Add in maximum-visit frequency. Only visit a state once every XX seconds.
+  (let [states-to-scan (states-to-scan kcc)
+        _ (log/info "Doing state scan. Visiting" (count states-to-scan) "states")]
+    (doseq [state states-to-scan]
+      (controller/scan-process kcc state))))
+
+(defn regular-scanner
+  "Trigger a channel that scans all states (shortly) after this function is invoked and on a regular interval."
+  [kcc interval]
+  (let [ch (async/chan (async/sliding-buffer 1))]
+    ; We scan on startup as we load the existing state in, so first scan should be scheduled for a while in the future.
+    (async/pipe (chime-ch (periodic-seq (-> interval time/from-now) interval)) ch)
+    (tools/chime-at-ch ch
+                       (fn scan-states-function []
+                         (scan-states kcc)
+                         {:error-handler (fn [e]
+                                           (log/error e "Scan states failed"))}))))
+
 (defn make-cook-pod-watch-callback
   "Make a callback function that is passed to the pod-watch callback. This callback forwards changes to the cook.kubernetes.controller."
   [kcc]
@@ -74,10 +108,11 @@
 (defn determine-expected-state-on-startup
   "We need to determine everything we should be tracking when we construct the expected state. We should be tracking all tasks that are in the running state as well
   as all pods in kubernetes. We're given an already existing list of all running tasks entities (via (->> (cook.tools/get-running-task-ents)."
-  [conn compute-cluster-name running-tasks-ents cook-pods-atom]
+  [conn api-client compute-cluster-name running-tasks-ents]
   (let [db (d/db conn)
-        all-tasks-ids-in-pods (->> @cook-pods-atom keys (into #{}))
-        _ (log/debug "All tasks in pods: " all-tasks-ids-in-pods)
+        [_ pod-name->pod] (api/get-all-pods-in-kubernetes api-client)
+        all-tasks-ids-in-pods (into #{} (keys pod-name->pod))
+        _ (log/debug "All tasks in pods (for initializing expected state): " all-tasks-ids-in-pods)
         running-tasks-in-cc-ents (filter
                                    #(-> % cook.task/task-entity->compute-cluster-name (= compute-cluster-name))
                                    running-tasks-ents)
@@ -116,7 +151,7 @@
 
 (defrecord KubernetesComputeCluster [^ApiClient api-client name entity-id match-trigger-chan exit-code-syncer-state
                                      all-pods-atom cook-pods-atom current-nodes-atom expected-state-map existing-state-map
-                                     pool->fenzo-atom namespace-config]
+                                     pool->fenzo-atom namespace-config scan-frequency-seconds-config]
   cc/ComputeCluster
   (launch-tasks [this offers task-metadata-seq]
     (doseq [task-metadata task-metadata-seq]
@@ -143,9 +178,13 @@
     ; Initialize the pod watch path.
     (let [conn cook.datomic/conn
           cook-pod-callback (make-cook-pod-watch-callback this)]
+      ; We set expected state first because initialize-pod-watch sets (and invokes callbacks on and reacts to) the expected and the gruadually discovere existing.
+      (reset! expected-state-map (determine-expected-state-on-startup conn api-client name running-task-ents))
+
       (api/initialize-pod-watch api-client all-pods-atom cook-pods-atom cook-pod-callback)
-      ; Before we execute determine-expected-state-on-startup, we need to ensure that initialize-pod-watch sets cook-pods-atom.
-      (reset! expected-state-map (determine-expected-state-on-startup conn name running-task-ents cook-pods-atom)))
+      (if scan-frequency-seconds-config
+        (regular-scanner this (time/seconds scan-frequency-seconds-config))
+        (log/info "State scan disabled because no interval has been set")))
 
     ; Initialize the node watch path.
     (api/initialize-node-watch api-client current-nodes-atom)
@@ -243,10 +282,12 @@
            google-credentials
            verifying-ssl
            bearer-token-refresh-seconds
-           namespace]
+           namespace
+           scan-frequency-seconds]
     :or {bearer-token-refresh-seconds 300
          namespace {:kind :static
-                    :namespace "cook"}}}
+                    :namespace "cook"}
+         scan-frequency-seconds 120}}
    {:keys [exit-code-syncer-state
            trigger-chans]}]
   (let [conn cook.datomic/conn
@@ -260,6 +301,7 @@
                                                     (atom {:type :expected-state-map})
                                                     (atom {:type :existing-state-map})
                                                     (atom nil)
-                                                    namespace)]
+                                                    namespace
+                                                    scan-frequency-seconds)]
     (cc/register-compute-cluster! compute-cluster)
     compute-cluster))
