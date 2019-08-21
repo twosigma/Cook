@@ -166,7 +166,7 @@
   "Given a map from node-name to node, generate a map from node-name->resource-type-><capacity>"
   [node-name->node]
   (pc/map-vals (fn [^V1Node node]
-                 (-> node .getStatus .getCapacity convert-resource-map))
+                 (-> node .getStatus .getAllocatable convert-resource-map))
                node-name->node))
 
 (defn get-consumption
