@@ -18,7 +18,7 @@
 
 (defn generate-offers
   "Given a compute cluster and maps with node capacity and existing pods, return a list of offers."
-  [node-name->node pod-name->pod starting-pod-name->pod compute-cluster]
+  [compute-cluster node-name->node pod-name->pod starting-pod-name->pod]
   (let [node-name->capacity (api/get-capacity node-name->node)
         node-name->consumed (api/get-consumption (merge pod-name->pod
                                                         starting-pod-name->pod))
@@ -164,7 +164,7 @@
             (= pool-name "no-pool"))
       (let [nodes @current-nodes-atom
             pods @all-pods-atom]
-        (generate-offers nodes pods (controller/starting-pod-name->pod this) this))
+        (generate-offers this nodes pods (controller/starting-pod-name->pod this)))
       []))
 
   (restore-offers [this pool-name offers]))

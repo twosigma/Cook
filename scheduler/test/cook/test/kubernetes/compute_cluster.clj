@@ -89,8 +89,8 @@
                                                {:cpus 1.0 :mem 1100.0})
                          task-1-id (tu/pod-helper task-1-id "my.fake.host"
                                                   {:cpus 0.1 :mem 10.0})}
-          offers (kcc/generate-offers node-name->node pod-name->pod (controller/starting-pod-name->pod compute-cluster)
-                                      compute-cluster)]
+          offers (kcc/generate-offers compute-cluster node-name->node pod-name->pod
+                                      (controller/starting-pod-name->pod compute-cluster))]
       (is (= 4 (count offers)))
       (let [offer (first (filter #(= "nodeA" (:hostname %))
                                  offers))]

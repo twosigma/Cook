@@ -306,6 +306,7 @@
     (d/resolve-tempid (db conn) (:tempids val) id)))
 
 (defn make-task-request [job-ent]
+  "Makes a dummy task request for job-ent by calling scheduler/make-task-request"
   (let [considerable->task-id (plumbing.core/map-from-keys (fn [_] (str (d/squuid)))
                                                            [job-ent])
         running-cotask-cache (atom (cache/fifo-cache-factory {} :threshold 1))]
@@ -318,10 +319,12 @@
                              :task-id (considerable->task-id job-ent))))
 
 (defn make-task-assignment-result
+  "Makes a dummy fenzo AssignmentResult for the given TaskRequest"
   [task-request]
   (SimpleAssignmentResult. [] nil task-request))
 
 (defn make-task-metadata
+  "Creates a task-metadata for the given job by calling task/TaskAssignmentResult->task-metadata"
   [job db compute-cluster]
   (let [task-request (make-task-request job)
         task-assignment-result (make-task-assignment-result task-request)]
