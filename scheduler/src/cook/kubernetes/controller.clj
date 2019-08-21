@@ -215,6 +215,7 @@
         (process kcc pod-name)))))
 
 (defn starting-pod-name->pod
+  "Returns a map from pod-name->pod for all pods in the :expected/starting state."
   [{:keys [expected-state-map] :as kcc}]
   (->> @expected-state-map
        (filter (fn [[_ {:keys [expected-state launch-pod]}]]
