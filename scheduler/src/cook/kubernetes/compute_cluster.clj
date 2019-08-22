@@ -22,10 +22,10 @@
 
 (defn generate-offers
   "Given a compute cluster and maps with node capacity and existing pods, return a list of offers."
-  [compute-cluster node-name->node pod-name->pod starting-pod-name->pod]
+  [compute-cluster node-name->node namespaced-pod-name->pod starting-namespaced-pod-name->pod]
   (let [node-name->capacity (api/get-capacity node-name->node)
-        node-name->consumed (api/get-consumption (merge pod-name->pod
-                                                        starting-pod-name->pod))
+        node-name->consumed (api/get-consumption (merge namespaced-pod-name->pod
+                                                        starting-namespaced-pod-name->pod))
         node-name->available (pc/map-from-keys (fn [node-name]
                                                  (merge-with -
                                                              (node-name->capacity node-name)
@@ -150,7 +150,7 @@
                   :user)))
 
 (defrecord KubernetesComputeCluster [^ApiClient api-client name entity-id match-trigger-chan exit-code-syncer-state
-                                     all-pods-atom cook-pods-atom current-nodes-atom expected-state-map existing-state-map
+                                     all-pods-atom current-nodes-atom expected-state-map existing-state-map
                                      pool->fenzo-atom namespace-config scan-frequency-seconds-config]
   cc/ComputeCluster
   (launch-tasks [this offers task-metadata-seq]
@@ -159,7 +159,7 @@
         (controller/update-expected-state
           this
           (:task-id task-metadata)
-          {:expected-state :expected/starting :launch-pod {:pod (api/task-metadata->pod task-metadata)
+          {:expected-state :expected/starting :launch-pod {:pod (api/task-metadata->pod pod-namespace task-metadata)
                                                            :namespace pod-namespace}}))))
 
   (kill-task [this task-id]
@@ -181,7 +181,7 @@
       ; We set expected state first because initialize-pod-watch sets (and invokes callbacks on and reacts to) the expected and the gruadually discovere existing.
       (reset! expected-state-map (determine-expected-state-on-startup conn api-client name running-task-ents))
 
-      (api/initialize-pod-watch api-client all-pods-atom cook-pods-atom cook-pod-callback)
+      (api/initialize-pod-watch api-client all-pods-atom cook-pod-callback)
       (if scan-frequency-seconds-config
         (regular-scanner this (time/seconds scan-frequency-seconds-config))
         (log/info "State scan disabled because no interval has been set")))
@@ -202,7 +202,7 @@
             (= pool-name "no-pool"))
       (let [nodes @current-nodes-atom
             pods @all-pods-atom]
-        (generate-offers this nodes pods (controller/starting-pod-name->pod this)))
+        (generate-offers this nodes pods (controller/starting-namespaced-pod-name->pod this)))
       []))
 
   (restore-offers [this pool-name offers]))
@@ -294,7 +294,7 @@
         api-client (make-api-client config-file base-path google-credentials bearer-token-refresh-seconds verifying-ssl)
         compute-cluster (->KubernetesComputeCluster api-client compute-cluster-name cluster-entity-id
                                                     (:match-trigger-chan trigger-chans)
-                                                    exit-code-syncer-state (atom {}) (atom {}) (atom {})
+                                                    exit-code-syncer-state (atom {}) (atom {})
                                                     ; These :type keys are here to make it easier to trace provenance
                                                     ; when debugging and exist for no other reason.
                                                     (atom {:type :expected-state-map})

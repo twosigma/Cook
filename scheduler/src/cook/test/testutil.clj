@@ -483,6 +483,7 @@
                (.addContainersItem spec container))))
     (.setNodeName spec node-name)
     (.setName metadata pod-name)
+    (.setNamespace metadata "cook")
     (.setMetadata pod metadata)
     (.setSpec pod spec)
     pod))

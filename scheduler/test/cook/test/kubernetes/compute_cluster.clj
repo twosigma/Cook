@@ -40,7 +40,7 @@
                                     (reset! launched-pod-atom launch-pod))]
       (testing "static namespace"
         (let [compute-cluster (kcc/->KubernetesComputeCluster nil "kubecompute" nil nil nil
-                                                              (atom {}) (atom {}) (atom {}) (atom {}) (atom {}) (atom nil)
+                                                              (atom {}) (atom {}) (atom {}) (atom {}) (atom nil)
                                                               {:kind :static :namespace "cook"} nil)
               task-metadata (task/TaskAssignmentResult->task-metadata (d/db conn)
                                                                       nil
@@ -52,7 +52,7 @@
 
       (testing "per-user namespace"
         (let [compute-cluster (kcc/->KubernetesComputeCluster nil "kubecompute" nil nil nil
-                                                              (atom {}) (atom {}) (atom {}) (atom {}) (atom {}) (atom nil)
+                                                              (atom {}) (atom {}) (atom {}) (atom {}) (atom nil)
                                                               {:kind :per-user} nil)
               task-metadata (task/TaskAssignmentResult->task-metadata (d/db conn)
                                                                       nil
@@ -65,7 +65,7 @@
   (with-redefs [api/launch-task (constantly nil)]
     (let [conn (tu/restore-fresh-database! "datomic:mem://test-generate-offers")
           compute-cluster (kcc/->KubernetesComputeCluster nil "kubecompute" nil nil nil
-                                                          (atom {}) (atom {}) (atom {}) (atom {}) (atom {}) (atom nil)
+                                                          (atom {}) (atom {}) (atom {}) (atom {}) (atom nil)
                                                           {:kind :static :namespace "cook"} nil)
           node-name->node {"nodeA" (tu/node-helper "nodeA" 1.0 1000.0)
                            "nodeB" (tu/node-helper "nodeB" 1.0 1000.0)
@@ -80,17 +80,17 @@
           _ (cc/launch-tasks compute-cluster nil [task-1
                                                   (tu/make-task-metadata job-ent-2 db compute-cluster)])
           task-1-id (-> task-1 :task-request :task-id)
-          pod-name->pod {"podA" (tu/pod-helper "podA" "nodeA"
-                                               {:cpus 0.25 :mem 250.0}
-                                               {:cpus 0.1 :mem 100.0})
-                         "podB" (tu/pod-helper "podB" "nodeA"
-                                               {:cpus 0.25 :mem 250.0})
-                         "podC" (tu/pod-helper "podC" "nodeB"
-                                               {:cpus 1.0 :mem 1100.0})
-                         task-1-id (tu/pod-helper task-1-id "my.fake.host"
-                                                  {:cpus 0.1 :mem 10.0})}
+          pod-name->pod {{:namespace "cook" :name "podA"} (tu/pod-helper "podA" "nodeA"
+                                                                         {:cpus 0.25 :mem 250.0}
+                                                                         {:cpus 0.1 :mem 100.0})
+                         {:namespace "cook" :name "podB"} (tu/pod-helper "podB" "nodeA"
+                                                                         {:cpus 0.25 :mem 250.0})
+                         {:namespace "cook" :name "podC"} (tu/pod-helper "podC" "nodeB"
+                                                                         {:cpus 1.0 :mem 1100.0})
+                         {:namespace "cook" :name task-1-id} (tu/pod-helper task-1-id "my.fake.host"
+                                                                            {:cpus 0.1 :mem 10.0})}
           offers (kcc/generate-offers compute-cluster node-name->node pod-name->pod
-                                      (controller/starting-pod-name->pod compute-cluster))]
+                                      (controller/starting-namespaced-pod-name->pod compute-cluster))]
       (is (= 4 (count offers)))
       (let [offer (first (filter #(= "nodeA" (:hostname %))
                                  offers))]
