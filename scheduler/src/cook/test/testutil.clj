@@ -23,6 +23,7 @@
             [clojure.string :as str]
             [clojure.tools.logging :as log]
             [cook.compute-cluster :as cc]
+            [cook.kubernetes.api :as kapi]
             [cook.mesos.mesos-compute-cluster :as mcc]
             [cook.plugins.definitions :refer (JobSubmissionValidator JobLaunchFilter)]
             [cook.rest.impersonation :refer (create-impersonation-middleware)]
@@ -472,7 +473,7 @@
                (when mem
                  (.putRequestsItem resources
                                    "memory"
-                                   (Quantity. (BigDecimal. ^double (* 1024 1024 mem))
+                                   (Quantity. (BigDecimal. ^double (* kapi/memory-multiplier mem))
                                               Quantity$Format/DECIMAL_SI)))
                (when cpus
                  (.putRequestsItem resources
@@ -498,9 +499,9 @@
       (.putAllocatableItem status "cpu" (Quantity. (BigDecimal. cpus)
                                                    Quantity$Format/DECIMAL_SI)))
     (when mem
-      (.putCapacityItem status "memory" (Quantity. (BigDecimal. (* 1024 1024 mem))
+      (.putCapacityItem status "memory" (Quantity. (BigDecimal. (* kapi/memory-multiplier mem))
                                                    Quantity$Format/DECIMAL_SI))
-      (.putAllocatableItem status "memory" (Quantity. (BigDecimal. (* 1024 1024 mem))
+      (.putAllocatableItem status "memory" (Quantity. (BigDecimal. (* kapi/memory-multiplier mem))
                                                       Quantity$Format/DECIMAL_SI)))
     (.setStatus node status)
     (.setName metadata node-name)

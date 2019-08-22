@@ -19,6 +19,10 @@
 
 (def ^ExecutorService kubernetes-executor (Executors/newFixedThreadPool 2))
 
+; Cook, Fenzo, and Mesos use MB for memory. Convert bytes from k8s to MB when passing to fenzo, and MB back to bytes
+; when submitting to k8s.
+(def memory-multiplier (* 1000 1000))
+
 (defn is-cook-scheduler-pod
   "Is this a cook pod? Uses some-> so is null-safe."
   [^V1Pod pod]
@@ -166,7 +170,7 @@
   "Converts a map of Kubernetes resources to a cook resource map {:mem double, :cpus double}"
   [m]
   {:mem (if (get m "memory")
-          (-> m (get "memory") to-double (/ (* 1024 1024)))
+          (-> m (get "memory") to-double (/ memory-multiplier))
           0.0)
    :cpus (if (get m "cpu")
            (-> m (get "cpu") to-double)
@@ -243,8 +247,8 @@
     (.setEnv container (into [] env))
     (.setImage container image)
 
-    (.putRequestsItem resources "memory" (double->quantity (* 1024 1024 mem)))
-    (.putLimitsItem resources "memory" (double->quantity (* 1024 1024 mem)))
+    (.putRequestsItem resources "memory" (double->quantity (* memory-multiplier mem)))
+    (.putLimitsItem resources "memory" (double->quantity (* memory-multiplier mem)))
     (.putRequestsItem resources "cpu" (double->quantity cpus))
     (.setResources container resources)
 
