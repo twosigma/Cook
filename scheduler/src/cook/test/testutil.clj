@@ -494,10 +494,14 @@
         metadata (V1ObjectMeta.)]
     (when cpus
       (.putCapacityItem status "cpu" (Quantity. (BigDecimal. cpus)
-                                                Quantity$Format/DECIMAL_SI)))
+                                                Quantity$Format/DECIMAL_SI))
+      (.putAllocatableItem status "cpu" (Quantity. (BigDecimal. cpus)
+                                                   Quantity$Format/DECIMAL_SI)))
     (when mem
       (.putCapacityItem status "memory" (Quantity. (BigDecimal. (* 1024 1024 mem))
-                                                   Quantity$Format/DECIMAL_SI)))
+                                                   Quantity$Format/DECIMAL_SI))
+      (.putAllocatableItem status "memory" (Quantity. (BigDecimal. (* 1024 1024 mem))
+                                                      Quantity$Format/DECIMAL_SI)))
     (.setStatus node status)
     (.setName metadata node-name)
     (.setMetadata node metadata)
