@@ -62,6 +62,7 @@
           (is (= "testuser" (:namespace @launched-pod-atom))))))))
 
 (deftest test-generate-offers
+  (tu/setup)
   (with-redefs [api/launch-task (constantly nil)]
     (let [conn (tu/restore-fresh-database! "datomic:mem://test-generate-offers")
           compute-cluster (kcc/->KubernetesComputeCluster nil "kubecompute" nil nil nil

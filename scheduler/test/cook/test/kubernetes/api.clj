@@ -74,8 +74,8 @@
 
       (let [resources (-> container .getResources)]
         (is (= 1.0 (-> resources .getRequests (get "cpu") .getNumber .doubleValue)))
-        (is (= (* 512.0 1024 1024) (-> resources .getRequests (get "memory") .getNumber .doubleValue)))
-        (is (= (* 512.0 1024 1024) (-> resources .getLimits (get "memory") .getNumber .doubleValue)))))))
+        (is (= (* 512.0 1000000) (-> resources .getRequests (get "memory") .getNumber .doubleValue)))
+        (is (= (* 512.0 1000000) (-> resources .getLimits (get "memory") .getNumber .doubleValue)))))))
 
 (deftest test-pod->synthesized-pod-state
   (testing "returns nil for empty pod"
