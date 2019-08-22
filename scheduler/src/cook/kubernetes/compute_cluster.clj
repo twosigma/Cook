@@ -46,35 +46,35 @@
             :reject-after-match-attempt true})
          node-name->available)))
 
-(defn states-to-scan
-  "Determine all states to scan by unioning task id's from expected and existing state maps. "
+(defn taskids-to-scan
+  "Determine all taskids to scan by unioning task id's from expected and existing taskid maps. "
   [{:keys [expected-state-map existing-state-map] :as kcc}]
   (->>
     (set/union (keys @expected-state-map) (keys @existing-state-map))
     (into #{})))
 
-(defn scan-states
-  "Scan all states. Note: May block or be slow due to rate limits."
+(defn scan-tasks
+  "Scan all taskids. Note: May block or be slow due to rate limits."
   [kcc]
-  (log/info "Starting state scan: " )
-  ; TODO Add in rate limits; only visit non-running/running states so fast.
-  ; TODO Add in maximum-visit frequency. Only visit a state once every XX seconds.
-  (let [states-to-scan (states-to-scan kcc)
-        _ (log/info "Doing state scan. Visiting" (count states-to-scan) "states")]
-    (doseq [state states-to-scan]
-      (controller/scan-process kcc state))))
+  (log/info "Starting taskid scan: " )
+  ; TODO Add in rate limits; only visit non-running/running task so fast.
+  ; TODO Add in maximum-visit frequency. Only visit a task once every XX seconds.
+  (let [taskids (taskids-to-scan kcc)
+        _ (log/info "Doing taskid scan. Visiting" (count taskids) "taskids")]
+    (doseq [taskid taskids]
+      (controller/scan-process kcc taskid))))
 
 (defn regular-scanner
-  "Trigger a channel that scans all states (shortly) after this function is invoked and on a regular interval."
+  "Trigger a channel that scans all taskids (shortly) after this function is invoked and on a regular interval."
   [kcc interval]
   (let [ch (async/chan (async/sliding-buffer 1))]
-    ; We scan on startup as we load the existing state in, so first scan should be scheduled for a while in the future.
+    ; We scan on startup as we load the existing taskid in, so first scan should be scheduled for a while in the future.
     (async/pipe (chime-ch (periodic-seq (-> interval time/from-now) interval)) ch)
     (tools/chime-at-ch ch
-                       (fn scan-states-function []
-                         (scan-states kcc)
-                         {:error-handler (fn [e]
-                                           (log/error e "Scan states failed"))}))))
+                       (fn scan-taskids-function []
+                         (scan-tasks kcc))
+                       {:error-handler (fn [e]
+                                         (log/error e "Scan taskids failed"))})))
 
 (defn make-cook-pod-watch-callback
   "Make a callback function that is passed to the pod-watch callback. This callback forwards changes to the cook.kubernetes.controller."
@@ -188,7 +188,6 @@
 
     ; Initialize the node watch path.
     (api/initialize-node-watch api-client current-nodes-atom)
-    ; TODO: Need to visit every state to refresh (i.e., do a single pass of state scanner)
 
     (reset! pool->fenzo-atom pool->fenzo)
 
