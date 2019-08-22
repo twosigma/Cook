@@ -179,7 +179,7 @@
                                    expected-state-dict))]
       (when-not (expected-state-equivalent? expected-state-dict new-expected-state-dict)
         (update-or-delete! expected-state-map pod-name new-expected-state-dict)
-        (log/info "Processing: WANT TO RECUR" new-expected-state-dict " ---- " existing-state-dict)
+        (log/info "Processing: WANT TO RECUR")
         (recur new-expected-state-dict existing-state-dict)
         ; TODO: Recur. We hay have changed the expected state, so we should reprocess it.
         ))))
