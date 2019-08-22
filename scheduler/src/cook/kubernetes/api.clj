@@ -70,6 +70,15 @@
   [^V1Pod pod]
   (-> pod .getMetadata .getName))
 
+(defn get-pod-namespaced-key
+  [^V1Pod pod]
+  {:namespace (-> pod
+                  .getMetadata
+                  .getNamespace)
+   :name (-> pod
+             .getMetadata
+             .getName)})
+
 (defn get-all-pods-in-kubernetes
   "Get all pods in kubernetes."
   [api-client]
@@ -85,13 +94,7 @@
                                                nil ; timeoutSeconds
                                                nil ; watch
                                                )
-        namespaced-pod-name->pod (pc/map-from-vals (fn [^V1Pod pod]
-                                                     {:namespace (-> pod
-                                                                     .getMetadata
-                                                                     .getNamespace)
-                                                      :name (-> pod
-                                                                .getMetadata
-                                                                .getName)})
+        namespaced-pod-name->pod (pc/map-from-vals get-pod-namespaced-key
                                                    (.getItems current-pods))]
     [current-pods namespaced-pod-name->pod]))
 

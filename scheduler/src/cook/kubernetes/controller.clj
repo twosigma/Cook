@@ -224,9 +224,7 @@
                       (some? (:pod launch-pod)))))
        (map (fn [[_ {:keys [launch-pod]}]]
               (let [{:keys [pod]} launch-pod]
-                [{:namespace (-> pod .getMetadata .getNamespace)
-                  :name (-> pod .getMetadata .getName)}
-                 pod])))
+                [(api/get-pod-namespaced-key pod) pod])))
        (into {})))
 
 (defn scan-process
