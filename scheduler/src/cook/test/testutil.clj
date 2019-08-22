@@ -34,11 +34,14 @@
             [mount.core :as mount]
             [plumbing.core :refer [mapply]]
             [qbits.jet.server :refer (run-jetty)]
-            [ring.middleware.params :refer (wrap-params)])
+            [ring.middleware.params :refer (wrap-params)]
+            [cook.scheduler.scheduler :as sched]
+            [cook.mesos.task :as task])
   (:import (java.util UUID)
            (org.apache.log4j ConsoleAppender Logger PatternLayout)
            (io.kubernetes.client.custom Quantity$Format Quantity)
-           (io.kubernetes.client.models V1Container V1ResourceRequirements V1Pod V1ObjectMeta V1PodSpec V1Node V1NodeStatus)))
+           (io.kubernetes.client.models V1Container V1ResourceRequirements V1Pod V1ObjectMeta V1PodSpec V1Node V1NodeStatus)
+           (com.netflix.fenzo SimpleAssignmentResult)))
 
 (defn create-dummy-mesos-compute-cluster
   [compute-cluster-name framework-id db-id driver-atom]
@@ -301,6 +304,34 @@
                                  sandbox-directory (assoc :instance/sandbox-directory sandbox-directory)
                                  mesos-start-time (assoc :instance/mesos-start-time mesos-start-time))])]
     (d/resolve-tempid (db conn) (:tempids val) id)))
+
+(defn make-task-request [job-ent]
+  "Makes a dummy task request for job-ent by calling scheduler/make-task-request"
+  (let [considerable->task-id (plumbing.core/map-from-keys (fn [_] (str (d/squuid)))
+                                                           [job-ent])
+        running-cotask-cache (atom (cache/fifo-cache-factory {} :threshold 1))]
+    (sched/make-task-request db
+                             job-ent
+                             :guuid->considerable-cotask-ids
+                             (util/make-guuid->considerable-cotask-ids considerable->task-id)
+                             :reserved-hosts []
+                             :running-cotask-cache running-cotask-cache
+                             :task-id (considerable->task-id job-ent))))
+
+(defn make-task-assignment-result
+  "Makes a dummy fenzo AssignmentResult for the given TaskRequest"
+  [task-request]
+  (SimpleAssignmentResult. [] nil task-request))
+
+(defn make-task-metadata
+  "Creates a task-metadata for the given job by calling task/TaskAssignmentResult->task-metadata"
+  [job db compute-cluster]
+  (let [task-request (make-task-request job)
+        task-assignment-result (make-task-assignment-result task-request)]
+    (task/TaskAssignmentResult->task-metadata db
+                                              nil
+                                              compute-cluster
+                                              task-assignment-result)))
 
 (defn create-dummy-group
   "Return the entity id for the created group"

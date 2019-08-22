@@ -214,6 +214,17 @@
         (swap! expected-state-map assoc pod-name new-expected-state-dict)
         (process kcc pod-name)))))
 
+(defn starting-pod-name->pod
+  "Returns a map from pod-name->pod for all tasks that we're attempting to send to kubernetes to start."
+  [{:keys [expected-state-map] :as kcc}]
+  (->> @expected-state-map
+       (filter (fn [[_ {:keys [expected-state launch-pod]}]]
+                 (and (= :expected/starting expected-state)
+                      (some? (:pod launch-pod)))))
+       (map (fn [[task-id {:keys [launch-pod]}]]
+              [task-id (:pod launch-pod)]))
+       (into {})))
+
 (defn scan-process
   "Special verison of process run during scanning. It grabs the lock before processing the pod."
   [{:keys [api-client existing-state-map expected-state-map] :as kcc} pod-name]
