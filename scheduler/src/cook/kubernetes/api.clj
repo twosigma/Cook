@@ -20,7 +20,7 @@
 
 ; Cook, Fenzo, and Mesos use MB for memory. Convert bytes from k8s to MB when passing to fenzo, and MB back to bytes
 ; when submitting to k8s.
-(def memory-multiplier 1000000)
+(def memory-multiplier (* 1000 1000))
 
 (defn is-cook-scheduler-pod
   "Is this a cook pod? Uses some-> so is null-safe."
