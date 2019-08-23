@@ -48,7 +48,10 @@
                                                                       (task-assignment-result-helper "testuser"))]
 
           (cc/launch-tasks compute-cluster [] [task-metadata])
-          (is (= "cook" (:namespace @launched-pod-atom)))))
+          (is (= "cook" (-> @launched-pod-atom
+                            :pod
+                            .getMetadata
+                            .getNamespace)))))
 
       (testing "per-user namespace"
         (let [compute-cluster (kcc/->KubernetesComputeCluster nil "kubecompute" nil nil nil
@@ -59,7 +62,10 @@
                                                                       compute-cluster
                                                                       (task-assignment-result-helper "testuser"))]
           (cc/launch-tasks compute-cluster [] [task-metadata])
-          (is (= "testuser" (:namespace @launched-pod-atom))))))))
+          (is (= "testuser" (-> @launched-pod-atom
+                            :pod
+                            .getMetadata
+                            .getNamespace))))))))
 
 (deftest test-generate-offers
   (with-redefs [api/launch-task (constantly nil)]
