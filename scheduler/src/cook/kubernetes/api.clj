@@ -74,6 +74,15 @@
   [^V1Pod pod]
   (-> pod .getMetadata .getName))
 
+(defn get-pod-namespaced-key
+  [^V1Pod pod]
+  {:namespace (-> pod
+                  .getMetadata
+                  .getNamespace)
+   :name (-> pod
+             .getMetadata
+             .getName)})
+
 (defn get-all-pods-in-kubernetes
   "Get all pods in kubernetes."
   [api-client]
@@ -89,31 +98,27 @@
                                                nil ; timeoutSeconds
                                                nil ; watch
                                                )
-        pod-name->pod (pc/map-from-vals (fn [^V1Pod pod]
-                                          (-> pod
-                                              .getMetadata
-                                              .getName))
-                                        (.getItems current-pods))]
-    [current-pods pod-name->pod]))
+        namespaced-pod-name->pod (pc/map-from-vals get-pod-namespaced-key
+                                                   (.getItems current-pods))]
+    [current-pods namespaced-pod-name->pod]))
 
 (defn initialize-pod-watch
   "Initialize the pod watch. This fills all-pods-atom with data and invokes the callback on pod changes."
-  [^ApiClient api-client all-pods-atom cook-pods-atom cook-pod-callback]
-  (let [[current-pods pod-name->pod] (get-all-pods-in-kubernetes api-client)
-        ; 3 callbacks;
+  [^ApiClient api-client all-pods-atom cook-pod-callback]
+  (let [[current-pods namespaced-pod-name->pod] (get-all-pods-in-kubernetes api-client)
+        ; 2 callbacks;
         callbacks
         [(make-atom-updater all-pods-atom) ; Update the set of all pods.
-         (partial cook-pod-callback-wrap (make-atom-updater cook-pods-atom)) ; Update the set of cook pods.
          (partial cook-pod-callback-wrap cook-pod-callback)] ; Invoke the cook-pod-callback if its a cook pod.
         old-all-pods @all-pods-atom]
-    (log/info "Processing pods" (keys pod-name->pod))
+    (log/info "Processing pods" (keys namespaced-pod-name->pod))
     ; We want to process all changes through the callback process.
     ; So compute the delta between the old and new and process those via the callbacks.
-    ; Note as a side effect, the callbacks mutate cook-pods-atom and all-pods-atom
-    (doseq [task (set/union (keys pod-name->pod) (keys old-all-pods))]
+    ; Note as a side effect, the callbacks mutate all-pods-atom
+    (doseq [task (set/union (keys namespaced-pod-name->pod) (keys old-all-pods))]
       (doseq [callback callbacks]
         (try
-          (callback task (get old-all-pods task) (get pod-name->pod task))
+          (callback task (get old-all-pods task) (get namespaced-pod-name->pod task))
           (catch Exception e
             (log/error e "Error while processing callback for" task)))))
 
@@ -129,7 +134,7 @@
             (log/error e "Error during watch"))
           (finally
             (.close watch)
-            (initialize-pod-watch api-client all-pods-atom cook-pods-atom cook-pod-callback))))))))
+            (initialize-pod-watch api-client all-pods-atom cook-pod-callback))))))))
 
 (defn initialize-node-watch
   "Initialize the node watch. This fills current-nodes-atom with data and invokes the callback on pod changes."
@@ -188,9 +193,9 @@
 
   When accounting for resources, we use resource requests to determine how much is used, not limits.
   See https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/#resource-requests-and-limits-of-pod-and-container"
-  [pod-name->pod]
+  [namespaced-pod-name->pod]
   (let [node-name->pods (group-by (fn [^V1Pod p] (-> p .getSpec .getNodeName))
-                                  (vals pod-name->pod))
+                                  (vals namespaced-pod-name->pod))
         node-name->requests (pc/map-vals (fn [pods]
                                            (->> pods
                                                 (map (fn [^V1Pod pod]
@@ -217,7 +222,7 @@
 
 (defn ^V1Pod task-metadata->pod
   "Given a task-request and other data generate the kubernetes V1Pod to launch that task."
-  [{:keys [task-id command container task-request hostname]}]
+  [namespace {:keys [task-id command container task-request hostname]}]
   (let [{:keys [resources]} task-request
         {:keys [mem cpus]} resources
         {:keys [docker]} container
@@ -237,6 +242,7 @@
         ]
     ; metadata
     (.setName metadata (str task-id))
+    (.setNamespace metadata namespace)
     (.setLabels metadata labels)
 
     ; container
@@ -361,7 +367,8 @@
   "Given a V1Pod, launch it."
   [api-client {:keys [launch-pod] :as expected-state-dict}]
   ;; TODO: make namespace configurable
-  (let [{:keys [pod namespace]} launch-pod]
+  (let [{:keys [pod]} launch-pod
+        namespace (-> pod .getMetadata .getNamespace)]
     ;; TODO: IF there's an error, log it and move on. We'll try again later.
     (if launch-pod
       (let [api (CoreV1Api. api-client)]

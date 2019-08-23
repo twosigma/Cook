@@ -214,15 +214,17 @@
         (swap! expected-state-map assoc pod-name new-expected-state-dict)
         (process kcc pod-name)))))
 
-(defn starting-pod-name->pod
-  "Returns a map from pod-name->pod for all tasks that we're attempting to send to kubernetes to start."
+(defn starting-namespaced-pod-name->pod
+  "Returns a map from {:namespace pod-namespace :name pod-name}->pod for all tasks that we're attempting to send to
+   kubernetes to start."
   [{:keys [expected-state-map] :as kcc}]
   (->> @expected-state-map
        (filter (fn [[_ {:keys [expected-state launch-pod]}]]
                  (and (= :expected/starting expected-state)
                       (some? (:pod launch-pod)))))
-       (map (fn [[task-id {:keys [launch-pod]}]]
-              [task-id (:pod launch-pod)]))
+       (map (fn [[_ {:keys [launch-pod]}]]
+              (let [{:keys [pod]} launch-pod]
+                [(api/get-pod-namespaced-key pod) pod])))
        (into {})))
 
 (defn scan-process
