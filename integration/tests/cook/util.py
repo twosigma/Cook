@@ -1251,7 +1251,7 @@ def max_node_cpus():
 
 def node_count():
     if using_mesos():
-        return len(get_mesos_state(retrieve_mesos_url)['slaves'])
+        return len(get_mesos_state(retrieve_mesos_url())['slaves'])
     elif using_kubernetes():
         return len(get_kubernetes_nodes())
     else:
