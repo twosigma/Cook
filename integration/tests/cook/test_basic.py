@@ -1243,7 +1243,7 @@ class CookTest(util.CookTest):
 
         try:
             host_to_job_uuid = {}
-            for hostname in hosts:
+            for hostname in hostnames:
                 constraints = [["HOSTNAME", "EQUALS", hostname]]
                 job_uuid, resp = util.submit_job(self.cook_url, constraints=constraints, name=self.current_name())
                 self.assertEqual(resp.status_code, 201, resp.text)
