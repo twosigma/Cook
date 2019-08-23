@@ -363,7 +363,8 @@
   "Given a V1Pod, launch it."
   [api-client {:keys [launch-pod] :as expected-state-dict}]
   ;; TODO: make namespace configurable
-  (let [{:keys [pod namespace]} launch-pod]
+  (let [{:keys [pod]} launch-pod
+        namespace (-> pod .getMetadata .getNamespace)]
     ;; TODO: IF there's an error, log it and move on. We'll try again later.
     (if launch-pod
       (let [api (CoreV1Api. api-client)]

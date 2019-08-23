@@ -159,8 +159,7 @@
         (controller/update-expected-state
           this
           (:task-id task-metadata)
-          {:expected-state :expected/starting :launch-pod {:pod (api/task-metadata->pod pod-namespace task-metadata)
-                                                           :namespace pod-namespace}}))))
+          {:expected-state :expected/starting :launch-pod {:pod (api/task-metadata->pod pod-namespace task-metadata)}}))))
 
   (kill-task [this task-id]
     (controller/update-expected-state this task-id {:expected-state :expected/killed}))
