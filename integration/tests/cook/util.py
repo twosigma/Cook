@@ -1316,7 +1316,9 @@ def mesos_hostnames_to_consider(cook_url, mesos_url):
     return [s['hostname'] for s in slaves]
 
 def kubernetes_hostnames_to_consider():
-    # TODO: support pools
+    # TODO: This should check a 'cook-pool' attribute on the node for the pool.
+    # Currently, pools are not supported on kubernetes, so it's fine to ignore for now.
+    # Once support is added, we should fix this function.
     nodes = get_kubernetes_nodes()
     hostnames = []
     for node in nodes:
