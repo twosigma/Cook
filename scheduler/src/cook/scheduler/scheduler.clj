@@ -727,7 +727,7 @@
   "Gets a list of offers from mesos. Decides what to do with them all--they should all
    be accepted or rejected at the end of the function."
   [conn ^TaskScheduler fenzo pool-name->pending-jobs-atom mesos-run-as-user
-   user->usage user->quota num-considerable compute-cluster offers rebalancer-reservation-atom pool-name]
+   user->usage user->quota num-considerable offers rebalancer-reservation-atom pool-name]
   (log/debug "In" pool-name "pool, invoked handle-resource-offers!")
   (let [offer-stash (atom nil)] ;; This is a way to ensure we never lose offers fenzo assigned if an error occurs in the middle of processing
     ;; TODO: It is possible to have an offer expire by mesos because we recycle it a bunch of times.
@@ -780,7 +780,9 @@
           (meters/mark! handle-resource-offer!-errors)
           (log/error t "In" pool-name "pool, error in match:" (ex-data t))
           (when-let [offers @offer-stash]
-            (cc/restore-offers compute-cluster pool-name offers))
+            ; Group the set of all offers by compute cluster and route them to that compute cluster for restoring.
+            (doseq [[compute-cluster offersubset] (group-by :compute-cluster offers)]
+              (cc/restore-offers compute-cluster pool-name offersubset)))
           ; if an error happened, it doesn't mean we need to penalize Fenzo
           true)))))
 
@@ -846,7 +848,7 @@
                       user->quota (quota/create-user->quota-fn (d/db conn) (if using-pools? pool-name nil))
                       matched-head? (handle-resource-offers! conn fenzo pool-name->pending-jobs-atom
                                                              mesos-run-as-user @user->usage-future user->quota
-                                                             num-considerable compute-cluster offers
+                                                             num-considerable offers
                                                              rebalancer-reservation-atom pool-name)]
                   (when (seq offers)
                     (reset! resources-atom (view-incubating-offers fenzo)))
