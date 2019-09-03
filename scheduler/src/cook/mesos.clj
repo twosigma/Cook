@@ -188,8 +188,7 @@
                                     (cook.scheduler.scheduler/cancelled-task-killer mesos-datomic-conn compute-cluster
                                                                                     cancelled-task-trigger-chan)
                                     (cook.mesos.heartbeat/start-heartbeat-watcher! mesos-datomic-conn mesos-heartbeat-chan)
-                                    (cook.rebalancer/start-rebalancer! {:compute-cluster compute-cluster
-                                                                        :config rebalancer-config
+                                    (cook.rebalancer/start-rebalancer! {:config rebalancer-config
                                                                         :conn mesos-datomic-conn
                                                                         :agent-attributes-cache agent-attributes-cache
                                                                         :pool-name->pending-jobs-atom pool-name->pending-jobs-atom
