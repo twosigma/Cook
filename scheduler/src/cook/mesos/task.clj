@@ -136,7 +136,9 @@
         executor (executor-key->executor executor-key)
         resources (util/job-ent->resources job-ent)
         group-uuid (util/job-ent->group-uuid job-ent)
+        instance-num (str (count (:job/instance job-ent)))
         environment (cond-> (assoc (util/job-ent->env job-ent)
+                              "COOK_INSTANCE_NUM" instance-num
                               "COOK_INSTANCE_UUID" task-id
                               "COOK_JOB_UUID" (-> job-ent :job/uuid str))
                             group-uuid (assoc "COOK_JOB_GROUP_UUID" (str group-uuid))
@@ -154,9 +156,7 @@
         data (.getBytes
                (if cook-executor?
                  (json/write-str {"command" (:job/command job-ent)})
-                 (pr-str
-                   ;;TODO this data is a race-condition
-                   {:instance (str (count (:job/instance job-ent)))}))
+                 (pr-str {:instance instance-num}))
                "UTF-8")]
     (when (and (= :executor/cook (:job/executor job-ent))
                (not= executor-key :cook-executor))

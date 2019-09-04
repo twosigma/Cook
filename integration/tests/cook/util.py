@@ -1453,9 +1453,7 @@ def using_mesos():
     return _get_compute_cluster_factory_fn() == 'cook.mesos.mesos-compute-cluster/factory-fn'
 
 def has_one_agent():
-    # TODO: Actually check the number of agents.
-    cook_url = retrieve_cook_url()
-    _wait_for_cook(cook_url)
-    init_cook_session(cook_url)
-    compute_clusters = settings(cook_url)['compute-clusters']
-    return compute_clusters[0]['config']['compute-cluster-name'] == 'minikube'
+    return node_count() == 1
+
+def supports_exit_code():
+    return using_kubernetes() or is_cook_executor_in_use()

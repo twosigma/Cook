@@ -2913,3 +2913,29 @@ class CookTest(util.CookTest):
                             in str(resp.content))
         finally:
             util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
+
+
+    @unittest.skipUnless(util.supports_exit_code() and not util.has_one_agent(), "Requires exit code support and multiple agents")
+    def test_cook_instance_num(self):
+        command = 'bash -c \'exit $(($COOK_INSTANCE_NUM + 1))\''
+        job_uuid, resp = util.submit_job(self.cook_url, command=command, max_retries=2)
+        try:
+            def query():
+                jobs = util.query_jobs(self.cook_url, True, uuid=[job_uuid]).json()
+                self.logger.info(f'Found jobs: {jobs}')
+                return jobs[0]
+            def predicate(job):
+                if job['status'] != 'completed':
+                    return False
+                for instance in job['instances']:
+                    if 'exit_code' not in instance:
+                        return False
+                return True
+            job = util.wait_until(query, predicate)
+            self.assertEqual(2, len(job['instances']), job)
+            exit_codes = [i['exit_code'] for i in job['instances']]
+            exit_codes.sort()
+            self.assertEqual([1, 2], exit_codes, job)
+        finally:
+            util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
+

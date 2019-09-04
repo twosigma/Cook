@@ -20,14 +20,6 @@ SCHEDULER_DIR="$( dirname ${DIR} )"
 
 NAME=cook-scheduler-${COOK_PORT}
 
-SCHEDULER_EXECUTOR_DIR=${SCHEDULER_DIR}/resources/public
-
-EXECUTOR_DIR="$(dirname ${SCHEDULER_DIR})/executor"
-EXECUTOR_NAME=cook-executor-local
-COOK_EXECUTOR_COMMAND="${EXECUTOR_DIR}/dist/${EXECUTOR_NAME}/${EXECUTOR_NAME}"
-SCHEDULER_EXECUTOR_DIR=${SCHEDULER_DIR}/resources/public
-
-${EXECUTOR_DIR}/bin/prepare-executor.sh local ${SCHEDULER_EXECUTOR_DIR}
 
 if [ "${COOK_ZOOKEEPER_LOCAL}" = false ] ; then
     COOK_ZOOKEEPER="${ZOOKEEPER_IP}:2181"
@@ -54,9 +46,6 @@ FLASK_APP=${INTEGRATION_DIR}/src/data_locality/service.py flask run -p 35847 &
 echo "Creating environment variables..."
 export COOK_DATOMIC_URI="${COOK_DATOMIC_URI}"
 export COOK_FRAMEWORK_ID="${COOK_FRAMEWORK_ID}"
-export COOK_EXECUTOR=""
-export COOK_EXECUTOR_COMMAND="${COOK_EXECUTOR_COMMAND}"
-export COOK_EXECUTOR_PORTION=1
 export COOK_ONE_USER_AUTH=$(whoami)
 export COOK_HOSTNAME="cook-scheduler-${COOK_PORT}"
 export COOK_LOG_FILE="log/cook-${COOK_PORT}.log"
