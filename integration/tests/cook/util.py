@@ -1249,6 +1249,14 @@ def max_node_cpus():
     else:
         raise RuntimeError('Unable to determine cluster max CPUs')
 
+def node_count():
+    if using_mesos():
+        return len(get_mesos_state(retrieve_mesos_url())['slaves'])
+    elif using_kubernetes():
+        return len(get_kubernetes_nodes())
+    else:
+        raise RuntimeError('Unable to determine number of nodes')
+
 def max_cpus():
     """Returns the maximum cpus we can submit that actually fits on a slave"""
     cook_url = retrieve_cook_url()
@@ -1294,9 +1302,9 @@ def are_pools_enabled():
     return len(active_pools(cook_url)[0]) > 1
 
 
-def hosts_to_consider(cook_url, mesos_url):
+def mesos_hostnames_to_consider(cook_url, mesos_url):
     """
-    Returns the hosts in the default pool, or all hosts if the cluster is not using pools
+    Returns the hostnames in the default pool, or all hosts if the cluster is not using pools
     """
     state = get_mesos_state(mesos_url)
     slaves = state['slaves']
@@ -1305,15 +1313,35 @@ def hosts_to_consider(cook_url, mesos_url):
     slaves = [s for s in slaves if s['attributes'].get(attribute_name, None) == pool] if pool else slaves
     num_to_log = min(len(slaves), 10)
     logging.info(f'First {num_to_log} hosts to consider: {json.dumps(slaves[:num_to_log], indent=2)}')
-    return slaves
+    return [s['hostname'] for s in slaves]
+
+def kubernetes_hostnames_to_consider():
+    # TODO: This should check a 'cook-pool' attribute on the node for the pool.
+    # Currently, pools are not supported on kubernetes, so it's fine to ignore for now.
+    # Once support is added, we should fix this function.
+    nodes = get_kubernetes_nodes()
+    hostnames = []
+    for node in nodes:
+        for address in node['status']['addresses']:
+            if address['type'] == 'Hostname':
+                hostnames.append(address['address'])
+    return hostnames
+
+def hostnames_to_consider(cook_url):
+    if using_mesos():
+        return mesos_hostnames_to_consider(cook_url, retrieve_mesos_url())
+    elif using_kubernetes():
+        return kubernetes_hostnames_to_consider()
+    else:
+        return 'Unable to retrieve hostnames to consider'
 
 
-def num_hosts_to_consider(cook_url, mesos_url):
+def num_hosts_to_consider(cook_url):
     """
     Returns the number of hosts in the default pool, or the
     total number of hosts if the cluster is not using pools
     """
-    num_hosts = len(hosts_to_consider(cook_url, mesos_url))
+    num_hosts = len(hostnames_to_consider(cook_url))
     logging.info(f'There are {num_hosts} hosts to consider')
     return num_hosts
 

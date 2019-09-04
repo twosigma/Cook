@@ -32,8 +32,6 @@ class CookTest(util.CookTest):
 
     def setUp(self):
         self.cook_url = type(self).cook_url
-        if util.using_mesos():
-            self.mesos_url = util.retrieve_mesos_url()
         self.logger = logging.getLogger(__name__)
         self.cors_origin = os.getenv('COOK_ALLOWED_ORIGIN', 'http://cors.example.com')
 
@@ -137,7 +135,7 @@ class CookTest(util.CookTest):
             pytest.skip(f'Cannot set max_retries to {retry_limit * 2}, configured maximum is {max_job_retries}')
         else:
             self.logger.debug(f'Cook executor retry limit is {retry_limit}')
-            num_hosts = len(util.get_mesos_state(self.mesos_url)['slaves'])
+            num_hosts = util.node_count()
             if retry_limit >= num_hosts:
                 pytest.skip(f'Skipping test as not enough agents to verify Mesos executor on subsequent '
                                   f'instances (agents = {num_hosts}, retry limit = {retry_limit})')
@@ -1236,7 +1234,7 @@ class CookTest(util.CookTest):
     @unittest.skipIf(util.has_ephemeral_hosts(), util.EPHEMERAL_HOSTS_SKIP_REASON)
     @pytest.mark.xfail
     def test_hostname_equals_job_constraint(self):
-        hosts = util.hosts_to_consider(self.cook_url, self.mesos_url)[:10]
+        hostnames = util.hostnames_to_consider(self.cook_url)[:10]
 
         bad_job_uuid, resp = util.submit_job(self.cook_url, constraints=[["HOSTNAME",
                                                                           "EQUALS",
@@ -1245,8 +1243,7 @@ class CookTest(util.CookTest):
 
         try:
             host_to_job_uuid = {}
-            for host in hosts:
-                hostname = host['hostname']
+            for hostname in hostnames:
                 constraints = [["HOSTNAME", "EQUALS", hostname]]
                 job_uuid, resp = util.submit_job(self.cook_url, constraints=constraints, name=self.current_name())
                 self.assertEqual(resp.status_code, 201, resp.text)
@@ -1620,7 +1617,7 @@ class CookTest(util.CookTest):
         self.logger.debug('instance: %s' % instance)
         try:
             # Get agent host/port
-            state = util.get_mesos_state(self.mesos_url)
+            state = util.get_mesos_state(util.retrieve_mesos_url())
             agent = [agent for agent in state['slaves']
                        if agent['hostname'] == instance['hostname']][0]
 
@@ -1719,7 +1716,7 @@ class CookTest(util.CookTest):
 
     @pytest.mark.xfail
     def test_unique_host_constraint(self):
-        num_hosts = util.num_hosts_to_consider(self.cook_url, self.mesos_url)
+        num_hosts = util.num_hosts_to_consider(self.cook_url)
         group = {'uuid': str(uuid.uuid4()),
                  'host-placement': {'type': 'unique'}}
         job_spec = {'group': group['uuid'], 'command': 'sleep 600'}
@@ -1787,7 +1784,7 @@ class CookTest(util.CookTest):
 
     @pytest.mark.xfail
     def test_balanced_host_constraint_cannot_place(self):
-        num_hosts = util.num_hosts_to_consider(self.cook_url, self.mesos_url)
+        num_hosts = util.num_hosts_to_consider(self.cook_url)
         if num_hosts > 10:
             # Skip this test on large clusters
             pytest.skip(f"Skipping test due to cluster size of {num_hosts} greater than 10")
@@ -1852,10 +1849,10 @@ class CookTest(util.CookTest):
         finally:
             util.kill_jobs(self.cook_url, uuids)
 
-    @unittest.skipIf(util.using_kubernetes(), 'Test loads state from mesos master')
     def test_balanced_host_constraint_can_place(self):
-        num_hosts = util.num_hosts_to_consider(self.cook_url, self.mesos_url)
-        self.assertLessEqual(2, num_hosts)
+        num_hosts = util.num_hosts_to_consider(self.cook_url)
+        if num_hosts < 2:
+            self.skipTest('Requires at least 2 hosts')
         minimum_hosts = min(int(os.getenv('COOK_TEST_BALANCED_CONSTRAINT_NUM_HOSTS', 3)), num_hosts)
         self.logger.info(f'Setting minimum hosts to {minimum_hosts}')
         group = {'uuid': str(uuid.uuid4()),
@@ -2755,17 +2752,17 @@ class CookTest(util.CookTest):
         job_uuid, resp = util.submit_job(self.cook_url, datasets=[{'dataset': {'foo': str(uuid.uuid4())}}])
         try:
             self.assertEqual(201, resp.status_code, resp.text)
-            hosts_to_consider = util.hosts_to_consider(self.cook_url, self.mesos_url)
-            target = hosts_to_consider[0]
-            costs = [{'node': target['hostname'], 'cost': 0.1, 'suitable': True}]
-            for host in hosts_to_consider[1:]:
-                costs.append({'node': host['hostname'], 'cost': 0.1, 'suitable': False})
+            hostnames_to_consider = util.hostnames_to_consider(self.cook_url)
+            target = hostnames_to_consider[0]
+            costs = [{'node': target, 'cost': 0.1, 'suitable': True}]
+            for hostname in hostnames_to_consider[1:]:
+                costs.append({'node': hostname, 'cost': 0.1, 'suitable': False})
             self.logger.info(f'Updating costs: {costs}')
             data_local_service = os.getenv('DATA_LOCAL_SERVICE')
             util.session.post(f'{data_local_service}/set-costs', json={str(job_uuid): costs})
             instance = util.wait_for_instance(self.cook_url, job_uuid)
             self.logger.info(f'Scheduled instance: {instance}')
-            self.assertEqual(instance['hostname'], target['hostname'])
+            self.assertEqual(instance['hostname'], target)
         finally:
             util.kill_jobs(self.cook_url, [job_uuid])
 
@@ -2777,10 +2774,10 @@ class CookTest(util.CookTest):
         job_uuid, resp = util.submit_job(self.cook_url, datasets=[{'dataset': {'foo': str(uuid.uuid4())}}])
         try:
             self.assertEqual(201, resp.status_code, resp.text)
-            slaves = util.get_mesos_state(self.mesos_url)['slaves']
+            hostnames = util.hostnames_to_consider(self.cook_url)
             costs = []
-            for slave in slaves:
-                costs.append({'node': slave['hostname'], 'cost': 0.1})
+            for hostname in hostnames:
+                costs.append({'node': hostname, 'cost': 0.1})
             data_local_service = os.getenv('DATA_LOCAL_SERVICE')
             util.session.post(f'{data_local_service}/set-costs', json={str(job_uuid): costs})
 
@@ -2795,8 +2792,8 @@ class CookTest(util.CookTest):
             cost_resp = util.session.get(f'{self.cook_url}/data-local/{str(job_uuid)}')
             self.assertEqual(200, cost_resp.status_code)
             expected_costs = {}
-            for slave in slaves:
-                expected_costs[slave['hostname']] = {'cost': 0.1, 'suitable': True}
+            for hostname in hostnames:
+                expected_costs[hostname] = {'cost': 0.1, 'suitable': True}
             self.assertEqual(expected_costs, cost_resp.json())
 
             util.wait_for_jobs(self.cook_url, [job_uuid], 'completed')
