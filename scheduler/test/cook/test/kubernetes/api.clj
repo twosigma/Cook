@@ -56,12 +56,13 @@
                        :task-request {:resources {:mem 512
                                                   :cpus 1.0}}
                        :hostname "kubehost"}
-        pod (api/task-metadata->pod "cook" task-metadata)]
+        pod (api/task-metadata->pod "cook" "testing-cluster" task-metadata)]
     (is (= "my-task" (-> pod .getMetadata .getName)))
     (is (= "cook" (-> pod .getMetadata .getNamespace)))
     (is (= "Never" (-> pod .getSpec .getRestartPolicy)))
     (is (= "kubehost" (-> pod .getSpec .getNodeName)))
     (is (= 1 (count (-> pod .getSpec .getContainers))))
+    (is (= {api/cook-pod-label "testing-cluster"} (-> pod .getMetadata .getLabels)))
 
     (let [^V1Container container (-> pod .getSpec .getContainers first)]
       (is (= "required-cook-job-container" (.getName container)))

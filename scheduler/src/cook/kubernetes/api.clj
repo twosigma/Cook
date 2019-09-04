@@ -25,8 +25,8 @@
 
 (defn is-cook-scheduler-pod
   "Is this a cook pod? Uses some-> so is null-safe."
-  [^V1Pod pod]
-  (some-> pod .getMetadata .getLabels (.get cook-pod-label)))
+  [^V1Pod pod compute-cluster-name]
+  (= compute-cluster-name (some-> pod .getMetadata .getLabels (.get cook-pod-label))))
 
 (defn make-atom-updater
   "Given a state atom, returns a callback that updates that state-atom when called with a key, prev item, and item."
@@ -42,8 +42,8 @@
   "A special wrapping function that, given a callback, key, prev-item, and item, will invoke the callback only
   if the item is a pod that is a cook scheduler pod. (THe idea is that (partial cook-pod-callback-wrap othercallback)
   returns a new callback that only invokes othercallback on cook pods."
-  [callback key prev-item item]
-  (when (or (is-cook-scheduler-pod prev-item) (is-cook-scheduler-pod item))
+  [callback compute-cluster-name key prev-item item]
+  (when (or (is-cook-scheduler-pod prev-item compute-cluster-name) (is-cook-scheduler-pod item compute-cluster-name))
     (callback key prev-item item)))
 
 (defn handle-watch-updates
@@ -104,12 +104,12 @@
 
 (defn initialize-pod-watch
   "Initialize the pod watch. This fills all-pods-atom with data and invokes the callback on pod changes."
-  [^ApiClient api-client all-pods-atom cook-pod-callback]
+  [^ApiClient api-client compute-cluster-name all-pods-atom cook-pod-callback]
   (let [[current-pods namespaced-pod-name->pod] (get-all-pods-in-kubernetes api-client)
         ; 2 callbacks;
         callbacks
         [(make-atom-updater all-pods-atom) ; Update the set of all pods.
-         (partial cook-pod-callback-wrap cook-pod-callback)] ; Invoke the cook-pod-callback if its a cook pod.
+         (partial cook-pod-callback-wrap cook-pod-callback compute-cluster-name)] ; Invoke the cook-pod-callback if its a cook pod.
         old-all-pods @all-pods-atom]
     (log/info "Processing pods" (keys namespaced-pod-name->pod))
     ; We want to process all changes through the callback process.
@@ -222,7 +222,7 @@
 
 (defn ^V1Pod task-metadata->pod
   "Given a task-request and other data generate the kubernetes V1Pod to launch that task."
-  [namespace {:keys [task-id command container task-request hostname]}]
+  [namespace compute-cluster-name {:keys [task-id command container task-request hostname]}]
   (let [{:keys [resources]} task-request
         {:keys [mem cpus]} resources
         {:keys [docker]} container
@@ -238,7 +238,7 @@
                      env))
                  (:environment command))
         resources (V1ResourceRequirements.)
-        labels {cook-pod-label "true"}
+        labels {cook-pod-label compute-cluster-name}
         ]
     ; metadata
     (.setName metadata (str task-id))
