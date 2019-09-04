@@ -166,7 +166,7 @@
         driver (reify msched/SchedulerDriver
                  (kill-task! [_ task] (swap! tasks-killed conj (:value task)))) ; Conjoin the task-id
         compute-cluster (testutil/fake-test-compute-cluster-with-driver conn uri driver)
-        fenzo (sched/make-fenzo-scheduler compute-cluster 1500 nil 0.8)
+        fenzo (sched/make-fenzo-scheduler 1500 nil 0.8)
         synced-agents-atom (atom [])
         sync-agent-sandboxes-fn (fn sync-agent-sandboxes-fn [hostname _]
                                   (swap! synced-agents-atom conj hostname))]

@@ -375,7 +375,7 @@
                         :slave-id {:value (str "slave-" (UUID/randomUUID))}
                         :hostname (str "host-" (UUID/randomUUID))}])
         framework-id (str "framework-id-" (UUID/randomUUID))
-        fenzo-maker #(sched/make-fenzo-scheduler nil 100000 nil 1)] ; The params are for offer declining, which should never happen
+        fenzo-maker #(sched/make-fenzo-scheduler 100000 nil 1)] ; The params are for offer declining, which should never happen
     (testing "Consume no schedule cases"
       (are [schedule offers] (= [] (:matches (sched/match-offer-to-schedule (db c) (fenzo-maker) schedule
                                                                             offers (atom {}) nil)))
@@ -929,14 +929,7 @@
   (with-redefs [completion/plugin completion/no-op]
     (let [uri "datomic:mem://test-handle-status-update"
           conn (restore-fresh-database! uri)
-          tasks-killed (atom #{})
-          driver (reify msched/SchedulerDriver
-                   (kill-task! [_ task] (swap! tasks-killed conj (:value task)))) ; Conjoin the task-id
-          compute-cluster (testutil/fake-test-compute-cluster-with-driver conn uri driver)
-          fenzo (sched/make-fenzo-scheduler compute-cluster 1500 nil 0.8)
-          synced-agents-atom (atom [])
-          sync-agent-sandboxes-fn (fn sync-agent-sandboxes-fn [hostname _]
-                                    (swap! synced-agents-atom conj hostname))]
+          fenzo (sched/make-fenzo-scheduler 1500 nil 0.8)]
       (testutil/setup-fake-test-compute-cluster conn)
 
 
@@ -1037,7 +1030,6 @@
                (sched/write-status-to-datomic conn (constantly fenzo))
                async/<!!)
           (is (nil? (mesos-start-time)))
-          (reset! synced-agents-atom [])
           (->> (make-dummy-status-update task-id :unknown :task-running)
                (sched/write-status-to-datomic conn (constantly fenzo))
                async/<!!)
@@ -1058,9 +1050,7 @@
                                   (reset! plugin-invocation-atom {:instance instance
                                                                   :job job})))
         conn (restore-fresh-database! "datomic:mem://test-instance-completion-plugin")
-        driver (reify msched/SchedulerDriver)
-        compute-cluster (testutil/fake-test-compute-cluster-with-driver conn "test-instance-completion-plugin" driver)
-        fenzo (sched/make-fenzo-scheduler compute-cluster 1500 nil 0.8)]
+        fenzo (sched/make-fenzo-scheduler 1500 nil 0.8)]
     (with-redefs [completion/plugin plugin-implementation]
       (testing "Mesos task death"
         (let [job-id (create-dummy-job conn :user "testuser" :job-state :job.state/running
@@ -1538,7 +1528,7 @@
                                       (reset! launched-job-ids-atom [])
                                       (let [conn (restore-fresh-database! uri)
                                             test-db (d/db conn)
-                                            ^TaskScheduler fenzo (sched/make-fenzo-scheduler compute-cluster 1500 nil 0.8)
+                                            ^TaskScheduler fenzo (sched/make-fenzo-scheduler 1500 nil 0.8)
                                             group-ent-id (create-dummy-group conn)
                                             get-uuid (fn [name] (get job-name->uuid name (d/squuid)))
                                             job-1 (d/entity test-db (create-dummy-job conn
@@ -1808,7 +1798,7 @@
                                                                            job-name->uuid {}}}]
                                         (reset! launched-tasks-atom [])
                                         (let [conn (restore-fresh-database! uri)
-                                              ^TaskScheduler fenzo (sched/make-fenzo-scheduler compute-cluster 1500
+                                              ^TaskScheduler fenzo (sched/make-fenzo-scheduler 1500
                                                                                                "cook.scheduler.data-locality/make-data-local-fitness-calculator"
                                                                                                0.8)
                                               group-ent-id (create-dummy-group conn)
