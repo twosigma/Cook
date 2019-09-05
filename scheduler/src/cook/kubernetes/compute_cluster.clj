@@ -159,7 +159,7 @@
         (controller/update-expected-state
           this
           (:task-id task-metadata)
-          {:expected-state :expected/starting :launch-pod {:pod (api/task-metadata->pod pod-namespace task-metadata)}}))))
+          {:expected-state :expected/starting :launch-pod {:pod (api/task-metadata->pod pod-namespace name task-metadata)}}))))
 
   (kill-task [this task-id]
     (controller/update-expected-state this task-id {:expected-state :expected/killed}))
@@ -180,7 +180,7 @@
       ; We set expected state first because initialize-pod-watch sets (and invokes callbacks on and reacts to) the expected and the gruadually discovere existing.
       (reset! expected-state-map (determine-expected-state-on-startup conn api-client name running-task-ents))
 
-      (api/initialize-pod-watch api-client all-pods-atom cook-pod-callback)
+      (api/initialize-pod-watch api-client name all-pods-atom cook-pod-callback)
       (if scan-frequency-seconds-config
         (regular-scanner this (time/seconds scan-frequency-seconds-config))
         (log/info "State scan disabled because no interval has been set")))
