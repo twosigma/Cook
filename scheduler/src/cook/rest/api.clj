@@ -987,43 +987,45 @@
 (defn fetch-instance-map
   "Converts the instance entity to a map representing the instance fields."
   [db instance]
-  (let [hostname (:instance/hostname instance)
-        task-id (:instance/task-id instance)
-        executor (:instance/executor instance)
-        sandbox-directory (:instance/sandbox-directory instance)
-        url-path (retrieve-url-path hostname task-id sandbox-directory)
-        start (:instance/start-time instance)
-        mesos-start (:instance/mesos-start-time instance)
-        end (:instance/end-time instance)
-        cancelled (:instance/cancelled instance)
-        reason (reason/instance-entity->reason-entity db instance)
-        exit-code (:instance/exit-code instance)
-        progress (:instance/progress instance)
-        progress-message (:instance/progress-message instance)
-        file-url (plugins/file-url file-plugin/plugin instance)]
-    (cond-> {:backfilled false ;; Backfill has been deprecated
-             :compute-cluster (fetch-compute-cluster-map db (:instance/compute-cluster instance))
-             :executor_id (:instance/executor-id instance)
-             :hostname hostname
-             :ports (vec (sort (:instance/ports instance)))
-             :preempted (:instance/preempted? instance false)
-             :slave_id (:instance/slave-id instance)
-             :status (name (:instance/status instance))
-             :task_id task-id}
-      executor (assoc :executor (name executor))
-      file-url (assoc :file_url file-url)
-      start (assoc :start_time (.getTime start))
-      mesos-start (assoc :mesos_start_time (.getTime mesos-start))
-      end (assoc :end_time (.getTime end))
-      cancelled (assoc :cancelled cancelled)
-      exit-code (assoc :exit_code exit-code)
-      url-path (assoc :output_url url-path)
-      reason (assoc :reason_code (:reason/code reason)
-                    :reason_string (:reason/string reason)
-                    :reason_mea_culpa (:reason/mea-culpa? reason))
-      progress (assoc :progress progress)
-      progress-message (assoc :progress_message progress-message)
-      sandbox-directory (assoc :sandbox_directory sandbox-directory))))
+  (timers/time!
+    (timers/timer ["cook-mesos" "internal" "fetch-instance-map"])
+    (let [hostname (:instance/hostname instance)
+          task-id (:instance/task-id instance)
+          executor (:instance/executor instance)
+          sandbox-directory (:instance/sandbox-directory instance)
+          url-path (retrieve-url-path hostname task-id sandbox-directory)
+          start (:instance/start-time instance)
+          mesos-start (:instance/mesos-start-time instance)
+          end (:instance/end-time instance)
+          cancelled (:instance/cancelled instance)
+          reason (reason/instance-entity->reason-entity db instance)
+          exit-code (:instance/exit-code instance)
+          progress (:instance/progress instance)
+          progress-message (:instance/progress-message instance)
+          file-url (plugins/file-url file-plugin/plugin instance)]
+      (cond-> {:backfilled false ;; Backfill has been deprecated
+               :compute-cluster (fetch-compute-cluster-map db (:instance/compute-cluster instance))
+               :executor_id (:instance/executor-id instance)
+               :hostname hostname
+               :ports (vec (sort (:instance/ports instance)))
+               :preempted (:instance/preempted? instance false)
+               :slave_id (:instance/slave-id instance)
+               :status (name (:instance/status instance))
+               :task_id task-id}
+              executor (assoc :executor (name executor))
+              file-url (assoc :file_url file-url)
+              start (assoc :start_time (.getTime start))
+              mesos-start (assoc :mesos_start_time (.getTime mesos-start))
+              end (assoc :end_time (.getTime end))
+              cancelled (assoc :cancelled cancelled)
+              exit-code (assoc :exit_code exit-code)
+              url-path (assoc :output_url url-path)
+              reason (assoc :reason_code (:reason/code reason)
+                            :reason_string (:reason/string reason)
+                            :reason_mea_culpa (:reason/mea-culpa? reason))
+              progress (assoc :progress progress)
+              progress-message (assoc :progress_message progress-message)
+              sandbox-directory (assoc :sandbox_directory sandbox-directory)))))
 
 (defn- docker-parameter->response-map
   [{:keys [docker.param/key docker.param/value]}]
