@@ -2604,7 +2604,7 @@
                  (timers/time!
                    (timers/timer ["cook-scheduler" "handler" "list-endpoint-duration"])
                    (let [job-ents (list-job-ents db false ctx)]
-                     (mapv (partial fetch-job-map-from-entity db) job-ents))))))
+                     (doall (mapv (partial fetch-job-map-from-entity db) job-ents)))))))
 
 ;;
 ;; /unscheduled_jobs
