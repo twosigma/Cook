@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.34.0] - 2019-09-11
+### Added
+- `COOK_INSTANCE_NUM` environment variable, from @pschorf
+- Metrics on instance fetch rates, from @scrosby
+- Capturing the time it takes to list jobs, from @scrosby
+
 ## [1.33.0] - 2019-08-07
 ### Added
 - Support for multiple submit plugins, from @pschorf
