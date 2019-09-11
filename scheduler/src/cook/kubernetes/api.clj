@@ -10,7 +10,7 @@
     (io.kubernetes.client.custom Quantity Quantity$Format)
     (io.kubernetes.client.models V1Pod V1Container V1Node V1Pod V1Container V1ResourceRequirements V1EnvVar
                                  V1ObjectMeta V1PodSpec V1PodStatus V1ContainerState V1DeleteOptionsBuilder
-                                 V1DeleteOptions)
+                                 V1DeleteOptions V1VolumeMount V1Volume V1EmptyDirVolumeSource)
     (io.kubernetes.client.util Watch)
     (java.util.concurrent Executors ExecutorService)))
 
@@ -134,7 +134,7 @@
             (log/error e "Error during watch"))
           (finally
             (.close watch)
-            (initialize-pod-watch api-client all-pods-atom cook-pod-callback))))))))
+            (initialize-pod-watch api-client compute-cluster-name all-pods-atom cook-pod-callback))))))))
 
 (defn initialize-node-watch
   "Initialize the node watch. This fills current-nodes-atom with data and invokes the callback on pod changes."
@@ -239,16 +239,40 @@
                  (:environment command))
         resources (V1ResourceRequirements.)
         labels {cook-pod-label compute-cluster-name}
+        volume-mount (V1VolumeMount.)
+        volume (V1Volume.)
+        empty-dir-volume-source (V1EmptyDirVolumeSource.)
+        fileserver-container (V1Container.)
+        fileserver-volume-mount (V1VolumeMount.)
         ]
     ; metadata
     (.setName metadata (str task-id))
     (.setNamespace metadata namespace)
     (.setLabels metadata labels)
 
+    ; volume
+    (.setName volume "user-home")
+    (.emptyDir volume empty-dir-volume-source)
+
+    ; volume-mount
+    (.setMountPath volume-mount (.getWorkingDir container))
+    (.setName volume-mount "user-home")
+
+    ; fileserver-volume-mount
+    (.setMountPath fileserver-volume-mount "/srv/www")
+    (.setName fileserver-volume-mount "user-home")
+
     ; container
     (.setName container cook-container-name-for-job)
     (.setCommand container
                  ["/bin/sh" "-c" (:value command)])
+    (.addVolumeMountsItem container volume-mount)
+
+    ; fileserver-container
+    (.setName fileserver-container "required-cook-fileserver-container") ;; TODO: Is this OK?
+    (.setCommand fileserver-container
+                 ["cd" "/srv/www" ";" ])
+    (.addVolumeMountsItem fileserver-container fileserver-volume-mount)
 
     (.setEnv container (into [] env))
     (.setImage container image)
@@ -260,8 +284,10 @@
 
     ; pod-spec
     (.addContainersItem pod-spec container)
+    (.addContainersItem pod-spec fileserver-container)
     (.setNodeName pod-spec hostname)
     (.setRestartPolicy pod-spec "Never")
+    (.addVolumesItem pod-spec volume)
 
     ; pod
     (.setMetadata pod metadata)
