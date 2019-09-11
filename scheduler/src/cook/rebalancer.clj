@@ -54,7 +54,7 @@
 ;;; multiple iterations.
 ;;;
 ;;; Within each cycle, the rebalancer takes the first n tasks in a global DRU queue, it then 'tries' to see if they can
-;;; (and should) preempt an existing running task. Only tasks over the share are eligible to be preempted. We only do
+;;; (and should) preempt any existing running tasks. Only tasks over the share are eligible to be preempted. We only do
 ;;; the preemption if the DRU change is sufficiently large. When we preempt, we determine exactly what tasks are to
 ;;; be killed. 
 ;;;
