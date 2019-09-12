@@ -12,15 +12,16 @@ from cook import terminal, http, metrics, version
 from cook.util import deep_merge, is_valid_uuid, read_lines, print_info, current_user, guard_no_cluster, check_positive
 
 
-def make_UUID():
-    """Make a UUID object that has a datestamp as its prefix. The datestamp being yymmddhh. This will cluster UUID's in a temporal manner, so jobs submitted on the same 
-       day or week will be clustered together in the datomic storage"""
-    baseuuid = uuid.uuid4()
+def make_temporal_uuid():
+    """Make a UUID object that has a datestamp as its prefix. The datestamp being yymmddhh. This will cluster
+    UUID's in a temporal manner, so jobs submitted on the same day or week will be clustered together in the
+    datomic storage"""
+    base_uuid = uuid.uuid4()
     now = datetime.datetime.now()
-    dateprefix = now.strftime("%y%m%d%H")
-    suffix = str(baseuuid)[8:]
-    newuuid = uuid.UUID(dateprefix+suffix)
-    return newuuid
+    date_prefix = now.strftime("%y%m%d%H")
+    suffix = str(base_uuid)[8:]
+    temporal_uuid = uuid.UUID(date_prefix+suffix)
+    return temporal_uuid
 
 def parse_raw_job_spec(job, r):
     """
@@ -191,7 +192,7 @@ def submit(clusters, args, _):
         # If the user did not also specify a group uuid, generate
         # one for them, and place the job(s) into the group
         if 'group' not in job_template:
-            job_template['group'] = str(make_UUID())
+            job_template['group'] = str(make_temporal_uuid())
 
         # The group name is specified on the group object
         group = {'name': job_template.pop('group-name'), 'uuid': job_template['group']}
@@ -222,7 +223,7 @@ def submit(clusters, args, _):
 
     for job in jobs:
         if not job.get('uuid'):
-            job['uuid'] = str(make_UUID())
+            job['uuid'] = str(make_temporal_uuid())
 
         if not job.get('name'):
             job['name'] = '%s_job' % current_user()
