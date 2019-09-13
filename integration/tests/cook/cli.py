@@ -386,17 +386,6 @@ def wait_for_output_file(cook_url, job_uuid, name):
     response = util.wait_until(query, predicate)
     return response
 
-def make_temporal_uuid():
-    """Make a UUID object that has a datestamp as its prefix. The datestamp being yymmddhh. This will cluster
-    UUID's in a temporal manner, so jobs submitted on the same day or week will be clustered together in the
-    datomic storage"""
-    base_uuid = uuid.uuid4()
-    now = datetime.datetime.now()
-    date_prefix = now.strftime("%y%m%d%H")
-    suffix = str(base_uuid)[8:]
-    temporal_uuid = uuid.UUID(date_prefix+suffix)
-    return temporal_uuid
-
 def usage(user, cook_url, usage_flags='', flags=None):
     """Invokes the usage subcommand"""
     args = f'usage --user {user} --json {usage_flags}'

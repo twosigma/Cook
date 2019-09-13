@@ -90,7 +90,7 @@ class CookCliTest(util.CookTest):
         cp, jobs = cli.show_jobs(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(3, len(jobs))
-        cp, uuids = cli.submit_stdin(['ls', 'ls', 'ls'], self.cook_url, submit_flags='--uuid %s' % cli.make_temporal_uuid())
+        cp, uuids = cli.submit_stdin(['ls', 'ls', 'ls'], self.cook_url, submit_flags='--uuid %s' % util.make_temporal_uuid())
         self.assertEqual(1, cp.returncode, cp.stderr)
         self.assertIn('cannot specify multiple subcommands with a single UUID', cli.decode(cp.stderr))
 
@@ -107,7 +107,7 @@ class CookCliTest(util.CookTest):
         self.assertEqual('completed', jobs[2]['status'])
 
     def test_error_on_invalid_config_path(self):
-        cp, uuids = cli.submit('ls', flags='--config /bogus/path/%s' % cli.make_temporal_uuid())
+        cp, uuids = cli.submit('ls', flags='--config /bogus/path/%s' % util.make_temporal_uuid())
         self.assertEqual(1, cp.returncode, cp.stderr)
 
     def test_specifying_cluster_name_explicitly(self):
@@ -159,7 +159,7 @@ class CookCliTest(util.CookTest):
             self.assertIn('must specify at least one cluster', cli.decode(cp.stderr))
 
     def test_submit_specify_fields(self):
-        juuid = cli.make_temporal_uuid()
+        juuid = util.make_temporal_uuid()
         name = 'foo'
         priority = 32
         max_retries = 12
@@ -182,7 +182,7 @@ class CookCliTest(util.CookTest):
 
     def test_submit_raw(self):
         command = 'ls'
-        juuid = cli.make_temporal_uuid()
+        juuid = util.make_temporal_uuid()
         name = 'foo'
         priority = 32
         max_retries = 12
@@ -278,10 +278,10 @@ class CookCliTest(util.CookTest):
         self.assertLess(elapsed_time_2, elapsed_time)
 
     def test_query_invalid_uuid(self):
-        cp = cli.show([cli.make_temporal_uuid()], self.cook_url)
+        cp = cli.show([util.make_temporal_uuid()], self.cook_url)
         self.assertEqual(1, cp.returncode, cp.stderr)
         self.assertIn('No matching data found', cli.stdout(cp))
-        cp = cli.wait([cli.make_temporal_uuid()], self.cook_url)
+        cp = cli.wait([util.make_temporal_uuid()], self.cook_url)
         self.assertEqual(1, cp.returncode, cp.stderr)
         self.assertIn('No matching data found', cli.stdout(cp))
 
@@ -425,7 +425,7 @@ class CookCliTest(util.CookTest):
         self.assertEqual(f'{cli.command_prefix()}{desired_command}', jobs[0]['command'])
 
     def test_list_no_matching_jobs(self):
-        cp = cli.jobs(self.cook_url, '--name %s' % cli.make_temporal_uuid())
+        cp = cli.jobs(self.cook_url, '--name %s' % util.make_temporal_uuid())
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertIn('No matching running jobs', cli.stdout(cp))
         self.assertIn(f'found in {self.cook_url}.', cli.stdout(cp))
@@ -440,7 +440,7 @@ class CookCliTest(util.CookTest):
         return cp, jobs
 
     def test_list_by_state(self):
-        name = f'{self.current_name()}_{cli.make_temporal_uuid()}'
+        name = f'{self.current_name()}_{util.make_temporal_uuid()}'
 
         # Submit a job that will never run
         raw_job = {'command': 'ls', 'name': name, 'constraints': [['HOSTNAME', 'EQUALS', 'will not get scheduled']]}
@@ -573,7 +573,7 @@ class CookCliTest(util.CookTest):
         self.assertIn('"" is not a valid date / time string', cli.decode(cp.stderr))
 
     def test_list_with_time_ranges(self):
-        name = str(cli.make_temporal_uuid())
+        name = str(util.make_temporal_uuid())
         cp, uuids = cli.submit('ls', self.cook_url, submit_flags=f'--name {name}')
         self.assertEqual(0, cp.returncode, cp.stderr)
         user = util.get_user(self.cook_url, uuids[0])
@@ -626,7 +626,7 @@ class CookCliTest(util.CookTest):
         job_uuids = []
         try:
             user = None
-            name = f'{self.current_name()}_{cli.make_temporal_uuid()}'
+            name = f'{self.current_name()}_{util.make_temporal_uuid()}'
 
             # Submit a long-running job in each pool
             for pool in pools:
@@ -697,7 +697,7 @@ class CookCliTest(util.CookTest):
             cli.kill(uuids, self.cook_url)
 
     def test_ssh_invalid_uuid(self):
-        cp = cli.ssh(cli.make_temporal_uuid(), self.cook_url)
+        cp = cli.ssh(util.make_temporal_uuid(), self.cook_url)
         self.assertEqual(1, cp.returncode, cp.stdout)
         self.assertIn('No matching data found', cli.decode(cp.stderr))
 
@@ -713,7 +713,7 @@ class CookCliTest(util.CookTest):
         self.assertIn('There is more than one match for the given uuid', cli.decode(cp.stderr))
 
     def test_ssh_group_uuid(self):
-        group_uuid = cli.make_temporal_uuid()
+        group_uuid = util.make_temporal_uuid()
         cp, uuids = cli.submit('ls', self.cook_url, submit_flags=f'--group {group_uuid}')
         self.assertEqual(0, cp.returncode, cp.stderr)
         cp = cli.ssh(group_uuid, self.cook_url)
@@ -762,7 +762,7 @@ class CookCliTest(util.CookTest):
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual('\n'.join([str(i) for i in range(1, 101)]) + '\n', cli.decode(cp.stdout))
         # Ask for a file that doesn't exist
-        cp = cli.tail(uuids[0], cli.make_temporal_uuid(), self.cook_url)
+        cp = cli.tail(uuids[0], util.make_temporal_uuid(), self.cook_url)
         self.assertEqual(1, cp.returncode, cp.stderr)
         self.assertIn('file was not found', cli.decode(cp.stderr))
 
@@ -849,7 +849,7 @@ class CookCliTest(util.CookTest):
         self.assertEqual('', cli.decode(cp.stdout))
 
     def test_tail_default_path(self):
-        text = str(cli.make_temporal_uuid())
+        text = str(util.make_temporal_uuid())
         cp, uuids = cli.submit(f'echo {text}', self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
         util.wait_for_job(self.cook_url, uuids[0], 'completed')
@@ -869,7 +869,7 @@ class CookCliTest(util.CookTest):
         self.assertEqual(0, cp.returncode, cli.decode(cp.stderr))
         self.assertEqual('hello\n', cli.decode(cp.stdout))
         # Tailing a file that doesn't exist should fail
-        path = cli.make_temporal_uuid()
+        path = util.make_temporal_uuid()
         cp = cli.tail(uuids[0], path, self.cook_url)
         self.assertEqual(1, cp.returncode, cli.decode(cp.stderr))
         self.assertIn('file was not found', cli.decode(cp.stderr))
@@ -1078,8 +1078,8 @@ def dummy_tail_text(instance, sandbox_dir, path, offset=None, length=None):
 
         # User-defined plugin to produce dummy files in the sandbox
         with tempfile.NamedTemporaryFile(suffix='.py', delete=True) as temp:
-            path1 = str(cli.make_temporal_uuid())
-            path2 = str(cli.make_temporal_uuid())
+            path1 = str(util.make_temporal_uuid())
+            path2 = str(util.make_temporal_uuid())
             plugin_code = f"""
 def dummy_ls_entries(_, __, ___):
     return [
@@ -1202,7 +1202,7 @@ def dummy_ls_entries(_, __, ___):
 
     def test_kill_fails_with_duplicate_uuids(self):
         # Duplicate job and group uuid
-        duplicate_uuid = cli.make_temporal_uuid()
+        duplicate_uuid = util.make_temporal_uuid()
         cp, uuids = cli.submit('ls', self.cook_url, submit_flags=f'--uuid {duplicate_uuid} --group {duplicate_uuid}')
         self.assertEqual(0, cp.returncode, cp.stderr)
         cp = cli.kill(uuids, self.cook_url)
@@ -1295,7 +1295,7 @@ def dummy_ls_entries(_, __, ___):
 
     def test_kill_group(self):
         # Submit a group with one job
-        group_uuid = cli.make_temporal_uuid()
+        group_uuid = util.make_temporal_uuid()
         cp, uuids = cli.submit('sleep 60', self.cook_url, submit_flags=f'--group {group_uuid}')
         self.assertEqual(0, cp.returncode, cp.stderr)
 
@@ -1315,7 +1315,7 @@ def dummy_ls_entries(_, __, ___):
         self.assertEqual('completed', jobs[0]['status'])
 
     def test_kill_bogus_uuid(self):
-        cp = cli.kill([cli.make_temporal_uuid()], self.cook_url)
+        cp = cli.kill([util.make_temporal_uuid()], self.cook_url)
         self.assertEqual(1, cp.returncode, cp.stderr)
         self.assertIn(f'No matching data found', cli.stdout(cp))
 
@@ -1492,7 +1492,7 @@ def dummy_ls_entries(_, __, ___):
         self.assertEqual(sorted(uuids), sorted(groups[0]['jobs']))
 
         # Group name and group uuid
-        group_uuid = str(cli.make_temporal_uuid())
+        group_uuid = str(util.make_temporal_uuid())
         cp, uuids = cli.submit_stdin(['ls', 'ls'], self.cook_url, submit_flags=f'--group-name bar --group {group_uuid}')
         self.assertEqual(0, cp.returncode, cp.stderr)
         _, groups = cli.show_groups([group_uuid], self.cook_url)
@@ -1650,7 +1650,7 @@ def dummy_ls_entries(_, __, ___):
         self.assertIn('You cannot supply entity references both as arguments and from stdin', cli.decode(cp.stderr))
 
     def test_jobs_one_per_line(self):
-        name = cli.make_temporal_uuid()
+        name = util.make_temporal_uuid()
         cp, uuids = cli.submit_stdin(['ls', 'ls', 'ls'], self.cook_url, submit_flags=f'--name {name}')
         self.assertEqual(0, cp.returncode, cp.stderr)
         user = util.get_user(self.cook_url, uuids[0])
@@ -1664,7 +1664,7 @@ def dummy_ls_entries(_, __, ___):
         self.assertIn('not allowed with argument', cli.decode(cp.stderr))
 
     def test_piping_from_jobs_to_kill_show_wait(self):
-        name = cli.make_temporal_uuid()
+        name = util.make_temporal_uuid()
         num_jobs = 101
 
         # Submit a batch of jobs
@@ -1727,7 +1727,7 @@ def dummy_ls_entries(_, __, ___):
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual('\n'.join([str(i) for i in range(1, 11)]) + '\n', cli.decode(cp.stdout))
         # Ask for a file that doesn't exist
-        cp = cli.cat(uuids[0], cli.make_temporal_uuid(), self.cook_url)
+        cp = cli.cat(uuids[0], util.make_temporal_uuid(), self.cook_url)
         self.assertEqual(1, cp.returncode, cp.stderr)
 
     def test_cat_no_newlines(self):
@@ -1782,12 +1782,12 @@ def dummy_ls_entries(_, __, ___):
         self.assertIn('error: argument target-entity', cli.decode(cp.stderr))
 
     def test_cat_empty_path(self):
-        cp = cli.cat(cli.make_temporal_uuid(), '""', self.cook_url)
+        cp = cli.cat(util.make_temporal_uuid(), '""', self.cook_url)
         self.assertEqual(2, cp.returncode, cp.stderr)
         self.assertIn('error: argument path', cli.decode(cp.stderr))
 
     def test_cat_group_uuid(self):
-        group_uuid = cli.make_temporal_uuid()
+        group_uuid = util.make_temporal_uuid()
         cp, uuids = cli.submit('ls', self.cook_url, submit_flags=f'--group {group_uuid}')
         self.assertEqual(0, cp.returncode, cp.stderr)
         cp = cli.cat(group_uuid, 'stdout', self.cook_url)
@@ -1795,7 +1795,7 @@ def dummy_ls_entries(_, __, ___):
         self.assertIn('You provided a job group uuid', cli.decode(cp.stderr))
 
     def test_cat_bogus_uuid(self):
-        bogus_uuid = cli.make_temporal_uuid()
+        bogus_uuid = util.make_temporal_uuid()
         cp = cli.cat(bogus_uuid, 'stdout', self.cook_url)
         self.assertEqual(1, cp.returncode, cp.stdout)
         self.assertIn('No matching data found', cli.decode(cp.stderr))
@@ -1891,7 +1891,7 @@ def dummy_cat_text(_, __, ___):
         uuid_3 = uuids[0]
 
         # Submit grouped jobs
-        guuid_1 = cli.make_temporal_uuid()
+        guuid_1 = util.make_temporal_uuid()
         cp, uuids = cli.submit_stdin([command, command, command], self.cook_url,
                                      submit_flags=f'--group-name foo --group {guuid_1} --cpus 0.1 --mem 16')
         self.assertEqual(0, cp.returncode, cp.stderr)
@@ -1899,8 +1899,8 @@ def dummy_cat_text(_, __, ___):
         uuid_4, uuid_5, uuid_6 = uuids
 
         # Submit grouped jobs with a custom application
-        guuid_2 = cli.make_temporal_uuid()
-        custom_application = str(cli.make_temporal_uuid())
+        guuid_2 = util.make_temporal_uuid()
+        custom_application = str(util.make_temporal_uuid())
         cp, uuids = cli.submit_stdin([command, command, command], self.cook_url,
                                      submit_flags='--group-name qux '
                                                   f'--group {guuid_2} '
@@ -2069,7 +2069,7 @@ def dummy_cat_text(_, __, ___):
         self.assertIn(" are not valid pools in ", cli.decode(cp.stderr))
 
     def test_avoid_exit_on_connection_error(self):
-        name = cli.make_temporal_uuid()
+        name = util.make_temporal_uuid()
         cp, uuids = cli.submit('ls', self.cook_url, submit_flags=f'--name {name}')
         self.assertEqual(0, cp.returncode, cp.stderr)
         user = util.get_user(self.cook_url, uuids[0])
@@ -2112,7 +2112,7 @@ def dummy_cat_text(_, __, ___):
                 self.assertEqual(1, cp.returncode, cp.stderr)
                 self.assertIn(f'{pool_name} is not accepting job submissions', cli.stdout(cp))
         # Try submitting to a pool that doesn't exist
-        cp, uuids = cli.submit('ls', self.cook_url, submit_flags=f'--pool {cli.make_temporal_uuid()}')
+        cp, uuids = cli.submit('ls', self.cook_url, submit_flags=f'--pool {util.make_temporal_uuid()}')
         self.assertEqual(1, cp.returncode, cp.stderr)
         self.assertIn('is not a valid pool name', cli.stdout(cp))
 
@@ -2210,8 +2210,8 @@ def dummy_cat_text(_, __, ___):
             util.kill_jobs(self.cook_url, uuids)
 
     def test_submit_labels(self):
-        label_value_1 = str(cli.make_temporal_uuid())
-        label_value_2 = str(cli.make_temporal_uuid())
+        label_value_1 = str(util.make_temporal_uuid())
+        label_value_2 = str(util.make_temporal_uuid())
         cp, uuids = cli.submit('ls', self.cook_url,
                                submit_flags=f'--label label1={label_value_1} --label label2={label_value_2}')
         self.assertEqual(0, cp.returncode, cp.stderr)
