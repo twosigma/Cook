@@ -1,4 +1,3 @@
-import datetime
 import json
 import logging
 import os
@@ -7,7 +6,6 @@ import re
 import shlex
 import subprocess
 import tempfile
-import uuid
 from fcntl import fcntl, F_GETFL, F_SETFL
 
 from tests.cook import util
@@ -385,6 +383,7 @@ def wait_for_output_file(cook_url, job_uuid, name):
 
     response = util.wait_until(query, predicate)
     return response
+
 
 def usage(user, cook_url, usage_flags='', flags=None):
     """Invokes the usage subcommand"""
