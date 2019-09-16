@@ -48,6 +48,7 @@
             [datomic.api :as d :refer [q]]
             [liberator.core :as liberator]
             [liberator.util :refer [combine]]
+            [liberator.representation]
             [me.raynes.conch :as sh]
             [mesomatic.scheduler]
             [metatransaction.core :refer [db]]
@@ -98,12 +99,15 @@
       (log/error e "Error while logging in render-error")))
   {:error error})
 
-(def cook-liberator-attrs
+(defn cook-liberator-attrs
+  [response-headers]
   {:available-media-types ["application/json"]
    ;; necessary to play well with as-response below
    :handle-no-content (fn [ctx] "No content.")
    ;; Don't serialize the response; leave that to compojure-api
-   :as-response (fn [data ctx] (combine {:body data} ctx))
+   :as-response (fn [data ctx]
+                  (-> (combine {:body data} ctx)
+                      (update :headers merge response-headers)))
    :handle-forbidden render-error
    :handle-malformed render-error
    :handle-not-found render-error
@@ -111,8 +115,10 @@
    :handle-unprocessable-entity render-error})
 
 (defn base-cook-handler
-  [resource-attrs]
-  (pc/mapply liberator/resource (merge cook-liberator-attrs resource-attrs)))
+  ([resource-attrs]
+   (base-cook-handler resource-attrs {}))
+  ([resource-attrs response-headers]
+   (pc/mapply liberator/resource (merge (cook-liberator-attrs response-headers) resource-attrs))))
 
 ;;
 ;; /rawscheduler
@@ -1409,7 +1415,9 @@
                     {:authentication-scheme auth-scheme
                      :commit @cook.util/commit
                      :start-time start-up-time
-                     :version @cook.util/version})})))
+                     :version @cook.util/version})}
+      {"x-foo" "bar"
+       "x-baz" "qux"})))
 
 ;;; On GET; use repeated job argument
 (defn read-jobs-handler-deprecated
@@ -2945,6 +2953,7 @@
                                 400 {:description "One or more of the jobs were incorrectly specified."}
                                 409 {:description "One or more of the jobs UUIDs are already in use."}}
                     :handler (create-jobs-handler conn task-constraints gpu-enabled? is-authorized-fn)}}))
+
         (c-api/context
           "/info" []
           (c-api/resource
