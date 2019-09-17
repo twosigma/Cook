@@ -575,6 +575,8 @@
 
 (defn task->feature-vector
   "Vector of comparable features of a task.
+   We use :instance/start-time, because this sort sees all running and waiting jobs for a user.
+      (We need running jobs for DRU calculation.) We want the running jobs to occur first.
    Last two elements are aribitary tie breakers.
    Use :db/id because they guarantee uniqueness for different entities
    (:db/id task) is not sufficient because synthetic task entities don't have :db/id
