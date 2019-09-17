@@ -390,6 +390,16 @@ def docker_image():
 def get_default_cpus():
     return float(os.getenv('COOK_DEFAULT_JOB_CPUS', 1.0))
 
+def make_temporal_uuid():
+    """Make a UUID object that has a datestamp as its prefix. The datestamp being yymmddhh. This will cluster
+    UUID's in a temporal manner, so jobs submitted on the same day or week will be clustered together in the
+    datomic storage"""
+    base_uuid = uuid.uuid4()
+    now = datetime.now()
+    date_prefix = now.strftime("%y%m%d%H")
+    suffix = str(base_uuid)[8:]
+    temporal_uuid = uuid.UUID(date_prefix+suffix)
+    return temporal_uuid
 
 def minimal_job(**kwargs):
     job = {
@@ -1457,3 +1467,4 @@ def has_one_agent():
 
 def supports_exit_code():
     return using_kubernetes() or is_cook_executor_in_use()
+
