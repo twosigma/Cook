@@ -36,11 +36,11 @@ class CookCliTest(util.CookTest):
         cp, uuids = cli.submit('ls', self.cook_url)
         # UUID is temporal based, with the first two digits being the year. So, set it up so that it will pass
         # as long as its the year 2019, 2020, 2021, and 2022. In 2023, this will break. We can edit the test then.
-        self.assertTrue(uuids[0][0:2] in [f"{i:02d}" for i in range(19,24)],"Illegal UUID in "+str(uuids)) #Year
+        self.assertTrue(uuids[0][0:2] in [f"{i:02d}" for i in range(19, 24)], "Illegal UUID in " + str(uuids))  # Year
         # Check that the other fields are in a valid range.
-        self.assertTrue(uuids[0][2:4] in [f"{i:02d}" for i in range(0,13)],"Illegal UUID in "+str(uuids)) #Month
-        self.assertTrue(uuids[0][4:6] in [f"{i:02d}" for i in range(0,32)],"Illegal UUID in "+str(uuids)) #Day
-        self.assertTrue(uuids[0][6:8] in [f"{i:02d}" for i in range(0,25)],"Illegal UUID in "+str(uuids)) #Hour
+        self.assertTrue(uuids[0][2:4] in [f"{i:02d}" for i in range(0, 13)], "Illegal UUID in " + str(uuids))  # Month
+        self.assertTrue(uuids[0][4:6] in [f"{i:02d}" for i in range(0, 32)], "Illegal UUID in " + str(uuids))  # Day
+        self.assertTrue(uuids[0][6:8] in [f"{i:02d}" for i in range(0, 25)], "Illegal UUID in " + str(uuids))  # Hour
 
     def test_basic_submit_and_wait(self):
         cp, uuids = cli.submit('ls', self.cook_url)
