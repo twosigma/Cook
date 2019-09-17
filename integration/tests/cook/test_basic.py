@@ -2867,7 +2867,7 @@ class CookTest(util.CookTest):
             util.kill_jobs(self.cook_url, job_uuids, assert_response=False)
 
 
-    @unittest.skipUnless(util.docker_tests_enabled() and not util.using_kubernetes(), "Requires docker support. Not currently supported on kubernetes.")
+    @unittest.skipUnless(util.docker_tests_enabled(), "Requires docker support.")
     def test_default_container_volumes(self):
         settings = util.settings(self.cook_url)
         default_volumes = util.get_in(settings, 'container-defaults', 'volumes')
@@ -2880,24 +2880,23 @@ class CookTest(util.CookTest):
         file_name = str(util.make_temporal_uuid())
         container_file = os.path.join(default_volume['container-path'], file_name)
         host_file = os.path.join(default_volume['host-path'], file_name)
-        job_uuid, resp = util.submit_job(self.cook_url,
-                                         command=f'echo "test_default_container_volumes" >> {container_file}',
-                                         executor='mesos',
-                                         container={'type': 'DOCKER',
-                                                    'docker': {'image': image}})
+        writer_job_uuid, resp = util.submit_job(self.cook_url,
+                                                command=f'echo "test_default_container_volumes" >> {container_file}')
+        job_uuids = [writer_job_uuid]
         self.assertEqual(resp.status_code, 201, resp.content)
         try:
-            util.wait_for_job(self.cook_url, job_uuid, 'completed')
-            def check_host_path():
-                exists = os.path.exists(host_file)
-                self.logger.info(f'Path {host_file} exists: {exists}')
-                return exists
-            util.wait_until(check_host_path, lambda exists: exists)
-            self.assertTrue(os.path.exists(host_file), f'Expected container to write {host_file}')
-            with open(host_file, 'r') as f:
-                self.assertEqual('test_default_container_volumes', f.readline().strip())
+            instance = util.wait_for_instance(self.cook_url, writer_job_uuid, status='success')
+            writer_host = instance['hostname']
+            reader_job_uuid, resp = util.submit_job(self.cook_url,
+                                                    command=f'grep test_default_container_volumes {container_file}',
+                                                    constraints=[["HOSTNAME",
+                                                                  "EQUALS",
+                                                                  writer_host]])
+            job_uuids.append(reader_job_uuid)
+            self.assertEqual(resp.status_code, 201, resp.content)
+            util.wait_for_instance(self.cook_url, reader_job_uuid, status='success')
         finally:
-            util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
+            util.kill_jobs(self.cook_url, job_uuids, assert_response=False)
 
 
     def test_command_length_limit(self):
