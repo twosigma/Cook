@@ -48,7 +48,6 @@
             [datomic.api :as d :refer [q]]
             [liberator.core :as liberator]
             [liberator.util :refer [combine]]
-            [liberator.representation]
             [me.raynes.conch :as sh]
             [mesomatic.scheduler]
             [metatransaction.core :refer [db]]
