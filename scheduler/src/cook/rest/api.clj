@@ -99,15 +99,14 @@
       (log/error e "Error while logging in render-error")))
   {:error error})
 
-(defn cook-liberator-attrs
-  [response-headers]
+(def cook-liberator-attrs
   {:available-media-types ["application/json"]
    ;; necessary to play well with as-response below
    :handle-no-content (fn [ctx] "No content.")
    ;; Don't serialize the response; leave that to compojure-api
    :as-response (fn [data ctx]
                   (-> (combine {:body data} ctx)
-                      (update :headers merge response-headers)))
+                      (update :headers merge (::response-headers ctx))))
    :handle-forbidden render-error
    :handle-malformed render-error
    :handle-not-found render-error
@@ -115,10 +114,8 @@
    :handle-unprocessable-entity render-error})
 
 (defn base-cook-handler
-  ([resource-attrs]
-   (base-cook-handler resource-attrs {}))
-  ([resource-attrs response-headers]
-   (pc/mapply liberator/resource (merge (cook-liberator-attrs response-headers) resource-attrs))))
+  [resource-attrs]
+  (pc/mapply liberator/resource (merge cook-liberator-attrs resource-attrs)))
 
 ;;
 ;; /rawscheduler
@@ -731,15 +728,15 @@
                      :job/submit-time (Date.)
                      :job/user user
                      :job/uuid uuid}
-                    application (assoc :job/application
-                                       {:application/name (:name application)
-                                        :application/version (:version application)})
-                    expected-runtime (assoc :job/expected-runtime expected-runtime)
-                    executor (assoc :job/executor executor)
-                    progress-output-file (assoc :job/progress-output-file progress-output-file)
-                    progress-regex-string (assoc :job/progress-regex-string progress-regex-string)
-                    pool (assoc :job/pool (:db/id pool))
-                    (seq datasets) (assoc :job/datasets datasets))]
+              application (assoc :job/application
+                                 {:application/name (:name application)
+                                  :application/version (:version application)})
+              expected-runtime (assoc :job/expected-runtime expected-runtime)
+              executor (assoc :job/executor executor)
+              progress-output-file (assoc :job/progress-output-file progress-output-file)
+              progress-regex-string (assoc :job/progress-regex-string progress-regex-string)
+              pool (assoc :job/pool (:db/id pool))
+              (seq datasets) (assoc :job/datasets datasets))]
 
     ;; TODO batch these transactions to improve performance
     (-> ports
@@ -985,7 +982,7 @@
   [db entity]
   (if entity
     (compute-cluster-entity->map entity)
-    (->> (cc/get-default-cluster-for-legacy)  ; Get the default cluster.
+    (->> (cc/get-default-cluster-for-legacy) ; Get the default cluster.
          cc/db-id
          (d/entity db)
          (fetch-compute-cluster-map db))))
@@ -1018,20 +1015,20 @@
                :slave_id (:instance/slave-id instance)
                :status (name (:instance/status instance))
                :task_id task-id}
-              executor (assoc :executor (name executor))
-              file-url (assoc :file_url file-url)
-              start (assoc :start_time (.getTime start))
-              mesos-start (assoc :mesos_start_time (.getTime mesos-start))
-              end (assoc :end_time (.getTime end))
-              cancelled (assoc :cancelled cancelled)
-              exit-code (assoc :exit_code exit-code)
-              url-path (assoc :output_url url-path)
-              reason (assoc :reason_code (:reason/code reason)
-                            :reason_string (:reason/string reason)
-                            :reason_mea_culpa (:reason/mea-culpa? reason))
-              progress (assoc :progress progress)
-              progress-message (assoc :progress_message progress-message)
-              sandbox-directory (assoc :sandbox_directory sandbox-directory)))))
+        executor (assoc :executor (name executor))
+        file-url (assoc :file_url file-url)
+        start (assoc :start_time (.getTime start))
+        mesos-start (assoc :mesos_start_time (.getTime mesos-start))
+        end (assoc :end_time (.getTime end))
+        cancelled (assoc :cancelled cancelled)
+        exit-code (assoc :exit_code exit-code)
+        url-path (assoc :output_url url-path)
+        reason (assoc :reason_code (:reason/code reason)
+                      :reason_string (:reason/string reason)
+                      :reason_mea_culpa (:reason/mea-culpa? reason))
+        progress (assoc :progress progress)
+        progress-message (assoc :progress_message progress-message)
+        sandbox-directory (assoc :sandbox_directory sandbox-directory)))))
 
 (defn- docker-parameter->response-map
   [{:keys [docker.param/key docker.param/value]}]
@@ -1041,9 +1038,9 @@
 (defn- docker->response-map
   [{:keys [docker/image docker/parameters docker/network docker/force-pull-image]}]
   (cond-> {:image image}
-          parameters (assoc :parameters (map docker-parameter->response-map parameters))
-          network (assoc :network network)
-          (some? force-pull-image) (assoc :force-pull-image force-pull-image)))
+    parameters (assoc :parameters (map docker-parameter->response-map parameters))
+    network (assoc :network network)
+    (some? force-pull-image) (assoc :force-pull-image force-pull-image)))
 
 (defn- mesos->response-map
   [{:keys [mesos/image]}]
@@ -1052,15 +1049,15 @@
 (defn- container-volume->response-map
   [{:keys [container.volume/mode container.volume/host-path container.volume/container-path]}]
   (cond-> {:host-path host-path}
-          mode (assoc :mode mode)
-          container-path (assoc :container-path container-path)))
+    mode (assoc :mode mode)
+    container-path (assoc :container-path container-path)))
 
 (defn- container->response-map
   [{:keys [container/type container/docker container/mesos container/volumes]}]
   (cond-> {:type type}
-          docker (assoc :docker (docker->response-map docker))
-          mesos (assoc :mesos (mesos->response-map mesos))
-          volumes (assoc :volumes (map container-volume->response-map volumes))))
+    docker (assoc :docker (docker->response-map docker))
+    mesos (assoc :mesos (mesos->response-map mesos))
+    volumes (assoc :volumes (map container-volume->response-map volumes))))
 
 (defn guess-framework-id
   "If there is only one mesos compute cluster, returns it's framework id. Otherwise, returns \"unsupported\""
@@ -1120,15 +1117,15 @@
                    :user (:job/user job)
                    :uuid (:job/uuid job)}]
       (cond-> job-map
-              groups (assoc :groups (map #(str (:group/uuid %)) groups))
-              application (assoc :application (util/remove-datomic-namespacing application))
-              expected-runtime (assoc :expected-runtime expected-runtime)
-              executor (assoc :executor (name executor))
-              progress-output-file (assoc :progress-output-file progress-output-file)
-              progress-regex-string (assoc :progress-regex-string progress-regex-string)
-              pool (assoc :pool (:pool/name pool))
-              container (assoc :container (container->response-map container))
-              datasets (assoc :datasets datasets)))))
+        groups (assoc :groups (map #(str (:group/uuid %)) groups))
+        application (assoc :application (util/remove-datomic-namespacing application))
+        expected-runtime (assoc :expected-runtime expected-runtime)
+        executor (assoc :executor (name executor))
+        progress-output-file (assoc :progress-output-file progress-output-file)
+        progress-regex-string (assoc :progress-regex-string progress-regex-string)
+        pool (assoc :pool (:pool/name pool))
+        container (assoc :container (container->response-map container))
+        datasets (assoc :datasets datasets)))))
 
 (defn fetch-job-map
   [db job-uuid]
@@ -1415,9 +1412,7 @@
                     {:authentication-scheme auth-scheme
                      :commit @cook.util/commit
                      :start-time start-up-time
-                     :version @cook.util/version})}
-      {"x-foo" "bar"
-       "x-baz" "qux"})))
+                     :version @cook.util/version})})))
 
 ;;; On GET; use repeated job argument
 (defn read-jobs-handler-deprecated
@@ -1532,27 +1527,30 @@
           start (Date. ^long start-ms')
           end (Date. ^long end-ms)
           job-ents (->> (timers/time!
-                           fetch-jobs
-                           (util/get-jobs-by-user-and-states db user states start end limit
-                                                             name-filter-fn include-custom-executor? pool-name))
-                         (sort-by :job/submit-time)
-                         reverse)
+                          fetch-jobs
+                          (util/get-jobs-by-user-and-states db user states start end (inc limit)
+                                                            name-filter-fn include-custom-executor? pool-name))
+                        (sort-by :job/submit-time)
+                        reverse)
+          num-jobs (count job-ents)
+          truncated? (> num-jobs limit)
           job-ents (if (nil? limit)
-                      job-ents
-                      (take limit job-ents))]
+                     job-ents
+                     (take limit job-ents))]
       (histograms/update! list-request-param-time-range-ms (- end-ms start-ms'))
       (histograms/update! list-request-param-limit limit)
       (histograms/update! list-response-job-count (count job-ents))
-      job-ents)))
+      {:jobs job-ents :truncated? truncated?})))
 
 (defn list-jobs
   "Queries using the params from ctx and returns the job uuids that were found"
   [db include-custom-executor? ctx]
-  (map :job/uuid (list-job-ents db include-custom-executor? ctx)))
+  (update (list-job-ents db include-custom-executor? ctx) :jobs #(map :job/uuid %)))
 
 (defn jobs-list-exist?
   [conn ctx]
-  [true {::jobs (list-jobs (d/db conn) true ctx)}])
+  (let [{:keys [jobs truncated?]} (list-jobs (d/db conn) true ctx)]
+    [true {::jobs jobs ::response-headers {"x-cook-truncated-results" (str truncated?)}}]))
 
 (defn read-jobs-handler
   [conn is-authorized-fn resource-attrs]
@@ -1961,16 +1959,16 @@
     :handle-malformed render-error
     :handle-ok (fn [ctx]
                  (timers/time!
-                  queue-endpoint
-                  (let [db (d/db conn)
-                        pool->queue (mesos-pending-jobs-fn)
-                        pool->user->quota (quota/create-pool->user->quota-fn db)
-                        pool->user->usage (util/pool->user->usage db)]
-                    (pc/for-map [[pool-name queue] pool->queue]
-                                pool-name (->> queue
-                                               (util/filter-based-on-quota (pool->user->quota pool-name)
-                                                                           (pool->user->usage pool-name))
-                                               (take (::limit ctx)))))))))
+                   queue-endpoint
+                   (let [db (d/db conn)
+                         pool->queue (mesos-pending-jobs-fn)
+                         pool->user->quota (quota/create-pool->user->quota-fn db)
+                         pool->user->usage (util/pool->user->usage db)]
+                     (pc/for-map [[pool-name queue] pool->queue]
+                       pool-name (->> queue
+                                      (util/filter-based-on-quota (pool->user->quota pool-name)
+                                                                  (pool->user->usage pool-name))
+                                      (take (::limit ctx)))))))))
 
 ;;
 ;; /running
@@ -2452,9 +2450,9 @@
   "Returns a resource usage map showing no usage"
   [with-group-breakdown?]
   (cond-> {:total-usage zero-usage}
-          with-group-breakdown? (assoc :grouped []
-                                       :ungrouped {:running-jobs []
-                                                   :usage zero-usage})))
+    with-group-breakdown? (assoc :grouped []
+                                 :ungrouped {:running-jobs []
+                                             :usage zero-usage})))
 
 (defn get-user-usage
   "Query a user's current resource usage based on running jobs."
@@ -2506,8 +2504,8 @@
            :name (name (:reason/name e))
            :description (:reason/string e)
            :mea_culpa (:reason/mea-culpa? e)}
-          (:reason/mea-culpa? e)
-          (assoc :failure_limit (or (:reason/failure-limit e) default-failure-limit))))
+    (:reason/mea-culpa? e)
+    (assoc :failure_limit (or (:reason/failure-limit e) default-failure-limit))))
 
 (defn failure-reasons-handler
   [conn is-authorized-fn]
