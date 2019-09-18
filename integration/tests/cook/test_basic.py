@@ -64,7 +64,6 @@ class CookTest(util.CookTest):
         else:
             self.logger.info(f'Exit code not checked because cook executor was not used for {instance}')
 
-
     @unittest.skipIf(util.using_kubernetes(), 'Output url is not currently supported on kubernetes')
     def test_output_url(self):
         job_executor_type = util.get_job_executor_type(self.cook_url)
@@ -80,7 +79,6 @@ class CookTest(util.CookTest):
                 self.assertIsNotNone(instance['sandbox_directory'], message)
         finally:
             util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
-
 
     @unittest.skipUnless(util.docker_tests_enabled(),
                          'Requires setting the COOK_TEST_DOCKER_IMAGE environment variable')
@@ -138,7 +136,7 @@ class CookTest(util.CookTest):
             num_hosts = util.node_count()
             if retry_limit >= num_hosts:
                 pytest.skip(f'Skipping test as not enough agents to verify Mesos executor on subsequent '
-                                  f'instances (agents = {num_hosts}, retry limit = {retry_limit})')
+                            f'instances (agents = {num_hosts}, retry limit = {retry_limit})')
 
         # Should launch many instances
         job_uuid, resp = util.submit_job(self.cook_url, command='exit 1', max_retries=retry_limit * 2)
@@ -190,7 +188,8 @@ class CookTest(util.CookTest):
     def test_mea_culpa_retries(self):
         job_executor_type = util.get_job_executor_type(self.cook_url)
         self.assertEqual('cook', job_executor_type)
-        uuid, resp = util.submit_job(self.cook_url, command='sleep 30', env={'EXECUTOR_TEST_EXIT': '1'}, executor=job_executor_type)
+        uuid, resp = util.submit_job(self.cook_url, command='sleep 30', env={'EXECUTOR_TEST_EXIT': '1'},
+                                     executor=job_executor_type)
         try:
             instance = util.wait_for_instance(self.cook_url, uuid)
             self.assertEqual('cook', instance['executor'])
@@ -233,10 +232,10 @@ class CookTest(util.CookTest):
             self.assertEqual(expected_compute_cluster_type, instance['compute-cluster']['type'], message)
             self.assertEqual(expected_compute_cluster, instance['compute-cluster']['name'], message)
             if expected_mesos_framework is not None:
-                self.assertEqual(expected_mesos_framework, instance['compute-cluster']['mesos']['framework-id'], message)
+                self.assertEqual(expected_mesos_framework, instance['compute-cluster']['mesos']['framework-id'],
+                                 message)
         finally:
             util.kill_jobs(self.cook_url, [job_uuid])
-
 
     def test_executor_flag(self):
         job_uuid, resp = util.submit_job(self.cook_url, executor='cook')
@@ -386,8 +385,9 @@ class CookTest(util.CookTest):
         self.assertEqual(75, instance['progress'], message)
         self.assertEqual('Seventy-five percent', instance['progress_message'], message)
 
-    @unittest.skipUnless(util.is_cook_executor_in_use() and not (util.docker_tests_enabled() and util.continuous_integration()),
-                         'Test assumes the Cook Executor is in use. Fails on travis with docker')
+    @unittest.skipUnless(
+        util.is_cook_executor_in_use() and not (util.docker_tests_enabled() and util.continuous_integration()),
+        'Test assumes the Cook Executor is in use. Fails on travis with docker')
     def test_multiple_progress_updates_submit_stdout(self):
         job_executor_type = util.get_job_executor_type(self.cook_url)
         line_1 = util.progress_line(self.cook_url, 25, 'Twenty-five percent')
@@ -1598,7 +1598,8 @@ class CookTest(util.CookTest):
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
         self.assertEqual('success', job['instances'][0]['status'])
 
-    @unittest.skipUnless(util.has_docker_service() and not util.using_kubernetes(), "Requires `docker inspect`. On kubernetes, need to add support and write a separate test.")
+    @unittest.skipUnless(util.has_docker_service() and not util.using_kubernetes(),
+                         "Requires `docker inspect`. On kubernetes, need to add support and write a separate test.")
     def test_docker_port_mapping(self):
         job_uuid, resp = util.submit_job(self.cook_url,
                                          command='python -m http.server 8080',
@@ -1619,7 +1620,7 @@ class CookTest(util.CookTest):
             # Get agent host/port
             state = util.get_mesos_state(util.retrieve_mesos_url())
             agent = [agent for agent in state['slaves']
-                       if agent['hostname'] == instance['hostname']][0]
+                     if agent['hostname'] == instance['hostname']][0]
 
             # Get container ID from agent
             def agent_query():
@@ -2652,7 +2653,7 @@ class CookTest(util.CookTest):
             job_uuids.append(job_uuid1)
             self.assertEqual(resp.status_code, 201, msg=resp.content)
             self.assertEqual(resp.content, str.encode(f"submitted jobs {job_uuid1}"))
-            job = util.wait_for_job_in_statuses(self.cook_url, job_uuid1, ['completed', 'running'])
+            util.wait_for_job_in_statuses(self.cook_url, job_uuid1, ['completed', 'running'])
 
             # This should now fail to submit due to one of the demo plugins
             job_uuid2, resp = util.submit_job(self.cook_url, name='plugin_test.submit_fail')
@@ -2694,13 +2695,13 @@ class CookTest(util.CookTest):
 
             # Wait a bit and the demo plugin will mark it as launchable.
             # So, see if it is now running or completed.
-            job = util.wait_for_job_in_statuses(self.cook_url, job_uuid, ['completed', 'running'])
+            util.wait_for_job_in_statuses(self.cook_url, job_uuid, ['completed', 'running'])
         finally:
             util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
 
-
     @unittest.skipIf(os.getenv('COOK_TEST_SKIP_RECONCILE') is not None or util.using_kubernetes(),
-                     'Requires not setting the COOK_TEST_SKIP_RECONCILE environment variable. Currently not supported on kubernetes.')
+                     'Requires not setting the COOK_TEST_SKIP_RECONCILE environment variable. Currently not supported '
+                     'on kubernetes.')
     def test_reconciliation(self):
         """
         This test relies on 4 running jobs being seeded in Datomic *before* Cook Scheduler starts
@@ -2746,7 +2747,8 @@ class CookTest(util.CookTest):
                                  if r['reason'] == 'data-locality-constraint']
         self.assertEqual(1, len(data_locality_reasons))
 
-    @unittest.skipUnless(util.using_data_local_fitness_calculator() and util.data_local_service_is_set(), 'Requires the data local fitness calculator')
+    @unittest.skipUnless(util.using_data_local_fitness_calculator() and util.data_local_service_is_set(),
+                         'Requires the data local fitness calculator')
     @pytest.mark.serial
     def test_data_local_constrait_not_suitable(self):
         job_uuid, resp = util.submit_job(self.cook_url, datasets=[{'dataset': {'foo': str(uuid.uuid4())}}])
@@ -2765,7 +2767,6 @@ class CookTest(util.CookTest):
             self.assertEqual(instance['hostname'], target)
         finally:
             util.kill_jobs(self.cook_url, [job_uuid])
-
 
     @unittest.skipUnless(util.data_local_service_is_set(), "Requires a data local service")
     @pytest.mark.serial
@@ -2812,8 +2813,7 @@ class CookTest(util.CookTest):
         finally:
             util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
 
-
-    @unittest.skipUnless(util.supports_mesos_containerizer_images(), "Requires support for docker images in mesos containerizer")
+    @unittest.skip('Checking util.supports_mesos_containerizer_images() is hanging and causing test runs to time out')
     def test_mesos_containerizer_image_support(self):
         container = {'type': 'mesos', 'mesos': {'image': 'alpine'}}
         settings = util.settings(self.cook_url)
@@ -2849,14 +2849,19 @@ class CookTest(util.CookTest):
         if reset_vars is not None:
             command = ''
             for var in reset_vars.split(','):
-                command += f'if [ ${{#{var}}} -gt 0]; then echo Variable {var} was defined, but should have been reset; exit 1; fi;\n'
+                command += f'if [ ${{#{var}}} -gt 0]; then echo Variable {var} was defined, but should have been ' \
+                           f'reset; exit 1; fi;\n '
             job_uuid, resp = util.submit_job(self.cook_url, executor='cook', command=command)
             self.assertEqual(201, resp.status_code, resp.text)
             job_uuids = [job_uuid]
         else:
-            job_uuid1, resp1 = util.submit_job(self.cook_url, executor='cook', command='if [ ${#MESOS_EXECUTOR_ID} -eq 0 ]; then echo var was not set; else exit 1; fi;',
+            job_uuid1, resp1 = util.submit_job(self.cook_url, executor='cook',
+                                               command='if [ ${#MESOS_EXECUTOR_ID} -eq 0 ]; then echo var was not '
+                                                       'set; else exit 1; fi;',
                                                env={'EXECUTOR_RESET_VARS': 'MESOS_EXECUTOR_ID'})
-            job_uuid2, resp2 = util.submit_job(self.cook_url, executor='cook', command='if [ ${#MESOS_EXECUTOR_ID} -gt 0 ]; then echo var was not set; else exit 1; fi;')
+            job_uuid2, resp2 = util.submit_job(self.cook_url, executor='cook',
+                                               command='if [ ${#MESOS_EXECUTOR_ID} -gt 0 ]; then echo var was not '
+                                                       'set; else exit 1; fi;')
             self.assertEqual(201, resp1.status_code, resp1.text)
             self.assertEqual(201, resp2.status_code, resp2.text)
             job_uuids = [job_uuid1, job_uuid2]
@@ -2866,8 +2871,8 @@ class CookTest(util.CookTest):
         finally:
             util.kill_jobs(self.cook_url, job_uuids, assert_response=False)
 
-
-    @unittest.skipUnless(util.docker_tests_enabled() and not util.using_kubernetes(), "Requires docker support. Not currently supported on kubernetes.")
+    @unittest.skipUnless(util.docker_tests_enabled() and not util.using_kubernetes(),
+                         "Requires docker support. Not currently supported on kubernetes.")
     def test_default_container_volumes(self):
         settings = util.settings(self.cook_url)
         default_volumes = util.get_in(settings, 'container-defaults', 'volumes')
@@ -2888,17 +2893,18 @@ class CookTest(util.CookTest):
         self.assertEqual(resp.status_code, 201, resp.content)
         try:
             util.wait_for_job(self.cook_url, job_uuid, 'completed')
+
             def check_host_path():
                 exists = os.path.exists(host_file)
                 self.logger.info(f'Path {host_file} exists: {exists}')
                 return exists
+
             util.wait_until(check_host_path, lambda exists: exists)
             self.assertTrue(os.path.exists(host_file), f'Expected container to write {host_file}')
             with open(host_file, 'r') as f:
                 self.assertEqual('test_default_container_volumes', f.readline().strip())
         finally:
             util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
-
 
     def test_command_length_limit(self):
         settings = util.settings(self.cook_url)
@@ -2909,13 +2915,15 @@ class CookTest(util.CookTest):
         job_uuid, resp = util.submit_job(self.cook_url, command=long_command)
         try:
             self.assertEqual(resp.status_code, 400, resp.content)
-            self.assertTrue(f'Job command length of {len(long_command)} is greater than the maximum command length ({command_length_limit})'
-                            in str(resp.content))
+            self.assertTrue(
+                f'Job command length of {len(long_command)} is greater '
+                f'than the maximum command length ({command_length_limit}) '
+                in str(resp.content))
         finally:
             util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
 
-
-    @unittest.skipUnless(util.supports_exit_code() and not util.has_one_agent(), "Requires exit code support and multiple agents")
+    @unittest.skipUnless(util.supports_exit_code() and not util.has_one_agent(),
+                         "Requires exit code support and multiple agents")
     def test_cook_instance_num(self):
         command = 'bash -c \'exit $(($COOK_INSTANCE_NUM + 1))\''
         job_uuid, resp = util.submit_job(self.cook_url, command=command, max_retries=2)
@@ -2924,6 +2932,7 @@ class CookTest(util.CookTest):
                 jobs = util.query_jobs(self.cook_url, True, uuid=[job_uuid]).json()
                 self.logger.info(f'Found jobs: {jobs}')
                 return jobs[0]
+
             def predicate(job):
                 if job['status'] != 'completed':
                     return False
@@ -2931,6 +2940,7 @@ class CookTest(util.CookTest):
                     if 'exit_code' not in instance:
                         return False
                 return True
+
             job = util.wait_until(query, predicate)
             self.assertEqual(2, len(job['instances']), job)
             exit_codes = [i['exit_code'] for i in job['instances']]
@@ -2938,4 +2948,3 @@ class CookTest(util.CookTest):
             self.assertEqual([1, 2], exit_codes, job)
         finally:
             util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
-
