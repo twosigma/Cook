@@ -2914,11 +2914,10 @@ class CookTest(util.CookTest):
         long_command = 'x' * (command_length_limit + 1)
         job_uuid, resp = util.submit_job(self.cook_url, command=long_command)
         try:
+            message = f'Job command length of {len(long_command)} is greater ' \
+                      f'than the maximum command length ({command_length_limit}) '
             self.assertEqual(resp.status_code, 400, resp.content)
-            self.assertTrue(
-                f'Job command length of {len(long_command)} is greater '
-                f'than the maximum command length ({command_length_limit}) '
-                in str(resp.content))
+            self.assertTrue(message in str(resp.content))
         finally:
             util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
 
