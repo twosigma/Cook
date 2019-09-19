@@ -2633,3 +2633,18 @@ class CookTest(util.CookTest):
             util.wait_for_instance(self.cook_url, job_uuid, status='success')
         finally:
             util.kill_jobs(self.cook_url, [job_uuid])
+
+    @unittest.skipUnless(util.docker_tests_enabled(), 'Requires docker support')
+    def test_disallowed_docker_parameters(self):
+        settings = util.settings(self.cook_url)
+        docker_parameters_allowed = util.get_in(settings, 'task-constraints', 'docker-parameters-allowed')
+        if docker_parameters_allowed is None:
+            self.skipTest('Requires docker-parameters-allowed')
+        docker_image = util.docker_image()
+        container = {'type': 'docker',
+                     'docker': {'image': docker_image,
+                                'parameters': [{'key': 'this_should_not_be_allowed',
+                                                'value': 'its_not_even_a_real_parameter'}]}}
+        job_uuid, resp = util.submit_job(self.cook_url, container=container)
+        self.assertEqual(400, resp.status_code)
+        self.assertTrue('this_should_not_be_allowed' in resp.text, resp.text)

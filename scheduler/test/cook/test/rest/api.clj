@@ -316,7 +316,52 @@
                            :headers {"Content-Type" "application/json"}
                            :authorization/user "dgrnbrg"
                            :body-params {"jobs" [(job 1 100 202)]}}))
-              499)))))
+              499)))
+
+    (testing "allow all docker params by default"
+      (with-redefs [config/task-constraints (constantly {})]
+        (let [minimal-job (basic-job)
+              container-job (assoc minimal-job "container" {"type" "docker"
+                                                            "docker" {"image" "dummy:latest"
+                                                                      "parameters" [{"key" "foo"
+                                                                                     "value" "bar"}]}})]
+          (is (= 201
+                 (:status (h {:request-method :post
+                              :scheme :http
+                              :uri "/rawscheduler"
+                              :headers {"Content-Type" "application/json"}
+                              :authorization/user "test"
+                              :body-params {"jobs" [container-job]}}))))))
+
+      (testing "disallow docker paramters"
+        (with-redefs [config/task-constraints (constantly {:docker-parameters-allowed #{"user"}})]
+          (let [minimal-job (basic-job)
+                container-job (assoc minimal-job "container" {"type" "docker"
+                                                              "docker" {"image" "dummy:latest"
+                                                                        "parameters" [{"key" "foo"
+                                                                                       "value" "bar"}]}})]
+            (is (= 400
+                   (:status (h {:request-method :post
+                                :scheme :http
+                                :uri "/rawscheduler"
+                                :headers {"Content-Type" "application/json"}
+                                :authorization/user "test"
+                                :body-params {"jobs" [container-job]}})))))))
+
+      (testing "allowed docker paramters"
+        (with-redefs [config/task-constraints (constantly {:docker-parameters-allowed #{"foo"}})]
+          (let [minimal-job (basic-job)
+                container-job (assoc minimal-job "container" {"type" "docker"
+                                                              "docker" {"image" "dummy:latest"
+                                                                        "parameters" [{"key" "foo"
+                                                                                       "value" "bar"}]}})]
+            (is (= 201
+                   (:status (h {:request-method :post
+                                :scheme :http
+                                :uri "/rawscheduler"
+                                :headers {"Content-Type" "application/json"}
+                                :authorization/user "test"
+                                :body-params {"jobs" [container-job]}}))))))))))
 
 (deftest gpus-api
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
