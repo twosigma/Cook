@@ -1617,13 +1617,13 @@ class CookTest(util.CookTest):
         self.logger.debug('instance: %s' % instance)
         try:
             # Get agent host/port
-            state = util.get_mesos_state(util.retrieve_mesos_url())
-            agent = [agent for agent in state['slaves']
-                       if agent['hostname'] == instance['hostname']][0]
+            slaves = util.get_mesos_slaves(util.retrieve_mesos_url())['slaves']
+            agent = [agent for agent in slaves
+                     if agent['hostname'] == instance['hostname']][0]
 
             # Get container ID from agent
             def agent_query():
-                return util.session.get(util.get_agent_endpoint(state, instance['hostname']))
+                return util.session.get(util.get_agent_endpoint(slaves, instance['hostname']))
 
             def contains_executor_predicate(agent_response):
                 agent_state = agent_response.json()
@@ -2828,8 +2828,8 @@ class CookTest(util.CookTest):
             self.assertEqual(201, resp.status_code, resp.text)
             instance = util.wait_for_instance(self.cook_url, job_uuid, status='success')
             slave_host = instance['hostname']
-            master_state = util.get_mesos_state(util.retrieve_mesos_url())
-            slave_state = util.session.get(util.get_agent_endpoint(master_state, slave_host)).json()
+            slaves = util.get_mesos_slaves(util.retrieve_mesos_url())['slaves']
+            slave_state = util.session.get(util.get_agent_endpoint(slaves, slave_host)).json()
 
             executor = util.get_executor(slave_state, instance['executor_id'], True)
 
