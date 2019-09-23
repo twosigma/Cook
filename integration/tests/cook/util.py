@@ -830,12 +830,11 @@ def wait_for_running_instance(cook_url, job_id, max_wait_ms=DEFAULT_TIMEOUT_MS):
     return response.json()[0]['instances'][0]
 
 
-@functools.lru_cache()
 def get_mesos_slaves(mesos_url):
     """
     Queries mesos slave state from /slaves
     """
-    return session.get('%s/state.json' % mesos_url).json()
+    return session.get('%s/slaves' % mesos_url).json()
 
 
 def wait_for_output_url(cook_url, job_uuid):
