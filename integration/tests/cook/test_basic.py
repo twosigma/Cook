@@ -272,7 +272,7 @@ class CookTest(util.CookTest):
                   'else echo "COOK_JOB_UUID env is present as expected"; fi && ' \
                   'if [ ${#COOK_INSTANCE_UUID} -eq 0 ]; then echo "COOK_INSTANCE_UUID env is missing"; exit 1; ' \
                   'else echo "COOK_INSTANCE_UUID env is present as expected"; fi'
-        group_uuid = str(uuid.uuid4())
+        group_uuid = str(util.make_temporal_uuid())
         job_uuid, resp = util.submit_job(self.cook_url, command=command, group=group_uuid)
         self.assertEqual(201, resp.status_code, msg=resp.content)
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
@@ -716,7 +716,7 @@ class CookTest(util.CookTest):
         self.assertFalse(util.contains_job_uuid(jobs, job_specs[1]['uuid']))
 
     def test_list_jobs_by_completion_state(self):
-        name = str(uuid.uuid4())
+        name = str(util.make_temporal_uuid())
         job_uuid_1, resp = util.submit_job(self.cook_url, command='true', name=name, max_retries=2)
         self.assertEqual(201, resp.status_code)
         job_uuid_2, resp = util.submit_job(self.cook_url, command='false', name=name)
@@ -769,7 +769,7 @@ class CookTest(util.CookTest):
         self.assertTrue(util.contains_job_uuid(resp.json(), job_uuid_3), job_uuid_3)
 
     def test_list_jobs_by_completion_state_with_jobs_endpoint(self):
-        name = str(uuid.uuid4())
+        name = str(util.make_temporal_uuid())
         job_uuid_1, resp = util.submit_job(self.cook_url, command='true', name=name, max_retries=2)
         self.assertEqual(201, resp.status_code)
         job_uuid_2, resp = util.submit_job(self.cook_url, command='false', name=name)
@@ -930,7 +930,7 @@ class CookTest(util.CookTest):
         # Submit two jobs to each active pool -- one that will be
         # running or waiting for a while, and another that will complete
         jobs = []
-        name = str(uuid.uuid4())
+        name = str(util.make_temporal_uuid())
         pools, _ = util.active_pools(self.cook_url)
         start = util.current_milli_time()
         sleep_command = 'sleep 600'
@@ -1014,12 +1014,12 @@ class CookTest(util.CookTest):
                 util.kill_jobs(self.cook_url, jobs)
 
         # List running / waiting with a bogus pool
-        resp = util.jobs(self.cook_url, user=user, state=active, start=start, end=end, pool=uuid.uuid4())
+        resp = util.jobs(self.cook_url, user=user, state=active, start=start, end=end, pool=util.make_temporal_uuid())
         self.assertEqual(200, resp.status_code)
         self.assertEqual(0, len(resp.json()))
 
         # List completed with a bogus pool
-        resp = util.jobs(self.cook_url, user=user, state=completed, start=start, end=end, pool=uuid.uuid4())
+        resp = util.jobs(self.cook_url, user=user, state=completed, start=start, end=end, pool=util.make_temporal_uuid())
         self.assertEqual(200, resp.status_code)
         self.assertEqual(0, len(resp.json()))
 
@@ -1132,7 +1132,7 @@ class CookTest(util.CookTest):
         self.assertEqual('success', job['state'], 'Job details: %s' % (json.dumps(job, sort_keys=True)))
 
     def test_no_such_group(self):
-        group_uuid = str(uuid.uuid4())
+        group_uuid = str(util.make_temporal_uuid())
         resp = util.query_groups(self.cook_url, uuid=[group_uuid])
         self.assertEqual(resp.status_code, 404, resp)
         resp_data = resp.json()
@@ -1141,7 +1141,7 @@ class CookTest(util.CookTest):
         self.assertIn(group_uuid, resp_data['error'], resp_string)
 
     def test_implicit_group(self):
-        group_uuid = str(uuid.uuid4())
+        group_uuid = str(util.make_temporal_uuid())
         job_spec = {'group': group_uuid}
         jobs, resp = util.submit_jobs(self.cook_url, job_spec, 2)
         self.assertEqual(resp.status_code, 201)
@@ -1279,7 +1279,7 @@ class CookTest(util.CookTest):
         self.assertEqual(200, resp.status_code, msg=resp.content)
 
         # Mixed valid, invalid job uuids
-        bogus_uuid = str(uuid.uuid4())
+        bogus_uuid = str(util.make_temporal_uuid())
         resp = util.query_jobs(self.cook_url, uuid=[job_uuid_1, job_uuid_2, bogus_uuid])
         self.assertEqual(404, resp.status_code, msg=resp.content)
         self.assertEqual([bogus_uuid], absent_uuids(resp))
@@ -1329,8 +1329,8 @@ class CookTest(util.CookTest):
         def absent_uuids(response):
             return [part for part in response.json()['error'].split() if util.is_valid_uuid(part)]
 
-        group_uuid_1 = str(uuid.uuid4())
-        group_uuid_2 = str(uuid.uuid4())
+        group_uuid_1 = str(util.make_temporal_uuid())
+        group_uuid_2 = str(util.make_temporal_uuid())
         _, resp = util.submit_job(self.cook_url, group=group_uuid_1)
         self.assertEqual(201, resp.status_code)
         _, resp = util.submit_job(self.cook_url, group=group_uuid_2)
@@ -1341,7 +1341,7 @@ class CookTest(util.CookTest):
         self.assertEqual(200, resp.status_code)
 
         # Mixed valid, invalid group uuids
-        bogus_uuid = str(uuid.uuid4())
+        bogus_uuid = str(util.make_temporal_uuid())
         resp = util.query_groups(self.cook_url, uuid=[group_uuid_1, group_uuid_2, bogus_uuid])
         self.assertEqual(404, resp.status_code)
         self.assertEqual([bogus_uuid], absent_uuids(resp))
@@ -1358,7 +1358,7 @@ class CookTest(util.CookTest):
     def test_detailed_for_groups(self):
         detail_keys = ('waiting', 'running', 'completed')
 
-        group_uuid = str(uuid.uuid4())
+        group_uuid = str(util.make_temporal_uuid())
         _, resp = util.submit_job(self.cook_url, group=group_uuid)
         self.assertEqual(201, resp.status_code)
 
@@ -1557,7 +1557,7 @@ class CookTest(util.CookTest):
         self.assertEqual(400, resp.status_code)
 
     def test_queue_endpoint(self):
-        group = {'uuid': str(uuid.uuid4())}
+        group = {'uuid': str(util.make_temporal_uuid())}
         job_spec = {'group': group['uuid'],
                     'command': 'sleep 30',
                     'cpus': util.max_cpus()}
@@ -1704,7 +1704,7 @@ class CookTest(util.CookTest):
     def test_unscheduled_jobs_partial(self):
         job_uuid_1, resp = util.submit_job(self.cook_url, command='ls')
         self.assertEqual(resp.status_code, 201, resp.content)
-        job_uuid_2 = uuid.uuid4()
+        job_uuid_2 = util.make_temporal_uuid()
         _, resp = util.unscheduled_jobs(self.cook_url, job_uuid_1, job_uuid_2, partial=None)
         self.assertEqual(404, resp.status_code)
         _, resp = util.unscheduled_jobs(self.cook_url, job_uuid_1, job_uuid_2, partial='false')
@@ -1717,7 +1717,7 @@ class CookTest(util.CookTest):
     @pytest.mark.xfail
     def test_unique_host_constraint(self):
         num_hosts = util.num_hosts_to_consider(self.cook_url)
-        group = {'uuid': str(uuid.uuid4()),
+        group = {'uuid': str(util.make_temporal_uuid()),
                  'host-placement': {'type': 'unique'}}
         job_spec = {'group': group['uuid'], 'command': 'sleep 600'}
         # Don't submit too many jobs for the test. If the cluster is larger than 9 hosts, only submit 10 jobs.
@@ -1791,7 +1791,7 @@ class CookTest(util.CookTest):
         if num_hosts == 0:
             pytest.skip(f"Skipping test due to no Mesos agents to consider")
         minimum_hosts = num_hosts + 1
-        group = {'uuid': str(uuid.uuid4()),
+        group = {'uuid': str(util.make_temporal_uuid()),
                  'host-placement': {'type': 'balanced',
                                     'parameters': {'attribute': 'HOSTNAME',
                                                    'minimum': minimum_hosts}}}
@@ -1855,7 +1855,7 @@ class CookTest(util.CookTest):
             self.skipTest('Requires at least 2 hosts')
         minimum_hosts = min(int(os.getenv('COOK_TEST_BALANCED_CONSTRAINT_NUM_HOSTS', 3)), num_hosts)
         self.logger.info(f'Setting minimum hosts to {minimum_hosts}')
-        group = {'uuid': str(uuid.uuid4()),
+        group = {'uuid': str(util.make_temporal_uuid()),
                  'host-placement': {'type': 'balanced',
                                     'parameters': {'attribute': 'HOSTNAME',
                                                    'minimum': minimum_hosts}}}
@@ -1885,7 +1885,7 @@ class CookTest(util.CookTest):
         num_big_jobs = max(1, math.floor(max_slave_cpus / task_constraint_cpus))
         # Use the rest of the machine, plus one half CPU so one of the large jobs won't fit
         canary_cpus = max_slave_cpus - (num_big_jobs * max_cpus) + 0.5
-        group = {'uuid': str(uuid.uuid4()),
+        group = {'uuid': str(util.make_temporal_uuid()),
                  'host-placement': {'type': 'attribute-equals',
                                     'parameters': {'attribute': 'HOSTNAME'}}}
         # First, num_big_jobs jobs each with max_cpus cpus which will sleep to fill up a single host:
@@ -2229,7 +2229,7 @@ class CookTest(util.CookTest):
     def test_submit_with_no_name(self):
         # We need to manually set the 'uuid' to avoid having the
         # job name automatically set by the submit_job function
-        job_with_no_name = {'uuid': str(uuid.uuid4()),
+        job_with_no_name = {'uuid': str(util.make_temporal_uuid()),
                             'command': 'ls',
                             'cpus': 0.1,
                             'mem': 16,
@@ -2249,7 +2249,7 @@ class CookTest(util.CookTest):
         self.assertIn(job['status'], ['running', 'waiting', 'completed'])
 
     def test_instance_stats_running(self):
-        name = str(uuid.uuid4())
+        name = str(util.make_temporal_uuid())
         job_uuid_1, resp = util.submit_job(self.cook_url, command='sleep 300', name=name, max_retries=2)
         self.assertEqual(resp.status_code, 201, msg=resp.content)
         job_uuid_2, resp = util.submit_job(self.cook_url, command='sleep 300', name=name, max_retries=2)
@@ -2274,7 +2274,7 @@ class CookTest(util.CookTest):
             util.kill_jobs(self.cook_url, job_uuids)
 
     def test_instance_stats_failed(self):
-        name = str(uuid.uuid4())
+        name = str(util.make_temporal_uuid())
         job_uuid_1, resp = util.submit_job(self.cook_url, command='exit 1', name=name, cpus=0.1, mem=32)
         self.assertEqual(resp.status_code, 201, msg=resp.content)
         job_uuid_2, resp = util.submit_job(self.cook_url, command='sleep 1 && exit 1', name=name, cpus=0.2, mem=64)
@@ -2341,7 +2341,7 @@ class CookTest(util.CookTest):
             util.kill_jobs(self.cook_url, job_uuids)
 
     def test_instance_stats_success(self):
-        name = str(uuid.uuid4())
+        name = str(util.make_temporal_uuid())
         job_uuid_1, resp = util.submit_job(self.cook_url, command='exit 0', name=name, cpus=0.1, mem=32)
         self.assertEqual(resp.status_code, 201, msg=resp.content)
         job_uuid_2, resp = util.submit_job(self.cook_url, command='sleep 1', name=name, cpus=0.2, mem=64)
@@ -2402,7 +2402,7 @@ class CookTest(util.CookTest):
             util.kill_jobs(self.cook_url, job_uuids)
 
     def test_instance_stats_supports_epoch_time_params(self):
-        name = str(uuid.uuid4())
+        name = str(util.make_temporal_uuid())
         job_uuid_1, resp = util.submit_job(self.cook_url, command='sleep 300', name=name, max_retries=2)
         self.assertEqual(resp.status_code, 201, msg=resp.content)
         job_uuid_2, resp = util.submit_job(self.cook_url, command='sleep 300', name=name, max_retries=2)
@@ -2504,7 +2504,7 @@ class CookTest(util.CookTest):
                 self.assertEqual(resp.status_code, 400, msg=resp.content)
 
         # Try submitting to a pool that doesn't exist
-        job_uuid, resp = util.submit_job(self.cook_url, pool=str(uuid.uuid4()))
+        job_uuid, resp = util.submit_job(self.cook_url, pool=str(util.make_temporal_uuid()))
         self.assertEqual(resp.status_code, 400, msg=resp.content)
 
     def test_ssl(self):
@@ -2728,7 +2728,7 @@ class CookTest(util.CookTest):
 
     @unittest.skipUnless(util.using_data_local_fitness_calculator(), "Requires the data local fitness calculator")
     def test_data_local_constraint_missing_data(self):
-        job_uuid, resp = util.submit_job(self.cook_url, datasets=[{'dataset': {'uuid': str(uuid.uuid4())}}])
+        job_uuid, resp = util.submit_job(self.cook_url, datasets=[{'dataset': {'uuid': str(util.make_temporal_uuid())}}])
         self.assertEqual(201, resp.status_code, resp.text)
 
         # Because the job has no data in the data locality service, it shouldn't be scheduled for a period of time.
@@ -2749,7 +2749,7 @@ class CookTest(util.CookTest):
     @unittest.skipUnless(util.using_data_local_fitness_calculator() and util.data_local_service_is_set(), 'Requires the data local fitness calculator')
     @pytest.mark.serial
     def test_data_local_constrait_not_suitable(self):
-        job_uuid, resp = util.submit_job(self.cook_url, datasets=[{'dataset': {'foo': str(uuid.uuid4())}}])
+        job_uuid, resp = util.submit_job(self.cook_url, datasets=[{'dataset': {'foo': str(util.make_temporal_uuid())}}])
         try:
             self.assertEqual(201, resp.status_code, resp.text)
             hostnames_to_consider = util.hostnames_to_consider(self.cook_url)
@@ -2771,7 +2771,7 @@ class CookTest(util.CookTest):
     @pytest.mark.serial
     @pytest.mark.xfail(condition=util.continuous_integration(), reason="Sometimes fails on Travis")
     def test_data_local_debug_endpoint(self):
-        job_uuid, resp = util.submit_job(self.cook_url, datasets=[{'dataset': {'foo': str(uuid.uuid4())}}])
+        job_uuid, resp = util.submit_job(self.cook_url, datasets=[{'dataset': {'foo': str(util.make_temporal_uuid())}}])
         try:
             self.assertEqual(201, resp.status_code, resp.text)
             hostnames = util.hostnames_to_consider(self.cook_url)
@@ -2807,7 +2807,7 @@ class CookTest(util.CookTest):
 
             util.wait_until(get_debug_status_code, lambda c: c == 404, timeout)
 
-            missing_resp = util.session.get(f'{self.cook_url}/data-local/{str(uuid.uuid4())}')
+            missing_resp = util.session.get(f'{self.cook_url}/data-local/{str(util.make_temporal_uuid())}')
             self.assertEqual(404, missing_resp.status_code, missing_resp.text)
         finally:
             util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
@@ -2877,7 +2877,7 @@ class CookTest(util.CookTest):
         if not os.path.exists(default_volume['host-path']):
             os.mkdir(default_volume['host-path'])
         image = util.docker_image()
-        file_name = str(uuid.uuid4())
+        file_name = str(util.make_temporal_uuid())
         container_file = os.path.join(default_volume['container-path'], file_name)
         host_file = os.path.join(default_volume['host-path'], file_name)
         job_uuid, resp = util.submit_job(self.cook_url,

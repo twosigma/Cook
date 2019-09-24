@@ -409,7 +409,7 @@ def minimal_job(**kwargs):
         'mem': int(os.getenv('COOK_DEFAULT_JOB_MEM_MB', 256)),
         'name': 'default_test_job',
         'priority': 1,
-        'uuid': str(uuid.uuid4())
+        'uuid': str(make_temporal_uuid())
     }
     image = docker_image()
     if image:
@@ -444,7 +444,7 @@ def minimal_jobs(job_count, **kwargs):
 
 def minimal_group(**kwargs):
     """Build a minimal group spec"""
-    return dict(uuid=str(uuid.uuid4()), **kwargs)
+    return dict(uuid=str(make_temporal_uuid()), **kwargs)
 
 
 def submit_jobs(cook_url, job_specs, clones=1, pool=None, headers={}, **kwargs):
