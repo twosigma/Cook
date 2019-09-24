@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.34.1] - 2019-09-24
+### Added
+- Pool name to matching logs, from @dposada
+
 ## [1.34.0] - 2019-09-11
 ### Added
 - `COOK_INSTANCE_NUM` environment variable, from @pschorf
