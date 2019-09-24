@@ -1,5 +1,6 @@
 (ns cook.kubernetes.api
   (:require [clojure.set :as set]
+            [clojure.string :as str]
             [clojure.tools.logging :as log]
             [plumbing.core :as pc])
   (:import
@@ -10,7 +11,7 @@
     (io.kubernetes.client.custom Quantity Quantity$Format)
     (io.kubernetes.client.models V1Pod V1Container V1Node V1Pod V1Container V1ResourceRequirements V1EnvVar
                                  V1ObjectMeta V1PodSpec V1PodStatus V1ContainerState V1DeleteOptionsBuilder
-                                 V1DeleteOptions)
+                                 V1DeleteOptions V1HostPathVolumeSource V1VolumeMount V1VolumeBuilder)
     (io.kubernetes.client.util Watch)
     (java.util.concurrent Executors ExecutorService)))
 
@@ -134,7 +135,7 @@
             (log/error e "Error during watch"))
           (finally
             (.close watch)
-            (initialize-pod-watch api-client all-pods-atom cook-pod-callback))))))))
+            (initialize-pod-watch api-client compute-cluster-name all-pods-atom cook-pod-callback))))))))
 
 (defn initialize-node-watch
   "Initialize the node watch. This fills current-nodes-atom with data and invokes the callback on pod changes."
@@ -220,12 +221,48 @@
   (Quantity. (BigDecimal/valueOf value)
              Quantity$Format/DECIMAL_SI))
 
+(defn path->name
+  "Converts a path to a string suitable for use as a kubernetes object name."
+  [path]
+  (-> path
+      str/lower-case
+      (str/replace "/" "-")
+      (str/replace #"^-" "")))
+
+(defn make-volumes
+  "Converts a list of cook volumes to kubernetes volumes and volume mounts."
+  [cook-volumes]
+  (let [volumes (map (fn [{:keys [host-path]}]
+                       (let [host-path-source (V1HostPathVolumeSource.)]
+                         ; host path
+                         (.setPath host-path-source host-path)
+                         (.setType host-path-source "DirectoryOrCreate")
+
+                         ; volume
+                         (-> (V1VolumeBuilder.)
+                             (.withName (path->name host-path))
+                             (.withHostPath host-path-source)
+                             (.build))))
+                     cook-volumes)
+        volume-mounts (map (fn [{:keys [container-path host-path mode]
+                                 :or {mode "RO"}}]
+                             (let [container-path (or container-path host-path)
+                                   volume-mount (V1VolumeMount.)
+                                   read-only (not (= mode "RW"))]
+                               (.setName volume-mount (path->name host-path))
+                               (.setMountPath volume-mount container-path)
+                               (.setReadOnly volume-mount read-only)
+                               volume-mount))
+                           cook-volumes)]
+    {:volumes volumes
+     :volume-mounts volume-mounts}))
+
 (defn ^V1Pod task-metadata->pod
   "Given a task-request and other data generate the kubernetes V1Pod to launch that task."
   [namespace compute-cluster-name {:keys [task-id command container task-request hostname]}]
   (let [{:keys [resources]} task-request
         {:keys [mem cpus]} resources
-        {:keys [docker]} container
+        {:keys [docker volumes]} container
         {:keys [image]} docker
         pod (V1Pod.)
         pod-spec (V1PodSpec.)
@@ -239,7 +276,8 @@
                  (:environment command))
         resources (V1ResourceRequirements.)
         labels {cook-pod-label compute-cluster-name}
-        ]
+        {:keys [volumes volume-mounts]} (make-volumes volumes)]
+
     ; metadata
     (.setName metadata (str task-id))
     (.setNamespace metadata namespace)
@@ -257,11 +295,13 @@
     (.putLimitsItem resources "memory" (double->quantity (* memory-multiplier mem)))
     (.putRequestsItem resources "cpu" (double->quantity cpus))
     (.setResources container resources)
+    (.setVolumeMounts container (into [] volume-mounts))
 
     ; pod-spec
     (.addContainersItem pod-spec container)
     (.setNodeName pod-spec hostname)
     (.setRestartPolicy pod-spec "Never")
+    (.setVolumes pod-spec (into [] volumes))
 
     ; pod
     (.setMetadata pod metadata)

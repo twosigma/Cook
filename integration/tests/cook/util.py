@@ -390,6 +390,16 @@ def docker_image():
 def get_default_cpus():
     return float(os.getenv('COOK_DEFAULT_JOB_CPUS', 1.0))
 
+def make_temporal_uuid():
+    """Make a UUID object that has a datestamp as its prefix. The datestamp being yymmddhh. This will cluster
+    UUID's in a temporal manner, so jobs submitted on the same day or week will be clustered together in the
+    datomic storage"""
+    base_uuid = uuid.uuid4()
+    now = datetime.now()
+    date_prefix = now.strftime("%y%m%d%H")
+    suffix = str(base_uuid)[8:]
+    temporal_uuid = uuid.UUID(date_prefix+suffix)
+    return temporal_uuid
 
 def minimal_job(**kwargs):
     job = {
@@ -399,7 +409,7 @@ def minimal_job(**kwargs):
         'mem': int(os.getenv('COOK_DEFAULT_JOB_MEM_MB', 256)),
         'name': 'default_test_job',
         'priority': 1,
-        'uuid': str(uuid.uuid4())
+        'uuid': str(make_temporal_uuid())
     }
     image = docker_image()
     if image:
@@ -434,7 +444,7 @@ def minimal_jobs(job_count, **kwargs):
 
 def minimal_group(**kwargs):
     """Build a minimal group spec"""
-    return dict(uuid=str(uuid.uuid4()), **kwargs)
+    return dict(uuid=str(make_temporal_uuid()), **kwargs)
 
 
 def submit_jobs(cook_url, job_specs, clones=1, pool=None, headers={}, **kwargs):
@@ -820,11 +830,11 @@ def wait_for_running_instance(cook_url, job_id, max_wait_ms=DEFAULT_TIMEOUT_MS):
     return response.json()[0]['instances'][0]
 
 
-def get_mesos_state(mesos_url):
+def get_mesos_slaves(mesos_url):
     """
-    Queries the state.json from mesos
+    Queries mesos slave state from /slaves
     """
-    return session.get('%s/state.json' % mesos_url).json()
+    return session.get('%s/slaves' % mesos_url).json()
 
 
 def wait_for_output_url(cook_url, job_uuid):
@@ -1179,7 +1189,7 @@ def is_cook_executor_in_use():
 
 def slave_cpus(mesos_url, hostname):
     """Returns the cpus of the specified Mesos agent"""
-    slaves = get_mesos_state(mesos_url)['slaves']
+    slaves = get_mesos_slaves(mesos_url)['slaves']
     # Here we need to use unreserved_resources because Mesos might only
     # send offers for the unreserved (role = "*") portions of the agents.
     slave_cpus = next(s['unreserved_resources']['cpus'] for s in slaves if s['hostname'] == hostname)
@@ -1191,7 +1201,7 @@ def _pool_attribute_name(cook_url):
 
 def slave_pool(cook_url, mesos_url, hostname):
     """Returns the pool of the specified Mesos agent, or None if the agent doesn't have the attribute"""
-    slaves = get_mesos_state(mesos_url)['slaves']
+    slaves = get_mesos_slaves(mesos_url)['slaves']
     attribute_name = _pool_attribute_name(cook_url)
     pool = next(s.get('attributes', {}).get(attribute_name, None) for s in slaves if s['hostname'] == hostname)
     return pool
@@ -1199,7 +1209,7 @@ def slave_pool(cook_url, mesos_url, hostname):
 
 def max_mesos_slave_cpus(mesos_url):
     """Returns the max cpus of all current Mesos agents"""
-    slaves = get_mesos_state(mesos_url)['slaves']
+    slaves = get_mesos_slaves(mesos_url)['slaves']
     max_slave_cpus = max([s['resources']['cpus'] for s in slaves])
     return max_slave_cpus
 
@@ -1251,7 +1261,7 @@ def max_node_cpus():
 
 def node_count():
     if using_mesos():
-        return len(get_mesos_state(retrieve_mesos_url())['slaves'])
+        return len(get_mesos_slaves(retrieve_mesos_url())['slaves'])
     elif using_kubernetes():
         return len(get_kubernetes_nodes())
     else:
@@ -1306,8 +1316,7 @@ def mesos_hostnames_to_consider(cook_url, mesos_url):
     """
     Returns the hostnames in the default pool, or all hosts if the cluster is not using pools
     """
-    state = get_mesos_state(mesos_url)
-    slaves = state['slaves']
+    slaves = get_mesos_slaves(mesos_url)['slaves']
     pool = default_pool(cook_url)
     attribute_name = _pool_attribute_name(cook_url)
     slaves = [s for s in slaves if s['attributes'].get(attribute_name, None) == pool] if pool else slaves
@@ -1399,12 +1408,12 @@ def using_data_local_fitness_calculator():
     return _fenzo_fitness_calculator() == 'cook.scheduler.data-locality/make-data-local-fitness-calculator'
 
 
-def get_agent_endpoint(master_state, agent_hostname):
-    agent = [agent for agent in master_state['slaves']
+def get_agent_endpoint(slaves, agent_hostname):
+    agent = [agent for agent in slaves
              if agent['hostname'] == agent_hostname][0]
     if agent is None:
         logger.warning(f"Could not find agent for hostname {agent_hostname}")
-        logger.warning(f"slaves: {master_state['slaves']}")
+        logger.warning(f"slaves: {slaves}")
         return None
     else:
         # Get the host and port of the agent API.
@@ -1417,8 +1426,8 @@ def get_agent_endpoint(master_state, agent_hostname):
 @functools.lru_cache()
 def _supported_isolators():
     mesos_url = retrieve_mesos_url()
-    mesos_state = get_mesos_state(mesos_url)
-    slave_endpoint = get_agent_endpoint(mesos_state, mesos_state['slaves'][0]['hostname'])
+    slaves = get_mesos_slaves(mesos_url)['slaves']
+    slave_endpoint = get_agent_endpoint(slaves, slaves[0]['hostname'])
     slave_response = session.get(slave_endpoint)
     try:
         slave_state = slave_response.json()
@@ -1457,3 +1466,4 @@ def has_one_agent():
 
 def supports_exit_code():
     return using_kubernetes() or is_cook_executor_in_use()
+

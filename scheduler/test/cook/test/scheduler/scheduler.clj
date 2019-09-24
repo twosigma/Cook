@@ -377,7 +377,8 @@
         framework-id (str "framework-id-" (UUID/randomUUID))
         fenzo-maker #(sched/make-fenzo-scheduler nil 100000 nil 1)] ; The params are for offer declining, which should never happen
     (testing "Consume no schedule cases"
-      (are [schedule offers] (= [] (:matches (sched/match-offer-to-schedule (db c) (fenzo-maker) schedule offers (atom {}))))
+      (are [schedule offers] (= [] (:matches (sched/match-offer-to-schedule (db c) (fenzo-maker) schedule
+                                                                            offers (atom {}) nil)))
                              [] (offer-maker 0 0)
                              [] (offer-maker 2 2000)
                              schedule (offer-maker 0 0)
@@ -388,7 +389,7 @@
       ;; We're looking for one task to get assigned
       (are [offers] (= 1 (count (mapcat :tasks
                                         (:matches (sched/match-offer-to-schedule
-                                                    (db c) (fenzo-maker) schedule offers (atom {}))))))
+                                                    (db c) (fenzo-maker) schedule offers (atom {}) nil)))))
                     (offer-maker 1 1000)
                     (offer-maker 1.5 1500)))
     (testing "Consume full schedule cases"
@@ -396,7 +397,7 @@
       (are [offers] (= (count schedule)
                        (count (mapcat :tasks
                                       (:matches (sched/match-offer-to-schedule
-                                                  (db c) (fenzo-maker) schedule offers (atom {}))))))
+                                                  (db c) (fenzo-maker) schedule offers (atom {}) nil)))))
                     (offer-maker 4 4000)
                     (offer-maker 5 5000)))))
 
@@ -435,7 +436,8 @@
         high-priority (map #(d/entity (d/db conn) %) high-priority-ids)
         considerable (concat high-priority low-priority)]
     (testing "Scheduling order respected?"
-      (let [schedule (sched/match-offer-to-schedule (d/db conn) fenzo considerable [(offer-maker 1.0 "empty_host")] (atom {}))]
+      (let [schedule (sched/match-offer-to-schedule (d/db conn) fenzo considerable
+                                                    [(offer-maker 1.0 "empty_host")] (atom {}) nil)]
         (is (= {"empty_host" ["high-priority"]}
                (->> schedule
                     :matches

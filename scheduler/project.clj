@@ -13,7 +13,7 @@
 ;; See the License for the specific language governing permissions and
 ;; limitations under the License.
 ;;
-(defproject cook "1.34.1-SNAPSHOT"
+(defproject cook "1.34.2-SNAPSHOT"
   :description "This launches jobs on a Mesos cluster with fair sharing and preemption"
   :license {:name "Apache License, Version 2.0"}
   :dependencies [[org.clojure/clojure "1.8.0"]
@@ -86,7 +86,8 @@
                  [metrics-clojure-jvm "2.6.1"]
                  [io.dropwizard.metrics/metrics-graphite "3.1.2"]
                  [com.aphyr/metrics3-riemann-reporter "0.4.0"
-                  :exclusions [com.google.protobuf/protobuf-java]]
+                  :exclusions [com.google.protobuf/protobuf-java
+                               com.amazonaws/aws-java-sdk]] ; Brings in a lot of dependencies
 
                  ;;External system integrations
                  [me.raynes/conch "0.5.2"]
@@ -156,7 +157,8 @@
                                  org.slf4j/jul-to-slf4j
                                  org.slf4j/log4j-over-slf4j
                                  org.slf4j/slf4j-api
-                                 org.slf4j/slf4j-nop]]
+                                 org.slf4j/slf4j-nop
+                                 com.amazonaws/aws-java-sdk]]
                    ; Similarly, one could use an older version of the
                    ; mesomatic library in environments that require it
                    [twosigma/mesomatic "1.5.0-r4"]]}
@@ -170,7 +172,8 @@
                                  org.slf4j/jul-to-slf4j
                                  org.slf4j/log4j-over-slf4j
                                  org.slf4j/slf4j-api
-                                 org.slf4j/slf4j-nop]]]}
+                                 org.slf4j/slf4j-nop
+                                 com.amazonaws/aws-java-sdk]]]} ; aws brings in a lot of dependencies.
 
    :dev
    {:dependencies [[criterium "0.4.4"]

@@ -486,12 +486,11 @@
 
    Returns {:matches (list of tasks that got matched to the offer)
             :failures (list of unmatched tasks, and why they weren't matched)}"
-  [db ^TaskScheduler fenzo considerable offers rebalancer-reservation-atom]
-  (log/info "Matching" (count offers) "offers to" (count considerable) "jobs with fenzo")
-  (log/debug "tasks to scheduleOnce" considerable)
+  [db ^TaskScheduler fenzo considerable offers rebalancer-reservation-atom pool-name]
+  (log/info "In" pool-name "pool, matching" (count offers) "offers to" (count considerable) "jobs with fenzo")
+  (log/debug "In" pool-name "pool, tasks to scheduleOnce" considerable)
   (dl/update-cost-staleness-metric considerable)
   (let [t (System/currentTimeMillis)
-        _ (log/debug "tasks to scheduleOnce" considerable)
         leases (mapv #(->VirtualMachineLeaseAdapter % t) offers)
         considerable->task-id (plumbing.core/map-from-keys (fn [_] (str (d/squuid))) considerable)
         guuid->considerable-cotask-ids (util/make-guuid->considerable-cotask-ids considerable->task-id)
@@ -515,12 +514,12 @@
         assignments (.. result getResultMap values)]
     (doall (map (fn [^VirtualMachineLease lease]
                   (when (-> lease :offer :reject-after-match-attempt)
-                    (log/info "Retracting lease" (-> lease :offer :id))
+                    (log/info "In" pool-name "pool, retracting lease" (-> lease :offer :id))
                     (locking fenzo
                       (.expireLease fenzo (.getId lease)))))
                 leases))
 
-    (log/debug "Found this assignment:" result)
+    (log/debug "In" pool-name "pool, found this assignment:" result)
 
     {:matches (mapv (fn [assignment]
                       {:leases (.getLeasesUsed assignment)
@@ -745,7 +744,8 @@
               ; matches is a vector of maps of {:hostname .. :leases .. :tasks}
               {:keys [matches failures]} (timers/time!
                                            (timers/timer (metric-title "handle-resource-offer!-match-duration" pool-name))
-                                           (match-offer-to-schedule db fenzo considerable-jobs offers rebalancer-reservation-atom))
+                                           (match-offer-to-schedule db fenzo considerable-jobs offers
+                                                                    rebalancer-reservation-atom pool-name))
               _ (log/debug "In" pool-name "pool, got matches:" matches)
               offers-scheduled (for [{:keys [leases]} matches
                                      lease leases]
