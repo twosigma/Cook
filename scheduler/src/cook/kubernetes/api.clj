@@ -134,7 +134,7 @@
             (log/error e "Error during watch"))
           (finally
             (.close watch)
-            (initialize-pod-watch api-client all-pods-atom cook-pod-callback))))))))
+            (initialize-pod-watch api-client compute-cluster-name all-pods-atom cook-pod-callback))))))))
 
 (defn initialize-node-watch
   "Initialize the node watch. This fills current-nodes-atom with data and invokes the callback on pod changes."
