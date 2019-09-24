@@ -33,3 +33,4 @@ src/cfg/current.clj
 target
 test-log
 *.orig
+venv
