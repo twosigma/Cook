@@ -2915,7 +2915,8 @@ class CookTest(util.CookTest):
             util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
 
 
-    @unittest.skipUnless(util.supports_exit_code() and not util.has_one_agent(), "Requires exit code support and multiple agents")
+    # Disabled as it doesn't work correctly in all environments.
+    @unittest.skipUnless(False and util.supports_exit_code() and not util.has_one_agent(), "Requires exit code support and multiple agents")
     def test_cook_instance_num(self):
         command = 'bash -c \'exit $(($COOK_INSTANCE_NUM + 1))\''
         job_uuid, resp = util.submit_job(self.cook_url, command=command, max_retries=2)
