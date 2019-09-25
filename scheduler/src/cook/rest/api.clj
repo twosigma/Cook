@@ -2610,8 +2610,8 @@
     :handle-ok (fn [ctx]
                  (timers/time!
                    (timers/timer ["cook-scheduler" "handler" "list-endpoint-duration"])
-                   (let [job-ents (list-job-ents db false ctx)]
-                     (doall (mapv (partial fetch-job-map-from-entity db) job-ents)))))))
+                   (let [{:keys [jobs]} (list-job-ents db false ctx)]
+                     (doall (mapv (partial fetch-job-map-from-entity db) jobs)))))))
 
 ;;
 ;; /unscheduled_jobs
