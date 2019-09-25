@@ -820,6 +820,8 @@ def wait_for_running_instance(cook_url, job_id, max_wait_ms=DEFAULT_TIMEOUT_MS):
         job = resp.json()[0]
         if not job['instances']:
             logger.info(f"Job {job_id} has no instances.")
+            jobs, _ = unscheduled_jobs(cook_url, job_id)
+            logger.info(f'Unscheduled info: {jobs}')
         else:
             for inst in job['instances']:
                 status = inst['status']
