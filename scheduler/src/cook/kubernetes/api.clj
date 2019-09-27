@@ -2,6 +2,7 @@
   (:require [clojure.set :as set]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
+            [cook.config :as config]
             [plumbing.core :as pc])
   (:import
     (com.google.gson JsonSyntaxException)
@@ -13,7 +14,8 @@
                                  V1ObjectMeta V1PodSpec V1PodStatus V1ContainerState V1DeleteOptionsBuilder
                                  V1DeleteOptions V1HostPathVolumeSource V1VolumeMount V1VolumeBuilder)
     (io.kubernetes.client.util Watch)
-    (java.util.concurrent Executors ExecutorService)))
+    (java.util.concurrent Executors ExecutorService)
+    (java.util UUID)))
 
 
 (def cook-pod-label "twosigma.com/cook-scheduler-job")
@@ -221,18 +223,20 @@
   (Quantity. (BigDecimal/valueOf value)
              Quantity$Format/DECIMAL_SI))
 
-(defn path->name
-  "Converts a path to a string suitable for use as a kubernetes object name."
-  [path]
-  (-> path
-      str/lower-case
-      (str/replace "/" "-")
-      (str/replace #"^-" "")))
-
 (defn make-volumes
   "Converts a list of cook volumes to kubernetes volumes and volume mounts."
   [cook-volumes]
-  (let [volumes (map (fn [{:keys [host-path]}]
+  (let [{:keys [disallowed-container-paths]} (config/kubernetes)
+        filtered-cook-volumes (filter (fn [{:keys [host-path container-path]}]
+                                        (let [path (or container-path host-path)]
+                                          (if disallowed-container-paths
+                                            (not (contains? disallowed-container-paths
+                                                            path))
+                                            true)))
+                                      cook-volumes)
+        host-path->name (pc/map-from-keys (fn [_] (str (UUID/randomUUID)))
+                                          (map :host-path filtered-cook-volumes))
+        volumes (map (fn [{:keys [host-path]}]
                        (let [host-path-source (V1HostPathVolumeSource.)]
                          ; host path
                          (.setPath host-path-source host-path)
@@ -240,20 +244,20 @@
 
                          ; volume
                          (-> (V1VolumeBuilder.)
-                             (.withName (path->name host-path))
+                             (.withName (host-path->name host-path))
                              (.withHostPath host-path-source)
                              (.build))))
-                     cook-volumes)
+                     filtered-cook-volumes)
         volume-mounts (map (fn [{:keys [container-path host-path mode]
                                  :or {mode "RO"}}]
                              (let [container-path (or container-path host-path)
                                    volume-mount (V1VolumeMount.)
                                    read-only (not (= mode "RW"))]
-                               (.setName volume-mount (path->name host-path))
+                               (.setName volume-mount (host-path->name host-path))
                                (.setMountPath volume-mount container-path)
                                (.setReadOnly volume-mount read-only)
                                volume-mount))
-                           cook-volumes)]
+                           filtered-cook-volumes)]
     {:volumes volumes
      :volume-mounts volume-mounts}))
 

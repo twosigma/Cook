@@ -1,5 +1,6 @@
 (ns cook.test.kubernetes.api
   (:require [clojure.test :refer :all]
+            [cook.config :as config]
             [cook.kubernetes.api :as api]
             [cook.test.testutil :as tu]
             [datomic.api :as d])
@@ -78,6 +79,45 @@
         (is (= 1.0 (-> resources .getRequests (get "cpu") .getNumber .doubleValue)))
         (is (= (* 512.0 api/memory-multiplier) (-> resources .getRequests (get "memory") .getNumber .doubleValue)))
         (is (= (* 512.0 api/memory-multiplier) (-> resources .getLimits (get "memory") .getNumber .doubleValue)))))))
+
+(deftest test-make-volumes
+  (testing "defaults for minimal volume"
+    (let [host-path "/tmp/$_*/foo"
+          {:keys [volumes volume-mounts]} (api/make-volumes [{:host-path host-path}])]
+      (is (= 1 (count volumes)))
+      (is (= 1 (count volume-mounts)))
+      (let [volume (first volumes)
+            volume-mount (first volume-mounts)]
+        (is (= (.getName volume)
+               (.getName volume-mount)))
+        ; validation regex for k8s names
+        (is (re-matches #"[a-z0-9]([-a-z0-9]*[a-z0-9])?" (.getName volume)))
+        (is (= host-path (-> volume .getHostPath .getPath)))
+        (is (.isReadOnly volume-mount))
+        (is (= host-path (.getMountPath volume-mount))))))
+  (testing "correct values for fully specified volume"
+    (let [host-path "/tmp/foo"
+          container-path "/mnt/foo"
+          {:keys [volumes volume-mounts]} (api/make-volumes [{:host-path host-path
+                                                              :container-path container-path
+                                                              :mode "RW"}])
+          [volume] volumes
+          [volume-mount] volume-mounts]
+      (is (= (.getName volume)
+             (.getName volume-mount)))
+      (is (= host-path (-> volume .getHostPath .getPath)))
+      (is (not (.isReadOnly volume-mount)))
+      (is (= container-path (.getMountPath volume-mount)))))
+  (testing "disallows configured volumes"
+    (with-redefs [config/kubernetes (constantly {:disallowed-container-paths #{"/tmp/foo"}})]
+      (is (= {:volumes []
+              :volume-mounts []}
+             (api/make-volumes [{:host-path "/tmp/foo"}])))
+      (is (= {:volumes []
+              :volume-mounts []}
+             (api/make-volumes [{:container-path "/tmp/foo"
+                                 :host-path "/mnt/foo"}]))))))
+
 
 (deftest test-pod->synthesized-pod-state
   (testing "returns nil for empty pod"

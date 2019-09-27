@@ -428,7 +428,9 @@
                           :pool-selection
                           (merge {:attribute-name "cook-pool"
                                   :default-pool "no-pool"}
-                                 pool-selection)})))}))
+                                 pool-selection)})))
+     :kubernetes (fnk [[:config {kubernetes {}}]]
+                   kubernetes)}))
 
 (defn read-config
   "Given a config file path, reads the config and returns the map"
@@ -538,3 +540,7 @@
 (defn compute-clusters
   []
   (get-in config [:settings :compute-clusters]))
+
+(defn kubernetes
+  []
+  (get-in config [:settings :kubernetes]))
