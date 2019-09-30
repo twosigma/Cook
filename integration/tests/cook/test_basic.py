@@ -49,7 +49,7 @@ class CookTest(util.CookTest):
             self.fail(f"Unable to parse start time: {info_details}")
 
     def test_basic_submit(self):
-        job_executor_type = util.get_job_executor_type(self.cook_url)
+        job_executor_type = util.get_job_executor_type()
         job_uuid, resp = util.submit_job(self.cook_url, executor=job_executor_type)
         self.assertEqual(resp.status_code, 201, msg=resp.content)
         self.assertEqual(resp.content, str.encode(f"submitted jobs {job_uuid}"))
@@ -67,7 +67,7 @@ class CookTest(util.CookTest):
 
     @unittest.skipIf(util.using_kubernetes(), 'Output url is not currently supported on kubernetes')
     def test_output_url(self):
-        job_executor_type = util.get_job_executor_type(self.cook_url)
+        job_executor_type = util.get_job_executor_type()
         job_uuid, resp = util.submit_job(self.cook_url, command='sleep 600', executor=job_executor_type)
         try:
             self.assertTrue(len(util.wait_for_output_url(self.cook_url, job_uuid)['output_url']) > 0)
@@ -167,7 +167,7 @@ class CookTest(util.CookTest):
 
     @unittest.skipUnless(util.is_cook_executor_in_use(), 'Test assumes the Cook Executor is in use')
     def test_disable_mea_culpa(self):
-        job_executor_type = util.get_job_executor_type(self.cook_url)
+        job_executor_type = util.get_job_executor_type()
         self.assertEqual('cook', job_executor_type)
         uuid, resp = util.submit_job(self.cook_url, command='sleep 30', env={'EXECUTOR_TEST_EXIT': '1'},
                                      disable_mea_culpa_retries=True, executor=job_executor_type)
@@ -188,7 +188,7 @@ class CookTest(util.CookTest):
 
     @unittest.skipUnless(util.is_cook_executor_in_use(), 'Test assumes the Cook Executor is in use')
     def test_mea_culpa_retries(self):
-        job_executor_type = util.get_job_executor_type(self.cook_url)
+        job_executor_type = util.get_job_executor_type()
         self.assertEqual('cook', job_executor_type)
         uuid, resp = util.submit_job(self.cook_url, command='sleep 30', env={'EXECUTOR_TEST_EXIT': '1'}, executor=job_executor_type)
         try:
@@ -281,7 +281,7 @@ class CookTest(util.CookTest):
         self.assertEqual('success', job['instances'][0]['status'], message)
 
     def test_failing_submit(self):
-        job_executor_type = util.get_job_executor_type(self.cook_url)
+        job_executor_type = util.get_job_executor_type()
         job_uuid, resp = util.submit_job(self.cook_url, command='exit 1', executor=job_executor_type)
         self.assertEqual(201, resp.status_code, msg=resp.content)
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
@@ -306,7 +306,7 @@ class CookTest(util.CookTest):
 
     @unittest.skipUnless(util.is_cook_executor_in_use(), 'Test assumes the Cook Executor is in use')
     def test_progress_update_submit(self):
-        job_executor_type = util.get_job_executor_type(self.cook_url)
+        job_executor_type = util.get_job_executor_type()
         progress_file_env = util.retrieve_progress_file_env(self.cook_url)
 
         line = util.progress_line(self.cook_url, 25, f'Twenty-five percent in ${{{progress_file_env}}}', True)
@@ -333,7 +333,7 @@ class CookTest(util.CookTest):
 
     @unittest.skipUnless(util.is_cook_executor_in_use(), 'Test assumes the Cook Executor is in use')
     def test_configurable_progress_update_submit(self):
-        job_executor_type = util.get_job_executor_type(self.cook_url)
+        job_executor_type = util.get_job_executor_type()
         command = 'echo "message: 25 Twenty-five percent" > progress_file.txt; sleep 1; exit 0'
         job_uuid, resp = util.submit_job(self.cook_url, command=command, executor=job_executor_type, max_runtime=60000,
                                          progress_output_file='progress_file.txt',
@@ -359,7 +359,7 @@ class CookTest(util.CookTest):
 
     @unittest.skipUnless(util.is_cook_executor_in_use(), 'Test assumes the Cook Executor is in use')
     def test_multiple_progress_updates_submit(self):
-        job_executor_type = util.get_job_executor_type(self.cook_url)
+        job_executor_type = util.get_job_executor_type()
         line_1 = util.progress_line(self.cook_url, 25, 'Twenty-five percent', True)
         line_2 = util.progress_line(self.cook_url, 50, 'Fifty percent', True)
         line_3 = util.progress_line(self.cook_url, '', 'Sixty percent invalid format', True)
@@ -389,7 +389,7 @@ class CookTest(util.CookTest):
     @unittest.skipUnless(util.is_cook_executor_in_use() and not (util.docker_tests_enabled() and util.continuous_integration()),
                          'Test assumes the Cook Executor is in use. Fails on travis with docker')
     def test_multiple_progress_updates_submit_stdout(self):
-        job_executor_type = util.get_job_executor_type(self.cook_url)
+        job_executor_type = util.get_job_executor_type()
         line_1 = util.progress_line(self.cook_url, 25, 'Twenty-five percent')
         line_2 = util.progress_line(self.cook_url, 50, 'Fifty percent')
         line_3 = util.progress_line(self.cook_url, '', 'Sixty percent invalid format')
@@ -418,7 +418,7 @@ class CookTest(util.CookTest):
 
     @unittest.skipUnless(util.is_cook_executor_in_use(), 'Test assumes the Cook Executor is in use')
     def test_multiple_rapid_progress_updates_submit(self):
-        job_executor_type = util.get_job_executor_type(self.cook_url)
+        job_executor_type = util.get_job_executor_type()
 
         def progress_string(a):
             return util.progress_line(self.cook_url, a, f'{a}%', True)
@@ -444,7 +444,7 @@ class CookTest(util.CookTest):
         self.assertEqual('80%', instance['progress_message'], message)
 
     def test_max_runtime_exceeded(self):
-        job_executor_type = util.get_job_executor_type(self.cook_url)
+        job_executor_type = util.get_job_executor_type()
         settings_timeout_interval_minutes = util.get_in(util.settings(self.cook_url), 'task-constraints',
                                                         'timeout-interval-minutes')
         # the value needs to be a little more than 2 times settings_timeout_interval_minutes to allow
@@ -523,11 +523,11 @@ class CookTest(util.CookTest):
         return command
 
     @staticmethod
-    def memory_limit_script_command():
+    def memory_limit_script_command(count=1024):
         """Generates a script command that incrementally allocates large strings that cause the process to
         request more memory than it is allocated."""
         command = 'random_string() { ' \
-                  '  base64 /dev/urandom | tr -d \'/+\' | dd bs=1048576 count=1024 2>/dev/null; ' \
+                  f'  base64 /dev/urandom | tr -d \'/+\' | dd bs=1048576 count={count} 2>/dev/null; ' \
                   '}; ' \
                   'R="$(random_string)"; ' \
                   'V=""; ' \
@@ -541,16 +541,16 @@ class CookTest(util.CookTest):
                   'done'
         return command
 
-    def memory_limit_exceeded_helper(self, command, executor_type):
+    def memory_limit_exceeded_helper(self, command, executor_type, mem=128):
         """Given a command that needs more memory than it is allocated, when the command is submitted to cook,
         the job should be killed by Mesos as it exceeds its memory limits."""
-        job_uuid, resp = util.submit_job(self.cook_url, command=command, executor=executor_type, mem=128)
+        job_uuid, resp = util.submit_job(self.cook_url, command=command, executor=executor_type, mem=mem)
         self.assertEqual(201, resp.status_code, msg=resp.content)
         instance = util.wait_for_instance(self.cook_url, job_uuid)
         self.logger.debug('instance: %s' % instance)
         job = instance['parent']
         try:
-            job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
+            job = util.wait_for_job(self.cook_url, job_uuid, 'completed', max_wait_ms=480000)
             job_details = f"Job details: {json.dumps(job, sort_keys=True)}"
             self.assertEqual('failed', job['state'], job_details)
             self.assertLessEqual(1, len(job['instances']), job_details)
@@ -597,8 +597,8 @@ class CookTest(util.CookTest):
 
     @pytest.mark.memlimit
     def test_memory_limit_exceeded_mesos_script(self):
-        command = self.memory_limit_script_command()
-        self.memory_limit_exceeded_helper(command, 'mesos')
+        command = self.memory_limit_script_command(count=2048)
+        self.memory_limit_exceeded_helper(command, 'mesos', mem=32)
 
     def test_get_job(self):
         # schedule a job
@@ -1556,35 +1556,6 @@ class CookTest(util.CookTest):
         resp = util.query_groups(self.cook_url)
         self.assertEqual(400, resp.status_code)
 
-    def test_queue_endpoint(self):
-        group = {'uuid': str(util.make_temporal_uuid())}
-        job_spec = {'group': group['uuid'],
-                    'command': 'sleep 30',
-                    'cpus': util.max_cpus()}
-        uuids, resp = util.submit_jobs(self.cook_url, job_spec, clones=100, groups=[group])
-        self.assertEqual(201, resp.status_code, resp.content)
-        try:
-            default_pool = util.default_pool(self.cook_url)
-            pool = default_pool or 'no-pool'
-            self.logger.info(f'Checking the queue endpoint for pool {pool}')
-
-            def query_queue():
-                return util.query_queue(self.cook_url)
-
-            def queue_predicate(resp):
-                return any([job['job/uuid'] in uuids for job in resp.json()[pool]])
-
-            resp = util.wait_until(query_queue, queue_predicate)
-            job = [job for job in resp.json()[pool] if job['job/uuid'] in uuids][0]
-            job_group = job['group/_job'][0]
-            self.assertEqual(200, resp.status_code, resp.content)
-            self.assertTrue('group/_job' in job.keys())
-            self.assertEqual(group['uuid'], job_group['group/uuid'])
-            self.assertTrue('group/host-placement' in job_group.keys())
-            self.assertFalse('group/job' in job_group.keys())
-        finally:
-            util.kill_jobs(self.cook_url, uuids)
-
     @unittest.skipUnless(util.docker_tests_enabled(), "Requires a test docker image")
     def test_basic_docker_job(self):
         image = util.docker_image()
@@ -2121,111 +2092,6 @@ class CookTest(util.CookTest):
         finally:
             util.kill_jobs(self.cook_url, job_uuids)
 
-    def test_user_limits_change(self):
-        user = 'limit_change_test_user'
-        # set user quota
-        resp = util.set_limit(self.cook_url, 'quota', user, cpus=20)
-        self.assertEqual(resp.status_code, 201, resp.text)
-        # set user quota fails (malformed) if no reason is given
-        resp = util.set_limit(self.cook_url, 'quota', user, cpus=10, reason=None)
-        self.assertEqual(resp.status_code, 400, resp.text)
-        # reset user quota back to default
-        resp = util.reset_limit(self.cook_url, 'quota', user, reason=self.current_name())
-        self.assertEqual(resp.status_code, 204, resp.text)
-        # reset user quota fails (malformed) if no reason is given
-        resp = util.reset_limit(self.cook_url, 'quota', user, reason=None)
-        self.assertEqual(resp.status_code, 400, resp.text)
-        # set user share
-        resp = util.set_limit(self.cook_url, 'share', user, cpus=10)
-        self.assertEqual(resp.status_code, 201, resp.text)
-        # set user share fails (malformed) if no reason is given
-        resp = util.set_limit(self.cook_url, 'share', user, cpus=10, reason=None)
-        self.assertEqual(resp.status_code, 400, resp.text)
-        # reset user share back to default
-        resp = util.reset_limit(self.cook_url, 'share', user, reason=self.current_name())
-        self.assertEqual(resp.status_code, 204, resp.text)
-        # reset user share fails (malformed) if no reason is given
-        resp = util.reset_limit(self.cook_url, 'share', user, reason=None)
-        self.assertEqual(resp.status_code, 400, resp.text)
-
-        default_pool = util.default_pool(self.cook_url)
-        if default_pool is not None:
-            for limit in ['quota', 'share']:
-                # Get the default cpus limit
-                resp = util.get_limit(self.cook_url, limit, "default")
-                self.assertEqual(200, resp.status_code, resp.text)
-                self.logger.info(f'The default limit in the {default_pool} pool is {resp.json()}')
-                default_cpus = resp.json()['cpus']
-
-                # Set a limit for the default pool
-                resp = util.set_limit(self.cook_url, limit, user, cpus=100, pool=default_pool)
-                self.assertEqual(resp.status_code, 201, resp.text)
-
-                # Check that the limit is returned for no pool
-                resp = util.get_limit(self.cook_url, limit, user)
-                self.assertEqual(resp.status_code, 200, resp.text)
-                self.assertEqual(100, resp.json()['cpus'], resp.text)
-
-                # Check that the limit is returned for the default pool
-                resp = util.get_limit(self.cook_url, limit, user, pool=default_pool)
-                self.assertEqual(resp.status_code, 200, resp.text)
-                self.assertEqual(100, resp.json()['cpus'], resp.text)
-
-                # Delete the default pool limit (no pool argument)
-                resp = util.reset_limit(self.cook_url, limit, user, reason=self.current_name())
-                self.assertEqual(resp.status_code, 204, resp.text)
-
-                # Check that the default is returned for the default pool
-                resp = util.get_limit(self.cook_url, limit, user, pool=default_pool)
-                self.assertEqual(resp.status_code, 200, resp.text)
-                self.assertEqual(default_cpus, resp.json()['cpus'], resp.text)
-
-                pools, _ = util.all_pools(self.cook_url)
-                non_default_pools = [p['name'] for p in pools if p['name'] != default_pool]
-
-                for pool in non_default_pools:
-                    # Get the default cpus limit
-                    resp = util.get_limit(self.cook_url, limit, "default", pool=pool)
-                    self.assertEqual(200, resp.status_code, resp.text)
-                    self.logger.info(f'The default limit in the {default_pool} pool is {resp.json()}')
-                    default_cpus = resp.json()['cpus']
-
-                    # delete the pool's limit
-                    resp = util.reset_limit(self.cook_url, limit, user, pool=pool, reason=self.current_name())
-                    self.assertEqual(resp.status_code, 204, resp.text)
-
-                    # check that the default value is returned
-                    resp = util.get_limit(self.cook_url, limit, user, pool=pool)
-                    self.assertEqual(resp.status_code, 200, resp.text)
-                    self.assertEqual(default_cpus, resp.json()['cpus'], resp.text)
-
-                    # set a pool-specific limit
-                    resp = util.set_limit(self.cook_url, limit, user, cpus=1000, pool=pool)
-                    self.assertEqual(resp.status_code, 201, resp.text)
-
-                    # check that the pool-specific limit is returned
-                    resp = util.get_limit(self.cook_url, limit, user, pool=pool)
-                    self.assertEqual(resp.status_code, 200, resp.text)
-                    self.assertEqual(1000, resp.json()['cpus'], resp.text)
-
-                    # now delete the pool limit with headers
-                    resp = util.reset_limit(self.cook_url, limit, user, reason=self.current_name(),
-                                            headers={'x-cook-pool': pool})
-                    self.assertEqual(resp.status_code, 204, resp.text)
-
-                    # check that the default value is returned
-                    resp = util.get_limit(self.cook_url, limit, user, headers={'x-cook-pool': pool})
-                    self.assertEqual(resp.status_code, 200, resp.text)
-                    self.assertEqual(default_cpus, resp.json()['cpus'], resp.text)
-
-                    # set a pool-specific limit
-                    resp = util.set_limit(self.cook_url, limit, user, cpus=1000, headers={'x-cook-pool': pool})
-                    self.assertEqual(resp.status_code, 201, resp.text)
-
-                    # check that the pool-specific limit is returned
-                    resp = util.get_limit(self.cook_url, limit, user, headers={'x-cook-pool': pool})
-                    self.assertEqual(resp.status_code, 200, resp.text)
-
     def test_submit_with_no_name(self):
         # We need to manually set the 'uuid' to avoid having the
         # job name automatically set by the submit_job function
@@ -2247,208 +2113,6 @@ class CookTest(util.CookTest):
         self.assertEqual(resp.status_code, 201, msg=resp.content)
         job = util.load_job(self.cook_url, job_uuid)
         self.assertIn(job['status'], ['running', 'waiting', 'completed'])
-
-    def test_instance_stats_running(self):
-        name = str(util.make_temporal_uuid())
-        job_uuid_1, resp = util.submit_job(self.cook_url, command='sleep 300', name=name, max_retries=2)
-        self.assertEqual(resp.status_code, 201, msg=resp.content)
-        job_uuid_2, resp = util.submit_job(self.cook_url, command='sleep 300', name=name, max_retries=2)
-        self.assertEqual(resp.status_code, 201, msg=resp.content)
-        job_uuid_3, resp = util.submit_job(self.cook_url, command='sleep 300', name=name, max_retries=2)
-        self.assertEqual(resp.status_code, 201, msg=resp.content)
-        job_uuids = [job_uuid_1, job_uuid_2, job_uuid_3]
-        try:
-            instances = [util.wait_for_running_instance(self.cook_url, j) for j in job_uuids]
-            start_time = min(i['start_time'] for i in instances)
-            end_time = max(i['start_time'] for i in instances)
-            stats, _ = util.get_instance_stats(self.cook_url,
-                                               status='running',
-                                               start=util.to_iso(start_time),
-                                               end=util.to_iso(end_time + 1),
-                                               name=name)
-            user = util.get_user(self.cook_url, job_uuid_1)
-            self.assertEqual(3, stats['overall']['count'])
-            self.assertEqual(3, stats['by-reason']['']['count'])
-            self.assertEqual(3, stats['by-user-and-reason'][user]['']['count'])
-        finally:
-            util.kill_jobs(self.cook_url, job_uuids)
-
-    def test_instance_stats_failed(self):
-        name = str(util.make_temporal_uuid())
-        job_uuid_1, resp = util.submit_job(self.cook_url, command='exit 1', name=name, cpus=0.1, mem=32)
-        self.assertEqual(resp.status_code, 201, msg=resp.content)
-        job_uuid_2, resp = util.submit_job(self.cook_url, command='sleep 1 && exit 1', name=name, cpus=0.2, mem=64)
-        self.assertEqual(resp.status_code, 201, msg=resp.content)
-        job_uuid_3, resp = util.submit_job(self.cook_url, command='sleep 2 && exit 1', name=name, cpus=0.4, mem=128)
-        self.assertEqual(resp.status_code, 201, msg=resp.content)
-        job_uuids = [job_uuid_1, job_uuid_2, job_uuid_3]
-        try:
-            jobs = util.wait_for_jobs(self.cook_url, job_uuids, 'completed')
-            instances = []
-            non_mea_culpa_instances = []
-            for job in jobs:
-                for instance in job['instances']:
-                    instance['parent'] = job
-                    instances.append(instance)
-                    if not instance['reason_mea_culpa']:
-                        non_mea_culpa_instances.append(instance)
-            start_time = min(i['start_time'] for i in instances)
-            end_time = max(i['start_time'] for i in instances)
-            stats, _ = util.get_instance_stats(self.cook_url,
-                                               status='failed',
-                                               start=util.to_iso(start_time),
-                                               end=util.to_iso(end_time + 1),
-                                               name=name)
-            self.logger.info(json.dumps(stats, indent=2))
-            self.logger.info(f'Instances: {instances}')
-            user = util.get_user(self.cook_url, job_uuid_1)
-            stats_overall = stats['overall']
-            exited_non_zero = 'Command exited non-zero'
-            self.assertEqual(len(instances), stats_overall['count'])
-            self.assertEqual(len(non_mea_culpa_instances), stats['by-reason'][exited_non_zero]['count'])
-            self.assertEqual(len(non_mea_culpa_instances), stats['by-user-and-reason'][user][exited_non_zero]['count'])
-            run_times = [(i['end_time'] - i['start_time']) / 1000 for i in instances]
-            run_time_seconds = stats_overall['run-time-seconds']
-            percentiles = run_time_seconds['percentiles']
-            self.logger.info(f'Run times: {json.dumps(run_times, indent=2)}')
-            self.assertEqual(util.percentile(run_times, 50), percentiles['50'])
-            self.assertEqual(util.percentile(run_times, 75), percentiles['75'])
-            self.assertEqual(util.percentile(run_times, 95), percentiles['95'])
-            self.assertEqual(util.percentile(run_times, 99), percentiles['99'])
-            self.assertEqual(util.percentile(run_times, 100), percentiles['100'])
-            self.assertAlmostEqual(sum(run_times), run_time_seconds['total'])
-            cpu_times = [((i['end_time'] - i['start_time']) / 1000) * i['parent']['cpus'] for i in instances]
-            cpu_seconds = stats_overall['cpu-seconds']
-            percentiles = cpu_seconds['percentiles']
-            self.logger.info(f'CPU times: {json.dumps(cpu_times, indent=2)}')
-            self.assertEqual(util.percentile(cpu_times, 50), percentiles['50'])
-            self.assertEqual(util.percentile(cpu_times, 75), percentiles['75'])
-            self.assertEqual(util.percentile(cpu_times, 95), percentiles['95'])
-            self.assertEqual(util.percentile(cpu_times, 99), percentiles['99'])
-            self.assertEqual(util.percentile(cpu_times, 100), percentiles['100'])
-            self.assertAlmostEqual(sum(cpu_times), cpu_seconds['total'])
-            mem_times = [((i['end_time'] - i['start_time']) / 1000) * i['parent']['mem'] for i in instances]
-            mem_seconds = stats_overall['mem-seconds']
-            percentiles = mem_seconds['percentiles']
-            self.logger.info(f'Mem times: {json.dumps(mem_times, indent=2)}')
-            self.assertEqual(util.percentile(mem_times, 50), percentiles['50'])
-            self.assertEqual(util.percentile(mem_times, 75), percentiles['75'])
-            self.assertEqual(util.percentile(mem_times, 95), percentiles['95'])
-            self.assertEqual(util.percentile(mem_times, 99), percentiles['99'])
-            self.assertEqual(util.percentile(mem_times, 100), percentiles['100'])
-            self.assertAlmostEqual(sum(mem_times), mem_seconds['total'])
-        finally:
-            util.kill_jobs(self.cook_url, job_uuids)
-
-    def test_instance_stats_success(self):
-        name = str(util.make_temporal_uuid())
-        job_uuid_1, resp = util.submit_job(self.cook_url, command='exit 0', name=name, cpus=0.1, mem=32)
-        self.assertEqual(resp.status_code, 201, msg=resp.content)
-        job_uuid_2, resp = util.submit_job(self.cook_url, command='sleep 1', name=name, cpus=0.2, mem=64)
-        self.assertEqual(resp.status_code, 201, msg=resp.content)
-        job_uuid_3, resp = util.submit_job(self.cook_url, command='sleep 2', name=name, cpus=0.4, mem=128)
-        self.assertEqual(resp.status_code, 201, msg=resp.content)
-        job_uuids = [job_uuid_1, job_uuid_2, job_uuid_3]
-        try:
-            util.wait_for_jobs(self.cook_url, job_uuids, 'completed')
-            instances = [util.wait_for_instance(self.cook_url, j) for j in job_uuids]
-            try:
-                for instance in instances:
-                    self.assertEqual('success', instance['parent']['state'])
-                start_time = min(i['start_time'] for i in instances)
-                end_time = max(i['start_time'] for i in instances)
-                stats, _ = util.get_instance_stats(self.cook_url,
-                                                   status='success',
-                                                   start=util.to_iso(start_time),
-                                                   end=util.to_iso(end_time + 1),
-                                                   name=name)
-                user = util.get_user(self.cook_url, job_uuid_1)
-                stats_overall = stats['overall']
-                self.assertEqual(3, stats_overall['count'])
-                self.assertEqual(3, stats['by-reason']['']['count'])
-                self.assertEqual(3, stats['by-user-and-reason'][user]['']['count'])
-                run_times = [(i['end_time'] - i['start_time']) / 1000 for i in instances]
-                run_time_seconds = stats_overall['run-time-seconds']
-                percentiles = run_time_seconds['percentiles']
-                self.assertEqual(util.percentile(run_times, 50), percentiles['50'])
-                self.assertEqual(util.percentile(run_times, 75), percentiles['75'])
-                self.assertEqual(util.percentile(run_times, 95), percentiles['95'])
-                self.assertEqual(util.percentile(run_times, 99), percentiles['99'])
-                self.assertEqual(util.percentile(run_times, 100), percentiles['100'])
-                self.assertAlmostEqual(sum(run_times), run_time_seconds['total'])
-                cpu_times = [((i['end_time'] - i['start_time']) / 1000) * i['parent']['cpus'] for i in instances]
-                cpu_seconds = stats_overall['cpu-seconds']
-                percentiles = cpu_seconds['percentiles']
-                self.assertEqual(util.percentile(cpu_times, 50), percentiles['50'])
-                self.assertEqual(util.percentile(cpu_times, 75), percentiles['75'])
-                self.assertEqual(util.percentile(cpu_times, 95), percentiles['95'])
-                self.assertEqual(util.percentile(cpu_times, 99), percentiles['99'])
-                self.assertEqual(util.percentile(cpu_times, 100), percentiles['100'])
-                self.assertAlmostEqual(sum(cpu_times), cpu_seconds['total'])
-                mem_times = [((i['end_time'] - i['start_time']) / 1000) * i['parent']['mem'] for i in instances]
-                mem_seconds = stats_overall['mem-seconds']
-                percentiles = mem_seconds['percentiles']
-                self.assertEqual(util.percentile(mem_times, 50), percentiles['50'])
-                self.assertEqual(util.percentile(mem_times, 75), percentiles['75'])
-                self.assertEqual(util.percentile(mem_times, 95), percentiles['95'])
-                self.assertEqual(util.percentile(mem_times, 99), percentiles['99'])
-                self.assertEqual(util.percentile(mem_times, 100), percentiles['100'])
-                self.assertAlmostEqual(sum(mem_times), mem_seconds['total'])
-            except:
-                for instance in instances:
-                    mesos.dump_sandbox_files(util.session, instance, instance['parent'])
-                raise
-        finally:
-            util.kill_jobs(self.cook_url, job_uuids)
-
-    def test_instance_stats_supports_epoch_time_params(self):
-        name = str(util.make_temporal_uuid())
-        job_uuid_1, resp = util.submit_job(self.cook_url, command='sleep 300', name=name, max_retries=2)
-        self.assertEqual(resp.status_code, 201, msg=resp.content)
-        job_uuid_2, resp = util.submit_job(self.cook_url, command='sleep 300', name=name, max_retries=2)
-        self.assertEqual(resp.status_code, 201, msg=resp.content)
-        job_uuid_3, resp = util.submit_job(self.cook_url, command='sleep 300', name=name, max_retries=2)
-        self.assertEqual(resp.status_code, 201, msg=resp.content)
-        job_uuids = [job_uuid_1, job_uuid_2, job_uuid_3]
-        try:
-            instances = [util.wait_for_running_instance(self.cook_url, j) for j in job_uuids]
-            start_time = min(i['start_time'] for i in instances)
-            end_time = max(i['start_time'] for i in instances)
-            stats, _ = util.get_instance_stats(self.cook_url,
-                                               status='running',
-                                               start=start_time,
-                                               end=end_time + 1,
-                                               name=name)
-            user = util.get_user(self.cook_url, job_uuid_1)
-            self.assertEqual(3, stats['overall']['count'])
-            self.assertEqual(3, stats['by-reason']['']['count'])
-            self.assertEqual(3, stats['by-user-and-reason'][user]['']['count'])
-        finally:
-            util.kill_jobs(self.cook_url, job_uuids)
-
-    def test_instance_stats_rejects_invalid_params(self):
-        _, resp = util.get_instance_stats(self.cook_url, status='running', start='2018-02-20', end='2018-02-21')
-        self.assertEqual(200, resp.status_code)
-        _, resp = util.get_instance_stats(self.cook_url, status='running', start='2018-02-20')
-        self.assertEqual(400, resp.status_code)
-        _, resp = util.get_instance_stats(self.cook_url, status='running', end='2018-02-21')
-        self.assertEqual(400, resp.status_code)
-        _, resp = util.get_instance_stats(self.cook_url, start='2018-02-20', end='2018-02-21')
-        self.assertEqual(400, resp.status_code)
-        _, resp = util.get_instance_stats(self.cook_url, status='bogus', start='2018-02-20', end='2018-02-21')
-        self.assertEqual(400, resp.status_code)
-        _, resp = util.get_instance_stats(self.cook_url, status='running', start='2018-02-20',
-                                          end='2018-02-21', name='foo')
-        self.assertEqual(200, resp.status_code)
-        _, resp = util.get_instance_stats(self.cook_url, status='running', start='2018-02-20',
-                                          end='2018-02-21', name='?')
-        self.assertEqual(400, resp.status_code)
-        _, resp = util.get_instance_stats(self.cook_url, status='running', start='2018-01-01', end='2018-02-01')
-        self.assertEqual(200, resp.status_code)
-        _, resp = util.get_instance_stats(self.cook_url, status='running', start='2018-01-01', end='2018-02-02')
-        self.assertEqual(400, resp.status_code)
-        _, resp = util.get_instance_stats(self.cook_url, status='running', start='2018-01-01', end='2017-12-31')
-        self.assertEqual(400, resp.status_code)
 
     def test_cors_request(self):
         resp = util.session.get(f"{self.cook_url}/settings", headers={"Origin": "http://bad.example.com"})

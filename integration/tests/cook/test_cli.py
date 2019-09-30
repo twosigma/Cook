@@ -1131,7 +1131,7 @@ def dummy_ls_entries(_, __, ___):
 
     @unittest.skipIf(util.http_basic_auth_enabled(), 'Cook Executor does not currently support HTTP Basic Auth')
     def test_show_progress_message(self):
-        executor = util.get_job_executor_type(self.cook_url)
+        executor = util.get_job_executor_type()
         line = util.progress_line(self.cook_url, 99, 'We are so close!')
         cp, uuids = cli.submit(f'echo "{line}"', self.cook_url, submit_flags=f'--executor {executor} '
                                                                              f'--name {self.current_name()}')
@@ -1160,7 +1160,7 @@ def dummy_ls_entries(_, __, ___):
 
     @unittest.skipIf(util.http_basic_auth_enabled(), 'Cook Executor does not currently support HTTP Basic Auth')
     def test_show_progress_message_custom_progress_file(self):
-        executor = util.get_job_executor_type(self.cook_url)
+        executor = util.get_job_executor_type()
         progress_file_env = util.retrieve_progress_file_env(self.cook_url)
 
         line = util.progress_line(self.cook_url, 99, 'We are so close!')
@@ -2223,7 +2223,7 @@ def dummy_cat_text(_, __, ___):
             self.assertEqual(label_value_1, labels['label1'])
             self.assertEqual(label_value_2, labels['label2'])
         finally:
-            util.kill_jobs(self.cook_url, uuids)
+            util.kill_jobs(self.cook_url, uuids, assert_response=False)
 
     def test_bad_cluster_argument(self):
         cluster_name = 'foo'
