@@ -1532,3 +1532,7 @@ def kill_running_and_waiting_jobs(cook_url, user):
     running = jobs(cook_url, user=user, state=['running', 'waiting'], start=start, end=end).json()
     logger.info(f'Currently running/waiting jobs: {json.dumps(running, indent=2)}')
     kill_jobs(cook_url, running)
+
+
+def running_tasks(cook_url):
+    return session.get(f'{cook_url}/running', params={'limit': 100}).json()

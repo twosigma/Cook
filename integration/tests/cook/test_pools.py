@@ -38,6 +38,7 @@ class PoolsCookTest(util.CookTest):
 
             cpus = 0.1
             with admin:
+                self.logger.info(f'Running tasks: {json.dumps(util.running_tasks(self.cook_url), indent=2)}')
                 for pool in pools:
                     # Lower the user's cpu quota on this pool
                     pool_name = pool['name']
