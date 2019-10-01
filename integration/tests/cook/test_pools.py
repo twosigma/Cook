@@ -45,7 +45,7 @@ class PoolsCookTest(util.CookTest):
                     util.set_limit(self.cook_url, 'quota', user.name, cpus=cpus * quota_multiplier, pool=pool_name)
 
             with user:
-                util.kill_running_jobs(self.cook_url, user.name)
+                util.kill_running_and_waiting_jobs(self.cook_url, user.name)
                 for pool in pools:
                     pool_name = pool['name']
 
