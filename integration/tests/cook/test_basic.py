@@ -64,7 +64,6 @@ class CookTest(util.CookTest):
         else:
             self.logger.info(f'Exit code not checked because cook executor was not used for {instance}')
 
-
     @unittest.skipIf(util.using_kubernetes(), 'Output url is not currently supported on kubernetes')
     def test_output_url(self):
         job_executor_type = util.get_job_executor_type()
@@ -80,7 +79,6 @@ class CookTest(util.CookTest):
                 self.assertIsNotNone(instance['sandbox_directory'], message)
         finally:
             util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
-
 
     @unittest.skipUnless(util.docker_tests_enabled(),
                          'Requires setting the COOK_TEST_DOCKER_IMAGE environment variable')
@@ -138,7 +136,7 @@ class CookTest(util.CookTest):
             num_hosts = util.node_count()
             if retry_limit >= num_hosts:
                 pytest.skip(f'Skipping test as not enough agents to verify Mesos executor on subsequent '
-                                  f'instances (agents = {num_hosts}, retry limit = {retry_limit})')
+                            f'instances (agents = {num_hosts}, retry limit = {retry_limit})')
 
         # Should launch many instances
         job_uuid, resp = util.submit_job(self.cook_url, command='exit 1', max_retries=retry_limit * 2)
@@ -190,7 +188,8 @@ class CookTest(util.CookTest):
     def test_mea_culpa_retries(self):
         job_executor_type = util.get_job_executor_type()
         self.assertEqual('cook', job_executor_type)
-        uuid, resp = util.submit_job(self.cook_url, command='sleep 30', env={'EXECUTOR_TEST_EXIT': '1'}, executor=job_executor_type)
+        uuid, resp = util.submit_job(self.cook_url, command='sleep 30', env={'EXECUTOR_TEST_EXIT': '1'},
+                                     executor=job_executor_type)
         try:
             instance = util.wait_for_instance(self.cook_url, uuid)
             self.assertEqual('cook', instance['executor'])
@@ -233,10 +232,10 @@ class CookTest(util.CookTest):
             self.assertEqual(expected_compute_cluster_type, instance['compute-cluster']['type'], message)
             self.assertEqual(expected_compute_cluster, instance['compute-cluster']['name'], message)
             if expected_mesos_framework is not None:
-                self.assertEqual(expected_mesos_framework, instance['compute-cluster']['mesos']['framework-id'], message)
+                self.assertEqual(expected_mesos_framework, instance['compute-cluster']['mesos']['framework-id'],
+                                 message)
         finally:
             util.kill_jobs(self.cook_url, [job_uuid])
-
 
     def test_executor_flag(self):
         job_uuid, resp = util.submit_job(self.cook_url, executor='cook')
@@ -386,8 +385,9 @@ class CookTest(util.CookTest):
         self.assertEqual(75, instance['progress'], message)
         self.assertEqual('Seventy-five percent', instance['progress_message'], message)
 
-    @unittest.skipUnless(util.is_cook_executor_in_use() and not (util.docker_tests_enabled() and util.continuous_integration()),
-                         'Test assumes the Cook Executor is in use. Fails on travis with docker')
+    @unittest.skipUnless(
+        util.is_cook_executor_in_use() and not (util.docker_tests_enabled() and util.continuous_integration()),
+        'Test assumes the Cook Executor is in use. Fails on travis with docker')
     def test_multiple_progress_updates_submit_stdout(self):
         job_executor_type = util.get_job_executor_type()
         line_1 = util.progress_line(self.cook_url, 25, 'Twenty-five percent')
@@ -1019,7 +1019,8 @@ class CookTest(util.CookTest):
         self.assertEqual(0, len(resp.json()))
 
         # List completed with a bogus pool
-        resp = util.jobs(self.cook_url, user=user, state=completed, start=start, end=end, pool=util.make_temporal_uuid())
+        resp = util.jobs(self.cook_url, user=user, state=completed, start=start, end=end,
+                         pool=util.make_temporal_uuid())
         self.assertEqual(200, resp.status_code)
         self.assertEqual(0, len(resp.json()))
 
@@ -1569,7 +1570,8 @@ class CookTest(util.CookTest):
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
         self.assertEqual('success', job['instances'][0]['status'])
 
-    @unittest.skipUnless(util.has_docker_service() and not util.using_kubernetes(), "Requires `docker inspect`. On kubernetes, need to add support and write a separate test.")
+    @unittest.skipUnless(util.has_docker_service() and not util.using_kubernetes(),
+                         "Requires `docker inspect`. On kubernetes, need to add support and write a separate test.")
     def test_docker_port_mapping(self):
         job_uuid, resp = util.submit_job(self.cook_url,
                                          command='python -m http.server 8080',
@@ -2362,7 +2364,6 @@ class CookTest(util.CookTest):
         finally:
             util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
 
-
     @unittest.skipIf(os.getenv('COOK_TEST_SKIP_RECONCILE') is not None or util.using_kubernetes(),
                      'Requires not setting the COOK_TEST_SKIP_RECONCILE environment variable. Currently not supported on kubernetes.')
     def test_reconciliation(self):
@@ -2392,7 +2393,8 @@ class CookTest(util.CookTest):
 
     @unittest.skipUnless(util.using_data_local_fitness_calculator(), "Requires the data local fitness calculator")
     def test_data_local_constraint_missing_data(self):
-        job_uuid, resp = util.submit_job(self.cook_url, datasets=[{'dataset': {'uuid': str(util.make_temporal_uuid())}}])
+        job_uuid, resp = util.submit_job(self.cook_url,
+                                         datasets=[{'dataset': {'uuid': str(util.make_temporal_uuid())}}])
         self.assertEqual(201, resp.status_code, resp.text)
 
         # Because the job has no data in the data locality service, it shouldn't be scheduled for a period of time.
@@ -2410,7 +2412,8 @@ class CookTest(util.CookTest):
                                  if r['reason'] == 'data-locality-constraint']
         self.assertEqual(1, len(data_locality_reasons))
 
-    @unittest.skipUnless(util.using_data_local_fitness_calculator() and util.data_local_service_is_set(), 'Requires the data local fitness calculator')
+    @unittest.skipUnless(util.using_data_local_fitness_calculator() and util.data_local_service_is_set(),
+                         'Requires the data local fitness calculator')
     @pytest.mark.serial
     def test_data_local_constrait_not_suitable(self):
         job_uuid, resp = util.submit_job(self.cook_url, datasets=[{'dataset': {'foo': str(util.make_temporal_uuid())}}])
@@ -2429,7 +2432,6 @@ class CookTest(util.CookTest):
             self.assertEqual(instance['hostname'], target)
         finally:
             util.kill_jobs(self.cook_url, [job_uuid])
-
 
     @unittest.skipUnless(util.data_local_service_is_set(), "Requires a data local service")
     @pytest.mark.serial
@@ -2476,8 +2478,8 @@ class CookTest(util.CookTest):
         finally:
             util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
 
-
-    @unittest.skipUnless(util.supports_mesos_containerizer_images(), "Requires support for docker images in mesos containerizer")
+    @unittest.skipUnless(util.supports_mesos_containerizer_images(),
+                         "Requires support for docker images in mesos containerizer")
     def test_mesos_containerizer_image_support(self):
         container = {'type': 'mesos', 'mesos': {'image': 'alpine'}}
         settings = util.settings(self.cook_url)
@@ -2518,9 +2520,11 @@ class CookTest(util.CookTest):
             self.assertEqual(201, resp.status_code, resp.text)
             job_uuids = [job_uuid]
         else:
-            job_uuid1, resp1 = util.submit_job(self.cook_url, executor='cook', command='if [ ${#MESOS_EXECUTOR_ID} -eq 0 ]; then echo var was not set; else exit 1; fi;',
+            job_uuid1, resp1 = util.submit_job(self.cook_url, executor='cook',
+                                               command='if [ ${#MESOS_EXECUTOR_ID} -eq 0 ]; then echo var was not set; else exit 1; fi;',
                                                env={'EXECUTOR_RESET_VARS': 'MESOS_EXECUTOR_ID'})
-            job_uuid2, resp2 = util.submit_job(self.cook_url, executor='cook', command='if [ ${#MESOS_EXECUTOR_ID} -gt 0 ]; then echo var was not set; else exit 1; fi;')
+            job_uuid2, resp2 = util.submit_job(self.cook_url, executor='cook',
+                                               command='if [ ${#MESOS_EXECUTOR_ID} -gt 0 ]; then echo var was not set; else exit 1; fi;')
             self.assertEqual(201, resp1.status_code, resp1.text)
             self.assertEqual(201, resp2.status_code, resp2.text)
             job_uuids = [job_uuid1, job_uuid2]
@@ -2529,7 +2533,6 @@ class CookTest(util.CookTest):
                 util.wait_for_instance(self.cook_url, uuid, status='success')
         finally:
             util.kill_jobs(self.cook_url, job_uuids, assert_response=False)
-
 
     @unittest.skipUnless(util.docker_tests_enabled(), "Requires docker support.")
     def test_default_container_volumes(self):
@@ -2562,7 +2565,6 @@ class CookTest(util.CookTest):
         finally:
             util.kill_jobs(self.cook_url, job_uuids, assert_response=False)
 
-
     def test_command_length_limit(self):
         settings = util.settings(self.cook_url)
         command_length_limit = util.get_in(settings, 'task-constraints', 'command-length-limit')
@@ -2572,13 +2574,14 @@ class CookTest(util.CookTest):
         job_uuid, resp = util.submit_job(self.cook_url, command=long_command)
         try:
             self.assertEqual(resp.status_code, 400, resp.content)
-            self.assertTrue(f'Job command length of {len(long_command)} is greater than the maximum command length ({command_length_limit})'
-                            in str(resp.content))
+            self.assertTrue(
+                f'Job command length of {len(long_command)} is greater than the maximum command length ({command_length_limit})'
+                in str(resp.content))
         finally:
             util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
 
-
-    @unittest.skipUnless(util.supports_exit_code() and not util.has_one_agent(), "Requires exit code support and multiple agents")
+    @unittest.skipUnless(util.supports_exit_code() and not util.has_one_agent(),
+                         "Requires exit code support and multiple agents")
     def test_cook_instance_num(self):
         command = 'bash -c \'exit $(($COOK_INSTANCE_NUM + 1))\''
         job_uuid, resp = util.submit_job(self.cook_url, command=command, max_retries=2)
@@ -2587,6 +2590,7 @@ class CookTest(util.CookTest):
                 jobs = util.query_jobs(self.cook_url, True, uuid=[job_uuid]).json()
                 self.logger.info(f'Found jobs: {jobs}')
                 return jobs[0]
+
             def predicate(job):
                 if job['status'] != 'completed':
                     return False
@@ -2594,6 +2598,7 @@ class CookTest(util.CookTest):
                     if 'exit_code' not in instance:
                         return False
                 return True
+
             job = util.wait_until(query, predicate)
             self.assertEqual(2, len(job['instances']), job)
             exit_codes = [i['exit_code'] for i in job['instances']]
@@ -2601,4 +2606,3 @@ class CookTest(util.CookTest):
             self.assertEqual([1, 2], exit_codes, job)
         finally:
             util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
-

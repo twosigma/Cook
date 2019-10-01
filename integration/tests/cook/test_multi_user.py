@@ -284,13 +284,13 @@ class MultiUserCookTest(util.CookTest):
             try:
                 jobspec = {"command": "sleep 240", 'cpus': 0.03, 'mem': 32}
 
-                self.logger.info(f'Submitting initial batch of {bucket_size-1} jobs')
+                self.logger.info(f'Submitting initial batch of {bucket_size - 1} jobs')
                 initial_uuids, initial_response = util.submit_jobs(self.cook_url, jobspec, bucket_size - 1)
                 job_uuids.extend(initial_uuids)
                 self.assertEqual(201, initial_response.status_code, msg=initial_response.content)
 
                 def submit_jobs():
-                    self.logger.info(f'Submitting subsequent batch of {bucket_size-1} jobs')
+                    self.logger.info(f'Submitting subsequent batch of {bucket_size - 1} jobs')
                     subsequent_uuids, subsequent_response = util.submit_jobs(self.cook_url, jobspec, bucket_size - 1)
                     job_uuids.extend(subsequent_uuids)
                     self.assertEqual(201, subsequent_response.status_code, msg=subsequent_response.content)
@@ -307,7 +307,7 @@ class MultiUserCookTest(util.CookTest):
                 running_jobs = [j for j in jobs2 if j['status'] == 'running']
                 waiting_jobs = [j for j in jobs2 if j['status'] == 'waiting']
                 self.assertGreaterEqual(len(running_jobs), bucket_size)
-                self.assertLessEqual(len(running_jobs), bucket_size+3)
+                self.assertLessEqual(len(running_jobs), bucket_size + 3)
                 self.logger.debug(f'There are {len(waiting_jobs)} waiting jobs')
 
                 unscheduled, _ = util.unscheduled_jobs(self.cook_url, *[j['uuid'] for j in waiting_jobs])
@@ -317,7 +317,7 @@ class MultiUserCookTest(util.CookTest):
                     for ii in unscheduled]
                 num_launch_rate_limited = len([ii for ii in is_job_launch_rate_limited if ii])
                 self.logger.debug(f'There are {num_launch_rate_limited} jobs being rate-limited')
-                self.assertGreaterEqual(num_launch_rate_limited,bucket_size/2)
+                self.assertGreaterEqual(num_launch_rate_limited, bucket_size / 2)
 
             finally:
                 util.kill_jobs(self.cook_url, job_uuids)
@@ -352,13 +352,13 @@ class MultiUserCookTest(util.CookTest):
             try:
                 jobspec = {"command": "sleep 240", 'cpus': 0.03, 'mem': 32}
 
-                self.logger.info(f'Submitting initial batch of {bucket_size-1} jobs')
+                self.logger.info(f'Submitting initial batch of {bucket_size - 1} jobs')
                 initial_uuids, initial_response = util.submit_jobs(self.cook_url, jobspec, bucket_size - 1)
                 job_uuids.extend(initial_uuids)
                 self.assertEqual(201, initial_response.status_code, msg=initial_response.content)
 
                 def submit_jobs():
-                    self.logger.info(f'Submitting subsequent batch of {bucket_size-1} jobs')
+                    self.logger.info(f'Submitting subsequent batch of {bucket_size - 1} jobs')
                     subsequent_uuids, subsequent_response = util.submit_jobs(self.cook_url, jobspec, bucket_size - 1)
                     job_uuids.extend(subsequent_uuids)
                     self.assertEqual(201, subsequent_response.status_code, msg=subsequent_response.content)
@@ -370,14 +370,13 @@ class MultiUserCookTest(util.CookTest):
                     self.logger.debug(f'There are {len(waiting_jobs)} waiting jobs')
                     return len(waiting_jobs) > 0 and len(running_jobs) >= bucket_size
 
-                util.wait_until(submit_jobs, is_rate_limit_triggered,120000,5000)
+                util.wait_until(submit_jobs, is_rate_limit_triggered, 120000, 5000)
                 jobs2 = util.query_jobs(self.cook_url, True, uuid=job_uuids).json()
                 running_jobs = [j for j in jobs2 if j['status'] == 'running']
                 self.assertGreaterEqual(len(running_jobs), bucket_size)
-                self.assertLessEqual(len(running_jobs), bucket_size+4)
+                self.assertLessEqual(len(running_jobs), bucket_size + 4)
             finally:
                 util.kill_jobs(self.cook_url, job_uuids)
-
 
     def trigger_preemption(self, pool):
         """
@@ -432,7 +431,8 @@ class MultiUserCookTest(util.CookTest):
                     for instance in job['instances']:
                         self.logger.debug(f'Checking if instance was preempted: {instance}')
                         # Rebalancing marks the instance failed eagerly, so also wait for end_time to ensure it was actually killed
-                        if instance.get('reason_string') == 'Preempted by rebalancer' and instance.get('end_time') is not None:
+                        if instance.get('reason_string') == 'Preempted by rebalancer' and instance.get(
+                                'end_time') is not None:
                             return True
                     self.logger.info(f'Job has not been preempted: {job}')
                     return False
@@ -480,12 +480,11 @@ class MultiUserCookTest(util.CookTest):
                 usage_data = resp.json()
                 total_usage = usage_data['total_usage']
 
-                self.assertEqual(job_spec['mem'] * len(job_uuids), total_usage['mem'], total_usage)
-                self.assertEqual(job_spec['cpus'] * len(job_uuids), total_usage['cpus'], total_usage)
-                self.assertEqual(len(job_uuids), total_usage['jobs'], total_usage)
+                self.assertLessEqual(job_spec['mem'] * len(job_uuids), total_usage['mem'], usage_data)
+                self.assertLessEqual(job_spec['cpus'] * len(job_uuids), total_usage['cpus'], usage_data)
+                self.assertLessEqual(len(job_uuids), total_usage['jobs'], usage_data)
             finally:
-                util.kill_jobs(self.cook_url, job_uuids)
-
+                util.kill_jobs(self.cook_url, job_uuids, log_before_killing=True)
 
     def test_queue_quota_filtering(self):
         bad_constraint = [["HOSTNAME",
@@ -496,6 +495,7 @@ class MultiUserCookTest(util.CookTest):
         uuids = []
         default_pool = util.default_pool(self.cook_url)
         pool = default_pool or 'no-pool'
+
         def queue_uuids():
             try:
                 queue = util.query_queue(self.cook_url).json()
@@ -505,6 +505,7 @@ class MultiUserCookTest(util.CookTest):
             except BaseException as e:
                 self.logger.error(f"Error when querying queue: {e}")
                 raise e
+
         try:
             with admin:
                 resp = util.reset_limit(self.cook_url, 'quota', user.name)

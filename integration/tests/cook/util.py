@@ -497,8 +497,11 @@ def retry_jobs(cook_url, assert_response=True, use_deprecated_post=False, **kwar
     return response
 
 
-def kill_jobs(cook_url, jobs, assert_response=True, expected_status_code=204):
+def kill_jobs(cook_url, jobs, assert_response=True, expected_status_code=204, log_before_killing=False):
     """Kill one or more jobs"""
+    if log_before_killing:
+        logger.info(f'Jobs: {json.dumps(query_jobs(cook_url, True, uuid=jobs).json(), indent=2)}')
+
     chunksize = 100
     chunks = [jobs[i:i + chunksize] for i in range(0, len(jobs), chunksize)]
     response = []
