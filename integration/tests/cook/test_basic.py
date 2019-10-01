@@ -659,7 +659,7 @@ class CookTest(util.CookTest):
                 self.assertEqual(200, resp.status_code, msg=resp.content)
                 jobs = resp.json()
                 for job in jobs:
-                    self.assertEquals(state, job['status'])
+                    self.assertEqual(state, job['status'])
         finally:
             util.kill_jobs(self.cook_url, job_specs)
 

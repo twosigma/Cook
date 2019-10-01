@@ -1732,13 +1732,14 @@ def dummy_ls_entries(_, __, ___):
         cp = cli.cat(uuids[0], util.make_temporal_uuid(), self.cook_url)
         self.assertEqual(1, cp.returncode, cp.stderr)
 
+    @pytest.mark.xfail
     def test_cat_no_newlines(self):
         cp, uuids = cli.submit('bash -c \'for i in {1..100}; do printf "$i " >> foo; done\'', self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
         cp = cli.wait(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
-        cp = cli.cat(uuids[0], 'foo', self.cook_url)
-        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.cat(uuids[0], 'foo', self.cook_url, flags='--verbose')
+        self.assertEqual(0, cp.returncode, cli.output(cp))
         self.assertEqual(' '.join([str(i) for i in range(1, 101)]) + ' ', cli.decode(cp.stdout))
 
     @pytest.mark.xfail
