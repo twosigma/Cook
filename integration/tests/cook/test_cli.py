@@ -779,7 +779,7 @@ class CookCliTest(util.CookTest):
 
     @pytest.mark.xfail
     def test_tail_large_file(self):
-        iterations = 20
+        iterations = 10
         cp, uuids = cli.submit('bash -c \'printf "hello\\nworld\\n" > file.txt; '
                                f'for i in {{1..{iterations}}}; do '
                                'cat file.txt file.txt > file2.txt && '

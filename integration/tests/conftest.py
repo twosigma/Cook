@@ -63,7 +63,7 @@ if 'TEST_METRICS_URL' in os.environ:
                 'run-description': os.getenv('TEST_METRICS_RUN_DESCRIPTION', 'open source integration tests'),
                 'build-id': os.getenv('TEST_METRICS_BUILD_ID', None),
                 'result': result,
-                'runtime-milliseconds': (end - start)*1000,
+                'runtime-milliseconds': (end - start) * 1000,
                 'expected-to-fail': xfail_mark is not None and xfail_mark.name == 'xfail'
             }
             logging.info(f'Updating test metrics: {json.dumps(metrics, indent=2)}')
@@ -74,7 +74,7 @@ if 'TEST_METRICS_URL' in os.environ:
 
 
     @pytest.hookimpl(tryfirst=True, hookwrapper=True)
-    def pytest_runtest_makereport(item, call):
+    def pytest_runtest_makereport(item, _):
         # execute all other hooks to obtain the report object
         outcome = yield
         rep = outcome.get_result()
