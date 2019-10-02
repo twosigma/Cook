@@ -1,3 +1,4 @@
+import json
 import logging
 import unittest
 
@@ -37,6 +38,7 @@ class PoolsCookTest(util.CookTest):
 
             cpus = 0.1
             with admin:
+                self.logger.info(f'Running tasks: {json.dumps(util.running_tasks(self.cook_url), indent=2)}')
                 for pool in pools:
                     # Lower the user's cpu quota on this pool
                     pool_name = pool['name']
@@ -44,6 +46,7 @@ class PoolsCookTest(util.CookTest):
                     util.set_limit(self.cook_url, 'quota', user.name, cpus=cpus * quota_multiplier, pool=pool_name)
 
             with user:
+                util.kill_running_and_waiting_jobs(self.cook_url, user.name)
                 for pool in pools:
                     pool_name = pool['name']
 

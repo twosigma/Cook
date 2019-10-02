@@ -6,3 +6,4 @@ __pycache__
 venv/
 virtualenv-integrationtest*
 .pytest_cache
+/.cs.json

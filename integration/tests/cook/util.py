@@ -350,9 +350,9 @@ def is_not_blank(in_string):
     return bool(in_string and in_string.strip())
 
 
-def get_job_executor_type(cook_url):
+def get_job_executor_type():
     """Returns 'cook' or 'mesos' based on the default executor Cook is configured with."""
-    return 'cook' if is_not_blank(get_in(settings(cook_url), 'executor', 'command')) else 'mesos'
+    return 'cook' if is_cook_executor_in_use() else 'mesos'
 
 
 def is_connection_error(exception):
@@ -369,8 +369,13 @@ def _wait_for_cook(cook_url):
 def init_cook_session(*cook_urls):
     for cook_url in cook_urls:
         _wait_for_cook(cook_url)
-    if http_basic_auth_enabled():
+
+    # If we're using basic auth, init the session auth.
+    # But, don't override it if it's already set
+    # (for example, by a with user block).
+    if http_basic_auth_enabled() and session.auth is None:
         session.auth = UserFactory(None).default().auth
+        logger.info(f'Session auth set to {session.auth}')
 
 
 def settings(cook_url):
@@ -387,8 +392,10 @@ def scheduler_info(cook_url):
 def docker_image():
     return os.getenv('COOK_TEST_DOCKER_IMAGE')
 
+
 def get_default_cpus():
     return float(os.getenv('COOK_DEFAULT_JOB_CPUS', 1.0))
+
 
 def make_temporal_uuid():
     """Make a UUID object that has a datestamp as its prefix. The datestamp being yymmddhh. This will cluster
@@ -398,8 +405,9 @@ def make_temporal_uuid():
     now = datetime.now()
     date_prefix = now.strftime("%y%m%d%H")
     suffix = str(base_uuid)[8:]
-    temporal_uuid = uuid.UUID(date_prefix+suffix)
+    temporal_uuid = uuid.UUID(date_prefix + suffix)
     return temporal_uuid
+
 
 def minimal_job(**kwargs):
     job = {
@@ -424,8 +432,8 @@ def minimal_job(**kwargs):
     job.update(kwargs)
     no_container_volume = os.getenv('COOK_NO_CONTAINER_VOLUME') is not None
     if (not no_container_volume
-        and is_cook_executor_in_use()
-        and 'container' in job):
+            and is_cook_executor_in_use()
+            and 'container' in job):
         config = settings(retrieve_cook_url())
         executor_path = get_in(config, 'executor', 'command')
         if not executor_path.startswith('.'):
@@ -447,12 +455,14 @@ def minimal_group(**kwargs):
     return dict(uuid=str(make_temporal_uuid()), **kwargs)
 
 
-def submit_jobs(cook_url, job_specs, clones=1, pool=None, headers={}, **kwargs):
+def submit_jobs(cook_url, job_specs, clones=1, pool=None, headers=None, **kwargs):
     """
     Create and submit multiple jobs, either cloned from a single job spec,
     or specified individually in multiple job specs.
     Arguments can be manually passed to the scheduler post via kwargs.
     """
+    if headers is None:
+        headers = {}
     if isinstance(job_specs, dict):
         job_specs = [job_specs] * clones
 
@@ -487,8 +497,11 @@ def retry_jobs(cook_url, assert_response=True, use_deprecated_post=False, **kwar
     return response
 
 
-def kill_jobs(cook_url, jobs, assert_response=True, expected_status_code=204):
+def kill_jobs(cook_url, jobs, assert_response=True, expected_status_code=204, log_before_killing=False):
     """Kill one or more jobs"""
+    if log_before_killing:
+        logger.info(f'Jobs: {json.dumps(query_jobs(cook_url, True, uuid=jobs).json(), indent=2)}')
+
     chunksize = 100
     chunks = [jobs[i:i + chunksize] for i in range(0, len(jobs), chunksize)]
     response = []
@@ -509,8 +522,10 @@ def kill_groups(cook_url, groups, assert_response=True, expected_status_code=204
     return response
 
 
-def submit_job(cook_url, pool=None, headers={}, **kwargs):
+def submit_job(cook_url, pool=None, headers=None, **kwargs):
     """Create and submit a single job"""
+    if headers is None:
+        headers = {}
     uuids, resp = submit_jobs(cook_url, job_specs=[kwargs], pool=pool, headers=headers)
     return uuids[0], resp
 
@@ -820,6 +835,8 @@ def wait_for_running_instance(cook_url, job_id, max_wait_ms=DEFAULT_TIMEOUT_MS):
         job = resp.json()[0]
         if not job['instances']:
             logger.info(f"Job {job_id} has no instances.")
+            jobs, _ = unscheduled_jobs(cook_url, job_id)
+            logger.info(f'Unscheduled info: {jobs}')
         else:
             for inst in job['instances']:
                 status = inst['status']
@@ -872,8 +889,10 @@ def list_jobs(cook_url, **kwargs):
     return resp
 
 
-def jobs(cook_url, headers={}, **kwargs):
+def jobs(cook_url, headers=None, **kwargs):
     """Makes a request to the /jobs endpoint using the provided kwargs as the query params"""
+    if headers is None:
+        headers = {}
     query_params = urlencode(kwargs, doseq=True)
     resp = session.get('%s/jobs?%s' % (cook_url, query_params), headers=headers)
     return resp
@@ -1059,11 +1078,13 @@ def group_submit_retry(cook_url, command, predicate_statuses, retry_failed_jobs_
         kill_groups(cook_url, [group_uuid])
 
 
-def user_current_usage(cook_url, headers={}, **kwargs):
+def user_current_usage(cook_url, headers=None, **kwargs):
     """
     Queries cook for a user's current resource usage
     based on their currently running jobs.
     """
+    if headers is None:
+        headers = {}
     return session.get('%s/usage' % cook_url, params=kwargs, headers=headers)
 
 
@@ -1072,7 +1093,9 @@ def query_queue(cook_url, **kwargs):
     return session.get(f'{cook_url}/queue', **kwargs)
 
 
-def get_limit(cook_url, limit_type, user, pool=None, headers={}):
+def get_limit(cook_url, limit_type, user, pool=None, headers=None):
+    if headers is None:
+        headers = {}
     params = {'user': user}
     if pool is not None:
         params['pool'] = pool
@@ -1080,12 +1103,14 @@ def get_limit(cook_url, limit_type, user, pool=None, headers={}):
 
 
 def set_limit(cook_url, limit_type, user, mem=None, cpus=None, gpus=None, count=None, reason='testing', pool=None,
-              headers={}):
+              headers=None):
     """
     Set resource limits for the given user.
     The limit_type parameter should be either 'share' or 'quota', specifying which type of limit is being set.
     Any subset of the mem, cpus, gpus and count (job-count) limits can be specified.
     """
+    if headers is None:
+        headers = {}
     limits = {}
     body = {'user': user, limit_type: limits}
     if reason is not None:
@@ -1104,11 +1129,13 @@ def set_limit(cook_url, limit_type, user, mem=None, cpus=None, gpus=None, count=
     return session.post(f'{cook_url}/{limit_type}', json=body, headers=headers)
 
 
-def reset_limit(cook_url, limit_type, user, reason='testing', pool=None, headers={}):
+def reset_limit(cook_url, limit_type, user, reason='testing', pool=None, headers=None):
     """
     Resets resource limits for the given user to the default for the cluster.
     The limit_type parameter should be either 'share' or 'quota', specifying which type of limit is being reset.
     """
+    if headers is None:
+        headers = {}
     params = {'user': user}
     if reason is not None:
         params['reason'] = reason
@@ -1181,10 +1208,21 @@ def _cook_executor_config():
     return cook_executor_config
 
 
+@functools.lru_cache()
 def is_cook_executor_in_use():
     """Returns true if the cook executor is configured"""
     is_cook_executor_configured = is_not_blank(get_in(_cook_executor_config(), 'command'))
-    return is_cook_executor_configured
+    if is_cook_executor_configured:
+        if http_basic_auth_enabled():
+            logger.info('Using mesos executor (cook executor is configured, but so is HTTP basic auth, and they are '
+                        'incompatible)')
+            return False
+        else:
+            logger.info('Using cook executor as configured')
+            return True
+    else:
+        logger.info('Using mesos executor (cook executor is not configured)')
+        return False
 
 
 def slave_cpus(mesos_url, hostname):
@@ -1195,9 +1233,11 @@ def slave_cpus(mesos_url, hostname):
     slave_cpus = next(s['unreserved_resources']['cpus'] for s in slaves if s['hostname'] == hostname)
     return slave_cpus
 
+
 def _pool_attribute_name(cook_url):
     pool_selection_plugin_config = settings(cook_url).get('plugins', {}).get('pool-selection', {})
     return pool_selection_plugin_config.get('attribute-name', None) or 'cook-pool'
+
 
 def slave_pool(cook_url, mesos_url, hostname):
     """Returns the pool of the specified Mesos agent, or None if the agent doesn't have the attribute"""
@@ -1213,6 +1253,7 @@ def max_mesos_slave_cpus(mesos_url):
     max_slave_cpus = max([s['resources']['cpus'] for s in slaves])
     return max_slave_cpus
 
+
 @functools.lru_cache()
 def get_kubernetes_compute_cluster():
     cook_url = retrieve_cook_url()
@@ -1226,6 +1267,7 @@ def get_kubernetes_compute_cluster():
     else:
         return None
 
+
 def get_kubernetes_nodes():
     kubernetes_compute_cluster = get_kubernetes_compute_cluster()
     if 'config-file' in kubernetes_compute_cluster['config']:
@@ -1233,7 +1275,8 @@ def get_kubernetes_nodes():
                                          'get', 'nodes', '-o=json'])
         node_json = json.loads(nodes)
     elif 'base-path' in kubernetes_compute_cluster['config']:
-        authorization_header = subprocess.check_output(os.getenv('COOK_KUBERNETES_AUTH_CMD'), shell=True).decode('utf-8').strip()
+        authorization_header = subprocess.check_output(os.getenv('COOK_KUBERNETES_AUTH_CMD'), shell=True).decode(
+            'utf-8').strip()
         nodes_url = kubernetes_compute_cluster['config']['base-path'] + '/api/v1/nodes'
         node_json = requests.get(nodes_url, headers={'Authorization': authorization_header}, verify=False).json()
     else:
@@ -1241,15 +1284,18 @@ def get_kubernetes_nodes():
     logging.info(f'Retrieved kubernetes nodes: {node_json}')
     return node_json['items']
 
+
 def max_kubernetes_node_cpus():
     nodes = get_kubernetes_nodes()
     return max([float(n['status']['capacity']['cpu'])
                 for n in nodes])
 
+
 def task_constraint_cpus(cook_url):
     """Returns the max cpus that can be submitted to the cluster"""
     task_constraint_cpus = settings(cook_url)['task-constraints']['cpus']
     return task_constraint_cpus
+
 
 def max_node_cpus():
     if using_mesos():
@@ -1259,6 +1305,7 @@ def max_node_cpus():
     else:
         raise RuntimeError('Unable to determine cluster max CPUs')
 
+
 def node_count():
     if using_mesos():
         return len(get_mesos_slaves(retrieve_mesos_url())['slaves'])
@@ -1266,6 +1313,7 @@ def node_count():
         return len(get_kubernetes_nodes())
     else:
         raise RuntimeError('Unable to determine number of nodes')
+
 
 def max_cpus():
     """Returns the maximum cpus we can submit that actually fits on a slave"""
@@ -1324,6 +1372,7 @@ def mesos_hostnames_to_consider(cook_url, mesos_url):
     logging.info(f'First {num_to_log} hosts to consider: {json.dumps(slaves[:num_to_log], indent=2)}')
     return [s['hostname'] for s in slaves]
 
+
 def kubernetes_hostnames_to_consider():
     # TODO: This should check a 'cook-pool' attribute on the node for the pool.
     # Currently, pools are not supported on kubernetes, so it's fine to ignore for now.
@@ -1335,6 +1384,7 @@ def kubernetes_hostnames_to_consider():
             if address['type'] == 'Hostname':
                 hostnames.append(address['address'])
     return hostnames
+
 
 def hostnames_to_consider(cook_url):
     if using_mesos():
@@ -1386,7 +1436,9 @@ def demo_plugins_are_configured(cook_url):
     settings_dict = settings(cook_url)
     # Because we always create plugin configuration in config.clj, the first keys always exist.
     # The actual factory-fn keys are not set unless the user specifies them.
-    if settings_dict['plugins']['job-submission-validator'].get('factory-fns') != ["cook.plugins.demo-plugin/submission-factory", "cook.plugins.demo-plugin/submission-factory2"]:
+    submission_fns = [
+        "cook.plugins.demo-plugin/submission-factory", "cook.plugins.demo-plugin/submission-factory2"]
+    if settings_dict['plugins']['job-submission-validator'].get('factory-fns') != submission_fns:
         return False
     if settings_dict['plugins']['job-launch-filter'].get('factory-fn') != "cook.plugins.demo-plugin/launch-factory":
         return False
@@ -1447,6 +1499,7 @@ def supports_mesos_containerizer_images():
     isolators = _supported_isolators()
     return 'filesystem/linux' in isolators and 'docker/runtime' in isolators
 
+
 @functools.lru_cache()
 def _get_compute_cluster_factory_fn():
     cook_url = retrieve_cook_url()
@@ -1455,15 +1508,31 @@ def _get_compute_cluster_factory_fn():
     compute_clusters = settings(cook_url)['compute-clusters']
     return compute_clusters[0]['factory-fn']
 
+
 def using_kubernetes():
     return get_kubernetes_compute_cluster() is not None
+
 
 def using_mesos():
     return _get_compute_cluster_factory_fn() == 'cook.mesos.mesos-compute-cluster/factory-fn'
 
+
 def has_one_agent():
     return node_count() == 1
+
 
 def supports_exit_code():
     return using_kubernetes() or is_cook_executor_in_use()
 
+
+def kill_running_and_waiting_jobs(cook_url, user):
+    one_hour_in_millis = 60 * 60 * 1000
+    start = current_milli_time() - (4 * one_hour_in_millis)
+    end = current_milli_time() + one_hour_in_millis
+    running = jobs(cook_url, user=user, state=['running', 'waiting'], start=start, end=end).json()
+    logger.info(f'Currently running/waiting jobs: {json.dumps(running, indent=2)}')
+    kill_jobs(cook_url, running)
+
+
+def running_tasks(cook_url):
+    return session.get(f'{cook_url}/running', params={'limit': 100}).json()
