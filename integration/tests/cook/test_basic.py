@@ -2606,3 +2606,31 @@ class CookTest(util.CookTest):
             self.assertEqual([1, 2], exit_codes, job)
         finally:
             util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
+
+    @unittest.skipUnless(util.using_kubernetes(), 'Test requires kubernetes')
+    def test_kubernetes_disallowed_volumes(self):
+        '''This tests that disallowed kubernetes volumes are correctly not mounted by Cook Scheduler.
+
+        Because we expect another part of the Kuberentes system to mount these volumes (like an admission
+        controller) we can't rely on them not being present in the container. Instead, we just ensure that
+        we can successfully run a job that mounts one of these volumes. If the volume is mounted by both Cook
+        and another component, the job will fail.
+        '''
+        settings = util.settings(self.cook_url)
+        disallowed_container_paths = util.get_in(settings, 'kubernetes', 'disallowed-container-paths')
+        if disallowed_container_paths is None:
+            self.skipTest('Requires disallowed container paths')
+        path = disallowed_container_paths[0]
+        docker_image = util.docker_image()
+        container = {'type': 'docker',
+                     'docker': {'image': docker_image,
+                                'network': 'HOST',
+                                'force-pull-image': False},
+                     'volumes': [{'host-path': '/tmp',
+                                  'container-path': path}]}
+        job_uuid, resp = util.submit_job(self.cook_url, command='exit 0', container=container)
+        self.assertEqual(201, resp.status_code)
+        try:
+            util.wait_for_instance(self.cook_url, job_uuid, status='success')
+        finally:
+            util.kill_jobs(self.cook_url, [job_uuid])
