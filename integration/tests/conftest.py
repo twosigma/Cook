@@ -74,7 +74,7 @@ if 'TEST_METRICS_URL' in os.environ:
 
 
     @pytest.hookimpl(tryfirst=True, hookwrapper=True)
-    def pytest_runtest_makereport(item, _):
+    def pytest_runtest_makereport(item, call):
         # execute all other hooks to obtain the report object
         outcome = yield
         rep = outcome.get_result()
