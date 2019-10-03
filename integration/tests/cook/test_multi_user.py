@@ -389,13 +389,12 @@ class MultiUserCookTest(util.CookTest):
         5. Submit a job, J2, from X with 0.1 cpu and priority 100
         6. Wait until J1 is preempted (to make room for J2)
         """
-        admin = self.user_factory.admin()
         user = self.user_factory.new_user()
         all_job_uuids = []
         try:
             large_cpus = util.get_default_cpus()
             small_cpus = large_cpus / 10
-            with admin:
+            with self.user_factory.admin():
                 # Reset the user's share and quota
                 util.reset_limit(self.cook_url, 'share', user.name, reason=self.current_name(), pool=pool)
                 util.reset_limit(self.cook_url, 'quota', user.name, reason=self.current_name(), pool=pool)
@@ -412,10 +411,12 @@ class MultiUserCookTest(util.CookTest):
                 all_job_uuids.append(uuid_large)
                 util.wait_for_running_instance(self.cook_url, uuid_large)
 
-            with admin:
+            with self.user_factory.admin():
                 # Lower the user's cpu share and quota
-                util.set_limit(self.cook_url, 'share', user.name, cpus=small_cpus, pool=pool)
-                util.set_limit(self.cook_url, 'quota', user.name, cpus=large_cpus, pool=pool)
+                resp = util.set_limit(self.cook_url, 'share', user.name, cpus=small_cpus, pool=pool)
+                self.assertEqual(resp.status_code, 201, resp.text)
+                resp = util.set_limit(self.cook_url, 'quota', user.name, cpus=large_cpus, pool=pool)
+                self.assertEqual(resp.status_code, 201, resp.text)
 
             with user:
                 # Submit a higher-priority job that should trigger preemption
@@ -451,7 +452,7 @@ class MultiUserCookTest(util.CookTest):
             self.logger.info(f'Waiting up to {max_wait_ms} milliseconds for preemption to happen')
             util.wait_until(low_priority_job, job_was_preempted, max_wait_ms=max_wait_ms, wait_interval_ms=5000)
         finally:
-            with admin:
+            with self.user_factory.admin():
                 util.kill_jobs(self.cook_url, all_job_uuids, assert_response=False)
                 util.reset_limit(self.cook_url, 'share', user.name, reason=self.current_name(), pool=pool)
                 util.reset_limit(self.cook_url, 'quota', user.name, reason=self.current_name(), pool=pool)
