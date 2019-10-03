@@ -401,6 +401,9 @@ class MultiUserCookTest(util.CookTest):
                 util.reset_limit(self.cook_url, 'quota', user.name, reason=self.current_name(), pool=pool)
 
             with user:
+                # Kill currently running / waiting jobs for the user
+                util.kill_running_and_waiting_jobs(self.cook_url, user.name)
+
                 # Submit a large job that fills up the user's quota
                 base_priority = 99
                 command = 'sleep 600'
