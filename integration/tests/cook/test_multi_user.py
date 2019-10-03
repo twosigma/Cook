@@ -424,32 +424,32 @@ class MultiUserCookTest(util.CookTest):
                                                         name='higher_priority_job', pool=pool)
                 all_job_uuids.append(uuid_high_priority)
 
-                # Assert that the lower-priority job was preempted
-                def low_priority_job():
-                    job = util.load_job(self.cook_url, uuid_large)
-                    one_hour_in_millis = 60 * 60 * 1000
-                    start = util.current_milli_time() - one_hour_in_millis
-                    end = util.current_milli_time()
-                    running = util.jobs(self.cook_url, user=user.name, state='running', start=start, end=end).json()
-                    waiting = util.jobs(self.cook_url, user=user.name, state='waiting', start=start, end=end).json()
-                    self.logger.info(f'Currently running jobs: {json.dumps(running, indent=2)}')
-                    self.logger.info(f'Currently waiting jobs: {json.dumps(waiting, indent=2)}')
-                    return job
+            # Assert that the lower-priority job was preempted
+            def low_priority_job():
+                job = util.load_job(self.cook_url, uuid_large)
+                one_hour_in_millis = 60 * 60 * 1000
+                start = util.current_milli_time() - one_hour_in_millis
+                end = util.current_milli_time()
+                running = util.jobs(self.cook_url, user=user.name, state='running', start=start, end=end).json()
+                waiting = util.jobs(self.cook_url, user=user.name, state='waiting', start=start, end=end).json()
+                self.logger.info(f'Currently running jobs: {json.dumps(running, indent=2)}')
+                self.logger.info(f'Currently waiting jobs: {json.dumps(waiting, indent=2)}')
+                return job
 
-                def job_was_preempted(job):
-                    for instance in job['instances']:
-                        self.logger.debug(f'Checking if instance was preempted: {instance}')
-                        # Rebalancing marks the instance failed eagerly, so also wait for end_time to ensure it was
-                        # actually killed
-                        if instance.get('reason_string') == 'Preempted by rebalancer' and instance.get(
-                                'end_time') is not None:
-                            return True
-                    self.logger.info(f'Job has not been preempted: {job}')
-                    return False
+            def job_was_preempted(job):
+                for instance in job['instances']:
+                    self.logger.debug(f'Checking if instance was preempted: {instance}')
+                    # Rebalancing marks the instance failed eagerly, so also wait for end_time to ensure it was
+                    # actually killed
+                    if instance.get('reason_string') == 'Preempted by rebalancer' and instance.get(
+                            'end_time') is not None:
+                        return True
+                self.logger.info(f'Job has not been preempted: {job}')
+                return False
 
-                max_wait_ms = util.settings(self.cook_url)['rebalancer']['interval-seconds'] * 1000 * 1.5
-                self.logger.info(f'Waiting up to {max_wait_ms} milliseconds for preemption to happen')
-                util.wait_until(low_priority_job, job_was_preempted, max_wait_ms=max_wait_ms, wait_interval_ms=5000)
+            max_wait_ms = util.settings(self.cook_url)['rebalancer']['interval-seconds'] * 1000 * 1.5
+            self.logger.info(f'Waiting up to {max_wait_ms} milliseconds for preemption to happen')
+            util.wait_until(low_priority_job, job_was_preempted, max_wait_ms=max_wait_ms, wait_interval_ms=5000)
         finally:
             with admin:
                 util.kill_jobs(self.cook_url, all_job_uuids, assert_response=False)
