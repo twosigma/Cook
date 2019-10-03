@@ -395,6 +395,11 @@ class MultiUserCookTest(util.CookTest):
         try:
             large_cpus = util.get_default_cpus()
             small_cpus = large_cpus / 10
+            with admin:
+                # Reset the user's share and quota
+                util.reset_limit(self.cook_url, 'share', user.name, reason=self.current_name(), pool=pool)
+                util.reset_limit(self.cook_url, 'quota', user.name, reason=self.current_name(), pool=pool)
+
             with user:
                 # Submit a large job that fills up the user's quota
                 base_priority = 99
