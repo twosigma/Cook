@@ -395,11 +395,6 @@ class MultiUserCookTest(util.CookTest):
         try:
             large_cpus = util.get_default_cpus()
             small_cpus = large_cpus / 10
-            with admin:
-                # Lower the user's cpu share and quota
-                util.set_limit(self.cook_url, 'share', user.name, cpus=small_cpus, pool=pool)
-                util.set_limit(self.cook_url, 'quota', user.name, cpus=large_cpus, pool=pool)
-
             with user:
                 # Submit a large job that fills up the user's quota
                 base_priority = 99
@@ -409,6 +404,12 @@ class MultiUserCookTest(util.CookTest):
                 all_job_uuids.append(uuid_large)
                 util.wait_for_running_instance(self.cook_url, uuid_large)
 
+            with admin:
+                # Lower the user's cpu share and quota
+                util.set_limit(self.cook_url, 'share', user.name, cpus=small_cpus, pool=pool)
+                util.set_limit(self.cook_url, 'quota', user.name, cpus=large_cpus, pool=pool)
+
+            with user:
                 # Submit a higher-priority job that should trigger preemption
                 uuid_high_priority, _ = util.submit_job(self.cook_url, priority=base_priority + 1,
                                                         cpus=small_cpus, command=command,
@@ -430,7 +431,8 @@ class MultiUserCookTest(util.CookTest):
                 def job_was_preempted(job):
                     for instance in job['instances']:
                         self.logger.debug(f'Checking if instance was preempted: {instance}')
-                        # Rebalancing marks the instance failed eagerly, so also wait for end_time to ensure it was actually killed
+                        # Rebalancing marks the instance failed eagerly, so also wait for end_time to ensure it was
+                        # actually killed
                         if instance.get('reason_string') == 'Preempted by rebalancer' and instance.get(
                                 'end_time') is not None:
                             return True
