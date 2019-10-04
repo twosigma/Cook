@@ -165,6 +165,7 @@ class _KerberosUser(_AuthenticatedUser):
         super().__init__(name, impersonatee)
         self.auth = None
         self.previous_token = None
+        self.stop_event = None
 
     def _generate_kerberos_ticket_for_user(self, username):
         """
@@ -176,24 +177,31 @@ class _KerberosUser(_AuthenticatedUser):
                       .replace('{{COOK_SCHEDULER_URL}}', retrieve_cook_url()))
         return subprocess.check_output(subcommand, shell=True).rstrip()
 
-    def _reset_auth_header(self):
+    def _reset_auth_header(self, stop):
         global session
-        session.headers['Authorization'] = self._generate_kerberos_ticket_for_user(self.name)
+        if not stop.is_set():
+            logger.info(f'Refreshing kerberos tickets for {self.name}')
+            session.headers['Authorization'] = self._generate_kerberos_ticket_for_user(self.name)
+            threading.Timer(60.0, lambda: self._reset_auth_header(stop)).start
+        else:
+            logger.info(f'Stopping kerberos ticket refresh for {self.name}')
 
     def __enter__(self):
         global session
         super().__enter__()
         assert self.previous_token is None
+        assert self.stop_event is None
         self.previous_token = session.headers.get('Authorization')
         session.headers['Authorization'] = self._generate_kerberos_ticket_for_user(self.name)
-        self.timer = threading.Timer(60.0, lambda: self._reset_auth_header())
+        self.stop_event = threading.Event()
+        self._reset_auth_header(self.stop_event)
 
     def __exit__(self, ex_type, ex_val, ex_trace):
         global session
         super().__exit__(ex_type, ex_val, ex_trace)
-        if self.timer:
-            self.timer.cancel()
-            self.timer = None
+        if self.stop_event is not None:
+            self.stop_event.set()
+            self.stop_event = None
         if self.previous_token is None:
             del session.headers['Authorization']
         else:
