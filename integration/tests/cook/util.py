@@ -6,6 +6,7 @@ import logging
 import os
 import os.path
 import subprocess
+import threading
 import time
 import unittest
 import uuid
@@ -163,10 +164,8 @@ class _KerberosUser(_AuthenticatedUser):
     def __init__(self, name, impersonatee=None):
         super().__init__(name, impersonatee)
         self.auth = None
-        self.auth_token = self._generate_kerberos_ticket_for_user(name)
         self.previous_token = None
 
-    @functools.lru_cache()
     def _generate_kerberos_ticket_for_user(self, username):
         """
         Get a Kerberos authentication ticket for the given user.
@@ -177,16 +176,24 @@ class _KerberosUser(_AuthenticatedUser):
                       .replace('{{COOK_SCHEDULER_URL}}', retrieve_cook_url()))
         return subprocess.check_output(subcommand, shell=True).rstrip()
 
+    def _reset_auth_header(self):
+        global session
+        session.headers['Authorization'] = self._generate_kerberos_ticket_for_user(self.name)
+
     def __enter__(self):
         global session
         super().__enter__()
         assert self.previous_token is None
         self.previous_token = session.headers.get('Authorization')
-        session.headers['Authorization'] = self.auth_token
+        session.headers['Authorization'] = self._generate_kerberos_ticket_for_user(self.name)
+        self.timer = threading.Timer(60.0, lambda: self._reset_auth_header())
 
     def __exit__(self, ex_type, ex_val, ex_trace):
         global session
         super().__exit__(ex_type, ex_val, ex_trace)
+        if self.timer:
+            self.timer.cancel()
+            self.timer = None
         if self.previous_token is None:
             del session.headers['Authorization']
         else:
