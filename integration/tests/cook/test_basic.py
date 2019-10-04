@@ -67,7 +67,6 @@ class CookTest(util.CookTest):
     def test_uid(self):
         settings = util.settings(self.cook_url)
         username = settings.get('mesos-run-as-user') or os.getenv('USER')
-        print(username)
         uid = subprocess.check_output(['/usr/bin/id', '-u', username]).decode('utf-8').strip()
         command = f'bash -c \'if [[ $UID -eq {uid} ]]; then exit 0; else exit 1; fi\''
         job_uuid, resp = util.submit_job(self.cook_url, command=command)
