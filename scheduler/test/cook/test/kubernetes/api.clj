@@ -51,7 +51,8 @@
 (deftest test-task-metadata->pod
   (let [task-metadata {:task-id "my-task"
                        :command {:value "foo && bar"
-                                 :environment {"FOO" "BAR"}}
+                                 :environment {"FOO" "BAR"}
+                                 :user (System/getProperty "user.name")}
                        :container {:type :docker
                                    :docker {:image "alpine:latest"}}
                        :task-request {:resources {:mem 512
@@ -64,6 +65,8 @@
     (is (= "kubehost" (-> pod .getSpec .getNodeName)))
     (is (= 1 (count (-> pod .getSpec .getContainers))))
     (is (= {api/cook-pod-label "testing-cluster"} (-> pod .getMetadata .getLabels)))
+    (is (< 0 (-> pod .getSpec .getSecurityContext .getRunAsGroup)))
+    (is (< 0 (-> pod .getSpec .getSecurityContext .getRunAsUser)))
 
     (let [^V1Container container (-> pod .getSpec .getContainers first)]
       (is (= "required-cook-job-container" (.getName container)))
@@ -78,8 +81,24 @@
       (let [resources (-> container .getResources)]
         (is (= 1.0 (-> resources .getRequests (get "cpu") .getNumber .doubleValue)))
         (is (= (* 512.0 api/memory-multiplier) (-> resources .getRequests (get "memory") .getNumber .doubleValue)))
-        (is (= (* 512.0 api/memory-multiplier) (-> resources .getLimits (get "memory") .getNumber .doubleValue)))))))
+        (is (= (* 512.0 api/memory-multiplier) (-> resources .getLimits (get "memory") .getNumber .doubleValue))))))
 
+  (testing "user parameter"
+    (let [task-metadata {:task-id "my-task"
+                         :command {:value "foo && bar"
+                                   :environment {"FOO" "BAR"}
+                                   :user (System/getProperty "user.name")}
+                         :container {:type :docker
+                                     :docker {:image "alpine:latest"
+                                              :parameters [{:key "user"
+                                                            :value "100:10"}]}}
+                         :task-request {:resources {:mem 512
+                                                    :cpus 1.0}}
+                         :hostname "kubehost"}
+          pod (api/task-metadata->pod "cook" "test-cluster" task-metadata)]
+      (is (= 100 (-> pod .getSpec .getSecurityContext .getRunAsUser)))
+      (is (= 10 (-> pod .getSpec .getSecurityContext .getRunAsGroup))))))
+ 
 (deftest test-make-volumes
   (testing "defaults for minimal volume"
     (let [host-path "/tmp/$_*/foo"

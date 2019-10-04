@@ -3,6 +3,7 @@
             [clojure.string :as str]
             [clojure.tools.logging :as log]
             [cook.config :as config]
+            [me.raynes.conch :as sh]
             [plumbing.core :as pc])
   (:import
     (com.google.gson JsonSyntaxException)
@@ -12,7 +13,8 @@
     (io.kubernetes.client.custom Quantity Quantity$Format)
     (io.kubernetes.client.models V1Pod V1Container V1Node V1Pod V1Container V1ResourceRequirements V1EnvVar
                                  V1ObjectMeta V1PodSpec V1PodStatus V1ContainerState V1DeleteOptionsBuilder
-                                 V1DeleteOptions V1HostPathVolumeSource V1VolumeMount V1VolumeBuilder V1Taint V1Toleration)
+                                 V1DeleteOptions V1HostPathVolumeSource V1VolumeMount V1VolumeBuilder V1Taint
+                                 V1Toleration V1PodSecurityContext)
     (io.kubernetes.client.util Watch)
     (java.util.concurrent Executors ExecutorService)
     (java.util UUID)))
@@ -25,6 +27,13 @@
 ; Cook, Fenzo, and Mesos use MB for memory. Convert bytes from k8s to MB when passing to fenzo, and MB back to bytes
 ; when submitting to k8s.
 (def memory-multiplier (* 1000 1000))
+
+(sh/let-programs
+  [_id "/usr/bin/id"]
+  (defn uid [user-name]
+    (Long/parseLong (str/trim (_id "-u" user-name))))
+  (defn gid [user-name]
+    (Long/parseLong (str/trim (_id "-g" user-name)))))
 
 (defn is-cook-scheduler-pod
   "Is this a cook pod? Uses some-> so is null-safe."
@@ -308,7 +317,13 @@
                         (filter (fn [{:keys [key]}] (= key "user")))
                         first)
         [uid gid] (if user-param
-                    )]))
+                    (let [[uid gid] (str/split (:value user-param) #":")]
+                      [(Long/parseLong uid) (Long/parseLong gid)])
+                    [(uid user) (gid user)])
+        security-context (V1PodSecurityContext.)]
+    (.setRunAsUser security-context uid)
+    (.setRunAsGroup security-context gid)
+    security-context))
 
 (defn ^V1Pod task-metadata->pod
   "Given a task-request and other data generate the kubernetes V1Pod to launch that task."
@@ -330,7 +345,8 @@
         resources (V1ResourceRequirements.)
         labels {cook-pod-label compute-cluster-name}
         pool-name (some-> job :job/pool :pool/name)
-        {:keys [volumes volume-mounts]} (make-volumes volumes)]
+        {:keys [volumes volume-mounts]} (make-volumes volumes)
+        security-context (make-security-context parameters (:user command))]
 
     ; metadata
     (.setName metadata (str task-id))
@@ -360,6 +376,7 @@
     (.setVolumes pod-spec (into [] volumes))
     (when pool-name
       (.addTolerationsItem pod-spec (toleration-for-pool pool-name)))
+    (.setSecurityContext pod-spec security-context)
 
     ; pod
     (.setMetadata pod metadata)
