@@ -68,9 +68,8 @@ class CookTest(util.CookTest):
     def test_uid(self):
         settings = util.settings(self.cook_url)
 
-        username = settings.get('mesos-run-as-user') or os.getenv('USER')
-        uid = subprocess.check_output(['/usr/bin/id', '-u', username]).decode('utf-8').strip()
-        gid = subprocess.check_output(['/usr/bin/id', '-g', username]).decode('utf-8').strip()
+        uid = subprocess.check_output(['/usr/bin/id', '-u']).decode('utf-8').strip()
+        gid = subprocess.check_output(['/usr/bin/id', '-g']).decode('utf-8').strip()
 
         image = util.docker_image()
         container = {'type': 'docker',
