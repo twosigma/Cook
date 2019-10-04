@@ -302,6 +302,14 @@
                 (.setValue env (str env-var-value))
                 env)))))
 
+(defn make-security-context
+  [params user]
+  (let [user-param (->> params
+                        (filter (fn [{:keys [key]}] (= key "user")))
+                        first)
+        [uid gid] (if user-param
+                    )]))
+
 (defn ^V1Pod task-metadata->pod
   "Given a task-request and other data generate the kubernetes V1Pod to launch that task."
   [namespace compute-cluster-name {:keys [task-id command container task-request hostname]}]
