@@ -15,7 +15,10 @@
  :container-defaults {:volumes [{:host-path "/tmp/cook-integration-mount"
                                  :container-path "/mnt/cook-integration"
                                  :mode "RW"}]}
- :mesos {:leader-path "/cook-scheduler"}
+ :mesos {:leader-path "/cook-scheduler"
+         ; because the minikube users and the local users may have different IDs, tests that require file permissions
+         ; (like test_default_container_volumes) will fail without this set.
+         :run-as-user "root"}
  :compute-clusters [{:factory-fn cook.kubernetes.compute-cluster/factory-fn
                      :config {:compute-cluster-name "minikube"
                               ;; Location of the kubernetes config file, e.g. $HOME/.kube/config

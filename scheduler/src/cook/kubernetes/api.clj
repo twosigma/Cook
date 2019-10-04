@@ -14,7 +14,7 @@
     (io.kubernetes.client.models V1Pod V1Container V1Node V1Pod V1Container V1ResourceRequirements V1EnvVar
                                  V1ObjectMeta V1PodSpec V1PodStatus V1ContainerState V1DeleteOptionsBuilder
                                  V1DeleteOptions V1HostPathVolumeSource V1VolumeMount V1VolumeBuilder V1Taint
-                                 V1Toleration V1PodSecurityContext)
+                                 V1Toleration V1PodSecurityContext V1EmptyDirVolumeSource)
     (io.kubernetes.client.util Watch)
     (java.util.concurrent Executors ExecutorService)
     (java.util UUID)))
@@ -325,6 +325,15 @@
     (.setRunAsGroup security-context gid)
     security-context))
 
+(defn get-workdir
+  [params]
+  (let [workdir-param (->> params
+                           (filter (fn [{:keys [key]}] (= key "workdir")))
+                           first)]
+    (if workdir-param
+      (:value workdir-param)
+      (:default-workdir (config/kubernetes)))))
+
 (defn ^V1Pod task-metadata->pod
   "Given a task-request and other data generate the kubernetes V1Pod to launch that task."
   [namespace compute-cluster-name {:keys [task-id command container task-request hostname]}]
@@ -346,7 +355,17 @@
         labels {cook-pod-label compute-cluster-name}
         pool-name (some-> job :job/pool :pool/name)
         {:keys [volumes volume-mounts]} (make-volumes volumes)
-        security-context (make-security-context parameters (:user command))]
+        security-context (make-security-context parameters (:user command))
+        workdir (get-workdir parameters)
+        workdir-volume (-> (V1VolumeBuilder.)
+                           (.withName "cook-workdir")
+                           (.withEmptyDir (V1EmptyDirVolumeSource.))
+                           (.build))
+        workdir-volume-mount (V1VolumeMount.)]
+    ; workdir mount
+    (.setName workdir-volume-mount "cook-workdir")
+    (.setMountPath workdir-volume-mount workdir)
+    (.setReadOnly workdir-volume-mount false)
 
     ; metadata
     (.setName metadata (str task-id))
@@ -367,15 +386,16 @@
     (.putLimitsItem resources "memory" (double->quantity (* memory-multiplier mem)))
     (.putRequestsItem resources "cpu" (double->quantity cpus))
     (.setResources container resources)
-    (.setVolumeMounts container (into [] volume-mounts))
+    (.setVolumeMounts container (into [] (conj volume-mounts workdir-volume-mount)))
+    (.setWorkingDir container workdir)
 
     ; pod-spec
     (.addContainersItem pod-spec container)
     (.setNodeName pod-spec hostname)
     (.setRestartPolicy pod-spec "Never")
-    (.setVolumes pod-spec (into [] volumes))
     (when pool-name
       (.addTolerationsItem pod-spec (toleration-for-pool pool-name)))
+    (.setVolumes pod-spec (into [] (conj volumes workdir-volume)))
     (.setSecurityContext pod-spec security-context)
 
     ; pod

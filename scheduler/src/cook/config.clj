@@ -431,7 +431,8 @@
                                   :default-pool "no-pool"}
                                  pool-selection)})))
      :kubernetes (fnk [[:config {kubernetes {}}]]
-                   kubernetes)}))
+                   (merge kubernetes
+                          {:default-workdir "/mnt/sandbox"}))}))
 
 (defn read-config
   "Given a config file path, reads the config and returns the map"

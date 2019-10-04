@@ -4,7 +4,7 @@
             [cook.kubernetes.api :as api]
             [cook.test.testutil :as tu]
             [datomic.api :as d])
-  (:import (io.kubernetes.client.models V1Container V1EnvVar V1Pod V1PodStatus V1ContainerStatus V1ContainerState V1ContainerStateWaiting)))
+  (:import (io.kubernetes.client.models V1Container V1EnvVar V1Pod V1PodStatus V1ContainerStatus V1ContainerState V1ContainerStateWaiting V1VolumeMount V1Volume)))
 
 (deftest test-get-consumption
   (testing "correctly computes consumption for a single pod"
@@ -49,39 +49,54 @@
            (api/get-capacity node-name->node)))))
 
 (deftest test-task-metadata->pod
-  (let [task-metadata {:task-id "my-task"
-                       :command {:value "foo && bar"
-                                 :environment {"FOO" "BAR"}
-                                 :user (System/getProperty "user.name")}
-                       :container {:type :docker
-                                   :docker {:image "alpine:latest"}}
-                       :task-request {:resources {:mem 512
-                                                  :cpus 1.0}}
-                       :hostname "kubehost"}
-        pod (api/task-metadata->pod "cook" "testing-cluster" task-metadata)]
-    (is (= "my-task" (-> pod .getMetadata .getName)))
-    (is (= "cook" (-> pod .getMetadata .getNamespace)))
-    (is (= "Never" (-> pod .getSpec .getRestartPolicy)))
-    (is (= "kubehost" (-> pod .getSpec .getNodeName)))
-    (is (= 1 (count (-> pod .getSpec .getContainers))))
-    (is (= {api/cook-pod-label "testing-cluster"} (-> pod .getMetadata .getLabels)))
-    (is (< 0 (-> pod .getSpec .getSecurityContext .getRunAsGroup)))
-    (is (< 0 (-> pod .getSpec .getSecurityContext .getRunAsUser)))
+  (testing "creates pod from metadata"
+    (with-redefs [config/kubernetes (constantly {:default-workdir "/mnt/sandbox"})]
+      (let [task-metadata {:task-id "my-task"
+                           :command {:value "foo && bar"
+                                     :environment {"FOO" "BAR"}
+                                     :user (System/getProperty "user.name")}
+                           :container {:type :docker
+                                       :docker {:image "alpine:latest"}}
+                           :task-request {:resources {:mem 512
+                                                      :cpus 1.0}}
+                           :hostname "kubehost"}
+            pod (api/task-metadata->pod "cook" "testing-cluster" task-metadata)]
+        (is (= "my-task" (-> pod .getMetadata .getName)))
+        (is (= "cook" (-> pod .getMetadata .getNamespace)))
+        (is (= "Never" (-> pod .getSpec .getRestartPolicy)))
+        (is (= "kubehost" (-> pod .getSpec .getNodeName)))
+        (is (= 1 (count (-> pod .getSpec .getContainers))))
+        (is (= {api/cook-pod-label "testing-cluster"} (-> pod .getMetadata .getLabels)))
+        (is (< 0 (-> pod .getSpec .getSecurityContext .getRunAsGroup)))
+        (is (< 0 (-> pod .getSpec .getSecurityContext .getRunAsUser)))
 
-    (let [^V1Container container (-> pod .getSpec .getContainers first)]
-      (is (= "required-cook-job-container" (.getName container)))
-      (is (= ["/bin/sh" "-c" "foo && bar"] (.getCommand container)))
-      (is (= "alpine:latest" (.getImage container)))
-      (is (= 1 (count (.getEnv container))))
+        (let [workdir-volume (->> pod
+                                  .getSpec
+                                  .getVolumes
+                                  (filter (fn [^V1Volume v] (= "cook-workdir" (.getName v))))
+                                  first)]
+          (is (not (nil? (.getEmptyDir workdir-volume)))))
 
-      (let [^V1EnvVar variable (-> container .getEnv first)]
-        (is (= "FOO" (.getName variable)))
-        (is (= "BAR" (.getValue variable))))
+        (let [^V1Container container (-> pod .getSpec .getContainers first)]
+          (is (= "required-cook-job-container" (.getName container)))
+          (is (= ["/bin/sh" "-c" "foo && bar"] (.getCommand container)))
+          (is (= "alpine:latest" (.getImage container)))
+          (is (= 1 (count (.getEnv container))))
+          (is (= "/mnt/sandbox" (.getWorkingDir container)))
+          (let [workdir-mount (->> container
+                                   .getVolumeMounts
+                                   (filter (fn [^V1VolumeMount m] (= "cook-workdir" (.getName m))))
+                                   first)]
+            (is (= "/mnt/sandbox" (.getMountPath workdir-mount))))
 
-      (let [resources (-> container .getResources)]
-        (is (= 1.0 (-> resources .getRequests (get "cpu") .getNumber .doubleValue)))
-        (is (= (* 512.0 api/memory-multiplier) (-> resources .getRequests (get "memory") .getNumber .doubleValue)))
-        (is (= (* 512.0 api/memory-multiplier) (-> resources .getLimits (get "memory") .getNumber .doubleValue))))))
+          (let [^V1EnvVar variable (-> container .getEnv first)]
+            (is (= "FOO" (.getName variable)))
+            (is (= "BAR" (.getValue variable))))
+
+          (let [resources (-> container .getResources)]
+            (is (= 1.0 (-> resources .getRequests (get "cpu") .getNumber .doubleValue)))
+            (is (= (* 512.0 api/memory-multiplier) (-> resources .getRequests (get "memory") .getNumber .doubleValue)))
+            (is (= (* 512.0 api/memory-multiplier) (-> resources .getLimits (get "memory") .getNumber .doubleValue))))))))
 
   (testing "user parameter"
     (let [task-metadata {:task-id "my-task"
@@ -98,7 +113,7 @@
           pod (api/task-metadata->pod "cook" "test-cluster" task-metadata)]
       (is (= 100 (-> pod .getSpec .getSecurityContext .getRunAsUser)))
       (is (= 10 (-> pod .getSpec .getSecurityContext .getRunAsGroup))))))
- 
+
 (deftest test-make-volumes
   (testing "defaults for minimal volume"
     (let [host-path "/tmp/$_*/foo"

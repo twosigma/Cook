@@ -2567,6 +2567,23 @@ class CookTest(util.CookTest):
         finally:
             util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
 
+    @unittest.skipUnless(util.docker_tests_enabled(), 'Requires docker support')
+    def test_docker_workdir(self):
+        image = util.docker_image()
+        container = {'type': 'docker',
+                     'docker': {'image': image,
+                                'network': 'HOST',
+                                'force-pull-image': False,
+                                'parameters': [{'key': 'workdir',
+                                                'value': '/tmp/integration-work'}]}}
+        command = 'bash -c \'if [[ $(pwd) == "/tmp/integration-work" ]]; then exit 0; else exit 1; fi\''
+        job_uuid, resp = util.submit_job(self.cook_url, command=command, container=container)
+        self.assertEqual(201, resp.status_code, resp.text)
+        try:
+            util.wait_for_instance(self.cook_url, job_uuid, status='success')
+        finally:
+            util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
+
     @unittest.skipUnless(util.docker_tests_enabled(), "Requires docker support.")
     def test_default_container_volumes(self):
         settings = util.settings(self.cook_url)
