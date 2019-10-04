@@ -290,13 +290,25 @@
     (.setEffect toleration "NoSchedule")
     toleration))
 
+(defn param-env-vars
+  [params]
+  (->> params
+       (filter (fn [{:keys [key]}]
+                 (= key "env")))
+       (map (fn [{:keys [value]}]
+              (let [[env-var-name env-var-value] (str/split value #"=")
+                    env (V1EnvVar.)]
+                (.setName env (str env-var-name))
+                (.setValue env (str env-var-value))
+                env)))))
+
 (defn ^V1Pod task-metadata->pod
   "Given a task-request and other data generate the kubernetes V1Pod to launch that task."
   [namespace compute-cluster-name {:keys [task-id command container task-request hostname]}]
   (let [{:keys [resources job]} task-request
         {:keys [mem cpus]} resources
         {:keys [docker volumes]} container
-        {:keys [image]} docker
+        {:keys [image parameters]} docker
         pod (V1Pod.)
         pod-spec (V1PodSpec.)
         metadata (V1ObjectMeta.)
@@ -322,7 +334,9 @@
     (.setCommand container
                  ["/bin/sh" "-c" (:value command)])
 
-    (.setEnv container (into [] env))
+    (.setEnv container (-> []
+                           (into env)
+                           (into (param-env-vars parameters))))
     (.setImage container image)
 
     (.putRequestsItem resources "memory" (double->quantity (* memory-multiplier mem)))
