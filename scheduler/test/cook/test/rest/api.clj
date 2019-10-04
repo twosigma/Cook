@@ -333,7 +333,7 @@
                               :authorization/user "test"
                               :body-params {"jobs" [container-job]}}))))))
 
-      (testing "disallow docker paramters"
+      (testing "disallow docker parameters"
         (with-redefs [config/task-constraints (constantly {:docker-parameters-allowed #{"user"}})]
           (let [minimal-job (basic-job)
                 container-job (assoc minimal-job "container" {"type" "docker"
@@ -348,7 +348,7 @@
                                 :authorization/user "test"
                                 :body-params {"jobs" [container-job]}})))))))
 
-      (testing "allowed docker paramters"
+      (testing "allowed docker parameters"
         (with-redefs [config/task-constraints (constantly {:docker-parameters-allowed #{"foo"}})]
           (let [minimal-job (basic-job)
                 container-job (assoc minimal-job "container" {"type" "docker"
