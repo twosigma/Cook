@@ -182,7 +182,7 @@ class _KerberosUser(_AuthenticatedUser):
         if not stop.is_set():
             logger.info(f'Refreshing kerberos tickets for {self.name}')
             session.headers['Authorization'] = self._generate_kerberos_ticket_for_user(self.name)
-            threading.Timer(60.0, lambda: self._reset_auth_header(stop)).start
+            threading.Timer(60.0, lambda: self._reset_auth_header(stop)).start()
         else:
             logger.info(f'Stopping kerberos ticket refresh for {self.name}')
 
