@@ -2537,12 +2537,11 @@ class CookTest(util.CookTest):
     @unittest.skipUnless(util.docker_tests_enabled(), "Requires docker support.")
     def test_default_container_volumes(self):
         settings = util.settings(self.cook_url)
-        default_volumes = util.get_in(settings, 'container-defaults', 'volumes')
-        if default_volumes is None or len(default_volumes) == 0:
-            self.skipTest('Requires a default volume configured')
-        default_volume = default_volumes[0]
-        if not os.path.exists(default_volume['host-path']):
-            os.mkdir(default_volume['host-path'])
+        default_volumes = util.get_in(settings, 'container-defaults', 'volumes') or []
+        rw_volumes = [v for v in default_volumes if v.get('mode', 'RO') == 'RW']
+        if len(rw_volumes) == 0:
+            self.skipTest('Requires a default volume with RW mode configured')
+        default_volume = rw_volumes[0]
         image = util.docker_image()
         file_name = str(util.make_temporal_uuid())
         container_file = os.path.join(default_volume['container-path'], file_name)
