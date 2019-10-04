@@ -10,7 +10,8 @@
             [cook.test.testutil :as tu]
             [cook.tools :as util]
             [datomic.api :as d])
-  (:import (com.netflix.fenzo SimpleAssignmentResult)))
+  (:import (com.netflix.fenzo SimpleAssignmentResult)
+           (io.kubernetes.client.models V1PodSecurityContext)))
 
 (deftest test-get-or-create-cluster-entity-id
   (let [conn (tu/restore-fresh-database! "datomic:mem://test-get-or-create-cluster-entity-id")]
@@ -37,7 +38,8 @@
                                               tu/make-task-assignment-result)))
         launched-pod-atom (atom nil)]
     (with-redefs [api/launch-task (fn [api {:keys [launch-pod]}]
-                                    (reset! launched-pod-atom launch-pod))]
+                                    (reset! launched-pod-atom launch-pod))
+                  api/make-security-context (constantly (V1PodSecurityContext.))]
       (testing "static namespace"
         (let [compute-cluster (kcc/->KubernetesComputeCluster nil "kubecompute" nil nil nil
                                                               (atom {}) (atom {}) (atom {}) (atom {}) (atom nil)

@@ -64,12 +64,24 @@ class CookTest(util.CookTest):
         else:
             self.logger.info(f'Exit code not checked because cook executor was not used for {instance}')
 
+    @unittest.skipUnless(util.docker_tests_enabled(), 'requires docker')
     def test_uid(self):
         settings = util.settings(self.cook_url)
+
         username = settings.get('mesos-run-as-user') or os.getenv('USER')
         uid = subprocess.check_output(['/usr/bin/id', '-u', username]).decode('utf-8').strip()
-        command = f'bash -c \'if [[ $UID -eq {uid} ]]; then exit 0; else exit 1; fi\''
-        job_uuid, resp = util.submit_job(self.cook_url, command=command)
+        gid = subprocess.check_output(['/usr/bin/id', '-g', username]).decode('utf-8').strip()
+
+        image = util.docker_image()
+        container = {'type': 'docker',
+                     'docker': {'image': image,
+                                'network': 'HOST',
+                                'force-pull-image': False,
+                                'parameters': [{'key': 'user',
+                                                'value': f'{uid}:{gid}'}]}}
+
+        command = f'bash -c \'echo $UID; if [[ $UID -eq {uid} ]]; then exit 0; else exit 1; fi\''
+        job_uuid, resp = util.submit_job(self.cook_url, command=command, container=container)
         self.assertEqual(201, resp.status_code, resp.content)
         try:
             util.wait_for_instance(self.cook_url, job_uuid, status='success')
