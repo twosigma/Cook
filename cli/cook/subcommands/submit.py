@@ -242,15 +242,24 @@ def valid_uuid(s):
     else:
         raise argparse.ArgumentTypeError('%s is not a valid UUID' % s)
 
+def valid_priority(value):
+    """Checks that the given value is a valid priority"""
+    try:
+        integer = int(value)
+    except:
+        raise argparse.ArgumentTypeError(f'{value} is not an integer')
+    if integer < 0 or integer > 16777216:
+        raise argparse.ArgumentTypeError(f'{integer} must be between 0 and 16777216 inclusive')
+    return integer
 
 def register(add_parser, add_defaults):
     """Adds this sub-command's parser and returns the action function"""
     submit_parser = add_parser('submit', help='create job for command')
     submit_parser.add_argument('--uuid', '-u', help='uuid of job', type=valid_uuid)
     submit_parser.add_argument('--name', '-n', help='name of job')
-    submit_parser.add_argument('--priority', '-p', help='priority of job, between 0 and 100 (inclusive), with 100 '
-                                                        'being highest priority (default = 50)',
-                               type=int, choices=range(0, 101), metavar='')
+    submit_parser.add_argument('--priority', '-p', help='priority of job, usually between 0 and 100 (inclusive), with 100 '
+                                                        'being highest priority (default = 50) (priority values up to 2^24 are allowed)',
+                               type=valid_priority, metavar='')
     submit_parser.add_argument('--max-retries', help='maximum retries for job',
                                dest='max-retries', type=int, metavar='COUNT')
     submit_parser.add_argument('--max-runtime', help='maximum runtime for job',

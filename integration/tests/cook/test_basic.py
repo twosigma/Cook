@@ -2650,3 +2650,26 @@ class CookTest(util.CookTest):
         job_uuid, resp = util.submit_job(self.cook_url, container=container)
         self.assertEqual(400, resp.status_code)
         self.assertTrue('this_should_not_be_allowed' in resp.text, resp.text)
+
+    def test_priority(self):
+        job_spec = util.minimal_job(priority=0)
+        resp = util.session.post('%s/rawscheduler' % self.cook_url, json={'jobs': [job_spec]})
+        self.assertEqual(201, resp.status_code, msg=resp.content)
+
+        job_spec = util.minimal_job(priority=100)
+        resp = util.session.post('%s/rawscheduler' % self.cook_url, json={'jobs': [job_spec]})
+        self.assertEqual(201, resp.status_code, msg=resp.content)
+
+        job_spec = util.minimal_job(priority=16777216)
+        resp = util.session.post('%s/rawscheduler' % self.cook_url, json={'jobs': [job_spec]})
+        self.assertEqual(201, resp.status_code, msg=resp.content)
+
+        job_spec = util.minimal_job(priority=-1)
+        resp = util.session.post('%s/rawscheduler' % self.cook_url, json={'jobs': [job_spec]})
+        self.assertEqual(400, resp.status_code, msg=resp.content)
+        self.assertTrue(f'priority":"(not (between-0-and-16777216' in str(resp.content))
+
+        job_spec = util.minimal_job(priority=16777217)
+        resp = util.session.post('%s/rawscheduler' % self.cook_url, json={'jobs': [job_spec]})
+        self.assertEqual(400, resp.status_code, msg=resp.content)
+        self.assertTrue(f'priority":"(not (between-0-and-16777216' in str(resp.content))
