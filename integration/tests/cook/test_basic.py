@@ -89,8 +89,8 @@ class CookTest(util.CookTest):
                      'docker': {'image': docker_image,
                                 'network': 'HOST',
                                 'force-pull-image': False,
-                                'parameters': [{'key': 'foo', 'value': 'bar'},
-                                               {'key': 'baz', 'value': 'qux'}]},
+                                'parameters': [{'key': 'env', 'value': 'FOO=bar'},
+                                               {'key': 'workdir', 'value': '/var/lib/pqr'}]},
                      'volumes': [{'host-path': '/var/lib/abc'},
                                  {'mode': 'RW',
                                   'host-path': '/var/lib/def'},
@@ -111,8 +111,8 @@ class CookTest(util.CookTest):
         self.assertEqual('HOST', docker['network'])
         self.assertEqual(False, docker['force-pull-image'])
         self.assertEqual(2, len(docker['parameters']))
-        self.assertEqual('bar', next(p['value'] for p in docker['parameters'] if p['key'] == 'foo'))
-        self.assertEqual('qux', next(p['value'] for p in docker['parameters'] if p['key'] == 'baz'))
+        self.assertEqual('FOO=bar', next(p['value'] for p in docker['parameters'] if p['key'] == 'env'))
+        self.assertEqual('/var/lib/pqr', next(p['value'] for p in docker['parameters'] if p['key'] == 'workdir'))
         self.assertLessEqual(4, len(volumes))
         self.assertIn({'host-path': '/var/lib/abc'}, volumes)
         self.assertIn({'mode': 'RW',
