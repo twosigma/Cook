@@ -41,7 +41,7 @@
   (:import (java.util UUID)
            (org.apache.log4j ConsoleAppender Logger PatternLayout)
            (io.kubernetes.client.custom Quantity$Format Quantity)
-           (io.kubernetes.client.models V1Container V1ResourceRequirements V1Pod V1ObjectMeta V1PodSpec V1Node V1NodeStatus)
+           (io.kubernetes.client.models V1Container V1ResourceRequirements V1Pod V1ObjectMeta V1PodSpec V1Node V1NodeStatus V1NodeSpec V1Taint)
            (com.netflix.fenzo SimpleAssignmentResult)))
 
 (defn create-dummy-mesos-compute-cluster
@@ -489,11 +489,12 @@
     (.setSpec pod spec)
     pod))
 
-(defn node-helper [node-name cpus mem]
+(defn node-helper [node-name cpus mem pool]
   "Make a fake node for kubernetes unit tests"
   (let [node (V1Node.)
         status (V1NodeStatus.)
-        metadata (V1ObjectMeta.)]
+        metadata (V1ObjectMeta.)
+        spec (V1NodeSpec.)]
     (when cpus
       (.putCapacityItem status "cpu" (Quantity. (BigDecimal. cpus)
                                                 Quantity$Format/DECIMAL_SI))
@@ -504,7 +505,14 @@
                                                    Quantity$Format/DECIMAL_SI))
       (.putAllocatableItem status "memory" (Quantity. (BigDecimal. (* kapi/memory-multiplier mem))
                                                       Quantity$Format/DECIMAL_SI)))
+    (when pool
+      (let [^V1Taint taint (V1Taint.)]
+        (.setKey taint "cook.pool")
+        (.setValue taint pool)
+        (.setEffect taint "NoSchedule")
+        (-> spec (.addTaintsItem taint))
+        (-> node (.setSpec spec))))
     (.setStatus node status)
     (.setName metadata node-name)
     (.setMetadata node metadata)
-    node))
+  node))

@@ -12,7 +12,7 @@
     (io.kubernetes.client.custom Quantity Quantity$Format)
     (io.kubernetes.client.models V1Pod V1Container V1Node V1Pod V1Container V1ResourceRequirements V1EnvVar
                                  V1ObjectMeta V1PodSpec V1PodStatus V1ContainerState V1DeleteOptionsBuilder
-                                 V1DeleteOptions V1HostPathVolumeSource V1VolumeMount V1VolumeBuilder)
+                                 V1DeleteOptions V1HostPathVolumeSource V1VolumeMount V1VolumeBuilder V1Taint V1Toleration)
     (io.kubernetes.client.util Watch)
     (java.util.concurrent Executors ExecutorService)
     (java.util UUID)))
@@ -184,6 +184,39 @@
            (-> m (get "cpu") to-double)
            0.0)})
 
+(defn get-taint-key
+  "Get the taint variable out of a taint key out of the V1Taint object."
+  [^V1Taint taint]
+  (.getKey taint))
+
+(defn process-taints
+  "Given a map from node-name to node, generate a map from node-name->processed taints.
+  If there is no taint of the form cook.pools, return 'no-pool'. Processing a taints involves
+  splitting the list into the cook.pool taint and the other taints."
+  [node-name->node]
+  (pc/map-vals (fn [^V1Node node]
+                 (let [taints-on-node (or (some-> node .getSpec .getTaints) [])]
+                   (group-by #(if (= "cook.pool" (get-taint-key %)) :pool-taint :other-taint)  taints-on-node))) node-name->node))
+
+(defn get-node-pool
+  "Get the pool for a node. In the case of no pool, return 'no-pool"
+  [node->processed-taints node-name]
+  (or (some-> node->processed-taints
+               (get node-name)
+               (get :pool-taint)
+               first
+               .getValue)
+      "no-pool"))
+
+(defn node-schedulable?
+  "Can we schedule on a node. For now, yes, unless there are other taints on it. TODO: Incorporate other node-health measures here."
+  [node->processed-taints node-name]
+  (zero? (or (some-> node->processed-taints
+                      (get node-name)
+                      (get :other-taints)
+                      count)
+             0)))
+
 (defn get-capacity
   "Given a map from node-name to node, generate a map from node-name->resource-type-><capacity>"
   [node-name->node]
@@ -261,10 +294,20 @@
     {:volumes volumes
      :volume-mounts volume-mounts}))
 
+(defn toleration-for-pool
+  "For a given cook pool name, create the right V1Toleration so that Cook will ignore that cook.pool taint."
+  [pool-name]
+  (let [^V1Toleration toleration (V1Toleration.)]
+    (.setKey toleration "cook.pool")
+    (.setValue toleration pool-name)
+    (.setOperator toleration "Equal")
+    (.setEffect toleration "NoSchedule")
+    toleration))
+
 (defn ^V1Pod task-metadata->pod
   "Given a task-request and other data generate the kubernetes V1Pod to launch that task."
   [namespace compute-cluster-name {:keys [task-id command container task-request hostname]}]
-  (let [{:keys [resources]} task-request
+  (let [{:keys [resources job]} task-request
         {:keys [mem cpus]} resources
         {:keys [docker volumes]} container
         {:keys [image]} docker
@@ -280,6 +323,7 @@
                  (:environment command))
         resources (V1ResourceRequirements.)
         labels {cook-pod-label compute-cluster-name}
+        pool-name (some-> job :job/pool :pool/name)
         {:keys [volumes volume-mounts]} (make-volumes volumes)]
 
     ; metadata
@@ -306,6 +350,8 @@
     (.setNodeName pod-spec hostname)
     (.setRestartPolicy pod-spec "Never")
     (.setVolumes pod-spec (into [] volumes))
+    (when pool-name
+      (.addTolerationsItem pod-spec (toleration-for-pool pool-name)))
 
     ; pod
     (.setMetadata pod metadata)
@@ -411,28 +457,28 @@
   "Given a V1Pod, launch it."
   [api-client {:keys [launch-pod] :as expected-state-dict}]
   ;; TODO: make namespace configurable
-  (let [{:keys [pod]} launch-pod
-        namespace (-> pod .getMetadata .getNamespace)]
-    ;; TODO: IF there's an error, log it and move on. We'll try again later.
-    (if launch-pod
-      (let [api (CoreV1Api. api-client)]
-        (log/info "Launching pod in namespace" namespace pod)
-        (try
-          (-> api
-              (.createNamespacedPod namespace pod nil nil nil))
-          (catch ApiException e
-            (log/error e "Error submitting pod:" (.getResponseBody e)))))
-      ; Because of the complicated nature of task-metadata-seq, we can't easily run the V1Pod creation code for a
-      ; launching pod on a server restart. Thus, if we create a task, store into datomic, but then the cook scheduler
-      ; fails --- before kubernetes creates a pod (either the message isn't sent, or there's a kubernetes problem) ---
-      ; we will be unable to create a new V1Pod and we can't retry this at the kubernetes level.
-      ;
-      ; Eventually, the stuck pod detector will recognize the stuck pod, kill the task, and a cook-level retry will make
-      ; a new task.
-      ;
-      ; Because the issue is relatively rare and auto-recoverable, we're going to punt on the task-metadata-seq refactor need
-      ; to handle this situation better.
-      (log/warn "Unimplemented Operation to launch a pod because we do not reconstruct the V1Pod on startup."))))
+  (if launch-pod
+    (let [{:keys [pod]} launch-pod
+          namespace (-> pod .getMetadata .getNamespace)
+          ;; TODO: IF there's an error, log it and move on. We'll try again later.
+          api (CoreV1Api. api-client)]
+      (log/info "Launching pod in namespace" namespace pod)
+      (try
+        (-> api
+            (.createNamespacedPod namespace pod nil nil nil))
+        (catch ApiException e
+          (log/error e "Error submitting pod:" (.getResponseBody e)))))
+    ; Because of the complicated nature of task-metadata-seq, we can't easily run the V1Pod creation code for a
+    ; launching pod on a server restart. Thus, if we create a task, store into datomic, but then the cook scheduler
+    ; fails --- before kubernetes creates a pod (either the message isn't sent, or there's a kubernetes problem) ---
+    ; we will be unable to create a new V1Pod and we can't retry this at the kubernetes level.
+    ;
+    ; Eventually, the stuck pod detector will recognize the stuck pod, kill the task, and a cook-level retry will make
+    ; a new task.
+    ;
+    ; Because the issue is relatively rare and auto-recoverable, we're going to punt on the task-metadata-seq refactor need
+    ; to handle this situation better.
+    (log/warn "Unimplemented Operation to launch a pod because we do not reconstruct the V1Pod on startup.")))
 
 
 ;; TODO: Need the 'stuck pod scanner' to detect stuck states and move them into killed.

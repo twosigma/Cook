@@ -21,9 +21,10 @@
            (java.util.concurrent Executors ScheduledExecutorService TimeUnit)))
 
 (defn generate-offers
-  "Given a compute cluster and maps with node capacity and existing pods, return a list of offers."
+  "Given a compute cluster and maps with node capacity and existing pods, return a map from pool to offers."
   [compute-cluster node-name->node namespaced-pod-name->pod starting-namespaced-pod-name->pod]
   (let [node-name->capacity (api/get-capacity node-name->node)
+        node-name->processed-taints (api/process-taints node-name->node)
         node-name->consumed (api/get-consumption (merge namespaced-pod-name->pod
                                                         starting-namespaced-pod-name->pod))
         node-name->available (pc/map-from-keys (fn [node-name]
@@ -32,19 +33,21 @@
                                                              (node-name->consumed node-name)))
                                                (keys node-name->capacity))]
     (log/info "Capacity: " node-name->capacity "Consumption:" node-name->consumed)
-    (map (fn [[node-name available]]
-           {:id {:value (str (UUID/randomUUID))}
-            :framework-id (cc/compute-cluster-name compute-cluster)
-            :slave-id {:value node-name}
-            :hostname node-name
-            :resources [{:name "mem" :type :value-scalar :scalar (max 0.0 (:mem available))}
-                        {:name "cpus" :type :value-scalar :scalar (max 0.0 (:cpus available))}
-                        {:name "disk" :type :value-scalar :scalar 0.0}]
-            :attributes []
-            :executor-ids []
-            :compute-cluster compute-cluster
-            :reject-after-match-attempt true})
-         node-name->available)))
+    (->> node-name->available
+         (filter (fn [[node-name _]] (api/node-schedulable? node-name->processed-taints node-name)))
+         (map (fn [[node-name available]]
+                {:id {:value (str (UUID/randomUUID))}
+                 :framework-id (cc/compute-cluster-name compute-cluster)
+                 :slave-id {:value node-name}
+                 :hostname node-name
+                 :resources [{:name "mem" :type :value-scalar :scalar (max 0.0 (:mem available))}
+                             {:name "cpus" :type :value-scalar :scalar (max 0.0 (:cpus available))}
+                             {:name "disk" :type :value-scalar :scalar 0.0}]
+                 :attributes []
+                 :executor-ids []
+                 :compute-cluster compute-cluster
+                 :reject-after-match-attempt true}))
+         (group-by (fn [offer] (api/get-node-pool node-name->processed-taints (:hostname offer)))))))
 
 (defn taskids-to-scan
   "Determine all taskids to scan by unioning task id's from expected and existing taskid maps. "
@@ -197,12 +200,13 @@
     true)
 
   (pending-offers [this pool-name]
-    (if (or (= pool-name (config/default-pool)) ; TODO(pschorf): Support pools
-            (= pool-name "no-pool"))
-      (let [nodes @current-nodes-atom
-            pods @all-pods-atom]
-        (generate-offers this nodes pods (controller/starting-namespaced-pod-name->pod this)))
-      []))
+    (let [nodes @current-nodes-atom
+          pods @all-pods-atom
+          starting-instances (controller/starting-namespaced-pod-name->pod this)
+          offers-all-pools (generate-offers this nodes pods starting-instances)]
+      (doseq [[pool offers] offers-all-pools]
+        (log/info (str "Generated offers " (count offers) " for pool " pool " " (into [] (map #(into {} (select-keys % [:hostname :resources])) offers)))))
+      (get offers-all-pools pool-name)))
 
   (restore-offers [this pool-name offers]))
 

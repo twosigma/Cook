@@ -21,7 +21,6 @@ class PoolsCookTest(util.CookTest):
 
     def setUp(self):
         self.cook_url = type(self).cook_url
-        self.mesos_url = util.retrieve_mesos_url()
         self.logger = logging.getLogger(__name__)
         self.user_factory = util.UserFactory(self)
 
@@ -45,6 +44,8 @@ class PoolsCookTest(util.CookTest):
                     quota_multiplier = 1 if pool_name == default_pool else 2
                     util.set_limit(self.cook_url, 'quota', user.name, cpus=cpus * quota_multiplier, pool=pool_name)
 
+            logging.info(f"User to access: {user}")
+
             with user:
                 util.kill_running_and_waiting_jobs(self.cook_url, user.name)
                 for pool in pools:
@@ -57,7 +58,7 @@ class PoolsCookTest(util.CookTest):
                                                           command='sleep 600', pool=pool_name)
                     all_job_uuids.append(filling_job_uuid)
                     instance = util.wait_for_running_instance(self.cook_url, filling_job_uuid)
-                    slave_pool = util.slave_pool(self.cook_url, self.mesos_url, instance['hostname'])
+                    slave_pool = util.node_pool(instance['hostname'])
                     self.assertEqual(pool_name, slave_pool)
 
                     # Submit a job that should not get scheduled

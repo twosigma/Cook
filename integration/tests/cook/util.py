@@ -1298,6 +1298,31 @@ def get_kubernetes_nodes():
     logging.info(f'Retrieved kubernetes nodes: {node_json}')
     return node_json['items']
 
+@functools.lru_cache()
+def kubernetes_node_pool(nodename):
+    node = [node for node in get_kubernetes_nodes() if node['metadata']['name'] == nodename]
+    poolname_taint = [taint for taint in node[0]['spec']['taints'] if taint['key'] == 'cook.pool']
+    if len(poolname_taint) == 0:
+        return None
+    poolname = poolname_taint[0].get('value',None)
+    logging.info(f"K8S pool for {nodename} is {poolname}")
+    return poolname
+
+@functools.lru_cache()
+def mesos_node_pool(nodename):
+    cook_url = retrieve_cook_url()
+    mesos_url = retrieve_mesos_url()
+    node_pool = slave_pool(cook_url, mesos_url, nodename)
+    return node_pool
+
+def node_pool(nodename):
+    """Get the pool for a node."""
+    if using_mesos():
+        return mesos_node_pool(nodename)
+    elif using_kubernetes():
+        return kubernetes_node_pool(nodename)
+    else:
+        raise RuntimeError('Unable to determine cluster max CPUs')
 
 def max_kubernetes_node_cpus():
     nodes = get_kubernetes_nodes()
