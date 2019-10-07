@@ -192,7 +192,6 @@ class _KerberosUser(_AuthenticatedUser):
         assert self.previous_token is None
         assert self.stop_event is None
         self.previous_token = session.headers.get('Authorization')
-        session.headers['Authorization'] = self._generate_kerberos_ticket_for_user(self.name)
         self.stop_event = threading.Event()
         self._reset_auth_header(self.stop_event)
 
