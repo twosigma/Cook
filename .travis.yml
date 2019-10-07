@@ -36,18 +36,6 @@ matrix:
         - pushd ../jobclient && mvn test
         - popd && lein with-profile +test test :all-but-benchmark
 
-    - name: 'Cook Scheduler integration tests with HTTP Basic Auth'
-      services: docker
-      install: sudo ./travis/install_mesos.sh
-      before_script: cd integration && ./travis/prepare_integration.sh
-      script: ./travis/run_integration.sh --auth=http-basic
-
-    - name: 'Cook Scheduler integration tests with Cook Executor'
-      services: docker
-      install: sudo ./travis/install_mesos.sh
-      before_script: cd integration && ./travis/prepare_integration.sh
-      script: ./travis/run_integration.sh --executor=cook
-
     - name: 'Cook Scheduler integration tests with Cook Executor and Docker'
       services: docker
       install: sudo ./travis/install_mesos.sh
