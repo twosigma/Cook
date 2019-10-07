@@ -14,7 +14,7 @@
     (io.kubernetes.client.models V1Pod V1Container V1Node V1Pod V1Container V1ResourceRequirements V1EnvVar
                                  V1ObjectMeta V1PodSpec V1PodStatus V1ContainerState V1DeleteOptionsBuilder
                                  V1DeleteOptions V1HostPathVolumeSource V1VolumeMount V1VolumeBuilder V1Taint
-                                 V1Toleration V1PodSecurityContext V1EmptyDirVolumeSource)
+                                 V1Toleration V1PodSecurityContext V1EmptyDirVolumeSource V1EnvVarBuilder)
     (io.kubernetes.client.util Watch)
     (java.util.concurrent Executors ExecutorService)
     (java.util UUID)))
@@ -369,7 +369,15 @@
                            (.withName "cook-workdir")
                            (.withEmptyDir (V1EmptyDirVolumeSource.))
                            (.build))
-        workdir-volume-mount (V1VolumeMount.)]
+        workdir-volume-mount (V1VolumeMount.)
+        workdir-env-vars [(-> (V1EnvVarBuilder.)
+                              (.withName "HOME")
+                              (.withValue workdir)
+                              (.build))
+                          (-> (V1EnvVarBuilder.)
+                              (.withName "MESOS_SANDBOX")
+                              (.withValue workdir)
+                              (.build))]]
     ; workdir mount
     (.setName workdir-volume-mount "cook-workdir")
     (.setMountPath workdir-volume-mount workdir)
@@ -388,6 +396,7 @@
     (.setEnv container (-> []
                            (into env)
                            (into (param-env-vars parameters))
+                           (into workdir-env-vars)
                            filter-env-vars))
     (.setImage container image)
 
