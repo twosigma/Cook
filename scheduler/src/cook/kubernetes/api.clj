@@ -403,6 +403,7 @@
     (.putRequestsItem resources "memory" (double->quantity (* memory-multiplier mem)))
     (.putLimitsItem resources "memory" (double->quantity (* memory-multiplier mem)))
     (.putRequestsItem resources "cpu" (double->quantity cpus))
+    (.putLimitsItem resources "cpu" (double->quantity cpus))
     (.setResources container resources)
     (.setVolumeMounts container (into [] (conj volume-mounts workdir-volume-mount)))
     (.setWorkingDir container workdir)
