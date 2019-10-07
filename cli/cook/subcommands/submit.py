@@ -249,7 +249,7 @@ def valid_priority(value):
     except:
         raise argparse.ArgumentTypeError(f'{value} is not an integer')
     if integer < 0 or integer > 16000000:
-        raise argparse.ArgumentTypeError(f'Job priority must be between 0 and 16000000 inclusive')
+        raise argparse.ArgumentTypeError(f'Job priority must be between 0 and 16,000,000 (inclusive)')
     return integer
 
 def register(add_parser, add_defaults):
