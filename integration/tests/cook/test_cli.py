@@ -2008,7 +2008,7 @@ def dummy_cat_text(_, __, ___):
             self.assertIn(uuid_9, custom_application_grouped_jobs)
 
             # Check extra pool
-            if usage_data.get('using_pools', False):
+            if extra_pool and usage_data.get('using_pools', False):
                 cluster_usage = usage['clusters'][self.cook_url]['pools'][extra_pool]
                 total_usage = cluster_usage['usage']
                 share = cluster_usage['share']

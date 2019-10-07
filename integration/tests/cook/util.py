@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import os.path
+import re
 import subprocess
 import threading
 import time
@@ -1197,7 +1198,11 @@ def all_pools(cook_url):
 def active_pools(cook_url):
     """Returns the list of all active pools that exist"""
     pools, resp = all_pools(cook_url)
-    return [p for p in pools if p['state'] == 'active'], resp
+    all_active_pools = [p for p in pools if p['state'] == 'active']
+    disallow_pools_regex = os.getenv('COOK_TEST_DISALLOW_POOLS_REGEX')
+    allowed_active_pools = all_active_pools if disallow_pools_regex is None else \
+        [p for p in all_active_pools if not re.match(disallow_pools_regex, p['name'])]
+    return allowed_active_pools, resp
 
 
 def has_ephemeral_hosts():
