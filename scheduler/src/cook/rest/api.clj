@@ -858,7 +858,8 @@
    & {:keys [commit-latch-id override-group-immutability?]
       :or {commit-latch-id nil
            override-group-immutability? false}}]
-  (let [group-uuid (when group group)
+  (let [{:keys [docker-parameters-allowed]} (config/task-constraints)
+        group-uuid (when group group)
         munged (merge
                  {:user user
                   :uuid uuid
@@ -889,7 +890,8 @@
                  (when progress-output-file {:progress-output-file progress-output-file})
                  (when progress-regex-string {:progress-regex-string progress-regex-string})
                  (when application {:application application})
-                 (when datasets {:datasets (munge-datasets datasets)}))]
+                 (when datasets {:datasets (munge-datasets datasets)}))
+        params (get-in munged [:container :docker :parameters])]
     (s/validate Job munged)
     (when (and (:gpus munged) (not gpu-enabled?))
       (throw (ex-info (str "GPU support is not enabled") {:gpus gpus})))
@@ -914,6 +916,14 @@
                            (:command-length-limit task-constraints) ")")
                       {:command-length-limit (:command-length-limit task-constraints)
                        :job job})))
+
+    (when (and params docker-parameters-allowed)
+      (let [disallowed-params (into [] (filter (fn [{:keys [key]}]
+                                                 (not (contains? docker-parameters-allowed key)))
+                                               params))]
+        (when (seq disallowed-params)
+          (throw (ex-info (str "The following parameters are not supported: " disallowed-params)
+                          {:params params})))))
     (doseq [{:keys [executable? extract?] :as uri} (:uris munged)
             :when (and (not (nil? executable?)) (not (nil? extract?)))]
       (throw (ex-info "Uri cannot set executable and extract" uri)))

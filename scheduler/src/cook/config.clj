@@ -544,3 +544,7 @@
 (defn kubernetes
   []
   (get-in config [:settings :kubernetes]))
+
+(defn task-constraints
+  []
+  (get-in config [:settings :task-constraints]))
