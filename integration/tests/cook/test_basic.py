@@ -68,8 +68,10 @@ class CookTest(util.CookTest):
     def test_uid(self):
         settings = util.settings(self.cook_url)
 
-        uid = subprocess.check_output(['/usr/bin/id', '-u']).decode('utf-8').strip()
-        gid = subprocess.check_output(['/usr/bin/id', '-g']).decode('utf-8').strip()
+        current_uid = subprocess.check_output(['/usr/bin/id', '-u']).decode('utf-8').strip()
+        current_gid = subprocess.check_output(['/usr/bin/id', '-g']).decode('utf-8').strip()
+        uid = os.getenv('COOK_DOCKER_UID', current_uid)
+        gid = os.getenv('COOK_DOCKER_GID', current_gid)
 
         image = util.docker_image()
         container = {'type': 'docker',
