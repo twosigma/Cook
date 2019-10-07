@@ -843,10 +843,9 @@
 
 (defn below-quota?
   "Returns true if the usage is below quota-constraints on all dimensions"
-  [{:keys [count cpus mem] :as quota}
-   {:keys [count cpus mem] :as usage}]
+  [quota usage]
   (every? (fn [[usage-key usage-val]]
-            (<= usage-val (get quota usage-key 0)))
+            (<= usage-val (+ 0.01 (get quota usage-key 0))))
           (seq usage)))
 
 (defn job->usage
