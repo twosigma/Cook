@@ -391,7 +391,7 @@
     ; container
     (.setName container cook-container-name-for-job)
     (.setCommand container
-                 ["/bin/sh" "-c" "sleep 66666"])
+                 ["/bin/sh" "-c" (:value command)])
 
     (.setEnv container (-> []
                            (into env)
