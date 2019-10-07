@@ -2579,8 +2579,10 @@ class CookTest(util.CookTest):
         finally:
             util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
 
+    # Marked xfail due to flaky build: https://travis-ci.org/twosigma/Cook/jobs/594639302
     @unittest.skipUnless(util.supports_exit_code() and not util.has_one_agent(),
                          "Requires exit code support and multiple agents")
+    @pytest.mark.xfail
     def test_cook_instance_num(self):
         command = 'bash -c \'exit $(($COOK_INSTANCE_NUM + 1))\''
         job_uuid, resp = util.submit_job(self.cook_url, command=command, max_retries=2)
