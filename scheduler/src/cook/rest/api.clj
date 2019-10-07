@@ -292,7 +292,7 @@
                           (re-matches #"[\.a-zA-Z0-9_\-\*]*" s)))))
 
 (s/defschema JobPriority
-  (s/both s/Int (s/pred #(<= 0 % 16777216) 'between-0-and-16777216)))
+  (s/both s/Int (s/pred #(<= 0 % 16000000) 'between-0-and-16000000)))
 
 (defn valid-runtimes?
   "Returns false if the expected-runtime of the given job

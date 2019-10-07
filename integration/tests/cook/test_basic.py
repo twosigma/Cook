@@ -2658,13 +2658,13 @@ class CookTest(util.CookTest):
         _, resp = util.submit_job(self.cook_url,priority=100)
         self.assertEqual(201, resp.status_code, msg=resp.content)
 
-        _, resp = util.submit_job(self.cook_url,priority=16777216)
+        _, resp = util.submit_job(self.cook_url,priority=16000000)
         self.assertEqual(201, resp.status_code, msg=resp.content)
 
         _, resp = util.submit_job(self.cook_url,priority=-1)
         self.assertEqual(400, resp.status_code, msg=resp.content)
-        self.assertTrue(f'priority":"(not (between-0-and-16777216' in str(resp.content))
+        self.assertTrue(f'priority":"(not (between-0-and-16000000' in str(resp.content))
 
-        _, resp = util.submit_job(self.cook_url,priority=16777217)
+        _, resp = util.submit_job(self.cook_url,priority=16000001)
         self.assertEqual(400, resp.status_code, msg=resp.content)
-        self.assertTrue(f'priority":"(not (between-0-and-16777216' in str(resp.content))
+        self.assertTrue(f'priority":"(not (between-0-and-16000000' in str(resp.content))

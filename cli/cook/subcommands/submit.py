@@ -248,8 +248,8 @@ def valid_priority(value):
         integer = int(value)
     except:
         raise argparse.ArgumentTypeError(f'{value} is not an integer')
-    if integer < 0 or integer > 16777216:
-        raise argparse.ArgumentTypeError(f'Job priority must be between 0 and 16777216 inclusive')
+    if integer < 0 or integer > 16000000:
+        raise argparse.ArgumentTypeError(f'Job priority must be between 0 and 16000000 inclusive')
     return integer
 
 def register(add_parser, add_defaults):
@@ -257,8 +257,9 @@ def register(add_parser, add_defaults):
     submit_parser = add_parser('submit', help='create job for command')
     submit_parser.add_argument('--uuid', '-u', help='uuid of job', type=valid_uuid)
     submit_parser.add_argument('--name', '-n', help='name of job')
-    submit_parser.add_argument('--priority', '-p', help='priority of job, usually between 0 and 100 (inclusive), with 100 '
-                                                        'being highest priority (default = 50) (priority values up to 2^24 are allowed)',
+    submit_parser.add_argument('--priority', '-p', help='Per-user job priority. Allows values between 0 and 16,000,000 '
+                                                        '(inclusive), with higher values having higher priority. '
+                                                        'Defaults to 50 and typically set between 0 and 100.',
                                type=valid_priority, metavar='')
     submit_parser.add_argument('--max-retries', help='maximum retries for job',
                                dest='max-retries', type=int, metavar='COUNT')

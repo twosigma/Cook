@@ -354,19 +354,19 @@ class CookCliTest(util.CookTest):
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(100, jobs[0]['priority'])
 
-        cp, uuids = cli.submit('ls', self.cook_url, submit_flags='--priority 16777216')
+        cp, uuids = cli.submit('ls', self.cook_url, submit_flags='--priority 16000000')
         self.assertEqual(0, cp.returncode, cp.stderr)
         cp, jobs = cli.show_jobs(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
-        self.assertEqual(16777216, jobs[0]['priority'])
+        self.assertEqual(16000000, jobs[0]['priority'])
 
         cp, uuids = cli.submit('ls', self.cook_url, submit_flags='--priority -1')
         self.assertEqual(2, cp.returncode, cp.stderr)
-        self.assertIn('--priority/-p: -1 must be between', cli.decode(cp.stderr))
+        self.assertIn('--priority/-p: Job priority must be between', cli.decode(cp.stderr))
 
-        cp, uuids = cli.submit('ls', self.cook_url, submit_flags='--priority 16777217')
+        cp, uuids = cli.submit('ls', self.cook_url, submit_flags='--priority 16000001')
         self.assertEqual(2, cp.returncode, cp.stderr)
-        self.assertIn('--priority/-p: 16777217 must be between', cli.decode(cp.stderr))
+        self.assertIn('--priority/-p: Job priority must be between', cli.decode(cp.stderr))
 
     def test_submit_output_should_explain_what_happened(self):
         cp, _ = cli.submit('ls', self.cook_url)
