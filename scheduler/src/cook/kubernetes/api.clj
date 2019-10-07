@@ -334,6 +334,14 @@
       (:value workdir-param)
       (:default-workdir (config/kubernetes)))))
 
+(defn filter-env-vars
+  [env-vars]
+  (let [{:keys [disallowed-var-names]} (config/kubernetes)]
+    (->> env-vars
+         (filter (fn [^V1EnvVar var]
+                   (not (contains? disallowed-var-names (.getName var)))))
+         (into []))))
+
 (defn ^V1Pod task-metadata->pod
   "Given a task-request and other data generate the kubernetes V1Pod to launch that task."
   [namespace compute-cluster-name {:keys [task-id command container task-request hostname]}]
@@ -379,7 +387,8 @@
 
     (.setEnv container (-> []
                            (into env)
-                           (into (param-env-vars parameters))))
+                           (into (param-env-vars parameters))
+                           filter-env-vars))
     (.setImage container image)
 
     (.putRequestsItem resources "memory" (double->quantity (* memory-multiplier mem)))

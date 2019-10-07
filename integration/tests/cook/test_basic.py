@@ -2698,6 +2698,32 @@ class CookTest(util.CookTest):
         finally:
             util.kill_jobs(self.cook_url, [job_uuid])
 
+    @unittest.skipUnless(util.using_kubernetes(), 'Test requires kubernetes')
+    def test_kubernetes_disallowed_var_names(self):
+        settings = util.settings(self.cook_url)
+        bad_var_name = 'BADVAR'
+        disallowed_container_paths = util.get_in(settings, 'kubernetes', 'disallowed-var-names')
+        if disallowed_container_paths is None or bad_var_name not in disallowed_container_paths:
+            self.skipTest(f'Requires {bad_var_name} to be in the disallowed-var-names config')
+        docker_image = util.docker_image()
+
+        container = {'type': 'docker',
+                     'docker': {'image': docker_image,
+                                'network': 'HOST',
+                                'force-pull-image': False,
+                                'parameters': [{'key': 'env',
+                                                'value': f'{bad_var_name}=set'}]}}
+        command = 'bash -c \'if [ -z ${BADVAR+x} ]; then exit 0; else exit 1; fi\''
+        job_uuid1, resp = util.submit_job(self.cook_url, command=command, container=container)
+        self.assertEqual(201, resp.status_code)
+        job_uuid2, resp = util.submit_job(self.cook_url, command=command, env={'BADVAR': 'set'})
+        self.assertEqual(201, resp.status_code)
+        try:
+            util.wait_for_instance(self.cook_url, job_uuid1, status='success')
+            util.wait_for_instance(self.cook_url, job_uuid2, status='success')
+        finally:
+            util.kill_jobs(self.cook_url, [job_uuid1, job_uuid2])
+
     @unittest.skipUnless(util.docker_tests_enabled(), 'Requires docker support')
     def test_disallowed_docker_parameters(self):
         settings = util.settings(self.cook_url)
