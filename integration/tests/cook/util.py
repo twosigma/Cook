@@ -116,14 +116,16 @@ class _AuthenticatedUser(object):
         return type(self)(self.name, impersonatee=other_username)
 
     def __enter__(self):
-        logger.debug(f'Switching to user {self.name}')
         if self.impersonatee:
+            logger.debug(f'Switching to user {self.name} with impersonateee {self.impersonatee}')
             self.previous_impersonatee = session.headers.get(IMPERSONATION_HEADER)
             session.headers[IMPERSONATION_HEADER] = self.impersonatee
+        else:
+            logger.debug(f"Not switching impersonation header to {self.name} due to None self.impersonatee")
 
     def __exit__(self, ex_type, ex_val, ex_trace):
-        logger.debug(f'Switching back from user {self.name}')
         if self.impersonatee:
+            logger.debug(f'Switching back from user {self.name} for impersonation')
             if self.previous_impersonatee:
                 session.headers[IMPERSONATION_HEADER] = self.previous_impersonatee
                 self.previous_impersonatee = None
@@ -146,6 +148,7 @@ class _BasicAuthUser(_AuthenticatedUser):
         super().__enter__()
         assert self.previous_auth is None
         self.previous_auth = session.auth
+        logger.info(f"Setting auth to {self.auth}")
         session.auth = self.auth
 
     def __exit__(self, ex_type, ex_val, ex_trace):
@@ -153,6 +156,7 @@ class _BasicAuthUser(_AuthenticatedUser):
         super().__exit__(ex_type, ex_val, ex_trace)
         assert self.previous_auth is not None
         session.auth = self.previous_auth
+        logger.info(f"Resetting auth to {session.auth}")
         self.previous_auth = None
 
 
