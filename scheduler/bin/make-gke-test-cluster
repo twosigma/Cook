@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Usage: ./bin/gcloud-make-for-integration.sh <project> <zone> <clustername>
+# Usage: ./bin/make-gke-test-cluster <project> <zone> <clustername>
 #   Configure a kubernetes cluster for running pool-based integration tests and running pools in general.
 #    NOTE: This script labels any clusters it creates and will DELETE old clusters it created.
 #   <project> is a gcloud project.
@@ -40,10 +40,10 @@ gcloud container clusters get-credentials $CLUSTERNAME --region $ZONE
 echo "---- Making extra alpha and gamma nodepools for cook pools (please wait 5-10 minutes)"
 gcloud container node-pools create cook-pool-gamma --cluster=$CLUSTERNAME --disk-size=20gb --machine-type=g1-small \
        --node-taints=cook.pool=gamma:NoSchedule \
-       --num-nodes=2
+       --num-nodes=3
 gcloud container node-pools create cook-pool-alpha --cluster=$CLUSTERNAME --disk-size=20gb --machine-type=g1-small \
        --node-taints=cook.pool=alpha:NoSchedule \
-       --num-nodes=3
+       --num-nodes=2
 
 echo "---- Setting up cook namespace in kubernetes"
 kubectl create -f docs/make-kubernetes-namespace.json 
