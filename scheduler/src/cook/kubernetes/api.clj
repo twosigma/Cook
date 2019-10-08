@@ -485,18 +485,17 @@
   (let [api (CoreV1Api. api-client)
         ^V1DeleteOptions deleteOptions (-> (V1DeleteOptionsBuilder.) (.withPropagationPolicy "Background") .build)]
     (try
-      (comment (.deleteNamespacedPod
-                 api
-                 (-> pod .getMetadata .getName)
-                 (-> pod .getMetadata .getNamespace)
-                 deleteOptions
-                 nil ; pretty
-                 nil ; dryRun
-                 nil ; gracePeriodSeconds
-                 nil ; oprphanDependents
-                 nil ; propagationPolicy
-                 ))
-      (log/info "Would have deleted pod" (-> pod .getMetadata .getName))
+      (.deleteNamespacedPod
+        api
+        (-> pod .getMetadata .getName)
+        (-> pod .getMetadata .getNamespace)
+        deleteOptions
+        nil ; pretty
+        nil ; dryRun
+        nil ; gracePeriodSeconds
+        nil ; oprphanDependents
+        nil ; propagationPolicy
+        )
       (catch JsonSyntaxException e
         (log/info "Caught the https://github.com/kubernetes-client/java/issues/252 exception.")
         ; Silently gobble this exception.
