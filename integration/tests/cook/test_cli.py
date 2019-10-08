@@ -768,6 +768,7 @@ class CookCliTest(util.CookTest):
         self.assertEqual(1, cp.returncode, cp.stderr)
         self.assertIn('file was not found', cli.decode(cp.stderr))
 
+    @pytest.mark.xfail
     def test_tail_no_newlines(self):
         cp, uuids = cli.submit('bash -c \'for i in {1..100}; do printf "$i " >> foo; done\'', self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
@@ -986,6 +987,7 @@ def dummy_tail_text(instance, sandbox_dir, path, offset=None, length=None):
         self.assertEqual(1, bar['nlink'])
         self.assertEqual(4, bar['size'])
 
+    @pytest.mark.xfail
     def test_ls_with_globbing_characters(self):
 
         def entry(name):
@@ -1831,7 +1833,6 @@ def dummy_ls_entries(_, __, ___):
         cp = subprocess.run(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual('hello\nworld\n' * 5, cli.decode(cp.stdout))
-        self.assertEqual('', cli.decode(cp.stderr))
 
     @pytest.mark.xfail
     def test_cat_binary_file(self):

@@ -1557,4 +1557,4 @@ def kill_running_and_waiting_jobs(cook_url, user):
 
 
 def running_tasks(cook_url):
-    return session.get(f'{cook_url}/running', params={'limit': 100}).json()
+    return session.get(f'{cook_url}/running', params={'limit': 20}).json()
