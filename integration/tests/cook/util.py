@@ -117,7 +117,7 @@ class _AuthenticatedUser(object):
 
     def __enter__(self):
         if self.impersonatee:
-            logger.debug(f'Switching to user {self.name} with impersonateee {self.impersonatee}')
+            logger.debug(f'Switching to user {self.name} with impersonatee {self.impersonatee}')
             self.previous_impersonatee = session.headers.get(IMPERSONATION_HEADER)
             session.headers[IMPERSONATION_HEADER] = self.impersonatee
         else:
@@ -144,11 +144,11 @@ class _BasicAuthUser(_AuthenticatedUser):
         self.previous_auth = None
 
     def __enter__(self):
+        logger.info(f"Setting auth to {self.auth}")
         global session
         super().__enter__()
         assert self.previous_auth is None
         self.previous_auth = session.auth
-        logger.info(f"Setting auth to {self.auth}")
         session.auth = self.auth
 
     def __exit__(self, ex_type, ex_val, ex_trace):
@@ -192,6 +192,7 @@ class _KerberosUser(_AuthenticatedUser):
 
     def __enter__(self):
         global session
+        logger.info(f"Setting kerberos user {self.name}")
         super().__enter__()
         assert self.previous_token is None
         assert self.stop_event is None
@@ -210,6 +211,7 @@ class _KerberosUser(_AuthenticatedUser):
         else:
             session.headers['Authorization'] = self.previous_token
             self.previous_token = None
+        logger.info(f"Resetting kerberos auth back from {self.name}")
 
 
 class UserFactory(object):
