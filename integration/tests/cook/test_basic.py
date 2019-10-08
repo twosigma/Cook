@@ -89,8 +89,8 @@ class CookTest(util.CookTest):
                      'docker': {'image': docker_image,
                                 'network': 'HOST',
                                 'force-pull-image': False,
-                                'parameters': [{'key': 'foo', 'value': 'bar'},
-                                               {'key': 'baz', 'value': 'qux'}]},
+                                'parameters': [{'key': 'env', 'value': 'FOO=bar'},
+                                               {'key': 'workdir', 'value': '/var/lib/pqr'}]},
                      'volumes': [{'host-path': '/var/lib/abc'},
                                  {'mode': 'RW',
                                   'host-path': '/var/lib/def'},
@@ -111,8 +111,8 @@ class CookTest(util.CookTest):
         self.assertEqual('HOST', docker['network'])
         self.assertEqual(False, docker['force-pull-image'])
         self.assertEqual(2, len(docker['parameters']))
-        self.assertEqual('bar', next(p['value'] for p in docker['parameters'] if p['key'] == 'foo'))
-        self.assertEqual('qux', next(p['value'] for p in docker['parameters'] if p['key'] == 'baz'))
+        self.assertEqual('FOO=bar', next(p['value'] for p in docker['parameters'] if p['key'] == 'env'))
+        self.assertEqual('/var/lib/pqr', next(p['value'] for p in docker['parameters'] if p['key'] == 'workdir'))
         self.assertLessEqual(4, len(volumes))
         self.assertIn({'host-path': '/var/lib/abc'}, volumes)
         self.assertIn({'mode': 'RW',
@@ -2537,12 +2537,11 @@ class CookTest(util.CookTest):
     @unittest.skipUnless(util.docker_tests_enabled(), "Requires docker support.")
     def test_default_container_volumes(self):
         settings = util.settings(self.cook_url)
-        default_volumes = util.get_in(settings, 'container-defaults', 'volumes')
-        if default_volumes is None or len(default_volumes) == 0:
-            self.skipTest('Requires a default volume configured')
-        default_volume = default_volumes[0]
-        if not os.path.exists(default_volume['host-path']):
-            os.mkdir(default_volume['host-path'])
+        default_volumes = util.get_in(settings, 'container-defaults', 'volumes') or []
+        rw_volumes = [v for v in default_volumes if v.get('mode', 'RO') == 'RW']
+        if len(rw_volumes) == 0:
+            self.skipTest('Requires a default volume with RW mode configured')
+        default_volume = rw_volumes[0]
         image = util.docker_image()
         file_name = str(util.make_temporal_uuid())
         container_file = os.path.join(default_volume['container-path'], file_name)
@@ -2580,8 +2579,10 @@ class CookTest(util.CookTest):
         finally:
             util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
 
+    # Marked xfail due to flaky build: https://travis-ci.org/twosigma/Cook/jobs/594639302
     @unittest.skipUnless(util.supports_exit_code() and not util.has_one_agent(),
                          "Requires exit code support and multiple agents")
+    @pytest.mark.xfail
     def test_cook_instance_num(self):
         command = 'bash -c \'exit $(($COOK_INSTANCE_NUM + 1))\''
         job_uuid, resp = util.submit_job(self.cook_url, command=command, max_retries=2)
@@ -2634,3 +2635,18 @@ class CookTest(util.CookTest):
             util.wait_for_instance(self.cook_url, job_uuid, status='success')
         finally:
             util.kill_jobs(self.cook_url, [job_uuid])
+
+    @unittest.skipUnless(util.docker_tests_enabled(), 'Requires docker support')
+    def test_disallowed_docker_parameters(self):
+        settings = util.settings(self.cook_url)
+        docker_parameters_allowed = util.get_in(settings, 'task-constraints', 'docker-parameters-allowed')
+        if docker_parameters_allowed is None:
+            self.skipTest('Requires docker-parameters-allowed')
+        docker_image = util.docker_image()
+        container = {'type': 'docker',
+                     'docker': {'image': docker_image,
+                                'parameters': [{'key': 'this_should_not_be_allowed',
+                                                'value': 'its_not_even_a_real_parameter'}]}}
+        job_uuid, resp = util.submit_job(self.cook_url, container=container)
+        self.assertEqual(400, resp.status_code)
+        self.assertTrue('this_should_not_be_allowed' in resp.text, resp.text)
