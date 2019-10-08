@@ -117,7 +117,7 @@ class _AuthenticatedUser(object):
 
     def __enter__(self):
         if self.impersonatee:
-            logger.debug(f'Switching to user {self.name} with impersonatee {self.impersonatee}')
+            logger.debug(f'Starting impersonation of {self.impersonatee}')
             self.previous_impersonatee = session.headers.get(IMPERSONATION_HEADER)
             session.headers[IMPERSONATION_HEADER] = self.impersonatee
         else:
