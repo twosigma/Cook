@@ -4,9 +4,9 @@
 from setuptools import setup
 
 test_deps=[
-    'pytest==3.3.1',
-    'pytest-timeout==1.2.1',
-    'pytest-xdist==1.20.1'
+    'pytest==5.2.0',
+    'pytest-timeout==1.3.3',
+    'pytest-xdist==1.30.0'
 ]
 
 extras = { 'test': test_deps }
