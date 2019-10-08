@@ -24,7 +24,6 @@
   "Given a compute cluster and maps with node capacity and existing pods, return a map from pool to offers."
   [compute-cluster node-name->node namespaced-pod-name->pod starting-namespaced-pod-name->pod]
   (let [node-name->capacity (api/get-capacity node-name->node)
-        node-name->processed-taints (api/process-taints node-name->node)
         node-name->consumed (api/get-consumption (merge namespaced-pod-name->pod
                                                         starting-namespaced-pod-name->pod))
         node-name->available (pc/map-from-keys (fn [node-name]
@@ -34,7 +33,7 @@
                                                (keys node-name->capacity))]
     (log/info "Capacity: " node-name->capacity "Consumption:" node-name->consumed)
     (->> node-name->available
-         (filter (fn [[node-name _]] (api/node-schedulable? node-name->processed-taints node-name)))
+         (filter (fn [[node-name _]] (-> node-name node-name->node api/node-schedulable?)))
          (map (fn [[node-name available]]
                 {:id {:value (str (UUID/randomUUID))}
                  :framework-id (cc/compute-cluster-name compute-cluster)
@@ -47,7 +46,7 @@
                  :executor-ids []
                  :compute-cluster compute-cluster
                  :reject-after-match-attempt true}))
-         (group-by (fn [offer] (api/get-node-pool node-name->processed-taints (:hostname offer)))))))
+         (group-by (fn [offer] (-> offer :hostname node-name->node api/get-node-pool))))))
 
 (defn taskids-to-scan
   "Determine all taskids to scan by unioning task id's from expected and existing taskid maps. "
@@ -203,12 +202,13 @@
     (let [nodes @current-nodes-atom
           pods @all-pods-atom
           starting-instances (controller/starting-namespaced-pod-name->pod this)
-          offers-all-pools (generate-offers this nodes pods starting-instances)]
-      (doseq [[pool offers] offers-all-pools]
-        (log/info (str "Generated offers " (count offers) " for pool " pool " " (into [] (map #(into {} (select-keys % [:hostname :resources])) offers)))))
-      ; TODO: We are generating offers for every pool here, and filtering out only offers for this one pool.
-      ; TODO: We should be smarter here and generate once, then reuse for each pool, instead of generating for each pool each time and only keeping one
-      (get offers-all-pools pool-name)))
+          offers-all-pools (generate-offers this nodes pods starting-instances)
+          ; TODO: We are generating offers for every pool here, and filtering out only offers for this one pool.
+          ; TODO: We should be smarter here and generate once, then reuse for each pool, instead of generating for each pool each time and only keeping one
+          offers-this-pool (get offers-all-pools pool-name)]
+      (log/info (str "Generated offers " (count offers-this-pool) " for pool " pool-name " "
+                     (into [] (map #(into {} (select-keys % [:hostname :resources])) offers-this-pool))))
+      offers-this-pool))
 
   (restore-offers [this pool-name offers]))
 

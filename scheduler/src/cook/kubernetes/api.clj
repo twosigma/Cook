@@ -184,38 +184,24 @@
            (-> m (get "cpu") to-double)
            0.0)})
 
-(defn get-taint-key
-  "Get the taint variable out of a taint key out of the V1Taint object."
-  [^V1Taint taint]
-  (.getKey taint))
-
-(defn process-taints
-  "Given a map from node-name to node, generate a map from node-name->processed taints.
-  If there is no taint of the form cook.pools, return 'no-pool'. Processing a taints involves
-  splitting the list into the cook.pool taint and the other taints."
-  [node-name->node]
-  (pc/map-vals (fn [^V1Node node]
-                 (let [taints-on-node (or (some-> node .getSpec .getTaints) [])]
-                   (group-by #(if (= "cook.pool" (get-taint-key %)) :pool-taint :other-taint)  taints-on-node))) node-name->node))
-
 (defn get-node-pool
   "Get the pool for a node. In the case of no pool, return 'no-pool"
-  [node->processed-taints node-name]
-  (or (some-> node->processed-taints
-               (get node-name)
-               (get :pool-taint)
-               first
-               .getValue)
-      "no-pool"))
+  [^V1Node node]
+  ; In the case of nil, we have taints-on-node == [], and we'll map to no-pool.
+  (let [taints-on-node (or (some-> node .getSpec .getTaints) [])
+        cook-pool-taint (filter #(= "cook.pool" (.getKey %)) taints-on-node)]
+    (if (= 1 (count cook-pool-taint))
+          (-> cook-pool-taint first .getValue)
+      "no-pool")))
 
 (defn node-schedulable?
   "Can we schedule on a node. For now, yes, unless there are other taints on it. TODO: Incorporate other node-health measures here."
-  [node->processed-taints node-name]
-  (zero? (or (some-> node->processed-taints
-                      (get node-name)
-                      (get :other-taints)
-                      count)
-             0)))
+  [^V1Node node]
+  (if (nil? node)
+    false
+    (let [taints-on-node (or (some-> node .getSpec .getTaints) [])
+          other-taints (remove #(= "cook.pool" (.getKey %)) taints-on-node)]
+      (zero? (count other-taints)))))
 
 (defn get-capacity
   "Given a map from node-name to node, generate a map from node-name->resource-type-><capacity>"
