@@ -1822,6 +1822,9 @@ class CookTest(util.CookTest):
         finally:
             util.kill_jobs(self.cook_url, uuids)
 
+    @unittest.skipIf(util.using_kubernetes(), "Kubernetes pod deletion is slow enough that the resources consumed by "
+                                              "pods in the process of being deleted interfere with this test.")
+    # Test passes fine in isolation. We should revisit this when we come up with our kubernetes integration test story.
     def test_balanced_host_constraint_can_place(self):
         num_hosts = util.num_hosts_to_consider(self.cook_url)
         if num_hosts < 2:
