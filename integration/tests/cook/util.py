@@ -125,7 +125,7 @@ class _AuthenticatedUser(object):
 
     def __exit__(self, ex_type, ex_val, ex_trace):
         if self.impersonatee:
-            logger.debug(f'Switching back from user {self.name} for impersonation')
+            logger.debug(f'Stopping impersonation of {self.impersonatee}')
             if self.previous_impersonatee:
                 session.headers[IMPERSONATION_HEADER] = self.previous_impersonatee
                 self.previous_impersonatee = None
