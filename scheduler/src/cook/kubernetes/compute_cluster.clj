@@ -206,6 +206,8 @@
           offers-all-pools (generate-offers this nodes pods starting-instances)]
       (doseq [[pool offers] offers-all-pools]
         (log/info (str "Generated offers " (count offers) " for pool " pool " " (into [] (map #(into {} (select-keys % [:hostname :resources])) offers)))))
+      ; TODO: We are generating offers for every pool here, and filtering out only offers for this one pool.
+      ; TODO: We should be smarter here and generate once, then reuse for each pool, instead of generating for each pool each time and only keeping one
       (get offers-all-pools pool-name)))
 
   (restore-offers [this pool-name offers]))

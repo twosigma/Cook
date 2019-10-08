@@ -1322,7 +1322,7 @@ def node_pool(nodename):
     elif using_kubernetes():
         return kubernetes_node_pool(nodename)
     else:
-        raise RuntimeError('Unable to determine cluster max CPUs')
+        raise RuntimeError(f'Unable to determine node pool for {nodename}')
 
 def max_kubernetes_node_cpus():
     nodes = get_kubernetes_nodes()
