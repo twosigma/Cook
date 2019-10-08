@@ -396,10 +396,8 @@ class MultiUserCookTest(util.CookTest):
             small_cpus = large_cpus / 10
             with self.user_factory.admin():
                 # Reset the user's share and quota
-                resp = util.reset_limit(self.cook_url, 'share', user.name, reason=self.current_name(), pool=pool)
-                self.assertEqual(resp.status_code, 204, resp.text)
-                resp = util.reset_limit(self.cook_url, 'quota', user.name, reason=self.current_name(), pool=pool)
-                self.assertEqual(resp.status_code, 204, resp.text)
+                util.set_limit_to_default(self.cook_url, 'share', user.name, pool)
+                util.set_limit_to_default(self.cook_url, 'quota', user.name, pool)
 
             with user:
                 # Kill currently running / waiting jobs for the user
