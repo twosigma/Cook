@@ -1,17 +1,13 @@
-##
-## Configure a kubernetes cluster for running pool-based integration tests and running pools in general.
-##
-##
+#!/usr/bin/env bash
 
+# Usage: ./bin/gcloud-make-for-integration.sh <project> <zone> <clustername>
+#   Configure a kubernetes cluster for running pool-based integration tests and running pools in general.
+#    NOTE: This script labels any clusters it creates and will DELETE old clusters it created.
+#   <project> is a gcloud project.
+#   <zone> can be a zone. E.g., us-central1-a
+#   <clustername> is the name of a cluster. E.g., 'test-cluster-1'
 
 set -e
-
-## Example arguments that work:
-##
-
-#ZONE=us-central1-a
-#CLUSTERNAME=test-cluster-2
-#PROJECT=<FILL SOMETHING IN>
 
 PROJECT=$1
 ZONE=$2
@@ -24,7 +20,10 @@ echo "---- Deleting any existing temporary clusters."
 echo "---- Will delete the following. If you don't want them gone, control-c now"
 gcloud container clusters list --filter 'resourceLabels.longevity=temporary'
 sleep 10
-for i in `gcloud container clusters list --filter 'resourceLabels.longevity=temporary' --format="value(name)"` ; do gcloud --quiet container clusters delete $i ; done
+for i in `gcloud container clusters list --filter 'resourceLabels.longevity=temporary' --format="value(name)"`
+do
+    gcloud --quiet container clusters delete $i
+done
 
 # This creates a cluster, with some nodes that are needed for kubernetes management.
 # Create 7 nodes, with three tainted for alpha, 3 untainted and 3 tainted with gamma pool.
@@ -33,7 +32,6 @@ echo "---- Creating new cluster (please wait 5 minutes)"
 time gcloud container clusters create $CLUSTERNAME --disk-size=20gb --machine-type=g1-small --num-nodes=3 --preemptible  \
      --enable-autoupgrade --no-enable-basic-auth --no-issue-client-certificate --no-enable-ip-alias --metadata disable-legacy-endpoints=true \
      --labels longevity=temporary
-## The above takes like 3-4 mintues to run.
 
 echo "---- Setting up gcloud credentials"
 gcloud container clusters get-credentials $CLUSTERNAME --region $ZONE
