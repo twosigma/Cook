@@ -2056,7 +2056,6 @@ def dummy_cat_text(_, __, ___):
         cp, usage = cli.usage(user, self.cook_url, ' '.join(f'--pool {pool}' for pool in half_of_the_pools))
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(set(usage['clusters'][self.cook_url]['pools'].keys()), set(half_of_the_pools))
-        self.assertEqual('', cli.decode(cp.stderr))
 
         # filter half with one bad pool
         cp, usage = cli.usage(user, self.cook_url,
