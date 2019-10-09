@@ -1322,9 +1322,9 @@ class CookTest(util.CookTest):
         job_uuid, resp = util.submit_job(self.cook_url, ports=1)
         instance = util.wait_for_instance(self.cook_url, job_uuid)
         self.assertEqual(1, len(instance['ports']))
-        job_uuid, resp = util.submit_job(self.cook_url, ports=10)
+        job_uuid, resp = util.submit_job(self.cook_url, ports=5)
         instance = util.wait_for_instance(self.cook_url, job_uuid)
-        self.assertEqual(10, len(instance['ports']))
+        self.assertEqual(5, len(instance['ports']))
 
     def test_allow_partial_for_groups(self):
         def absent_uuids(response):
@@ -2671,3 +2671,15 @@ class CookTest(util.CookTest):
         _, resp = util.submit_job(self.cook_url, priority=16000001)
         self.assertEqual(400, resp.status_code, msg=resp.content)
         self.assertTrue(f'priority":"(not (between-0-and-16000000' in str(resp.content))
+
+    def test_max_ports(self):
+        settings = util.settings(self.cook_url)
+        max_ports = util.get_in(settings, 'task-constraints', 'max-ports')
+        job_uuid, resp = util.submit_job(self.cook_url, ports=(max_ports + 1))
+        try:
+            self.assertEqual(resp.status_code, 400, resp.content)
+            self.assertTrue(f'Requested {max_ports+1} ports, but only allowed to use {max_ports}'
+                            in resp.text,
+                            resp.text)
+        finally:
+            util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)

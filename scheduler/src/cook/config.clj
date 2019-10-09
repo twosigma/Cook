@@ -290,7 +290,8 @@
                             :timeout-interval-minutes 1
                             :retry-limit 20
                             :memory-gb 12
-                            :cpus 4}
+                            :cpus 4
+                            :max-ports 5}
                            (:task-constraints scheduler)))
      :offer-incubate-time-ms (fnk [[:config {scheduler nil}]]
                                (when scheduler

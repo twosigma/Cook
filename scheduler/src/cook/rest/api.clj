@@ -858,7 +858,7 @@
    & {:keys [commit-latch-id override-group-immutability?]
       :or {commit-latch-id nil
            override-group-immutability? false}}]
-  (let [{:keys [docker-parameters-allowed]} (config/task-constraints)
+  (let [{:keys [docker-parameters-allowed max-ports]} (config/task-constraints)
         group-uuid (when group group)
         munged (merge
                  {:user user
@@ -903,6 +903,10 @@
     (when (> mem (* 1024 (:memory-gb task-constraints)))
       (throw (ex-info (str "Requested " mem "mb memory, but only allowed to use "
                            (* 1024 (:memory-gb task-constraints)))
+                      {:constraints task-constraints
+                       :job job})))
+    (when (> (:ports munged) max-ports)
+      (throw (ex-info (str "Requested " ports " ports, but only allowed to use " max-ports)
                       {:constraints task-constraints
                        :job job})))
     (when (and (:retry-limit task-constraints)
