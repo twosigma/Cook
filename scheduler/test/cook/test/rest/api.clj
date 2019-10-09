@@ -244,6 +244,7 @@
       (is (= ((first fail-body) "state") "failed")))))
 
 (deftest job-validator
+  (testutil/setup)
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
         job (fn [cpus mem max-retries] {"uuid" (str (UUID/randomUUID))
                                         "command" "hello world"
@@ -319,7 +320,7 @@
               499)))
 
     (testing "allow all docker params by default"
-      (with-redefs [config/task-constraints (constantly {})]
+      (with-redefs [config/task-constraints (constantly {:max-ports 5})]
         (let [minimal-job (basic-job)
               container-job (assoc minimal-job "container" {"type" "docker"
                                                             "docker" {"image" "dummy:latest"
@@ -334,7 +335,8 @@
                               :body-params {"jobs" [container-job]}}))))))
 
       (testing "disallow docker parameters"
-        (with-redefs [config/task-constraints (constantly {:docker-parameters-allowed #{"user"}})]
+        (with-redefs [config/task-constraints (constantly {:docker-parameters-allowed #{"user"}
+                                                           :max-ports 5})]
           (let [minimal-job (basic-job)
                 container-job (assoc minimal-job "container" {"type" "docker"
                                                               "docker" {"image" "dummy:latest"
@@ -349,7 +351,8 @@
                                 :body-params {"jobs" [container-job]}})))))))
 
       (testing "allowed docker parameters"
-        (with-redefs [config/task-constraints (constantly {:docker-parameters-allowed #{"foo"}})]
+        (with-redefs [config/task-constraints (constantly {:docker-parameters-allowed #{"foo"}
+                                                           :max-ports 5})]
           (let [minimal-job (basic-job)
                 container-job (assoc minimal-job "container" {"type" "docker"
                                                               "docker" {"image" "dummy:latest"
@@ -361,7 +364,18 @@
                                 :uri "/rawscheduler"
                                 :headers {"Content-Type" "application/json"}
                                 :authorization/user "test"
-                                :body-params {"jobs" [container-job]}}))))))))))
+                                :body-params {"jobs" [container-job]}})))))))
+
+      (testing "max ports"
+        (with-redefs [config/task-constraints (constantly {:max-ports 5})]
+          (let [job (assoc (basic-job) :ports 6)]
+            (is (= 400
+                   (:status (h {:request-method :post
+                                :scheme :http
+                                :uri "/rawscheduler"
+                                :headers {"Content-Type" "application/json"}
+                                :authorization/user "test"
+                                :body-params {"jobs" [job]}}))))))))))
 
 (deftest gpus-api
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
