@@ -38,10 +38,10 @@
              (api/get-consumption pod-name->pod))))))
 
 (deftest test-get-capacity
-  (let [node-name->node {"nodeA" (tu/node-helper "nodeA" 1.0 100.0)
-                         "nodeB" (tu/node-helper "nodeB" 1.0 nil)
-                         "nodeC" (tu/node-helper "nodeC" nil 100.0)
-                         "nodeD" (tu/node-helper "nodeD" nil nil)}]
+  (let [node-name->node {"nodeA" (tu/node-helper "nodeA" 1.0 100.0 nil)
+                         "nodeB" (tu/node-helper "nodeB" 1.0 nil nil)
+                         "nodeC" (tu/node-helper "nodeC" nil 100.0 nil)
+                         "nodeD" (tu/node-helper "nodeD" nil nil nil)}]
     (is (= {"nodeA" {:cpus 1.0 :mem 100.0}
             "nodeB" {:cpus 1.0 :mem 0.0}
             "nodeC" {:cpus 0.0 :mem 100.0}

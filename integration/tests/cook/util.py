@@ -117,14 +117,14 @@ class _AuthenticatedUser(object):
         return type(self)(self.name, impersonatee=other_username)
 
     def __enter__(self):
-        logger.debug(f'Switching to user {self.name}')
         if self.impersonatee:
+            logger.debug(f'Starting impersonation of {self.impersonatee}')
             self.previous_impersonatee = session.headers.get(IMPERSONATION_HEADER)
             session.headers[IMPERSONATION_HEADER] = self.impersonatee
 
     def __exit__(self, ex_type, ex_val, ex_trace):
-        logger.debug(f'Switching back from user {self.name}')
         if self.impersonatee:
+            logger.debug(f'Stopping impersonation of {self.impersonatee}')
             if self.previous_impersonatee:
                 session.headers[IMPERSONATION_HEADER] = self.previous_impersonatee
                 self.previous_impersonatee = None
@@ -143,6 +143,7 @@ class _BasicAuthUser(_AuthenticatedUser):
         self.previous_auth = None
 
     def __enter__(self):
+        logger.info(f"Setting auth to {self.auth}")
         global session
         super().__enter__()
         assert self.previous_auth is None
@@ -154,6 +155,7 @@ class _BasicAuthUser(_AuthenticatedUser):
         super().__exit__(ex_type, ex_val, ex_trace)
         assert self.previous_auth is not None
         session.auth = self.previous_auth
+        logger.info(f"Resetting auth to {session.auth}")
         self.previous_auth = None
 
 
@@ -189,6 +191,7 @@ class _KerberosUser(_AuthenticatedUser):
 
     def __enter__(self):
         global session
+        logger.info(f"Setting kerberos user {self.name}")
         super().__enter__()
         assert self.previous_token is None
         assert self.stop_event is None
@@ -207,6 +210,7 @@ class _KerberosUser(_AuthenticatedUser):
         else:
             session.headers['Authorization'] = self.previous_token
             self.previous_token = None
+        logger.info(f"Resetting kerberos auth back from {self.name}")
 
 
 class UserFactory(object):
@@ -1144,6 +1148,14 @@ def set_limit(cook_url, limit_type, user, mem=None, cpus=None, gpus=None, count=
     return session.post(f'{cook_url}/{limit_type}', json=body, headers=headers)
 
 
+def set_limit_to_default(cook_url, limit_type, user, pool_name):
+    limit = get_limit(cook_url, limit_type, 'default', pool_name).json()
+    logger.debug(f'Default {limit_type} in {pool_name}: {limit}')
+    resp = set_limit(cook_url, limit_type, user, mem=limit['mem'],
+                     cpus=limit['cpus'], gpus=limit['gpus'], pool=pool_name)
+    assert 201 == resp.status_code, f'Expected 201, got {resp.status_code} with body {resp.text}'
+
+
 def reset_limit(cook_url, limit_type, user, reason='testing', pool=None, headers=None):
     """
     Resets resource limits for the given user to the default for the cluster.
@@ -1303,6 +1315,31 @@ def get_kubernetes_nodes():
     logging.info(f'Retrieved kubernetes nodes: {node_json}')
     return node_json['items']
 
+@functools.lru_cache()
+def kubernetes_node_pool(nodename):
+    node = [node for node in get_kubernetes_nodes() if node['metadata']['name'] == nodename]
+    poolname_taint = [taint for taint in node[0]['spec']['taints'] if taint['key'] == 'cook.pool']
+    if len(poolname_taint) == 0:
+        return None
+    poolname = poolname_taint[0].get('value',None)
+    logging.info(f"K8S pool for {nodename} is {poolname}")
+    return poolname
+
+@functools.lru_cache()
+def mesos_node_pool(nodename):
+    cook_url = retrieve_cook_url()
+    mesos_url = retrieve_mesos_url()
+    node_pool = slave_pool(cook_url, mesos_url, nodename)
+    return node_pool
+
+def node_pool(nodename):
+    """Get the pool for a node."""
+    if using_mesos():
+        return mesos_node_pool(nodename)
+    elif using_kubernetes():
+        return kubernetes_node_pool(nodename)
+    else:
+        raise RuntimeError(f'Unable to determine node pool for {nodename}')
 
 def max_kubernetes_node_cpus():
     nodes = get_kubernetes_nodes()
@@ -1554,4 +1591,4 @@ def kill_running_and_waiting_jobs(cook_url, user):
 
 
 def running_tasks(cook_url):
-    return session.get(f'{cook_url}/running', params={'limit': 100}).json()
+    return session.get(f'{cook_url}/running', params={'limit': 20}).json()

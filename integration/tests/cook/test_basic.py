@@ -89,8 +89,8 @@ class CookTest(util.CookTest):
                      'docker': {'image': docker_image,
                                 'network': 'HOST',
                                 'force-pull-image': False,
-                                'parameters': [{'key': 'foo', 'value': 'bar'},
-                                               {'key': 'baz', 'value': 'qux'}]},
+                                'parameters': [{'key': 'env', 'value': 'FOO=bar'},
+                                               {'key': 'workdir', 'value': '/var/lib/pqr'}]},
                      'volumes': [{'host-path': '/var/lib/abc'},
                                  {'mode': 'RW',
                                   'host-path': '/var/lib/def'},
@@ -111,8 +111,8 @@ class CookTest(util.CookTest):
         self.assertEqual('HOST', docker['network'])
         self.assertEqual(False, docker['force-pull-image'])
         self.assertEqual(2, len(docker['parameters']))
-        self.assertEqual('bar', next(p['value'] for p in docker['parameters'] if p['key'] == 'foo'))
-        self.assertEqual('qux', next(p['value'] for p in docker['parameters'] if p['key'] == 'baz'))
+        self.assertEqual('FOO=bar', next(p['value'] for p in docker['parameters'] if p['key'] == 'env'))
+        self.assertEqual('/var/lib/pqr', next(p['value'] for p in docker['parameters'] if p['key'] == 'workdir'))
         self.assertLessEqual(4, len(volumes))
         self.assertIn({'host-path': '/var/lib/abc'}, volumes)
         self.assertIn({'mode': 'RW',
@@ -1822,6 +1822,9 @@ class CookTest(util.CookTest):
         finally:
             util.kill_jobs(self.cook_url, uuids)
 
+    @unittest.skipIf(util.using_kubernetes(), "Kubernetes pod deletion is slow enough that the resources consumed by "
+                                              "pods in the process of being deleted interfere with this test.")
+    # Test passes fine in isolation. We should revisit this when we come up with our kubernetes integration test story.
     def test_balanced_host_constraint_can_place(self):
         num_hosts = util.num_hosts_to_consider(self.cook_url)
         if num_hosts < 2:
@@ -2650,3 +2653,21 @@ class CookTest(util.CookTest):
         job_uuid, resp = util.submit_job(self.cook_url, container=container)
         self.assertEqual(400, resp.status_code)
         self.assertTrue('this_should_not_be_allowed' in resp.text, resp.text)
+
+    def test_priority(self):
+        _, resp = util.submit_job(self.cook_url, priority=0)
+        self.assertEqual(201, resp.status_code, msg=resp.content)
+
+        _, resp = util.submit_job(self.cook_url, priority=100)
+        self.assertEqual(201, resp.status_code, msg=resp.content)
+
+        _, resp = util.submit_job(self.cook_url, priority=16000000)
+        self.assertEqual(201, resp.status_code, msg=resp.content)
+
+        _, resp = util.submit_job(self.cook_url, priority=-1)
+        self.assertEqual(400, resp.status_code, msg=resp.content)
+        self.assertTrue(f'priority":"(not (between-0-and-16000000' in str(resp.content))
+
+        _, resp = util.submit_job(self.cook_url, priority=16000001)
+        self.assertEqual(400, resp.status_code, msg=resp.content)
+        self.assertTrue(f'priority":"(not (between-0-and-16000000' in str(resp.content))
