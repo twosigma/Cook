@@ -500,6 +500,7 @@ class MultiUserCookTest(util.CookTest):
             finally:
                 util.kill_jobs(self.cook_url, job_uuids, log_before_killing=True)
 
+    @pytest.mark.xfail
     def test_queue_quota_filtering(self):
         bad_constraint = [["HOSTNAME",
                            "EQUALS",
