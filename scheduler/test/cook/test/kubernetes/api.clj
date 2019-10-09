@@ -48,6 +48,12 @@
             "nodeD" {:cpus 0.0 :mem 0.0}}
            (api/get-capacity node-name->node)))))
 
+(defn assert-env-var-value
+  [container name value]
+  (let [^V1EnvVar variable (->> container .getEnv (filter (fn [var] (= name (.getName var)))) first)]
+    (is (= name (.getName variable)))
+    (is (= value (.getValue variable)))))
+
 (deftest test-task-metadata->pod
   (testing "creates pod from metadata"
     (with-redefs [config/kubernetes (constantly {:default-workdir "/mnt/sandbox"})]
@@ -81,7 +87,7 @@
           (is (= "required-cook-job-container" (.getName container)))
           (is (= ["/bin/sh" "-c" "foo && bar"] (.getCommand container)))
           (is (= "alpine:latest" (.getImage container)))
-          (is (= 1 (count (.getEnv container))))
+          (is (= 3 (count (.getEnv container))))
           (is (= "/mnt/sandbox" (.getWorkingDir container)))
           (let [workdir-mount (->> container
                                    .getVolumeMounts
@@ -89,9 +95,9 @@
                                    first)]
             (is (= "/mnt/sandbox" (.getMountPath workdir-mount))))
 
-          (let [^V1EnvVar variable (-> container .getEnv first)]
-            (is (= "FOO" (.getName variable)))
-            (is (= "BAR" (.getValue variable))))
+          (assert-env-var-value container "FOO" "BAR")
+          (assert-env-var-value container "HOME" (.getWorkingDir container))
+          (assert-env-var-value container "MESOS_SANDBOX" (.getWorkingDir container))
 
           (let [resources (-> container .getResources)]
             (is (= 1.0 (-> resources .getRequests (get "cpu") .getNumber .doubleValue)))
