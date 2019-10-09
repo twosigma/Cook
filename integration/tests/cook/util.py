@@ -955,6 +955,7 @@ def wait_for_instance(cook_url, job_uuid, max_wait_ms=DEFAULT_TIMEOUT_MS, wait_i
     """Waits for the job with the given job_uuid to have at least one instance, and returns the first instance uuid"""
 
     def instances_with_status(job):
+        logger.debug(f'Job {job_uuid}: {json.dumps(job, indent=2)}')
         if status is None:
             return job['instances']
         else:
