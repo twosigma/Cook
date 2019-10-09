@@ -1143,6 +1143,14 @@ def set_limit(cook_url, limit_type, user, mem=None, cpus=None, gpus=None, count=
     return session.post(f'{cook_url}/{limit_type}', json=body, headers=headers)
 
 
+def set_limit_to_default(cook_url, limit_type, user, pool_name):
+    limit = get_limit(cook_url, limit_type, 'default', pool_name).json()
+    logger.debug(f'Default {limit_type} in {pool_name}: {limit}')
+    resp = set_limit(cook_url, limit_type, user, mem=limit['mem'],
+                     cpus=limit['cpus'], gpus=limit['gpus'], pool=pool_name)
+    assert 201 == resp.status_code, f'Expected 201, got {resp.status_code} with body {resp.text}'
+
+
 def reset_limit(cook_url, limit_type, user, reason='testing', pool=None, headers=None):
     """
     Resets resource limits for the given user to the default for the cluster.
@@ -1574,4 +1582,4 @@ def kill_running_and_waiting_jobs(cook_url, user):
 
 
 def running_tasks(cook_url):
-    return session.get(f'{cook_url}/running', params={'limit': 100}).json()
+    return session.get(f'{cook_url}/running', params={'limit': 20}).json()

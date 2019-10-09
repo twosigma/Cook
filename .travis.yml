@@ -42,12 +42,6 @@ matrix:
       before_script: cd integration && ./travis/prepare_integration.sh
       script: ./travis/run_integration.sh --executor=cook --image=python:3.5
 
-    - name: 'Cook Scheduler integration tests with no pools and with HTTP Basic Auth'
-      services: docker
-      install: sudo ./travis/install_mesos.sh
-      before_script: cd integration && ./travis/prepare_integration.sh
-      script: ./travis/run_integration.sh --pools=off --auth=http-basic
-
     # We want a small rate limit to make the job launch rate limit integration test be stable and not
     # need to launch a lot of jobs. Those low launch rate limit settings would cause other integration
     # tests to break, so we run this test separately.
