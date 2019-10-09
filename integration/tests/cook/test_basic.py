@@ -1322,9 +1322,9 @@ class CookTest(util.CookTest):
         job_uuid, resp = util.submit_job(self.cook_url, ports=1)
         instance = util.wait_for_instance(self.cook_url, job_uuid)
         self.assertEqual(1, len(instance['ports']))
-        job_uuid, resp = util.submit_job(self.cook_url, ports=10)
+        job_uuid, resp = util.submit_job(self.cook_url, ports=5)
         instance = util.wait_for_instance(self.cook_url, job_uuid)
-        self.assertEqual(10, len(instance['ports']))
+        self.assertEqual(5, len(instance['ports']))
 
     def test_allow_partial_for_groups(self):
         def absent_uuids(response):
