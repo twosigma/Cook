@@ -403,6 +403,8 @@
     (.putRequestsItem resources "memory" (double->quantity (* memory-multiplier mem)))
     (.putLimitsItem resources "memory" (double->quantity (* memory-multiplier mem)))
     (.putRequestsItem resources "cpu" (double->quantity cpus))
+    ; We would like to make this burstable, but for various reasons currently need pods to run in the
+    ; "Guaranteed" QoS which requires limits for both memory and cpu.
     (.putLimitsItem resources "cpu" (double->quantity cpus))
     (.setResources container resources)
     (.setVolumeMounts container (into [] (conj volume-mounts workdir-volume-mount)))
