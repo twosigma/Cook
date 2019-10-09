@@ -2185,7 +2185,7 @@ def dummy_cat_text(_, __, ___):
                 self.assertEqual(1, len(notebook['cells']))
                 self.assertEqual('code', cell['cell_type'])
                 self.assertEqual(1, cell['execution_count'])
-                self.assertEqual(1, len(cell['outputs']))
+                self.assertLessEqual(1, len(cell['outputs']))
                 self.assertEqual('stdout', output['name'], ''.join(output['text']))
                 self.assertEqual('\n', output['text'][0])
                 self.assertIn('=== Job: ', output['text'][1])
