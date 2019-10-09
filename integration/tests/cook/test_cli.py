@@ -1260,7 +1260,7 @@ def dummy_ls_entries(_, __, ___):
             f'- as a job group on {self.cook_url}\n' \
             '\n' \
             'You might need to explicitly set the cluster where you want to kill by using the --cluster flag.\n'
-        self.assertEqual(expected_stdout, cli.decode(cp.stderr))
+        self.assertIn(expected_stdout, cli.decode(cp.stderr))
 
     def test_kill_job(self):
         cp, uuids = cli.submit('sleep 60', self.cook_url)
