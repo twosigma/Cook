@@ -953,14 +953,15 @@ class CookTest(util.CookTest):
 
     def test_list_jobs_by_pool(self):
         # Submit two jobs to each active pool -- one that will be
-        # running or waiting for a while, and another that will complete
+        # running or waiting for the duration of this test, and another that will complete
         jobs = []
         name = str(util.make_temporal_uuid())
         pools, _ = util.active_pools(self.cook_url)
         start = util.current_milli_time()
-        sleep_command = 'sleep 600'
+        sleep_command = f'sleep {util.DEFAULT_TEST_TIMEOUT_SECS}'
         for pool in pools:
             pool_name = pool['name']
+            self.logger.info(f'Submitting jobs to {pool_name}')
             job_uuid, resp = util.submit_job(self.cook_url, pool=pool_name, name=name, command=sleep_command)
             self.assertEqual(201, resp.status_code)
             jobs.append(util.load_job(self.cook_url, job_uuid))
@@ -977,6 +978,7 @@ class CookTest(util.CookTest):
             # List jobs for each pool
             for pool in pools:
                 pool_name = pool['name']
+                self.logger.info(f'Listing jobs in {pool_name}')
 
                 # List running / waiting
                 job_uuid = next(j['uuid'] for j in jobs if j['pool'] == pool_name and j['command'] == sleep_command)
