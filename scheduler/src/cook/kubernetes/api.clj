@@ -3,6 +3,7 @@
             [clojure.string :as str]
             [clojure.tools.logging :as log]
             [cook.config :as config]
+            [me.raynes.conch :as sh]
             [plumbing.core :as pc])
   (:import
     (com.google.gson JsonSyntaxException)
@@ -12,7 +13,8 @@
     (io.kubernetes.client.custom Quantity Quantity$Format)
     (io.kubernetes.client.models V1Pod V1Container V1Node V1Pod V1Container V1ResourceRequirements V1EnvVar
                                  V1ObjectMeta V1PodSpec V1PodStatus V1ContainerState V1DeleteOptionsBuilder
-                                 V1DeleteOptions V1HostPathVolumeSource V1VolumeMount V1VolumeBuilder V1Taint V1Toleration)
+                                 V1DeleteOptions V1HostPathVolumeSource V1VolumeMount V1VolumeBuilder V1Taint
+                                 V1Toleration V1PodSecurityContext V1EmptyDirVolumeSource V1EnvVarBuilder)
     (io.kubernetes.client.util Watch)
     (java.util.concurrent Executors ExecutorService)
     (java.util UUID)))
@@ -25,6 +27,13 @@
 ; Cook, Fenzo, and Mesos use MB for memory. Convert bytes from k8s to MB when passing to fenzo, and MB back to bytes
 ; when submitting to k8s.
 (def memory-multiplier (* 1000 1000))
+
+(sh/let-programs
+  [_id "/usr/bin/id"]
+  (defn uid [user-name]
+    (Long/parseLong (str/trim (_id "-u" user-name))))
+  (defn gid [user-name]
+    (Long/parseLong (str/trim (_id "-g" user-name)))))
 
 (defn is-cook-scheduler-pod
   "Is this a cook pod? Uses some-> so is null-safe."
@@ -290,13 +299,56 @@
     (.setEffect toleration "NoSchedule")
     toleration))
 
+(defn param-env-vars
+  [params]
+  (->> params
+       (filter (fn [{:keys [key]}]
+                 (= key "env")))
+       (map (fn [{:keys [value]}]
+              (let [[env-var-name env-var-value] (str/split value #"=")
+                    env (V1EnvVar.)]
+                (.setName env (str env-var-name))
+                (.setValue env (str env-var-value))
+                env)))))
+
+(defn make-security-context
+  [params user]
+  (let [user-param (->> params
+                        (filter (fn [{:keys [key]}] (= key "user")))
+                        first)
+        [uid gid] (if user-param
+                    (let [[uid gid] (str/split (:value user-param) #":")]
+                      [(Long/parseLong uid) (Long/parseLong gid)])
+                    [(uid user) (gid user)])
+        security-context (V1PodSecurityContext.)]
+    (.setRunAsUser security-context uid)
+    (.setRunAsGroup security-context gid)
+    security-context))
+
+(defn get-workdir
+  [params]
+  (let [workdir-param (->> params
+                           (filter (fn [{:keys [key]}] (= key "workdir")))
+                           first)]
+    (if workdir-param
+      (:value workdir-param)
+      (:default-workdir (config/kubernetes)))))
+
+(defn filter-env-vars
+  [env-vars]
+  (let [{:keys [disallowed-var-names]} (config/kubernetes)]
+    (->> env-vars
+         (filter (fn [^V1EnvVar var]
+                   (not (contains? disallowed-var-names (.getName var)))))
+         (into []))))
+
 (defn ^V1Pod task-metadata->pod
   "Given a task-request and other data generate the kubernetes V1Pod to launch that task."
   [namespace compute-cluster-name {:keys [task-id command container task-request hostname]}]
   (let [{:keys [resources job]} task-request
         {:keys [mem cpus]} resources
         {:keys [docker volumes]} container
-        {:keys [image]} docker
+        {:keys [image parameters]} docker
         pod (V1Pod.)
         pod-spec (V1PodSpec.)
         metadata (V1ObjectMeta.)
@@ -310,7 +362,26 @@
         resources (V1ResourceRequirements.)
         labels {cook-pod-label compute-cluster-name}
         pool-name (some-> job :job/pool :pool/name)
-        {:keys [volumes volume-mounts]} (make-volumes volumes)]
+        {:keys [volumes volume-mounts]} (make-volumes volumes)
+        security-context (make-security-context parameters (:user command))
+        workdir (get-workdir parameters)
+        workdir-volume (-> (V1VolumeBuilder.)
+                           (.withName "cook-workdir")
+                           (.withEmptyDir (V1EmptyDirVolumeSource.))
+                           (.build))
+        workdir-volume-mount (V1VolumeMount.)
+        workdir-env-vars [(-> (V1EnvVarBuilder.)
+                              (.withName "HOME")
+                              (.withValue workdir)
+                              (.build))
+                          (-> (V1EnvVarBuilder.)
+                              (.withName "MESOS_SANDBOX")
+                              (.withValue workdir)
+                              (.build))]]
+    ; workdir mount
+    (.setName workdir-volume-mount "cook-workdir")
+    (.setMountPath workdir-volume-mount workdir)
+    (.setReadOnly workdir-volume-mount false)
 
     ; metadata
     (.setName metadata (str task-id))
@@ -322,22 +393,31 @@
     (.setCommand container
                  ["/bin/sh" "-c" (:value command)])
 
-    (.setEnv container (into [] env))
+    (.setEnv container (-> []
+                           (into env)
+                           (into (param-env-vars parameters))
+                           (into workdir-env-vars)
+                           filter-env-vars))
     (.setImage container image)
 
     (.putRequestsItem resources "memory" (double->quantity (* memory-multiplier mem)))
     (.putLimitsItem resources "memory" (double->quantity (* memory-multiplier mem)))
     (.putRequestsItem resources "cpu" (double->quantity cpus))
+    ; We would like to make this burstable, but for various reasons currently need pods to run in the
+    ; "Guaranteed" QoS which requires limits for both memory and cpu.
+    (.putLimitsItem resources "cpu" (double->quantity cpus))
     (.setResources container resources)
-    (.setVolumeMounts container (into [] volume-mounts))
+    (.setVolumeMounts container (into [] (conj volume-mounts workdir-volume-mount)))
+    (.setWorkingDir container workdir)
 
     ; pod-spec
     (.addContainersItem pod-spec container)
     (.setNodeName pod-spec hostname)
     (.setRestartPolicy pod-spec "Never")
-    (.setVolumes pod-spec (into [] volumes))
     (when pool-name
       (.addTolerationsItem pod-spec (toleration-for-pool pool-name)))
+    (.setVolumes pod-spec (into [] (conj volumes workdir-volume)))
+    (.setSecurityContext pod-spec security-context)
 
     ; pod
     (.setMetadata pod metadata)

@@ -45,6 +45,9 @@ case "$COOK_AUTH" in
     ;;
   one-user)
     export COOK_EXECUTOR_PORTION=1
+    # One user auth is configured to use root
+    export COOK_DOCKER_UID=0
+    export COOK_DOCKER_GID=0
     ;;
   *)
     echo "Unrecognized auth scheme: $COOK_AUTH"

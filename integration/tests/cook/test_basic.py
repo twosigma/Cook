@@ -64,6 +64,31 @@ class CookTest(util.CookTest):
         else:
             self.logger.info(f'Exit code not checked because cook executor was not used for {instance}')
 
+    @unittest.skipUnless(util.docker_tests_enabled(), 'requires docker')
+    def test_uid(self):
+        settings = util.settings(self.cook_url)
+
+        current_uid = subprocess.check_output(['/usr/bin/id', '-u']).decode('utf-8').strip()
+        current_gid = subprocess.check_output(['/usr/bin/id', '-g']).decode('utf-8').strip()
+        uid = os.getenv('COOK_DOCKER_UID', current_uid)
+        gid = os.getenv('COOK_DOCKER_GID', current_gid)
+
+        image = util.docker_image()
+        container = {'type': 'docker',
+                     'docker': {'image': image,
+                                'network': 'HOST',
+                                'force-pull-image': False,
+                                'parameters': [{'key': 'user',
+                                                'value': f'{uid}:{gid}'}]}}
+
+        command = f'bash -c \'echo $UID; if [[ $UID -eq {uid} ]]; then exit 0; else exit 1; fi\''
+        job_uuid, resp = util.submit_job(self.cook_url, command=command, container=container)
+        self.assertEqual(201, resp.status_code, resp.content)
+        try:
+            util.wait_for_instance(self.cook_url, job_uuid, status='success')
+        finally:
+            util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
+
     @unittest.skipIf(util.using_kubernetes(), 'Output url is not currently supported on kubernetes')
     def test_output_url(self):
         job_executor_type = util.get_job_executor_type()
@@ -2537,6 +2562,40 @@ class CookTest(util.CookTest):
         finally:
             util.kill_jobs(self.cook_url, job_uuids, assert_response=False)
 
+    @unittest.skipUnless(util.docker_tests_enabled(), 'Requires docker support')
+    def test_docker_env_param(self):
+        image = util.docker_image()
+        container = {'type': 'docker',
+                     'docker': {'image': image,
+                                'network': 'HOST',
+                                'force-pull-image': False,
+                                'parameters': [{'key': 'env',
+                                                'value': 'DOCKER_PARAM_ENV_VAR=testing'}]}}
+        command = 'bash -c \'if [[ "${DOCKER_PARAM_ENV_VAR}" == "testing" ]]; then exit 0; else exit 1; fi\''
+        job_uuid, resp = util.submit_job(self.cook_url, command=command, container=container)
+        self.assertEqual(201, resp.status_code, resp.text)
+        try:
+            util.wait_for_instance(self.cook_url, job_uuid, status='success')
+        finally:
+            util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
+
+    @unittest.skipUnless(util.docker_tests_enabled(), 'Requires docker support')
+    def test_docker_workdir(self):
+        image = util.docker_image()
+        container = {'type': 'docker',
+                     'docker': {'image': image,
+                                'network': 'HOST',
+                                'force-pull-image': False,
+                                'parameters': [{'key': 'workdir',
+                                                'value': '/tmp/integration-work'}]}}
+        command = 'bash -c \'if [[ $(pwd) == "/tmp/integration-work" ]]; then exit 0; else exit 1; fi\''
+        job_uuid, resp = util.submit_job(self.cook_url, command=command, container=container)
+        self.assertEqual(201, resp.status_code, resp.text)
+        try:
+            util.wait_for_instance(self.cook_url, job_uuid, status='success')
+        finally:
+            util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
+
     @unittest.skipUnless(util.docker_tests_enabled(), "Requires docker support.")
     def test_default_container_volumes(self):
         settings = util.settings(self.cook_url)
@@ -2638,6 +2697,32 @@ class CookTest(util.CookTest):
             util.wait_for_instance(self.cook_url, job_uuid, status='success')
         finally:
             util.kill_jobs(self.cook_url, [job_uuid])
+
+    @unittest.skipUnless(util.using_kubernetes(), 'Test requires kubernetes')
+    def test_kubernetes_disallowed_var_names(self):
+        settings = util.settings(self.cook_url)
+        bad_var_name = 'BADVAR'
+        disallowed_container_paths = util.get_in(settings, 'kubernetes', 'disallowed-var-names')
+        if disallowed_container_paths is None or bad_var_name not in disallowed_container_paths:
+            self.skipTest(f'Requires {bad_var_name} to be in the disallowed-var-names config')
+        docker_image = util.docker_image()
+
+        container = {'type': 'docker',
+                     'docker': {'image': docker_image,
+                                'network': 'HOST',
+                                'force-pull-image': False,
+                                'parameters': [{'key': 'env',
+                                                'value': f'{bad_var_name}=set'}]}}
+        command = 'bash -c \'if [ -z ${BADVAR+x} ]; then exit 0; else exit 1; fi\''
+        job_uuid1, resp = util.submit_job(self.cook_url, command=command, container=container)
+        self.assertEqual(201, resp.status_code)
+        job_uuid2, resp = util.submit_job(self.cook_url, command=command, env={'BADVAR': 'set'})
+        self.assertEqual(201, resp.status_code)
+        try:
+            util.wait_for_instance(self.cook_url, job_uuid1, status='success')
+            util.wait_for_instance(self.cook_url, job_uuid2, status='success')
+        finally:
+            util.kill_jobs(self.cook_url, [job_uuid1, job_uuid2])
 
     @unittest.skipUnless(util.docker_tests_enabled(), 'Requires docker support')
     def test_disallowed_docker_parameters(self):

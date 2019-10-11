@@ -561,7 +561,7 @@
         user-params (filter #(= (:key %) "user") params)
         expected-user-param (str (uid user) ":" (gid user))]
     (when (some #(not= expected-user-param (:value %)) user-params)
-      (throw (ex-info "user parameter must match uid and gid of user submitting."
+      (throw (ex-info "user parameter must match uid and gid of user submitting"
                       {:expected-user-param expected-user-param
                        :user-params-submitted user-params})))
     [[:db/add id :job/container container-id]

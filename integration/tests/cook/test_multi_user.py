@@ -581,6 +581,7 @@ class MultiUserCookTest(util.CookTest):
         finally:
             util.kill_jobs(self.cook_url, job_uuids)
 
+    @pytest.mark.xfail
     def test_instance_stats_failed(self):
         name = str(util.make_temporal_uuid())
         job_uuid_1, resp = util.submit_job(self.cook_url, command='exit 1', name=name, cpus=0.1, mem=32)
