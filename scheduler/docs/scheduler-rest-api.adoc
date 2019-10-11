@@ -71,7 +71,7 @@ The request body is list of job maps with each entry containing a map of the fol
 |`command` | string | the command to run
 |`executor` | string [cook\|mesos] | Flag to force use of the Cook executor / Mesos command executor.
 |`name` | string | name of the job
-|`priority` | integer | priority of the job. Should be between 0 and 100, inclusive.
+|`priority` | integer | priority of the job. Should be between 0 and 16,000,000, inclusive.
 |`max_retries` | integer | the maximum number of retries
 |`max_runtime` | long | the maximum running time of the job in milliseconds. An instance that runs for more than max_runtime will be killed and job will be retried.
 |`expected_runtime` | long | the (optional) expected running time of the job in milliseconds. If provided, `expected_runtime` must be less than or equal to `max_runtime`. Currently, this value is being collected but not used by the scheduler. In the future, this will allow us to make better scheduling decisions (e.g. don't preempt a job that is expected to complete very soon).
