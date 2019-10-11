@@ -860,6 +860,7 @@ class CookCliTest(util.CookTest):
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual('', cli.decode(cp.stdout))
 
+    @pytest.mark.xfail
     def test_tail_default_path(self):
         text = str(util.make_temporal_uuid())
         cp, uuids = cli.submit(f'echo {text}', self.cook_url)
