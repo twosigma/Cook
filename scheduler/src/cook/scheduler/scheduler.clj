@@ -781,8 +781,8 @@
           (log/error t "In" pool-name "pool, error in match:" (ex-data t))
           (when-let [offers @offer-stash]
             ; Group the set of all offers by compute cluster and route them to that compute cluster for restoring.
-            (doseq [[compute-cluster offersubset] (group-by :compute-cluster offers)]
-              (cc/restore-offers compute-cluster pool-name offersubset)))
+            (doseq [[compute-cluster offer-subset] (group-by :compute-cluster offers)]
+              (cc/restore-offers compute-cluster pool-name offer-subset)))
           ; if an error happened, it doesn't mean we need to penalize Fenzo
           true)))))
 
