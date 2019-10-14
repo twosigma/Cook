@@ -40,6 +40,7 @@
             [cook.unscheduled :as unscheduled]
             [cook.tools :as util]
             [cook.mesos]
+            [cook.plugins.adjustment :as adjustment]
             [cook.plugins.definitions :as plugins]
             [cook.plugins.file :as file-plugin]
             [cook.plugins.submission :as submission-plugin]
@@ -1647,8 +1648,10 @@
   ::jobs and ::groups, which specify the jobs and job groups."
   [conn {:keys [::groups ::jobs ::pool] :as ctx}]
   (try
+    (let [])
     (log/info "Submitting jobs through raw api:" (map #(dissoc % :command) jobs))
-    (let [group-uuids (set (map :uuid groups))
+    (let [jobs (mapv #(plugins/adjust-job adjustment/plugin %) jobs)
+          group-uuids (set (map :uuid groups))
           group-asserts (map (fn [guuid] [:entity/ensure-not-exists [:group/uuid guuid]])
                              group-uuids)
           ;; Create new implicit groups (with all default settings)

@@ -53,6 +53,12 @@
         (generate-result :deferred "Message3")
         (generate-result :accepted "Message4")))))
 
+(defrecord DemoAddLabelJobAdjuster []
+  chd/JobAdjuster
+  (chd/adjust-job
+    [_ {:keys [labels] :as job-map}]
+    (assoc job-map :labels (assoc (or labels {}) "demo-add-label-job-adjuster" ""))))
+
 (defn launch-factory
   "Factory method for the launch-plugin to be used in config.edn"
   []
@@ -67,3 +73,8 @@
   "Factory method for the second submission plugin to be used in config.edn"
   []
   (->DemoValidateSubmission2))
+
+(defn adjuster-factory
+  "TODO(DPO)"
+  []
+  (->DemoAddLabelJobAdjuster))
