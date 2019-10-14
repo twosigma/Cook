@@ -189,7 +189,7 @@
   [^V1Node node]
   ; In the case of nil, we have taints-on-node == [], and we'll map to no-pool.
   (let [taints-on-node (or (some-> node .getSpec .getTaints) [])
-        cook-pool-taint (filter #(= "cook.pool" (.getKey %)) taints-on-node)]
+        cook-pool-taint (filter #(= "cook-pool" (.getKey %)) taints-on-node)]
     (if (= 1 (count cook-pool-taint))
           (-> cook-pool-taint first .getValue)
       "no-pool")))
@@ -200,7 +200,7 @@
   (if (nil? node)
     false
     (let [taints-on-node (or (some-> node .getSpec .getTaints) [])
-          other-taints (remove #(= "cook.pool" (.getKey %)) taints-on-node)]
+          other-taints (remove #(= "cook-pool" (.getKey %)) taints-on-node)]
       (zero? (count other-taints)))))
 
 (defn get-capacity
@@ -281,10 +281,10 @@
      :volume-mounts volume-mounts}))
 
 (defn toleration-for-pool
-  "For a given cook pool name, create the right V1Toleration so that Cook will ignore that cook.pool taint."
+  "For a given cook pool name, create the right V1Toleration so that Cook will ignore that cook-pool taint."
   [pool-name]
   (let [^V1Toleration toleration (V1Toleration.)]
-    (.setKey toleration "cook.pool")
+    (.setKey toleration "cook-pool")
     (.setValue toleration pool-name)
     (.setOperator toleration "Equal")
     (.setEffect toleration "NoSchedule")

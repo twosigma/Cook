@@ -1313,7 +1313,7 @@ def get_kubernetes_nodes():
 @functools.lru_cache()
 def kubernetes_node_pool(nodename):
     node = [node for node in get_kubernetes_nodes() if node['metadata']['name'] == nodename]
-    poolname_taint = [taint for taint in node[0]['spec']['taints'] if taint['key'] == 'cook.pool']
+    poolname_taint = [taint for taint in node[0]['spec']['taints'] if taint['key'] == 'cook-pool']
     if len(poolname_taint) == 0:
         return None
     poolname = poolname_taint[0].get('value',None)

@@ -35,13 +35,13 @@ time gcloud container clusters create $CLUSTERNAME --disk-size=20gb --machine-ty
 echo "---- Setting up gcloud credentials"
 gcloud container clusters get-credentials $CLUSTERNAME --region $ZONE
 
-# Make some node-pools --- this takes a while, but it helps guarantee that we have nodes with the appropriate cook.pool taints.
+# Make some node-pools --- this takes a while, but it helps guarantee that we have nodes with the appropriate cook-pool taints.
 echo "---- Making extra alpha and gamma nodepools for cook pools (please wait 5-10 minutes)"
 gcloud container node-pools create cook-pool-gamma --cluster=$CLUSTERNAME --disk-size=20gb --machine-type=g1-small \
-       --node-taints=cook.pool=gamma:NoSchedule \
+       --node-taints=cook-pool=gamma:NoSchedule \
        --num-nodes=3
 gcloud container node-pools create cook-pool-alpha --cluster=$CLUSTERNAME --disk-size=20gb --machine-type=g1-small \
-       --node-taints=cook.pool=alpha:NoSchedule \
+       --node-taints=cook-pool=alpha:NoSchedule \
        --num-nodes=2
 
 echo "---- Setting up cook namespace in kubernetes"
