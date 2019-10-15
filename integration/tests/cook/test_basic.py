@@ -1595,7 +1595,7 @@ class CookTest(util.CookTest):
                        'docker': {'image': image}})
         self.assertEqual(resp.status_code, 201)
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
-        self.assertEqual('success', job['instances'][0]['status'])
+        self.assertIn('success', [i['status'] for i in job['instances']])
 
     @unittest.skipUnless(util.has_docker_service() and not util.using_kubernetes(),
                          "Requires `docker inspect`. On kubernetes, need to add support and write a separate test.")
