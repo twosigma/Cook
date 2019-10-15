@@ -525,15 +525,16 @@
   ;; TODO: make namespace configurable
   (if launch-pod
     (let [{:keys [pod]} launch-pod
+          pod-name (-> pod .getMetadata .getName)
           namespace (-> pod .getMetadata .getNamespace)
           ;; TODO: IF there's an error, log it and move on. We'll try again later.
           api (CoreV1Api. api-client)]
-      (log/info "Launching pod in namespace" namespace pod)
+      (log/info "Launching pod with name" pod-name "in namespace" namespace ":" pod)
       (try
         (-> api
             (.createNamespacedPod namespace pod nil nil nil))
         (catch ApiException e
-          (log/error e "Error submitting pod:" (.getResponseBody e)))))
+          (log/error e "Error submitting pod with name" pod-name "in namespace" namespace ":" (.getResponseBody e)))))
     ; Because of the complicated nature of task-metadata-seq, we can't easily run the V1Pod creation code for a
     ; launching pod on a server restart. Thus, if we create a task, store into datomic, but then the cook scheduler
     ; fails --- before kubernetes creates a pod (either the message isn't sent, or there's a kubernetes problem) ---
