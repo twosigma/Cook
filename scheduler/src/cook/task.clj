@@ -15,6 +15,7 @@
 ;;
 (ns cook.task
   (:require
+    [cook.compute-cluster :as cc]
     [datomic.api :as d]))
 
 (defn task-entity-id->task-id
@@ -37,3 +38,11 @@
   (->> task-entity-id
        (d/entity db)
        task-entity->compute-cluster-name))
+
+(defn task-ent->ComputeCluster
+  "Given a task entity, return the compute cluster object for it, if it exists. May return nil if that compute cluster on the task
+  is no longer in service."
+  [task-ent]
+  (some-> task-ent
+          task-entity->compute-cluster-name
+          cc/compute-cluster-name->ComputeCluster))

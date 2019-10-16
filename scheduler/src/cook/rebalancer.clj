@@ -25,6 +25,7 @@
             [cook.scheduler.constraints :as constraints]
             [cook.scheduler.dru :as dru]
             [cook.scheduler.share :as share]
+            [cook.task :as task]
             [cook.tools :as util]
             [datomic.api :as d :refer (q)]
             [mesomatic.scheduler :as mesos]
@@ -472,7 +473,7 @@
 
 
 (defn rebalance!
-  [db conn compute-cluster agent-attributes-cache rebalancer-reservation-atom params init-state jobs-to-make-room-for pool-name]
+  [db conn agent-attributes-cache rebalancer-reservation-atom params init-state jobs-to-make-room-for pool-name]
   (try
     (log/info "Rebalancing...Params:" params)
     (let [preemption-decisions (rebalance db agent-attributes-cache rebalancer-reservation-atom
@@ -514,9 +515,8 @@
             (catch Throwable e
               (log/warn e "Failed to transact preemption")))
           (when-let [task-id (:instance/task-id task-ent)]
-            (cc/kill-task compute-cluster task-id)))))))
-
-
+            (when-let [compute-cluster (task/task-ent->ComputeCluster task-ent)]
+              (cc/kill-task compute-cluster task-id))))))))
 
 (def datomic-params [:max-preemption
                      :min-dru-diff
@@ -543,7 +543,7 @@
               recognized-params))]))))
 
 (defn start-rebalancer!
-  [{:keys [config conn compute-cluster agent-attributes-cache pool-name->pending-jobs-atom
+  [{:keys [config conn agent-attributes-cache pool-name->pending-jobs-atom
            rebalancer-reservation-atom trigger-chan view-incubating-offers]}]
   (binding [metrics-dru-scale (:dru-scale config)]
     (update-datomic-params-from-config! conn config)
@@ -573,7 +573,7 @@
                         init-state (init-state db (util/get-running-task-ents db) jobs-to-make-room-for
                                                host->spare-resources pool-ent)]
                     (log/info "Rebalancing for pool" pool)
-                    (rebalance! db conn compute-cluster agent-attributes-cache rebalancer-reservation-atom
+                    (rebalance! db conn agent-attributes-cache rebalancer-reservation-atom
                                 params init-state jobs-to-make-room-for (:pool/name pool-ent))))
                 @pool-name->pending-jobs-atom)
               (log/info "Rebalance cycle ended"))
