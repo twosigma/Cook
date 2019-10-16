@@ -284,9 +284,9 @@ class CookTest(util.CookTest):
         job_uuid, resp = util.submit_job(self.cook_url, command=command)
         self.assertEqual(201, resp.status_code, msg=resp.content)
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
-        self.assertEqual(1, len(job['instances']))
-        message = json.dumps(job['instances'][0], sort_keys=True)
-        self.assertEqual('success', job['instances'][0]['status'], message)
+        self.assertLessEqual(1, len(job['instances']))
+        message = json.dumps(job['instances'], sort_keys=True)
+        self.assertIn('success', [i['status'] for i in job['instances']], message)
 
     def test_job_environment_cook_job_and_instance_and_group_uuid(self):
         command = 'echo "Job environment:" && env && echo "Checking environment variables..." && ' \
