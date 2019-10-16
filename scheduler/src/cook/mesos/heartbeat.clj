@@ -43,7 +43,7 @@
             [[ch data]] :success
             :default :dropped
             :priority true)
-      :dropped (log/error "Dropped heartbeat from task" task-id)
+      :dropped (log/debug "Dropped heartbeat from task" task-id)
       :success (log/debug "Received heartbeat from task" task-id)
       nil)
     (catch Throwable ex
