@@ -806,7 +806,7 @@
 (defn make-offer-handler
   [conn fenzo pool-name->pending-jobs-atom agent-attributes-cache max-considerable scaleback
    floor-iterations-before-warn floor-iterations-before-reset trigger-chan rebalancer-reservation-atom
-   mesos-run-as-user pool-name compute-cluster]
+   mesos-run-as-user pool-name compute-clusters]
   (let [resources-atom (atom (view-incubating-offers fenzo))]
     (reset! fenzo-num-considerable-atom max-considerable)
     (util/chime-at-ch
@@ -835,7 +835,8 @@
                       ;;     When this happens, users should never exceed their quota
                       user->usage-future (future (generate-user-usage-map (d/db conn) pool-name))
                       ;; Try to clear the channel
-                      offers (cc/pending-offers compute-cluster pool-name)
+                      ;; Merge the pending offers from all compute clusters.
+                      offers (apply concat (map #(cc/pending-offers % pool-name) compute-clusters))
                       _ (doseq [offer offers
                                 :let [slave-id (-> offer :slave-id :value)
                                       attrs (get-offer-attr-map offer)]]
@@ -1309,7 +1310,7 @@
 (meters/defmeter [cook-mesos scheduler offer-chan-full-error])
 
 (defn make-fenzo-scheduler
-  [compute-cluster offer-incubate-time-ms fitness-calculator good-enough-fitness]
+  [offer-incubate-time-ms fitness-calculator good-enough-fitness]
   (.. (TaskScheduler$Builder.)
       (disableShortfallEvaluation) ;; We're not using the autoscaling features
       (withLeaseOfferExpirySecs (max (-> offer-incubate-time-ms time/millis time/in-seconds) 1)) ;; should be at least 1 second
@@ -1324,7 +1325,7 @@
                                        id (:id offer)]
                                    (log/debug "Fenzo is declining offer" offer)
                                    (try
-                                     (decline-offers compute-cluster [id])
+                                     (decline-offers (:compute-cluster offer) [id])
                                      (catch Exception e
                                        (log/error e "Unable to decline fenzos rejected offers")))))))
       (build)))
@@ -1394,7 +1395,7 @@
                (body-fn))))))
 
 (defn create-datomic-scheduler
-  [{:keys [conn compute-cluster fenzo-fitness-calculator fenzo-floor-iterations-before-reset
+  [{:keys [conn compute-clusters fenzo-fitness-calculator fenzo-floor-iterations-before-reset
            fenzo-floor-iterations-before-warn fenzo-max-jobs-considered fenzo-scaleback good-enough-fitness
            mea-culpa-failure-limit mesos-run-as-user agent-attributes-cache offer-incubate-time-ms
            pool-name->pending-jobs-atom rebalancer-reservation-atom task-constraints
@@ -1407,7 +1408,7 @@
         pools' (if (-> pools count pos?)
                  pools
                  [{:pool/name "no-pool"}])
-        pool-name->fenzo (pool-map pools' (fn [_] (make-fenzo-scheduler compute-cluster offer-incubate-time-ms
+        pool-name->fenzo (pool-map pools' (fn [_] (make-fenzo-scheduler offer-incubate-time-ms
                                                                         fenzo-fitness-calculator good-enough-fitness)))
         {:keys [pool->resources-atom]}
         (reduce (fn [m pool-ent]
@@ -1417,7 +1418,7 @@
                         (make-offer-handler
                           conn fenzo pool-name->pending-jobs-atom agent-attributes-cache fenzo-max-jobs-considered
                           fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset
-                          match-trigger-chan rebalancer-reservation-atom mesos-run-as-user pool-name compute-cluster)]
+                          match-trigger-chan rebalancer-reservation-atom mesos-run-as-user pool-name compute-clusters)]
                     (-> m
                         (assoc-in [:pool->resources-atom pool-name] resources-atom))))
                 {}

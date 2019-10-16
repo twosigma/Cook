@@ -160,7 +160,7 @@
                                   (let [{:keys [pool-name->fenzo view-incubating-offers]}
                                         (sched/create-datomic-scheduler
                                          {:conn mesos-datomic-conn
-                                          :compute-cluster compute-cluster
+                                          :compute-clusters (vals @cook.compute-cluster/cluster-name->compute-cluster-atom)
                                           :fenzo-fitness-calculator fenzo-fitness-calculator
                                           :fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-reset
                                           :fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-warn
