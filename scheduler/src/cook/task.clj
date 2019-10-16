@@ -15,8 +15,8 @@
 ;;
 (ns cook.task
   (:require
-    [datomic.api :as d]
-    [cook.compute-cluster :as cc]))
+    [cook.compute-cluster :as cc]
+    [datomic.api :as d]))
 
 (defn task-entity-id->task-id
   "Given a task entity, what is the task-id associated with it?"
