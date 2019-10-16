@@ -1151,7 +1151,7 @@ class CookTest(util.CookTest):
 
     @unittest.skipIf(util.has_one_agent(), 'Test requires multiple agents')
     def test_cancel_instance(self):
-        job_uuid, _ = util.submit_job(self.cook_url, command='sleep 10', max_retries=2)
+        job_uuid, _ = util.submit_job(self.cook_url, command=f'sleep {util.DEFAULT_WAIT_INTERVAL_MS * 3}', max_retries=2)
         job = util.wait_for_job(self.cook_url, job_uuid, 'running')
         task_id = job['instances'][0]['task_id']
         resp = util.session.delete('%s/rawscheduler?instance=%s' % (self.cook_url, task_id))
