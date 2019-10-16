@@ -1056,7 +1056,9 @@
   [conn trigger-chan]
   (util/chime-at-ch trigger-chan
                     (fn straggler-handler-event []
-                      (handle-stragglers conn (fn [task-ent] (cc/kill-task (cook.task/task-ent->ComputeCluster task-ent) (:instance/task-id task-ent)))))
+                      (handle-stragglers conn (fn [task-ent]
+                                                (cc/kill-task (cook.task/task-ent->ComputeCluster task-ent)
+                                                              (:instance/task-id task-ent)))))
                     {:error-handler (fn [e]
                                       (log/error e "Failed to handle stragglers"))}))
 
