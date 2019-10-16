@@ -412,7 +412,7 @@
 
     ; pod-spec
     (.addContainersItem pod-spec container)
-    (.setNodeName pod-spec hostname)
+    ;(.setNodeName pod-spec hostname)
     (.setRestartPolicy pod-spec "Never")
     (when pool-name
       (.addTolerationsItem pod-spec (toleration-for-pool pool-name)))
