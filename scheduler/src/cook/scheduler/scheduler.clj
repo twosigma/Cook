@@ -1053,10 +1053,10 @@
 (defn straggler-handler
   "Periodically checks for running jobs that are in groups and runs the associated
    straggler handler."
-  [conn compute-cluster trigger-chan]
+  [conn trigger-chan]
   (util/chime-at-ch trigger-chan
                     (fn straggler-handler-event []
-                      (handle-stragglers conn #(cc/kill-task compute-cluster (:instance/task-id %))))
+                      (handle-stragglers conn (fn [task-ent] (cc/kill-task (cook.task/task-ent->ComputeCluster task-ent) (:instance/task-id task-ent)))))
                     {:error-handler (fn [e]
                                       (log/error e "Failed to handle stragglers"))}))
 

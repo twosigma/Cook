@@ -184,8 +184,7 @@
                                     ; Many of these should look at the compute-cluster of the underlying jobs, and not use driver at all.
                                     (cook.scheduler.scheduler/lingering-task-killer mesos-datomic-conn compute-cluster
                                                                                     task-constraints lingering-task-trigger-chan)
-                                    (cook.scheduler.scheduler/straggler-handler mesos-datomic-conn compute-cluster
-                                                                                straggler-trigger-chan)
+                                    (cook.scheduler.scheduler/straggler-handler mesos-datomic-conn straggler-trigger-chan)
                                     (cook.scheduler.scheduler/cancelled-task-killer mesos-datomic-conn
                                                                                     cancelled-task-trigger-chan)
                                     (cook.mesos.heartbeat/start-heartbeat-watcher! mesos-datomic-conn mesos-heartbeat-chan)
