@@ -1074,7 +1074,7 @@
 
 (defn cancelled-task-killer
   "Every trigger, kill tasks that have been cancelled (e.g. via the API)."
-  [conn compute-cluster trigger-chan]
+  [conn trigger-chan]
   (util/chime-at-ch
     trigger-chan
     (fn cancelled-task-killer-event []
@@ -1084,7 +1084,7 @@
           (log/warn "killing cancelled task " (:instance/task-id task))
           @(d/transact conn [[:db/add (:db/id task) :instance/reason
                               [:reason/name :mesos-executor-terminated]]])
-          (cc/kill-task compute-cluster (:instance/task-id task)))))
+          (cc/kill-task-if-possible (cook.task/task-ent->ComputeCluster task) (:instance/task-id task)))))
     {:error-handler (fn [e]
                       (log/error e "Failed to kill cancelled tasks!"))}))
 

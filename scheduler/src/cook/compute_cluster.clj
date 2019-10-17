@@ -47,6 +47,12 @@
   (restore-offers [this pool-name offers]
     "Called when offers are not processed to ensure they're still available."))
 
+(defn kill-task-if-possible [compute-cluster task-id]
+  "If compute cluster is nil, print a warning instead of killing the task"
+  (if compute-cluster
+    (kill-task compute-cluster task-id)
+    (log/warn "Unable to kill task " task-id " because compute-cluster is nil")))
+
 ; Internal method
 (defn write-compute-cluster
   "Create a missing compute-cluster for one that's not yet in the database."
