@@ -967,26 +967,24 @@
    A lingering task is a task that runs longer than timeout-hours."
   [db now max-timeout-hours default-timeout-hours]
   (let [jobs-with-max-runtime
-        (q '[:find ?task-id ?start-time ?max-runtime
+        (q '[:find ?i ?start-time ?max-runtime
              :in $ ?default-runtime
              :where
              [(ground [:instance.status/unknown :instance.status/running]) [?status ...]]
              [?i :instance/status ?status]
-             [?i :instance/task-id ?task-id]
              [?i :instance/start-time ?start-time]
              [?j :job/instance ?i]
              [(get-else $ ?j :job/max-runtime ?default-runtime) ?max-runtime]]
            db (-> default-timeout-hours time/hours time/in-millis))
         max-allowed-timeout-ms (-> max-timeout-hours time/hours time/in-millis)]
-    (for [[task-id start-time max-runtime-ms] jobs-with-max-runtime
+    (for [[task-entity start-time max-runtime-ms] jobs-with-max-runtime
           :let [timeout-period (millis->period (min max-runtime-ms max-allowed-timeout-ms))
                 timeout-boundary (time/plus (tc/from-date start-time) timeout-period)]
           :when (time/after? now timeout-boundary)]
-      task-id)))
+      (d/entity db task-entity))))
 
-; TODO: Should get the compute-cluster from the task structure, and kill based on that.
 (defn kill-lingering-tasks
-  [now conn compute-cluster config]
+  [now conn config]
   (let [{:keys [max-timeout-hours
                 default-timeout-hours
                 timeout-hours]} config
@@ -1000,19 +998,20 @@
                 {:default-timeout-hours default-timeout-hours
                  :max-timeout-hours max-timeout-hours}
                 "There are in total" (count lingering-tasks) "lingering tasks.")
-      (doseq [task-id lingering-tasks]
-        (log/info "Killing lingering task" task-id)
-        ;; Note that we probably should update db to mark a task failed as well.
-        ;; However in the case that we fail to kill a particular task in Mesos,
-        ;; we could lose the chances to kill this task again.
-        (cc/kill-task compute-cluster task-id)
-        ;; BUG - the following transaction races with the update that is triggered
-        ;; when the task is actually killed and sends its exit status code.
-        ;; See issue #515 on GitHub.
-        @(d/transact
-           conn
-           [[:instance/update-state [:instance/task-id task-id] :instance.status/failed [:reason/name :max-runtime-exceeded]]
-            [:db/add [:instance/task-id task-id] :instance/reason [:reason/name :max-runtime-exceeded]]])))))
+      (doseq [task-entity lingering-tasks]
+        (let [task-id (:instance/task-id task-entity)]
+          (log/info "Killing lingering task" task-id)
+          ;; Note that we probably should update db to mark a task failed as well.
+          ;; However in the case that we fail to kill a particular task in Mesos,
+          ;; we could lose the chances to kill this task again.
+          (cc/kill-task (cook.task/task-ent->ComputeCluster task-entity) task-id)
+          ;; BUG - the following transaction races with the update that is triggered
+          ;; when the task is actually killed and sends its exit status code.
+          ;; See issue #515 on GitHub.
+          @(d/transact
+             conn
+             [[:instance/update-state (:db/id task-entity) :instance.status/failed [:reason/name :max-runtime-exceeded]]
+              [:db/add [:instance/task-id task-id] :instance/reason [:reason/name :max-runtime-exceeded]]]))))))
 
 ; Should not use driver as an argument.
 (defn lingering-task-killer
@@ -1020,12 +1019,12 @@
 
    The config is a map with optional keys where
    :timout-hours specifies the timeout hours for lingering tasks"
-  [conn compute-cluster config trigger-chan]
+  [conn config trigger-chan]
   (let [config (merge {:timeout-hours (* 2 24)}
                       config)]
     (util/chime-at-ch trigger-chan
                       (fn kill-linger-task-event []
-                        (kill-lingering-tasks (time/now) conn compute-cluster config))
+                        (kill-lingering-tasks (time/now) conn config))
                       {:error-handler (fn [e]
                                         (log/error e "Failed to reap timeout tasks!"))})))
 
