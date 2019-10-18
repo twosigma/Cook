@@ -171,7 +171,8 @@
       (.submit kubernetes-executor ^Callable
       (fn []
         (try
-          (handle-watch-updates current-nodes-atom watch (fn [n] (-> n .getMetadata .getName)) [])
+          (handle-watch-updates current-nodes-atom watch (fn [n] (-> n .getMetadata .getName))
+                                [(make-atom-updater current-nodes-atom)]) ; Update the set of all nodes.
           (catch Exception e
             (log/warn e "Error during node watch")
             (initialize-node-watch api-client current-nodes-atom))
