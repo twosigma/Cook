@@ -32,8 +32,8 @@
                                                              (node-name->consumed node-name)))
                                                (keys node-name->capacity))
         compute-cluster-name (cc/compute-cluster-name compute-cluster)]
-    (log/info "In" compute-cluster "compute cluster, capacity:" node-name->capacity)
-    (log/info "In" compute-cluster "compute cluster, consumption:" node-name->consumed)
+    (log/info "In" compute-cluster-name "compute cluster, capacity:" node-name->capacity)
+    (log/info "In" compute-cluster-name "compute cluster, consumption:" node-name->consumed)
     (->> node-name->available
          (filter (fn [[node-name _]] (-> node-name node-name->node api/node-schedulable?)))
          (map (fn [[node-name available]]
