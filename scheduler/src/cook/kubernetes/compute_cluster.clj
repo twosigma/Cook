@@ -30,13 +30,15 @@
                                                  (merge-with -
                                                              (node-name->capacity node-name)
                                                              (node-name->consumed node-name)))
-                                               (keys node-name->capacity))]
-    (log/info "Capacity: " node-name->capacity "Consumption:" node-name->consumed)
+                                               (keys node-name->capacity))
+        compute-cluster-name (cc/compute-cluster-name compute-cluster)]
+    (log/info "In" compute-cluster "compute cluster, capacity:" node-name->capacity)
+    (log/info "In" compute-cluster "compute cluster, consumption:" node-name->consumed)
     (->> node-name->available
          (filter (fn [[node-name _]] (-> node-name node-name->node api/node-schedulable?)))
          (map (fn [[node-name available]]
                 {:id {:value (str (UUID/randomUUID))}
-                 :framework-id (cc/compute-cluster-name compute-cluster)
+                 :framework-id compute-cluster-name
                  :slave-id {:value node-name}
                  :hostname node-name
                  :resources [{:name "mem" :type :value-scalar :scalar (max 0.0 (:mem available))}
