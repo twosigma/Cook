@@ -1769,6 +1769,7 @@ def dummy_ls_entries(_, __, ___):
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual('hello\nworld\n' * pow(2, iterations), cli.decode(cp.stdout))
 
+    @pytest.mark.xfail
     def test_cat_large_file_no_newlines(self):
         iterations = 18
         cp, uuids = cli.submit('bash -c \'printf "helloworld" > file.txt; '
