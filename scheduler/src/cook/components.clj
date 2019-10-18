@@ -156,6 +156,7 @@
 (def curator-framework
   (fnk [[:settings zookeeper]]
     (when zookeeper
+      (log/info "Using zookeeper connection string:" zookeeper)
       (let [retry-policy (BoundedExponentialBackoffRetry. 100 120000 10)
             curator-framework (CuratorFrameworkFactory/newClient zookeeper 180000 30000 retry-policy)]
         (.. curator-framework
