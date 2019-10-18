@@ -208,6 +208,8 @@
                                                                                     optimizer-trigger-chan))
                                     (when (:update-data-local-costs-trigger-chan trigger-chans)
                                       (dl/start-update-cycles! mesos-datomic-conn (:update-data-local-costs-trigger-chan trigger-chans)))
+                                    ; This counter exists so that the cook leader has a '1' and the others have a '0'.
+                                    ; So we can see who the leader is in the graphs by graphing the value.
                                     (counters/inc! mesos-leader)
                                     (async/tap mesos-datomic-mult datomic-report-chan)
                                     (cook.scheduler.scheduler/monitor-tx-report-queue datomic-report-chan mesos-datomic-conn)
