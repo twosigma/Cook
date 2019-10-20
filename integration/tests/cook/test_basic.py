@@ -309,8 +309,10 @@ class CookTest(util.CookTest):
         job_uuid, resp = util.submit_job(self.cook_url, command='exit 1', executor=job_executor_type)
         self.assertEqual(201, resp.status_code, msg=resp.content)
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
-        self.assertEqual(1, len(job['instances']), job['instances'])
-        instance = job['instances'][0]
+        # Under normal circumstances, there will be 1 instance, but we need to allow for the
+        # possibility of multiple failed instances, e.g. "Agent removed"
+        self.assertLessEqual(1, len(job['instances']), job['instances'])
+        instance = next(i for i in job['instances'] if i['reason_string'] == 'Command exited non-zero')
         message = json.dumps(instance, sort_keys=True)
         self.assertEqual('failed', instance['status'], message)
         self.assertFalse(instance['reason_mea_culpa'], message)
@@ -1089,7 +1091,10 @@ class CookTest(util.CookTest):
             job = util.load_job(self.cook_url, job_uuid)
             details = f"Job details: {json.dumps(job, sort_keys=True)}"
             self.assertIn(job['status'], ['waiting', 'running'], details)
-            self.assertEqual(1, job['retries_remaining'], details)
+            # Under normal circumstances, there will be 1 retry remaining, but we need to allow for the
+            # possibility of the failed instance above being mea-culpa, e.g. "Agent removed", which 
+            # would not consume an attempt
+            self.assertLessEqual(1, job['retries_remaining'], details)
         finally:
             util.kill_jobs(self.cook_url, [job_uuid])
 
