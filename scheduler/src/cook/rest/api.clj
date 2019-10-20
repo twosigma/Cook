@@ -139,7 +139,8 @@
   {:authentication-scheme s/Str
    :commit s/Str
    :start-time s/Inst
-   :version s/Str})
+   :version s/Str
+   :leader-url s/Str})
 
 (def PortMapping
   "Schema for Docker Portmapping"
