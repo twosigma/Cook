@@ -42,11 +42,14 @@ class CookTest(util.CookTest):
         self.assertIn('commit', info, info_details)
         self.assertIn('start-time', info, info_details)
         self.assertIn('version', info, info_details)
-        self.assertEqual(len(info), 4, info_details)
+        self.assertGreaterEqual(len(info), 4, info_details)
         try:
             dateutil.parser.parse(info['start-time'])
         except:
             self.fail(f"Unable to parse start time: {info_details}")
+        if 'leader-url' in info:
+            url_regex = 'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+'
+            self.assertIsNotNone(re.match(url_regex, info['leader-url']), info_details)
 
     def test_basic_submit(self):
         job_executor_type = util.get_job_executor_type()
