@@ -851,6 +851,7 @@ class CookCliTest(util.CookTest):
             proc.kill()
             cli.kill(uuids, self.cook_url)
 
+    @pytest.mark.xfail
     def test_tail_zero_byte_file(self):
         cp, uuids = cli.submit('touch file.txt', self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
