@@ -517,14 +517,17 @@
         task-id-2 (-> (d/entity test-db instance-id-2) :instance/task-id)
         task-id-4 (-> (d/entity test-db instance-id-4) :instance/task-id)
         task-id-5 (-> (d/entity test-db instance-id-5) :instance/task-id)]
-    (is (= #{task-id-2 task-id-4} (set (sched/get-lingering-tasks test-db now 120 120))))
-    (is (not (contains? (set (sched/get-lingering-tasks test-db next-month 1e4 1e4)) task-id-5)))
-    (is (contains? (set (sched/get-lingering-tasks test-db next-year 1e5 1e5)) task-id-5))))
+    (is (= #{task-id-2 task-id-4} (set (map :instance/task-id (sched/get-lingering-tasks test-db now 120 120)))))
+    (is (not (contains? (set (map :instance/task-id (sched/get-lingering-tasks test-db next-month 1e4 1e4))) task-id-5)))
+    (is (contains? (set (map :instance/task-id (sched/get-lingering-tasks test-db next-year 1e5 1e5))) task-id-5))))
 
 (deftest test-kill-lingering-tasks
   ;; Ensure that lingering tasks are killed properly
   (let [uri "datomic:mem://test-kill-lingering-tasks"
         conn (restore-fresh-database! uri)
+        ;; We need a version of compute-cluster with dummy-driver where killing is mocked out.
+        dummy-driver (reify msched/SchedulerDriver (kill-task! [_ _] nil))
+        compute-cluster (testutil/fake-test-compute-cluster-with-driver conn uri dummy-driver)
         ;; a job has been timeout
         job-id-1 (create-dummy-job conn :user "tsram" :job-state :job.state/running)
         ;; a job has been timeout
@@ -541,20 +544,20 @@
         instance-id-1 (create-dummy-instance conn job-id-1
                                              :instance-status :instance.status/unknown
                                              :task-id "task-1"
-                                             :start-time start-time-1)
+                                             :start-time start-time-1
+                                             :compute-cluster compute-cluster)
         instance-id-2 (create-dummy-instance conn job-id-2
                                              :instance-status :instance.status/running
                                              :task-id "task-2"
-                                             :start-time start-time-2)
+                                             :start-time start-time-2
+                                             :compute-cluster compute-cluster)
         instance-id-3 (create-dummy-instance conn job-id-3
                                              :instance-status :instance.status/running
                                              :task-id "task-3"
-                                             :start-time start-time-3)
-        config {:timeout-hours timeout-hours}
-        dummy-driver (reify msched/SchedulerDriver (kill-task! [_ _] nil))
-        compute-cluster (testutil/fake-test-compute-cluster-with-driver conn uri dummy-driver)]
-
-    (sched/kill-lingering-tasks (t/now) conn compute-cluster config)
+                                             :start-time start-time-3
+                                             :compute-cluster compute-cluster)
+        config {:timeout-hours timeout-hours}]
+    (sched/kill-lingering-tasks (t/now) conn config)
 
     (is (= :instance.status/failed
            (ffirst (q '[:find ?status
