@@ -139,7 +139,8 @@
   {:authentication-scheme s/Str
    :commit s/Str
    :start-time s/Inst
-   :version s/Str})
+   :version s/Str
+   :leader-url s/Str})
 
 (def PortMapping
   "Schema for Docker Portmapping"
@@ -1412,9 +1413,23 @@
 ;; We store the start-up time (ISO-8601) for reporting on the /info endpoint
 (def start-up-time (tf/unparse iso-8601-format (t/now)))
 
+(def leader-hostname-regex #"^([^#]*)#([0-9]*)#([a-z]*)#.*")
+
+(defn leader-url
+  [leader-selector]
+  (let [leader-id (-> leader-selector .getLeader .getId)
+        leader-match (re-matcher leader-hostname-regex leader-id)]
+    (if (.matches leader-match)
+      (let [leader-hostname (.group leader-match 1)
+            leader-port (.group leader-match 2)
+            leader-protocol (.group leader-match 3)]
+        (str leader-protocol "://" leader-hostname ":" leader-port))
+      (throw (IllegalStateException.
+               (str "Unable to parse leader id: " leader-id))))))
+
 (defn cook-info-handler
   "Handler for the /info endpoint"
-  [settings]
+  [settings leader-selector]
   (let [auth-middleware (:authorization-middleware settings)
         auth-scheme (str (or (-> auth-middleware meta :json-value) auth-middleware))]
     (base-cook-handler
@@ -1423,7 +1438,8 @@
                     {:authentication-scheme auth-scheme
                      :commit @cook.util/commit
                      :start-time start-up-time
-                     :version @cook.util/version})})))
+                     :version @cook.util/version
+                     :leader-url (leader-url leader-selector)})})))
 
 ;;; On GET; use repeated job argument
 (defn read-jobs-handler-deprecated
@@ -1922,8 +1938,6 @@
 ;;
 ;; /queue
 
-(def leader-hostname-regex #"^([^#]*)#([0-9]*)#([a-z]*)#.*")
-
 (timers/deftimer [cook-scheduler handler queue-endpoint])
 (defn waiting-jobs
   [conn mesos-pending-jobs-fn is-authorized-fn mesos-leadership-atom leader-selector]
@@ -1949,18 +1963,10 @@
                       [false {::error "Unauthorized"}]))))
     :exists? (fn [_] [@mesos-leadership-atom {}])
     :existed? (fn [_] [true {}])
-    :moved-temporarily? (fn [ctx]
+    :moved-temporarily? (fn [_]
                           (if @mesos-leadership-atom
                             [false {}]
-                            (let [leader-id (-> leader-selector .getLeader .getId)
-                                  leader-match (re-matcher leader-hostname-regex leader-id)]
-                              (if (.matches leader-match)
-                                (let [leader-hostname (.group leader-match 1)
-                                      leader-port (.group leader-match 2)
-                                      leader-protocol (.group leader-match 3)]
-                                  [true {:location (str leader-protocol "://" leader-hostname ":" leader-port "/queue")}])
-                                (throw (IllegalStateException.
-                                         (str "Unable to parse leader id: " leader-id)))))))
+                            [true {:location (str (leader-url leader-selector) "/queue")}]))
     :handle-forbidden (fn [ctx]
                         (log/info (get-in ctx [:request :authorization/user]) " is not authorized to access queue")
                         (render-error ctx))
@@ -2966,7 +2972,7 @@
             {:get {:summary "Returns info about this Cook Scheduler instance's setup. No authentication required."
                    :responses {200 {:schema CookInfo
                                     :description "The Cook Scheduler info was returned."}}
-                   :handler (cook-info-handler settings)}}))
+                   :handler (cook-info-handler settings leader-selector)}}))
 
         (c-api/context
           "/instances/:uuid" [uuid]
