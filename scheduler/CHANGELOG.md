@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.35.0] - 2019-10-21
+### Added
+- Max ports to task constraints, from @pschorf
+- Leader URL to `/info`, from @dposada
+### Changed
+- Max priority to 16,000,000, from @nsinkov
+
 ## [1.34.2] - 2019-10-02
 ### Changed
 - Integration test improvements, from @dposada
