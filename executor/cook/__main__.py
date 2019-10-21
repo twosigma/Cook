@@ -37,6 +37,7 @@ def main(args=None):
     executor_id = environment.get('MESOS_EXECUTOR_ID', '1')
     log_level = environment.get('EXECUTOR_LOG_LEVEL', 'INFO')
     sandbox_directory = environment.get('MESOS_SANDBOX', '.')
+    http_timeout_seconds = int(environment.get('EXECUTOR_HTTP_TIMEOUT_SECONDS', 120))
 
     logging.basicConfig(level = log_level,
                         filename = os.path.join(sandbox_directory, 'executor.log'),
@@ -74,7 +75,7 @@ def main(args=None):
 
     try:
         executor = ce.CookExecutor(stop_signal, config)
-        driver = pm.MesosExecutorDriver(executor)
+        driver = pm.MesosExecutorDriver(executor, timeout=http_timeout_seconds)
 
         logging.info('MesosExecutorDriver is starting...')
         driver.start()
