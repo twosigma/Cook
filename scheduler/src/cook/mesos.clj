@@ -145,6 +145,7 @@
 
         compute-cluster (cc/get-default-cluster-for-legacy)
         rebalancer-reservation-atom (atom {})
+        _ (log/info "Using path" zk-prefix "for leader selection")
         leader-selector (LeaderSelector.
                           curator-framework
                           zk-prefix
