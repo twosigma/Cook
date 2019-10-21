@@ -153,7 +153,7 @@
                           ;clojure.lang.Agent/pooledExecutor
                           (reify LeaderSelectorListener
                             (takeLeadership [_ client]
-                              (log/warn "Taking mesos leadership")
+                              (log/warn "Taking leadership")
                               (reset! mesos-leadership-atom true)
                               ;; TODO: get the framework ID and try to reregister
                               (let [normal-exit (atom true)]
@@ -226,10 +226,10 @@
                                     (reset! mesos-leadership-atom false)
                                     (counters/dec! mesos-leader)
                                     (when @normal-exit
-                                      (log/warn "Lost mesos leadership naturally"))
+                                      (log/warn "Lost leadership naturally"))
                                     ;; Better to fail over and rely on start up code we trust then rely on rarely run code
                                     ;; to make sure we yield leadership correctly (and fully)
-                                    (log/fatal "Lost mesos leadership. Exiting. Expecting a supervisor to restart me!")
+                                    (log/fatal "Lost leadership. Exiting. Expecting a supervisor to restart me!")
                                     (System/exit 0)))))
                             (stateChanged [_ client newState]
                               ;; We will give up our leadership whenever it seems that we lost
@@ -251,7 +251,7 @@
                                  (java.util.UUID/randomUUID)))
     (.autoRequeue leader-selector)
     (.start leader-selector)
-    (log/info "Started the mesos leader selector")
+    (log/info "Started the leader selector")
     {:submitter (partial submit-to-mesos mesos-datomic-conn)
      :leader-selector leader-selector}))
 
