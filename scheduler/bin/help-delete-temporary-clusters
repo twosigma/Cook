@@ -9,14 +9,12 @@
 
 set -e
 
-PROJECT=$1
-ZONE=$2
-CLUSTERNAME=$3
+ZONE=$1
 
-bin/help-delete-temporary-clusters $ZONE
-bin/help-make-cluster $PROJECT $ZONE $CLUSTERNAME .cook_kubeconfig_1
-
-echo "---- Showing all of the clusters we generated"
-gcloud container clusters list
-
-
+# Nuke all existing temporary clusters; don't want to keep on making more idle clusters each time you invoke this.
+echo "---- Deleting any existing temporary clusters."
+gcloud container clusters list --filter 'resourceLabels.longevity=temporary'
+for i in `gcloud container clusters list --filter 'resourceLabels.longevity=temporary' --format="value(name)"`
+do
+    gcloud --quiet container clusters delete $i --zone $ZONE
+done
