@@ -21,8 +21,8 @@
          :run-as-user "root"}
  :compute-clusters [{:factory-fn cook.kubernetes.compute-cluster/factory-fn
                      :config {:compute-cluster-name "minikube"
-                              ;; Location of the kubernetes config file, e.g. $HOME/.kube/config
-                              :config-file #config/env "COOK_K8S_CONFIG_FILE"}}]
+                              ;; Location of the kubernetes config file. Hardcoded to the location specified by bin/make-gke-test-cluster
+                              :config-file "../scheduler/.cook_kubeconfig_1"}}]
  :cors-origins ["https?://cors.example.com"]
  :data-local {:fitness-calculator {:cache-ttl-ms 60000
                                    :cost-endpoint #config/env "DATA_LOCAL_ENDPOINT"
