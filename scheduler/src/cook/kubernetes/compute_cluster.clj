@@ -179,6 +179,7 @@
 
   (initialize-cluster [this pool->fenzo running-task-ents]
     ; Initialize the pod watch path.
+    (log/info "Initializing Kubernetes cluster " name)
     (let [conn cook.datomic/conn
           cook-pod-callback (make-cook-pod-watch-callback this)]
       ; We set expected state first because initialize-pod-watch sets (and invokes callbacks on and reacts to) the expected and the gruadually discovere existing.
