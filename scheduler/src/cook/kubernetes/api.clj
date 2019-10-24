@@ -67,6 +67,9 @@
           item (.-object watch-response) ;is always non-nil, even for deleted items.
           key (key-fn item)
           prev-item (get @state-atom key)
+          _ (log/info "Watch-update type " (.-type watch-response))
+          _ (log/info "Watch-update for " key " prev-item " prev-item)
+          _ (log/info "Watch-update for " key " item " item)
           ; Now we want to re-bind prev-item and item to the real previous and current,
           ; embedding ADDED/MODIFIED/DELETED based on the location of nils.
           [prev-item item]
@@ -113,6 +116,15 @@
         namespaced-pod-name->pod (pc/map-from-vals get-pod-namespaced-key
                                                    (.getItems current-pods))]
     [current-pods namespaced-pod-name->pod]))
+
+
+(defn log-node-changes
+  "Log node changes"
+    [key prev-item item]
+    (cond
+      (and (nil? prev-item) (not (nil? item))) (log/info "Node created: " key item)
+      (and (not (nil? prev-item)) (not (nil? item))) (log/info "Node changed: " key prev-item "    ----->   " item)
+      (and (not (nil? prev-item)) (nil? item)) (log/info "Node deleted: " key prev-item)))
 
 (defn initialize-pod-watch
   "Initialize the pod watch. This fills all-pods-atom with data and invokes the callback on pod changes."
@@ -173,7 +185,7 @@
       (fn []
         (try
           (handle-watch-updates current-nodes-atom watch (fn [n] (-> n .getMetadata .getName))
-                                [(make-atom-updater current-nodes-atom)]) ; Update the set of all nodes.
+                                [(make-atom-updater current-nodes-atom) log-node-changes]) ; Update the set of all nodes.
           (catch Exception e
             (log/warn e "Error during node watch"))
           (finally
