@@ -210,8 +210,11 @@
   (if (nil? node)
     false
     (let [taints-on-node (or (some-> node .getSpec .getTaints) [])
-          other-taints (remove #(= "cook-pool" (.getKey %)) taints-on-node)]
-      (zero? (count other-taints)))))
+          other-taints (remove #(= "cook-pool" (.getKey %)) taints-on-node)
+          schedulable (zero? (count other-taints))]
+      (when-not schedulable
+        (log/info "Filtering out " (some-> node .getMetadata .getName) " because it has taints " other-taints))
+      schedulable)))
 
 (defn get-capacity
   "Given a map from node-name to node, generate a map from node-name->resource-type-><capacity>"

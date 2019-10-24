@@ -20,6 +20,14 @@
            (java.util UUID)
            (java.util.concurrent Executors ScheduledExecutorService TimeUnit)))
 
+(defn schedulable-node-filter
+  "Is a node schedulable?"
+  [node-name->node [node-name _]]
+  (when-not (-> node-name node-name->node)
+    (log/error "Why are we getting a null node for " node-name))
+  (-> node-name node-name->node api/node-schedulable?))
+
+
 (defn generate-offers
   "Given a compute cluster and maps with node capacity and existing pods, return a map from pool to offers."
   [compute-cluster node-name->node namespaced-pod-name->pod starting-namespaced-pod-name->pod]
@@ -34,8 +42,11 @@
         compute-cluster-name (cc/compute-cluster-name compute-cluster)]
     (log/info "In" compute-cluster-name "compute cluster, capacity:" node-name->capacity)
     (log/info "In" compute-cluster-name "compute cluster, consumption:" node-name->consumed)
+    (log/info "In" compute-cluster-name "filtering out" (->> node-name->available
+                                                             (remove #(schedulable-node-filter node-name->node %))
+                                                             count) "nodes as not schedulable ")
     (->> node-name->available
-         (filter (fn [[node-name _]] (-> node-name node-name->node api/node-schedulable?)))
+         (filter #(schedulable-node-filter node-name->node %))
          (map (fn [[node-name available]]
                 {:id {:value (str (UUID/randomUUID))}
                  :framework-id compute-cluster-name
