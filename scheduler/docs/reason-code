@@ -42,3 +42,4 @@
 99000: unknown reason
 99001: unknown mesos reason
 99002: REASON_EXECUTOR_TERMINATED
+99003: Exited non-zero
