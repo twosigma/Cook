@@ -75,6 +75,7 @@ def main(args=None):
 
     try:
         executor = ce.CookExecutor(stop_signal, config)
+        logging.info('Initializing MesosExecutorDriver with {} second HTTP timeout'.format(http_timeout_seconds))
         driver = pm.MesosExecutorDriver(executor, timeout=http_timeout_seconds)
 
         logging.info('MesosExecutorDriver is starting...')
