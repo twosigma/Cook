@@ -161,14 +161,14 @@
                       (sched/receive-offers offers-chan match-trigger-chan this pool-name offers))
                     (do
                       (log/warn "Declining" offer-count "offer(s) for non-existent pool" pool-name)
-                      (sched/decline-offers-safe driver offers)))
+                      (sched/decline-offers-safe compute-cluster offers)))
                   (if-let [offers-chan (get pool->offers-chan "no-pool")]
                     (do
                       (log/info "Processing" offer-count "offer(s) for pool" pool-name "(not using pools)")
                       (sched/receive-offers offers-chan match-trigger-chan this pool-name offers))
                     (do
                       (log/error "Declining" offer-count "offer(s) for pool" pool-name "(missing no-pool offer chan)")
-                      (sched/decline-offers-safe driver offers))))))
+                      (sched/decline-offers-safe compute-cluster offers))))))
             pool->offers)
           (log/debug "Finished receiving offers for all pools")))
       (status-update
