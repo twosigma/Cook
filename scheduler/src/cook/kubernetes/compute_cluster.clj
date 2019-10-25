@@ -65,7 +65,8 @@
   ; TODO Add in maximum-visit frequency. Only visit a task once every XX seconds.
   (let [taskids (taskids-to-scan kcc)
         _ (log/info "Doing taskid scan. Visiting" (count taskids) "taskids")]
-    (doseq [taskid taskids]
+    (doseq [^String taskid taskids]
+      (log/info "Doing scan of " taskid)
       (controller/scan-process kcc taskid))))
 
 (defn regular-scanner
