@@ -575,9 +575,9 @@ class MultiUserCookTest(util.CookTest):
                                                    end=util.to_iso(end_time + 1),
                                                    name=name)
             user = util.get_user(self.cook_url, job_uuid_1)
-            self.assertEqual(3, stats['overall']['count'])
-            self.assertEqual(3, stats['by-reason']['']['count'])
-            self.assertEqual(3, stats['by-user-and-reason'][user]['']['count'])
+            self.assertTrue(1 <= stats['overall']['count'] <= 3)
+            self.assertTrue(1 <= stats['by-reason']['']['count'] <= 3)
+            self.assertTrue(1 <= stats['by-user-and-reason'][user]['']['count'] <= 3)
         finally:
             util.kill_jobs(self.cook_url, job_uuids)
 
