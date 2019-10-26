@@ -575,6 +575,8 @@ class MultiUserCookTest(util.CookTest):
                                                    end=util.to_iso(end_time + 1),
                                                    name=name)
             user = util.get_user(self.cook_url, job_uuid_1)
+            # We can't guarantee that all 3 of the test instances will remain running for the duration
+            # of the test. For example, an instance might get killed with "Agent removed".
             self.assertTrue(1 <= stats['overall']['count'] <= 3)
             self.assertTrue(1 <= stats['by-reason']['']['count'] <= 3)
             self.assertTrue(1 <= stats['by-user-and-reason'][user]['']['count'] <= 3)
