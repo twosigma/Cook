@@ -1879,7 +1879,7 @@ class CookTest(util.CookTest):
         uuids, resp = util.submit_jobs(self.cook_url, job_spec, num_jobs, groups=[group])
         self.assertEqual(201, resp.status_code, resp.content)
         try:
-            jobs = util.wait_for_jobs(self.cook_url, uuids, 'running')
+            jobs = util.wait_for_jobs_in_statuses(self.cook_url, uuids, ['running', 'completed'])
             hosts = [j['instances'][0]['hostname'] for j in jobs]
             host_count = Counter(hosts)
             self.assertGreaterEqual(len(host_count), minimum_hosts, hosts)
