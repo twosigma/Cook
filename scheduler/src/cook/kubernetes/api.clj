@@ -139,6 +139,8 @@
     ; We want to process all changes through the callback process.
     ; So compute the delta between the old and new and process those via the callbacks.
     ; Note as a side effect, the callbacks mutate all-pods-atom
+    (log/info "DEBUG: Initialize-pod-watch A: " (->> namespaced-pod-name->pod (take 3)))
+    (log/info "DEBUG: Initialize-pod-watch B: " (->> old-all-pods (take 3)))
     (doseq [task (set/union (keys namespaced-pod-name->pod) (keys old-all-pods))]
       (doseq [callback callbacks]
         (try
