@@ -1515,7 +1515,7 @@
                                  task))
           job-id (create-dummy-job conn :user "user" :job-state :job.state/running)
           send-status-update #(->> (make-status-update "task1" :unknown :task-running %)
-                                   (sched/write-status-to-datomic conn {})
+                                   (sched/write-status-to-datomic conn {} false)
                                    async/<!!)
           instance-id (create-dummy-instance conn job-id
                                              :instance-status :instance.status/running

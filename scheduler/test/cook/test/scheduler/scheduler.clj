@@ -944,7 +944,7 @@
                                                  :task-id task-id)]
                                         ; Wait for async database transaction inside handle-status-update
           (->> (make-dummy-status-update task-id :reason-gc-error :task-killed)
-               (sched/write-status-to-datomic conn (constantly fenzo))
+               (sched/write-status-to-datomic conn (constantly fenzo) false)
                async/<!!)
 
           (is (= :instance.status/failed
@@ -969,7 +969,7 @@
                 original-end-time (get-end-time)]
             (Thread/sleep 100)
             (->> (make-dummy-status-update task-id :reason-gc-error :task-killed)
-                 (sched/write-status-to-datomic conn (constantly fenzo))
+                 (sched/write-status-to-datomic conn (constantly fenzo) false)
                  async/<!!)
             (is (= original-end-time (get-end-time))))))
 
@@ -994,7 +994,7 @@
                                                  :reason :max-runtime-exceeded)] ; Previous reason is not mea-culpa
                                         ; Status update says slave got restarted (mea-culpa)
           (->> (make-dummy-status-update task-id :mesos-slave-restarted :task-killed)
-               (sched/write-status-to-datomic conn (constantly fenzo))
+               (sched/write-status-to-datomic conn (constantly fenzo) false)
                async/<!!)
                                         ; Assert old reason persists
           (is (= :max-runtime-exceeded
@@ -1030,17 +1030,17 @@
                                  :task-id task-id)
           (is (nil? (mesos-start-time)))
           (->> (make-dummy-status-update task-id :unknown :task-staging)
-               (sched/write-status-to-datomic conn (constantly fenzo))
+               (sched/write-status-to-datomic conn (constantly fenzo) false)
                async/<!!)
           (is (nil? (mesos-start-time)))
           (->> (make-dummy-status-update task-id :unknown :task-running)
-               (sched/write-status-to-datomic conn (constantly fenzo))
+               (sched/write-status-to-datomic conn (constantly fenzo) false)
                async/<!!)
           (is (not (nil? (mesos-start-time))))
           (let [first-observed-start-time (.getTime (mesos-start-time))]
             (is (not (nil? first-observed-start-time)))
             (->> (make-dummy-status-update task-id :unknown :task-running)
-                 (sched/write-status-to-datomic conn (constantly fenzo))
+                 (sched/write-status-to-datomic conn (constantly fenzo) false)
                  async/<!!)
             (is (= first-observed-start-time (.getTime (mesos-start-time))))))))))
 
@@ -1063,13 +1063,13 @@
                                                  :instance-status :instance.status/unknown
                                                  :task-id task-id)]
           (->> (make-dummy-status-update task-id :reason-command-executor-failed :task-running)
-               (sched/write-status-to-datomic conn (constantly fenzo))
+               (sched/write-status-to-datomic conn (constantly fenzo) false)
                async/<!!)
           ; instance not complete, plugin should not have been invoked
           (is (= {} @plugin-invocation-atom))
 
           (->> (make-dummy-status-update task-id :reason-command-executor-failed :task-killed)
-               (sched/write-status-to-datomic conn (constantly fenzo))
+               (sched/write-status-to-datomic conn (constantly fenzo) false)
                async/<!!)
           ; instance complete, plugin should have been invoked with resulting job/instance
           (let [job (:job @plugin-invocation-atom)
@@ -1919,7 +1919,7 @@
         _ (create-dummy-job-with-instances conn
                                            :job-state :job.state/completed
                                            :instances [{:instance-status :instance.status/success}])]
-    (sched/reconcile-tasks (d/db conn) mock-driver (constantly fenzo))
+    (sched/reconcile-tasks (d/db conn) mock-driver (constantly fenzo) false)
     (let [reconciled-tasks (set @task-atom)
           running-instance (d/entity (d/db conn) running-instance-id)
           unknown-instance (d/entity (d/db conn) unknown-instance-id)]

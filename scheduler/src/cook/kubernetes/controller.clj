@@ -71,7 +71,8 @@
   [kcc mesos-status]
   (scheduler/write-status-to-datomic datomic/conn
                                      @(:pool->fenzo-atom kcc)
-                                     mesos-status))
+                                     mesos-status
+                                     false))
 
 (defn- get-job-container-status
   "Extract the container status for the main cook job container (defined in api/cook-container-name-for-job).

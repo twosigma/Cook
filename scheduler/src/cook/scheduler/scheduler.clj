@@ -205,7 +205,7 @@
 
 (defn write-status-to-datomic
   "Takes a status update from mesos."
-  [conn pool->fenzo status]
+  [conn pool->fenzo status update-fenzo]
   (log/info "Mesos status is:" status)
   (timers/time!
     handle-status-update-duration
@@ -245,7 +245,10 @@
                job-resources (util/job-ent->resources job-ent)
                pool-name (util/job->pool-name job-ent)
                ^TaskScheduler fenzo (get pool->fenzo pool-name)]
-           (when (#{:instance.status/success :instance.status/failed} instance-status)
+           ; Q: How to disable this for kubernetes only. In the case of kubernetes, this tells k8s that the resources can be used almost immediately.
+           ; thats not true, we need to wait for k8s to tell use resources are available.
+           ; So, can we disable this for mesos too? Right now, enable only if mesos.
+           (when (and update-fenzo (#{:instance.status/success :instance.status/failed} instance-status))
              (log/debug "Unassigning task" task-id "from" (:instance/hostname instance-ent))
              (try
                (locking fenzo
