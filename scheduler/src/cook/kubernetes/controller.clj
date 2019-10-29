@@ -130,7 +130,7 @@
 (defn process
   "Visit this pod-name, processing the new level-state. Returns the new expected state. Returns
   empty dictionary to indicate that the result should be deleted. NOTE: Must be invoked with the lock."
-  [{:keys [api-client existing-state-map expected-state-map] :as kcc} pod-name]
+  [{:keys [api-client existing-state-map expected-state-map] :as kcc} ^String pod-name]
   (loop [{:keys [expected-state] :as expected-state-dict} (get @expected-state-map pod-name)
          {:keys [synthesized-state pod] :as existing-state-dict} (get @existing-state-map pod-name)]
     ;; TODO: Remove the printing of existing-state-dict once we test on real kubernetes and get synthesized-pod-state robust.
