@@ -208,7 +208,7 @@
           ; TODO: We are generating offers for every pool here, and filtering out only offers for this one pool.
           ; TODO: We should be smarter here and generate once, then reuse for each pool, instead of generating for each pool each time and only keeping one
           offers-this-pool (get offers-all-pools pool-name)]
-      (log/info (str "Generated offers " (count offers-this-pool) " for pool " pool-name " "
+      (log/info (str "Generated offers " (count offers-this-pool) " for pool " pool-name " in cluster " name
                      (into [] (map #(into {} (select-keys % [:hostname :resources])) offers-this-pool))))
       offers-this-pool))
 
