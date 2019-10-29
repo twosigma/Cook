@@ -22,7 +22,7 @@
 
 (def cook-pod-label "twosigma.com/cook-scheduler-job")
 
-(def ^ExecutorService kubernetes-executor (Executors/newFixedThreadPool 2))
+(def ^ExecutorService kubernetes-executor (Executors/newCachedThreadPool))
 
 ; Cook, Fenzo, and Mesos use MB for memory. Convert bytes from k8s to MB when passing to fenzo, and MB back to bytes
 ; when submitting to k8s.
