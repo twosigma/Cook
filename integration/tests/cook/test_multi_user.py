@@ -557,14 +557,14 @@ class MultiUserCookTest(util.CookTest):
 
     def test_instance_stats_running(self):
         name = str(util.make_temporal_uuid())
-        job_uuid_1, resp = util.submit_job(self.cook_url, command='sleep 300', name=name, max_retries=2)
-        self.assertEqual(resp.status_code, 201, msg=resp.content)
-        job_uuid_2, resp = util.submit_job(self.cook_url, command='sleep 300', name=name, max_retries=2)
-        self.assertEqual(resp.status_code, 201, msg=resp.content)
-        job_uuid_3, resp = util.submit_job(self.cook_url, command='sleep 300', name=name, max_retries=2)
-        self.assertEqual(resp.status_code, 201, msg=resp.content)
-        job_uuids = [job_uuid_1, job_uuid_2, job_uuid_3]
+        num_jobs = 5
+        job_uuids = []
         try:
+            for _ in range(num_jobs):
+                job_uuid, resp = util.submit_job(self.cook_url, command='sleep 300', name=name, max_retries=2)
+                self.assertEqual(resp.status_code, 201, msg=resp.content)
+                job_uuids.append(job_uuid)
+
             instances = [util.wait_for_running_instance(self.cook_url, j) for j in job_uuids]
             start_time = min(i['start_time'] for i in instances)
             end_time = max(i['start_time'] for i in instances)
@@ -575,9 +575,11 @@ class MultiUserCookTest(util.CookTest):
                                                    end=util.to_iso(end_time + 1),
                                                    name=name)
             user = util.get_user(self.cook_url, job_uuid_1)
-            self.assertEqual(3, stats['overall']['count'])
-            self.assertEqual(3, stats['by-reason']['']['count'])
-            self.assertEqual(3, stats['by-user-and-reason'][user]['']['count'])
+            # We can't guarantee that all of the test instances will remain running for the duration
+            # of the test. For example, an instance might get killed with "Agent removed".
+            self.assertTrue(2 <= stats['overall']['count'] <= num_jobs)
+            self.assertTrue(2 <= stats['by-reason']['']['count'] <= num_jobs)
+            self.assertTrue(2 <= stats['by-user-and-reason'][user]['']['count'] <= num_jobs)
         finally:
             util.kill_jobs(self.cook_url, job_uuids)
 
