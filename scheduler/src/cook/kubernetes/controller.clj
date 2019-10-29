@@ -195,7 +195,10 @@
         ; We always store the updated state, but only reprocess it if it is genuinely different.
         (swap! existing-state-map assoc pod-name new-state)
         (when-not (existing-state-equivalent? old-state new-state)
-          (process kcc pod-name))))))
+          (try
+            (process kcc pod-name)
+            (catch Exception e
+              (log/error e "Error while processing pod-update for" pod-name))))))))
 
 (defn pod-deleted
   "Indicate that kubernetes does not have the pod. Invoked by callbacks from kubernetes."
@@ -203,7 +206,11 @@
   (let [pod-name (api/V1Pod->name pod-deleted)]
     (locking (calculate-lock pod-name)
       (swap! existing-state-map dissoc pod-name)
-      (process kcc pod-name))))
+      (try
+        (process kcc pod-name)
+        (catch Exception e
+          (log/error e "Error while processing pod-deleting for" pod-name))))))
+
 
 (defn update-expected-state
   "Update the expected state. Include some business logic to e.g., not change a state to the same value more than once. Marks any state changes Also has a lattice of state. Called externally and from state machine."
