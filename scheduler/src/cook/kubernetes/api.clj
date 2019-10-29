@@ -142,6 +142,9 @@
     (log/info "DEBUG: Initialize-pod-watch A: " (->> namespaced-pod-name->pod (take 3)))
     (log/info "DEBUG: Initialize-pod-watch B: " (->> old-all-pods (take 3)))
     (doseq [task (set/union (keys namespaced-pod-name->pod) (keys old-all-pods))]
+      (log/info "Doing initialize on task " task))
+
+    (doseq [task (set/union (keys namespaced-pod-name->pod) (keys old-all-pods))]
       (doseq [callback callbacks]
         (try
           (log/info "In" compute-cluster-name "compute cluster, doing (startup) callback for" task)
