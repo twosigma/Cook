@@ -597,7 +597,7 @@
               (count allowed-to-start-jobs) "allowed-to-start ->"
               (count within-launch-rate-jobs) "within-launch-rate ->"
               (count launch-plugin-jobs) "allowed by launch-plugin ->"
-              " and"
+              "and"
               (count considerable-jobs*) "considerable jobs")
     considerable-jobs*))
 
