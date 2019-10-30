@@ -213,7 +213,7 @@
           other-taints (remove #(= "cook-pool" (.getKey %)) taints-on-node)
           schedulable (zero? (count other-taints))]
       (when-not schedulable
-        (log/info "Filtering out " (some-> node .getMetadata .getName) " because it has taints " other-taints))
+        (log/info "Filtering out" (some-> node .getMetadata .getName) "because it has taints" other-taints))
       schedulable)))
 
 (defn get-capacity

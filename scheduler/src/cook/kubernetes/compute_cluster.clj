@@ -24,7 +24,7 @@
   "Is a node schedulable?"
   [node-name->node [node-name _]]
   (when-not (-> node-name node-name->node)
-    (log/error "Why are we getting a null node for " node-name))
+    (log/error "Unable to get node from node name" node-name))
   (-> node-name node-name->node api/node-schedulable?))
 
 
@@ -42,9 +42,9 @@
         compute-cluster-name (cc/compute-cluster-name compute-cluster)]
     (log/info "In" compute-cluster-name "compute cluster, capacity:" node-name->capacity)
     (log/info "In" compute-cluster-name "compute cluster, consumption:" node-name->consumed)
-    (log/info "In" compute-cluster-name "filtering out" (->> node-name->available
+    (log/info "In" compute-cluster-name "compute cluster, filtering out" (->> node-name->available
                                                              (remove #(schedulable-node-filter node-name->node %))
-                                                             count) "nodes as not schedulable ")
+                                                             count) "nodes as not schedulable")
     (->> node-name->available
          (filter #(schedulable-node-filter node-name->node %))
          (map (fn [[node-name available]]
