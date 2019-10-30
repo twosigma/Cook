@@ -592,12 +592,12 @@
     (swap! pool->user->number-jobs update pool-name (constantly @user->number-jobs))
     (log/info "Users whose job launches are rate-limited " @user->rate-limit-count "( enforcing =" enforcing-job-launch-rate-limit? ")")
     (log/info "In" pool-name "pool, there are"
-              (count pending-jobs) " pending ->"
-              (count quota-filter-jobs) " quota-filtered ->"
-              (count allowed-to-start-jobs) " allowed-to-start ->"
-              (count within-launch-rate-jobs) " within-launch-rate ->"
-              (count launch-plugin-jobs) " allowed by launch-plugin ->"
-              "and"
+              (count pending-jobs) "pending ->"
+              (count quota-filter-jobs) "quota-filtered ->"
+              (count allowed-to-start-jobs) "allowed-to-start ->"
+              (count within-launch-rate-jobs) "within-launch-rate ->"
+              (count launch-plugin-jobs) "allowed by launch-plugin ->"
+              " and"
               (count considerable-jobs*) "considerable jobs")
     considerable-jobs*))
 
