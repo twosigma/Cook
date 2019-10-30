@@ -209,7 +209,7 @@
           ; TODO: We should be smarter here and generate once, then reuse for each pool, instead of generating for each pool each time and only keeping one
           offers-this-pool (get offers-all-pools pool-name)]
       (log/info "Generated" (count offers-this-pool) "offers for pool" pool-name "in cluster" name
-                     (into [] (map #(into {} (select-keys % [:hostname :resources])) offers-this-pool))))
+                     (into [] (map #(into {} (select-keys % [:hostname :resources])) offers-this-pool)))
       offers-this-pool))
 
   (restore-offers [this pool-name offers]))
