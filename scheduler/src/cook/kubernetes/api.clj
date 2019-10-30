@@ -174,10 +174,10 @@
           (handle-watch-updates current-nodes-atom watch (fn [n] (-> n .getMetadata .getName))
                                 [(make-atom-updater current-nodes-atom)]) ; Update the set of all nodes.
           (catch Exception e
-            (log/warn e "Error during node watch")
-            (initialize-node-watch api-client current-nodes-atom))
+            (log/warn e "Error during node watch"))
           (finally
-            (.close watch))))))))
+            (.close watch)
+            (initialize-node-watch api-client current-nodes-atom))))))))
 
 (defn to-double
   "Map a quantity to a double, whether integer, double, or float."
