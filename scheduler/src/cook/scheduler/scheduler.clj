@@ -594,8 +594,8 @@
     (log/info "In" pool-name "pool, there are"
               (count pending-jobs) " pending ->"
               (count quota-filter-jobs) " quota-filtered ->"
-              (count allowed-to-start-jobs) " allowed-start ->"
-              (count within-launch-rate-jobs) " launch-rate ->"
+              (count allowed-to-start-jobs) " allowed-to-start ->"
+              (count within-launch-rate-jobs) " within-launch-rate ->"
               (count launch-plugin-jobs) " launch-plugin ->"
               "and"
               (count considerable-jobs) "considerable jobs.")
