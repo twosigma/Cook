@@ -187,7 +187,7 @@
 (defn pod-update
   "Update the existing state for a pod. Include some business logic to e.g., not change a state to the same value more than once.
   Invoked by callbacks from kubernetes."
-  [{:keys [existing-state-map] :as kcc} ^V1Pod new-pod]
+  [{:keys [existing-state-map name] :as kcc} ^V1Pod new-pod]
   (let [pod-name (api/V1Pod->name new-pod)]
     (locking (calculate-lock pod-name)
       (let [new-state {:pod new-pod :synthesized-state (api/pod->synthesized-pod-state new-pod)}
@@ -198,18 +198,18 @@
           (try
             (process kcc pod-name)
             (catch Exception e
-              (log/error e "Error while processing pod-update for" pod-name))))))))
+              (log/error e (str "In compute-cluster " name ", error while processing pod-update for " pod-name)))))))))
 
 (defn pod-deleted
   "Indicate that kubernetes does not have the pod. Invoked by callbacks from kubernetes."
-  [{:keys [existing-state-map] :as kcc} ^V1Pod pod-deleted]
+  [{:keys [existing-state-map name] :as kcc} ^V1Pod pod-deleted]
   (let [pod-name (api/V1Pod->name pod-deleted)]
     (locking (calculate-lock pod-name)
       (swap! existing-state-map dissoc pod-name)
       (try
         (process kcc pod-name)
         (catch Exception e
-          (log/error e "Error while processing pod-deleting for" pod-name))))))
+          (log/error e (str "In compute-cluster " name ", error while processing pod-delete for " pod-name)))))))
 
 
 (defn update-expected-state
