@@ -95,11 +95,58 @@ class CookTest(util.CookTest):
     @unittest.skipIf(util.using_kubernetes(), 'Output url is not currently supported on kubernetes')
     def test_output_url(self):
         job_executor_type = util.get_job_executor_type()
-        job_uuid, resp = util.submit_job(self.cook_url, command='sleep 600', executor=job_executor_type)
+        job_uuid, resp = util.submit_job(self.cook_url,
+                                         command='echo foo ; echo bar ; echo baz ; sleep 600',
+                                         executor=job_executor_type)
         try:
-            self.assertTrue(len(util.wait_for_output_url(self.cook_url, job_uuid)['output_url']) > 0)
-            job = util.query_jobs(self.cook_url, True, uuid=[job_uuid]).json()[0]
+            output_url = util.wait_for_output_url(self.cook_url, job_uuid)['output_url']
+            self.logger.info(f'Output URL is {output_url}')
+            self.assertTrue(len(output_url) > 0)
 
+            # offset = 0, no length
+            resp = util.session.get(f'{output_url}/stdout&offset=0')
+            resp_json = resp.json()
+            self.logger.info(json.dumps(resp_json, indent=2))
+            self.assertEqual(200, resp.status_code)
+            self.assertIn('data', resp_json)
+            self.assertIn('offset', resp_json)
+            self.assertIn('foo\nbar\nbaz\n', resp_json['data'])
+            self.assertEqual(0, resp_json['offset'])
+            index = resp_json['data'].index('foo\nbar\nbaz\n')
+            self.assertLess(0, index)
+
+            # offset = 0, with length
+            resp = util.session.get(f'{output_url}/stdout&offset=0&length={index}')
+            resp_json = resp.json()
+            self.logger.info(json.dumps(resp_json, indent=2))
+            self.assertEqual(200, resp.status_code)
+            self.assertIn('data', resp_json)
+            self.assertIn('offset', resp_json)
+            self.assertNotIn('foo\nbar\nbaz\n', resp_json['data'])
+            self.assertEqual(0, resp_json['offset'])
+
+            # offset > 0, no length
+            resp = util.session.get(f'{output_url}/stdout&offset={index}')
+            resp_json = resp.json()
+            self.logger.info(json.dumps(resp_json, indent=2))
+            self.assertEqual(200, resp.status_code)
+            self.assertIn('data', resp_json)
+            self.assertIn('offset', resp_json)
+            self.assertIn('foo\nbar\nbaz\n', resp_json['data'])
+            self.assertEqual(index, resp_json['offset'])
+            self.assertEqual(0, resp_json['data'].index('foo\nbar\nbaz\n'))
+
+            # offset > 0, with length
+            resp = util.session.get(f'{output_url}/stdout&offset={index}&length=8')
+            resp_json = resp.json()
+            self.logger.info(json.dumps(resp_json, indent=2))
+            self.assertEqual(200, resp.status_code)
+            self.assertIn('data', resp_json)
+            self.assertIn('offset', resp_json)
+            self.assertEqual('foo\nbar\n', resp_json['data'])
+            self.assertEqual(index, resp_json['offset'])
+
+            job = util.query_jobs(self.cook_url, True, uuid=[job_uuid]).json()[0]
             if util.should_expect_sandbox_directory_for_job(job):
                 instance = util.wait_for_sandbox_directory(self.cook_url, job_uuid)
                 message = json.dumps(instance, sort_keys=True)
