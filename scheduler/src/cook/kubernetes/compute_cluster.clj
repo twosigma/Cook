@@ -59,14 +59,14 @@
 
 (defn scan-tasks
   "Scan all taskids. Note: May block or be slow due to rate limits."
-  [kcc]
+  [{:keys [name] :as kcc}]
   (log/info "Starting taskid scan: " )
   ; TODO Add in rate limits; only visit non-running/running task so fast.
   ; TODO Add in maximum-visit frequency. Only visit a task once every XX seconds.
-  (let [taskids (taskids-to-scan kcc)
-        _ (log/info "Doing taskid scan. Visiting" (count taskids) "taskids")]
+  (let [taskids (taskids-to-scan kcc)]
+    (log/info "In compute cluster" name ", doing taskid scan. Visiting" (count taskids) "taskids")
     (doseq [^String taskid taskids]
-      (log/info "Doing scan of " taskid)
+      (log/info "In compute cluster" name ", doing scan of " taskid)
       (controller/scan-process kcc taskid))))
 
 (defn regular-scanner

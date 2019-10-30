@@ -130,7 +130,7 @@
     (doseq [task (set/union (keys namespaced-pod-name->pod) (keys old-all-pods))]
       (doseq [callback callbacks]
         (try
-          (log/info "Doing (startup) callback for " task)
+          (log/info "In" compute-cluster-name "compute cluster, doing (startup) callback for" task)
           (callback task (get old-all-pods task) (get namespaced-pod-name->pod task))
           (catch Exception e
             (log/error e "Error while processing callback for" task)))))
