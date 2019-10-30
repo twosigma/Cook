@@ -123,7 +123,7 @@
         [(make-atom-updater all-pods-atom) ; Update the set of all pods.
          (partial cook-pod-callback-wrap cook-pod-callback compute-cluster-name)] ; Invoke the cook-pod-callback if its a cook pod.
         old-all-pods @all-pods-atom]
-    (log/info "Processing pods" (keys namespaced-pod-name->pod))
+    (log/info "Processing pods for compute cluster" compute-cluster-name ":" (keys namespaced-pod-name->pod))
     ; We want to process all changes through the callback process.
     ; So compute the delta between the old and new and process those via the callbacks.
     ; Note as a side effect, the callbacks mutate all-pods-atom
