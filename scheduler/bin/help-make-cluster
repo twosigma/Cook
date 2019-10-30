@@ -20,15 +20,15 @@ echo "---- Building kubernetes cluster for project=$PROJECT zone=$ZONE clusterna
 # The untainted ones are for GKE's own uses for its system pods. Also convenient to have around if I'm doing non-pool tests.
 # The second line of flags about upgrades and legacy endpoints is to suppress some warnings.
 echo "---- Creating new cluster (please wait 5 minutes)"
-time gcloud container clusters create $CLUSTERNAME --zone --disk-size=20gb --machine-type=g1-small --num-nodes=3 --preemptible  \
+time gcloud container clusters create $CLUSTERNAME --zone $ZONE --disk-size=20gb --machine-type=g1-small --num-nodes=3 --preemptible  \
      --enable-autoupgrade --no-enable-basic-auth --no-issue-client-certificate --no-enable-ip-alias --metadata disable-legacy-endpoints=true \
      --labels longevity=temporary
 
 echo "---- Setting up gcloud credentials"
 # Add credentials to the kubeconfig used by cook.
-(export KUBECONFIG=${COOK_KUBECONFIG} ; gcloud container clusters get-credentials $CLUSTERNAME --region $ZONE)
+(export KUBECONFIG=${COOK_KUBECONFIG} ; gcloud container clusters get-credentials $CLUSTERNAME --zone $ZONE)
 # Add credentials to default kubeconfig for convenience purposes.
-gcloud container clusters get-credentials $CLUSTERNAME --region $ZONE
+gcloud container clusters get-credentials $CLUSTERNAME --zone $ZONE
 
 # Make some node-pools --- this takes a while, but it helps guarantee that we have nodes with the appropriate cook-pool taints.
 echo "---- Making extra alpha and gamma nodepools for cook pools (please wait 5-10 minutes)"
