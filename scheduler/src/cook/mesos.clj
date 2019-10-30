@@ -142,8 +142,10 @@
                 rebalancer-trigger-chan straggler-trigger-chan]} trigger-chans
         {:keys [hostname server-port server-https-port]} server-config
         datomic-report-chan (async/chan (async/sliding-buffer 4096))
-
+        ; TODO: Tech-debt. Should remove compute-cluster when we rethink initialization and leadership.
+        ; TODO: See also cluster-leadership-chan below.
         compute-cluster (cc/get-default-cluster-for-legacy)
+        compute-clusters @cc/cluster-name->compute-cluster-atom
         rebalancer-reservation-atom (atom {})
         _ (log/info "Using path" zk-prefix "for leader selection")
         leader-selector (LeaderSelector.
@@ -177,9 +179,18 @@
                                           :task-constraints task-constraints
                                           :trigger-chans trigger-chans})
                                         running-tasks-ents (cook.tools/get-running-task-ents (d/db mesos-datomic-conn))
-                                        cluster-leadership-chan (cc/initialize-cluster compute-cluster
-                                                                                       pool-name->fenzo
-                                                                                       running-tasks-ents)]
+                                        ; TODO: Tech-debt here, we want to rethink leadership and should remove/fix
+                                        ; cluster-leadership-chan/cluster-leadership-chans. Think what that means in the
+                                        ; multi-cluster or non-mesos case.
+                                        ;
+                                        ; Note: This doall has a critical side effect of actually initializing all of the clusters.
+                                        cluster-leadership-chans (->> compute-clusters
+                                                                      vals
+                                                                      (map #(cc/initialize-cluster %
+                                                                                                   pool-name->fenzo
+                                                                                                   running-tasks-ents))
+                                                                      doall)
+                                        cluster-leadership-chan (first cluster-leadership-chans)]
                                     (cook.monitor/start-collecting-stats)
                                     ; Many of these should look at the compute-cluster of the underlying jobs, and not use driver at all.
                                     (cook.scheduler.scheduler/lingering-task-killer mesos-datomic-conn

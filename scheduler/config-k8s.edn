@@ -22,7 +22,11 @@
  :compute-clusters [{:factory-fn cook.kubernetes.compute-cluster/factory-fn
                      :config {:compute-cluster-name "minikube"
                               ;; Location of the kubernetes config file. Hardcoded to the location specified by bin/make-gke-test-cluster
-                              :config-file "../scheduler/.cook_kubeconfig_1"}}]
+                              :config-file "../scheduler/.cook_kubeconfig_1"}}
+                    {:factory-fn cook.kubernetes.compute-cluster/factory-fn
+                     :config {:compute-cluster-name "minikube-2"
+                              ;; Location of the kubernetes config file. Hardcoded to the location specified by bin/make-gke-test-cluster
+                              :config-file "../scheduler/.cook_kubeconfig_2"}}]
  :cors-origins ["https?://cors.example.com"]
  :data-local {:fitness-calculator {:cache-ttl-ms 60000
                                    :cost-endpoint #config/env "DATA_LOCAL_ENDPOINT"

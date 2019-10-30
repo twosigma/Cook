@@ -1285,20 +1285,27 @@ def max_mesos_slave_cpus(mesos_url):
     max_slave_cpus = max([s['resources']['cpus'] for s in slaves])
     return max_slave_cpus
 
-
 @functools.lru_cache()
-def get_kubernetes_compute_cluster():
+def get_compute_clusters():
     cook_url = retrieve_cook_url()
     _wait_for_cook(cook_url)
     init_cook_session(cook_url)
-    compute_clusters = settings(cook_url)['compute-clusters']
+    return settings(cook_url)['compute-clusters']
+
+@functools.lru_cache()
+def get_kubernetes_compute_clusters():
+    compute_clusters = get_compute_clusters()
     kubernetes_compute_clusters = [cc for cc in compute_clusters
                                    if cc['factory-fn'] == 'cook.kubernetes.compute-cluster/factory-fn']
+    return kubernetes_compute_clusters
+
+@functools.lru_cache()
+def get_kubernetes_compute_cluster():
+    kubernetes_compute_clusters = get_kubernetes_compute_clusters()
     if len(kubernetes_compute_clusters) > 0:
         return kubernetes_compute_clusters[0]
     else:
         return None
-
 
 def get_kubernetes_nodes():
     kubernetes_compute_cluster = get_kubernetes_compute_cluster()

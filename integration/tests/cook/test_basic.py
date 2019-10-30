@@ -236,6 +236,7 @@ class CookTest(util.CookTest):
         finally:
             util.kill_jobs(self.cook_url, [uuid])
 
+    @unittest.skipUnless(len(util.get_compute_clusters()) == 1, 'Test is only well-founed if there is only a single compute cluster')
     def test_compute_cluster(self):
         settings_dict = util.settings(self.cook_url)
         if util.using_kubernetes():
