@@ -239,7 +239,7 @@
     (not (nil? @driver-atom)))
 
   (initialize-cluster [this pool->fenzo _]
-    (log/info "Initializing Mesos cluster " compute-cluster-name)
+    (log/info "Initializing Mesos compute cluster" compute-cluster-name)
     (let [settings (:settings config/config)
           progress-config (:progress settings)
           conn cook.datomic/conn
