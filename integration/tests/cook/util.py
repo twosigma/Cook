@@ -428,6 +428,10 @@ def make_temporal_uuid():
     return temporal_uuid
 
 
+def job_label():
+    return os.getenv('COOK_TEST_JOB_LABEL')
+
+
 def minimal_job(**kwargs):
     job = {
         'command': 'echo Default Test Command',
@@ -448,6 +452,18 @@ def minimal_job(**kwargs):
                 'force-pull-image': False
             }
         }
+
+    label = job_label()
+    if label:
+        label_parts = label.split('=')
+        if len(label_parts) != 2:
+            raise Exception('COOK_TEST_JOB_LABEL must be of the form "key=value"')
+
+        if 'labels' not in job:
+            job['labels'] = {}
+
+        job['labels'][label_parts[0]] = label_parts[1]
+
     job.update(kwargs)
     no_container_volume = os.getenv('COOK_NO_CONTAINER_VOLUME') is not None
     if (not no_container_volume
