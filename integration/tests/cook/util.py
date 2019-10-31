@@ -1506,7 +1506,7 @@ def demo_plugins_are_configured(cook_url):
 def demo_job_adjuster_plugin_configured():
     cook_url = retrieve_cook_url()
     settings_dict = settings(cook_url)
-    configured = settings_dict['plugins']['job-adjuster'].get('factory-fn') == \
+    configured = settings_dict['plugins'].get('job-adjuster', {}).get('factory-fn') == \
                  "cook.plugins.demo-plugin/adjuster-factory"
     return configured
 
