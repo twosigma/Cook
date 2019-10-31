@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Usage: ./bin/make-gke-test-cluster <project> <zone> <clustername>
+# Usage: ./bin/make-gke-test-clusters <project> <zone> <clustername>
 #   Configure two kubernetes clusters for running pool-based integration tests and running pools in general.
 #    NOTE: This script labels any clusters it creates and will DELETE old clusters it created.
 #   <project> is a gcloud project.
