@@ -187,7 +187,7 @@
 (defn pod-update
   "Update the existing state for a pod. Include some business logic to e.g., not change a state to the same value more than once.
   Invoked by callbacks from kubernetes."
-  [{:keys [existing-state-map] :as kcc} ^V1Pod new-pod]
+  [{:keys [existing-state-map name] :as kcc} ^V1Pod new-pod]
   (let [pod-name (api/V1Pod->name new-pod)]
     (locking (calculate-lock pod-name)
       (let [new-state {:pod new-pod :synthesized-state (api/pod->synthesized-pod-state new-pod)}
@@ -195,7 +195,10 @@
         ; We always store the updated state, but only reprocess it if it is genuinely different.
         (swap! existing-state-map assoc pod-name new-state)
         (when-not (existing-state-equivalent? old-state new-state)
-          (process kcc pod-name))))))
+          (try
+            (process kcc pod-name)
+            (catch Exception e
+              (log/error e (str "In compute-cluster " name ", error while processing pod-update for " pod-name)))))))))
 
 (defn pod-deleted
   "Indicate that kubernetes does not have the pod. Invoked by callbacks from kubernetes."
@@ -204,7 +207,11 @@
     (log/info "In compute cluster" name ", detected pod" pod-name "deleted")
     (locking (calculate-lock pod-name)
       (swap! existing-state-map dissoc pod-name)
-      (process kcc pod-name))))
+      (try
+        (process kcc pod-name)
+        (catch Exception e
+          (log/error e (str "In compute-cluster " name ", error while processing pod-delete for " pod-name)))))))
+
 
 (defn update-expected-state
   "Update the expected state. Include some business logic to e.g., not change a state to the same value more than once. Marks any state changes Also has a lattice of state. Called externally and from state machine."
