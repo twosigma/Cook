@@ -1784,6 +1784,7 @@ def dummy_ls_entries(_, __, ___):
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual('helloworld' * pow(2, iterations), cli.decode(cp.stdout))
 
+    @pytest.mark.xfail
     def test_cat_zero_byte_file(self):
         cp, uuids = cli.submit('touch file.txt', self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
@@ -1829,6 +1830,7 @@ def dummy_ls_entries(_, __, ___):
         finally:
             cli.kill([waiting_uuid], self.cook_url)
 
+    @pytest.mark.xfail
     def test_cat_with_broken_pipe(self):
         iterations = 20
         cp, uuids = cli.submit('bash -c \'printf "hello\\nworld\\n" > file.txt; '
