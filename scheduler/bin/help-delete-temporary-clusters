@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+
+# Usage: ./bin/help-delete-temporary-clusters <zone>
+#   Delete all temporary clusters within a zone. The sibling scripts here mark clusters they create.
+#   This is intended to be used by other scripts and not directly.
+#   <zone> can be a zone. E.g., us-central1-a
+
+
+set -e
+
+ZONE=$1
+
+# Nuke all existing temporary clusters; don't want to keep on making more idle clusters each time you invoke this.
+echo "---- Deleting any existing temporary clusters."
+gcloud container clusters list --filter 'resourceLabels.longevity=temporary'
+for i in `gcloud container clusters list --filter 'resourceLabels.longevity=temporary' --format="value(name)"`
+do
+    gcloud --quiet container clusters delete $i --zone $ZONE
+done
