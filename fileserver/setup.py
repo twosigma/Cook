@@ -1,0 +1,25 @@
+#!/usr/bin/env python3
+
+from setuptools import setup
+
+from cook import version
+
+requirements = [
+    'Flask',
+    'gunicorn'
+]
+
+test_requirements = [
+]
+
+setup(
+    name='cook_file_server',
+    version=version.VERSION,
+    description="Two Sigma's Cook File Server",
+    long_description="This package contains Two Sigma's Cook file server. The primary purpose is run in a side car on a job's"
+                     "node and to serve log files.",
+    packages=['cook'],
+    scripts=['bin/fileserver'],
+    install_requires=requirements,
+    tests_require=test_requirements
+)

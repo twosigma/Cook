@@ -7,12 +7,12 @@ See http://mesos.apache.org/documentation/latest/endpoints/files/read/ and http:
 pip install dependencies:
 
 ```bash
-$ pip3 install -r requirements.txt
+$ pip3 install -e .
 ```
 
 ## Running
 
-Run ```bin/run-file-server```; see file for usage details.
+Run ```fileserver```; see bin/fileserver for usage details.
 
 ```bash
 $ ./bin/run-file-server -p 8000

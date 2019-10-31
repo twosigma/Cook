@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Usage: see usage
+#
+# Examples:
+#   fileserver 8080 4
+#   fileserver 8080
+#
+# Runs cook.file_server
+
+function usage {
+    echo "Usage: fileserver PORT [NUM_WORKERS]"
+    exit 1
+}
+
+PORT=$1
+
+if [ -z $PORT ]; then
+    echo PORT is required
+    usage
+fi
+
+NUM_WORKERS=${2:-4}
+
+gunicorn -w $NUM_WORKERS -b 127.0.0.1:$PORT cook.file_server:app
