@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Usage: ./bin/make-gke-test-cluster <project> <zone> <clustername> <kube_config_file>
+# Usage: ./bin/help-make-cluster <project> <zone> <clustername> <kube_config_file>
 #   Configure a kubernetes cluster for running pool-based integration tests and running pools in general.
 #   This is intended to be used by other scripts, not invoked directly.
 #   <project> is a gcloud project.
