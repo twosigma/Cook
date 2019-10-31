@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 
-# Usage: ./bin/make-gke-test-cluster <project> <zone> <clustername>
-#   Configure a kubernetes cluster for running pool-based integration tests and running pools in general.
-#    NOTE: This script labels any clusters it creates and will DELETE old clusters it created.
-#   <project> is a gcloud project.
+# Usage: ./bin/help-delete-temporary-clusters <zone>
+#   Delete all temporary clusters within a zone. The sibling scripts here mark clusters they create.
+#   This is intended to be used by other scripts and not directly.
 #   <zone> can be a zone. E.g., us-central1-a
-#   <clustername> is the name of a cluster. E.g., 'test-cluster-1'
+
 
 set -e
 
