@@ -199,8 +199,9 @@
 
 (defn pod-deleted
   "Indicate that kubernetes does not have the pod. Invoked by callbacks from kubernetes."
-  [{:keys [existing-state-map] :as kcc} ^V1Pod pod-deleted]
+  [{:keys [existing-state-map name] :as kcc} ^V1Pod pod-deleted]
   (let [pod-name (api/V1Pod->name pod-deleted)]
+    (log/info "In compute cluster" name ", detected pod" pod-name "deleted")
     (locking (calculate-lock pod-name)
       (swap! existing-state-map dissoc pod-name)
       (process kcc pod-name))))
