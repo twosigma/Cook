@@ -76,5 +76,5 @@
 
 (defn adjuster-factory
   "TODO(DPO)"
-  []
+  [_]
   (->DemoAddLabelJobAdjuster))

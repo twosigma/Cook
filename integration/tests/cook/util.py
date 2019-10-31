@@ -1503,6 +1503,15 @@ def demo_plugins_are_configured(cook_url):
 
 
 @functools.lru_cache()
+def demo_job_adjuster_plugin_configured():
+    cook_url = retrieve_cook_url()
+    settings_dict = settings(cook_url)
+    configured = settings_dict['plugins']['job-adjuster'].get('factory-fn') == \
+                 "cook.plugins.demo-plugin/adjuster-factory"
+    return configured
+
+
+@functools.lru_cache()
 def _fenzo_fitness_calculator():
     """Get the cook executor config from the /settings endpoint"""
     cook_url = retrieve_cook_url()

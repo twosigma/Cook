@@ -26,7 +26,7 @@
             [cook.curator :as curator]
             [cook.datomic :as datomic]
             ; This explicit require is needed so that mount can see the defstate defined in the cook.plugins.adjustment namespace.
-            ;[cook.plugins.adjustment]
+            [cook.plugins.adjustment]
             ; This explicit require is needed so that mount can see the defstate defined in the cook.plugins.completion namespace.
             [cook.plugins.completion]
             ; This explicit require is needed so that mount can see the defstate defined in the cook.plugins.submission namespace.

@@ -39,7 +39,8 @@
            :job-launch-filter {:age-out-last-seen-deadline-minutes 10
                                :age-out-first-seen-deadline-minutes 10000
                                :age-out-seen-count 10
-                               :factory-fn "cook.plugins.demo-plugin/launch-factory"}}
+                               :factory-fn "cook.plugins.demo-plugin/launch-factory"}
+           :job-adjuster {:factory-fn "cook.plugins.demo-plugin/adjuster-factory"}}
  :hostname #config/env "COOK_HOSTNAME"
  :log {:file #config/env "COOK_LOG_FILE"
        :levels {"datomic.db" :warn
