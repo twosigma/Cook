@@ -56,4 +56,4 @@
 
 (defprotocol JobAdjuster
   (adjust-job [this job-map]
-    "TODO(DPO)"))
+    "Given a job-map, returns an adjusted job-map for downstream use"))

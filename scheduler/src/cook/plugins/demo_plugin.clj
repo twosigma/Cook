@@ -75,6 +75,6 @@
   (->DemoValidateSubmission2))
 
 (defn adjuster-factory
-  "TODO(DPO)"
+  "Factory function for the 'demo' job adjuster, which simply adds a label to jobs"
   [_]
   (->DemoAddLabelJobAdjuster))
