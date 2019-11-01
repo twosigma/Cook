@@ -113,7 +113,7 @@ class CookTest(util.CookTest):
             self.assertIn('foo\nbar\nbaz\n', resp_json['data'])
             self.assertEqual(0, resp_json['offset'])
             index = resp_json['data'].index('foo\nbar\nbaz\n')
-            self.assertLess(0, index)
+            self.assertLessEqual(0, index)
 
             # offset = 0, with length
             resp = util.session.get(f'{output_url}/stdout&offset=0&length={index}')
@@ -126,25 +126,66 @@ class CookTest(util.CookTest):
             self.assertEqual(0, resp_json['offset'])
 
             # offset > 0, no length
-            resp = util.session.get(f'{output_url}/stdout&offset={index}')
+            offset = index + 4
+            resp = util.session.get(f'{output_url}/stdout&offset={offset}')
             resp_json = resp.json()
             self.logger.info(json.dumps(resp_json, indent=2))
             self.assertEqual(200, resp.status_code)
             self.assertIn('data', resp_json)
             self.assertIn('offset', resp_json)
-            self.assertIn('foo\nbar\nbaz\n', resp_json['data'])
-            self.assertEqual(index, resp_json['offset'])
-            self.assertEqual(0, resp_json['data'].index('foo\nbar\nbaz\n'))
+            self.assertIn('bar\nbaz\n', resp_json['data'])
+            self.assertEqual(offset, resp_json['offset'])
+            self.assertEqual(0, resp_json['data'].index('bar\nbaz\n'))
 
             # offset > 0, with length
-            resp = util.session.get(f'{output_url}/stdout&offset={index}&length=8')
+            resp = util.session.get(f'{output_url}/stdout&offset={offset}&length=4')
             resp_json = resp.json()
             self.logger.info(json.dumps(resp_json, indent=2))
             self.assertEqual(200, resp.status_code)
             self.assertIn('data', resp_json)
             self.assertIn('offset', resp_json)
-            self.assertEqual('foo\nbar\n', resp_json['data'])
-            self.assertEqual(index, resp_json['offset'])
+            self.assertEqual('bar\n', resp_json['data'])
+            self.assertEqual(offset, resp_json['offset'])
+
+            # offset < 0 (returns no data + offset = total size)
+            resp = util.session.get(f'{output_url}/stdout&offset={-1}')
+            resp_json = resp.json()
+            self.logger.info(json.dumps(resp_json, indent=2))
+            self.assertEqual(200, resp.status_code)
+            self.assertIn('data', resp_json)
+            self.assertIn('offset', resp_json)
+            self.assertEqual('', resp_json['data'])
+            self.assertLess(0, resp_json['offset'])
+
+            # invalid path
+            resp = util.session.get(f'{output_url}/{uuid.uuid4()}')
+            self.logger.info(resp.text)
+            self.assertEqual(404, resp.status_code)
+
+            # offset not a valid number
+            resp = util.session.get(f'{output_url}/stdout&offset=foo')
+            self.logger.info(resp.text)
+            self.assertEqual(400, resp.status_code)
+            self.assertIn('Failed to parse offset', resp.text)
+
+            # invalid path + offset not a valid number
+            resp = util.session.get(f'{output_url}/{uuid.uuid4()}&offset=foo')
+            self.logger.info(resp.text)
+            self.assertEqual(400, resp.status_code)
+            self.assertIn('Failed to parse offset', resp.text)
+
+            # no path
+            url = urlparse(output_url)
+            resp = util.session.get(f'http://{url.netloc}{url.path}')
+            self.logger.info(resp.text)
+            self.assertEqual(400, resp.status_code)
+            self.assertIn("Expecting 'path=value'", resp.text)
+
+            # path is a folder
+            resp = util.session.get(f'{output_url}/')
+            self.logger.info(resp.text)
+            self.assertEqual(400, resp.status_code)
+            self.assertIn("Cannot read a directory", resp.text)
 
             job = util.query_jobs(self.cook_url, True, uuid=[job_uuid]).json()[0]
             if util.should_expect_sandbox_directory_for_job(job):
