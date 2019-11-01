@@ -22,32 +22,40 @@
 #
 """Module implementing a file server to serve Cook job logs. """
 
-import os.path
+import os
 
 from flask import Flask, jsonify, request, send_from_directory
+from operator import itemgetter
+from pathlib import Path
+from stat import *
 
 app = Flask(__name__)
 
 
 @app.route('/files/download')
+@app.route('/files/download.json')
 def download():
     path = request.args.get('path')
     if path is None:
-        return "ERROR: No path given", 400
+        return "Expecting 'path=value' in query.", 400
+    file_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), path)
+    if not os.path.exists(file_path):
+        return "", 404
     print(path)
-    return send_from_directory(os.path.dirname(os.path.realpath(__file__)), path, as_attachment=True)
+    return send_from_directory(file_path, path, as_attachment=True)
 
 
 @app.route('/files/read')
+@app.route('/files/read.json')
 def read():
     path = request.args.get('path')
     offset = request.args.get('offset', default=0, type=int)
     length = request.args.get('length', type=int)
     if path is None:
-        return "ERROR: No path given", 400
+        return "Expecting 'path=value' in query.", 400
     file_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), path)
     if not os.path.exists(file_path):
-        return "ERROR: File {path} not found".format(path=path), 404
+        return "", 404
     print(path)
     print(offset)
     print(length)
@@ -59,3 +67,47 @@ def read():
         "data": data,
         "offset": offset,
     })
+
+
+permission_strings = {
+    '0': '---',
+    '1': '--x',
+    '2': '-w-',
+    '3': '-wx',
+    '4': 'r--',
+    '5': 'r-x',
+    '6': 'rw-',
+    '7': 'rwx'
+}
+# maps permission bit masks to a linux permission string. e.g. 775 -> "rwxrwxr-x"
+permissions = {n - 512: ''.join(permission_strings[c] for c in str(oct(n))[-3:]) for n in range(512, 1024)}
+
+
+@app.route('/files/browse')
+@app.route('/files/browse.json')
+def browse():
+    path = request.args.get('path')
+    if path is None:
+        return "Expecting 'path=value' in query.", 400
+    file_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), path)
+    if not os.path.exists(file_path):
+        return "", 404
+    print(path)
+    if not os.path.isdir(file_path):
+        return jsonify([])
+    print(os.listdir(file_path))
+    retval = [
+        {
+            "gid": path_obj.group(),
+            "mode": ('d' if S_ISDIR(st.st_mode) else '-') + permissions[S_IMODE(st.st_mode)],
+            "mtime": int(st.st_mtime),
+            "nlink": st.st_nlink,
+            "path": path,
+            "size": st.st_size,
+            "uid": path_obj.owner(),
+        }
+        for st, path_obj, path in [(os.stat(path), Path(path), path)
+                                   for path in [os.path.join(file_path, f)
+                                                for f in os.listdir(file_path)]]
+    ]
+    return jsonify(sorted(retval, key=itemgetter("path")))
