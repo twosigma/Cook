@@ -245,8 +245,7 @@
                               ;; We will give up our leadership whenever it seems that we lost
                               ;; ZK connection
                               (when (#{ConnectionState/LOST ConnectionState/SUSPENDED} newState)
-                                (reset! leadership-atom false)
-                                (when (cc/current-leader? compute-cluster)
+                                (when @leadership-atom
                                   (counters/dec! mesos-leader)
                                   ;; Better to fail over and rely on start up code we trust then rely on rarely run code
                                   ;; to make sure we yield leadership correctly (and fully)

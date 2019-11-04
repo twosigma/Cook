@@ -235,9 +235,6 @@
   (db-id [this]
     db-id)
 
-  (current-leader? [this]
-    (not (nil? @driver-atom)))
-
   (initialize-cluster [this pool->fenzo _]
     (log/info "Initializing Mesos compute cluster" compute-cluster-name)
     (let [settings (:settings config/config)
