@@ -1648,7 +1648,6 @@
   ::jobs and ::groups, which specify the jobs and job groups."
   [conn {:keys [::groups ::jobs ::pool] :as ctx}]
   (try
-    (let [])
     (log/info "Submitting jobs through raw api:" (map #(dissoc % :command) jobs))
     (let [jobs (mapv #(plugins/adjust-job adjustment/plugin %) jobs)
           group-uuids (set (map :uuid groups))
