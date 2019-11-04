@@ -29,7 +29,6 @@
       thousands of jobs), the whole batch of responeses MUST complete within the HTTP timeout. We set ourselves a lower timeout;
       (see documentation for `:batch-timeout-seconds`) before switching to the default."))
 
-
 (defprotocol JobLaunchFilter
   (check-job-launch [this job-map]
     "Check a job submission for if we can run it now. Returns a map with one of two possibilities:
@@ -54,3 +53,7 @@
 (defprotocol FileUrlGenerator
   (file-url [this instance]
     "Returns the file URL endpoint for the instance"))
+
+(defprotocol JobAdjuster
+  (adjust-job [this job-map]
+    "Given a job-map, returns an adjusted job-map for downstream use"))

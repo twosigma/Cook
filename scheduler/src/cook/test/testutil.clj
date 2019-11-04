@@ -107,6 +107,7 @@
                            #'cook.config/config
                            #'cook.rate-limit/job-launch-rate-limiter
                            #'cook.rate-limit/global-job-launch-rate-limiter
+                           #'cook.plugins.adjustment/plugin
                            #'cook.plugins.file/plugin
                            #'cook.plugins.launch/plugin-object
                            #'cook.plugins.pool/plugin
