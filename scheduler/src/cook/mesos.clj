@@ -133,7 +133,7 @@
    fenzo-config                  -- map, config for fenzo, See scheduler/docs/configuration.adoc for more details
    sandbox-syncer-state          -- map, representing the sandbox syncer object"
   [{:keys [curator-framework fenzo-config mea-culpa-failure-limit mesos-datomic-conn mesos-datomic-mult
-           mesos-heartbeat-chan mesos-leadership-atom pool-name->pending-jobs-atom mesos-run-as-user agent-attributes-cache
+           mesos-heartbeat-chan leadership-atom pool-name->pending-jobs-atom mesos-run-as-user agent-attributes-cache
            offer-incubate-time-ms optimizer-config rebalancer-config server-config task-constraints trigger-chans
            zk-prefix]}]
   (let [{:keys [fenzo-fitness-calculator fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-warn
@@ -156,7 +156,7 @@
                           (reify LeaderSelectorListener
                             (takeLeadership [_ client]
                               (log/warn "Taking leadership")
-                              (reset! mesos-leadership-atom true)
+                              (reset! leadership-atom true)
                               ;; TODO: get the framework ID and try to reregister
                               (let [normal-exit (atom true)]
                                 (try
@@ -233,7 +233,7 @@
                                     (log/error e "Lost leadership due to exception")
                                     (reset! normal-exit false))
                                   (finally
-                                    (reset! mesos-leadership-atom false)
+                                    (reset! leadership-atom false)
                                     (counters/dec! mesos-leader)
                                     (when @normal-exit
                                       (log/warn "Lost leadership naturally"))
@@ -245,7 +245,7 @@
                               ;; We will give up our leadership whenever it seems that we lost
                               ;; ZK connection
                               (when (#{ConnectionState/LOST ConnectionState/SUSPENDED} newState)
-                                (reset! mesos-leadership-atom false)
+                                (reset! leadership-atom false)
                                 (when (cc/current-leader? compute-cluster)
                                   (counters/dec! mesos-leader)
                                   ;; Better to fail over and rely on start up code we trust then rely on rarely run code
