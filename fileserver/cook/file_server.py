@@ -23,6 +23,7 @@
 """Module implementing a file server to serve Cook job logs. """
 
 import os
+import sys
 
 from flask import Flask, jsonify, request, send_from_directory
 from operator import itemgetter
@@ -31,35 +32,65 @@ from stat import *
 
 app = Flask(__name__)
 
+print(sys.version)
+print(f'sdfsdf {sys.version}')
 
 @app.route('/files/download')
 @app.route('/files/download.json')
 def download():
-    path = request.args.get('path')
-    if path is None:
-        return "Expecting 'path=value' in query.", 400
-    file_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), path)
-    if not os.path.exists(file_path):
+    path_param = request.args.get('path')
+    if path_param is None:
+        return "Expecting 'path=value' in query.\n", 400
+    path = os.path.join(os.path.dirname(os.path.realpath(__file__)), path_param)
+    if not os.path.exists(path):
         return "", 404
-    print(path)
-    return send_from_directory(file_path, path, as_attachment=True)
+    if os.path.isdir(path):
+        return "Cannot download a directory.\n", 400
+    print(path_param)
+    return send_from_directory(path, path_param, as_attachment=True)
 
+def try_parse_int(param_name, val):
+    err_message = lambda: "Failed to parse {param_name}: Failed to convert '{val}' to number.\n"\
+        .format(param_name=param_name, val=val)
+    try:
+        int_val = int(val)
+    except ValueError as err:
+        return (None, err_message())
+    except Exception as ex:
+        return (None, err_message())
+    return (int_val, None)
 
 @app.route('/files/read')
 @app.route('/files/read.json')
 def read():
-    path = request.args.get('path')
-    offset = request.args.get('offset', default=0, type=int)
-    length = request.args.get('length', type=int)
-    if path is None:
-        return "Expecting 'path=value' in query.", 400
-    file_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), path)
-    if not os.path.exists(file_path):
+    path_param = request.args.get('path')
+    offset_param = request.args.get('offset')
+    length_param = request.args.get('length')
+    if path_param is None:
+        return "Expecting 'path=value' in query.\n", 400
+    offset, err = (None, None) if offset_param is None else try_parse_int("offset", offset_param)
+    if not err is None:
+        return err, 400
+    length, err = (None, None) if length_param is None else try_parse_int("length", length_param)
+    if not err is None:
+        return err, 400
+    if not length is None and length < 0:
+        return "Negative length provided: {length}.\n".format(length=length), 400
+
+    path = os.path.join(os.path.dirname(os.path.realpath(__file__)), path_param)
+    if not os.path.exists(path):
         return "", 404
-    print(path)
-    print(offset)
-    print(length)
-    f = open(file_path)
+    print(repr(path_param))
+    print(repr(offset))
+    print(repr(length))
+    if os.path.isdir(path):
+        return "Cannot read a directory.\n", 400
+    if offset is None or offset < 0:
+        return jsonify({
+            "data": "",
+            "offset": os.path.getsize(path),
+        })
+    f = open(path)
     f.seek(offset)
     data = f.read() if length is None else f.read(length)
     f.close()
@@ -86,16 +117,16 @@ permissions = {n - 512: ''.join(permission_strings[c] for c in str(oct(n))[-3:])
 @app.route('/files/browse')
 @app.route('/files/browse.json')
 def browse():
-    path = request.args.get('path')
-    if path is None:
-        return "Expecting 'path=value' in query.", 400
-    file_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), path)
-    if not os.path.exists(file_path):
+    path_param = request.args.get('path')
+    if path_param is None:
+        return "Expecting 'path=value' in query.\n", 400
+    path = os.path.join(os.path.dirname(os.path.realpath(__file__)), path_param)
+    if not os.path.exists(path):
         return "", 404
-    print(path)
-    if not os.path.isdir(file_path):
+    print(path_param)
+    if not os.path.isdir(path):
         return jsonify([])
-    print(os.listdir(file_path))
+    print(os.listdir(path))
     retval = [
         {
             "gid": path_obj.group(),
@@ -107,7 +138,7 @@ def browse():
             "uid": path_obj.owner(),
         }
         for st, path_obj, path in [(os.stat(path), Path(path), path)
-                                   for path in [os.path.join(file_path, f)
-                                                for f in os.listdir(file_path)]]
+                                   for path in [os.path.join(path, f)
+                                                for f in os.listdir(path)]]
     ]
     return jsonify(sorted(retval, key=itemgetter("path")))
