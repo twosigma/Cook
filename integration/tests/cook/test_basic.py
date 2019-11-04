@@ -238,28 +238,30 @@ class CookTest(util.CookTest):
 
     def test_compute_cluster(self):
         settings_dict = util.settings(self.cook_url)
-        if util.using_kubernetes():
-            expected_compute_cluster_type = 'kubernetes'
-        elif util.using_mesos():
-            expected_compute_cluster_type = 'mesos'
-        else:
-            self.fail('Unable to determine compute cluster type')
-        expected_compute_cluster = settings_dict['compute-clusters'][0]['config']['compute-cluster-name']
-        expected_mesos_framework = settings_dict['compute-clusters'][0]['config'].get('framework-id', None)
-
         job_uuid, resp = util.submit_job(self.cook_url)
 
         try:
-            self.assertIsNotNone(expected_compute_cluster)
             self.assertEqual(resp.status_code, 201, msg=resp.content)
 
             instance = util.wait_for_instance(self.cook_url, job_uuid)
             message = repr(instance)
 
             self.assertIsNotNone(instance['compute-cluster'], message)
-            self.assertEqual(expected_compute_cluster_type, instance['compute-cluster']['type'], message)
-            self.assertEqual(expected_compute_cluster, instance['compute-cluster']['name'], message)
-            if expected_mesos_framework is not None:
+
+            instance_compute_cluster_name = instance['compute-cluster']['name']
+            instance_compute_cluster_type = instance['compute-cluster']['type']
+            self.assert_(instance_compute_cluster_type in ['mesos','kubernetes'],message)
+            filtered_compute_clusters = [compute_cluster for compute_cluster in settings_dict['compute-clusters']
+                                     if compute_cluster['config']['compute-cluster-name'] == instance_compute_cluster_name]
+            self.assertEquals(1,len(filtered_compute_clusters), "Unable to find "+instance_compute_cluster_name+" in compute clusters")
+            found_compute_cluster = filtered_compute_clusters[0]
+
+            self.assertIsNotNone(found_compute_cluster, message + str(settings_dict['compute-clusters']))
+            expected_mesos_framework = found_compute_cluster['config'].get('framework-id', None)
+
+            self.assertEqual(util.get_compute_cluster_type(found_compute_cluster), instance_compute_cluster_type, message)
+            self.assertEqual(found_compute_cluster['config']['compute-cluster-name'], instance_compute_cluster_name, message)
+            if found_compute_cluster['factory-fn'] == 'cook.mesos.mesos-compute-cluster/factory-fn':
                 self.assertEqual(expected_mesos_framework, instance['compute-cluster']['mesos']['framework-id'],
                                  message)
         finally:
