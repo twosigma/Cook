@@ -36,6 +36,7 @@
             [metatransaction.core :as mt :refer (db)]
             [metatransaction.utils :as dutils]
             [metrics.counters :as counters]
+            [plumbing.core :as pc]
             [swiss.arrows :refer :all])
   (:import [org.apache.curator.framework.recipes.leader LeaderSelector LeaderSelectorListener]
            org.apache.curator.framework.state.ConnectionState))
@@ -142,9 +143,6 @@
                 rebalancer-trigger-chan straggler-trigger-chan]} trigger-chans
         {:keys [hostname server-port server-https-port]} server-config
         datomic-report-chan (async/chan (async/sliding-buffer 4096))
-        ; TODO: Tech-debt. Should remove compute-cluster when we rethink initialization and leadership.
-        ; TODO: See also cluster-leadership-chan below.
-        compute-cluster (cc/get-default-cluster-for-legacy)
         compute-clusters @cc/cluster-name->compute-cluster-atom
         rebalancer-reservation-atom (atom {})
         _ (log/info "Using path" zk-prefix "for leader selection")
@@ -179,18 +177,12 @@
                                           :task-constraints task-constraints
                                           :trigger-chans trigger-chans})
                                         running-tasks-ents (cook.tools/get-running-task-ents (d/db mesos-datomic-conn))
-                                        ; TODO: Tech-debt here, we want to rethink leadership and should remove/fix
-                                        ; cluster-leadership-chan/cluster-leadership-chans. Think what that means in the
-                                        ; multi-cluster or non-mesos case.
-                                        ;
+                                        cluster-leadership-chans (pc/map-vals
+                                                                   #(cc/initialize-cluster %
+                                                                                           pool-name->fenzo
+                                                                                           running-tasks-ents) compute-clusters)
                                         ; Note: This doall has a critical side effect of actually initializing all of the clusters.
-                                        cluster-leadership-chans (->> compute-clusters
-                                                                      vals
-                                                                      (map #(cc/initialize-cluster %
-                                                                                                   pool-name->fenzo
-                                                                                                   running-tasks-ents))
-                                                                      doall)
-                                        cluster-leadership-chan (first cluster-leadership-chans)]
+                                        _ (doall cluster-leadership-chans)]
                                     (cook.monitor/start-collecting-stats)
                                     ; Many of these should look at the compute-cluster of the underlying jobs, and not use driver at all.
                                     (cook.scheduler.scheduler/lingering-task-killer mesos-datomic-conn
@@ -225,8 +217,17 @@
                                     (async/tap mesos-datomic-mult datomic-report-chan)
                                     (cook.scheduler.scheduler/monitor-tx-report-queue datomic-report-chan mesos-datomic-conn)
                                     ; Curator expects takeLeadership to block until voluntarily surrendering leadership.
-                                    ; Block on cluster-leadership-chan to hold ZK leadership unless we lose mesos leadership.
-                                    (let [res (async/<!! cluster-leadership-chan)]
+                                    ; We need to block here until we're willing to give up leadership.
+                                    ;
+                                    ; We block until any of the cluster-leadership-chans unblock. This happens when the compute cluster
+                                    ; loses connectivity to the backend. For now, we want to treat mesos as special. When we lose our mesos
+                                    ; driver connection to the backend, we want cook to suicide. If we lose any of our kubernetes connections
+                                    ; we ignore it and work with the remaining cluster.
+                                    ;
+                                    ; WARNING: This code is very misleading. It looks like we'll suicide if ANY of the cluster's lose leadership.
+                                    ; However, kubernetes currently can't lose leadership, so this is the equivalent of only looking at mesos.
+                                    ; During code review, we didn't want to implement the special case for mesos.
+                                    (let [res (async/<!! (async/merge (vals cluster-leadership-chans)))]
                                       (when (instance? Throwable res)
                                         (throw res))))
                                   (catch Throwable e
