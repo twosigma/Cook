@@ -428,6 +428,12 @@
 
     ; pod-spec
     (.addContainersItem pod-spec container)
+    
+    (when true
+      (let [container (V1Container.)]
+
+        (.addContainersItem pod-spec container)))
+
     (.setNodeName pod-spec hostname)
     (.setRestartPolicy pod-spec "Never")
     (when pool-name
