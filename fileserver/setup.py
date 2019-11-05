@@ -5,8 +5,8 @@ from setuptools import setup
 from cook import version
 
 requirements = [
-    'Flask',
-    'gunicorn'
+    'Flask==1.1.0',
+    'gunicorn==19.9.0'
 ]
 
 test_requirements = [

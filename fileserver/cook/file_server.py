@@ -23,17 +23,14 @@
 """Module implementing a file server to serve Cook job logs. """
 
 import os
-import sys
-
-from flask import Flask, jsonify, request, send_from_directory
 from operator import itemgetter
 from pathlib import Path
 from stat import *
 
+from flask import Flask, jsonify, request, send_from_directory
+
 app = Flask(__name__)
 
-print(sys.version)
-print(f'sdfsdf {sys.version}')
 
 @app.route('/files/download')
 @app.route('/files/download.json')
@@ -46,12 +43,11 @@ def download():
         return "", 404
     if os.path.isdir(path):
         return "Cannot download a directory.\n", 400
-    print(path_param)
     return send_from_directory(path, path_param, as_attachment=True)
 
+
 def try_parse_int(param_name, val):
-    err_message = lambda: "Failed to parse {param_name}: Failed to convert '{val}' to number.\n"\
-        .format(param_name=param_name, val=val)
+    err_message = lambda: f"Failed to parse {param_name}: Failed to convert '{val}' to number.\n"
     try:
         int_val = int(val)
     except ValueError as err:
@@ -59,6 +55,7 @@ def try_parse_int(param_name, val):
     except Exception as ex:
         return (None, err_message())
     return (int_val, None)
+
 
 @app.route('/files/read')
 @app.route('/files/read.json')
@@ -75,14 +72,11 @@ def read():
     if not err is None:
         return err, 400
     if not length is None and length < 0:
-        return "Negative length provided: {length}.\n".format(length=length), 400
+        return f"Negative length provided: {length}.\n", 400
 
     path = os.path.join(os.path.dirname(os.path.realpath(__file__)), path_param)
     if not os.path.exists(path):
         return "", 404
-    print(repr(path_param))
-    print(repr(offset))
-    print(repr(length))
     if os.path.isdir(path):
         return "Cannot read a directory.\n", 400
     if offset is None or offset < 0:
@@ -123,10 +117,8 @@ def browse():
     path = os.path.join(os.path.dirname(os.path.realpath(__file__)), path_param)
     if not os.path.exists(path):
         return "", 404
-    print(path_param)
     if not os.path.isdir(path):
         return jsonify([])
-    print(os.listdir(path))
     retval = [
         {
             "gid": path_obj.group(),
