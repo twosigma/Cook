@@ -677,7 +677,7 @@ class CookCliTest(util.CookTest):
             self.assertEqual(0, cp.returncode, cp.stderr)
             self.assertEqual(len(pools) + 1, len(jobs))
         finally:
-            util.kill_jobs(self.cook_url, job_uuids)
+            util.kill_jobs(self.cook_url, job_uuids, assert_response=False)
 
     def test_ssh_job_uuid(self):
         cp, uuids = cli.submit('ls', self.cook_url, submit_flags=f'--name {self.current_name()}')
