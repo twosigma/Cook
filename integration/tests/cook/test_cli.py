@@ -805,7 +805,7 @@ class CookCliTest(util.CookTest):
 
     @pytest.mark.xfail
     def test_tail_large_file_no_newlines(self):
-        iterations = 18
+        iterations = 10
         cp, uuids = cli.submit('bash -c \'printf "helloworld" > file.txt; '
                                f'for i in {{1..{iterations}}}; do '
                                'cat file.txt file.txt > file2.txt && '
