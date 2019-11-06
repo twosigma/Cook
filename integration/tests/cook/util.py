@@ -1618,3 +1618,12 @@ def kill_running_and_waiting_jobs(cook_url, user):
 
 def running_tasks(cook_url):
     return session.get(f'{cook_url}/running', params={'limit': 20}).json()
+
+
+@functools.lru_cache()                     
+def timeout_interval_minutes()
+    cook_url = retrieve_cook_url()
+    _wait_for_cook(cook_url)
+    settings_timeout_interval_minutes = get_in(settings(cook_url), 'task-constraints', 
+                                               'timeout-interval-minutes')
+    return settings_timeout_interval_minutes
