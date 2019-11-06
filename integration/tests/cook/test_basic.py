@@ -561,13 +561,12 @@ class CookTest(util.CookTest):
         self.assertEqual(80, instance['progress'], message)
         self.assertEqual('80%', instance['progress_message'], message)
 
+    @pytest.mark.timeout((2 * util.timeout_interval_minutes() * 60) + 60)
     def test_max_runtime_exceeded(self):
         job_executor_type = util.get_job_executor_type()
-        settings_timeout_interval_minutes = util.get_in(util.settings(self.cook_url), 'task-constraints',
-                                                        'timeout-interval-minutes')
-        # the value needs to be a little more than 2 times settings_timeout_interval_minutes to allow
+        # the value needs to be a little more than 2 times the timeout interval to allow
         # at least two runs of the lingering task killer
-        job_sleep_seconds = (2 * settings_timeout_interval_minutes * 60) + 15
+        job_sleep_seconds = (2 * util.timeout_interval_minutes() * 60) + 15
         job_sleep_ms = job_sleep_seconds * 1000
         max_runtime_ms = 5000
         assert max_runtime_ms < job_sleep_ms
