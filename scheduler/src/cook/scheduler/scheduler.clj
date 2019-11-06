@@ -733,7 +733,7 @@
   "Gets a list of offers from mesos. Decides what to do with them all--they should all
    be accepted or rejected at the end of the function."
   [conn ^TaskScheduler fenzo pool-name->pending-jobs-atom mesos-run-as-user
-   user->usage user->quota num-considerable offers rebalancer-reservation-atom pool-name]
+   user->usage user->quota num-considerable offers rebalancer-reservation-atom pool-name compute-clusters]
   (log/debug "In" pool-name "pool, invoked handle-resource-offers!")
   (let [offer-stash (atom nil)] ;; This is a way to ensure we never lose offers fenzo assigned if an error occurs in the middle of processing
     ;; TODO: It is possible to have an offer expire by mesos because we recycle it a bunch of times.
@@ -767,6 +767,8 @@
           (reset! offer-stash offers-scheduled)
           (reset! front-of-job-queue-mem-atom (or (:mem first-considerable-job-resources) 0))
           (reset! front-of-job-queue-cpus-atom (or (:cpus first-considerable-job-resources) 0))
+
+          ; TODO(DPO)
 
           (cond
             ;; Possible innocuous reasons for no matches: no offers, or no pending jobs.
@@ -856,7 +858,7 @@
                       matched-head? (handle-resource-offers! conn fenzo pool-name->pending-jobs-atom
                                                              mesos-run-as-user @user->usage-future user->quota
                                                              num-considerable offers
-                                                             rebalancer-reservation-atom pool-name)]
+                                                             rebalancer-reservation-atom pool-name compute-clusters)]
                   (when (seq offers)
                     (reset! resources-atom (view-incubating-offers fenzo)))
                   ;; This check ensures that, although we value Fenzo's optimizations,
