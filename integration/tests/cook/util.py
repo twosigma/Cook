@@ -1620,7 +1620,7 @@ def running_tasks(cook_url):
     return session.get(f'{cook_url}/running', params={'limit': 20}).json()
 
 
-@functools.lru_cache()                     
+@functools.lru_cache()
 def timeout_interval_minutes()
     cook_url = retrieve_cook_url()
     _wait_for_cook(cook_url)
