@@ -1621,7 +1621,7 @@ def running_tasks(cook_url):
 
 
 @functools.lru_cache()
-def timeout_interval_minutes()
+def timeout_interval_minutes():
     cook_url = retrieve_cook_url()
     _wait_for_cook(cook_url)
     settings_timeout_interval_minutes = get_in(settings(cook_url), 'task-constraints', 
