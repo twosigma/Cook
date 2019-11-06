@@ -177,12 +177,12 @@
                                           :task-constraints task-constraints
                                           :trigger-chans trigger-chans})
                                         running-tasks-ents (cook.tools/get-running-task-ents (d/db mesos-datomic-conn))
-                                        cluster-leadership-chans (pc/map-vals
+                                        cluster-connected-chans (pc/map-vals
                                                                    #(cc/initialize-cluster %
                                                                                            pool-name->fenzo
                                                                                            running-tasks-ents) compute-clusters)
                                         ; Note: This doall has a critical side effect of actually initializing all of the clusters.
-                                        _ (doall cluster-leadership-chans)]
+                                        _ (doall cluster-connected-chans)]
                                     (cook.monitor/start-collecting-stats)
                                     ; Many of these should look at the compute-cluster of the underlying jobs, and not use driver at all.
                                     (cook.scheduler.scheduler/lingering-task-killer mesos-datomic-conn
@@ -219,7 +219,7 @@
                                     ; Curator expects takeLeadership to block until voluntarily surrendering leadership.
                                     ; We need to block here until we're willing to give up leadership.
                                     ;
-                                    ; We block until any of the cluster-leadership-chans unblock. This happens when the compute cluster
+                                    ; We block until any of the cluster-connected-chans unblock. This happens when the compute cluster
                                     ; loses connectivity to the backend. For now, we want to treat mesos as special. When we lose our mesos
                                     ; driver connection to the backend, we want cook to suicide. If we lose any of our kubernetes connections
                                     ; we ignore it and work with the remaining cluster.
@@ -227,7 +227,7 @@
                                     ; WARNING: This code is very misleading. It looks like we'll suicide if ANY of the cluster's lose leadership.
                                     ; However, kubernetes currently can't lose leadership, so this is the equivalent of only looking at mesos.
                                     ; During code review, we didn't want to implement the special case for mesos.
-                                    (let [res (async/<!! (async/merge (vals cluster-leadership-chans)))]
+                                    (let [res (async/<!! (async/merge (vals cluster-connected-chans)))]
                                       (when (instance? Throwable res)
                                         (throw res))))
                                   (catch Throwable e
