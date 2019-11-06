@@ -38,16 +38,20 @@ if 'TEST_METRICS_URL' in os.environ:
             test_namespace = '.'.join(request_node._nodeid.split('::')[:-1]).replace('/', '.').replace('.py', '')
             test_name = request_node.name
             setup = request_node.rep_setup
-            call = request_node.rep_call
-            if setup.failed or call.failed:
-                result = 'failed'
-            elif setup.passed and call.passed:
-                result = 'passed'
-            elif call.skipped:
-                result = 'skipped'
+            if hasattr(request_node, 'rep_call'):
+                call = request_node.rep_call
+                if setup.failed or call.failed:
+                    result = 'failed'
+                elif setup.passed and call.passed:
+                    result = 'passed'
+                elif call.skipped:
+                    result = 'skipped'
+                else:
+                    logging.warning('Unable to determine test result')
+                    result = 'unknown'
             else:
-                logging.warning('Unable to determine test result')
-                result = 'unknown'
+                logging.warning('Test does not appear to have completed')
+                result = 'uncompleted'
             metrics = {
                 'timestamp': now.strftime('%Y-%m-%dT%H:%M:%S'),
                 'project': 'cook',
