@@ -271,7 +271,7 @@
           ; scheduler/join! is a blocking call which returns or throws when the driver loses it's connection to mesos.
           ; Run this in an async thread which will deliver either the Status on a normal exit, or an exception if thrown.
           (mesomatic.scheduler/join! driver)
-          (log/info "Join unblocked. We appear to have lost driver connection")
+          (log/info "In" compute-cluster-name "compute cluster, mesomatic scheduler join unblocked; we appear to have lost driver connection")
           (catch Exception e
             (log/warn e "Lost mesos driver with exception")
             e)
