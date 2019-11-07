@@ -121,8 +121,8 @@ class ImpersonationCookTest(util.CookTest):
         try:
             with self.user_factory.admin():
                 # Reset the user's share and quota
-                util.set_limit_to_default(self.cook_url, 'share', user1.name)
-                util.set_limit_to_default(self.cook_url, 'quota', user1.name)
+                util.set_limit_to_default(self.cook_url, 'share', user1.name, util.default_submit_pool())
+                util.set_limit_to_default(self.cook_url, 'quota', user1.name, util.default_submit_pool())
             
             # normal user can self-impersonate
             with user1.impersonating(user1):
