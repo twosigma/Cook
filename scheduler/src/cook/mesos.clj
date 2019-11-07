@@ -142,7 +142,7 @@
                 rebalancer-trigger-chan straggler-trigger-chan]} trigger-chans
         {:keys [hostname server-port server-https-port]} server-config
         datomic-report-chan (async/chan (async/sliding-buffer 4096))
-        compute-clusters @cc/cluster-name->compute-cluster-atom
+        cluster-name->compute-cluster @cc/cluster-name->compute-cluster-atom
         rebalancer-reservation-atom (atom {})
         _ (log/info "Using path" zk-prefix "for leader selection")
         leader-selector (LeaderSelector.
@@ -176,7 +176,7 @@
                                           :task-constraints task-constraints
                                           :trigger-chans trigger-chans})
                                         running-tasks-ents (cook.tools/get-running-task-ents (d/db mesos-datomic-conn))
-                                        cluster-connected-chans (->> compute-clusters
+                                        cluster-connected-chans (->> cluster-name->compute-cluster
                                                                      vals
                                                                      (map #(cc/initialize-cluster %
                                                                                                  pool-name->fenzo
