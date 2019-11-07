@@ -1639,3 +1639,10 @@ def timeout_interval_minutes():
     settings_timeout_interval_minutes = get_in(settings(cook_url), 'task-constraints', 
                                                'timeout-interval-minutes')
     return settings_timeout_interval_minutes
+
+                     
+def reset_share_and_quota(cook_url, user):
+    pool = default_submit_pool()
+    logger.info(f'Resetting share and quota for {user} in pool {pool}')
+    set_limit_to_default(cook_url, 'share', user, pool)
+    set_limit_to_default(cook_url, 'quota', user, pool)
