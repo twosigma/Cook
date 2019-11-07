@@ -224,8 +224,8 @@
                                     ; driver connection to the backend, we want cook to suicide. If we lose any of our kubernetes connections
                                     ; we ignore it and work with the remaining cluster.
                                     ;
-                                    ; WARNING: This code is very misleading. It looks like we'll suicide if ANY of the cluster's lose leadership.
-                                    ; However, kubernetes currently can't lose leadership, so this is the equivalent of only looking at mesos.
+                                    ; WARNING: This code is very misleading. It looks like we'll suicide if ANY of the clusters lose leadership.
+                                    ; However, the kubernetes compute clusters never put anything on their chan, so this is the equivalent of only looking at mesos.
                                     ; During code review, we didn't want to implement the special case for mesos.
                                     (let [res (async/<!! (async/merge (vals cluster-connected-chans)))]
                                       (when (instance? Throwable res)
