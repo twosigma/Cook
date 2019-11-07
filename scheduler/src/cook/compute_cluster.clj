@@ -51,7 +51,7 @@
   "If compute cluster is nil, print a warning instead of killing the task. There are cases, in particular,
   lingering tasks, stragglers, or cancelled tasks where the task might outlive the compute cluster it was
   member of. When this occurs, the looked up compute cluster is null and trying to kill via it would cause an NPE,
-  when in reality, its relatively innocuous. So, we have this wrapper to use in those circumstances."
+  when in reality, it's relatively innocuous. So, we have this wrapper to use in those circumstances."
   (if compute-cluster
     (kill-task compute-cluster task-id)
     (log/warn "Unable to kill task " task-id " because compute-cluster is nil")))
