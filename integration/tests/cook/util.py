@@ -490,6 +490,10 @@ def minimal_group(**kwargs):
     return dict(uuid=str(make_temporal_uuid()), **kwargs)
 
 
+def default_submit_pool():
+    return os.getenv('COOK_TEST_DEFAULT_SUBMIT_POOL')
+
+
 def submit_jobs(cook_url, job_specs, clones=1, pool=None, headers=None, **kwargs):
     """
     Create and submit multiple jobs, either cloned from a single job spec,
@@ -509,8 +513,16 @@ def submit_jobs(cook_url, job_specs, clones=1, pool=None, headers=None, **kwargs
 
     jobs = [full_spec(j) for j in job_specs]
     request_body = {'jobs': jobs}
+    default_pool = default_submit_pool()
     if pool:
+        logger.info(f'Submitting explicitly to the {pool} pool')
         request_body['pool'] = pool
+    elif default_pool:
+        logger.info(f'Submitting explicitly to the {default_pool} pool (set as default)')
+        request_body['pool'] = default_pool
+    else:
+        logger.info(f'Submitting with no explicit pool')
+        
     request_body.update(kwargs)
     logger.info(request_body)
     resp = session.post(f'{cook_url}/jobs', json=request_body, headers=headers)
