@@ -36,7 +36,6 @@
             [metatransaction.core :as mt :refer (db)]
             [metatransaction.utils :as dutils]
             [metrics.counters :as counters]
-            [plumbing.core :as pc]
             [swiss.arrows :refer :all])
   (:import [org.apache.curator.framework.recipes.leader LeaderSelector LeaderSelectorListener]
            org.apache.curator.framework.state.ConnectionState))
@@ -177,12 +176,14 @@
                                           :task-constraints task-constraints
                                           :trigger-chans trigger-chans})
                                         running-tasks-ents (cook.tools/get-running-task-ents (d/db mesos-datomic-conn))
-                                        cluster-connected-chans (pc/map-vals
-                                                                   #(cc/initialize-cluster %
-                                                                                           pool-name->fenzo
-                                                                                           running-tasks-ents) compute-clusters)
-                                        ; Note: This doall has a critical side effect of actually initializing all of the clusters.
-                                        _ (doall cluster-connected-chans)]
+                                        cluster-connected-chans (->> compute-clusters
+                                                                     vals
+                                                                     (map #(cc/initialize-cluster %
+                                                                                                 pool-name->fenzo
+                                                                                                 running-tasks-ents))
+                                                                     ; Note: This doall has a critical side effect of actually initializing
+                                                                     ; all of the clusters.
+                                                                     doall)]
                                     (cook.monitor/start-collecting-stats)
                                     ; Many of these should look at the compute-cluster of the underlying jobs, and not use driver at all.
                                     (cook.scheduler.scheduler/lingering-task-killer mesos-datomic-conn
@@ -226,15 +227,14 @@
                                     ;
                                     ; WARNING: This code is very misleading. It looks like we'll suicide if ANY of the clusters lose leadership.
                                     ; However, the kubernetes compute clusters never put anything on their chan, so this is the equivalent of only looking at mesos.
-                                    ; During code review, we didn't want to implement the special case for mesos.
-                                    (let [res (async/<!! (async/merge (vals cluster-connected-chans)))]
+                                    ; We didn't want to implement the special case for mesos.
+                                    (let [res (async/<!! (async/merge cluster-connected-chans))]
                                       (when (instance? Throwable res)
                                         (throw res))))
                                   (catch Throwable e
                                     (log/error e "Lost leadership due to exception")
                                     (reset! normal-exit false))
                                   (finally
-                                    (reset! leadership-atom false)
                                     (counters/dec! mesos-leader)
                                     (when @normal-exit
                                       (log/warn "Lost leadership naturally"))
