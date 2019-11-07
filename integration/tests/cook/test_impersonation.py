@@ -119,6 +119,11 @@ class ImpersonationCookTest(util.CookTest):
         user1 = self.user_factory.new_user()
         job_uuids = []
         try:
+            with self.user_factory.admin():
+                # Reset the user's share and quota
+                util.set_limit_to_default(self.cook_url, 'share', user1.name)
+                util.set_limit_to_default(self.cook_url, 'quota', user1.name)
+            
             # normal user can self-impersonate
             with user1.impersonating(user1):
                 job_uuid, resp = util.submit_job(self.cook_url, command='sleep 1')
