@@ -273,7 +273,7 @@
           (mesomatic.scheduler/join! driver)
           (log/info "In" compute-cluster-name "compute cluster, mesomatic scheduler join unblocked; we appear to have lost driver connection")
           (catch Exception e
-            (log/warn e "Lost mesos driver with exception")
+            (log/warn e "In" compute-cluster-name "compute cluster, lost mesos driver with exception")
             e)
           (finally
             (reset! driver-atom nil))))))
