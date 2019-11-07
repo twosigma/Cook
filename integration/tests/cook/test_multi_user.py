@@ -45,6 +45,9 @@ class MultiUserCookTest(util.CookTest):
 
     def test_group_delete_permission(self):
         user1, user2 = self.user_factory.new_users(2)
+        with self.user_factory.admin():
+            util.reset_share_and_quota(self.cook_url, user1.name)
+
         with user1:
             group_spec = util.minimal_group()
             group_uuid = group_spec['uuid']
