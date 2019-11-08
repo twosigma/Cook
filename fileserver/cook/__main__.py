@@ -23,11 +23,8 @@
 
 import logging
 import sys
-#from logging.handlers import RotatingFileHandler
 
 from cook.file_server import FileServerApplication
-
-# from waitress import serve
 
 
 def main(args=None):
@@ -35,11 +32,7 @@ def main(args=None):
         args = sys.argv[1:]
     try:
         print(sys.version)
-        #handler = RotatingFileHandler('foo.log', maxBytes=10000, backupCount=1)
-        #handler.setLevel(logging.INFO)
-        #app.logger.addHandler(handler)
-        # app.use_x_sendfile = True
-        port, workers = (args + [None]*2)[0:2]
+        port, workers = (args + [None] * 2)[0:2]
         if port is None:
             logging.error('Must provide port')
             sys.exit(1)
@@ -48,14 +41,8 @@ def main(args=None):
             'workers': 4 if workers is None else workers,
         }).run()
 
-        # waitress
-        # serve(app)
-
-        # result = run(args)
-        # sys.exit(result)
     except Exception as e:
         logging.exception('exception when running with %s' % args)
-        # print_error(str(e))
         sys.exit(1)
 
 
