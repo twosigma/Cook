@@ -48,7 +48,6 @@ export MESOS_MASTER="${MASTER_IP}:5050"
 export MESOS_NATIVE_JAVA_LIBRARY="${MESOS_NATIVE_JAVA_LIBRARY}"
 export COOK_SSL_PORT="${COOK_SSL_PORT}"
 export COOK_KEYSTORE_PATH="${COOK_KEYSTORE_PATH}"
-export COOK_K8S_CONFIG_FILE=~/.kube/config
 
 echo "Starting cook..."
 lein run config-k8s.edn
