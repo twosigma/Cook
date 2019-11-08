@@ -10,5 +10,6 @@ export COOK_DB_TEST_PG_DB="cook_local"
 export COOK_DB_TEST_PG_USER="cook_scheduler"
 export COOK_DB_TEST_PG_SERVER="cook-postgres"
 lein exec -p /opt/cook/datomic/data/seed_pools.clj ${COOK_DATOMIC_URI}
+lein exec -p /opt/cook/datomic/data/seed_k8s_pools.clj ${COOK_DATOMIC_URI}
 lein exec -p /opt/cook/datomic/data/seed_running_jobs.clj ${COOK_DATOMIC_URI}
 lein with-profiles +docker run $1
