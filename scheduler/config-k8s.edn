@@ -24,9 +24,6 @@
                               ;; Location of the kubernetes config file, e.g. $HOME/.kube/config
                               :config-file #config/env "COOK_K8S_CONFIG_FILE"}}]
  :cors-origins ["https?://cors.example.com"]
- :data-local {:fitness-calculator {:cache-ttl-ms 60000
-                                   :cost-endpoint #config/env "DATA_LOCAL_ENDPOINT"
-                                   :update-interval-ms 1000}}
  :database {:datomic-uri #config/env "COOK_DATOMIC_URI"}
  :plugins {:job-submission-validator {:batch-timeout-seconds 40
                                       :factory-fn "cook.plugins.demo-plugin/submission-factory"}

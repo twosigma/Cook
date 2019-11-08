@@ -5,7 +5,7 @@
 
 set -e
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-SCHEDULER_DIR="$( dirname ${DIR} )"
+SCHEDULER_DIR="$( dirname "${DIR}" )"
 
 # Defaults (overridable via environment)
 : ${COOK_DATOMIC_URI="datomic:mem://cook-jobs"}
@@ -17,8 +17,6 @@ SCHEDULER_DIR="$( dirname ${DIR} )"
 : ${MASTER_IP:="127.0.0.2"}
 : ${ZOOKEEPER_IP:="127.0.0.1"}
 : ${MESOS_NATIVE_JAVA_LIBRARY:="/usr/local/lib/libmesos.dylib"}
-
-NAME=cook-scheduler-${COOK_PORT}
 
 
 if [ "${COOK_ZOOKEEPER_LOCAL}" = false ] ; then
@@ -32,16 +30,8 @@ fi
 
 if [ ! -f "${COOK_KEYSTORE_PATH}" ];
 then
-    keytool -genkeypair -keystore ${COOK_KEYSTORE_PATH} -storetype PKCS12 -storepass cookstore -dname "CN=cook, OU=Cook Developers, O=Two Sigma Investments, L=New York, ST=New York, C=US" -keyalg RSA -keysize 2048
+    keytool -genkeypair -keystore "${COOK_KEYSTORE_PATH}" -storetype PKCS12 -storepass cookstore -dname "CN=cook, OU=Cook Developers, O=Two Sigma Investments, L=New York, ST=New York, C=US" -keyalg RSA -keysize 2048
 fi
-
-if ! [ -x "$(command -v flask)" ]; then
-    echo "Please install flask"
-    exit 1
-fi
-
-INTEGRATION_DIR="$(dirname ${SCHEDULER_DIR})/integration"
-FLASK_APP=${INTEGRATION_DIR}/src/data_locality/service.py flask run -p 35847 &
 
 echo "Creating environment variables..."
 export COOK_DATOMIC_URI="${COOK_DATOMIC_URI}"
@@ -58,8 +48,7 @@ export MESOS_MASTER="${MASTER_IP}:5050"
 export MESOS_NATIVE_JAVA_LIBRARY="${MESOS_NATIVE_JAVA_LIBRARY}"
 export COOK_SSL_PORT="${COOK_SSL_PORT}"
 export COOK_KEYSTORE_PATH="${COOK_KEYSTORE_PATH}"
-export DATA_LOCAL_ENDPOINT="http://localhost:35847/retrieve-costs"
-export COOK_K8S_CONFIG_FILE=~/.kube/config 
+export COOK_K8S_CONFIG_FILE=~/.kube/config
 
 echo "Starting cook..."
 lein run config-k8s.edn
