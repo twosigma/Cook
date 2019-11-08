@@ -32,9 +32,6 @@
      We expect Cook to give up leadership when a compute cluster loses leadership, so leadership is not expected to be regained.
      The channel result will be an exception if an error occurred, or a status message if leadership was lost normally.")
 
-  (current-leader? [this]
-    "Returns true if this cook instance is currently the leader for the compute cluster")
-
   (kill-task [this task-id]
     "Kill the task with the given task id")
 

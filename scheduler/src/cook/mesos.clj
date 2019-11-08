@@ -133,7 +133,7 @@
    fenzo-config                  -- map, config for fenzo, See scheduler/docs/configuration.adoc for more details
    sandbox-syncer-state          -- map, representing the sandbox syncer object"
   [{:keys [curator-framework fenzo-config mea-culpa-failure-limit mesos-datomic-conn mesos-datomic-mult
-           mesos-heartbeat-chan mesos-leadership-atom pool-name->pending-jobs-atom mesos-run-as-user agent-attributes-cache
+           mesos-heartbeat-chan leadership-atom pool-name->pending-jobs-atom mesos-run-as-user agent-attributes-cache
            offer-incubate-time-ms optimizer-config rebalancer-config server-config task-constraints trigger-chans
            zk-prefix]}]
   (let [{:keys [fenzo-fitness-calculator fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-warn
@@ -142,8 +142,7 @@
                 rebalancer-trigger-chan straggler-trigger-chan]} trigger-chans
         {:keys [hostname server-port server-https-port]} server-config
         datomic-report-chan (async/chan (async/sliding-buffer 4096))
-
-        compute-cluster (cc/get-default-cluster-for-legacy)
+        cluster-name->compute-cluster @cc/cluster-name->compute-cluster-atom
         rebalancer-reservation-atom (atom {})
         _ (log/info "Using path" zk-prefix "for leader selection")
         leader-selector (LeaderSelector.
@@ -154,7 +153,7 @@
                           (reify LeaderSelectorListener
                             (takeLeadership [_ client]
                               (log/warn "Taking leadership")
-                              (reset! mesos-leadership-atom true)
+                              (reset! leadership-atom true)
                               ;; TODO: get the framework ID and try to reregister
                               (let [normal-exit (atom true)]
                                 (try
@@ -177,9 +176,14 @@
                                           :task-constraints task-constraints
                                           :trigger-chans trigger-chans})
                                         running-tasks-ents (cook.tools/get-running-task-ents (d/db mesos-datomic-conn))
-                                        cluster-leadership-chan (cc/initialize-cluster compute-cluster
-                                                                                       pool-name->fenzo
-                                                                                       running-tasks-ents)]
+                                        cluster-connected-chans (->> cluster-name->compute-cluster
+                                                                     vals
+                                                                     (map #(cc/initialize-cluster %
+                                                                                                 pool-name->fenzo
+                                                                                                 running-tasks-ents))
+                                                                     ; Note: This doall has a critical side effect of actually initializing
+                                                                     ; all of the clusters.
+                                                                     doall)]
                                     (cook.monitor/start-collecting-stats)
                                     ; Many of these should look at the compute-cluster of the underlying jobs, and not use driver at all.
                                     (cook.scheduler.scheduler/lingering-task-killer mesos-datomic-conn
@@ -214,15 +218,23 @@
                                     (async/tap mesos-datomic-mult datomic-report-chan)
                                     (cook.scheduler.scheduler/monitor-tx-report-queue datomic-report-chan mesos-datomic-conn)
                                     ; Curator expects takeLeadership to block until voluntarily surrendering leadership.
-                                    ; Block on cluster-leadership-chan to hold ZK leadership unless we lose mesos leadership.
-                                    (let [res (async/<!! cluster-leadership-chan)]
+                                    ; We need to block here until we're willing to give up leadership.
+                                    ;
+                                    ; We block until any of the cluster-connected-chans unblock. This happens when the compute cluster
+                                    ; loses connectivity to the backend. For now, we want to treat mesos as special. When we lose our mesos
+                                    ; driver connection to the backend, we want cook to suicide. If we lose any of our kubernetes connections
+                                    ; we ignore it and work with the remaining cluster.
+                                    ;
+                                    ; WARNING: This code is very misleading. It looks like we'll suicide if ANY of the clusters lose leadership.
+                                    ; However, the kubernetes compute clusters never put anything on their chan, so this is the equivalent of only looking at mesos.
+                                    ; We didn't want to implement the special case for mesos.
+                                    (let [res (async/<!! (async/merge cluster-connected-chans))]
                                       (when (instance? Throwable res)
                                         (throw res))))
                                   (catch Throwable e
                                     (log/error e "Lost leadership due to exception")
                                     (reset! normal-exit false))
                                   (finally
-                                    (reset! mesos-leadership-atom false)
                                     (counters/dec! mesos-leader)
                                     (when @normal-exit
                                       (log/warn "Lost leadership naturally"))
@@ -234,8 +246,7 @@
                               ;; We will give up our leadership whenever it seems that we lost
                               ;; ZK connection
                               (when (#{ConnectionState/LOST ConnectionState/SUSPENDED} newState)
-                                (reset! mesos-leadership-atom false)
-                                (when (cc/current-leader? compute-cluster)
+                                (when @leadership-atom
                                   (counters/dec! mesos-leader)
                                   ;; Better to fail over and rely on start up code we trust then rely on rarely run code
                                   ;; to make sure we yield leadership correctly (and fully)

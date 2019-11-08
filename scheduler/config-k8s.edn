@@ -20,9 +20,13 @@
          ; (like test_default_container_volumes) will fail without this set.
          :run-as-user "root"}
  :compute-clusters [{:factory-fn cook.kubernetes.compute-cluster/factory-fn
-                     :config {:compute-cluster-name "minikube"
-                              ;; Location of the kubernetes config file, e.g. $HOME/.kube/config
-                              :config-file #config/env "COOK_K8S_CONFIG_FILE"}}]
+                     :config {:compute-cluster-name "gke-1"
+                              ;; Location of the kubernetes config file. Hardcoded to the location specified by bin/make-gke-test-cluster
+                              :config-file "../scheduler/.cook_kubeconfig_1"}}
+                    {:factory-fn cook.kubernetes.compute-cluster/factory-fn
+                     :config {:compute-cluster-name "gke-2"
+                              ;; Location of the kubernetes config file. Hardcoded to the location specified by bin/make-gke-test-cluster
+                              :config-file "../scheduler/.cook_kubeconfig_2"}}]
  :cors-origins ["https?://cors.example.com"]
  :database {:datomic-uri #config/env "COOK_DATOMIC_URI"}
  :plugins {:job-submission-validator {:batch-timeout-seconds 40

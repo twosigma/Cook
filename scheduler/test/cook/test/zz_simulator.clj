@@ -122,7 +122,7 @@
          exit-code-syncer-state# {:task-id->exit-code-agent (agent {})}
          sandbox-syncer-state# {:task-id->sandbox-agent (agent {})}
          host-settings# {:server-port 12321 :hostname "localhost"}
-         mesos-leadership-atom# (atom false)
+         leadership-atom# (atom false)
          fenzo-config# (merge default-fenzo-config (:fenzo-config ~scheduler-config))
          optimizer-config# (or (:optimizer-config ~scheduler-config)
                                {})
@@ -160,7 +160,7 @@
             :mesos-datomic-conn ~conn
             :mesos-datomic-mult mesos-mult#
             :mesos-heartbeat-chan mesos-heartbeat-chan#
-            :mesos-leadership-atom mesos-leadership-atom#
+            :leadership-atom leadership-atom#
             :pool-name->pending-jobs-atom pool-name->pending-jobs-atom#
             :mesos-run-as-user nil
             :agent-attributes-cache agent-attributes-cache#
