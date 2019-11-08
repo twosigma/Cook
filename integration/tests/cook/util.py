@@ -1332,6 +1332,7 @@ def get_kubernetes_nodes():
     logging.info(f'Retrieved kubernetes nodes: {node_json}')
     return node_json['items']
 
+
 @functools.lru_cache()
 def kubernetes_node_pool(nodename):
     node = [node for node in get_kubernetes_nodes() if node['metadata']['name'] == nodename]
@@ -1363,6 +1364,17 @@ def max_kubernetes_node_cpus():
     return max([float(n['status']['capacity']['cpu'])
                 for n in nodes])
 
+
+def get_compute_cluster_type(compute_cluster_dictionary):
+    if compute_cluster_dictionary is None:
+        raise Exception("compute-cluster-dictionary is None. Cannot determine the type")
+    elif compute_cluster_dictionary['factory-fn'] == 'cook.mesos.mesos-compute-cluster/factory-fn':
+        return 'mesos'
+    elif compute_cluster_dictionary['factory-fn'] == 'cook.kubernetes.compute-cluster/factory-fn':
+        return 'kubernetes'
+    else:
+        raise Exception(
+            "compute-cluster-dictionary is " + repr(compute_cluster_dictionary) + " Cannot determine the type")
 
 def task_constraint_cpus(cook_url):
     """Returns the max cpus that can be submitted to the cluster"""

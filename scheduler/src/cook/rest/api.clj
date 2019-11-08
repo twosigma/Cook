@@ -1942,7 +1942,7 @@
 
 (timers/deftimer [cook-scheduler handler queue-endpoint])
 (defn waiting-jobs
-  [conn mesos-pending-jobs-fn is-authorized-fn mesos-leadership-atom leader-selector]
+  [conn mesos-pending-jobs-fn is-authorized-fn leadership-atom leader-selector]
   (liberator/resource
     :available-media-types ["application/json"]
     :allowed-methods [:get]
@@ -1963,10 +1963,10 @@
                     (do
                       (log/info user " has failed auth")
                       [false {::error "Unauthorized"}]))))
-    :exists? (fn [_] [@mesos-leadership-atom {}])
+    :exists? (fn [_] [@leadership-atom {}])
     :existed? (fn [_] [true {}])
     :moved-temporarily? (fn [_]
-                          (if @mesos-leadership-atom
+                          (if @leadership-atom
                             [false {}]
                             [true {:location (str (leader-url leader-selector) "/queue")}]))
     :handle-forbidden (fn [ctx]
@@ -2903,7 +2903,7 @@
     gpu-enabled? :mesos-gpu-enabled
     :as settings}
    leader-selector
-   mesos-leadership-atom]
+   leadership-atom]
   (->
     (routes
       (c-api/api
@@ -3165,7 +3165,7 @@
                  :handler (data-local-update-time-handler conn)}}))
 
       (ANY "/queue" []
-        (waiting-jobs conn mesos-pending-jobs-fn is-authorized-fn mesos-leadership-atom leader-selector))
+        (waiting-jobs conn mesos-pending-jobs-fn is-authorized-fn leadership-atom leader-selector))
       (ANY "/running" []
         (running-jobs conn is-authorized-fn))
       (ANY "/list" []

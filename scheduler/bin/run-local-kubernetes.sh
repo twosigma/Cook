@@ -59,7 +59,7 @@ export MESOS_NATIVE_JAVA_LIBRARY="${MESOS_NATIVE_JAVA_LIBRARY}"
 export COOK_SSL_PORT="${COOK_SSL_PORT}"
 export COOK_KEYSTORE_PATH="${COOK_KEYSTORE_PATH}"
 export DATA_LOCAL_ENDPOINT="http://localhost:35847/retrieve-costs"
-export COOK_K8S_CONFIG_FILE=~/.kube/config 
+
 
 echo "Starting cook..."
 lein run config-k8s.edn
