@@ -6,6 +6,7 @@ bin
 classes
 datomic/datomic*/data
 datomic/datomic*/log
+datomic/datomic*/lib/cook*.jar
 docs
 gclog.*
 log
