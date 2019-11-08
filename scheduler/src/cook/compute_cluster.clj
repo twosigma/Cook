@@ -45,7 +45,10 @@
     "Retrieve pending offers for the given pool")
 
   (restore-offers [this pool-name offers]
-    "Called when offers are not processed to ensure they're still available."))
+    "Called when offers are not processed to ensure they're still available.")
+
+  (trigger-autoscaling? [this]
+    "TODO(DPO)"))
 
 (defn kill-task-if-possible [compute-cluster task-id]
   "If compute cluster is nil, print a warning instead of killing the task"

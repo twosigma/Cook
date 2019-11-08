@@ -729,6 +729,14 @@
                                        {:job-uuid->reserved-host (apply dissoc job-uuid->reserved-host matched-job-uuids)
                                         :launched-job-uuids (into matched-job-uuids launched-job-uuids)})))
 
+(defn trigger-autoscaling!
+  "TODO(DPO)"
+  [failures pool-name compute-clusters]
+  (let [autoscaling-compute-clusters (filter cc/trigger-autoscaling? compute-clusters)]
+    (when (pos? (count autoscaling-compute-clusters))
+      
+      )))
+
 (defn handle-resource-offers!
   "Gets a list of offers from mesos. Decides what to do with them all--they should all
    be accepted or rejected at the end of the function."
@@ -769,6 +777,7 @@
           (reset! front-of-job-queue-cpus-atom (or (:cpus first-considerable-job-resources) 0))
 
           ; TODO(DPO)
+          (launch-synthetic-jobs! failures pool-name compute-clusters)
 
           (cond
             ;; Possible innocuous reasons for no matches: no offers, or no pending jobs.
