@@ -55,7 +55,7 @@
            :user-metrics-interval-seconds 60}
  :nrepl {:enabled? true
          :port #config/env-int "COOK_NREPL_PORT"}
- :pools {:default "gamma"}
+ :pools {:default "mesos-gamma"}
  :port #config/env-int "COOK_PORT"
  :ssl {:port #config/env-int "COOK_SSL_PORT"
        :keystore-path #config/env "COOK_KEYSTORE_PATH"
