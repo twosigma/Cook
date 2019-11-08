@@ -127,7 +127,7 @@
 
 (defn job->task-metadata
   "Takes a job entity, returns task metadata"
-  [db mesos-run-as-user job-ent task-id]
+  [mesos-run-as-user job-ent task-id]
   (let [container (-> job-ent
                       util/job-ent->container
                       merge-container-defaults)
@@ -177,7 +177,7 @@
   "Organizes the info Fenzo has already told us about the task we need to run"
   [db mesos-run-as-user compute-cluster ^TaskAssignmentResult task-result]
   (let [{:keys [job task-id] :as task-request} (.getRequest task-result)]
-    (merge (job->task-metadata db mesos-run-as-user job task-id)
+    (merge (job->task-metadata mesos-run-as-user job task-id)
            {:hostname (.getHostname task-result)
             :ports-assigned (vec (sort (.getAssignedPorts task-result)))
             :task-request task-request})))

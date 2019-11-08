@@ -9,6 +9,7 @@
             [cook.config :as config]
             [cook.kubernetes.api :as api]
             [cook.kubernetes.controller :as controller]
+            [cook.mesos.task :as task]
             [cook.pool]
             [cook.tools :as tools]
             [datomic.api :as d]
@@ -225,7 +226,23 @@
                      (into [] (map #(into {} (select-keys % [:hostname :resources])) offers-this-pool)))
       offers-this-pool))
 
-  (restore-offers [this pool-name offers]))
+  (restore-offers [this pool-name offers])
+
+  (trigger-autoscaling? [_]
+    true)
+
+  (launch-synthetic-tasks! [this pool-name task-requests]
+    (log/info "In" name "compute cluster, launching" (count task-requests) "synthetic task(s) for" pool-name "pool")
+    (let [task-metadata-seq (map #(assoc
+                                    (task/job->task-metadata
+                                      nil ; mesos-run-as-user
+                                      (assoc (:job %) :job/command "true") ; job-ent
+                                      (UUID/randomUUID)) ; task-id
+                                    :task-request %)
+                                 task-requests)]
+      (cc/launch-tasks this
+                       nil ; offers (not used by KubernetesComputeCluster)
+                       task-metadata-seq))))
 
 (defn get-or-create-cluster-entity-id
   [conn compute-cluster-name]
