@@ -34,7 +34,9 @@
                                :factory-fn "cook.plugins.demo-plugin/launch-factory"}}
  :hostname #config/env "COOK_HOSTNAME"
  :kubernetes {:disallowed-container-paths #{"/mnt/bad"}
-              :disallowed-var-names #{"BADVAR"}}
+              :disallowed-var-names #{"BADVAR"}
+              :sandbox-fileserver-image "twosigma/cook-fileserver:latest"
+              :sandbox-fileserver-port 23906}
  :log {:file #config/env "COOK_LOG_FILE"
        :levels {"datomic.db" :warn
                 "datomic.kv-cluster" :warn

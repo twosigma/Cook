@@ -11,10 +11,10 @@
     (io.kubernetes.client ApiClient ApiException)
     (io.kubernetes.client.apis CoreV1Api)
     (io.kubernetes.client.custom Quantity Quantity$Format)
-    (io.kubernetes.client.models V1Pod V1Container V1Node V1Pod V1Container V1ResourceRequirements V1EnvVar
+    (io.kubernetes.client.models V1Pod V1Container V1Node V1Pod V1ResourceRequirements V1EnvVar
                                  V1ObjectMeta V1PodSpec V1PodStatus V1ContainerState V1DeleteOptionsBuilder
                                  V1DeleteOptions V1HostPathVolumeSource V1VolumeMount V1VolumeBuilder V1Taint
-                                 V1Toleration V1PodSecurityContext V1EmptyDirVolumeSource V1EnvVarBuilder)
+                                 V1Toleration V1PodSecurityContext V1EmptyDirVolumeSource V1EnvVarBuilder V1ContainerPort)
     (io.kubernetes.client.util Watch)
     (java.util.concurrent Executors ExecutorService)
     (java.util UUID)))
@@ -247,19 +247,25 @@
                                            (->> pods
                                                 (map (fn [^V1Pod pod]
                                                        (let [containers (-> pod .getSpec .getContainers)
-                                                             container-requests (map (fn [^V1Container c]
-                                                                                       (-> c
-                                                                                           .getResources
-                                                                                           .getRequests
-                                                                                           convert-resource-map))
-                                                                                     containers)]
+                                                             container-requests (try (map (fn [^V1Container c]
+                                                                                            (-> c
+                                                                                              .getResources
+                                                                                              .getRequests
+                                                                                              convert-resource-map))
+                                                                                          containers)
+                                                                                     (catch Exception x
+                                                                                       (println containers)))]
                                                          (apply merge-with + container-requests))))
                                                 (apply merge-with +)))
                                          node-name->pods)]
     node-name->requests))
 
+; see pod->synthesized-pod-state comment for container naming conventions
 (def cook-container-name-for-job
   "required-cook-job-container")
+; see pod->synthesized-pod-state comment for container naming conventions
+(def cook-container-name-for-file-server
+  "aux-cook-sandbox-file-server-container")
 
 (defn double->quantity
   "Converts a double to a Quantity"
@@ -428,10 +434,15 @@
 
     ; pod-spec
     (.addContainersItem pod-spec container)
-    
-    (when true
-      (let [container (V1Container.)]
 
+    ; sandbox file server container
+    (when-let [{:keys [sandbox-fileserver-port]} (config/kubernetes)]
+      (let [{:keys [sandbox-fileserver-image]} (config/kubernetes)
+            container (V1Container.)]
+        (.setName container cook-container-name-for-file-server)
+        (.setImage container sandbox-fileserver-image)
+        (.setCommand container ["fileserver" (str sandbox-fileserver-port)])
+        (.setPorts container [(.containerPort (V1ContainerPort.) (int sandbox-fileserver-port))])
         (.addContainersItem pod-spec container)))
 
     (.setNodeName pod-spec hostname)
@@ -468,7 +479,7 @@
           ; * In the future, we want support for cook sidecars. In order to determine the pod status
           ;   from the main cook job status and the sidecar statuses, we'll use a naming scheme for sidecars
           ; * A pod will be considered complete if all containers with name required-* are complete.
-          ; * The main job container will always be named required-cookJobContainer
+          ; * The main job container will always be named required-cook-job-container
           ; * We want a pod to be considered failed if any container with the name required-* fails or any container
           ;   with the name extra-* fails.
           ; * A job may have additional containers with the name aux-*

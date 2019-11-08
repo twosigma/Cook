@@ -29,8 +29,28 @@ from stat import *
 
 from flask import Flask, jsonify, request, send_from_directory
 
+import gunicorn.app.base
+
+from gunicorn.six import iteritems
+
 app = Flask(__name__)
 
+
+class FileServerApplication(gunicorn.app.base.BaseApplication):
+
+    def __init__(self, options=None):
+        self.options = options or {}
+        self.application = app
+        super(FileServerApplication, self).__init__()
+
+    def load_config(self):
+        config = dict([(key, value) for key, value in iteritems(self.options)
+                       if key in self.cfg.settings and value is not None])
+        for key, value in iteritems(config):
+            self.cfg.set(key.lower(), value)
+
+    def load(self):
+        return self.application
 
 @app.route('/files/download')
 @app.route('/files/download.json')

@@ -19,7 +19,7 @@ setup(
     long_description="This package contains Two Sigma's Cook file server. The primary purpose is run in a side car "
                      "on a job's node and to serve log files.",
     packages=['cook'],
-    scripts=['bin/fileserver'],
+    entry_points={'console_scripts': ['fileserver = cook.__main__:main']},
     install_requires=requirements,
     tests_require=test_requirements
 )
