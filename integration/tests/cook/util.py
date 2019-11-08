@@ -1254,18 +1254,20 @@ def default_pool(cook_url):
 def all_pools(cook_url):
     """Returns the list of all pools that exist"""
     resp = session.get(f'{cook_url}/pools')
-    return resp.json(), resp
+    disallow_pools_regex = os.getenv('COOK_TEST_DISALLOW_POOLS_REGEX')
+    all_pools = resp.json() if disallow_pools_regex is None else \
+        [p for p in resp.json() if not re.match(disallow_pools_regex, p['name'])]
+    if disallow_pools_regex is not None:
+        for ii in resp.json():
+            logger.info(f"For Pool {ii['name']} we have {re.match(disallow_pools_regex, ii['name'])}")
+    return all_pools, resp
 
 
 def active_pools(cook_url):
     """Returns the list of all active pools that exist"""
     pools, resp = all_pools(cook_url)
     all_active_pools = [p for p in pools if p['state'] == 'active']
-    disallow_pools_regex = os.getenv('COOK_TEST_DISALLOW_POOLS_REGEX')
-    allowed_active_pools = all_active_pools if disallow_pools_regex is None else \
-        [p for p in all_active_pools if not re.match(disallow_pools_regex, p['name'])]
-    return allowed_active_pools, resp
-
+    return all_active_pools, resp
 
 def has_ephemeral_hosts():
     """Returns True if the cluster under test has ephemeral hosts"""
@@ -1635,14 +1637,15 @@ def _get_compute_cluster_factory_fn():
     compute_clusters = settings(cook_url)['compute-clusters']
     return compute_clusters[0]['factory-fn']
 
+def get_compute_cluster_test_mode():
+    return os.getenv("COOK_TEST_COMPUTE_CLUSTER_TYPE", "mesos")
 
 def using_kubernetes():
-    return get_kubernetes_compute_cluster() is not None
+    return get_compute_cluster_test_mode() == "kubernetes"
 
 
 def using_mesos():
-    return _get_compute_cluster_factory_fn() == 'cook.mesos.mesos-compute-cluster/factory-fn'
-
+    return get_compute_cluster_test_mode() == "mesos"
 
 def has_one_agent():
     return node_count() == 1
