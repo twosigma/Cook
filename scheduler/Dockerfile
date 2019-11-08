@@ -48,6 +48,9 @@ COPY src /opt/cook/src
 RUN lein uberjar
 RUN cp "target/cook-$(lein print :version | tr -d '"').jar" datomic-free-0.9.5394/lib/cook-$(lein print :version | tr -d '"').jar
 
+# Ugly hack. Our .cook_kubeconfig lookup assumes it can be found in ../scheduler/ so make a symlink
+RUN ln -s /opt/cook /opt/scheduler
+
 # Run cook
 EXPOSE \
     4334 \
