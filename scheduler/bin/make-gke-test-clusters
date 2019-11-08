@@ -7,21 +7,31 @@
 #   <zone> can be a zone. E.g., us-central1-a
 #   <clustername> is the name of a cluster. E.g., 'test-cluster-1'
 
+# Prerequesites:
+# - Install gcloud (https://cloud.google.com/sdk/docs/quickstarts)
+# - Log in: gcloud auth login
+# - Install kubectl: gcloud components install kubectl
+
 set -e
 
-PROJECT=$1
-ZONE=$2
-CLUSTERNAME=$3
+if [ $# -eq 0 ]
+then
+    echo "You must provide the GCP project to use!"
+    exit 1
+fi
 
-bin/help-delete-temporary-clusters $ZONE
+PROJECT=$1
+ZONE=${2:-us-central1-a}
+CLUSTERNAME=${3:-$USER-test-cluster-$(date '+%Y%m%d-%H%M%S')}
+
+gcloud="gcloud --project $PROJECT"
+
+bin/help-delete-temporary-clusters "$PROJECT" "$ZONE"
 
 # Make 2 clusters.
-bin/help-make-cluster $PROJECT $ZONE ${CLUSTERNAME}-a .cook_kubeconfig_1 &
-bin/help-make-cluster $PROJECT $ZONE ${CLUSTERNAME}-b .cook_kubeconfig_2 &
+bin/help-make-cluster "$PROJECT" "$ZONE" "${CLUSTERNAME}"-a .cook_kubeconfig_1 &
+bin/help-make-cluster "$PROJECT" "$ZONE" "${CLUSTERNAME}"-b .cook_kubeconfig_2 &
 wait
 
-
 echo "---- Showing all of the clusters we generated"
-gcloud container clusters list
-
-
+$gcloud container clusters list

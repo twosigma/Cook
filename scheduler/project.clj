@@ -23,8 +23,6 @@
                  ^:displace [cheshire "5.3.1"]
                  [byte-streams "0.1.4"]
                  [org.clojure/data.json "0.2.2"]
-                 [com.taoensso/nippy "2.8.0"
-                  :exclusions [org.clojure/tools.reader]]
                  [circleci/clj-yaml "0.5.5"]
                  [camel-snake-kebab "0.4.0"]
                  [com.rpl/specter "1.0.1"]

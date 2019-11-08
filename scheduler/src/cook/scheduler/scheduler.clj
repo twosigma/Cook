@@ -1038,7 +1038,7 @@
           ;; Note that we probably should update db to mark a task failed as well.
           ;; However in the case that we fail to kill a particular task in Mesos,
           ;; we could lose the chances to kill this task again.
-          (cc/kill-task (cook.task/task-ent->ComputeCluster task-entity) task-id)
+          (cc/kill-task-if-possible (cook.task/task-ent->ComputeCluster task-entity) task-id)
           ;; BUG - the following transaction races with the update that is triggered
           ;; when the task is actually killed and sends its exit status code.
           ;; See issue #515 on GitHub.
@@ -1090,7 +1090,7 @@
   (util/chime-at-ch trigger-chan
                     (fn straggler-handler-event []
                       (handle-stragglers conn (fn [task-ent]
-                                                (cc/kill-task (cook.task/task-ent->ComputeCluster task-ent)
+                                                (cc/kill-task-if-possible (cook.task/task-ent->ComputeCluster task-ent)
                                                               (:instance/task-id task-ent)))))
                     {:error-handler (fn [e]
                                       (log/error e "Failed to handle stragglers"))}))

@@ -4,6 +4,9 @@
 .nrepl-port
 bin
 classes
+datomic/datomic*/data
+datomic/datomic*/log
+datomic/datomic*/lib/cook*.jar
 docs
 gclog.*
 log
@@ -12,3 +15,4 @@ target
 test
 test-log
 test-resources
+virtualenv*

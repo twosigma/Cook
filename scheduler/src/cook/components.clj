@@ -79,13 +79,13 @@
                 "max-age=0"))))
 
 (def raw-scheduler-routes
-  {:scheduler (fnk [mesos mesos-leadership-atom pool-name->pending-jobs-atom settings]
+  {:scheduler (fnk [mesos leadership-atom pool-name->pending-jobs-atom settings]
                 ((util/lazy-load-var 'cook.rest.api/main-handler)
                   datomic/conn
                   (fn [] @pool-name->pending-jobs-atom)
                   settings
                   (get-in mesos [:mesos-scheduler :leader-selector])
-                  mesos-leadership-atom))
+                  leadership-atom))
    :view (fnk [scheduler]
            scheduler)})
 
@@ -100,7 +100,7 @@
                            fenzo-floor-iterations-before-warn fenzo-max-jobs-considered fenzo-scaleback
                            good-enough-fitness hostname mea-culpa-failure-limit mesos-leader-path mesos-run-as-user
                            offer-incubate-time-ms optimizer rebalancer server-port task-constraints]
-                          compute-clusters curator-framework mesos-datomic-mult mesos-leadership-atom
+                          compute-clusters curator-framework mesos-datomic-mult leadership-atom
                           mesos-agent-attributes-cache pool-name->pending-jobs-atom mesos-heartbeat-chan
                           trigger-chans]
                       (if (cook.config/api-only-mode?)
@@ -125,7 +125,7 @@
                                  :mesos-datomic-conn datomic/conn
                                  :mesos-datomic-mult mesos-datomic-mult
                                  :mesos-heartbeat-chan mesos-heartbeat-chan
-                                 :mesos-leadership-atom mesos-leadership-atom
+                                 :leadership-atom leadership-atom
                                  :pool-name->pending-jobs-atom pool-name->pending-jobs-atom
                                  :mesos-run-as-user mesos-run-as-user
                                  :agent-attributes-cache mesos-agent-attributes-cache
@@ -144,11 +144,11 @@
 
 (defn health-check-middleware
   "This adds /debug to return 200 OK"
-  [h mesos-leadership-atom leader-reports-unhealthy]
+  [h leadership-atom leader-reports-unhealthy]
   (fn healthcheck [req]
     (if (and (= (:uri req) "/debug")
              (= (:request-method req) :get))
-      {:status (if (and leader-reports-unhealthy @mesos-leadership-atom)
+      {:status (if (and leader-reports-unhealthy @leadership-atom)
                  503
                  200)
        :headers {}
@@ -246,7 +246,7 @@
      :http-server (fnk [[:settings cors-origins server-port authorization-middleware impersonation-middleware
                          leader-reports-unhealthy server-https-port server-keystore-path server-keystore-type
                          server-keystore-pass [:rate-limit user-limit]]
-                        [:route view] mesos-leadership-atom]
+                        [:route view] leadership-atom]
                     (log/info "Launching http server")
                     (let [rate-limit-storage (storage/local-storage)
                           jetty ((util/lazy-load-var 'qbits.jet.server/run-jetty)
@@ -264,7 +264,7 @@
                                                                wrap-cookies
                                                                wrap-params
                                                                (cors/cors-middleware cors-origins)
-                                                               (health-check-middleware mesos-leadership-atom leader-reports-unhealthy)
+                                                               (health-check-middleware leadership-atom leader-reports-unhealthy)
                                                                instrument
                                                                consume-request-stream))
                                            :join? false
@@ -311,10 +311,10 @@
                                  datomic/conn publish-batch-size publish-interval-ms))
      :trigger-chans (fnk [[:settings rebalancer progress optimizer task-constraints]]
                       ((util/lazy-load-var 'cook.mesos/make-trigger-chans) rebalancer progress optimizer task-constraints))
-     :clear-uncommitted-canceler (fnk [mesos-leadership-atom]
+     :clear-uncommitted-canceler (fnk [leadership-atom]
                                    ((util/lazy-load-var 'cook.tools/clear-uncommitted-jobs-on-schedule)
-                                     datomic/conn mesos-leadership-atom))
-     :mesos-leadership-atom (fnk [] (atom false))
+                                     datomic/conn leadership-atom))
+     :leadership-atom (fnk [] (atom false))
      :pool-name->pending-jobs-atom (fnk [] (atom {}))
      :mesos-agent-attributes-cache (fnk [[:settings {agent-attributes-cache nil}]]
                                      (when agent-attributes-cache
