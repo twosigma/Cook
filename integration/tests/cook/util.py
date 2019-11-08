@@ -491,6 +491,11 @@ def minimal_group(**kwargs):
 
 
 def default_submit_pool():
+    """
+    Returns the default pool to use for job submissions, or None if
+    COOK_TEST_DEFAULT_SUBMIT_POOL is not defined. Returning None here is OK
+    because sending no explicit pool means "use Cook Scheduler's default".
+    """
     return os.getenv('COOK_TEST_DEFAULT_SUBMIT_POOL')
 
 
