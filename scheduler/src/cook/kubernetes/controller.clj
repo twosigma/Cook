@@ -7,6 +7,8 @@
   (:import (clojure.lang IAtom)
            (io.kubernetes.client.models V1Pod V1ContainerStatus V1PodStatus)))
 
+(def cook-synthetic-task-label "cook-synthetic-task")
+
 ;
 ;   Wire up a store with the results.
 ;
@@ -83,22 +85,28 @@
                                          (.getName container-status))))
        first))
 
+(defn synthetic-task?
+  "TODO(DPO)"
+  [pod]
+  (some-> pod .getMetadata .getLabels (.get cook-synthetic-task-label)))
+
 (defn pod-has-just-completed
   "A pod has completed. So now we need to update the status in datomic and store the exit code."
   [kcc {:keys [synthesized-state pod] :as existing-state-dictionary}]
-  (let [task-id (-> pod .getMetadata .getName)
-        pod-status (.getStatus pod)
-        ^V1ContainerStatus job-container-status (get-job-container-status pod-status)
-        mesos-state (case (:state synthesized-state)
-                      :pod/failed :task-failed
-                      :pod/succeeded :task-finished)
-        status {:task-id {:value task-id}
-                :state mesos-state
-                :reason (container-status->failure-reason pod-status job-container-status)}
-        exit-code (-> job-container-status .getState .getTerminated .getExitCode)]
-    (write-status-to-datomic kcc status)
-    (sandbox/aggregate-exit-code (:exit-code-syncer-state kcc) task-id exit-code)
-    {:expected-state :expected/completed}))
+  (when-not (synthetic-task? pod)
+    (let [task-id (-> pod .getMetadata .getName)
+          pod-status (.getStatus pod)
+          ^V1ContainerStatus job-container-status (get-job-container-status pod-status)
+          mesos-state (case (:state synthesized-state)
+                        :pod/failed :task-failed
+                        :pod/succeeded :task-finished)
+          status {:task-id {:value task-id}
+                  :state   mesos-state
+                  :reason  (container-status->failure-reason pod-status job-container-status)}
+          exit-code (-> job-container-status .getState .getTerminated .getExitCode)]
+      (write-status-to-datomic kcc status)
+      (sandbox/aggregate-exit-code (:exit-code-syncer-state kcc) task-id exit-code)))
+  {:expected-state :expected/completed})
 
 (defn prepare-expected-state-dict-for-logging
   ".toString on a pod is incredibly large. Make a version thats been elided."
@@ -110,15 +118,21 @@
 (defn pod-has-started
   "A pod has started. So now we need to update the status in datomic."
   [kcc {:keys [pod] :as existing-state-dictionary}]
-  (let [task-id (-> pod .getMetadata .getName)
-        status {:task-id {:value task-id}
-                :state :task-running}]
-    (write-status-to-datomic kcc status)
-    {:expected-state :expected/running}))
+  (when-not (synthetic-task? pod)
+    (let [task-id (-> pod .getMetadata .getName)
+          status {:task-id {:value task-id}
+                  :state   :task-running}]
+      (write-status-to-datomic kcc status)))
+  {:expected-state :expected/running})
 
 (defn pod-was-killed
   "A pod was killed. So now we need to update the status in datomic and store the exit code."
   [kcc pod-name]
+  ; Ideally, we would guard against synthetic tasks here, as in pod-has-started and
+  ; pod-has-just-completed. However, we don't have the pod object, only the name, so there's
+  ; no way to know if the killed pod was synthetic. In practice, this path will never get
+  ; called for a synthetic task, because synthetic tasks never end up with an expected state
+  ; of :expected/killed.
   (let [task-id pod-name
         status {:task-id {:value task-id}
                 :state :task-failed

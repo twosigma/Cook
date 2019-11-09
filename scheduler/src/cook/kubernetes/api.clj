@@ -349,7 +349,7 @@
 
 (defn ^V1Pod task-metadata->pod
   "Given a task-request and other data generate the kubernetes V1Pod to launch that task."
-  [namespace compute-cluster-name {:keys [task-id command container task-request hostname]}]
+  [namespace compute-cluster-name {:keys [task-id command container task-request hostname labels]}]
   (let [{:keys [resources job]} task-request
         {:keys [mem cpus]} resources
         {:keys [docker volumes]} container
@@ -365,7 +365,7 @@
                      env))
                  (:environment command))
         resources (V1ResourceRequirements.)
-        labels {cook-pod-label compute-cluster-name}
+        labels (merge labels {cook-pod-label compute-cluster-name})
         pool-name (some-> job :job/pool :pool/name)
         {:keys [volumes volume-mounts]} (make-volumes volumes)
         security-context (make-security-context parameters (:user command))

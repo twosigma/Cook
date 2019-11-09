@@ -72,7 +72,7 @@
 (defn scan-tasks
   "Scan all taskids. Note: May block or be slow due to rate limits."
   [{:keys [name] :as kcc}]
-  (log/info "Starting taskid scan: " )
+  (log/info "In compute cluster" name ", starting taskid scan")
   ; TODO Add in rate limits; only visit non-running/running task so fast.
   ; TODO Add in maximum-visit frequency. Only visit a task once every XX seconds.
   (let [taskids (taskids-to-scan kcc)]
@@ -230,13 +230,23 @@
 
   (launch-synthetic-tasks! [this pool-name task-requests]
     (log/info "In" name "compute cluster, launching" (count task-requests) "synthetic task(s) for" pool-name "pool")
-    (let [task-metadata-seq (map #(assoc
-                                    (task/job->task-metadata
-                                      nil ; mesos-run-as-user
-                                      (assoc (:job %) :job/command "true") ; job-ent
-                                      (UUID/randomUUID)) ; task-id
-                                    :task-request %)
-                                 task-requests)]
+    (let [task-request->task-metadata-fn (fn [task-request]
+                                           (assoc
+                                             (task/job->task-metadata
+                                               ; mesos-run-as-user
+                                               nil
+                                               ; Synthetic tasks exist solely for the purpose of
+                                               ; triggering autoscaling in Kubernetes, so we need to
+                                               ; override the command to something innocuous
+                                               (assoc (:job task-request) :job/command "true")
+                                               ; task-id
+                                               (str (UUID/randomUUID)))
+                                             :task-request task-request
+                                             ; We need to label the synthetic tasks so that we
+                                             ; can opt them out of some of the normal plumbing,
+                                             ; like mapping status back to a job instance
+                                             :labels {controller/cook-synthetic-task-label true}))
+          task-metadata-seq (map task-request->task-metadata-fn task-requests)]
       (cc/launch-tasks this
                        nil ; offers (not used by KubernetesComputeCluster)
                        task-metadata-seq))))

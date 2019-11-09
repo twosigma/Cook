@@ -745,10 +745,10 @@
             (let [num-requests-per-cluster (int (Math/ceil (/ num-task-requests num-autoscaling-compute-clusters)))
                   partitions (partition-all num-requests-per-cluster task-requests)
                   num-partitions (count partitions)]
-              (assert (= num-autoscaling-compute-clusters num-partitions)
+              (assert (>= num-autoscaling-compute-clusters num-partitions)
                       (str "There are " num-autoscaling-compute-clusters " autoscaling clusters but "
-                           num-partitions " partitions of task requests to those clusters"))
-              (doseq [i (range num-autoscaling-compute-clusters)
+                           num-partitions " partition(s) of task requests to those clusters"))
+              (doseq [i (range num-partitions)
                       :let [compute-cluster (nth autoscaling-compute-clusters i)
                             requests-for-cluster (nth partitions i)]]
                 (cc/launch-synthetic-tasks! compute-cluster pool-name requests-for-cluster))))))
