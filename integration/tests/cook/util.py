@@ -233,13 +233,23 @@ class UserFactory(object):
             test_base_name = test_id[test_id.rindex('.test_') + 6:].lower()
             self.__user_generator = _test_user_names(test_base_name)
 
+        self.cook_url = retrieve_cook_url()
+        _wait_for_cook(self.cook_url)
+
     def new_user(self):
         """Return a fresh user object."""
-        return self.user_class(next(self.__user_generator))
+        user = self.user_class(next(self.__user_generator))
+        with self.admin():
+            reset_share_and_quota(self.cook_url, user.name)
+        return user
 
     def new_users(self, count=None):
         """Return a sequence of `count` fresh user objects."""
-        return [self.user_class(x) for x in itertools.islice(self.__user_generator, 0, count)]
+        users = [self.user_class(x) for x in itertools.islice(self.__user_generator, 0, count)]
+        with self.admin():
+            for user in users:
+                reset_share_and_quota(self.cook_url, user.name)
+        return users
 
     @functools.lru_cache()
     def default(self):
