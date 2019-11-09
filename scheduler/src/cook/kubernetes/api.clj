@@ -438,11 +438,17 @@
     ; sandbox file server container
     (when-let [{:keys [sandbox-fileserver-port]} (config/kubernetes)]
       (let [{:keys [sandbox-fileserver-image]} (config/kubernetes)
-            container (V1Container.)]
+            container (V1Container.)
+            workdir-volume-mount (V1VolumeMount.)]
+        ; workdir mount
+        (.setName workdir-volume-mount "cook-workdir")
+        (.setMountPath workdir-volume-mount workdir)
+        (.setReadOnly workdir-volume-mount true)
         (.setName container cook-container-name-for-file-server)
         (.setImage container sandbox-fileserver-image)
-        (.setCommand container ["fileserver" (str sandbox-fileserver-port)])
+        (.setCommand container ["fileserver" (str workdir) (str sandbox-fileserver-port)])
         (.setPorts container [(.containerPort (V1ContainerPort.) (int sandbox-fileserver-port))])
+        (.setVolumeMounts container [workdir-volume-mount])
         (.addContainersItem pod-spec container)))
 
     (.setNodeName pod-spec hostname)

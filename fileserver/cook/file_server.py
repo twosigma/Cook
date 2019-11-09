@@ -27,7 +27,7 @@ from operator import itemgetter
 from pathlib import Path
 from stat import *
 
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, request, send_file
 
 import gunicorn.app.base
 
@@ -55,15 +55,14 @@ class FileServerApplication(gunicorn.app.base.BaseApplication):
 @app.route('/files/download')
 @app.route('/files/download.json')
 def download():
-    path_param = request.args.get('path')
-    if path_param is None:
+    path = request.args.get('path')
+    if path is None:
         return "Expecting 'path=value' in query.\n", 400
-    path = os.path.join(os.path.dirname(os.path.realpath(__file__)), path_param)
     if not os.path.exists(path):
         return "", 404
     if os.path.isdir(path):
         return "Cannot download a directory.\n", 400
-    return send_from_directory(path, path_param, as_attachment=True)
+    return send_file(path, as_attachment=True)
 
 
 def try_parse_int(param_name, val):
@@ -80,10 +79,10 @@ def try_parse_int(param_name, val):
 @app.route('/files/read')
 @app.route('/files/read.json')
 def read():
-    path_param = request.args.get('path')
+    path = request.args.get('path')
     offset_param = request.args.get('offset')
     length_param = request.args.get('length')
-    if path_param is None:
+    if path is None:
         return "Expecting 'path=value' in query.\n", 400
     offset, err = (None, None) if offset_param is None else try_parse_int("offset", offset_param)
     if not err is None:
@@ -93,8 +92,6 @@ def read():
         return err, 400
     if not length is None and length < 0:
         return f"Negative length provided: {length}.\n", 400
-
-    path = os.path.join(os.path.dirname(os.path.realpath(__file__)), path_param)
     if not os.path.exists(path):
         return "", 404
     if os.path.isdir(path):
@@ -131,10 +128,9 @@ permissions = {n - 512: ''.join(permission_strings[c] for c in str(oct(n))[-3:])
 @app.route('/files/browse')
 @app.route('/files/browse.json')
 def browse():
-    path_param = request.args.get('path')
-    if path_param is None:
+    path = request.args.get('path')
+    if path is None:
         return "Expecting 'path=value' in query.\n", 400
-    path = os.path.join(os.path.dirname(os.path.realpath(__file__)), path_param)
     if not os.path.exists(path):
         return "", 404
     if not os.path.isdir(path):

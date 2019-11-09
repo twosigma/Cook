@@ -104,8 +104,12 @@
     [_ prev-pod pod]
     (try
       (if (nil? pod)
-        (controller/pod-deleted kcc prev-pod)
-        (controller/pod-update kcc pod))
+        (do
+          (controller/pod-deleted kcc prev-pod)
+          xxx)
+        (do
+          (controller/pod-update kcc pod)
+          xxx))
       (catch Exception e
         (log/error e "Error processing status update")))))
 
@@ -176,7 +180,7 @@
     (-> pods (merge starting-pods) vals)))
 
 (defrecord KubernetesComputeCluster [^ApiClient api-client name entity-id match-trigger-chan exit-code-syncer-state
-                                     all-pods-atom current-nodes-atom expected-state-map existing-state-map
+                                     all-pods-atom current-scheduler-pods-atom current-nodes-atom expected-state-map existing-state-map
                                      pool->fenzo-atom namespace-config scan-frequency-seconds-config max-pods-per-node]
   cc/ComputeCluster
   (launch-tasks [this offers task-metadata-seq]

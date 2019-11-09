@@ -14,8 +14,13 @@ $ pip3 install -e .
 
 ## Running
 
-Run ```fileserver```; see bin/fileserver for usage details.
+Usage:
+
+```fileserver PORT [NUM_WORKERS]```
+
+Examples:
 
 ```bash
 $ fileserver 8000
+$ fileserver 8000 4
 ```
