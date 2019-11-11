@@ -490,7 +490,7 @@ def minimal_group(**kwargs):
     return dict(uuid=str(make_temporal_uuid()), **kwargs)
 
 
-def submit_jobs(cook_url, job_specs, clones=1, pool=None, headers=None, **kwargs):
+def submit_jobs(cook_url, job_specs, clones=1, pool=None, headers=None, log_request_body=True, **kwargs):
     """
     Create and submit multiple jobs, either cloned from a single job spec,
     or specified individually in multiple job specs.
@@ -512,7 +512,11 @@ def submit_jobs(cook_url, job_specs, clones=1, pool=None, headers=None, **kwargs
     if pool:
         request_body['pool'] = pool
     request_body.update(kwargs)
-    logger.info(request_body)
+    if log_request_body:
+        logger.info(request_body)
+    else:
+        logger.info('Not logging request body for job submission')
+
     resp = session.post(f'{cook_url}/jobs', json=request_body, headers=headers)
     return [j['uuid'] for j in jobs], resp
 
