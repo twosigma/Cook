@@ -11,7 +11,7 @@ minimesos {
         imageTag = "1.0.0-0.1.0"
         loggingLevel = "# INHERIT FROM CLUSTER"
         portNumber = 5051
-        attributes = "cook-pool:gamma"
+        attributes = "cook-pool:mesos-gamma"
 
         resources {
             cpu {
@@ -57,7 +57,7 @@ minimesos {
         imageTag = "1.0.0-0.1.0"
         loggingLevel = "# INHERIT FROM CLUSTER"
         portNumber = 5051
-        attributes = "cook-pool:gamma"
+        attributes = "cook-pool:mesos-gamma"
 
         resources {
             cpu {
@@ -103,7 +103,7 @@ minimesos {
         imageTag = "1.0.0-0.1.0"
         loggingLevel = "# INHERIT FROM CLUSTER"
         portNumber = 5051
-        attributes = "cook-pool:alpha"
+        attributes = "cook-pool:mesos-alpha"
 
         resources {
             cpu {
@@ -149,7 +149,7 @@ minimesos {
         imageTag = "1.0.0-0.1.0"
         loggingLevel = "# INHERIT FROM CLUSTER"
         portNumber = 5051
-        attributes = "cook-pool:alpha"
+        attributes = "cook-pool:mesos-alpha"
 
         resources {
             cpu {
