@@ -210,9 +210,6 @@
     ; We keep leadership indefinitely in kubernetes.
     (async/chan 1))
 
-  (current-leader? [this]
-    true)
-
   (pending-offers [this pool-name]
     (let [nodes @current-nodes-atom
           pods @all-pods-atom

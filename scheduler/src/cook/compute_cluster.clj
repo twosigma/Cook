@@ -32,9 +32,6 @@
      We expect Cook to give up leadership when a compute cluster loses leadership, so leadership is not expected to be regained.
      The channel result will be an exception if an error occurred, or a status message if leadership was lost normally.")
 
-  (current-leader? [this]
-    "Returns true if this cook instance is currently the leader for the compute cluster")
-
   (kill-task [this task-id]
     "Kill the task with the given task id")
 
@@ -48,7 +45,10 @@
     "Called when offers are not processed to ensure they're still available."))
 
 (defn kill-task-if-possible [compute-cluster task-id]
-  "If compute cluster is nil, print a warning instead of killing the task"
+  "If compute cluster is nil, print a warning instead of killing the task. There are cases, in particular,
+  lingering tasks, stragglers, or cancelled tasks where the task might outlive the compute cluster it was
+  member of. When this occurs, the looked up compute cluster is null and trying to kill via it would cause an NPE,
+  when in reality, it's relatively innocuous. So, we have this wrapper to use in those circumstances."
   (if compute-cluster
     (kill-task compute-cluster task-id)
     (log/warn "Unable to kill task " task-id " because compute-cluster is nil")))

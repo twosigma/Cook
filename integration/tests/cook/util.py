@@ -509,7 +509,7 @@ def default_submit_pool():
     return os.getenv('COOK_TEST_DEFAULT_SUBMIT_POOL')
 
 
-def submit_jobs(cook_url, job_specs, clones=1, pool=None, headers=None, **kwargs):
+def submit_jobs(cook_url, job_specs, clones=1, pool=None, headers=None, log_request_body=True, **kwargs):
     """
     Create and submit multiple jobs, either cloned from a single job spec,
     or specified individually in multiple job specs.
@@ -539,7 +539,11 @@ def submit_jobs(cook_url, job_specs, clones=1, pool=None, headers=None, **kwargs
         logger.info(f'Submitting with no explicit pool')
         
     request_body.update(kwargs)
-    logger.info(request_body)
+    if log_request_body:
+        logger.info(request_body)
+    else:
+        logger.info('Not logging request body for job submission')
+
     resp = session.post(f'{cook_url}/jobs', json=request_body, headers=headers)
     return [j['uuid'] for j in jobs], resp
 
@@ -1359,6 +1363,7 @@ def get_kubernetes_nodes():
     logging.info(f'Retrieved kubernetes nodes: {node_json}')
     return node_json['items']
 
+
 @functools.lru_cache()
 def kubernetes_node_pool(nodename):
     node = [node for node in get_kubernetes_nodes() if node['metadata']['name'] == nodename]
@@ -1390,6 +1395,17 @@ def max_kubernetes_node_cpus():
     return max([float(n['status']['capacity']['cpu'])
                 for n in nodes])
 
+
+def get_compute_cluster_type(compute_cluster_dictionary):
+    if compute_cluster_dictionary is None:
+        raise Exception("compute-cluster-dictionary is None. Cannot determine the type")
+    elif compute_cluster_dictionary['factory-fn'] == 'cook.mesos.mesos-compute-cluster/factory-fn':
+        return 'mesos'
+    elif compute_cluster_dictionary['factory-fn'] == 'cook.kubernetes.compute-cluster/factory-fn':
+        return 'kubernetes'
+    else:
+        raise Exception(
+            "compute-cluster-dictionary is " + repr(compute_cluster_dictionary) + " Cannot determine the type")
 
 def task_constraint_cpus(cook_url):
     """Returns the max cpus that can be submitted to the cluster"""
