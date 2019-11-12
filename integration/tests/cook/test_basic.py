@@ -68,6 +68,10 @@ class CookTest(util.CookTest):
             self.logger.info(f'Exit code not checked because cook executor was not used for {instance}')
 
     @unittest.skipUnless(util.docker_tests_enabled(), 'requires docker')
+    @pytest.mark.scheduler_not_in_docker
+    # If the cook scheduler is running in a docker container, it won't be able to lookup UID's or GID's. Under those circumstances,
+    # the cook scheduler won't be able to validate that the docker container is running as the right UID/GID and it will fail.
+    # Thus, in such an integration testing environment, we need to disable this test.
     def test_uid(self):
         settings = util.settings(self.cook_url)
 
