@@ -392,9 +392,9 @@ class CookTest(util.CookTest):
         job_uuid, resp = util.submit_job(self.cook_url, command=command, group=group_uuid)
         self.assertEqual(201, resp.status_code, msg=resp.content)
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
-        self.assertEqual(1, len(job['instances']))
-        message = json.dumps(job['instances'][0], sort_keys=True)
-        self.assertEqual('success', job['instances'][0]['status'], message)
+        self.assertLessEqual(1, len(job['instances']))
+        message = json.dumps(job['instances'], sort_keys=True)
+        self.assertIn('success', [i['status'] for i in job['instances']], message)
 
     def test_failing_submit(self):
         job_executor_type = util.get_job_executor_type()
@@ -586,10 +586,7 @@ class CookTest(util.CookTest):
             util.wait_for_job(self.cook_url, job_uuid, 'completed', job_sleep_ms)
             job = util.wait_for_end_time(self.cook_url, job_uuid)
             job_details = f"Job details: {json.dumps(job, sort_keys=True)}"
-            self.assertEqual(1, len(job['instances']), job_details)
-            instance = job['instances'][0]
-            # did the job fail as expected?
-            self.assertEqual('failed', instance['status'], job_details)
+            self.assertLessEqual(1, len(job['instances']), job_details)
             # We currently have three possible reason codes that we can observe
             # due to a race in the scheduler. See issue #515 on GitHub for more details.
             allowed_reasons = [
@@ -599,7 +596,9 @@ class CookTest(util.CookTest):
                 reasons.CMD_NON_ZERO_EXIT,
                 # cook killed the job during setup, so the executor had an error
                 reasons.EXECUTOR_UNREGISTERED]
-            self.assertIn(instance['reason_code'], allowed_reasons, job_details)
+            instance = next(i for i in job['instances'] if i['reason_code'] in allowed_reasons)
+            # did the job fail as expected?
+            self.assertEqual('failed', instance['status'], job_details)
             # was the actual running time consistent with running over time and being killed?
             actual_running_time_ms = instance['end_time'] - instance['start_time']
             self.assertGreater(actual_running_time_ms, max_runtime_ms, job_details)
@@ -1537,7 +1536,7 @@ class CookTest(util.CookTest):
                 # we've seen this happen in the wild
                 reasons.UNKNOWN_MESOS_REASON
             ]
-            self.assertIn(jobs[1]['instances'][0]['reason_code'], valid_reasons, slow_job_details)
+            self.assertTrue(any(i['reason_code'] in valid_reasons for i in jobs[1]['instances']), slow_job_details)
         finally:
             # Now try to kill the group again
             # (ensure it still works when there are no live jobs)
