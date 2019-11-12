@@ -1536,7 +1536,7 @@ class CookTest(util.CookTest):
                 # we've seen this happen in the wild
                 reasons.UNKNOWN_MESOS_REASON
             ]
-            self.assertIn(jobs[1]['instances'][0]['reason_code'], valid_reasons, slow_job_details)
+            self.assertTrue(any(i['reason_code'] in valid_reasons for i in jobs[1]['instances']), slow_job_details)
         finally:
             # Now try to kill the group again
             # (ensure it still works when there are no live jobs)
