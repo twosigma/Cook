@@ -729,7 +729,7 @@
                                        {:job-uuid->reserved-host (apply dissoc job-uuid->reserved-host matched-job-uuids)
                                         :launched-job-uuids (into matched-job-uuids launched-job-uuids)})))
 
-(let [last-autoscaling-trigger (atom (time/now))]
+(let [last-autoscaling-trigger (atom (time/epoch))]
   (defn trigger-autoscaling!
     "TODO(DPO)"
     [failures pool-name compute-clusters]
