@@ -9,3 +9,4 @@ dist
 integration.iml
 travis
 **/__pycache__
+virtualenv*
