@@ -532,6 +532,8 @@ def submit_jobs(cook_url, job_specs, clones=1, pool=None, headers=None, log_requ
     if pool:
         logger.info(f'Submitting explicitly to the {pool} pool')
         request_body['pool'] = pool
+    elif 'x-cook-pool' in headers:
+        logger.info(f"Submitting explicitly to the {headers['x-cook-pool']} pool via x-cook-pool header")
     elif default_pool:
         logger.info(f'Submitting explicitly to the {default_pool} pool (set as default)')
         request_body['pool'] = default_pool
