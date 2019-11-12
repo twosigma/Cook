@@ -1191,7 +1191,7 @@ class CookTest(util.CookTest):
     def test_change_retries_deprecated_post(self):
         job_uuid, _ = util.submit_job(self.cook_url, command='sleep 60', disable_mea_culpa_retries=True)
         try:
-            util.wait_for_job(self.cook_url, job_uuid, 'running')
+            util.wait_for_job_in_statuses(self.cook_url, job_uuid, ['completed', 'running'])
             util.kill_jobs(self.cook_url, [job_uuid])
 
             def instance_query():
