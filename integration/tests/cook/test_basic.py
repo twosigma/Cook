@@ -96,7 +96,6 @@ class CookTest(util.CookTest):
         finally:
             util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
 
-    @unittest.skipIf(util.using_kubernetes(), 'Output url is not currently supported on kubernetes')
     def test_output_url(self):
         job_executor_type = util.get_job_executor_type()
         job_uuid, resp = util.submit_job(self.cook_url,
@@ -106,6 +105,10 @@ class CookTest(util.CookTest):
             output_url = util.wait_for_output_url(self.cook_url, job_uuid)['output_url']
             self.logger.info(f'Output URL is {output_url}')
             self.assertTrue(len(output_url) > 0)
+
+            if util.using_kubernetes() and not util.to_bool(os.getenv('COOK_TEST_ALLOW_K8S_POD_CONNECTIONS')):
+                self.logger.info("Can't test output_url endpoint unless we can connect to kubernetes pod")
+                return
 
             # offset = 0, no length
             resp = util.session.get(f'{output_url}/stdout&offset=0')

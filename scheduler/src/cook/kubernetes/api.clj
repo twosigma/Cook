@@ -444,7 +444,7 @@
         (.setReadOnly workdir-volume-mount true)
         (.setName container cook-container-name-for-file-server)
         (.setImage container sandbox-fileserver-image)
-        (.setCommand container ["fileserver" (str workdir) (str sandbox-fileserver-port)])
+        (.setCommand container ["fileserver" (str sandbox-fileserver-port)])
         (.setPorts container [(.containerPort (V1ContainerPort.) (int sandbox-fileserver-port))])
         (.setVolumeMounts container [workdir-volume-mount])
         (.addContainersItem pod-spec container)))
