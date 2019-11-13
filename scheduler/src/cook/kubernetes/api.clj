@@ -247,14 +247,12 @@
                                            (->> pods
                                                 (map (fn [^V1Pod pod]
                                                        (let [containers (-> pod .getSpec .getContainers)
-                                                             container-requests (try (map (fn [^V1Container c]
-                                                                                            (-> c
-                                                                                              .getResources
-                                                                                              .getRequests
-                                                                                              convert-resource-map))
-                                                                                          containers)
-                                                                                     (catch Exception x
-                                                                                       (println containers)))]
+                                                             container-requests (map (fn [^V1Container c]
+                                                                                       (-> c
+                                                                                         .getResources
+                                                                                         .getRequests
+                                                                                         convert-resource-map))
+                                                                                     containers)]
                                                          (apply merge-with + container-requests))))
                                                 (apply merge-with +)))
                                          node-name->pods)]
