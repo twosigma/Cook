@@ -180,7 +180,8 @@
                                         "String representation: "
                                         (String. (.toByteArray (:data s)))))
                       (catch Exception e
-                        (log/debug e "Error reading a string from mesos status data. Is it in the format we expect?")))))})
+                        (log/debug e "Error reading a string from mesos status data. Is it in the format we expect?")))))
+   :sandbox-url (:sandbox-url s)})
 
 (defn update-reason-metrics!
   "Updates histograms and counters for run time, cpu time, and memory time,
@@ -213,7 +214,7 @@
   (timers/time!
     handle-status-update-duration
     (try (let [db (db conn)
-               {:keys [task-id reason task-state progress]} (interpret-task-status status)
+               {:keys [task-id reason task-state progress sandbox-url]} (interpret-task-status status)
                _ (when-not task-id
                    (throw (ex-info "task-id is nil. Something unexpected has happened."
                                    {:status status
@@ -271,23 +272,25 @@
              ;; The database can become inconsistent if we make multiple calls to :instance/update-state in a single
              ;; transaction; see the comment in the definition of :instance/update-state for more details
              (let [transaction-chan (datomic/transact-with-retries
-                                     conn
-                                     (reduce
-                                      into
-                                      [[:instance/update-state instance instance-status (or (:db/id previous-reason)
-                                                                                            (reason/mesos-reason->cook-reason-entity-id db reason)
-                                                                                            [:reason.name :unknown])]] ; Warning: Default is not mea-culpa
-                                      [(when (and (#{:instance.status/failed} instance-status) (not previous-reason) reason)
-                                         [[:db/add instance :instance/reason (reason/mesos-reason->cook-reason-entity-id db reason)]])
-                                       (when (and (#{:instance.status/success
-                                                     :instance.status/failed} instance-status)
-                                                  (nil? (:instance/end-time instance-ent)))
-                                         [[:db/add instance :instance/end-time (now)]])
-                                       (when (and (#{:task-starting :task-running} task-state)
-                                                  (nil? (:instance/mesos-start-time instance-ent)))
-                                         [[:db/add instance :instance/mesos-start-time (now)]])
-                                       (when progress
-                                         [[:db/add instance :instance/progress progress]])]))]
+                                      conn
+                                      (reduce
+                                        into
+                                        [[:instance/update-state instance instance-status (or (:db/id previous-reason)
+                                                                                              (reason/mesos-reason->cook-reason-entity-id db reason)
+                                                                                              [:reason.name :unknown])]] ; Warning: Default is not mea-culpa
+                                        [(when (and (#{:instance.status/failed} instance-status) (not previous-reason) reason)
+                                           [[:db/add instance :instance/reason (reason/mesos-reason->cook-reason-entity-id db reason)]])
+                                         (when (and (#{:instance.status/success
+                                                       :instance.status/failed} instance-status)
+                                                    (nil? (:instance/end-time instance-ent)))
+                                           [[:db/add instance :instance/end-time (now)]])
+                                         (when (and (#{:task-starting :task-running} task-state)
+                                                    (nil? (:instance/mesos-start-time instance-ent)))
+                                           [[:db/add instance :instance/mesos-start-time (now)]])
+                                         (when progress
+                                           [[:db/add instance :instance/progress progress]])
+                                         (when sandbox-url
+                                           [[:db/add instance :instance/sandbox-url sandbox-url]])]))]
                (async/go
                  ; Wait for the transcation to complete before running the plugin
                  (let [chan-result (async/<! transaction-chan)]

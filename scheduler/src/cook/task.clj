@@ -38,7 +38,7 @@
   (->> task-entity-id
        (d/entity db)
        task-entity->compute-cluster-name))
-xxx
+
 (defn task-ent->ComputeCluster
   "Given a task entity, return the compute cluster object for it, if it exists. May return nil if that compute cluster on the task
   is no longer in service."

@@ -648,6 +648,12 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}
    {:db/id (d/tempid :db.part/db)
+    :db/ident :instance/sandbox-url
+    :db/doc "a URL to query the sandbox directory of the task"
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
     :db/ident :instance/exit-code
     :db/doc "represents the return code of executing the command of the instance"
     :db/valueType :db.type/long

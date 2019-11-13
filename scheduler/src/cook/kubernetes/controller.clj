@@ -3,9 +3,12 @@
             [cook.datomic :as datomic]
             [cook.kubernetes.api :as api]
             [cook.mesos.sandbox :as sandbox]
-            [cook.scheduler.scheduler :as scheduler])
+            [cook.scheduler.scheduler :as scheduler]
+            [cook.config :as config]
+            [clojure.string :as str])
   (:import (clojure.lang IAtom)
-           (io.kubernetes.client.models V1Pod V1ContainerStatus V1PodStatus)))
+           (io.kubernetes.client.models V1Pod V1ContainerStatus V1PodStatus)
+           (java.net URLEncoder)))
 
 ;
 ;   Wire up a store with the results.
@@ -135,8 +138,18 @@
   "A pod has started. So now we need to update the status in datomic."
   [kcc {:keys [pod] :as existing-state-dictionary}]
   (let [task-id (-> pod .getMetadata .getName)
+        pod-ip (-> pod .getStatus .getPodIP)
+        {:keys [sandbox-fileserver-port default-workdir]} (config/kubernetes)
+        sandbox-url (try
+                      (when (and sandbox-fileserver-port (not (str/blank? pod-ip)))
+                        (str "http://" pod-ip ":" sandbox-fileserver-port "/files/read.json?path="
+                             (URLEncoder/encode default-workdir "UTF-8")))
+                      (catch Exception e
+                        (log/debug e "Unable to retrieve directory path for" task-id)
+                        nil))
         status {:task-id {:value task-id}
-                :state :task-running}]
+                :state :task-running
+                :sandbox-url sandbox-url}]
     (write-status-to-datomic kcc status)
     {:expected-state :expected/running}))
 

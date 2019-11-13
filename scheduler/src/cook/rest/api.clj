@@ -45,6 +45,7 @@
             [cook.plugins.file :as file-plugin]
             [cook.plugins.submission :as submission-plugin]
             [cook.rate-limit :as rate-limit]
+            [cook.task :as task]
             [cook.util :refer [ZeroInt PosNum NonNegNum PosInt NonNegInt PosDouble UserName NonEmptyString]]
             [datomic.api :as d :refer [q]]
             [liberator.core :as liberator]
@@ -64,7 +65,7 @@
            com.codahale.metrics.ScheduledReporter
            com.netflix.fenzo.VMTaskFitnessCalculator
            (java.io OutputStreamWriter)
-           (java.net ServerSocket URLEncoder)
+           (java.net ServerSocket)
            (java.util Date UUID)
            javax.servlet.ServletResponse
            org.apache.curator.test.TestingServer
@@ -965,20 +966,16 @@
       (throw (ex-info (str "Group UUID " (:uuid group) " already used") {:uuid group})))
     group))
 
-(defn retrieve-url-path
-  "Constructs a URL to query the sandbox directory of the task.
-   Uses the provided sandbox-directory to determine the sandbox directory.
-   Hard codes fun stuff like the port we run the agent on.
+(defn retrieve-sandbox-url-path
+  "Gets a URL to query the sandbox directory of the task.
    Users will need to add the file path & offset to their query.
-   Refer to the 'Using the output_url' section in docs/scheduler-rest-api.adoc for further details."
-  [agent-hostname task-id sandbox-directory]
-  (try
-    (when sandbox-directory
-      (str "http://" agent-hostname ":5051" "/files/read.json?path="
-           (URLEncoder/encode sandbox-directory "UTF-8")))
-    (catch Exception e
-      (log/debug e "Unable to retrieve directory path for" task-id "on agent" agent-hostname)
-      nil)))
+   Refer to the 'Using the output_url' section in docs/scheduler-rest-api.adoc for further details.
+   Delegates to the compute cluster implimentation."
+  [instance-entity]
+  (if-let [sandbox-url (:instance/sandbox-url instance-entity)]
+    sandbox-url
+    (let [compute-cluster (task/task-ent->ComputeCluster instance-entity)]
+      (cc/retrieve-sandbox-url-path compute-cluster instance-entity))))
 
 (defn compute-cluster-entity->map
   "Attached to the the instance object when we send it in API responses"
@@ -1010,7 +1007,7 @@
           task-id (:instance/task-id instance)
           executor (:instance/executor instance)
           sandbox-directory (:instance/sandbox-directory instance)
-          url-path (retrieve-url-path hostname task-id sandbox-directory)
+          url-path (retrieve-sandbox-url-path instance)
           start (:instance/start-time instance)
           mesos-start (:instance/mesos-start-time instance)
           end (:instance/end-time instance)

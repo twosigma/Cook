@@ -104,12 +104,8 @@
     [_ prev-pod pod]
     (try
       (if (nil? pod)
-        (do
-          (controller/pod-deleted kcc prev-pod)
-          xxx)
-        (do
-          (controller/pod-update kcc pod)
-          xxx))
+        (controller/pod-deleted kcc prev-pod)
+        (controller/pod-update kcc pod))
       (catch Exception e
         (log/error e "Error processing status update")))))
 
@@ -180,7 +176,7 @@
     (-> pods (merge starting-pods) vals)))
 
 (defrecord KubernetesComputeCluster [^ApiClient api-client name entity-id match-trigger-chan exit-code-syncer-state
-                                     all-pods-atom current-scheduler-pods-atom current-nodes-atom expected-state-map existing-state-map
+                                     all-pods-atom current-nodes-atom expected-state-map existing-state-map
                                      pool->fenzo-atom namespace-config scan-frequency-seconds-config max-pods-per-node]
   cc/ComputeCluster
   (launch-tasks [this offers task-metadata-seq]
@@ -249,7 +245,14 @@
   (num-tasks-on-host [this hostname]
     (->> @all-pods-atom
          (all-pods this)
-         (api/num-pods-on-node hostname))))
+         (api/num-pods-on-node hostname)))
+
+  (retrieve-sandbox-url-path
+    ;"Constructs a URL to query the sandbox directory of the task.
+    ; Users will need to add the file path & offset to their query.
+    ; Refer to the 'Using the output_url' section in docs/scheduler-rest-api.adoc for further details."
+    [_ {:keys [instance/sandbox-url]}]
+    sandbox-url))
 
 (defn get-or-create-cluster-entity-id
   [conn compute-cluster-name]
