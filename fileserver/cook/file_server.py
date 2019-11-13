@@ -138,7 +138,7 @@ def browse():
     retval = [
         {
             "gid": path_obj.group(),
-            "mode": ('d' if S_ISDIR(st.st_mode) else '-') + permissions[S_IMODE(st.st_mode)],
+            "mode": ('d' if S_ISDIR(st.st_mode) else '-') + permissions[S_IMODE(st.st_mode) % 512],
             "mtime": int(st.st_mtime),
             "nlink": st.st_nlink,
             "path": path,
