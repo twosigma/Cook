@@ -229,24 +229,26 @@
     true)
 
   (launch-synthetic-tasks! [this pool-name task-requests]
-    (log/info "In" name "compute cluster, launching" (count task-requests) "synthetic task(s) for" pool-name "pool")
-    (let [task-request->task-metadata-fn (fn [task-request]
-                                           (assoc
-                                             (task/job->task-metadata
-                                               ; mesos-run-as-user
-                                               nil
-                                               ; Synthetic tasks exist solely for the purpose of
-                                               ; triggering autoscaling in Kubernetes, so we need to
-                                               ; override the command to something innocuous
-                                               (assoc (:job task-request) :job/command "true")
-                                               ; task-id
-                                               (str (UUID/randomUUID)))
-                                             :task-request task-request
-                                             ; We need to label the synthetic tasks so that we
-                                             ; can opt them out of some of the normal plumbing,
-                                             ; like mapping status back to a job instance
-                                             :labels {controller/cook-synthetic-task-label true}))
-          task-metadata-seq (map task-request->task-metadata-fn task-requests)]
+    (let [synthetic-task-cpus 0.9
+          syntehtic-task-mem 1024
+          synthetic-task-image "gcr.io/google-containers/alpine-with-bash:1.0"
+          total-cpus (+ (map #(-> % :job tools/job-ent->resources :cpus) task-requests))
+          total-mem (+ (map #(-> % :job tools/job-ent->resources :mem) task-requests))
+          num-tasks-by-cpu (/ total-cpus synthetic-task-cpus)
+          num-tasks-by-mem (/ total-mem syntehtic-task-mem)
+          num-tasks (-> (max num-tasks-by-cpu num-tasks-by-mem) Math/ceil int)
+          task-metadata-seq (repeat num-tasks {:task-id (UUID/randomUUID)
+                                               :command "true"
+                                               :container {:docker {:image synthetic-task-image}}
+                                               :task-request {:resources {:mem syntehtic-task-mem
+                                                                          :cpus synthetic-task-cpus}
+                                                              :job {:job/pool {:pool/name pool-name}}}
+                                               ; We need to label the synthetic tasks so that we
+                                               ; can opt them out of some of the normal plumbing,
+                                               ; like mapping status back to a job instance
+                                               :labels {controller/cook-synthetic-task-label true}})]
+      (log/info "In" name "compute cluster, launching" num-tasks "synthetic task(s) for"
+                (count task-requests) "un-matched tasks in" pool-name "pool")
       (cc/launch-tasks this
                        nil ; offers (not used by KubernetesComputeCluster)
                        task-metadata-seq))))
