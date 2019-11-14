@@ -232,13 +232,15 @@
     (let [synthetic-task-cpus 0.9
           syntehtic-task-mem 1024
           synthetic-task-image "gcr.io/google-containers/alpine-with-bash:1.0"
-          total-cpus (+ (map #(-> % :job tools/job-ent->resources :cpus) task-requests))
-          total-mem (+ (map #(-> % :job tools/job-ent->resources :mem) task-requests))
+          synthetic-task-user "dpo"
+          total-cpus (reduce + (map #(-> % :job tools/job-ent->resources :cpus) task-requests))
+          total-mem (reduce + (map #(-> % :job tools/job-ent->resources :mem) task-requests))
           num-tasks-by-cpu (/ total-cpus synthetic-task-cpus)
           num-tasks-by-mem (/ total-mem syntehtic-task-mem)
           num-tasks (-> (max num-tasks-by-cpu num-tasks-by-mem) Math/ceil int)
-          task-metadata-seq (repeat num-tasks {:task-id (UUID/randomUUID)
-                                               :command "true"
+          task-metadata-seq (repeat num-tasks {:task-id (str (UUID/randomUUID))
+                                               :command {:user synthetic-task-user
+                                                         :value "true"}
                                                :container {:docker {:image synthetic-task-image}}
                                                :task-request {:resources {:mem syntehtic-task-mem
                                                                           :cpus synthetic-task-cpus}
@@ -246,9 +248,9 @@
                                                ; We need to label the synthetic tasks so that we
                                                ; can opt them out of some of the normal plumbing,
                                                ; like mapping status back to a job instance
-                                               :labels {controller/cook-synthetic-task-label true}})]
+                                               :labels {controller/cook-synthetic-task-label "true"}})]
       (log/info "In" name "compute cluster, launching" num-tasks "synthetic task(s) for"
-                (count task-requests) "un-matched tasks in" pool-name "pool")
+                (count task-requests) "un-matched task(s) in" pool-name "pool")
       (cc/launch-tasks this
                        nil ; offers (not used by KubernetesComputeCluster)
                        task-metadata-seq))))
