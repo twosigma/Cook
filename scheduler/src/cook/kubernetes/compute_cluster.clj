@@ -168,7 +168,8 @@
 
 (defrecord KubernetesComputeCluster [^ApiClient api-client name entity-id match-trigger-chan exit-code-syncer-state
                                      all-pods-atom current-nodes-atom expected-state-map existing-state-map
-                                     pool->fenzo-atom namespace-config scan-frequency-seconds-config]
+                                     pool->fenzo-atom namespace-config scan-frequency-seconds-config
+                                     last-autoscaling-trigger-atom synthetic-tasks]
   cc/ComputeCluster
   (launch-tasks [this offers task-metadata-seq]
     (doseq [task-metadata task-metadata-seq]
@@ -226,34 +227,55 @@
   (restore-offers [this pool-name offers])
 
   (trigger-autoscaling? [_]
-    true)
+    (and
+      (some-> synthetic-tasks :interval-seconds pos?)
+      (some-> synthetic-tasks :cpus pos?)
+      (some-> synthetic-tasks :mem pos?)
+      (some-> synthetic-tasks :image count pos?)
+      (some-> synthetic-tasks :user count pos?)
+      (some-> synthetic-tasks :max-tasks-per-interval pos?)))
 
   (launch-synthetic-tasks! [this pool-name task-requests]
-    (let [synthetic-task-cpus 0.9
-          syntehtic-task-mem 1024
-          synthetic-task-image "gcr.io/google-containers/alpine-with-bash:1.0"
-          synthetic-task-user "dpo"
-          total-cpus (reduce + (map #(-> % :job tools/job-ent->resources :cpus) task-requests))
-          total-mem (reduce + (map #(-> % :job tools/job-ent->resources :mem) task-requests))
-          num-tasks-by-cpu (/ total-cpus synthetic-task-cpus)
-          num-tasks-by-mem (/ total-mem syntehtic-task-mem)
-          num-tasks (-> (max num-tasks-by-cpu num-tasks-by-mem) Math/ceil int)
-          task-metadata-seq (repeat num-tasks {:task-id (str (UUID/randomUUID))
-                                               :command {:user synthetic-task-user
-                                                         :value "true"}
-                                               :container {:docker {:image synthetic-task-image}}
-                                               :task-request {:resources {:mem syntehtic-task-mem
-                                                                          :cpus synthetic-task-cpus}
-                                                              :job {:job/pool {:pool/name pool-name}}}
-                                               ; We need to label the synthetic tasks so that we
-                                               ; can opt them out of some of the normal plumbing,
-                                               ; like mapping status back to a job instance
-                                               :labels {controller/cook-synthetic-task-label "true"}})]
-      (log/info "In" name "compute cluster, launching" num-tasks "synthetic task(s) for"
-                (count task-requests) "un-matched task(s) in" pool-name "pool")
-      (cc/launch-tasks this
-                       nil ; offers (not used by KubernetesComputeCluster)
-                       task-metadata-seq))))
+    (try
+      (assert (cc/trigger-autoscaling? this)
+              (str "Call to launch-synthetic-tasks despite invalid / missing config"))
+      (when (time/after? (time/now)
+                         (time/plus @last-autoscaling-trigger-atom
+                                    (-> synthetic-tasks :interval-seconds time/seconds)))
+        (let [using-pools? (config/default-pool)
+              synthetic-task-pool-name (if using-pools? pool-name nil)
+              synthetic-task-cpus (:cpus synthetic-tasks)
+              syntehtic-task-mem (:mem synthetic-tasks)
+              synthetic-task-image (:image synthetic-tasks)
+              synthetic-task-user (:user synthetic-tasks)
+              synthetic-task-command (-> synthetic-tasks :command (or "exit 0"))
+              max-num-tasks (:max-tasks-per-interval synthetic-tasks)
+              total-cpus (reduce + (map #(-> % :job tools/job-ent->resources :cpus) task-requests))
+              total-mem (reduce + (map #(-> % :job tools/job-ent->resources :mem) task-requests))
+              num-tasks-by-cpu (/ total-cpus synthetic-task-cpus)
+              num-tasks-by-mem (/ total-mem syntehtic-task-mem)
+              num-tasks (-> (max num-tasks-by-cpu num-tasks-by-mem) Math/ceil int (min max-num-tasks))
+              task-metadata-seq (repeat num-tasks
+                                        {:task-id (str (UUID/randomUUID))
+                                         :command {:user synthetic-task-user
+                                                   :value synthetic-task-command}
+                                         :container {:docker {:image synthetic-task-image}}
+                                         :task-request {:resources {:mem syntehtic-task-mem
+                                                                    :cpus synthetic-task-cpus}
+                                                        :job {:job/pool {:pool/name synthetic-task-pool-name}}}
+                                         ; We need to label the synthetic tasks so that we
+                                         ; can opt them out of some of the normal plumbing,
+                                         ; like mapping status back to a job instance
+                                         :labels {controller/cook-synthetic-task-label "true"}})]
+          (log/info "In" name "compute cluster, launching" num-tasks "synthetic task(s) for"
+                    (count task-requests) "un-matched task(s) in" synthetic-task-pool-name "pool")
+          (reset! last-autoscaling-trigger-atom (time/now))
+          (cc/launch-tasks this
+                           nil ; offers (not used by KubernetesComputeCluster)
+                           task-metadata-seq)))
+      (catch Throwable e
+        (log/error e "In" name "compute cluster, encountered error launching synthetic tasks for"
+                   (count task-requests) "un-matched task(s) in" pool-name "pool")))))
 
 (defn get-or-create-cluster-entity-id
   [conn compute-cluster-name]
@@ -330,7 +352,8 @@
            verifying-ssl
            bearer-token-refresh-seconds
            namespace
-           scan-frequency-seconds]
+           scan-frequency-seconds
+           synthetic-tasks]
     :or {bearer-token-refresh-seconds 300
          namespace {:kind :static
                     :namespace "cook"}
@@ -349,6 +372,8 @@
                                                     (atom {:type :existing-state-map})
                                                     (atom nil)
                                                     namespace
-                                                    scan-frequency-seconds)]
+                                                    scan-frequency-seconds
+                                                    (atom (time/epoch))
+                                                    synthetic-tasks)]
     (cc/register-compute-cluster! compute-cluster)
     compute-cluster))

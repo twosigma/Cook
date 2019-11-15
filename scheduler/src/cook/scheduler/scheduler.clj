@@ -729,31 +729,27 @@
                                        {:job-uuid->reserved-host (apply dissoc job-uuid->reserved-host matched-job-uuids)
                                         :launched-job-uuids (into matched-job-uuids launched-job-uuids)})))
 
-(let [last-autoscaling-trigger (atom (time/epoch))]
-  (defn trigger-autoscaling!
-    "TODO(DPO)"
-    [failures pool-name compute-clusters]
-    (try
-      (when (time/after? (time/now) (time/plus @last-autoscaling-trigger (time/seconds 30)))
-        (let [task-requests (map #(.. (first %) (getRequest)) failures)
-              num-task-requests (count task-requests)
-              autoscaling-compute-clusters (filter cc/trigger-autoscaling? compute-clusters)
-              num-autoscaling-compute-clusters (count autoscaling-compute-clusters)]
-          (when (and (pos? num-autoscaling-compute-clusters) (pos? num-task-requests))
-            (log/info "In" pool-name "pool, triggering autoscaling for" num-task-requests "un-matched task(s)")
-            (reset! last-autoscaling-trigger (time/now))
-            (let [num-requests-per-cluster (int (Math/ceil (/ num-task-requests num-autoscaling-compute-clusters)))
-                  partitions (partition-all num-requests-per-cluster task-requests)
-                  num-partitions (count partitions)]
-              (assert (>= num-autoscaling-compute-clusters num-partitions)
-                      (str "There are " num-autoscaling-compute-clusters " autoscaling clusters but "
-                           num-partitions " partition(s) of task requests to those clusters"))
-              (doseq [i (range num-partitions)
-                      :let [compute-cluster (nth autoscaling-compute-clusters i)
-                            requests-for-cluster (nth partitions i)]]
-                (cc/launch-synthetic-tasks! compute-cluster pool-name requests-for-cluster))))))
-      (catch Throwable e
-        (log/error e "In" pool-name "pool, encountered error while triggering autoscaling")))))
+(defn trigger-autoscaling!
+  "TODO(DPO)"
+  [failures pool-name compute-clusters]
+  (try
+    (let [task-requests (map #(.. (first %) (getRequest)) failures)
+          num-task-requests (count task-requests)
+          autoscaling-compute-clusters (filter cc/trigger-autoscaling? compute-clusters)
+          num-autoscaling-compute-clusters (count autoscaling-compute-clusters)]
+      (when (and (pos? num-autoscaling-compute-clusters) (pos? num-task-requests))
+        (let [num-requests-per-cluster (int (Math/ceil (/ num-task-requests num-autoscaling-compute-clusters)))
+              partitions (partition-all num-requests-per-cluster task-requests)
+              num-partitions (count partitions)]
+          (assert (>= num-autoscaling-compute-clusters num-partitions)
+                  (str "There are " num-autoscaling-compute-clusters " autoscaling clusters but "
+                       num-partitions " partition(s) of task requests to those clusters"))
+          (doseq [i (range num-partitions)
+                  :let [compute-cluster (nth autoscaling-compute-clusters i)
+                        requests-for-cluster (nth partitions i)]]
+            (cc/launch-synthetic-tasks! compute-cluster pool-name requests-for-cluster)))))
+    (catch Throwable e
+      (log/error e "In" pool-name "pool, encountered error while triggering autoscaling"))))
 
 (defn handle-resource-offers!
   "Gets a list of offers from mesos. Decides what to do with them all--they should all

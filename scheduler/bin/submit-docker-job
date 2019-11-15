@@ -1,0 +1,39 @@
+#!/bin/bash
+
+# Usage: ./bin/submit-docker-job [OPTIONS...]
+# Submits a job with a Docker image specified to Cook Scheduler.
+#   -u URL      Use the specified URL for Cook Scheduler. Default is http://localhost:12321.
+#   -i IMAGE    Use the specified Docker image. Default is gcr.io/google-containers/alpine-with-bash:1.0.
+#   -c CPUS     Use the specified amount of CPUs. Default is 0.1.
+#   -C COMMAND  Use the specified command. Default is 'sleep 66666' (~18.5 hours).
+
+set -e
+
+url=http://localhost:12321
+image=gcr.io/google-containers/alpine-with-bash:1.0
+cpus=0.1
+command='sleep 66666'
+
+while getopts "u:i:c:C:" opt; do
+  case ${opt} in
+    u )
+      url=$OPTARG
+      ;;
+    i )
+      image=$OPTARG
+      ;;
+    c )
+      cpus=$OPTARG
+      ;;
+    C )
+      command=$OPTARG
+      ;;
+    \? )
+      echo "Invalid option: $OPTARG" 1>&2
+      ;;
+  esac
+done
+shift $((OPTIND -1))
+
+cs --url $url submit --docker-image "$image" --cpus $cpus "$command"
+cs --url $url jobs --all

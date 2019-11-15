@@ -419,6 +419,11 @@
     (.addContainersItem pod-spec container)
     (.setNodeName pod-spec hostname)
     (.setRestartPolicy pod-spec "Never")
+    ; TODO:
+    ; This will need to change to allow for setting the toleration
+    ; for the default pool when the pool was not specified by the
+    ; user. For the time being, this isn't a problem only if / when
+    ; the default pool is not being fed offers from Kubernetes.
     (when pool-name
       (.addTolerationsItem pod-spec (toleration-for-pool pool-name)))
     (.setVolumes pod-spec (into [] (conj volumes workdir-volume)))
