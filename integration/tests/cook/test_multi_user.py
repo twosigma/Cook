@@ -5,6 +5,7 @@ import time
 import unittest
 
 import pytest
+from retrying import retry
 
 from tests.cook import mesos, util, reasons
 
@@ -230,29 +231,35 @@ class MultiUserCookTest(util.CookTest):
         if bucket_size > 3000 or extra_size > 1000:
             pytest.skip("Job submission rate limit test would require making too many or too few jobs to run the test.")
         with user:
-            jobs_to_kill = []
-            try:
-                # First, empty most but not all of the tocken bucket.
-                jobs1, resp1 = util.submit_jobs(self.cook_url, {}, bucket_size - 60)
-                jobs_to_kill.extend(jobs1)
-                self.assertEqual(resp1.status_code, 201)
-                # Then another 1060 to get us very negative.
-                jobs2, resp2 = util.submit_jobs(self.cook_url, {}, extra_size + 60)
-                jobs_to_kill.extend(jobs2)
-                self.assertEqual(resp2.status_code, 201)
-                # And finally a request that gets cut off.
-                jobs3, resp3 = util.submit_jobs(self.cook_url, {}, 10)
-                self.assertEqual(resp3.status_code, 400)
-                # The timestamp can change so we should only match on the prefix.
-                expectedPrefix = f'User {user.name} is inserting too quickly. Not allowed to insert for'
-                self.assertEqual(resp3.json()['error'][:len(expectedPrefix)], expectedPrefix)
-                # Earn back 70 seconds of tokens.
-                time.sleep(70.0 * extra_size / replenishment_rate)
-                jobs4, resp4 = util.submit_jobs(self.cook_url, {}, 10)
-                jobs_to_kill.extend(jobs4)
-                self.assertEqual(resp4.status_code, 201)
-            finally:
-                util.kill_jobs(self.cook_url, jobs_to_kill)
+            # Timing issues can cause this to fail, e.g. a delay between the bucket-emptying requests and the
+            # request that's expected to fail can cause it not to fail. So, we'll retry this a few times.
+            @retry(stop_max_delay=60000, wait_fixed=5000)
+            def trigger_submission_rate_limit():
+                jobs_to_kill = []
+                try:
+                    # First, empty most but not all of the token bucket.
+                    jobs1, resp1 = util.submit_jobs(self.cook_url, {}, bucket_size - 60, log_request_body=False)
+                    jobs_to_kill.extend(jobs1)
+                    self.assertEqual(resp1.status_code, 201)
+                    # Then more to get us very negative.
+                    jobs2, resp2 = util.submit_jobs(self.cook_url, {}, extra_size + 60, log_request_body=False)
+                    jobs_to_kill.extend(jobs2)
+                    self.assertEqual(resp2.status_code, 201)
+                    # And finally a request that gets cut off.
+                    jobs3, resp3 = util.submit_jobs(self.cook_url, {}, 10)
+                    self.assertEqual(resp3.status_code, 400)
+                    # The timestamp can change so we should only match on the prefix.
+                    expected_prefix = f'User {user.name} is inserting too quickly. Not allowed to insert for'
+                    self.assertEqual(resp3.json()['error'][:len(expected_prefix)], expected_prefix)
+                    # Earn back 70 seconds of tokens.
+                    time.sleep(70.0 * extra_size / replenishment_rate)
+                    jobs4, resp4 = util.submit_jobs(self.cook_url, {}, 10)
+                    jobs_to_kill.extend(jobs4)
+                    self.assertEqual(resp4.status_code, 201)
+                finally:
+                    util.kill_jobs(self.cook_url, jobs_to_kill)
+
+            trigger_submission_rate_limit()
 
     # Note that subsequent runs of this test under the same user can fail if sufficient time has not
     # passed; the subsequent run will have used up the rate limit quota and it will need time to recharge.

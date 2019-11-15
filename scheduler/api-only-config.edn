@@ -20,7 +20,7 @@
            :user-metrics-interval-seconds 60}
  :nrepl {:enabled? true
          :port 8888}
- :pools {:default "gamma"}
+ :pools {:default "mesos-gamma"}
  :port 12321
  :rate-limit {:user-limit-per-m 1000000}
  :unhandled-exceptions {:log-level :error}}

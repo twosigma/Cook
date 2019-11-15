@@ -233,13 +233,23 @@ class UserFactory(object):
             test_base_name = test_id[test_id.rindex('.test_') + 6:].lower()
             self.__user_generator = _test_user_names(test_base_name)
 
+        self.cook_url = retrieve_cook_url()
+        _wait_for_cook(self.cook_url)
+
     def new_user(self):
         """Return a fresh user object."""
-        return self.user_class(next(self.__user_generator))
+        user = self.user_class(next(self.__user_generator))
+        with self.admin():
+            reset_share_and_quota(self.cook_url, user.name)
+        return user
 
     def new_users(self, count=None):
         """Return a sequence of `count` fresh user objects."""
-        return [self.user_class(x) for x in itertools.islice(self.__user_generator, 0, count)]
+        users = [self.user_class(x) for x in itertools.islice(self.__user_generator, 0, count)]
+        with self.admin():
+            for user in users:
+                reset_share_and_quota(self.cook_url, user.name)
+        return users
 
     @functools.lru_cache()
     def default(self):
@@ -490,7 +500,16 @@ def minimal_group(**kwargs):
     return dict(uuid=str(make_temporal_uuid()), **kwargs)
 
 
-def submit_jobs(cook_url, job_specs, clones=1, pool=None, headers=None, **kwargs):
+def default_submit_pool():
+    """
+    Returns the default pool to use for job submissions, or None if
+    COOK_TEST_DEFAULT_SUBMIT_POOL is not defined. Returning None here is OK
+    because sending no explicit pool means "use Cook Scheduler's default".
+    """
+    return os.getenv('COOK_TEST_DEFAULT_SUBMIT_POOL')
+
+
+def submit_jobs(cook_url, job_specs, clones=1, pool=None, headers=None, log_request_body=True, **kwargs):
     """
     Create and submit multiple jobs, either cloned from a single job spec,
     or specified individually in multiple job specs.
@@ -509,10 +528,22 @@ def submit_jobs(cook_url, job_specs, clones=1, pool=None, headers=None, **kwargs
 
     jobs = [full_spec(j) for j in job_specs]
     request_body = {'jobs': jobs}
+    default_pool = default_submit_pool()
     if pool:
+        logger.info(f'Submitting explicitly to the {pool} pool')
         request_body['pool'] = pool
+    elif default_pool:
+        logger.info(f'Submitting explicitly to the {default_pool} pool (set as default)')
+        request_body['pool'] = default_pool
+    else:
+        logger.info(f'Submitting with no explicit pool')
+        
     request_body.update(kwargs)
-    logger.info(request_body)
+    if log_request_body:
+        logger.info(request_body)
+    else:
+        logger.info('Not logging request body for job submission')
+
     resp = session.post(f'{cook_url}/jobs', json=request_body, headers=headers)
     return [j['uuid'] for j in jobs], resp
 
@@ -1639,3 +1670,10 @@ def timeout_interval_minutes():
     settings_timeout_interval_minutes = get_in(settings(cook_url), 'task-constraints', 
                                                'timeout-interval-minutes')
     return settings_timeout_interval_minutes
+
+                     
+def reset_share_and_quota(cook_url, user):
+    pool = default_submit_pool()
+    logger.info(f'Resetting share and quota for {user} in pool {pool}')
+    set_limit_to_default(cook_url, 'share', user, pool)
+    set_limit_to_default(cook_url, 'quota', user, pool)

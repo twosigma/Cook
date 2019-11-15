@@ -20,32 +20,32 @@ gcloud="gcloud --project $PROJECT"
 echo "---- Building kubernetes cluster for project=$PROJECT zone=$ZONE clustername=$CLUSTERNAME kubeconfig=$COOK_KUBECONFIG"
 
 # This creates a cluster, with some nodes that are needed for kubernetes management.
-# Create 7 nodes, with three tainted for alpha, 3 untainted and 3 tainted with gamma pool.
+# Create 7 nodes, with three tainted for k8s-alpha, 3 untainted and 3 tainted with k8s-gamma pool.
 # The untainted ones are for GKE's own uses for its system pods. Also convenient to have around if I'm doing non-pool tests.
 # The second line of flags about upgrades and legacy endpoints is to suppress some warnings.
 echo "---- Creating new cluster (please wait 5 minutes)"
-time $gcloud container clusters create "$CLUSTERNAME" --zone "$ZONE" --disk-size=20gb --machine-type=g1-small --num-nodes=3 --preemptible  \
+time $gcloud container clusters create "$CLUSTERNAME" --zone "$ZONE" --disk-size=20gb --machine-type=g1-small --preemptible  \
      --no-enable-autoupgrade --no-enable-basic-auth --no-issue-client-certificate --no-enable-ip-alias --metadata disable-legacy-endpoints=true \
-     --labels longevity=temporary
+     --labels longevity=temporary --enable-autoscaling --min-nodes=3 --max-nodes=6
 
 echo "---- Setting up gcloud credentials"
 # Add credentials to the kubeconfig used by cook.
-(export KUBECONFIG=${COOK_KUBECONFIG} ; $gcloud container clusters get-credentials "$CLUSTERNAME" --zone "$ZONE")
+KUBECONFIG=${COOK_KUBECONFIG} $gcloud container clusters get-credentials "$CLUSTERNAME" --zone "$ZONE"
 # Add credentials to default kubeconfig for convenience purposes.
 $gcloud container clusters get-credentials "$CLUSTERNAME" --zone "$ZONE"
 
 # Make some node-pools --- this takes a while, but it helps guarantee that we have nodes with the appropriate cook-pool taints.
-echo "---- Making extra alpha and gamma nodepools for cook pools (please wait 5-10 minutes)"
-$gcloud container node-pools create cook-pool-gamma --zone "$ZONE" --cluster="$CLUSTERNAME" --disk-size=20gb --machine-type=g1-small \
-       --node-taints=cook-pool=gamma:NoSchedule \
-       --num-nodes=3
-$gcloud container node-pools create cook-pool-alpha --zone "$ZONE" --cluster="$CLUSTERNAME" --disk-size=20gb --machine-type=g1-small \
-       --node-taints=cook-pool=alpha:NoSchedule \
-       --num-nodes=2
+echo "---- Making extra k8s-alpha and k8s-gamma nodepools for cook pools (please wait 5-10 minutes)"
+$gcloud container node-pools create cook-pool-k8s-gamma --zone "$ZONE" --cluster="$CLUSTERNAME" --disk-size=20gb --machine-type=g1-small \
+       --node-taints=cook-pool=k8s-gamma:NoSchedule \
+       --enable-autoscaling --min-nodes=3 --max-nodes=6
+$gcloud container node-pools create cook-pool-k8s-alpha --zone "$ZONE" --cluster="$CLUSTERNAME" --disk-size=20gb --machine-type=g1-small \
+       --node-taints=cook-pool=k8s-alpha:NoSchedule \
+       --enable-autoscaling --min-nodes=2 --max-nodes=4
 
 echo "---- Setting up cook namespace in kubernetes"
-(export KUBECONFIG=${COOK_KUBECONFIG} ; kubectl create -f docs/make-kubernetes-namespace.json)
+KUBECONFIG=${COOK_KUBECONFIG} kubectl create -f docs/make-kubernetes-namespace.json
 
 echo "---- Showing the clusters and nodes we generated"
 $gcloud container clusters list
-(export KUBECONFIG=${COOK_KUBECONFIG} ; kubectl get nodes)
+KUBECONFIG=${COOK_KUBECONFIG} kubectl get nodes

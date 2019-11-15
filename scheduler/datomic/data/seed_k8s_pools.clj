@@ -1,4 +1,4 @@
-(ns data.seed-pools
+(ns data.seed-k8s-pools
   (:require [cook.datomic :as datomic]
             [cook.quota :as quota]
             [datomic.api :as d]))
@@ -28,12 +28,12 @@
 (try
   (let [conn (datomic/create-connection {:settings {:mesos-datomic-uri uri}})]
     (println "Connected to Datomic:" conn)
-    (create-pool conn "mesos-alpha" :pool.state/active)
-    (create-pool conn "mesos-beta" :pool.state/inactive)
-    (create-pool conn "mesos-gamma" :pool.state/active)
-    (create-pool conn "mesos-delta" :pool.state/inactive)
-    (quota/set-quota! conn "default" "mesos-alpha" "For quota-related testing." :cpus 8 :mem 1024)
-    (quota/set-quota! conn "default" "mesos-gamma" "For quota-related testing." :cpus 9 :mem 2048)
+    (create-pool conn "k8s-alpha" :pool.state/active)
+    (create-pool conn "k8s-beta" :pool.state/inactive)
+    (create-pool conn "k8s-gamma" :pool.state/active)
+    (create-pool conn "k8s-delta" :pool.state/inactive)
+    (quota/set-quota! conn "default" "k8s-alpha" "For quota-related testing." :cpus 8 :mem 1024)
+    (quota/set-quota! conn "default" "k8s-gamma" "For quota-related testing." :cpus 9 :mem 2048)
     (println "Pools & Quotas:")
     (run! (fn [{:keys [pool/name] :as p}]
             (clojure.pprint/pprint p)

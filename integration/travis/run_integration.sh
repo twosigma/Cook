@@ -104,7 +104,7 @@ export COOK_KEYSTORE_PATH=${COOK_KEYSTORE_PATH}
 case "$COOK_POOLS" in
   on)
     echo "Pools are turned on for this run"
-    DEFAULT_POOL=gamma
+    DEFAULT_POOL=mesos-gamma
     cd ${SCHEDULER_DIR}
     lein exec -p datomic/data/seed_pools.clj ${COOK_DATOMIC_URI_1}
     ;;

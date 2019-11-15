@@ -19,5 +19,7 @@ echo "---- Deleting any existing temporary clusters."
 $gcloud container clusters list --filter 'resourceLabels.longevity=temporary'
 for i in $($gcloud container clusters list --filter 'resourceLabels.longevity=temporary' --format="value(name)")
 do
-    $gcloud --quiet container clusters delete "$i" --zone "$ZONE" || echo "Error while attempting to delete $i"
+    echo "Deleting $i"
+    $gcloud --quiet container clusters delete "$i" --zone "$ZONE" &
 done
+wait
