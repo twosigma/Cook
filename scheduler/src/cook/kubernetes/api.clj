@@ -81,11 +81,6 @@
           (catch Exception e
             (log/error e "Error while processing callback")))))))
 
-(defn get-pod-name
-  "Given a V1Pod, return its name"
-  [^V1Pod pod]
-  (-> pod .getMetadata .getName))
-
 (defn get-pod-namespaced-key
   [^V1Pod pod]
   {:namespace (-> pod
@@ -141,7 +136,7 @@
       (.submit kubernetes-executor ^Callable
       (fn []
         (try
-          (handle-watch-updates all-pods-atom watch get-pod-name
+          (handle-watch-updates all-pods-atom watch get-pod-namespaced-key
                                 callbacks)
           (catch Exception e
             (log/error e "Error during watch"))
