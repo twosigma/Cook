@@ -2,6 +2,7 @@
   (:require [clojure.set :as set]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
+            [datomic.api :as d]
             [cook.config :as config]
             [me.raynes.conch :as sh]
             [plumbing.core :as pc])
@@ -288,7 +289,7 @@
                                                             path))
                                             true)))
                                       cook-volumes)
-        host-path->name (pc/map-from-keys (fn [_] (str (UUID/randomUUID)))
+        host-path->name (pc/map-from-keys (fn [_] (str "syn-" (d/squuid)))
                                           (map :host-path filtered-cook-volumes))
         volumes (map (fn [{:keys [host-path]}]
                        (let [host-path-source (V1HostPathVolumeSource.)]
