@@ -443,7 +443,8 @@
     (when-let [{:keys [sandbox-fileserver-port]} (config/kubernetes)]
       (let [{:keys [sandbox-fileserver-image]} (config/kubernetes)
             container (V1Container.)
-            workdir-volume-mount (V1VolumeMount.)]
+            workdir-volume-mount (V1VolumeMount.)
+            resources (V1ResourceRequirements.)]
         ; workdir mount
         (.setName workdir-volume-mount "cook-workdir")
         (.setMountPath workdir-volume-mount workdir)
@@ -452,6 +453,13 @@
         (.setImage container sandbox-fileserver-image)
         (.setCommand container ["fileserver" (str sandbox-fileserver-port)])
         (.setPorts container [(.containerPort (V1ContainerPort.) (int sandbox-fileserver-port))])
+
+        (.putRequestsItem resources "memory" (double->quantity (* memory-multiplier 100)))
+        (.putLimitsItem resources "memory" (double->quantity (* memory-multiplier 100)))
+        (.putRequestsItem resources "cpu" (double->quantity 0.1))
+        (.putLimitsItem resources "cpu" (double->quantity 0.1))
+        (.setResources container resources)
+
         (.setVolumeMounts container [workdir-volume-mount])
         (.addContainersItem pod-spec container)))
 
