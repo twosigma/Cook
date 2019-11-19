@@ -16,7 +16,7 @@
                                  V1ObjectMeta V1PodSpec V1PodStatus V1ContainerState V1DeleteOptionsBuilder
                                  V1DeleteOptions V1HostPathVolumeSource V1VolumeMount V1VolumeBuilder V1Taint
                                  V1Toleration V1PodSecurityContext V1EmptyDirVolumeSource V1EnvVarBuilder V1ContainerPort)
-    (io.kubernetes.client.util Watch)
+    (io.kubernetes.client.util Watch Yaml)
     (java.util.concurrent Executors ExecutorService)
     (java.util UUID)))
 
@@ -590,7 +590,7 @@
           namespace (-> pod .getMetadata .getNamespace)
           ;; TODO: IF there's an error, log it and move on. We'll try again later.
           api (CoreV1Api. api-client)]
-      (log/info "Launching pod with name" pod-name "in namespace" namespace ":" pod)
+      (log/info "Launching pod with name" pod-name "in namespace" namespace ":" (Yaml/dump pod))
       (try
         (-> api
             (.createNamespacedPod namespace pod nil nil nil))
