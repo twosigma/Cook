@@ -244,24 +244,17 @@
                                     (-> synthetic-tasks :interval-seconds time/seconds)))
         (let [using-pools? (config/default-pool)
               synthetic-task-pool-name (if using-pools? pool-name nil)
-              synthetic-task-cpus (:cpus synthetic-tasks)
-              syntehtic-task-mem (:mem synthetic-tasks)
-              synthetic-task-image (:image synthetic-tasks)
-              synthetic-task-user (:user synthetic-tasks)
-              synthetic-task-command (-> synthetic-tasks :command (or "exit 0"))
-              max-num-tasks (:max-tasks-per-interval synthetic-tasks)
+              {:keys [cpus mem image user command max-tasks-per-interval] :or {command "exit 0"}} synthetic-tasks
               total-cpus (reduce + (map #(-> % :job tools/job-ent->resources :cpus) task-requests))
               total-mem (reduce + (map #(-> % :job tools/job-ent->resources :mem) task-requests))
-              num-tasks-by-cpu (/ total-cpus synthetic-task-cpus)
-              num-tasks-by-mem (/ total-mem syntehtic-task-mem)
-              num-tasks (-> (max num-tasks-by-cpu num-tasks-by-mem) Math/ceil int (min max-num-tasks))
+              num-tasks-by-cpu (/ total-cpus cpus)
+              num-tasks-by-mem (/ total-mem mem)
+              num-tasks (-> (max num-tasks-by-cpu num-tasks-by-mem) Math/ceil int (min max-tasks-per-interval))
               task-metadata-seq (repeat num-tasks
                                         {:task-id (str (UUID/randomUUID))
-                                         :command {:user synthetic-task-user
-                                                   :value synthetic-task-command}
-                                         :container {:docker {:image synthetic-task-image}}
-                                         :task-request {:resources {:mem syntehtic-task-mem
-                                                                    :cpus synthetic-task-cpus}
+                                         :command {:user user :value command}
+                                         :container {:docker {:image image}}
+                                         :task-request {:resources {:mem mem :cpus cpus}
                                                         :job {:job/pool {:pool/name synthetic-task-pool-name}}}
                                          ; We need to label the synthetic tasks so that we
                                          ; can opt them out of some of the normal plumbing,
