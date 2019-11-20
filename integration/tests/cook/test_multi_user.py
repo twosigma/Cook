@@ -800,11 +800,11 @@ class MultiUserCookTest(util.CookTest):
             resp = util.reset_limit(self.cook_url, 'share', user, reason=None)
             self.assertEqual(resp.status_code, 400, resp.text)
 
-            default_pool = util.default_pool(self.cook_url)
+            default_pool = util.default_submit_pool() or util.default_pool(self.cook_url)
             if default_pool is not None:
                 for limit in ['quota', 'share']:
                     # Get the default cpus limit
-                    resp = util.get_limit(self.cook_url, limit, "default")
+                    resp = util.get_limit(self.cook_url, limit, "default", pool=default_pool)
                     self.assertEqual(200, resp.status_code, resp.text)
                     self.logger.info(f'The default limit in the {default_pool} pool is {resp.json()}')
                     default_cpus = resp.json()['cpus']
@@ -814,7 +814,7 @@ class MultiUserCookTest(util.CookTest):
                     self.assertEqual(resp.status_code, 201, resp.text)
 
                     # Check that the limit is returned for no pool
-                    resp = util.get_limit(self.cook_url, limit, user)
+                    resp = util.get_limit(self.cook_url, limit, user, pool=default_pool)
                     self.assertEqual(resp.status_code, 200, resp.text)
                     self.assertEqual(100, resp.json()['cpus'], resp.text)
 
@@ -886,7 +886,7 @@ class MultiUserCookTest(util.CookTest):
         uuids, resp = util.submit_jobs(self.cook_url, job_spec, clones=100, groups=[group])
         self.assertEqual(201, resp.status_code, resp.content)
         try:
-            default_pool = util.default_pool(self.cook_url)
+            default_pool = util.default_submit_pool() or util.default_pool(self.cook_url)
             pool = default_pool or 'no-pool'
             self.logger.info(f'Checking the queue endpoint for pool {pool}')
 

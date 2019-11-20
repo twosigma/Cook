@@ -724,7 +724,7 @@ class CookTest(util.CookTest):
     def test_get_job(self):
         # schedule a job
         job_spec = util.minimal_job()
-        resp = util.session.post('%s/rawscheduler' % self.cook_url, json={'jobs': [job_spec]})
+        _, resp = util.submit_jobs(self.cook_url, [job_spec])
         self.assertEqual(201, resp.status_code, msg=resp.content)
 
         # query for the same job & ensure the response has what it's supposed to have
@@ -1973,6 +1973,7 @@ class CookTest(util.CookTest):
         finally:
             util.kill_jobs(self.cook_url, uuids)
 
+    @unittest.skipIf(util.has_ephemeral_hosts(), util.EPHEMERAL_HOSTS_SKIP_REASON)
     def test_attribute_equals_hostname_constraint(self):
         max_slave_cpus = util.max_node_cpus()
         task_constraint_cpus = util.task_constraint_cpus(self.cook_url)
@@ -2142,7 +2143,7 @@ class CookTest(util.CookTest):
                 pool_usage = usage_data['pools'][pool['name']]
                 self.assertEqual(set(pool_usage.keys()), {'total_usage', 'grouped', 'ungrouped'}, pool_usage)
                 self.assertEqual(set(pool_usage['ungrouped'].keys()), {'running_jobs', 'usage'}, pool_usage)
-            default_pool = util.default_pool(self.cook_url)
+            default_pool = util.default_submit_pool() or util.default_pool(self.cook_url)
             if default_pool:
                 # If there is a default pool configured, make sure that our jobs,
                 # which don't have a pool, are counted as being in the default pool

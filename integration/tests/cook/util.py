@@ -1180,6 +1180,8 @@ def set_limit(cook_url, limit_type, user, mem=None, cpus=None, gpus=None, count=
     """
     if headers is None:
         headers = {}
+    if pool is None and not 'x-cook-pool' in headers:
+        pool = default_submit_pool()
     limits = {}
     body = {'user': user, limit_type: limits}
     if reason is not None:
@@ -1213,6 +1215,8 @@ def reset_limit(cook_url, limit_type, user, reason='testing', pool=None, headers
     """
     if headers is None:
         headers = {}
+    if pool is None and not 'x-cook-pool' in headers:
+        pool = default_submit_pool()
     params = {'user': user}
     if reason is not None:
         params['reason'] = reason
@@ -1350,7 +1354,7 @@ def get_kubernetes_compute_cluster():
     else:
         return None
 
-
+@functools.lru_cache()
 def get_kubernetes_nodes():
     kubernetes_compute_cluster = get_kubernetes_compute_cluster()
     if 'config-file' in kubernetes_compute_cluster['config']:
