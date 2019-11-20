@@ -442,7 +442,7 @@
 
     ; sandbox file server container
     (when-let [{:keys [sandbox-fileserver-port]} (config/kubernetes)]
-      (let [{:keys [sandbox-fileserver-image]} (config/kubernetes)
+      (let [{:keys [sandbox-fileserver-command sandbox-fileserver-image]} (config/kubernetes)
             container (V1Container.)
             workdir-volume-mount (V1VolumeMount.)
             resources (V1ResourceRequirements.)]
@@ -452,7 +452,7 @@
         (.setReadOnly workdir-volume-mount true)
         (.setName container cook-container-name-for-file-server)
         (.setImage container sandbox-fileserver-image)
-        (.setCommand container ["fileserver" (str sandbox-fileserver-port)])
+        (.setCommand container [sandbox-fileserver-command (str sandbox-fileserver-port)])
         (.setPorts container [(.containerPort (V1ContainerPort.) (int sandbox-fileserver-port))])
 
         (.putRequestsItem resources "memory" (double->quantity (* memory-multiplier 100)))
