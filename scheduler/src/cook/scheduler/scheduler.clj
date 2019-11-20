@@ -729,6 +729,23 @@
                                        {:job-uuid->reserved-host (apply dissoc job-uuid->reserved-host matched-job-uuids)
                                         :launched-job-uuids (into matched-job-uuids launched-job-uuids)})))
 
+(defn distribute-task-requests-to-compute-clusters
+  "TODO(DPO)"
+  [task-requests compute-clusters]
+  (let [num-task-requests (count task-requests)
+        num-compute-clusters (count compute-clusters)
+        num-requests-per-cluster (int (Math/ceil (/ num-task-requests num-compute-clusters)))
+        partitions (partition-all num-requests-per-cluster task-requests)
+        num-partitions (count partitions)]
+    (assert (>= num-compute-clusters num-partitions)
+            (str "There are " num-compute-clusters " autoscaling clusters but "
+                 num-partitions " partition(s) of task requests to those clusters"))
+    (into {}
+          (for [i (range num-partitions)
+                :let [compute-cluster (nth compute-clusters i)
+                      requests-for-cluster (nth partitions i)]]
+            [compute-cluster requests-for-cluster]))))
+
 (defn trigger-autoscaling!
   "TODO(DPO)"
   [failures pool-name compute-clusters]
@@ -738,15 +755,9 @@
           autoscaling-compute-clusters (filter cc/trigger-autoscaling? compute-clusters)
           num-autoscaling-compute-clusters (count autoscaling-compute-clusters)]
       (when (and (pos? num-autoscaling-compute-clusters) (pos? num-task-requests))
-        (let [num-requests-per-cluster (int (Math/ceil (/ num-task-requests num-autoscaling-compute-clusters)))
-              partitions (partition-all num-requests-per-cluster task-requests)
-              num-partitions (count partitions)]
-          (assert (>= num-autoscaling-compute-clusters num-partitions)
-                  (str "There are " num-autoscaling-compute-clusters " autoscaling clusters but "
-                       num-partitions " partition(s) of task requests to those clusters"))
-          (doseq [i (range num-partitions)
-                  :let [compute-cluster (nth autoscaling-compute-clusters i)
-                        requests-for-cluster (nth partitions i)]]
+        (let [compute-cluster->task-requests (distribute-task-requests-to-compute-clusters
+                                               task-requests autoscaling-compute-clusters)]
+          (doseq [[compute-cluster requests-for-cluster] compute-cluster->task-requests]
             (cc/launch-synthetic-tasks! compute-cluster pool-name requests-for-cluster)))))
     (catch Throwable e
       (log/error e "In" pool-name "pool, encountered error while triggering autoscaling"))))

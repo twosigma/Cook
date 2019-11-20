@@ -23,7 +23,7 @@
                      :config {:compute-cluster-name "gke-1"
                               ;; Location of the kubernetes config file. Hardcoded to the location specified by bin/make-gke-test-cluster
                               :config-file "../scheduler/.cook_kubeconfig_1"
-                              :synthetic-tasks {:interval-seconds 300
+                              :synthetic-tasks {:interval-seconds 180
                                                 :max-tasks-per-interval 3
                                                 :cpus 0.4
                                                 :mem 512
@@ -33,7 +33,7 @@
                      :config {:compute-cluster-name "gke-2"
                               ;; Location of the kubernetes config file. Hardcoded to the location specified by bin/make-gke-test-cluster
                               :config-file "../scheduler/.cook_kubeconfig_2"
-                              :synthetic-tasks {:interval-seconds 300
+                              :synthetic-tasks {:interval-seconds 180
                                                 :max-tasks-per-interval 3
                                                 :cpus 0.4
                                                 :mem 512
