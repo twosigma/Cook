@@ -907,10 +907,13 @@ def wait_for_running_instance(cook_url, job_id, max_wait_ms=DEFAULT_TIMEOUT_MS):
             for inst in job['instances']:
                 status = inst['status']
                 logger.info(f"Job {job_id} instance {inst['task_id']} has status {status}, expected running.")
-                return status == 'running'
+                if status == 'running':
+                    return True
+            logger.info(f"Job {job_id} has no running instances.")
+            return False
 
     response = wait_until(query, predicate, max_wait_ms=max_wait_ms)
-    return response.json()[0]['instances'][0]
+    return next(i for i in response.json()[0]['instances'] if i['status'] == 'running')
 
 
 def get_mesos_slaves(mesos_url):

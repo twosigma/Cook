@@ -115,6 +115,12 @@
     (assoc expected-state-dict :launch-pod [:elided-for-brevity])
     expected-state-dict))
 
+(defn prepare-existing-state-dict-for-logging
+  [existing-state-dict]
+  (-> existing-state-dict
+      (update-in [:synthesized-state :state] #(or % :missing))
+      (dissoc :pod)))
+
 (defn pod-has-started
   "A pod has started. So now we need to update the status in datomic."
   [kcc {:keys [pod] :as existing-state-dictionary}]
@@ -144,12 +150,12 @@
 (defn process
   "Visit this pod-name, processing the new level-state. Returns the new expected state. Returns
   empty dictionary to indicate that the result should be deleted. NOTE: Must be invoked with the lock."
-  [{:keys [api-client existing-state-map expected-state-map] :as kcc} ^String pod-name]
+  [{:keys [api-client existing-state-map expected-state-map name] :as kcc} ^String pod-name]
   (loop [{:keys [expected-state] :as expected-state-dict} (get @expected-state-map pod-name)
          {:keys [synthesized-state pod] :as existing-state-dict} (get @existing-state-map pod-name)]
-    ;; TODO: Remove the printing of existing-state-dict once we test on real kubernetes and get synthesized-pod-state robust.
-    (log/info "Processing: " pod-name ": ((" (prepare-expected-state-dict-for-logging expected-state-dict)
-              " ===== " (or (:state synthesized-state) :missing)  "///" existing-state-dict  "))")
+    (log/info "In compute cluster" name ", processing pod" pod-name ";"
+              "expected:" (prepare-expected-state-dict-for-logging expected-state-dict) ","
+              "existing:" (prepare-existing-state-dict-for-logging existing-state-dict))
     ; TODO: We added an :expected/starting state to the machine, to represent when a pod is starting. We map instance.status/unknown to that state
     ; The todo is to add in cases for [:expected/starting *] for those other states.
     (let
