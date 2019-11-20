@@ -752,13 +752,13 @@
   (try
     (let [task-requests (map #(.. (first %) (getRequest)) failures)
           num-task-requests (count task-requests)
-          autoscaling-compute-clusters (filter cc/trigger-autoscaling? compute-clusters)
+          autoscaling-compute-clusters (filter cc/autoscaling? compute-clusters)
           num-autoscaling-compute-clusters (count autoscaling-compute-clusters)]
       (when (and (pos? num-autoscaling-compute-clusters) (pos? num-task-requests))
         (let [compute-cluster->task-requests (distribute-task-requests-to-compute-clusters
                                                task-requests autoscaling-compute-clusters)]
           (doseq [[compute-cluster requests-for-cluster] compute-cluster->task-requests]
-            (cc/launch-synthetic-tasks! compute-cluster pool-name requests-for-cluster)))))
+            (cc/autoscale! compute-cluster pool-name requests-for-cluster)))))
     (catch Throwable e
       (log/error e "In" pool-name "pool, encountered error while triggering autoscaling"))))
 

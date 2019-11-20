@@ -226,7 +226,7 @@
 
   (restore-offers [this pool-name offers])
 
-  (trigger-autoscaling? [_]
+  (autoscaling? [_]
     (and
       (some-> synthetic-tasks :interval-seconds pos?)
       (some-> synthetic-tasks :cpus pos?)
@@ -235,10 +235,10 @@
       (some-> synthetic-tasks :user count pos?)
       (some-> synthetic-tasks :max-tasks-per-interval pos?)))
 
-  (launch-synthetic-tasks! [this pool-name task-requests]
+  (autoscale! [this pool-name task-requests]
     (try
-      (assert (cc/trigger-autoscaling? this)
-              (str "Call to launch-synthetic-tasks despite invalid / missing config"))
+      (assert (cc/autoscaling? this)
+              (str "Request to autoscale despite invalid / missing config"))
       (when (time/after? (time/now)
                          (time/plus @last-autoscaling-trigger-atom
                                     (-> synthetic-tasks :interval-seconds time/seconds)))

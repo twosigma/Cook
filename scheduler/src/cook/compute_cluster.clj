@@ -44,10 +44,10 @@
   (restore-offers [this pool-name offers]
     "Called when offers are not processed to ensure they're still available.")
 
-  (trigger-autoscaling? [this]
+  (autoscaling? [this]
     "TODO(DPO)")
 
-  (launch-synthetic-tasks! [this pool-name task-requests]
+  (autoscale! [this pool-name task-requests]
     "TODO(DPO)"))
 
 (defn kill-task-if-possible [compute-cluster task-id]
