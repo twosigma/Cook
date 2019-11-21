@@ -244,12 +244,18 @@
                                     (-> synthetic-tasks :interval-seconds time/seconds)))
         (let [using-pools? (config/default-pool)
               synthetic-task-pool-name (if using-pools? pool-name nil)
-              {:keys [cpus mem image user command max-tasks-per-interval] :or {command "exit 0"}} synthetic-tasks
+              {:keys [cpus mem image user command max-tasks-per-interval multiplier]
+               :or {command "exit 0" multiplier 1.0}}
+              synthetic-tasks
               total-cpus (reduce + (map #(-> % :job tools/job-ent->resources :cpus) task-requests))
               total-mem (reduce + (map #(-> % :job tools/job-ent->resources :mem) task-requests))
               num-tasks-by-cpu (/ total-cpus cpus)
               num-tasks-by-mem (/ total-mem mem)
-              num-tasks (-> (max num-tasks-by-cpu num-tasks-by-mem) Math/ceil int (min max-tasks-per-interval))
+              num-tasks (-> (max num-tasks-by-cpu num-tasks-by-mem)
+                            (* multiplier)
+                            Math/ceil
+                            int
+                            (min max-tasks-per-interval))
               task-metadata-seq (repeat num-tasks
                                         {:task-id (str (UUID/randomUUID))
                                          :command {:user user :value command}
