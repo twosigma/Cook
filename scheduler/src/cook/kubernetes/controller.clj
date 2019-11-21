@@ -27,8 +27,10 @@
 (defn existing-state-equivalent?
   "Is the old and new state equivalent?"
   [old-state new-state]
-  (= old-state new-state) ; TODO. This is not right. We need to tune/tweak this to suppress otherwise identical states so we don't spam.
-  )
+  ; TODO:
+  ; This is not right. We need to tune/tweak this to
+  ; suppress otherwise identical states so we don't spam.
+  (= (dissoc old-state :ancillary) (dissoc new-state :ancillary)))
 
 (defn remove-finalization-if-set-and-delete
   [api-client expected-state-dict pod]
@@ -54,16 +56,20 @@
 
 (defn container-status->failure-reason
   "Maps kubernetes failure reasons to cook failure reasons"
-  [^V1PodStatus pod-status ^V1ContainerStatus status]
+  [^V1PodStatus pod-status ^V1ContainerStatus container-status]
   ; TODO map additional kubernetes failure reasons
-  (let [terminated (-> status .getState .getTerminated)]
+  (let [container-terminated-reason (some-> container-status .getState .getTerminated .getReason)
+        pod-status-reason (.getReason pod-status)]
     (cond
-      (= "OutOfMemory" (.getReason pod-status)) :reason-container-limitation-memory
-      (= "Error" (.getReason terminated)) :reason-command-executor-failed
-      (= "OOMKilled" (.getReason terminated)) :reason-container-limitation-memory
+      (= "OutOfMemory" pod-status-reason) :reason-container-limitation-memory
+      (= "Error" container-terminated-reason) :reason-command-executor-failed
+      (= "OOMKilled" container-terminated-reason) :reason-container-limitation-memory
+      ; If there is no container status and the pod status reason is Outofcpu,
+      ; then the node didn't have enough CPUs to start the container
+      (and (nil? container-status) (= "OutOfcpu" pod-status-reason)) :reason-invalid-offers
       :default (do
                  (log/warn "Unable to determine kubernetes failure reason for pod" {:pod-status pod-status
-                                                                                    :container-status status})
+                                                                                    :container-status container-status})
                  :unknown))))
 
 (defn write-status-to-datomic
@@ -95,9 +101,10 @@
         status {:task-id {:value task-id}
                 :state mesos-state
                 :reason (container-status->failure-reason pod-status job-container-status)}
-        exit-code (-> job-container-status .getState .getTerminated .getExitCode)]
+        exit-code (some-> job-container-status .getState .getTerminated .getExitCode)]
     (write-status-to-datomic kcc status)
-    (sandbox/aggregate-exit-code (:exit-code-syncer-state kcc) task-id exit-code)
+    (when exit-code
+      (sandbox/aggregate-exit-code (:exit-code-syncer-state kcc) task-id exit-code))
     {:expected-state :expected/completed}))
 
 (defn prepare-expected-state-dict-for-logging
