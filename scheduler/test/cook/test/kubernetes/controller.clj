@@ -25,7 +25,8 @@
           container-status nil]
       (.setReason pod-status "OutOfcpu")
       (is (= :reason-invalid-offers
-             (controller/container-status->failure-reason pod-status container-status))))))
+             (controller/container-status->failure-reason {:name "test-cluster"} "12345"
+                                                          pod-status container-status))))))
 
 (deftest process-successful
   ;; TODO
