@@ -9,7 +9,6 @@
             [cook.config :as config]
             [cook.kubernetes.api :as api]
             [cook.kubernetes.controller :as controller]
-            [cook.mesos.task :as task]
             [cook.pool]
             [cook.tools :as tools]
             [datomic.api :as d]
