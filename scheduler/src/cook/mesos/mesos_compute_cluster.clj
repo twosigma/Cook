@@ -315,8 +315,6 @@
   "Checks datomic for a compute cluster with the given name and framework-id. If present, returns the entity id.
    If missing, installs in datomic and returns the entity id."
   [conn compute-cluster-name framework-id]
-  {:pre [compute-cluster-name
-         framework-id]}
   (let [compute-cluster-entity-id (get-mesos-cluster-entity-id (d/db conn)
                                                                {:compute-cluster-name compute-cluster-name
                                                                 :framework-id framework-id})]
