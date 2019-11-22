@@ -48,6 +48,9 @@
     "TODO(DPO)")
 
   (autoscale! [this pool-name task-requests]
+    "TODO(DPO)")
+
+  (last-autoscale-time [this]
     "TODO(DPO)"))
 
 (defn kill-task-if-possible [compute-cluster task-id]

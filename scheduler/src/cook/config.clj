@@ -432,7 +432,9 @@
                                  pool-selection)})))
      :kubernetes (fnk [[:config {kubernetes {}}]]
                    (merge kubernetes
-                          {:default-workdir "/mnt/sandbox"}))}))
+                          {:default-workdir "/mnt/sandbox"}))
+     :autoscaler (fnk [[:config {autoscaler {}}]]
+                   autoscaler)}))
 
 (defn read-config
   "Given a config file path, reads the config and returns the map"
@@ -550,3 +552,7 @@
 (defn task-constraints
   []
   (get-in config [:settings :task-constraints]))
+
+(defn autoscaler
+  []
+  (get-in config [:settings :autoscaler]))

@@ -169,7 +169,7 @@
 (defrecord KubernetesComputeCluster [^ApiClient api-client name entity-id match-trigger-chan exit-code-syncer-state
                                      all-pods-atom current-nodes-atom expected-state-map existing-state-map
                                      pool->fenzo-atom namespace-config scan-frequency-seconds-config
-                                     last-autoscaling-trigger-atom synthetic-tasks]
+                                     last-autoscale-atom synthetic-tasks]
   cc/ComputeCluster
   (launch-tasks [this offers task-metadata-seq]
     (doseq [task-metadata task-metadata-seq]
@@ -228,53 +228,52 @@
 
   (autoscaling? [_]
     (and
-      (some-> synthetic-tasks :interval-seconds pos?)
       (some-> synthetic-tasks :cpus pos?)
       (some-> synthetic-tasks :mem pos?)
       (some-> synthetic-tasks :image count pos?)
       (some-> synthetic-tasks :user count pos?)
-      (some-> synthetic-tasks :max-tasks-per-interval pos?)))
+      (some-> synthetic-tasks :max-tasks pos?)))
 
   (autoscale! [this pool-name task-requests]
     (try
       (assert (cc/autoscaling? this)
               (str "Request to autoscale despite invalid / missing config"))
-      (when (time/after? (time/now)
-                         (time/plus @last-autoscaling-trigger-atom
-                                    (-> synthetic-tasks :interval-seconds time/seconds)))
-        (let [using-pools? (config/default-pool)
-              synthetic-task-pool-name (if using-pools? pool-name nil)
-              {:keys [cpus mem image user command max-tasks-per-interval multiplier]
-               :or {command "exit 0" multiplier 1.0}}
-              synthetic-tasks
-              total-cpus (reduce + (map #(-> % :job tools/job-ent->resources :cpus) task-requests))
-              total-mem (reduce + (map #(-> % :job tools/job-ent->resources :mem) task-requests))
-              num-tasks-by-cpu (/ total-cpus cpus)
-              num-tasks-by-mem (/ total-mem mem)
-              num-tasks (-> (max num-tasks-by-cpu num-tasks-by-mem)
-                            (* multiplier)
-                            Math/ceil
-                            int
-                            (min max-tasks-per-interval))
-              task-metadata-seq (repeat num-tasks
-                                        {:task-id (str (UUID/randomUUID))
-                                         :command {:user user :value command}
-                                         :container {:docker {:image image}}
-                                         :task-request {:resources {:mem mem :cpus cpus}
-                                                        :job {:job/pool {:pool/name synthetic-task-pool-name}}}
-                                         ; We need to label the synthetic tasks so that we
-                                         ; can opt them out of some of the normal plumbing,
-                                         ; like mapping status back to a job instance
-                                         :labels {controller/cook-synthetic-task-label "true"}})]
-          (log/info "In" name "compute cluster, launching" num-tasks "synthetic task(s) for"
-                    (count task-requests) "un-matched task(s) in" synthetic-task-pool-name "pool")
-          (reset! last-autoscaling-trigger-atom (time/now))
-          (cc/launch-tasks this
-                           nil ; offers (not used by KubernetesComputeCluster)
-                           task-metadata-seq)))
+      (let [using-pools? (config/default-pool)
+            synthetic-task-pool-name (if using-pools? pool-name nil)
+            {:keys [cpus mem image user command max-tasks multiplier]
+             :or {command "exit 0" multiplier 1.0}}
+            synthetic-tasks
+            total-cpus (reduce + (map #(-> % :job tools/job-ent->resources :cpus) task-requests))
+            total-mem (reduce + (map #(-> % :job tools/job-ent->resources :mem) task-requests))
+            num-tasks-by-cpu (/ total-cpus cpus)
+            num-tasks-by-mem (/ total-mem mem)
+            num-tasks (-> (max num-tasks-by-cpu num-tasks-by-mem)
+                          (* multiplier)
+                          Math/ceil
+                          int
+                          (min max-tasks))
+            task-metadata-seq (repeat num-tasks
+                                      {:task-id (str (UUID/randomUUID))
+                                       :command {:user user :value command}
+                                       :container {:docker {:image image}}
+                                       :task-request {:resources {:mem mem :cpus cpus}
+                                                      :job {:job/pool {:pool/name synthetic-task-pool-name}}}
+                                       ; We need to label the synthetic tasks so that we
+                                       ; can opt them out of some of the normal plumbing,
+                                       ; like mapping status back to a job instance
+                                       :labels {controller/cook-synthetic-task-label "true"}})]
+        (log/info "In" name "compute cluster, launching" num-tasks "synthetic task(s) for"
+                  (count task-requests) "un-matched task(s) in" synthetic-task-pool-name "pool")
+        (reset! last-autoscale-atom (time/now))
+        (cc/launch-tasks this
+                         nil ; offers (not used by KubernetesComputeCluster)
+                         task-metadata-seq))
       (catch Throwable e
         (log/error e "In" name "compute cluster, encountered error launching synthetic tasks for"
-                   (count task-requests) "un-matched task(s) in" pool-name "pool")))))
+                   (count task-requests) "un-matched task(s) in" pool-name "pool"))))
+
+  (last-autoscale-time [_]
+    @last-autoscale-atom))
 
 (defn get-or-create-cluster-entity-id
   [conn compute-cluster-name]

@@ -288,7 +288,9 @@
 
   (autoscaling? [_] false)
 
-  (autoscale! [_ _ _]))
+  (autoscale! [_ _ _])
+
+  (last-autoscale-time [_] nil))
 
 ; Internal method
 (defn- mesos-cluster->compute-cluster-map-for-datomic
