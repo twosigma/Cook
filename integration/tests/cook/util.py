@@ -1261,9 +1261,6 @@ def all_pools(cook_url):
     disallow_pools_regex = os.getenv('COOK_TEST_DISALLOW_POOLS_REGEX')
     all_pools = resp.json() if disallow_pools_regex is None else \
         [p for p in resp.json() if not re.match(disallow_pools_regex, p['name'])]
-    if disallow_pools_regex is not None:
-        for ii in resp.json():
-            logger.info(f"For Pool {ii['name']} we have {re.match(disallow_pools_regex, ii['name'])}")
     return all_pools, resp
 
 
