@@ -68,6 +68,10 @@ class CookTest(util.CookTest):
             self.logger.info(f'Exit code not checked because cook executor was not used for {instance}')
 
     @unittest.skipUnless(util.docker_tests_enabled(), 'requires docker')
+    @pytest.mark.scheduler_not_in_docker
+    # If the cook scheduler is running in a docker container, it won't be able to lookup UID's or GID's. Under those circumstances,
+    # the cook scheduler won't be able to validate that the docker container is running as the right UID/GID and it will fail.
+    # Thus, in such an integration testing environment, we need to disable this test.
     def test_uid(self):
         settings = util.settings(self.cook_url)
 
@@ -720,7 +724,7 @@ class CookTest(util.CookTest):
     def test_get_job(self):
         # schedule a job
         job_spec = util.minimal_job()
-        resp = util.session.post('%s/rawscheduler' % self.cook_url, json={'jobs': [job_spec]})
+        _, resp = util.submit_jobs(self.cook_url, [job_spec])
         self.assertEqual(201, resp.status_code, msg=resp.content)
 
         # query for the same job & ensure the response has what it's supposed to have
@@ -1972,6 +1976,7 @@ class CookTest(util.CookTest):
         finally:
             util.kill_jobs(self.cook_url, uuids)
 
+    @unittest.skipIf(util.has_ephemeral_hosts(), util.EPHEMERAL_HOSTS_SKIP_REASON)
     def test_attribute_equals_hostname_constraint(self):
         max_slave_cpus = util.max_node_cpus()
         task_constraint_cpus = util.task_constraint_cpus(self.cook_url)
@@ -2141,7 +2146,7 @@ class CookTest(util.CookTest):
                 pool_usage = usage_data['pools'][pool['name']]
                 self.assertEqual(set(pool_usage.keys()), {'total_usage', 'grouped', 'ungrouped'}, pool_usage)
                 self.assertEqual(set(pool_usage['ungrouped'].keys()), {'running_jobs', 'usage'}, pool_usage)
-            default_pool = util.default_pool(self.cook_url)
+            default_pool = util.default_submit_pool() or util.default_pool(self.cook_url)
             if default_pool:
                 # If there is a default pool configured, make sure that our jobs,
                 # which don't have a pool, are counted as being in the default pool
