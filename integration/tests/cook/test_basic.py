@@ -342,7 +342,7 @@ class CookTest(util.CookTest):
 
             instance_compute_cluster_name = instance['compute-cluster']['name']
             instance_compute_cluster_type = instance['compute-cluster']['type']
-            self.assertIn(instance_compute_cluster_type, ['mesos', 'kubernetes'], message)
+            self.assertEqual(instance_compute_cluster_type, util.get_compute_cluster_test_mode(), message)
             filtered_compute_clusters = [compute_cluster for compute_cluster in settings_dict['compute-clusters']
                                          if compute_cluster['config']['compute-cluster-name'] == instance_compute_cluster_name]
             self.assertEqual(1, len(filtered_compute_clusters), "Unable to find " + instance_compute_cluster_name + " in compute clusters")
