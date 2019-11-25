@@ -586,7 +586,7 @@ class CookTest(util.CookTest):
             # We wait for the 'end_time' attribute separately because there is another small delay
             # between the job being killed and that attribute being set.
             # Having three separate waits also disambiguates the root cause of a wait-timeout failure.
-            util.wait_for_job(self.cook_url, job_uuid, 'running')
+            util.wait_for_job_in_statuses(self.cook_url, job_uuid, ['running', 'completed'])
             util.wait_for_job(self.cook_url, job_uuid, 'completed', job_sleep_ms)
             job = util.wait_for_end_time(self.cook_url, job_uuid)
             job_details = f"Job details: {json.dumps(job, sort_keys=True)}"
