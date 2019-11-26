@@ -1134,25 +1134,37 @@
              ;; Return all 0's for a user who does NOT have any running job.
              (zipmap (util/get-all-resource-types db) (repeat 0.0)))})))
 
+(defn create-limit-pending-tasks-filter
+  "Creates a predicate function that restricts the number of pending tasks in a sequence to num-pending-tasks-to-allow."
+  [pending-task-entities-set num-pending-tasks-to-allow]
+  (let [pending-task-counter (atom 0)]
+    (fn limit-pending-tasks-filter [task-entity]
+      (let [pending-task? (contains? pending-task-entities-set task-entity)]
+        (when pending-task?
+          (swap! pending-task-counter inc))
+        (or (not pending-task?) (<= @pending-task-counter num-pending-tasks-to-allow))))))
+
 (defn limit-over-quota-jobs
   "Filters task-ents, preserving at most (config/max-over-quota-jobs) that would exceed the user's quota"
-  [task-ents quota]
+  [quota task-ents]
   (let [over-quota-job-limit (config/max-over-quota-jobs)]
     (->> task-ents
          (map (fn [task-ent] [task-ent (util/job->usage (:job/_instance task-ent))]))
-         (reductions (fn [[prev-task total-usage over-quota-jobs] [task-ent usage]]
+         (reductions (fn [[_ total-usage over-quota-jobs] [task-ent usage]]
                        (let [total-usage' (merge-with + total-usage usage)]
                          (if (util/below-quota? quota total-usage')
                            [task-ent total-usage' over-quota-jobs]
                            [task-ent total-usage' (inc over-quota-jobs)])))
                      [nil {} 0])
-         (take-while (fn [[task-ent _ over-quota-jobs]] (<= over-quota-jobs over-quota-job-limit)))
+         (take-while (fn [[_ _ over-quota-jobs]] (<= over-quota-jobs over-quota-job-limit)))
          (map first)
          (filter (fn [task-ent] (not (nil? task-ent)))))))
 
 (defn sort-jobs-by-dru-helper
-  "Return a list of job entities ordered by the provided sort function"
-  [pending-task-ents running-task-ents user->dru-divisors sort-task-scored-task-pairs sort-jobs-duration pool-name user->quota]
+  "Return a sequence of job entities (running and pending) ordered by the provided sort function.
+   The number of pending jobs included in the returned sequence is restricted to max-jobs-considered."
+  [pending-task-ents running-task-ents user->dru-divisors sort-task-scored-task-pairs sort-jobs-duration pool-name
+   user->quota max-jobs-considered]
   (let [tasks (into (vec running-task-ents) pending-task-ents)
         task-comparator (util/same-user-task-comparator tasks)
         pending-task-ents-set (into #{} pending-task-ents)
@@ -1160,8 +1172,12 @@
                sort-jobs-duration
                (->> tasks
                     (group-by util/task-ent->user)
-                    (map (fn [[user task-ents]] (let [sorted-tasks (sort task-comparator task-ents)]
-                                                  [user (limit-over-quota-jobs sorted-tasks (user->quota user))])))
+                    (map (fn [[user task-ents]]
+                           (->> task-ents
+                             (sort task-comparator)
+                             (filter (create-limit-pending-tasks-filter pending-task-ents-set max-jobs-considered))
+                             (limit-over-quota-jobs (user->quota user))
+                             (conj [user]))))
                     (into (hash-map))
                     (sort-task-scored-task-pairs user->dru-divisors pool-name)
                     (filter (fn [[task _]] (contains? pending-task-ents-set task)))
@@ -1170,15 +1186,15 @@
 
 (defn- sort-normal-jobs-by-dru
   "Return a list of normal job entities ordered by dru"
-  [pending-task-ents running-task-ents user->dru-divisors timer pool-name user->quota]
-  (sort-jobs-by-dru-helper pending-task-ents running-task-ents user->dru-divisors
-                           dru/sorted-task-scored-task-pairs timer pool-name user->quota))
+  [pending-task-ents running-task-ents user->dru-divisors timer pool-name user->quota max-jobs-considered]
+  (sort-jobs-by-dru-helper pending-task-ents running-task-ents user->dru-divisors dru/sorted-task-scored-task-pairs
+                           timer pool-name user->quota max-jobs-considered))
 
 (defn- sort-gpu-jobs-by-dru
   "Return a list of gpu job entities ordered by dru"
-  [pending-task-ents running-task-ents user->dru-divisors timer pool-name user->quota]
-  (sort-jobs-by-dru-helper pending-task-ents running-task-ents user->dru-divisors
-                           dru/sorted-task-cumulative-gpu-score-pairs timer pool-name user->quota))
+  [pending-task-ents running-task-ents user->dru-divisors timer pool-name user->quota max-jobs-considered]
+  (sort-jobs-by-dru-helper pending-task-ents running-task-ents user->dru-divisors dru/sorted-task-cumulative-gpu-score-pairs
+                           timer pool-name user->quota max-jobs-considered))
 
 (defn- pool-map
   "Given a collection of pools, and a function val-fn that takes a pool,
@@ -1190,7 +1206,7 @@
 
 (defn sort-jobs-by-dru-pool
   "Returns a map from job pool to a list of job entities, ordered by dru"
-  [unfiltered-db]
+  [unfiltered-db max-jobs-considered]
   ;; This function does not use the filtered db when it is not necessary in order to get better performance
   ;; The filtered db is not necessary when an entity could only arrive at a given state if it was already committed
   ;; e.g. running jobs or when it is always considered committed e.g. shares
@@ -1218,8 +1234,10 @@
                     user->dru-divisors (pool-name->user->dru-divisors pool-name)
                     user->quota (quota/create-user->quota-fn unfiltered-db
                                                              (when using-pools? pool-name))
-                    timer (timers/timer (metric-title "sort-jobs-hierarchy-duration" pool-name))]
-                [pool-name (sort-jobs-by-dru pending-tasks running-tasks user->dru-divisors timer pool-name user->quota)]))]
+                    timer (timers/timer (metric-title "sort-jobs-hierarchy-duration" pool-name))
+                    sorted-jobs (sort-jobs-by-dru pending-tasks running-tasks user->dru-divisors timer
+                                                  pool-name user->quota max-jobs-considered)]
+                [pool-name sorted-jobs]))]
       (into {} (map sort-jobs-by-dru-pool-helper) pool-name->sort-jobs-by-dru-fn))))
 
 (timers/deftimer [cook-mesos scheduler filter-offensive-jobs-duration])
@@ -1290,11 +1308,11 @@
   "Return a map of lists of job entities ordered by dru, keyed by pool.
 
    It ranks the jobs by dru first and then apply several filters if provided."
-  [unfiltered-db offensive-job-filter]
+  [unfiltered-db offensive-job-filter max-jobs-considered]
   (timers/time!
     rank-jobs-duration
     (try
-      (->> (sort-jobs-by-dru-pool unfiltered-db)
+      (->> (sort-jobs-by-dru-pool unfiltered-db max-jobs-considered)
            ;; Apply the offensive job filter first before taking.
            (pc/map-vals offensive-job-filter)
            (pc/map-vals #(map util/job-ent->map %))
@@ -1305,13 +1323,13 @@
         {}))))
 
 (defn- start-jobs-prioritizer!
-  [conn pool-name->pending-jobs-atom task-constraints trigger-chan]
+  [conn pool-name->pending-jobs-atom task-constraints max-jobs-considered trigger-chan]
   (let [offensive-jobs-ch (make-offensive-job-stifler conn)
         offensive-job-filter (partial filter-offensive-jobs task-constraints offensive-jobs-ch)]
     (util/chime-at-ch trigger-chan
                       (fn rank-jobs-event []
                         (reset! pool-name->pending-jobs-atom
-                                (rank-jobs (d/db conn) offensive-job-filter))))))
+                                (rank-jobs (d/db conn) offensive-job-filter max-jobs-considered))))))
 
 (meters/defmeter [cook-mesos scheduler mesos-error])
 (meters/defmeter [cook-mesos scheduler offer-chan-full-error])
@@ -1430,7 +1448,7 @@
                         (assoc-in [:pool->resources-atom pool-name] resources-atom))))
                 {}
                 pools')]
-    (start-jobs-prioritizer! conn pool-name->pending-jobs-atom task-constraints rank-trigger-chan)
+    (start-jobs-prioritizer! conn pool-name->pending-jobs-atom task-constraints fenzo-max-jobs-considered rank-trigger-chan)
     {:pool-name->fenzo pool-name->fenzo
      :view-incubating-offers (fn get-resources-atom [p]
                                (deref (get pool->resources-atom p)))}))

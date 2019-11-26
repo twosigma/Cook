@@ -20,15 +20,12 @@
             [clj-time.core :as t]
             [clojure.core.async :as async]
             [clojure.core.cache :as cache]
-            [clojure.data.json :as json]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
             [clojure.walk :as walk]
             [cook.compute-cluster :as cc]
             [cook.config :as config]
             [cook.scheduler.data-locality :as dl]
-            [cook.mesos.heartbeat :as heartbeat]
-            [cook.mesos.sandbox :as sandbox]
             [cook.scheduler.scheduler :as sched]
             [cook.scheduler.share :as share]
             [cook.tools :as util]
@@ -46,11 +43,9 @@
             [mesomatic.types :as mtypes]
             [plumbing.core :as pc])
   (:import (clojure.lang ExceptionInfo)
-           (com.netflix.fenzo SimpleAssignmentResult TaskAssignmentResult
-                              TaskRequest TaskScheduler VMTaskFitnessCalculator)
+           (com.netflix.fenzo SimpleAssignmentResult TaskAssignmentResult TaskRequest TaskScheduler)
            (com.netflix.fenzo.plugins BinPackingFitnessCalculators)
            (java.util UUID)
-           (java.util.concurrent CountDownLatch TimeUnit)
            (org.mockito Mockito)))
 
 (def datomic-uri "datomic:mem://test-mesos-jobs")
@@ -196,13 +191,17 @@
                                 "limits for new cluster"
                                 :mem 10.0 :cpus 10.0)
             db (d/db conn)]
-        (is (= [j2 j3 j6 j4 j8] (map :db/id (get (sched/sort-jobs-by-dru-pool db) "no-pool"))))))
+        (is (= [j2 j3 j6 j4 j8] (map :db/id (get (sched/sort-jobs-by-dru-pool db 10) "no-pool"))))
+        (is (= [j2 j3 j6 j8] (map :db/id (get (sched/sort-jobs-by-dru-pool db 2) "no-pool"))))
+        (is (= [j2 j6 j8] (map :db/id (get (sched/sort-jobs-by-dru-pool db 1) "no-pool"))))))
 
     (testing "sort-jobs-by-dru one user has non-default share"
       (let [_ (share/set-share! conn "default" nil "limits for new cluster" :mem 10.0 :cpus 10.0)
             _ (share/set-share! conn "sunil" nil "needs more resources" :mem 100.0 :cpus 100.0)
             db (d/db conn)]
-        (is (= [j8 j2 j3 j6 j4] (map :db/id (get (sched/sort-jobs-by-dru-pool db) "no-pool")))))))
+        (is (= [j8 j2 j3 j6 j4] (map :db/id (get (sched/sort-jobs-by-dru-pool db 10) "no-pool"))))
+        (is (= [j8 j2 j3 j6] (map :db/id (get (sched/sort-jobs-by-dru-pool db 2) "no-pool"))))
+        (is (= [j8 j2 j6] (map :db/id (get (sched/sort-jobs-by-dru-pool db 1) "no-pool")))))))
 
   (testing "test-sort-jobs-by-dru:normal-jobs"
     (let [uri "datomic:mem://test-sort-jobs-by-dru-normal-jobs"
@@ -212,8 +211,11 @@
           j3n (create-dummy-job conn :user "u2" :job-state :job.state/waiting :memory 1500 :ncpus 1.0)
           j4n (create-dummy-job conn :user "u2" :job-state :job.state/waiting :memory 1500 :ncpus 1.0 :priority 30)
           test-db (d/db conn)]
-      (is (= [j2n j3n j1n j4n] (map :db/id (get (sched/sort-jobs-by-dru-pool test-db) "no-pool"))))
-      (is (empty? (get (sched/sort-jobs-by-dru-pool test-db) "gpu")))))
+      (is (= [j2n j3n j1n j4n] (map :db/id (get (sched/sort-jobs-by-dru-pool test-db 10) "no-pool"))))
+      (is (= [j2n j3n j1n j4n] (map :db/id (get (sched/sort-jobs-by-dru-pool test-db 2) "no-pool"))))
+      (is (= [j2n j3n] (map :db/id (get (sched/sort-jobs-by-dru-pool test-db 1) "no-pool"))))
+      (is (empty? (get (sched/sort-jobs-by-dru-pool test-db 10) "gpu")))
+      (is (empty? (get (sched/sort-jobs-by-dru-pool test-db 1) "gpu")))))
 
   (testing "test-sort-jobs-by-dru:gpu-jobs"
     (let [uri "datomic:mem://test-sort-jobs-by-dru-gpu-jobs"
@@ -224,8 +226,11 @@
           j3g (create-dummy-job conn :user "u2" :job-state :job.state/waiting :memory 1500 :ncpus 1.0 :gpus 20.0 :pool "gpu")
           j4g (create-dummy-job conn :user "u2" :job-state :job.state/waiting :memory 1500 :ncpus 1.0 :gpus 10.0 :pool "gpu" :priority 30)
           test-db (d/db conn)]
-      (is (empty? (get (sched/sort-jobs-by-dru-pool test-db) "normal")))
-      (is (= [j3g j2g j4g j1g] (map :db/id (get (sched/sort-jobs-by-dru-pool test-db) "gpu"))))))
+      (is (empty? (get (sched/sort-jobs-by-dru-pool test-db 10) "normal")))
+      (is (empty? (get (sched/sort-jobs-by-dru-pool test-db 1) "normal")))
+      (is (= [j3g j2g j4g j1g] (map :db/id (get (sched/sort-jobs-by-dru-pool test-db 10) "gpu"))))
+      (is (= [j3g j2g j4g j1g] (map :db/id (get (sched/sort-jobs-by-dru-pool test-db 2) "gpu"))))
+      (is (= [j3g j2g] (map :db/id (get (sched/sort-jobs-by-dru-pool test-db 1) "gpu"))))))
 
   (testing "test-sort-jobs-by-dru:mixed-jobs"
     (let [uri "datomic:mem://test-sort-jobs-by-dru-mixed-jobs"
@@ -241,8 +246,10 @@
           j3g (create-dummy-job conn :user "u2" :job-state :job.state/waiting :memory 1500 :ncpus 1.0 :pool "gpu" :gpus 20.0)
           j4g (create-dummy-job conn :user "u2" :job-state :job.state/waiting :memory 1500 :ncpus 1.0 :pool "gpu" :gpus 10.0 :priority 30)
           test-db (d/db conn)]
-      (is (= [j2n j3n j1n j4n] (map :db/id (get (sched/sort-jobs-by-dru-pool test-db) "normal"))))
-      (is (= [j3g j2g j4g j1g] (map :db/id (get (sched/sort-jobs-by-dru-pool test-db) "gpu"))))))
+      (is (= [j2n j3n j1n j4n] (map :db/id (get (sched/sort-jobs-by-dru-pool test-db 10) "normal"))))
+      (is (= [j2n j3n] (map :db/id (get (sched/sort-jobs-by-dru-pool test-db 1) "normal"))))
+      (is (= [j3g j2g j4g j1g] (map :db/id (get (sched/sort-jobs-by-dru-pool test-db 10) "gpu"))))
+      (is (= [j3g j2g] (map :db/id (get (sched/sort-jobs-by-dru-pool test-db 1) "gpu"))))))
 
   (testing "sort-jobs-by-dru:limit-quota"
     (with-redefs [config/max-over-quota-jobs (fn [] 3)]
@@ -259,7 +266,9 @@
             wj4 (create-dummy-job conn :user "test" :job-state :job.state/waiting)
             wj5 (create-dummy-job conn :user "test" :job-state :job.state/waiting)
             test-db (d/db conn)]
-        (is (= [wj1 wj2 wj3] (map :db/id (get (sched/sort-jobs-by-dru-pool test-db) "no-pool"))))))))
+        (is (= [wj1 wj2 wj3] (map :db/id (get (sched/sort-jobs-by-dru-pool test-db 10) "no-pool"))))
+        (is (= [wj1 wj2] (map :db/id (get (sched/sort-jobs-by-dru-pool test-db 2) "no-pool"))))
+        (is (= [wj1] (map :db/id (get (sched/sort-jobs-by-dru-pool test-db 1) "no-pool"))))))))
 
 (d/delete-database "datomic:mem://preemption-testdb")
 (d/create-database "datomic:mem://preemption-testdb")
@@ -642,10 +651,11 @@
         test-db (d/db conn)
         job-entity (d/entity test-db job-id)
         offensive-jobs-ch (sched/make-offensive-job-stifler conn)
-        offensive-job-filter (partial sched/filter-offensive-jobs constraints offensive-jobs-ch)]
+        offensive-job-filter (partial sched/filter-offensive-jobs constraints offensive-jobs-ch)
+        max-jobs-considered 200]
     (testing "enough offers for all normal jobs."
       (is (= {"no-pool" (list (util/job-ent->map job-entity))}
-             (sched/rank-jobs test-db offensive-job-filter))))))
+             (sched/rank-jobs test-db offensive-job-filter max-jobs-considered))))))
 
 (deftest test-virtual-machine-lease-adapter
   ;; ensure that the VirtualMachineLeaseAdapter can successfully handle an offer from Mesomatic.
@@ -877,6 +887,7 @@
   (let [uri "datomic:mem://test-gpu-shares"
         conn (restore-fresh-database! uri)
         pool-name "gpu"
+        max-jobs-considered 200
         _ (create-pool conn pool-name :dru-mode :pool.dru-mode/gpu)
         ljin-1 (create-dummy-job conn :user "ljin" :ncpus 5.0 :memory 5.0 :gpus 1.0 :pool pool-name)
         ljin-2 (create-dummy-job conn :user "ljin" :ncpus 5.0 :memory 5.0 :gpus 1.0 :pool pool-name)
@@ -895,13 +906,15 @@
                                 "Needs some GPUs"
                                 :gpus 2.0)
             db (d/db conn)]
-        (is (= [ljin-2 wzhao-1 ljin-3 ljin-4 wzhao-2] (map :db/id (get (sched/sort-jobs-by-dru-pool db) pool-name))))))
+        (is (= [ljin-2 wzhao-1 ljin-3 ljin-4 wzhao-2]
+               (map :db/id (get (sched/sort-jobs-by-dru-pool db max-jobs-considered) pool-name))))))
     (testing "one user has single gpu share"
       (let [_ (share/set-share! conn "ljin" pool-name
                                 "Doesn't need lots of gpus"
                                 :gpus 1.0)
             db (d/db conn)]
-        (is (= [wzhao-1 wzhao-2 ljin-2 ljin-3 ljin-4] (map :db/id (get (sched/sort-jobs-by-dru-pool db) pool-name))))))))
+        (is (= [wzhao-1 wzhao-2 ljin-2 ljin-3 ljin-4]
+               (map :db/id (get (sched/sort-jobs-by-dru-pool db max-jobs-considered) pool-name))))))))
 
 (deftest test-cancelled-task-killer
   (let [uri "datomic:mem://test-gpu-shares"
@@ -1941,9 +1954,28 @@
           task-ents (->> job-ids
                          (map #(d/entity db %))
                          (map #(util/create-task-ent %)))]
-      (is (= 25 (count (sched/limit-over-quota-jobs task-ents {:mem Double/MAX_VALUE
-                                                               :cpus Double/MAX_VALUE
-                                                               :count Double/MAX_VALUE}))))
-      (is (= 15 (count (sched/limit-over-quota-jobs task-ents {:mem Double/MAX_VALUE
-                                                               :cpus Double/MAX_VALUE
-                                                               :count 5})))))))
+      (is (= 25 (count (sched/limit-over-quota-jobs {:mem Double/MAX_VALUE
+                                                     :cpus Double/MAX_VALUE
+                                                     :count Double/MAX_VALUE}
+                                                    task-ents))))
+      (is (= 15 (count (sched/limit-over-quota-jobs {:mem Double/MAX_VALUE
+                                                     :cpus Double/MAX_VALUE
+                                                     :count 5}
+                                                    task-ents)))))))
+
+(deftest test-limit-pending-tasks-filter
+  (let [tasks [{:id 10} {:id 11} {:id 12} {:id 13} {:id 14} {:id 15} {:id 16} {:id 17} {:id 18} {:id 19}
+               {:id 20} {:id 21} {:id 22} {:id 23} {:id 24} {:id 25} {:id 26} {:id 27} {:id 28} {:id 29}]
+        pending-tasks-set #{{:id 11} {:id 12} {:id 13} {:id 17} {:id 18} {:id 19}
+                            {:id 21} {:id 23} {:id 25} {:id 27} {:id 28} {:id 29}}]
+    (is (= tasks (filter (sched/create-limit-pending-tasks-filter pending-tasks-set 50) tasks)))
+    (is (= [{:id 10} {:id 11} {:id 12} {:id 13} {:id 14} {:id 15} {:id 16} {:id 17} {:id 18} {:id 19}
+            {:id 20} {:id 21} {:id 22} {:id 23} {:id 24} {:id 25} {:id 26} {:id 27}]
+           (filter (sched/create-limit-pending-tasks-filter pending-tasks-set 10) tasks)))
+    (is (= [{:id 10} {:id 11} {:id 12} {:id 13} {:id 14} {:id 15} {:id 16} {:id 17} {:id 18}
+            {:id 20} {:id 22} {:id 24} {:id 26}]
+           (filter (sched/create-limit-pending-tasks-filter pending-tasks-set 5) tasks)))
+    (is (= [{:id 10} {:id 11} {:id 14} {:id 15} {:id 16} {:id 20} {:id 22} {:id 24} {:id 26}]
+           (filter (sched/create-limit-pending-tasks-filter pending-tasks-set 1) tasks)))
+    (is (= [{:id 10} {:id 14} {:id 15} {:id 16} {:id 20} {:id 22} {:id 24} {:id 26}]
+           (filter (sched/create-limit-pending-tasks-filter pending-tasks-set 0) tasks)))))

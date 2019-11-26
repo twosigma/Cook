@@ -37,7 +37,8 @@
   (let [uri "datomic:mem://bench-rank-jobs"
         conn (restore-fresh-database! uri)
         ;; Cheap way to have a non-uniform distribution of users
-        pick-user (fn [] (first (shuffle ["a" "a" "a" "a" "b" "b" "c" "c" "d" "e" "f"])))]
+        pick-user (fn [] (first (shuffle ["a" "a" "a" "a" "b" "b" "c" "c" "d" "e" "f"])))
+        max-jobs-considered 200]
     (dotimes [_ 50000]
       (create-dummy-job conn :user (pick-user) :ncpus (inc (rand-int 20)) :memory (inc (rand-int 100000))))
     (dotimes [_ 10000]
@@ -48,12 +49,12 @@
             offensive-jobs-ch (sched/make-offensive-job-stifler conn)
             offensive-job-filter (partial sched/filter-offensive-jobs task-constraints offensive-jobs-ch)]
         (println "============ rank-jobs timing ============")
-        (cc/quick-bench (sched/rank-jobs db offensive-job-filter))))
+        (cc/quick-bench (sched/rank-jobs db offensive-job-filter max-jobs-considered))))
     (testing "rank-jobs minus offensive-job-filter"
       (let [db (d/db conn)
             offensive-job-filter identity]
         (println "============ rank-jobs minus offensive-job-filter timing ============")
-        (cc/quick-bench (sched/rank-jobs db offensive-job-filter))))
+        (cc/quick-bench (sched/rank-jobs db offensive-job-filter max-jobs-considered))))
     (testing "sort-jobs-by-dru-helper"
       (let [db (d/db conn)
             pending-task-ents (->> (util/get-pending-job-ents db)
@@ -70,5 +71,6 @@
                                                          sort-task-scored-task-pairs
                                                          (timers/timer (sched/metric-title "sort-jobs-hierarchy-duration" "no-pool"))
                                                          "no-pool"
-                                                         user->quota))
+                                                         user->quota
+                                                         max-jobs-considered))
           nil)))))
