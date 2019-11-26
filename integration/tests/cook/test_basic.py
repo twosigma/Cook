@@ -1058,7 +1058,8 @@ class CookTest(util.CookTest):
         for pool in pools:
             pool_name = pool['name']
             self.logger.info(f'Submitting jobs to {pool_name}')
-            job_uuid, resp = util.submit_job(self.cook_url, pool=pool_name, name=name, command=sleep_command)
+            job_uuid, resp = util.submit_job(self.cook_url, pool=pool_name, name=name,
+                                             command=sleep_command, max_retries=5)
             self.assertEqual(201, resp.status_code)
             jobs.append(util.load_job(self.cook_url, job_uuid))
             job_uuid, resp = util.submit_job(self.cook_url, pool=pool_name, name=name, command='exit 0')
