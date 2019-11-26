@@ -6,10 +6,7 @@
 
 (deftest test-existing-state-equivalent?
   (testing "different states"
-    (is (not (controller/existing-state-equivalent? {:state :pod/failed} {:state :pod/succeeded}))))
-
-  (testing ":ancillary is ignored"
-    (is (controller/existing-state-equivalent? {:ancillary {:foo 1}} {:ancillary {:bar 2}}))))
+    (is (not (controller/existing-state-equivalent? {:state :pod/failed} {:state :pod/succeeded})))))
 
 (deftest expected-state-equivalent?
   ;; TODO

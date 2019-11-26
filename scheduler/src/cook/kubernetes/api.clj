@@ -486,14 +486,7 @@
               ; Container either exited with non-zero status or was
               ; terminated by the system.
               "Failed" {:state :pod/failed
-                        :reason (.getReason pod-status)
-                        ; Add the message to :ancillary because it may
-                        ; change frequently and is not useful for state
-                        ; comparison purposes, e.g. the message can be
-                        ; something like:
-                        ; "Pod Node didn't have enough resource: cpu,
-                        ; requested: 400, used: 931, capacity: 940"
-                        :ancillary {:message (.getMessage pod-status)}}
+                        :reason (.getReason pod-status)}
               {:state :pod/waiting
                :reason "Pending"})))))))
 

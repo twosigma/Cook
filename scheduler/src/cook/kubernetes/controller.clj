@@ -30,7 +30,7 @@
   ; TODO:
   ; This is not right. We need to tune/tweak this to
   ; suppress otherwise identical states so we don't spam.
-  (= (dissoc old-state :ancillary) (dissoc new-state :ancillary)))
+  (= old-state new-state))
 
 (defn remove-finalization-if-set-and-delete
   [api-client expected-state-dict pod]
@@ -121,10 +121,11 @@
     expected-state-dict))
 
 (defn prepare-existing-state-dict-for-logging
-  [existing-state-dict]
+  [{:keys [pod] :as existing-state-dict}]
   (-> existing-state-dict
       (update-in [:synthesized-state :state] #(or % :missing))
-      (dissoc :pod)))
+      (dissoc :pod)
+      (assoc :pod-status (.getStatus pod))))
 
 (defn pod-has-started
   "A pod has started. So now we need to update the status in datomic."
