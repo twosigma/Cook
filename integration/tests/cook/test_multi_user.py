@@ -723,11 +723,12 @@ class MultiUserCookTest(util.CookTest):
 
     def test_instance_stats_supports_epoch_time_params(self):
         name = str(util.make_temporal_uuid())
-        job_uuid_1, resp = util.submit_job(self.cook_url, command='sleep 300', name=name, max_retries=2)
+        sleep_command = f'sleep {util.DEFAULT_TEST_TIMEOUT_SECS}'
+        job_uuid_1, resp = util.submit_job(self.cook_url, command=sleep_command, name=name, max_retries=2)
         self.assertEqual(resp.status_code, 201, msg=resp.content)
-        job_uuid_2, resp = util.submit_job(self.cook_url, command='sleep 300', name=name, max_retries=2)
+        job_uuid_2, resp = util.submit_job(self.cook_url, command=sleep_command, name=name, max_retries=2)
         self.assertEqual(resp.status_code, 201, msg=resp.content)
-        job_uuid_3, resp = util.submit_job(self.cook_url, command='sleep 300', name=name, max_retries=2)
+        job_uuid_3, resp = util.submit_job(self.cook_url, command=sleep_command, name=name, max_retries=2)
         self.assertEqual(resp.status_code, 201, msg=resp.content)
         job_uuids = [job_uuid_1, job_uuid_2, job_uuid_3]
         try:
