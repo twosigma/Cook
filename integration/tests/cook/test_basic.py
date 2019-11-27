@@ -1690,7 +1690,8 @@ class CookTest(util.CookTest):
             self.cook_url,
             command='cat /.dockerenv',
             container={'type': 'DOCKER',
-                       'docker': {'image': image}})
+                       'docker': {'image': image}},
+            max_retries=5)
         self.assertEqual(resp.status_code, 201)
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
         self.assertIn('success', [i['status'] for i in job['instances']])
