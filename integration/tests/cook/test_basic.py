@@ -675,7 +675,7 @@ class CookTest(util.CookTest):
             job_details = f"Job details: {json.dumps(job, sort_keys=True)}"
             self.assertEqual('failed', job['state'], job_details)
             self.assertLessEqual(1, len(job['instances']), job_details)
-            instance = job['instances'][-1]
+            instance = next(i for i in job['instances'] if i['reason_code'] in [2002, 99003])
             instance_details = json.dumps(instance, sort_keys=True)
             self.logger.debug('instance: %s' % instance)
             # did the job fail as expected?
@@ -1064,6 +1064,11 @@ class CookTest(util.CookTest):
             jobs.append(util.load_job(self.cook_url, job_uuid))
             job_uuid, resp = util.submit_job(self.cook_url, pool=pool_name, name=name, command='exit 0')
             self.assertEqual(201, resp.status_code)
+            # We wait for the job to start running, and only then start waiting for it to
+            # complete; otherwise we could get a false-negative on wait_for_job 'completed'
+            # because of a scheduling delay. Having two separate waits also disambiguates
+            # the root cause of a wait-timeout failure.
+            util.wait_for_job_in_statuses(self.cook_url, job_uuid, ['completed', 'running'])
             jobs.append(util.wait_for_job(self.cook_url, job_uuid, 'completed'))
         end = util.current_milli_time() + 1
 
