@@ -359,7 +359,7 @@
           (try
             (log/info "Attempting to kill task" task-id "in" compute-cluster-name "from already completed job")
             (meters/mark! tx-report-queue-tasks-killed)
-            (cc/kill-task compute-cluster task-id)
+            (cc/safe-kill-task compute-cluster task-id)
             (catch Exception e
               (log/error e (str "Failed to kill task" task-id))))
           (log/warn "Unable to kill task" task-id "with unknown cluster" compute-cluster-name))))
@@ -393,7 +393,7 @@
                                                (if-let [compute-cluster (cc/compute-cluster-name->ComputeCluster compute-cluster-name)]
                                                  (do (log/info "Attempting to kill task" task-id "in" compute-cluster-name "due to job completion")
                                                      (meters/mark! tx-report-queue-tasks-killed)
-                                                     (cc/kill-task compute-cluster task-id))
+                                                     (cc/safe-kill-task compute-cluster task-id))
                                                  (log/error "Couldn't kill task" task-id "due to no Mesos driver for compute cluster" compute-cluster-name "!")))))
                                          (catch Exception e
                                            (log/error e "Unexpected exception on tx report queue processor")))))))))
@@ -535,7 +535,10 @@
   [compute-cluster offer-ids]
   (log/debug "Declining offers:" offer-ids)
   (meters/mark! scheduler-offer-declined (count offer-ids))
-  (cc/decline-offers compute-cluster offer-ids))
+  (try
+    (cc/decline-offers compute-cluster offer-ids)
+    (catch Throwable t
+      (log/error t "Error declining offers for" compute-cluster))))
 
 (histograms/defhistogram [cook-mesos scheduler number-tasks-matched])
 (histograms/defhistogram [cook-mesos-scheduler number-offers-matched])
@@ -788,7 +791,10 @@
           (when-let [offers @offer-stash]
             ; Group the set of all offers by compute cluster and route them to that compute cluster for restoring.
             (doseq [[compute-cluster offer-subset] (group-by :compute-cluster offers)]
-              (cc/restore-offers compute-cluster pool-name offer-subset)))
+              (try
+                (cc/restore-offers compute-cluster pool-name offer-subset)
+                (catch Throwable t
+                  (log/error t "For" pool-name "error restoring offers for compute cluster" compute-cluster)))))
           ; if an error happened, it doesn't mean we need to penalize Fenzo
           true)))))
 
@@ -842,7 +848,13 @@
                       user->usage-future (future (generate-user-usage-map (d/db conn) pool-name))
                       ;; Try to clear the channel
                       ;; Merge the pending offers from all compute clusters.
-                      offers (apply concat (map #(cc/pending-offers % pool-name) compute-clusters))
+                      offers (apply concat (map (fn [compute-cluster]
+                                                  (try
+                                                    (cc/pending-offers compute-cluster pool-name)
+                                                    (catch Throwable t
+                                                      (log/error t "Error getting pending offers for " compute-cluster)
+                                                      (list))))
+                                                compute-clusters))
                       _ (doseq [offer offers
                                 :let [slave-id (-> offer :slave-id :value)
                                       attrs (get-offer-attr-map offer)]]
