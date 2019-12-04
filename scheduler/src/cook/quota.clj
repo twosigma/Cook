@@ -143,8 +143,9 @@
                           count-field
                           (conj [:db/retract [:quota/user user] :quota/count count-field]))))))
 
-(defn- pool-name->type->user->quota
-  "Returns the user->quota for all quota specified for the given pool and resource type."
+(defn- retrieve-user->resource-quota-amount
+  "Returns the user->amount map for all quota resources specified for the given pool and resource type.
+   This function only supports the mechanism of storing quota counts as resources."
   [db pool-name resource-type]
   (let [type (resource-type->datomic-resource-type resource-type)
         pool-name' (pool/pool-name-or-default pool-name)
@@ -160,8 +161,9 @@
     (->> (d/q query db type pool-name' requesting-default-pool)
       (into {}))))
 
-(defn- retrieve-count-quota-from-user-entities
-  "Returns the user->count-quota for all count quota specified on the user entity."
+(defn- retrieve-user->quota-attribute-count
+  "Returns the user->count-quota for all count quota attributes specified on the user entity.
+   This function only supports the legacy mechanism of storing quota counts as attributes."
   [db users]
   (let [query '[:find ?u ?c
                 :in $ [?u ...]
@@ -172,20 +174,21 @@
       (into {}))))
 
 (defn- retrieve-user->count-quota
-  "Returns the map for user to count-quota for all the provided users."
+  "Returns the map for user to count-quota for all the provided users.
+   It accounts for both the resource-based and attribute-based lookup of the count quota."
   [db pool-name all-users default-quota]
-  (let [user->resource-count-quota (pool-name->type->user->quota db pool-name :count)
-        remaining-users (vec (set/difference (set all-users) (set (keys user->resource-count-quota))))
-        user->entity-count-quota (when (seq remaining-users)
-                                   (retrieve-count-quota-from-user-entities db remaining-users))]
+  (let [user->quota-resource-count (retrieve-user->resource-quota-amount db pool-name :count)
+        remaining-users (vec (set/difference (set all-users) (set (keys user->quota-resource-count))))
+        user->quota-attribute-count (when (seq remaining-users)
+                                      (retrieve-user->quota-attribute-count db remaining-users))]
     (pc/map-from-keys
       (fn [user]
         (int
           ; As part of the pool migration, there might be a mix of quotas that have the count as an attribute or a resource.
           ; Hence, we prefer resource over the field on the user for count quota.
           ; Refer to the implementation of `get-quota` for further details.
-          (or (get user->resource-count-quota user)
-              (get user->entity-count-quota user)
+          (or (get user->quota-resource-count user)
+              (get user->quota-attribute-count user)
               default-quota)))
       all-users)))
 
@@ -198,8 +201,8 @@
   (let [default-type->quota (get-quota db default-user pool-name)
         default-count-quota (get default-type->quota :count)
         all-resource-types (util/get-all-resource-types db)
-        type->user->quota (pc/map-from-keys #(pool-name->type->user->quota db pool-name %) all-resource-types)
-        all-quota-users (d/q '[:find [?user ...] :where [?q :quota/user ?user]] db)
+        type->user->quota (pc/map-from-keys #(retrieve-user->resource-quota-amount db pool-name %) all-resource-types)
+        all-quota-users (d/q '[:find [?user ...] :where [?q :quota/user ?user]] db) ;; returns a sequence without duplicates
         user->count-quota (retrieve-user->count-quota db pool-name all-quota-users default-count-quota)
         user->quota-cache (-> (pc/map-from-keys
                                 (fn [user]
