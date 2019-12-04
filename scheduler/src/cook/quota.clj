@@ -14,7 +14,8 @@
 ;; limitations under the License.
 ;;
 (ns cook.quota
-  (:require [cook.pool :as pool]
+  (:require [clojure.set :as set]
+            [cook.pool :as pool]
             [cook.schema]
             [cook.tools :as util]
             [datomic.api :as d]
@@ -159,6 +160,33 @@
     (->> (d/q query db type pool-name' requesting-default-pool)
       (into {}))))
 
+(defn- retrieve-count-quota-from-user-entities
+  "Returns the user->count-quota for all count quota specified on the user entity."
+  [db users]
+  (let [query '[:find ?u ?c
+                :in $ [?u ...]
+                :where
+                [?e :quota/user ?u]
+                [?e :quota/count ?c]]]
+    (->> (d/q query db users)
+      (into {}))))
+
+(defn- retrieve-user->count-quota
+  "Returns the map for user to count-quota for all the provided users."
+  [db pool-name all-users default-quota]
+  (let [user->resource-count-quota (pool-name->type->user->quota db pool-name :count)
+        remaining-users (vec (set/difference (set all-users) (set (keys user->resource-count-quota))))
+        user->entity-count-quota (when (seq remaining-users)
+                                   (retrieve-count-quota-from-user-entities db remaining-users))]
+    (pc/map-from-keys
+      (fn [user]
+        (int
+          ; prefer resource over the field on the user for count quota
+          (or (get user->resource-count-quota user)
+              (get user->entity-count-quota user)
+              default-quota)))
+      all-users)))
+
 (defn create-user->quota-fn
   "Returns a function which will return the quota same as `(get-quota db user)`
    snapshotted to the db passed in. However, it queries for all users with quota
@@ -169,17 +197,14 @@
         default-count-quota (get default-type->quota :count)
         all-resource-types (util/get-all-resource-types db)
         type->user->quota (pc/map-from-keys #(pool-name->type->user->quota db pool-name %) all-resource-types)
-        user->count-quota (pool-name->type->user->quota db pool-name :count)
         all-quota-users (d/q '[:find [?user ...] :where [?q :quota/user ?user]] db)
+        user->count-quota (retrieve-user->count-quota db pool-name all-quota-users default-count-quota)
         user->quota-cache (-> (pc/map-from-keys
                                 (fn [user]
-                                  ; prefer resource over the field on the user for count quota
-                                  (let [count-quota (or (get user->count-quota user)
-                                                        (:quota/count (d/entity db [:quota/user user]) default-count-quota))]
-                                    (-> (pc/map-from-keys
-                                          #(get-in type->user->quota [% user] (get default-type->quota %))
-                                          all-resource-types)
-                                      (assoc :count (int count-quota)))))
+                                  (-> (pc/map-from-keys
+                                        #(get-in type->user->quota [% user] (get default-type->quota %))
+                                        all-resource-types)
+                                    (assoc :count (user->count-quota user))))
                                 all-quota-users)
                             (assoc default-user default-type->quota))]
     (fn user->quota
