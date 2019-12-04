@@ -674,7 +674,7 @@
   [matches conn db fenzo mesos-run-as-user pool-name]
   (let [matches (map #(update-match-with-task-metadata-seq % db mesos-run-as-user) matches)
         task-txns (matches->task-txns matches)]
-    (log/info "Writing tasks" task-txns)
+    (log/info "In" pool-name "pool, writing tasks" task-txns)
     ;; Note that this transaction can fail if a job was scheduled
     ;; during a race. If that happens, then other jobs that should
     ;; be scheduled will not be eligible for rescheduling until
@@ -686,13 +686,12 @@
         (reduce into [] task-txns)
         (fn [e]
           (log/warn e
-                    "Transaction timed out, so these tasks might be present"
+                    "In" pool-name "pool, transaction timed out, so these tasks might be present"
                     "in Datomic without actually having been launched in Mesos"
                     matches)
           (throw e))))
-    (log/info "Launching" (count task-txns) "tasks")
+    (log/info "In" pool-name "pool, launching" (count task-txns) "tasks")
     (ratelimit/spend! ratelimit/global-job-launch-rate-limiter ratelimit/global-job-launch-rate-limiter-key (count task-txns))
-    (log/debug "Matched tasks" task-txns)
     ;; This launch-tasks MUST happen after the above transaction in
     ;; order to allow a transaction failure (due to failed preconditions)
     ;; to block the launch
@@ -708,17 +707,23 @@
       ;; Iterates over offers (each offer can match to multiple tasks)
       (doseq [{:keys [leases task-metadata-seq]} matches
               :let [all-offers (mapv :offer leases)]]
-        (doseq [[compute-cluster offers] (group-by :compute-cluster all-offers)]
-          (cc/launch-tasks compute-cluster offers task-metadata-seq)
-          (log/info "Launching " (count offers) "offers for" (cc/compute-cluster-name compute-cluster) "compute cluster")
-          (doseq [{:keys [hostname task-request] :as meta} task-metadata-seq]
-            ; Iterate over the tasks we matched
-          (let [user (get-in task-request [:job :job/user])]
-            (ratelimit/spend! ratelimit/job-launch-rate-limiter user 1))
-          (locking fenzo
-            (.. fenzo
-                (getTaskAssigner)
-                (call task-request hostname)))))))))
+        (doseq [[compute-cluster offers] (group-by :compute-cluster all-offers)
+                :let [compute-cluster-name (cc/compute-cluster-name compute-cluster)]]
+          (try
+            (cc/launch-tasks compute-cluster offers task-metadata-seq)
+            (log/info "In" pool-name "pool, launching" (count offers)
+                      "offers for" compute-cluster-name "compute cluster")
+            (doseq [{:keys [hostname task-request] :as meta} task-metadata-seq]
+              ; Iterate over the tasks we matched
+              (let [user (get-in task-request [:job :job/user])]
+                (ratelimit/spend! ratelimit/job-launch-rate-limiter user 1))
+              (locking fenzo
+                (.. fenzo
+                    (getTaskAssigner)
+                    (call task-request hostname))))
+            (catch Throwable t
+              (log/error t "In" pool-name "pool, error launching tasks for"
+                         compute-cluster-name "compute cluster"))))))))
 
 (defn update-host-reservations!
   "Updates the rebalancer-reservation-atom with the result of the match cycle.
