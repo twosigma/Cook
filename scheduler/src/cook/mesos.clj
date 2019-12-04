@@ -177,10 +177,15 @@
                                           :trigger-chans trigger-chans})
                                         running-tasks-ents (cook.tools/get-running-task-ents (d/db mesos-datomic-conn))
                                         cluster-connected-chans (->> cluster-name->compute-cluster
-                                                                     vals
-                                                                     (map #(cc/initialize-cluster %
-                                                                                                 pool-name->fenzo
-                                                                                                 running-tasks-ents))
+                                                                     (map (fn [[compute-cluster-name compute-cluster]]
+                                                                            (try
+                                                                              (cc/initialize-cluster compute-cluster
+                                                                                                     pool-name->fenzo
+                                                                                                     running-tasks-ents)
+                                                                              (catch Throwable t
+                                                                                (log/error t "Error launching compute cluster" compute-cluster-name)
+                                                                                ; Return a chan that never gets a message on it.
+                                                                                (async/chan 1)))))
                                                                      ; Note: This doall has a critical side effect of actually initializing
                                                                      ; all of the clusters.
                                                                      doall)]

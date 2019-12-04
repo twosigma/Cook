@@ -516,7 +516,7 @@
               (log/warn e "Failed to transact preemption")))
           (when-let [task-id (:instance/task-id task-ent)]
             (when-let [compute-cluster (task/task-ent->ComputeCluster task-ent)]
-              (cc/kill-task compute-cluster task-id))))))))
+              (cc/safe-kill-task compute-cluster task-id))))))))
 
 (def datomic-params [:max-preemption
                      :min-dru-diff
