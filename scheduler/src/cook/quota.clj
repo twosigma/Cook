@@ -166,15 +166,16 @@
    This is usefully if the application will go over ALL users during processing"
   [db pool-name]
   (let [default-type->quota (get-quota db default-user pool-name)
+        default-count-quota (get default-type->quota :count)
         all-resource-types (util/get-all-resource-types db)
         type->user->quota (pc/map-from-keys #(pool-name->type->user->quota db pool-name %) all-resource-types)
+        user->count-quota (pool-name->type->user->quota db pool-name :count)
         all-quota-users (d/q '[:find [?user ...] :where [?q :quota/user ?user]] db)
         user->quota-cache (-> (pc/map-from-keys
                                 (fn [user]
                                   ; prefer resource over the field on the user for count quota
-                                  (let [count-quota (or (get-quota-by-type db :resource.type/count user pool-name)
-                                                        (:quota/count (d/entity db [:quota/user user]))
-                                                        (get default-type->quota :count))]
+                                  (let [count-quota (or (get user->count-quota user)
+                                                        (:quota/count (d/entity db [:quota/user user]) default-count-quota))]
                                     (-> (pc/map-from-keys
                                           #(get-in type->user->quota [% user] (get default-type->quota %))
                                           all-resource-types)
