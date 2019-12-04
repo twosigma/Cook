@@ -181,7 +181,9 @@
     (pc/map-from-keys
       (fn [user]
         (int
-          ; prefer resource over the field on the user for count quota
+          ; As part of the pool migration, there might be a mix of quotas that have the count as an attribute or a resource.
+          ; Hence, we prefer resource over the field on the user for count quota.
+          ; Refer to the implementation of `get-quota` for further details.
           (or (get user->resource-count-quota user)
               (get user->entity-count-quota user)
               default-quota)))
