@@ -585,24 +585,18 @@
             (when is-rate-limited?
               (swap! user->rate-limit-count update user #(inc (or % 0))))
             (not (and is-rate-limited? enforcing-job-launch-rate-limit?))))
-        quota-filter-jobs (util/filter-based-on-quota user->quota user->usage pending-jobs)
-        allowed-to-start-jobs (filter (fn [job] (util/job-allowed-to-start? db job)) quota-filter-jobs)
-        within-launch-rate-jobs (filter user-within-launch-rate-limit?-fn allowed-to-start-jobs)
-        launch-plugin-jobs (filter launch-plugin/filter-job-launches within-launch-rate-jobs)
-        considerable-jobs (take num-considerable launch-plugin-jobs)
-        ; Force this to be taken eagerly so that the log line is accurate.
-        considerable-jobs* (doall considerable-jobs)]
+        considerable-jobs
+        (->> pending-jobs
+             (util/filter-based-on-quota user->quota user->usage)
+             (filter (fn [job] (util/job-allowed-to-start? db job)))
+             (filter user-within-launch-rate-limit?-fn)
+             (filter launch-plugin/filter-job-launches)
+             (take num-considerable)
+             ; Force this to be taken eagerly so that the log line is accurate.
+             (doall))]
     (swap! pool->user->number-jobs update pool-name (constantly @user->number-jobs))
     (log/info "Users whose job launches are rate-limited " @user->rate-limit-count "( enforcing =" enforcing-job-launch-rate-limit? ")")
-    (log/info "In" pool-name "pool, there are"
-              (count pending-jobs) "pending ->"
-              (count quota-filter-jobs) "quota-filtered ->"
-              (count allowed-to-start-jobs) "allowed-to-start ->"
-              (count within-launch-rate-jobs) "within-launch-rate ->"
-              (count launch-plugin-jobs) "allowed by launch-plugin ->"
-              "and"
-              (count considerable-jobs*) "considerable jobs")
-    considerable-jobs*))
+    considerable-jobs))
 
 
 (defn matches->job-uuids
