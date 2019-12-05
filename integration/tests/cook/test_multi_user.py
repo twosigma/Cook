@@ -456,7 +456,7 @@ class MultiUserCookTest(util.CookTest):
                 self.logger.info(f'Job has not been preempted: {job}')
                 return False
 
-            max_wait_ms = util.settings(self.cook_url)['rebalancer']['interval-seconds'] * 1000 * 2.5
+            max_wait_ms = util.rebalancer_interval_seconds() * 1000 * 2.5
             self.logger.info(f'Waiting up to {max_wait_ms} milliseconds for preemption to happen')
             util.wait_until(low_priority_job, job_was_preempted, max_wait_ms=max_wait_ms, wait_interval_ms=5000)
         finally:
@@ -468,6 +468,9 @@ class MultiUserCookTest(util.CookTest):
     @unittest.skipUnless(util.is_preemption_enabled(), 'Preemption is not enabled on the cluster')
     @pytest.mark.serial
     @pytest.mark.xfail
+    # The test timeout needs to be a little more than 2 times the
+    # rebalancer interval to allow at least two runs of the rebalancer
+    @pytest.mark.timeout((util.rebalancer_interval_seconds() * 2.5) + 60)
     def test_preemption_basic(self):
         self.trigger_preemption(pool=None)
 
