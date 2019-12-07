@@ -138,6 +138,15 @@
   "A pod has started. So now we need to update the status in datomic."
   [kcc {:keys [pod] :as existing-state-dictionary}]
   (let [task-id (-> pod .getMetadata .getName)
+        status {:task-id {:value task-id}
+                :state :task-running}]
+    (write-status-to-datomic kcc status)
+    {:expected-state :expected/running}))
+
+(defn record-sandbox-url
+  "Record the sandbox file server URL in datomic."
+  [{:keys [pod]}]
+  (let [task-id (-> pod .getMetadata .getName)
         pod-ip (-> pod .getStatus .getPodIP)
         {:keys [sandbox-fileserver-port default-workdir]} (config/kubernetes)
         sandbox-url (try
@@ -146,12 +155,8 @@
                              (URLEncoder/encode default-workdir "UTF-8")))
                       (catch Exception e
                         (log/debug e "Unable to retrieve directory path for" task-id)
-                        nil))
-        status {:task-id {:value task-id}
-                :state :task-running
-                :sandbox-url sandbox-url}]
-    (write-status-to-datomic kcc status)
-    {:expected-state :expected/running}))
+                        nil))]
+    (scheduler/write-sandbox-url-to-datomic datomic/conn task-id sandbox-url)))
 
 (defn pod-was-killed
   "A pod was killed. So now we need to update the status in datomic and store the exit code."
@@ -227,10 +232,16 @@
   [{:keys [existing-state-map name] :as kcc} ^V1Pod new-pod]
   (let [pod-name (api/V1Pod->name new-pod)]
     (locking (calculate-lock pod-name)
-      (let [new-state {:pod new-pod :synthesized-state (api/pod->synthesized-pod-state new-pod)}
+      (let [new-state {:pod new-pod
+                       :synthesized-state (api/pod->synthesized-pod-state new-pod)
+                       :sandbox-file-server-container-state (api/pod->sandbox-file-server-container-state new-pod)}
             old-state (get @existing-state-map pod-name)]
         ; We always store the updated state, but only reprocess it if it is genuinely different.
         (swap! existing-state-map assoc pod-name new-state)
+        (let [new-file-server-state (:sandbox-file-server-container-state new-state)
+              old-file-server-state (:sandbox-file-server-container-state old-state)]
+          (when (and (= new-file-server-state :running) (not= old-file-server-state :running))
+            (record-sandbox-url new-state)))
         (when-not (existing-state-equivalent? old-state new-state)
           (try
             (process kcc pod-name)

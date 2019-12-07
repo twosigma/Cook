@@ -49,7 +49,8 @@
                                   (Integer/parseInt value)
                                   default))
       'config/env-int #(Integer/parseInt (env %))
-      'config/env-bool #(Boolean/valueOf (env %))}}
+      'config/env-bool #(Boolean/valueOf (env %))
+      'config/regex (fn [expr] (re-pattern expr))}}
     config))
 
 (defn init-logger
@@ -486,6 +487,11 @@
     (if (str/blank? pool)
       nil
       pool)))
+
+(defn job-resource-adjustments
+  "Returns the specification for how to adjust resources requested by a job based on the pool it's scheduled on"
+  []
+  (-> config :settings :pools :job-resource-adjustment))
 
 (defn api-only-mode?
   "Returns true if api-only? mode is turned on"

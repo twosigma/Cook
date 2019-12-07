@@ -369,6 +369,24 @@
                    (not (contains? disallowed-var-names (.getName var)))))
          (into []))))
 
+(defn- add-as-decimals
+  "Takes two doubles and adds them as decimals to avoid floating point error. Kubernetes will not be able to launch a
+   pod if the required cpu has too much precision. For example, adding 0.1 and 0.02 as doubles results in 0.12000000000000001"
+  [a b]
+  (-> a
+    BigDecimal/valueOf
+    (.add (BigDecimal/valueOf b))
+    .doubleValue))
+
+(defn adjust-job-resources-fn
+  "Given the required resources for a job, add to them the resources for any sidecars that will be launched with the job."
+  [{:keys [ports cpus mem] :as resources}]
+  (if-let [{:keys [cpu-request memory-request] sidecar-ports :ports} (-> (config/kubernetes) :sandbox-fileserver :resource-requirements)]
+    (assoc resources
+      :cpus (add-as-decimals cpus cpu-request)
+      :mem (add-as-decimals mem memory-request))
+    resources))
+
 (defn ^V1Pod task-metadata->pod
   "Given a task-request and other data generate the kubernetes V1Pod to launch that task."
   [namespace compute-cluster-name {:keys [task-id command container task-request hostname]}]
@@ -441,8 +459,8 @@
     (.addContainersItem pod-spec container)
 
     ; sandbox file server container
-    (when-let [{:keys [sandbox-fileserver-port]} (config/kubernetes)]
-      (let [{:keys [sandbox-fileserver-command sandbox-fileserver-image]} (config/kubernetes)
+    (when-let [{:keys [command image port resource-requirements]} (:sandbox-fileserver (config/kubernetes))]
+      (let [{:keys [cpu-request cpu-limit memory-request memory-limit]} resource-requirements
             container (V1Container.)
             workdir-volume-mount (V1VolumeMount.)
             resources (V1ResourceRequirements.)]
@@ -451,14 +469,14 @@
         (.setMountPath workdir-volume-mount workdir)
         (.setReadOnly workdir-volume-mount true)
         (.setName container cook-container-name-for-file-server)
-        (.setImage container sandbox-fileserver-image)
-        (.setCommand container [sandbox-fileserver-command (str sandbox-fileserver-port)])
-        (.setPorts container [(.containerPort (V1ContainerPort.) (int sandbox-fileserver-port))])
+        (.setImage container image)
+        (.setCommand container [command (str port)])
+        (.setPorts container [(.containerPort (V1ContainerPort.) (int port))])
 
-        (.putRequestsItem resources "memory" (double->quantity (* memory-multiplier 100)))
-        (.putLimitsItem resources "memory" (double->quantity (* memory-multiplier 100)))
-        (.putRequestsItem resources "cpu" (double->quantity 0.1))
-        (.putLimitsItem resources "cpu" (double->quantity 0.1))
+        (.putRequestsItem resources "cpu" (double->quantity cpu-request))
+        (.putLimitsItem resources "cpu" (double->quantity cpu-limit))
+        (.putRequestsItem resources "memory" (double->quantity (* memory-multiplier memory-request)))
+        (.putLimitsItem resources "memory" (double->quantity (* memory-multiplier memory-limit)))
         (.setResources container resources)
 
         (.setVolumeMounts container [workdir-volume-mount])
@@ -541,6 +559,22 @@
                         :reason (.getReason pod-status)}
               {:state :pod/waiting
                :reason "Pending"})))))))
+
+(defn pod->sandbox-file-server-container-state
+  "From a V1Pod object, determine the state of the sandbox file server container, running, not running, or unknown.
+
+  We're using this as first-order approximation that the sandbox file server is ready to serve files. We can later add
+  health checks to the server to be more precise."
+  [^V1Pod pod]
+  (when pod
+    (let [^V1PodStatus pod-status (.getStatus pod)
+          container-statuses (.getContainerStatuses pod-status)
+          file-server-status (first (filter (fn [c] (= cook-container-name-for-file-server (.getName c)))
+                                            container-statuses))]
+      (if file-server-status
+        (let [^V1ContainerState state (.getState file-server-status)]
+          (if (.getRunning state) :running :not-running))
+        :unknown))))
 
 (defn kill-task
   "Kill this kubernetes pod"

@@ -35,9 +35,14 @@
  :hostname #config/env "COOK_HOSTNAME"
  :kubernetes {:disallowed-container-paths #{"/mnt/bad"}
               :disallowed-var-names #{"BADVAR"}
-              :sandbox-fileserver-command "fileserver"
-              :sandbox-fileserver-image "twosigma/cook-fileserver:latest"
-              :sandbox-fileserver-port 23906}
+              :sandbox-fileserver {:command "fileserver"
+                                   :image "twosigma/cook-fileserver:latest"
+                                   :port 23906
+                                   :resource-requirements {:cpu-request 0.1
+                                                           :cpu-limit 0.1
+                                                           :memory-request 128.0
+                                                           :memory-limit 128.0
+                                                           :ports 1}}}
  :log {:file #config/env "COOK_LOG_FILE"
        :levels {"datomic.db" :warn
                 "datomic.kv-cluster" :warn
@@ -52,6 +57,9 @@
            :user-metrics-interval-seconds 60}
  :nrepl {:enabled? true
          :port #config/env-int "COOK_NREPL_PORT"}
+ :pools {:default "k8s-alpha"
+         :job-resource-adjustment {:pool-regex #config/regex "^k8s-.+"
+                                   :adjust-job-resources-fn cook.kubernetes.api/adjust-job-resources-fn}}
  :port #config/env-int "COOK_PORT"
  :ssl {:port #config/env-int "COOK_SSL_PORT"
        :keystore-path #config/env "COOK_KEYSTORE_PATH"

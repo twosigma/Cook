@@ -102,6 +102,7 @@ class CookTest(util.CookTest):
                                          command='echo foobarbaz ; sleep 600',
                                          executor=job_executor_type)
         try:
+            # waiting for output_url on kubernetes might not be reliable if we're using (.getRunning state) for the file server container
             output_url = util.wait_for_output_url(self.cook_url, job_uuid)['output_url']
             self.logger.info(f'Output URL is {output_url}')
             self.assertTrue(len(output_url) > 0)
