@@ -1048,11 +1048,13 @@ class CookTest(util.CookTest):
         self.assertFalse(util.contains_job_uuid(resp.json(), job_uuid_6), job_uuid_6)
 
     def test_list_jobs_by_pool(self):
-        # Submit two jobs to each active pool -- one that will be
+        # Submit two jobs to each of up to two active pools -- one that will be
         # running or waiting for the duration of this test, and another that will complete
         jobs = []
         name = str(util.make_temporal_uuid())
         pools, _ = util.active_pools(self.cook_url)
+        # Running this for the first two pools only is enough
+        pools = pools[:2]
         start = util.current_milli_time()
         sleep_command = f'sleep {util.DEFAULT_TEST_TIMEOUT_SECS}'
         for pool in pools:
