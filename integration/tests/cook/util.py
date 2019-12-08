@@ -1704,5 +1704,5 @@ def reset_share_and_quota(cook_url, user):
 
 @functools.lru_cache()
 def rebalancer_interval_seconds():
-    interval_seconds = rebalancer_settings().get('interval-seconds')
+    interval_seconds = rebalancer_settings().get('interval-seconds', 0)
     return interval_seconds
