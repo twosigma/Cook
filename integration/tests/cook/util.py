@@ -1706,3 +1706,10 @@ def reset_share_and_quota(cook_url, user):
 def rebalancer_interval_seconds():
     interval_seconds = rebalancer_settings().get('interval-seconds', 0)
     return interval_seconds
+                     
+                     
+def job_progress_is_present(job, progress):
+    present = any(i['progress'] == progress for i in job['instances'])
+    if not present:
+        logger.info(f'Job does not yet have progress {progress}: {json.dumps(job, indent=2)}')
+    return present
