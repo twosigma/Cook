@@ -11,11 +11,11 @@
     (com.twosigma.cook.kubernetes WatchHelper)
     (io.kubernetes.client ApiClient ApiException)
     (io.kubernetes.client.apis CoreV1Api)
-    (io.kubernetes.client.custom Quantity Quantity$Format)
+    (io.kubernetes.client.custom Quantity Quantity$Format IntOrString)
     (io.kubernetes.client.models V1Pod V1Container V1Node V1Pod V1ResourceRequirements V1EnvVar
                                  V1ObjectMeta V1PodSpec V1PodStatus V1ContainerState V1DeleteOptionsBuilder
                                  V1DeleteOptions V1HostPathVolumeSource V1VolumeMount V1VolumeBuilder V1Taint
-                                 V1Toleration V1PodSecurityContext V1EmptyDirVolumeSource V1EnvVarBuilder V1ContainerPort)
+                                 V1Toleration V1PodSecurityContext V1EmptyDirVolumeSource V1EnvVarBuilder V1ContainerPort V1Probe V1HTTPGetAction)
     (io.kubernetes.client.util Watch Yaml)
     (java.util.concurrent Executors ExecutorService)
     (java.util UUID)))
@@ -463,7 +463,9 @@
       (let [{:keys [cpu-request cpu-limit memory-request memory-limit]} resource-requirements
             container (V1Container.)
             workdir-volume-mount (V1VolumeMount.)
-            resources (V1ResourceRequirements.)]
+            resources (V1ResourceRequirements.)
+            readiness-probe (V1Probe.)
+            http-get-action (V1HTTPGetAction.)]
         ; workdir mount
         (.setName workdir-volume-mount "cook-workdir")
         (.setMountPath workdir-volume-mount workdir)
@@ -472,6 +474,11 @@
         (.setImage container image)
         (.setCommand container [command (str port)])
         (.setPorts container [(.containerPort (V1ContainerPort.) (int port))])
+
+        (.setPort http-get-action (IntOrString. port))
+        (.setPath http-get-action "readiness-probe")
+        (.setHttpGet readiness-probe http-get-action)
+        (.setReadinessProbe container readiness-probe)
 
         (.putRequestsItem resources "cpu" (double->quantity cpu-request))
         (.putLimitsItem resources "cpu" (double->quantity cpu-limit))
@@ -572,8 +579,7 @@
           file-server-status (first (filter (fn [c] (= cook-container-name-for-file-server (.getName c)))
                                             container-statuses))]
       (if file-server-status
-        (let [^V1ContainerState state (.getState file-server-status)]
-          (if (.getRunning state) :running :not-running))
+        (if (.isReady file-server-status) :running :not-running)
         :unknown))))
 
 (defn kill-task

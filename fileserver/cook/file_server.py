@@ -27,10 +27,8 @@ from operator import itemgetter
 from pathlib import Path
 from stat import *
 
-from flask import Flask, jsonify, request, send_file
-
 import gunicorn.app.base
-
+from flask import Flask, jsonify, request, send_file
 from gunicorn.six import iteritems
 
 app = Flask(__name__)
@@ -51,6 +49,7 @@ class FileServerApplication(gunicorn.app.base.BaseApplication):
 
     def load(self):
         return self.application
+
 
 @app.route('/files/download')
 @app.route('/files/download.json')
@@ -150,3 +149,8 @@ def browse():
                                                 for f in os.listdir(path)]]
     ]
     return jsonify(sorted(retval, key=itemgetter("path")))
+
+
+@app.route('/readiness-probe')
+def readiness_probe():
+    return ""
