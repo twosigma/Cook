@@ -1686,3 +1686,10 @@ def reset_share_and_quota(cook_url, user):
     logger.info(f'Resetting share and quota for {user} in pool {pool}')
     set_limit_to_default(cook_url, 'share', user, pool)
     set_limit_to_default(cook_url, 'quota', user, pool)
+
+
+def job_progress_is_present(job, progress):
+    present = any(i['progress'] == progress for i in job['instances'])
+    if not present:
+        logger.info(f'Job does not yet have progress {progress}: {json.dumps(job, indent=2)}')
+    return present
