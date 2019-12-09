@@ -1900,7 +1900,8 @@
                     log/log* (fn [_ level throwable message]
                                (when (= :warn level)
                                  (reset! logged-atom {:throwable throwable
-                                                      :message message})))]
+                                                      :message message})))
+                    cc/use-cook-executor? (constantly true)]
         (is (thrown? ExceptionInfo (sched/launch-matched-tasks! matches conn nil nil nil nil)))
         (is (= timeout-exception (:throwable @logged-atom)))
         (is (str/includes? (:message @logged-atom) (str job-id))))))
