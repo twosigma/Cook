@@ -148,7 +148,8 @@
   [{:keys [pod]}]
   (let [task-id (-> pod .getMetadata .getName)
         pod-ip (-> pod .getStatus .getPodIP)
-        {:keys [sandbox-fileserver-port default-workdir]} (config/kubernetes)
+        {:keys [default-workdir sandbox-fileserver]} (config/kubernetes)
+        sandbox-fileserver-port (:port sandbox-fileserver)
         sandbox-url (try
                       (when (and sandbox-fileserver-port (not (str/blank? pod-ip)))
                         (str "http://" pod-ip ":" sandbox-fileserver-port "/files/read.json?path="

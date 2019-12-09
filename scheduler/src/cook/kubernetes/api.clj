@@ -380,8 +380,8 @@
 
 (defn adjust-job-resources-fn
   "Given the required resources for a job, add to them the resources for any sidecars that will be launched with the job."
-  [{:keys [ports cpus mem] :as resources}]
-  (if-let [{:keys [cpu-request memory-request] sidecar-ports :ports} (-> (config/kubernetes) :sandbox-fileserver :resource-requirements)]
+  [{:keys [cpus mem] :as resources}]
+  (if-let [{:keys [cpu-request memory-request]} (-> (config/kubernetes) :sandbox-fileserver :resource-requirements)]
     (assoc resources
       :cpus (add-as-decimals cpus cpu-request)
       :mem (add-as-decimals mem memory-request))

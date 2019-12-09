@@ -316,17 +316,7 @@
                                     :in $ ?task-id
                                     :where
                                     [?i :instance/task-id ?task-id]]
-                                  db task-id))
-
-             ;[job instance prior-instance-status] (first (q '[:find ?j ?i ?status
-             ;                                                 :in $ ?task-id
-             ;                                                 :where
-             ;                                                 [?i :instance/task-id ?task-id]
-             ;                                                 [?i :instance/status ?s]
-             ;                                                 [?s :db/ident ?status]
-             ;                                                 [?j :job/instance ?i]]
-             ;                                               db task-id))
-             ]
+                                  db task-id))]
          (if (nil? instance)
            (log/error (str "Sandbox file server URL update error. No instance for task-id " task-id))
            @(d/transact conn [[:db/add instance :instance/sandbox-url sandbox-url]])))
@@ -519,9 +509,6 @@
                                 {}
                                 (:job/resource job))
         pool-specific-resources ((adjust-job-resources-for-pool-fn pool-name) resources)]
-    (println (str "xxx pool-name " pool-name))
-    (println (str "xxx resources " resources))
-    (println (str "xxx pool-specific-resources " pool-specific-resources))
     (->TaskRequestAdapter job pool-specific-resources task-id assigned-resources guuid->considerable-cotask-ids constraints needs-gpus? scalar-requests)))
 
 (defn match-offer-to-schedule
