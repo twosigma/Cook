@@ -42,7 +42,10 @@
     "Retrieve pending offers for the given pool")
 
   (restore-offers [this pool-name offers]
-    "Called when offers are not processed to ensure they're still available."))
+    "Called when offers are not processed to ensure they're still available.")
+
+  (use-cook-executor? [this]
+    "Returns true if this compute cluster makes use of the Cook executor for running tasks"))
 
 (defn safe-kill-task
   "A safe version of kill task that never throws. This reduces the risk that errors in one compute cluster propagate and cause problems in another compute cluster."

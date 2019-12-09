@@ -284,7 +284,9 @@
 
   (restore-offers [this pool-name offers]
     (async/go
-      (async/>! (pool->offers-chan pool-name) offers))))
+      (async/>! (pool->offers-chan pool-name) offers)))
+
+  (use-cook-executor? [_] true))
 
 ; Internal method
 (defn- mesos-cluster->compute-cluster-map-for-datomic

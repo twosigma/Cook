@@ -222,7 +222,9 @@
                      (into [] (map #(into {} (select-keys % [:hostname :resources])) offers-this-pool)))
       offers-this-pool))
 
-  (restore-offers [this pool-name offers]))
+  (restore-offers [this pool-name offers])
+
+  (use-cook-executor? [_] false))
 
 (defn get-or-create-cluster-entity-id
   [conn compute-cluster-name]

@@ -3,6 +3,7 @@
   (:require [clojure.data.json :as json]
             [clojure.edn :as edn]
             [clojure.string :as str]
+            [cook.compute-cluster :as cc]
             [cook.config :as config]
             [cook.scheduler.scheduler :as sched]
             [cook.mesos.task :as task]
@@ -346,7 +347,8 @@
                         :extract false
                         :value "file:///path/to/cook-executor"}}
         mesos-run-as-user nil]
-    (with-redefs [cook.config/executor-config (constantly executor)]
+    (with-redefs [cook.config/executor-config (constantly executor)
+                  cc/use-cook-executor? (constantly true)]
       (testing "custom-executor with simple job"
         (let [task-id (str (UUID/randomUUID))
               job (tu/create-dummy-job conn :user "test-user" :job-state :job.state/running :command "run-my-command")
@@ -360,7 +362,7 @@
                            "COOK_JOB_UUID" (-> job-ent :job/uuid str)}]
 
           (testing "mesos-run-as-user absent"
-            (let [task-metadata (task/job->task-metadata db mesos-run-as-user job-ent task-id)]
+            (let [task-metadata (task/job->task-metadata mesos-run-as-user job-ent task-id nil)]
               (is (= {:command {:value "run-my-command", :environment environment, :user "test-user", :uris []}
                       :container nil
                       :environment environment
@@ -376,7 +378,7 @@
 
           (testing "mesos-run-as-user present"
             (let [mesos-run-as-user "mesos-run-as-user"
-                  task-metadata (task/job->task-metadata db mesos-run-as-user job-ent task-id)]
+                  task-metadata (task/job->task-metadata mesos-run-as-user job-ent task-id nil)]
               (is (= {:command {:value "run-my-command", :environment environment, :user mesos-run-as-user, :uris []}
                       :container nil
                       :environment environment
@@ -405,7 +407,7 @@
                            "COOK_JOB_GROUP_UUID" (-> group-ent :group/uuid str)
                            "COOK_JOB_MEM_MB" "10.0"
                            "COOK_JOB_UUID" (-> job-ent :job/uuid str)}
-              task-metadata (task/job->task-metadata db mesos-run-as-user job-ent task-id)]
+              task-metadata (task/job->task-metadata mesos-run-as-user job-ent task-id nil)]
           (is (= {:command {:value "run-my-command", :environment environment, :user "test-user", :uris []}
                   :container nil
                   :environment environment
@@ -431,7 +433,7 @@
                            "COOK_JOB_CPUS" "1.0"
                            "COOK_JOB_MEM_MB" "10.0"
                            "COOK_JOB_UUID" (-> job-ent :job/uuid str)}
-              task-metadata (task/job->task-metadata db mesos-run-as-user job-ent task-id)]
+              task-metadata (task/job->task-metadata mesos-run-as-user job-ent task-id nil)]
           (is (= {:command {:value "run-my-command", :environment environment, :user "test-user", :uris []}
                   :container nil
                   :environment environment
@@ -461,7 +463,7 @@
                            "EXECUTOR_MAX_MESSAGE_LENGTH" (:max-message-length executor)
                            "PROGRESS_REGEX_STRING" (:default-progress-regex-string executor)
                            "PROGRESS_SAMPLE_INTERVAL_MS" (:progress-sample-interval-ms executor)}
-              task-metadata (task/job->task-metadata db mesos-run-as-user job-ent task-id)]
+              task-metadata (task/job->task-metadata mesos-run-as-user job-ent task-id nil)]
           (is (= {:command {:environment environment
                             :uris [(:uri executor)]
                             :user "test-user"
@@ -499,7 +501,7 @@
                            "EXECUTOR_MAX_MESSAGE_LENGTH" (:max-message-length executor)
                            "PROGRESS_REGEX_STRING" (:default-progress-regex-string executor)
                            "PROGRESS_SAMPLE_INTERVAL_MS" (:progress-sample-interval-ms executor)}
-              task-metadata (task/job->task-metadata db mesos-run-as-user job-ent task-id)]
+              task-metadata (task/job->task-metadata mesos-run-as-user job-ent task-id nil)]
           (is (= {:command {:environment environment
                             :uris [(:uri executor)]
                             :user "test-user"
@@ -529,7 +531,7 @@
                            "COOK_JOB_CPUS" "1.0"
                            "COOK_JOB_MEM_MB" "10.0"
                            "COOK_JOB_UUID" (-> job-ent :job/uuid str)}
-              task-metadata (task/job->task-metadata db mesos-run-as-user job-ent task-id)]
+              task-metadata (task/job->task-metadata mesos-run-as-user job-ent task-id nil)]
           (is (= {:command {:environment environment
                             :uris []
                             :user "test-user"
@@ -566,7 +568,7 @@
                            "COOK_JOB_CPUS" "1.0"
                            "COOK_JOB_MEM_MB" "10.0"
                            "COOK_JOB_UUID" (-> job-ent :job/uuid str)}
-              task-metadata (task/job->task-metadata db mesos-run-as-user job-ent task-id)]
+              task-metadata (task/job->task-metadata mesos-run-as-user job-ent task-id nil)]
           (is (= {:command {:environment environment
                             :uris []
                             :user "test-user"
@@ -606,7 +608,7 @@
                            "COOK_JOB_CPUS" "1.0"
                            "COOK_JOB_MEM_MB" "200.0"
                            "COOK_JOB_UUID" (-> job-ent :job/uuid str)}
-              task-metadata (task/job->task-metadata db mesos-run-as-user job-ent task-id)]
+              task-metadata (task/job->task-metadata mesos-run-as-user job-ent task-id nil)]
           (is (= {:command {:environment environment
                             :uris []
                             :user "test-user"
@@ -651,7 +653,7 @@
                            "EXECUTOR_MAX_MESSAGE_LENGTH" (:max-message-length executor)
                            "PROGRESS_REGEX_STRING" (:default-progress-regex-string executor)
                            "PROGRESS_SAMPLE_INTERVAL_MS" (:progress-sample-interval-ms executor)}
-              task-metadata (task/job->task-metadata db mesos-run-as-user job-ent task-id)]
+              task-metadata (task/job->task-metadata mesos-run-as-user job-ent task-id nil)]
           (is (= {:command {:environment environment
                             :uris [(:uri executor)]
                             :user "test-user"
