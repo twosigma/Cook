@@ -122,10 +122,14 @@
 
 (defn prepare-existing-state-dict-for-logging
   [{:keys [pod] :as existing-state-dict}]
-  (-> existing-state-dict
-      (update-in [:synthesized-state :state] #(or % :missing))
-      (dissoc :pod)
-      (assoc :pod-status (.getStatus pod))))
+  (try
+    (-> existing-state-dict
+        (update-in [:synthesized-state :state] #(or % :missing))
+        (dissoc :pod)
+        (assoc :pod-status (some-> pod .getStatus)))
+    (catch Throwable t
+      (log/error t "Error preparing existing state for logging:" existing-state-dict)
+      existing-state-dict)))
 
 (defn pod-has-started
   "A pod has started. So now we need to update the status in datomic."
