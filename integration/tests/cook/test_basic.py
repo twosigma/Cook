@@ -68,6 +68,10 @@ class CookTest(util.CookTest):
             self.logger.info(f'Exit code not checked because cook executor was not used for {instance}')
 
     @unittest.skipUnless(util.docker_tests_enabled(), 'requires docker')
+    @pytest.mark.scheduler_not_in_docker
+    # If the cook scheduler is running in a docker container, it won't be able to lookup UID's or GID's. Under those circumstances,
+    # the cook scheduler won't be able to validate that the docker container is running as the right UID/GID and it will fail.
+    # Thus, in such an integration testing environment, we need to disable this test.
     def test_uid(self):
         settings = util.settings(self.cook_url)
 
@@ -338,7 +342,7 @@ class CookTest(util.CookTest):
 
             instance_compute_cluster_name = instance['compute-cluster']['name']
             instance_compute_cluster_type = instance['compute-cluster']['type']
-            self.assertIn(instance_compute_cluster_type, ['mesos', 'kubernetes'], message)
+            self.assertEqual(instance_compute_cluster_type, util.get_compute_cluster_test_mode(), message)
             filtered_compute_clusters = [compute_cluster for compute_cluster in settings_dict['compute-clusters']
                                          if compute_cluster['config']['compute-cluster-name'] == instance_compute_cluster_name]
             self.assertEqual(1, len(filtered_compute_clusters), "Unable to find " + instance_compute_cluster_name + " in compute clusters")
@@ -433,9 +437,6 @@ class CookTest(util.CookTest):
                                          env={progress_file_env: 'progress.txt'},
                                          executor=job_executor_type, max_runtime=60000)
         self.assertEqual(201, resp.status_code, msg=resp.content)
-        job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
-        message = json.dumps(job['instances'], sort_keys=True)
-        self.assertIn('success', (i['status'] for i in job['instances']), message)
 
         instance = util.wait_for_sandbox_directory(self.cook_url, job_uuid)
         message = json.dumps(instance, sort_keys=True)
@@ -443,9 +444,9 @@ class CookTest(util.CookTest):
         self.assertIsNotNone(instance['sandbox_directory'], message)
         self.assertEqual('cook', instance['executor'])
         util.sleep_for_publish_interval(self.cook_url)
-        instance = util.wait_for_exit_code(self.cook_url, job_uuid)
-        message = json.dumps(instance, sort_keys=True)
-        self.assertEqual(0, instance['exit_code'], message)
+        job = util.wait_until(lambda: util.load_job(self.cook_url, job_uuid),
+                              lambda j: util.job_progress_is_present(j, 25))
+        instance = next(i for i in job['instances'] if i['progress'] == 25)
         self.assertEqual(25, instance['progress'], message)
         self.assertEqual('Twenty-five percent in progress.txt', instance['progress_message'], message)
 
@@ -582,7 +583,7 @@ class CookTest(util.CookTest):
             # We wait for the 'end_time' attribute separately because there is another small delay
             # between the job being killed and that attribute being set.
             # Having three separate waits also disambiguates the root cause of a wait-timeout failure.
-            util.wait_for_job(self.cook_url, job_uuid, 'running')
+            util.wait_for_job_in_statuses(self.cook_url, job_uuid, ['running', 'completed'])
             util.wait_for_job(self.cook_url, job_uuid, 'completed', job_sleep_ms)
             job = util.wait_for_end_time(self.cook_url, job_uuid)
             job_details = f"Job details: {json.dumps(job, sort_keys=True)}"
@@ -671,7 +672,7 @@ class CookTest(util.CookTest):
             job_details = f"Job details: {json.dumps(job, sort_keys=True)}"
             self.assertEqual('failed', job['state'], job_details)
             self.assertLessEqual(1, len(job['instances']), job_details)
-            instance = job['instances'][-1]
+            instance = next(i for i in job['instances'] if i['reason_code'] in [2002, 99003])
             instance_details = json.dumps(instance, sort_keys=True)
             self.logger.debug('instance: %s' % instance)
             # did the job fail as expected?
@@ -720,7 +721,7 @@ class CookTest(util.CookTest):
     def test_get_job(self):
         # schedule a job
         job_spec = util.minimal_job()
-        resp = util.session.post('%s/rawscheduler' % self.cook_url, json={'jobs': [job_spec]})
+        _, resp = util.submit_jobs(self.cook_url, [job_spec])
         self.assertEqual(201, resp.status_code, msg=resp.content)
 
         # query for the same job & ensure the response has what it's supposed to have
@@ -1044,21 +1045,29 @@ class CookTest(util.CookTest):
         self.assertFalse(util.contains_job_uuid(resp.json(), job_uuid_6), job_uuid_6)
 
     def test_list_jobs_by_pool(self):
-        # Submit two jobs to each active pool -- one that will be
+        # Submit two jobs to each of up to two active pools -- one that will be
         # running or waiting for the duration of this test, and another that will complete
         jobs = []
         name = str(util.make_temporal_uuid())
         pools, _ = util.active_pools(self.cook_url)
+        # Running this for the first two pools only is enough
+        pools = pools[:2]
         start = util.current_milli_time()
         sleep_command = f'sleep {util.DEFAULT_TEST_TIMEOUT_SECS}'
         for pool in pools:
             pool_name = pool['name']
             self.logger.info(f'Submitting jobs to {pool_name}')
-            job_uuid, resp = util.submit_job(self.cook_url, pool=pool_name, name=name, command=sleep_command)
+            job_uuid, resp = util.submit_job(self.cook_url, pool=pool_name, name=name,
+                                             command=sleep_command, max_retries=5)
             self.assertEqual(201, resp.status_code)
             jobs.append(util.load_job(self.cook_url, job_uuid))
             job_uuid, resp = util.submit_job(self.cook_url, pool=pool_name, name=name, command='exit 0')
             self.assertEqual(201, resp.status_code)
+            # We wait for the job to start running, and only then start waiting for it to
+            # complete; otherwise we could get a false-negative on wait_for_job 'completed'
+            # because of a scheduling delay. Having two separate waits also disambiguates
+            # the root cause of a wait-timeout failure.
+            util.wait_for_job_in_statuses(self.cook_url, job_uuid, ['completed', 'running'])
             jobs.append(util.wait_for_job(self.cook_url, job_uuid, 'completed'))
         end = util.current_milli_time() + 1
 
@@ -1685,7 +1694,8 @@ class CookTest(util.CookTest):
             self.cook_url,
             command='cat /.dockerenv',
             container={'type': 'DOCKER',
-                       'docker': {'image': image}})
+                       'docker': {'image': image}},
+            max_retries=5)
         self.assertEqual(resp.status_code, 201)
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
         self.assertIn('success', [i['status'] for i in job['instances']])
@@ -1972,6 +1982,7 @@ class CookTest(util.CookTest):
         finally:
             util.kill_jobs(self.cook_url, uuids)
 
+    @unittest.skipIf(util.has_ephemeral_hosts(), util.EPHEMERAL_HOSTS_SKIP_REASON)
     def test_attribute_equals_hostname_constraint(self):
         max_slave_cpus = util.max_node_cpus()
         task_constraint_cpus = util.task_constraint_cpus(self.cook_url)
@@ -2141,7 +2152,7 @@ class CookTest(util.CookTest):
                 pool_usage = usage_data['pools'][pool['name']]
                 self.assertEqual(set(pool_usage.keys()), {'total_usage', 'grouped', 'ungrouped'}, pool_usage)
                 self.assertEqual(set(pool_usage['ungrouped'].keys()), {'running_jobs', 'usage'}, pool_usage)
-            default_pool = util.default_pool(self.cook_url)
+            default_pool = util.default_submit_pool() or util.default_pool(self.cook_url)
             if default_pool:
                 # If there is a default pool configured, make sure that our jobs,
                 # which don't have a pool, are counted as being in the default pool

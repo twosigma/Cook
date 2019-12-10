@@ -532,6 +532,8 @@ def submit_jobs(cook_url, job_specs, clones=1, pool=None, headers=None, log_requ
     if pool:
         logger.info(f'Submitting explicitly to the {pool} pool')
         request_body['pool'] = pool
+    elif 'x-cook-pool' in headers:
+        logger.info(f"Submitting explicitly to the {headers['x-cook-pool']} pool via x-cook-pool header")
     elif default_pool:
         logger.info(f'Submitting explicitly to the {default_pool} pool (set as default)')
         request_body['pool'] = default_pool
@@ -1181,6 +1183,8 @@ def set_limit(cook_url, limit_type, user, mem=None, cpus=None, gpus=None, count=
     """
     if headers is None:
         headers = {}
+    if pool is None and not 'x-cook-pool' in headers:
+        pool = default_submit_pool()
     limits = {}
     body = {'user': user, limit_type: limits}
     if reason is not None:
@@ -1214,6 +1218,8 @@ def reset_limit(cook_url, limit_type, user, reason='testing', pool=None, headers
     """
     if headers is None:
         headers = {}
+    if pool is None and not 'x-cook-pool' in headers:
+        pool = default_submit_pool()
     params = {'user': user}
     if reason is not None:
         params['reason'] = reason
@@ -1255,18 +1261,17 @@ def default_pool(cook_url):
 def all_pools(cook_url):
     """Returns the list of all pools that exist"""
     resp = session.get(f'{cook_url}/pools')
-    return resp.json(), resp
+    disallow_pools_regex = os.getenv('COOK_TEST_DISALLOW_POOLS_REGEX')
+    all_pools = resp.json() if disallow_pools_regex is None else \
+        [p for p in resp.json() if not re.match(disallow_pools_regex, p['name'])]
+    return all_pools, resp
 
 
 def active_pools(cook_url):
     """Returns the list of all active pools that exist"""
     pools, resp = all_pools(cook_url)
     all_active_pools = [p for p in pools if p['state'] == 'active']
-    disallow_pools_regex = os.getenv('COOK_TEST_DISALLOW_POOLS_REGEX')
-    allowed_active_pools = all_active_pools if disallow_pools_regex is None else \
-        [p for p in all_active_pools if not re.match(disallow_pools_regex, p['name'])]
-    return allowed_active_pools, resp
-
+    return all_active_pools, resp
 
 def has_ephemeral_hosts():
     """Returns True if the cluster under test has ephemeral hosts"""
@@ -1349,7 +1354,7 @@ def get_kubernetes_compute_cluster():
     else:
         return None
 
-
+@functools.lru_cache()
 def get_kubernetes_nodes():
     kubernetes_compute_cluster = get_kubernetes_compute_cluster()
     if 'config-file' in kubernetes_compute_cluster['config']:
@@ -1636,14 +1641,15 @@ def _get_compute_cluster_factory_fn():
     compute_clusters = settings(cook_url)['compute-clusters']
     return compute_clusters[0]['factory-fn']
 
+def get_compute_cluster_test_mode():
+    return os.getenv("COOK_TEST_COMPUTE_CLUSTER_TYPE", "mesos")
 
 def using_kubernetes():
-    return get_kubernetes_compute_cluster() is not None
+    return get_compute_cluster_test_mode() == "kubernetes"
 
 
 def using_mesos():
-    return _get_compute_cluster_factory_fn() == 'cook.mesos.mesos-compute-cluster/factory-fn'
-
+    return get_compute_cluster_test_mode() == "mesos"
 
 def has_one_agent():
     return node_count() == 1
@@ -1680,3 +1686,10 @@ def reset_share_and_quota(cook_url, user):
     logger.info(f'Resetting share and quota for {user} in pool {pool}')
     set_limit_to_default(cook_url, 'share', user, pool)
     set_limit_to_default(cook_url, 'quota', user, pool)
+
+
+def job_progress_is_present(job, progress):
+    present = any(i['progress'] == progress for i in job['instances'])
+    if not present:
+        logger.info(f'Job does not yet have progress {progress}: {json.dumps(job, indent=2)}')
+    return present

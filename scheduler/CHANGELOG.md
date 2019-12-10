@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.36.1] - 2019-12-05
+### Changed
+- Reverted a change that added unexpectedly expensive logging, from @scrosby
+
+## [1.36.0] - 2019-12-04
+### Added
+- Support for multiple kubernetes compute clusters, from @scrosby
+- Support for mesos and kubernetes compute clusters simultaneously, from @scrosby
+- Scripts for creating compute clusters on GKE, from @scrosby
+### Changed
+- Optimized quota reading, from @shams
+- Integration test improvements, from @dposada
+- Bug fixes for kubernetes support, from @scrosby
+
 ## [1.35.0] - 2019-10-21
 ### Added
 - Max ports to task constraints, from @pschorf

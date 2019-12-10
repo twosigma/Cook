@@ -359,7 +359,7 @@
           (try
             (log/info "Attempting to kill task" task-id "in" compute-cluster-name "from already completed job")
             (meters/mark! tx-report-queue-tasks-killed)
-            (cc/kill-task compute-cluster task-id)
+            (cc/safe-kill-task compute-cluster task-id)
             (catch Exception e
               (log/error e (str "Failed to kill task" task-id))))
           (log/warn "Unable to kill task" task-id "with unknown cluster" compute-cluster-name))))
@@ -393,7 +393,7 @@
                                                (if-let [compute-cluster (cc/compute-cluster-name->ComputeCluster compute-cluster-name)]
                                                  (do (log/info "Attempting to kill task" task-id "in" compute-cluster-name "due to job completion")
                                                      (meters/mark! tx-report-queue-tasks-killed)
-                                                     (cc/kill-task compute-cluster task-id))
+                                                     (cc/safe-kill-task compute-cluster task-id))
                                                  (log/error "Couldn't kill task" task-id "due to no Mesos driver for compute cluster" compute-cluster-name "!")))))
                                          (catch Exception e
                                            (log/error e "Unexpected exception on tx report queue processor")))))))))
@@ -535,7 +535,10 @@
   [compute-cluster offer-ids]
   (log/debug "Declining offers:" offer-ids)
   (meters/mark! scheduler-offer-declined (count offer-ids))
-  (cc/decline-offers compute-cluster offer-ids))
+  (try
+    (cc/decline-offers compute-cluster offer-ids)
+    (catch Throwable t
+      (log/error t "Error declining offers for" compute-cluster))))
 
 (histograms/defhistogram [cook-mesos scheduler number-tasks-matched])
 (histograms/defhistogram [cook-mesos-scheduler number-offers-matched])
@@ -582,24 +585,18 @@
             (when is-rate-limited?
               (swap! user->rate-limit-count update user #(inc (or % 0))))
             (not (and is-rate-limited? enforcing-job-launch-rate-limit?))))
-        quota-filter-jobs (util/filter-based-on-quota user->quota user->usage pending-jobs)
-        allowed-to-start-jobs (filter (fn [job] (util/job-allowed-to-start? db job)) quota-filter-jobs)
-        within-launch-rate-jobs (filter user-within-launch-rate-limit?-fn allowed-to-start-jobs)
-        launch-plugin-jobs (filter launch-plugin/filter-job-launches within-launch-rate-jobs)
-        considerable-jobs (take num-considerable launch-plugin-jobs)
-        ; Force this to be taken eagerly so that the log line is accurate.
-        considerable-jobs* (doall considerable-jobs)]
+        considerable-jobs
+        (->> pending-jobs
+             (util/filter-based-on-quota user->quota user->usage)
+             (filter (fn [job] (util/job-allowed-to-start? db job)))
+             (filter user-within-launch-rate-limit?-fn)
+             (filter launch-plugin/filter-job-launches)
+             (take num-considerable)
+             ; Force this to be taken eagerly so that the log line is accurate.
+             (doall))]
     (swap! pool->user->number-jobs update pool-name (constantly @user->number-jobs))
     (log/info "Users whose job launches are rate-limited " @user->rate-limit-count "( enforcing =" enforcing-job-launch-rate-limit? ")")
-    (log/info "In" pool-name "pool, there are"
-              (count pending-jobs) "pending ->"
-              (count quota-filter-jobs) "quota-filtered ->"
-              (count allowed-to-start-jobs) "allowed-to-start ->"
-              (count within-launch-rate-jobs) "within-launch-rate ->"
-              (count launch-plugin-jobs) "allowed by launch-plugin ->"
-              "and"
-              (count considerable-jobs*) "considerable jobs")
-    considerable-jobs*))
+    considerable-jobs))
 
 
 (defn matches->job-uuids
@@ -674,7 +671,7 @@
   [matches conn db fenzo mesos-run-as-user pool-name]
   (let [matches (map #(update-match-with-task-metadata-seq % db mesos-run-as-user) matches)
         task-txns (matches->task-txns matches)]
-    (log/info "Writing tasks" task-txns)
+    (log/info "In" pool-name "pool, writing tasks" task-txns)
     ;; Note that this transaction can fail if a job was scheduled
     ;; during a race. If that happens, then other jobs that should
     ;; be scheduled will not be eligible for rescheduling until
@@ -686,13 +683,12 @@
         (reduce into [] task-txns)
         (fn [e]
           (log/warn e
-                    "Transaction timed out, so these tasks might be present"
+                    "In" pool-name "pool, transaction timed out, so these tasks might be present"
                     "in Datomic without actually having been launched in Mesos"
                     matches)
           (throw e))))
-    (log/info "Launching" (count task-txns) "tasks")
+    (log/info "In" pool-name "pool, launching" (count task-txns) "tasks")
     (ratelimit/spend! ratelimit/global-job-launch-rate-limiter ratelimit/global-job-launch-rate-limiter-key (count task-txns))
-    (log/debug "Matched tasks" task-txns)
     ;; This launch-tasks MUST happen after the above transaction in
     ;; order to allow a transaction failure (due to failed preconditions)
     ;; to block the launch
@@ -708,17 +704,23 @@
       ;; Iterates over offers (each offer can match to multiple tasks)
       (doseq [{:keys [leases task-metadata-seq]} matches
               :let [all-offers (mapv :offer leases)]]
-        (doseq [[compute-cluster offers] (group-by :compute-cluster all-offers)]
-          (cc/launch-tasks compute-cluster offers task-metadata-seq)
-          (log/info "Launching " (count offers) "offers for" (cc/compute-cluster-name compute-cluster) "compute cluster")
-          (doseq [{:keys [hostname task-request] :as meta} task-metadata-seq]
-            ; Iterate over the tasks we matched
-          (let [user (get-in task-request [:job :job/user])]
-            (ratelimit/spend! ratelimit/job-launch-rate-limiter user 1))
-          (locking fenzo
-            (.. fenzo
-                (getTaskAssigner)
-                (call task-request hostname)))))))))
+        (doseq [[compute-cluster offers] (group-by :compute-cluster all-offers)
+                :let [compute-cluster-name (cc/compute-cluster-name compute-cluster)]]
+          (try
+            (cc/launch-tasks compute-cluster offers task-metadata-seq)
+            (log/info "In" pool-name "pool, launching" (count offers)
+                      "offers for" compute-cluster-name "compute cluster")
+            (doseq [{:keys [hostname task-request] :as meta} task-metadata-seq]
+              ; Iterate over the tasks we matched
+              (let [user (get-in task-request [:job :job/user])]
+                (ratelimit/spend! ratelimit/job-launch-rate-limiter user 1))
+              (locking fenzo
+                (.. fenzo
+                    (getTaskAssigner)
+                    (call task-request hostname))))
+            (catch Throwable t
+              (log/error t "In" pool-name "pool, error launching tasks for"
+                         compute-cluster-name "compute cluster"))))))))
 
 (defn update-host-reservations!
   "Updates the rebalancer-reservation-atom with the result of the match cycle.
@@ -788,7 +790,10 @@
           (when-let [offers @offer-stash]
             ; Group the set of all offers by compute cluster and route them to that compute cluster for restoring.
             (doseq [[compute-cluster offer-subset] (group-by :compute-cluster offers)]
-              (cc/restore-offers compute-cluster pool-name offer-subset)))
+              (try
+                (cc/restore-offers compute-cluster pool-name offer-subset)
+                (catch Throwable t
+                  (log/error t "For" pool-name "error restoring offers for compute cluster" compute-cluster)))))
           ; if an error happened, it doesn't mean we need to penalize Fenzo
           true)))))
 
@@ -842,7 +847,13 @@
                       user->usage-future (future (generate-user-usage-map (d/db conn) pool-name))
                       ;; Try to clear the channel
                       ;; Merge the pending offers from all compute clusters.
-                      offers (apply concat (map #(cc/pending-offers % pool-name) compute-clusters))
+                      offers (apply concat (map (fn [compute-cluster]
+                                                  (try
+                                                    (cc/pending-offers compute-cluster pool-name)
+                                                    (catch Throwable t
+                                                      (log/error t "Error getting pending offers for " compute-cluster)
+                                                      (list))))
+                                                compute-clusters))
                       _ (doseq [offer offers
                                 :let [slave-id (-> offer :slave-id :value)
                                       attrs (get-offer-attr-map offer)]]
