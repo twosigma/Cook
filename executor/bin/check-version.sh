@@ -79,7 +79,7 @@ elif host-libc-matches-container-libc; then
     installed_version="$(${binary_app} --version)"
 else
     # Run the executor directly on all other platforms
-    installed_version="$(docker run --rm -v $(pwd):/opt/cook python:3.5 /opt/cook/${binary_app} --version)"
+    installed_version="$(docker run --rm -v $(pwd):/opt/cook python:3.5.9-stretch /opt/cook/${binary_app} --version)"
 fi
 
 #
