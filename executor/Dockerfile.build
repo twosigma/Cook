@@ -1,6 +1,7 @@
 FROM python:3.5.9-stretch
 
 RUN pip install pyinstaller==3.3
+RUN apt-get update && apt-get --no-install-recommends -y install libzookeeper-mt-dev && apt-get clean && rm -Rf /var/lib/apt/lists/*
 
 RUN mkdir /opt/cook
 WORKDIR /opt/cook
