@@ -122,6 +122,7 @@ def send_message(driver, error_handler, message):
         message_string = json.dumps(message).encode('utf8')
         encoded_message = pm.encode_data(message_string)
         driver.sendFrameworkMessage(encoded_message)
+        logging.info('Sent framework message')
         return True
     except Exception as exception:
         if cu.is_out_of_memory_error(exception):
@@ -129,6 +130,7 @@ def send_message(driver, error_handler, message):
         else:
             logging.exception('Exception while sending message {}'.format(message))
         return False
+
 
 def launch_task(task, environment):
     """Launches the task using the command available in the json map from the data field.
@@ -482,6 +484,7 @@ class CookExecutor(pm.Executor):
         task_id_str = task_id['value'] if 'value' in task_id else task_id
         grace_period = os.environ.get('MESOS_EXECUTOR_SHUTDOWN_GRACE_PERIOD', '')
         cio.print_and_log('Received kill for task {} with grace period of {}'.format(task_id_str, grace_period))
+        cu.log_thread_stack_traces()
         self.stop_signal.set()
 
     def shutdown(self, driver):
