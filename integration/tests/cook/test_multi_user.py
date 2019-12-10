@@ -670,7 +670,7 @@ class MultiUserCookTest(util.CookTest):
         job_uuids = [job_uuid_1, job_uuid_2, job_uuid_3]
         try:
             util.wait_for_jobs(self.cook_url, job_uuids, 'completed')
-            instances = [util.wait_for_instance(self.cook_url, j) for j in job_uuids]
+            instances = [util.wait_for_instance(self.cook_url, j, status='success') for j in job_uuids]
             try:
                 for instance in instances:
                     self.assertEqual('success', instance['parent']['state'])
