@@ -12,9 +12,6 @@
                         :authorization-fn cook.rest.authorization/configfile-admins-auth-open-gets
                         ;; users that are allowed to do things on behalf of others
                         :impersonators #{"poser" "other-impersonator"}}
- :container-defaults {:volumes [{:host-path "/tmp/cook-integration-mount"
-                                 :container-path "/mnt/cook-integration"
-                                 :mode "RW"}]}
  :mesos {:leader-path "/cook-scheduler"
          ; because the minikube users and the local users may have different IDs, tests that require file permissions
          ; (like test_default_container_volumes) will fail without this set.

@@ -12,15 +12,15 @@
                         :authorization-fn cook.rest.authorization/configfile-admins-auth-open-gets
                         ;; users that are allowed to do things on behalf of others
                         :impersonators #{"poser" "other-impersonator"}}
- :container-defaults {:volumes [{:host-path "/tmp/cook-integration-mount"
-                                 :container-path "/mnt/cook-integration"
-                                 :mode "RW"}]}
  :mesos {:leader-path "/cook-scheduler"}
  :compute-clusters [{:factory-fn cook.mesos.mesos-compute-cluster/factory-fn
                      :config {:failover-timeout-ms nil ; When we close the instance of Cook, all its tasks are killed by Mesos
                               :master #config/env "MESOS_MASTER"
                               :framework-id #config/env "COOK_FRAMEWORK_ID"
-                              :compute-cluster-name "local-mesos"}}]
+                              :compute-cluster-name "local-mesos"
+                              :container-defaults {:volumes [{:host-path "/tmp/cook-integration-mount"
+                                                              :container-path "/mnt/cook-integration"
+                                                              :mode "RW"}]}}}]
  :cors-origins ["https?://cors.example.com"]
  :data-local {:fitness-calculator {:cache-ttl-ms 60000
                                    :cost-endpoint #config/env "DATA_LOCAL_ENDPOINT"

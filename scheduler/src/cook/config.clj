@@ -152,8 +152,6 @@
                                       :principal (:principal mesos)
                                       :role (:role mesos)
                                       :framework-name (:framework-name mesos)}}]))
-     :container-defaults (fnk [[:config {container-defaults {}}]]
-                           container-defaults)
      :cors-origins (fnk [[:config {cors-origins nil}]]
                      (map re-pattern (or cors-origins [])))
      :exit-code-syncer (fnk [[:config {exit-code-syncer nil}]]
@@ -534,10 +532,6 @@
 (defn max-over-quota-jobs
   []
   (get-in config [:settings :max-over-quota-jobs]))
-
-(defn container-defaults
-  []
-  (get-in config [:settings :container-defaults]))
 
 (defn compute-clusters
   []

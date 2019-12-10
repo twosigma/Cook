@@ -80,9 +80,9 @@
 (defn merge-container-defaults
   "Takes a job container specification and applies any defaults from the config.
    Currently only supports volumes."
-  [container]
+  [container compute-cluster]
   (when container
-    (let [{:keys [volumes]} (config/container-defaults)
+    (let [{:keys [volumes]} (cc/container-defaults compute-cluster)
           get-path (fn [{:keys [container-path host-path]}]
                      (or container-path
                          host-path))]
@@ -127,10 +127,10 @@
 
 (defn job->task-metadata
   "Takes a job entity, returns task metadata"
-  [db mesos-run-as-user job-ent task-id]
+  [mesos-run-as-user job-ent task-id compute-cluster]
   (let [container (-> job-ent
                       util/job-ent->container
-                      merge-container-defaults)
+                      (merge-container-defaults compute-cluster))
         cook-executor? (use-cook-executor? job-ent)
         executor-key (job->executor-key job-ent)
         executor (executor-key->executor executor-key)
@@ -177,7 +177,7 @@
   "Organizes the info Fenzo has already told us about the task we need to run"
   [db mesos-run-as-user compute-cluster ^TaskAssignmentResult task-result]
   (let [{:keys [job task-id] :as task-request} (.getRequest task-result)]
-    (merge (job->task-metadata db mesos-run-as-user job task-id)
+    (merge (job->task-metadata mesos-run-as-user job task-id compute-cluster)
            {:hostname (.getHostname task-result)
             :ports-assigned (vec (sort (.getAssignedPorts task-result)))
             :task-request task-request})))
