@@ -139,7 +139,8 @@
                                                               mesos-heartbeat-chan#
                                                               trigger-chans#
                                                               {}
-                                                              {"no-pool" (async/chan 100)}))]
+                                                              {"no-pool" (async/chan 100)}
+                                                              {}))]
      (try
        (with-redefs [executor-config (constantly executor-config#)
                      completion/plugin completion/no-op

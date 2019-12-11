@@ -59,7 +59,8 @@
                                mesos-heartbeat-chan
                                trigger-chans
                                {}
-                               {"no-pool" (async/chan 100)})))
+                               {"no-pool" (async/chan 100)}
+                               {})))
 
 (defn fake-test-compute-cluster-with-driver
   "Create a test compute cluster with associated driver attached to it. Returns the compute cluster."
