@@ -87,7 +87,7 @@ docker create \
        -e "COOK_SCHEDULER_URL=${COOK_URL}" \
        -e "USER=root" \
        -e "COOK_MESOS_LEADER_URL=http://${MESOS_MASTER_IP}:5050" \
-       -e "COOK_TEST_DOCKER_IMAGE=python:3.5" \
+       -e "COOK_TEST_DOCKER_IMAGE=python:3.5.9-stretch" \
        -v "/tmp/cook-integration-mount:/tmp/cook-integration-mount" \
        ${COOK_MULTICLUSTER_ENV} \
        ${DATA_LOCAL_ENV} \
