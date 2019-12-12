@@ -16,3 +16,4 @@ test
 test-log
 test-resources
 virtualenv*
+venv*

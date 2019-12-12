@@ -2,6 +2,7 @@
 .idea
 .cache
 .minimesos
+.pytest_cache
 bin
 build
 cook_integration.egg-info
@@ -9,3 +10,5 @@ dist
 integration.iml
 travis
 **/__pycache__
+virtualenv*
+venv*
