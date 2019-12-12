@@ -233,7 +233,7 @@ class MultiUserCookTest(util.CookTest):
         with user:
             # Timing issues can cause this to fail, e.g. a delay between the bucket-emptying requests and the
             # request that's expected to fail can cause it not to fail. So, we'll retry this a few times.
-            @retry(stop_max_delay=60000, wait_fixed=5000)
+            @retry(stop_max_delay=240000, wait_fixed=5000)
             def trigger_submission_rate_limit():
                 jobs_to_kill = []
                 try:
@@ -251,12 +251,17 @@ class MultiUserCookTest(util.CookTest):
                     # The timestamp can change so we should only match on the prefix.
                     expected_prefix = f'User {user.name} is inserting too quickly. Not allowed to insert for'
                     self.assertEqual(resp3.json()['error'][:len(expected_prefix)], expected_prefix)
+                except:
+                    self.logger.exception('Encountered error triggering submission rate limit')
+                    raise
+                finally:
                     # Earn back 70 seconds of tokens.
-                    time.sleep(70.0 * extra_size / replenishment_rate)
+                    seconds = 70.0 * extra_size / replenishment_rate
+                    self.logger.info(f'Sleeping for {seconds} seconds')
+                    time.sleep(seconds)
                     jobs4, resp4 = util.submit_jobs(self.cook_url, {}, 10)
                     jobs_to_kill.extend(jobs4)
                     self.assertEqual(resp4.status_code, 201)
-                finally:
                     util.kill_jobs(self.cook_url, jobs_to_kill)
 
             trigger_submission_rate_limit()
