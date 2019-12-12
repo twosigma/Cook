@@ -482,9 +482,18 @@
               :default
               {:state :pod/unknown
                :reason "Unknown"}))
-
-          {:state :pod/waiting
-           :reason "Pending"})))))
+          (let [phase (.getPhase pod-status)]
+            ; https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/#pod-phase
+            (case phase
+              ; Failed means:
+              ; All Containers in the Pod have terminated, and at least
+              ; one Container has terminated in failure. That is, the
+              ; Container either exited with non-zero status or was
+              ; terminated by the system.
+              "Failed" {:state :pod/failed
+                        :reason (.getReason pod-status)}
+              {:state :pod/waiting
+               :reason "Pending"})))))))
 
 (defn kill-task
   "Kill this kubernetes pod"

@@ -14,7 +14,8 @@
 ;; limitations under the License.
 ;;
 (ns cook.quota
-  (:require [cook.pool :as pool]
+  (:require [clojure.set :as set]
+            [cook.pool :as pool]
             [cook.schema]
             [cook.tools :as util]
             [datomic.api :as d]
@@ -142,22 +143,75 @@
                           count-field
                           (conj [:db/retract [:quota/user user] :quota/count count-field]))))))
 
+(defn- retrieve-user->resource-quota-amount
+  "Returns the user->amount map for all quota resources specified for the given pool and resource type.
+   This function only supports the mechanism of storing quota counts as resources."
+  [db pool-name resource-type]
+  (let [type (resource-type->datomic-resource-type resource-type)
+        pool-name' (pool/pool-name-or-default pool-name)
+        requesting-default-pool (pool/requesting-default-pool? pool-name)
+        query '[:find ?u ?a
+                :in $ ?t ?pool-name ?requesting-default-pool
+                :where
+                [?e :quota/user ?u]
+                [?e :quota/resource ?r]
+                [?r :resource/type ?t]
+                [?r :resource/amount ?a]
+                [(cook.pool/check-pool $ ?r :resource/pool ?pool-name ?requesting-default-pool)]]]
+    (->> (d/q query db type pool-name' requesting-default-pool)
+      (into {}))))
+
+(defn- retrieve-user->quota-attribute-count
+  "Returns the user->count-quota for all count quota attributes specified on the user entity.
+   This function only supports the legacy mechanism of storing quota counts as attributes."
+  [db users]
+  (let [query '[:find ?u ?c
+                :in $ [?u ...]
+                :where
+                [?e :quota/user ?u]
+                [?e :quota/count ?c]]]
+    (->> (d/q query db users)
+      (into {}))))
+
+(defn- retrieve-user->count-quota
+  "Returns the map for user to count-quota for all the provided users.
+   It accounts for both the resource-based and attribute-based lookup of the count quota."
+  [db pool-name all-users default-quota]
+  (let [user->quota-resource-count (retrieve-user->resource-quota-amount db pool-name :count)
+        remaining-users (vec (set/difference (set all-users) (set (keys user->quota-resource-count))))
+        user->quota-attribute-count (when (seq remaining-users)
+                                      (retrieve-user->quota-attribute-count db remaining-users))]
+    (pc/map-from-keys
+      (fn [user]
+        (int
+          ; As part of the pool migration, there might be a mix of quotas that have the count as an attribute or a resource.
+          ; Hence, we prefer resource over the field on the user for count quota.
+          ; Refer to the implementation of `get-quota` for further details.
+          (or (get user->quota-resource-count user)
+              (get user->quota-attribute-count user)
+              default-quota)))
+      all-users)))
+
 (defn create-user->quota-fn
   "Returns a function which will return the quota same as `(get-quota db user)`
    snapshotted to the db passed in. However, it queries for all users with quota
    and returns the `default-user` value if a user is not returned.
    This is usefully if the application will go over ALL users during processing"
   [db pool-name]
-  (let [all-quota-users (d/q '[:find [?user ...]
-                               :where
-                               [?q :quota/user ?user]]
-                             db)
-        user->quota-cache (->> all-quota-users
-                               (map (fn [user]
-                                      [user (get-quota db user pool-name)]))
-                               ;; In case default-user doesn't have an explicit quota
-                               (cons [default-user (get-quota db default-user pool-name)])
-                               (into {}))]
+  (let [default-type->quota (get-quota db default-user pool-name)
+        default-count-quota (get default-type->quota :count)
+        all-resource-types (util/get-all-resource-types db)
+        type->user->quota (pc/map-from-keys #(retrieve-user->resource-quota-amount db pool-name %) all-resource-types)
+        all-quota-users (d/q '[:find [?user ...] :where [?q :quota/user ?user]] db) ;; returns a sequence without duplicates
+        user->count-quota (retrieve-user->count-quota db pool-name all-quota-users default-count-quota)
+        user->quota-cache (-> (pc/map-from-keys
+                                (fn [user]
+                                  (-> (pc/map-from-keys
+                                        #(get-in type->user->quota [% user] (get default-type->quota %))
+                                        all-resource-types)
+                                    (assoc :count (user->count-quota user))))
+                                all-quota-users)
+                            (assoc default-user default-type->quota))]
     (fn user->quota
       [user]
       (or (get user->quota-cache user)

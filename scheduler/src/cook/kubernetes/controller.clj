@@ -29,8 +29,10 @@
 (defn existing-state-equivalent?
   "Is the old and new state equivalent?"
   [old-state new-state]
-  (= old-state new-state) ; TODO. This is not right. We need to tune/tweak this to suppress otherwise identical states so we don't spam.
-  )
+  ; TODO:
+  ; This is not right. We need to tune/tweak this to
+  ; suppress otherwise identical states so we don't spam.
+  (= old-state new-state))
 
 (defn remove-finalization-if-set-and-delete
   [api-client expected-state-dict pod]
@@ -56,17 +58,27 @@
 
 (defn container-status->failure-reason
   "Maps kubernetes failure reasons to cook failure reasons"
-  [^V1PodStatus pod-status ^V1ContainerStatus status]
+  [{:keys [name]} task-id ^V1PodStatus pod-status ^V1ContainerStatus container-status]
   ; TODO map additional kubernetes failure reasons
-  (let [terminated (-> status .getState .getTerminated)]
+  (let [container-terminated-reason (some-> container-status .getState .getTerminated .getReason)
+        pod-status-reason (.getReason pod-status)]
     (cond
-      (= "OutOfMemory" (.getReason pod-status)) :reason-container-limitation-memory
-      (= "Error" (.getReason terminated)) :reason-command-executor-failed
-      (= "OOMKilled" (.getReason terminated)) :reason-container-limitation-memory
-      :default (do
-                 (log/warn "Unable to determine kubernetes failure reason for pod" {:pod-status pod-status
-                                                                                    :container-status status})
-                 :unknown))))
+      (= "OutOfMemory" pod-status-reason) :reason-container-limitation-memory
+      (= "Error" container-terminated-reason) :reason-command-executor-failed
+      (= "OOMKilled" container-terminated-reason) :reason-container-limitation-memory
+
+      ; If there is no container status and the pod status reason is Outofcpu,
+      ; then the node didn't have enough CPUs to start the container
+      (and (nil? container-status) (= "OutOfcpu" pod-status-reason))
+      (do
+        (log/info "In compute cluster" name ", encountered OutOfcpu pod status reason for" task-id)
+        :reason-invalid-offers)
+
+      :default
+      (do
+        (log/warn "In compute cluster" name ", unable to determine failure reason for" task-id
+                  {:pod-status pod-status :container-status container-status})
+        :unknown))))
 
 (defn write-status-to-datomic
   "Helper function for calling scheduler/write-status-to-datomic"
@@ -101,11 +113,12 @@
                         :pod/failed :task-failed
                         :pod/succeeded :task-finished)
           status {:task-id {:value task-id}
-                  :state   mesos-state
-                  :reason  (container-status->failure-reason pod-status job-container-status)}
-          exit-code (-> job-container-status .getState .getTerminated .getExitCode)]
+                  :state mesos-state
+                  :reason (container-status->failure-reason kcc task-id pod-status job-container-status)}
+          exit-code (some-> job-container-status .getState .getTerminated .getExitCode)]
       (write-status-to-datomic kcc status)
-      (sandbox/aggregate-exit-code (:exit-code-syncer-state kcc) task-id exit-code)))
+      (when exit-code
+        (sandbox/aggregate-exit-code (:exit-code-syncer-state kcc) task-id exit-code))))
   {:expected-state :expected/completed})
 
 (defn prepare-expected-state-dict-for-logging
@@ -116,10 +129,15 @@
     expected-state-dict))
 
 (defn prepare-existing-state-dict-for-logging
-  [existing-state-dict]
-  (-> existing-state-dict
-      (update-in [:synthesized-state :state] #(or % :missing))
-      (dissoc :pod)))
+  [{:keys [pod] :as existing-state-dict}]
+  (try
+    (-> existing-state-dict
+        (update-in [:synthesized-state :state] #(or % :missing))
+        (dissoc :pod)
+        (assoc :pod-status (some-> pod .getStatus)))
+    (catch Throwable t
+      (log/error t "Error preparing existing state for logging:" existing-state-dict)
+      existing-state-dict)))
 
 (defn pod-has-started
   "A pod has started. So now we need to update the status in datomic."

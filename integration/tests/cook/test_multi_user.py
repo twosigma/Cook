@@ -233,7 +233,7 @@ class MultiUserCookTest(util.CookTest):
         with user:
             # Timing issues can cause this to fail, e.g. a delay between the bucket-emptying requests and the
             # request that's expected to fail can cause it not to fail. So, we'll retry this a few times.
-            @retry(stop_max_delay=60000, wait_fixed=5000)
+            @retry(stop_max_delay=240000, wait_fixed=5000)
             def trigger_submission_rate_limit():
                 jobs_to_kill = []
                 try:
@@ -251,12 +251,17 @@ class MultiUserCookTest(util.CookTest):
                     # The timestamp can change so we should only match on the prefix.
                     expected_prefix = f'User {user.name} is inserting too quickly. Not allowed to insert for'
                     self.assertEqual(resp3.json()['error'][:len(expected_prefix)], expected_prefix)
+                except:
+                    self.logger.exception('Encountered error triggering submission rate limit')
+                    raise
+                finally:
                     # Earn back 70 seconds of tokens.
-                    time.sleep(70.0 * extra_size / replenishment_rate)
+                    seconds = 70.0 * extra_size / replenishment_rate
+                    self.logger.info(f'Sleeping for {seconds} seconds')
+                    time.sleep(seconds)
                     jobs4, resp4 = util.submit_jobs(self.cook_url, {}, 10)
                     jobs_to_kill.extend(jobs4)
                     self.assertEqual(resp4.status_code, 201)
-                finally:
                     util.kill_jobs(self.cook_url, jobs_to_kill)
 
             trigger_submission_rate_limit()
@@ -456,7 +461,7 @@ class MultiUserCookTest(util.CookTest):
                 self.logger.info(f'Job has not been preempted: {job}')
                 return False
 
-            max_wait_ms = util.settings(self.cook_url)['rebalancer']['interval-seconds'] * 1000 * 2.5
+            max_wait_ms = util.rebalancer_interval_seconds() * 1000 * 2.5
             self.logger.info(f'Waiting up to {max_wait_ms} milliseconds for preemption to happen')
             util.wait_until(low_priority_job, job_was_preempted, max_wait_ms=max_wait_ms, wait_interval_ms=5000)
         finally:
@@ -468,6 +473,9 @@ class MultiUserCookTest(util.CookTest):
     @unittest.skipUnless(util.is_preemption_enabled(), 'Preemption is not enabled on the cluster')
     @pytest.mark.serial
     @pytest.mark.xfail
+    # The test timeout needs to be a little more than 2 times the
+    # rebalancer interval to allow at least two runs of the rebalancer
+    @pytest.mark.timeout((util.rebalancer_interval_seconds() * 2.5) + 60)
     def test_preemption_basic(self):
         self.trigger_preemption(pool=None)
 
@@ -670,7 +678,7 @@ class MultiUserCookTest(util.CookTest):
         job_uuids = [job_uuid_1, job_uuid_2, job_uuid_3]
         try:
             util.wait_for_jobs(self.cook_url, job_uuids, 'completed')
-            instances = [util.wait_for_instance(self.cook_url, j) for j in job_uuids]
+            instances = [util.wait_for_instance(self.cook_url, j, status='success') for j in job_uuids]
             try:
                 for instance in instances:
                     self.assertEqual('success', instance['parent']['state'])
@@ -723,11 +731,12 @@ class MultiUserCookTest(util.CookTest):
 
     def test_instance_stats_supports_epoch_time_params(self):
         name = str(util.make_temporal_uuid())
-        job_uuid_1, resp = util.submit_job(self.cook_url, command='sleep 300', name=name, max_retries=2)
+        sleep_command = f'sleep {util.DEFAULT_TEST_TIMEOUT_SECS}'
+        job_uuid_1, resp = util.submit_job(self.cook_url, command=sleep_command, name=name, max_retries=2)
         self.assertEqual(resp.status_code, 201, msg=resp.content)
-        job_uuid_2, resp = util.submit_job(self.cook_url, command='sleep 300', name=name, max_retries=2)
+        job_uuid_2, resp = util.submit_job(self.cook_url, command=sleep_command, name=name, max_retries=2)
         self.assertEqual(resp.status_code, 201, msg=resp.content)
-        job_uuid_3, resp = util.submit_job(self.cook_url, command='sleep 300', name=name, max_retries=2)
+        job_uuid_3, resp = util.submit_job(self.cook_url, command=sleep_command, name=name, max_retries=2)
         self.assertEqual(resp.status_code, 201, msg=resp.content)
         job_uuids = [job_uuid_1, job_uuid_2, job_uuid_3]
         try:
@@ -800,11 +809,11 @@ class MultiUserCookTest(util.CookTest):
             resp = util.reset_limit(self.cook_url, 'share', user, reason=None)
             self.assertEqual(resp.status_code, 400, resp.text)
 
-            default_pool = util.default_pool(self.cook_url)
+            default_pool = util.default_submit_pool() or util.default_pool(self.cook_url)
             if default_pool is not None:
                 for limit in ['quota', 'share']:
                     # Get the default cpus limit
-                    resp = util.get_limit(self.cook_url, limit, "default")
+                    resp = util.get_limit(self.cook_url, limit, "default", pool=default_pool)
                     self.assertEqual(200, resp.status_code, resp.text)
                     self.logger.info(f'The default limit in the {default_pool} pool is {resp.json()}')
                     default_cpus = resp.json()['cpus']
@@ -814,7 +823,7 @@ class MultiUserCookTest(util.CookTest):
                     self.assertEqual(resp.status_code, 201, resp.text)
 
                     # Check that the limit is returned for no pool
-                    resp = util.get_limit(self.cook_url, limit, user)
+                    resp = util.get_limit(self.cook_url, limit, user, pool=default_pool)
                     self.assertEqual(resp.status_code, 200, resp.text)
                     self.assertEqual(100, resp.json()['cpus'], resp.text)
 
@@ -886,7 +895,7 @@ class MultiUserCookTest(util.CookTest):
         uuids, resp = util.submit_jobs(self.cook_url, job_spec, clones=100, groups=[group])
         self.assertEqual(201, resp.status_code, resp.content)
         try:
-            default_pool = util.default_pool(self.cook_url)
+            default_pool = util.default_submit_pool() or util.default_pool(self.cook_url)
             pool = default_pool or 'no-pool'
             self.logger.info(f'Checking the queue endpoint for pool {pool}')
 

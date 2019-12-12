@@ -1,13 +1,12 @@
 FROM mesosphere/mesos:1.3.0
 
-RUN apt-get -y update
-RUN apt-get -y install software-properties-common
-RUN add-apt-repository ppa:openjdk-r/ppa
-RUN apt-get -y update
-RUN apt-get --no-install-recommends -y install \
+
+RUN apt-get -y update && apt-get -y install software-properties-common && \ 
+    add-apt-repository ppa:openjdk-r/ppa && apt-get -y update && \
+    apt-get --no-install-recommends -y install \
     curl \
     openjdk-8-jdk \
-    unzip
+    unzip && apt-get clean && rm -Rf /var/lib/apt/lists/*
 
 # Env setup
 ENV HOME "/root/"
@@ -22,9 +21,7 @@ RUN keytool -genkeypair -keystore /opt/ssl/cook.p12 -storetype PKCS12 -storepass
 # Lein setup
 RUN mkdir $HOME/bin
 ENV PATH $PATH:$HOME/bin
-RUN curl -o $HOME/bin/lein https://raw.githubusercontent.com/technomancy/leiningen/stable/bin/lein
-RUN chmod a+x $HOME/bin/lein
-RUN lein
+RUN curl -o $HOME/bin/lein https://raw.githubusercontent.com/technomancy/leiningen/stable/bin/lein && chmod a+x $HOME/bin/lein && lein
 
 # Create and set the cook dir, copying project file
 COPY project.clj /opt/cook/
@@ -45,6 +42,7 @@ COPY config* /opt/cook/
 COPY resources /opt/cook/resources
 COPY java /opt/cook/java
 COPY src /opt/cook/src
+
 RUN lein uberjar
 RUN cp "target/cook-$(lein print :version | tr -d '"').jar" datomic-free-0.9.5394/lib/cook-$(lein print :version | tr -d '"').jar
 

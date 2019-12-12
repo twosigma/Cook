@@ -26,6 +26,7 @@
             [clojure.walk :as walk]
             [cook.compute-cluster :as cc]
             [cook.config :as config]
+            [cook.datomic :as datomic]
             [cook.scheduler.data-locality :as dl]
             [cook.mesos.heartbeat :as heartbeat]
             [cook.mesos.sandbox :as sandbox]
@@ -38,8 +39,8 @@
             [cook.quota :as quota]
             [cook.rate-limit :as rate-limit]
             [cook.test.testutil :as testutil :refer [restore-fresh-database! create-dummy-group create-dummy-job
-                                        create-dummy-instance init-agent-attributes-cache poll-until wait-for
-                                        create-dummy-job-with-instances create-pool setup]]
+                                                     create-dummy-instance init-agent-attributes-cache poll-until wait-for
+                                                     create-dummy-job-with-instances create-pool setup]]
             [criterium.core :as crit]
             [datomic.api :as d :refer (q db)]
             [mesomatic.scheduler :as msched]
@@ -1883,25 +1884,34 @@
             tasks-killed? (fn [] (= expected-tasks-killed @killed-tasks))]
         (is (wait-for tasks-killed? :interval 20 :timeout 100 :unit-multiplier 1))))))
 
-(deftest test-launch-matched-tasks!-logs-transaction-timeouts
+(deftest test-launch-matched-tasks!
   (setup)
-  (let [conn (restore-fresh-database! "datomic:mem://test-launch-matched-tasks!-logs-transaction-timeouts")
-        timeout-exception (ex-info "Transaction timed out." {})
-        logged-atom (atom nil)
-        job-id (create-dummy-job conn)
-        job (d/entity (d/db conn) job-id)
-        ^TaskRequest task-request (sched/make-task-request (d/db conn) job)
-        matches [{:tasks [(SimpleAssignmentResult. [] nil task-request)]}]]
-    (with-redefs [cc/db-id (constantly -1) ; So we don't throw prematurely when trying to create the task structure.
-                  d/transact (fn [_ _]
-                               (throw timeout-exception))
-                  log/log* (fn [_ level throwable message]
-                             (when (= :warn level)
-                               (reset! logged-atom {:throwable throwable
-                                                    :message message})))]
-      (is (thrown? ExceptionInfo (sched/launch-matched-tasks! matches conn nil nil nil nil)))
-      (is (= timeout-exception (:throwable @logged-atom)))
-      (is (str/includes? (:message @logged-atom) (str job-id))))))
+  (testing "logs transaction timeouts"
+    (let [conn (restore-fresh-database! "datomic:mem://test-launch-matched-tasks!-logs-transaction-timeouts")
+          timeout-exception (ex-info "Transaction timed out." {})
+          logged-atom (atom nil)
+          job-id (create-dummy-job conn)
+          job (d/entity (d/db conn) job-id)
+          ^TaskRequest task-request (sched/make-task-request (d/db conn) job)
+          matches [{:tasks [(SimpleAssignmentResult. [] nil task-request)]}]]
+      (with-redefs [cc/db-id (constantly -1) ; So we don't throw prematurely when trying to create the task structure.
+                    d/transact (fn [_ _]
+                                 (throw timeout-exception))
+                    log/log* (fn [_ level throwable message]
+                               (when (= :warn level)
+                                 (reset! logged-atom {:throwable throwable
+                                                      :message message})))]
+        (is (thrown? ExceptionInfo (sched/launch-matched-tasks! matches conn nil nil nil nil)))
+        (is (= timeout-exception (:throwable @logged-atom)))
+        (is (str/includes? (:message @logged-atom) (str job-id))))))
+
+  (testing "catches exceptions in compute cluster loop"
+    (let [matches [{:leases [{:offer {}}]}]]
+      (with-redefs [cc/db-id (constantly -1)
+                    cc/compute-cluster-name (constantly "foo")
+                    cc/launch-tasks (fn [_ _ _] (throw (ex-info "Foo" {})))
+                    datomic/transact (constantly nil)]
+        (sched/launch-matched-tasks! matches nil nil nil nil nil)))))
 
 (deftest test-reconcile-tasks
   (let [conn (restore-fresh-database! "datomic:mem://test-reconcile-tasks")
