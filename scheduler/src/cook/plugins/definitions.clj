@@ -55,5 +55,5 @@
     "Returns the file URL endpoint for the instance"))
 
 (defprotocol JobAdjuster
-  (adjust-job [this job-map]
+  (adjust-job [this job-map db]
     "Given a job-map, returns an adjusted job-map for downstream use"))
