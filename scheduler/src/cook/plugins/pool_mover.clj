@@ -9,21 +9,24 @@
 
 (defrecord PoolMoverJobAdjuster [pool-mover-config]
   chd/JobAdjuster
-  (adjust-job [_ {:keys [job/uuid] :as job-map} db]
-    (let [submission-pool (util/job->pool-name job-map)]
-      (when-let [{:keys [users destination-pool]} (get pool-mover-config submission-pool)]
-        (let [user (util/job-ent->user job-map)]
-          (when-let [{:keys [portion]} (get users user)]
-            (when (and (number? portion)
+  (adjust-job [_ {:keys [job/uuid job/pool] :as job-txn} db]
+    (let [submission-pool (-> db (d/entity pool) :pool/name)]
+      (if-let [{:keys [users destination-pool]} (get pool-mover-config submission-pool)]
+        (let [user (util/job-ent->user job-txn)]
+          (if-let [{:keys [portion]} (get users user)]
+            (if (and (number? portion)
                        (> (* portion 100) (-> uuid hash (mod 100))))
               (try
                 (log/info "Moving job" uuid "(" user ") from" submission-pool "pool to"
                           destination-pool "pool due to pool-mover configuration")
                 (counters/inc! jobs-migrated)
-                (assoc job-map :job/pool (d/entity db [:pool/name destination-pool]))
+                (assoc job-txn :job/pool (-> db (d/entity [:pool/name destination-pool]) :db/id))
                 (catch Throwable t
-                  (log/error t "Error when transacting pool migration to" destination-pool)
-                  job-map)))))))))
+                  (log/error t "Error when moving pool to" destination-pool)
+                  job-txn))
+              job-txn)
+            job-txn))
+        job-txn))))
 
 (defn make-pool-mover-job-adjuster
   [config]
