@@ -3,6 +3,7 @@
   (:require [clojure.data.json :as json]
             [clojure.edn :as edn]
             [clojure.string :as str]
+            [cook.compute-cluster :as cc]
             [cook.config :as config]
             [cook.scheduler.scheduler :as sched]
             [cook.mesos.task :as task]
@@ -346,7 +347,8 @@
                         :extract false
                         :value "file:///path/to/cook-executor"}}
         mesos-run-as-user nil]
-    (with-redefs [cook.config/executor-config (constantly executor)]
+    (with-redefs [cook.config/executor-config (constantly executor)
+                  cc/container-defaults (constantly {})]
       (testing "custom-executor with simple job"
         (let [task-id (str (UUID/randomUUID))
               job (tu/create-dummy-job conn :user "test-user" :job-state :job.state/running :command "run-my-command")
@@ -360,7 +362,7 @@
                            "COOK_JOB_UUID" (-> job-ent :job/uuid str)}]
 
           (testing "mesos-run-as-user absent"
-            (let [task-metadata (task/job->task-metadata db mesos-run-as-user job-ent task-id)]
+            (let [task-metadata (task/job->task-metadata nil mesos-run-as-user job-ent task-id)]
               (is (= {:command {:value "run-my-command", :environment environment, :user "test-user", :uris []}
                       :container nil
                       :environment environment
@@ -376,7 +378,7 @@
 
           (testing "mesos-run-as-user present"
             (let [mesos-run-as-user "mesos-run-as-user"
-                  task-metadata (task/job->task-metadata db mesos-run-as-user job-ent task-id)]
+                  task-metadata (task/job->task-metadata nil mesos-run-as-user job-ent task-id)]
               (is (= {:command {:value "run-my-command", :environment environment, :user mesos-run-as-user, :uris []}
                       :container nil
                       :environment environment
@@ -405,7 +407,7 @@
                            "COOK_JOB_GROUP_UUID" (-> group-ent :group/uuid str)
                            "COOK_JOB_MEM_MB" "10.0"
                            "COOK_JOB_UUID" (-> job-ent :job/uuid str)}
-              task-metadata (task/job->task-metadata db mesos-run-as-user job-ent task-id)]
+              task-metadata (task/job->task-metadata nil mesos-run-as-user job-ent task-id)]
           (is (= {:command {:value "run-my-command", :environment environment, :user "test-user", :uris []}
                   :container nil
                   :environment environment
@@ -431,7 +433,7 @@
                            "COOK_JOB_CPUS" "1.0"
                            "COOK_JOB_MEM_MB" "10.0"
                            "COOK_JOB_UUID" (-> job-ent :job/uuid str)}
-              task-metadata (task/job->task-metadata db mesos-run-as-user job-ent task-id)]
+              task-metadata (task/job->task-metadata nil mesos-run-as-user job-ent task-id)]
           (is (= {:command {:value "run-my-command", :environment environment, :user "test-user", :uris []}
                   :container nil
                   :environment environment
@@ -461,7 +463,7 @@
                            "EXECUTOR_MAX_MESSAGE_LENGTH" (:max-message-length executor)
                            "PROGRESS_REGEX_STRING" (:default-progress-regex-string executor)
                            "PROGRESS_SAMPLE_INTERVAL_MS" (:progress-sample-interval-ms executor)}
-              task-metadata (task/job->task-metadata db mesos-run-as-user job-ent task-id)]
+              task-metadata (task/job->task-metadata nil mesos-run-as-user job-ent task-id)]
           (is (= {:command {:environment environment
                             :uris [(:uri executor)]
                             :user "test-user"
@@ -499,7 +501,7 @@
                            "EXECUTOR_MAX_MESSAGE_LENGTH" (:max-message-length executor)
                            "PROGRESS_REGEX_STRING" (:default-progress-regex-string executor)
                            "PROGRESS_SAMPLE_INTERVAL_MS" (:progress-sample-interval-ms executor)}
-              task-metadata (task/job->task-metadata db mesos-run-as-user job-ent task-id)]
+              task-metadata (task/job->task-metadata nil mesos-run-as-user job-ent task-id)]
           (is (= {:command {:environment environment
                             :uris [(:uri executor)]
                             :user "test-user"
@@ -529,7 +531,7 @@
                            "COOK_JOB_CPUS" "1.0"
                            "COOK_JOB_MEM_MB" "10.0"
                            "COOK_JOB_UUID" (-> job-ent :job/uuid str)}
-              task-metadata (task/job->task-metadata db mesos-run-as-user job-ent task-id)]
+              task-metadata (task/job->task-metadata nil mesos-run-as-user job-ent task-id)]
           (is (= {:command {:environment environment
                             :uris []
                             :user "test-user"
@@ -566,7 +568,7 @@
                            "COOK_JOB_CPUS" "1.0"
                            "COOK_JOB_MEM_MB" "10.0"
                            "COOK_JOB_UUID" (-> job-ent :job/uuid str)}
-              task-metadata (task/job->task-metadata db mesos-run-as-user job-ent task-id)]
+              task-metadata (task/job->task-metadata nil mesos-run-as-user job-ent task-id)]
           (is (= {:command {:environment environment
                             :uris []
                             :user "test-user"
@@ -606,7 +608,7 @@
                            "COOK_JOB_CPUS" "1.0"
                            "COOK_JOB_MEM_MB" "200.0"
                            "COOK_JOB_UUID" (-> job-ent :job/uuid str)}
-              task-metadata (task/job->task-metadata db mesos-run-as-user job-ent task-id)]
+              task-metadata (task/job->task-metadata nil mesos-run-as-user job-ent task-id)]
           (is (= {:command {:environment environment
                             :uris []
                             :user "test-user"
@@ -651,7 +653,7 @@
                            "EXECUTOR_MAX_MESSAGE_LENGTH" (:max-message-length executor)
                            "PROGRESS_REGEX_STRING" (:default-progress-regex-string executor)
                            "PROGRESS_SAMPLE_INTERVAL_MS" (:progress-sample-interval-ms executor)}
-              task-metadata (task/job->task-metadata db mesos-run-as-user job-ent task-id)]
+              task-metadata (task/job->task-metadata nil mesos-run-as-user job-ent task-id)]
           (is (= {:command {:environment environment
                             :uris [(:uri executor)]
                             :user "test-user"
@@ -887,36 +889,37 @@
 
 (deftest test-merge-container-defaults
   (testing "does not add docker info if missing"
-    (with-redefs [config/container-defaults (constantly {:docker {:parameters {"foo" "bar"}}})]
-      (is (= {:mesos {:image "baz"}} (task/merge-container-defaults {:mesos {:image "baz"}})))))
+    (with-redefs [cc/container-defaults (constantly {:docker {:parameters {"foo" "bar"}}})]
+      (is (= {:mesos {:image "baz"}} (task/merge-container-defaults nil {:mesos {:image "baz"}})))))
   (testing "adds volumes even when missing"
     (let [volumes [{:container-path "/foo"
                     :host-path "/foo"}]]
-      (with-redefs [config/container-defaults (constantly {:volumes volumes})]
+      (with-redefs [cc/container-defaults (constantly {:volumes volumes})]
         (is (= {:mesos {:image "baz"}
                 :volumes volumes}
-               (task/merge-container-defaults {:mesos {:image "baz"}}))))))
+               (task/merge-container-defaults nil {:mesos {:image "baz"}}))))))
   (testing "merges volumes"
-    (with-redefs [config/container-defaults (constantly {:volumes [{:host-path "/h/a"
-                                                                    :container-path "/c/a"
-                                                                    :mode "rw"}
-                                                                   {:host-path "/mnt/app/data"
-                                                                    :mode "r"}]})]
-      (is (= nil (task/merge-container-defaults nil)))
+    (with-redefs [cc/container-defaults (constantly {:volumes [{:host-path "/h/a"
+                                                                :container-path "/c/a"
+                                                                :mode "rw"}
+                                                               {:host-path "/mnt/app/data"
+                                                                :mode "r"}]})]
+      (is (= nil (task/merge-container-defaults nil nil)))
       (is (= {:docker {:image "foo"}
               :volumes [{:host-path "/h/a"
                          :container-path "/c/a"
                          :mode "rw"}
                         {:host-path "/mnt/app/data"
                          :mode "r"}]}
-             (task/merge-container-defaults {:docker {:image "foo"}})))
+             (task/merge-container-defaults nil {:docker {:image "foo"}})))
       (is (= {:docker {:image "foo"}
               :volumes [{:host-path "/mnt/app"
                          :mode "rw"}
                         {:host-path "/h/a"
                          :container-path "/c/a"
                          :mode "rw"}]}
-             (task/merge-container-defaults {:docker {:image "foo"}
+             (task/merge-container-defaults nil
+                                            {:docker {:image "foo"}
                                              :volumes [{:host-path "/mnt/app"
                                                         :mode "rw"}]})))
       (is (= {:docker {:image "foo"}
@@ -924,7 +927,8 @@
                          :container-path "/c/a"}
                         {:host-path "/mnt/app/data"
                          :mode "r"}]}
-             (task/merge-container-defaults {:docker {:image "foo"}
+             (task/merge-container-defaults nil
+                                            {:docker {:image "foo"}
                                              :volumes [{:host-path "/diff/a"
                                                         :container-path "/c/a"}]})))
       (is (= {:docker {:image "foo"}
@@ -935,6 +939,7 @@
                          :mode "rw"}
                         {:host-path "/mnt/app/data"
                          :mode "r"}]}
-             (task/merge-container-defaults {:docker {:image "foo"}
+             (task/merge-container-defaults nil
+                                            {:docker {:image "foo"}
                                              :volumes [{:host-path "/diff/a"
                                                         :container-path "/c/a/b"}]}))))))

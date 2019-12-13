@@ -222,7 +222,12 @@
                      (into [] (map #(into {} (select-keys % [:hostname :resources])) offers-this-pool)))
       offers-this-pool))
 
-  (restore-offers [this pool-name offers]))
+  (restore-offers [this pool-name offers])
+
+  (container-defaults [_]
+    ; We don't currently support specifying
+    ; container defaults for k8s compute clusters
+    {}))
 
 (defn get-or-create-cluster-entity-id
   [conn compute-cluster-name]

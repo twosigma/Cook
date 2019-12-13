@@ -42,7 +42,10 @@
     "Retrieve pending offers for the given pool")
 
   (restore-offers [this pool-name offers]
-    "Called when offers are not processed to ensure they're still available."))
+    "Called when offers are not processed to ensure they're still available.")
+
+  (container-defaults [this]
+    "Default values to use for containers launched in this compute cluster"))
 
 (defn safe-kill-task
   "A safe version of kill task that never throws. This reduces the risk that errors in one compute cluster propagate and cause problems in another compute cluster."
