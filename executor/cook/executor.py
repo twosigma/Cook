@@ -32,6 +32,7 @@ def get_task_id(task):
 
 class StatusUpdater(object):
     """Sends status updates for the task."""
+
     def __init__(self, driver, task_id):
         """
         Parameters
@@ -121,6 +122,7 @@ def send_message(driver, error_handler, message):
         message_string = json.dumps(message).encode('utf8')
         encoded_message = pm.encode_data(message_string)
         driver.sendFrameworkMessage(encoded_message)
+        logging.info('Sent framework message')
         return True
     except Exception as exception:
         if cu.is_out_of_memory_error(exception):
@@ -128,6 +130,7 @@ def send_message(driver, error_handler, message):
         else:
             logging.exception('Exception while sending message {}'.format(message))
         return False
+
 
 def launch_task(task, environment):
     """Launches the task using the command available in the json map from the data field.
@@ -171,8 +174,9 @@ def await_process_completion(process, stop_signal, shutdown_grace_period_ms):
     -------
     True if the process was killed, False if it terminated naturally.
     """
+
     def process_stop_signal():
-        stop_signal.wait() # wait indefinitely for the stop_signal to be set
+        stop_signal.wait()  # wait indefinitely for the stop_signal to be set
         if cs.is_process_running(process):
             logging.info('Executor has been instructed to terminate running task')
             cs.kill_process(process, shutdown_grace_period_ms)
@@ -183,6 +187,7 @@ def await_process_completion(process, stop_signal, shutdown_grace_period_ms):
 
     # wait indefinitely for process to terminate (either normally or by being killed)
     process.wait()
+
 
 def await_reregister(reregister_signal, recovery_secs, *disconnect_signals):
     """Awaits reregistration on rerigster_signal, and notifies on stop_signal and disconnect_signal if not set.
@@ -196,14 +201,17 @@ def await_reregister(reregister_signal, recovery_secs, *disconnect_signals):
     disconnect_signals: [Event]
         Events to notify if reregistration does not occur
     """
+
     def await_reregister_thread():
         reregister_signal.wait(recovery_secs)
         if reregister_signal.isSet():
             logging.info("Reregistered with mesos agent. Not notifying on disconnect_signals")
         else:
-            logging.warn("Failed to reregister within {} seconds. Notifying disconnect_signals".format(recovery_secs))
+            logging.warning(
+                "Failed to reregister within {} seconds. Notifying disconnect_signals".format(recovery_secs))
             for signal in disconnect_signals:
                 signal.set()
+
     await_thread = Thread(target=await_reregister_thread, args=())
     await_thread.daemon = True
     await_thread.start()
@@ -341,7 +349,7 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
             status_updater.update_status(cook.TASK_ERROR, reason=cook.REASON_TASK_INVALID)
             return
 
-        task_completed_signal = Event() # event to track task execution completion
+        task_completed_signal = Event()  # event to track task execution completion
         sequence_counter = cp.ProgressSequenceCounter()
 
         send_progress_message = functools.partial(send_message, driver, inner_os_error_handler)
@@ -430,8 +438,8 @@ class CookExecutor(pm.Executor):
             # integration tests.
             time.sleep(5)
             exit_code = int(env['EXECUTOR_TEST_EXIT'])
-            logging.warn('Exiting with code {} from EXECUTOR_TEST_EXIT environment variable'.
-                         format(exit_code))
+            logging.warning('Exiting with code {} from EXECUTOR_TEST_EXIT environment variable'.
+                            format(exit_code))
             os._exit(exit_code)
 
     def reregistered(self, driver, agent_info):
@@ -451,7 +459,8 @@ class CookExecutor(pm.Executor):
                 logging.info('Executor checkpointing is enabled. Waiting for agent recovery.')
                 new_event = Event()
                 self.reregister_signal = new_event
-                await_reregister(new_event, self.config.recovery_timeout_ms / 1000, self.stop_signal, self.disconnect_signal)
+                await_reregister(new_event, self.config.recovery_timeout_ms / 1000, self.stop_signal,
+                                 self.disconnect_signal)
             else:
                 logging.info('Checkpointing is enabled. Already launched await_reregister thread.')
         else:
@@ -475,6 +484,7 @@ class CookExecutor(pm.Executor):
         task_id_str = task_id['value'] if 'value' in task_id else task_id
         grace_period = os.environ.get('MESOS_EXECUTOR_SHUTDOWN_GRACE_PERIOD', '')
         cio.print_and_log('Received kill for task {} with grace period of {}'.format(task_id_str, grace_period))
+        cu.log_thread_stack_traces()
         self.stop_signal.set()
 
     def shutdown(self, driver):

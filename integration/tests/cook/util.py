@@ -539,7 +539,7 @@ def submit_jobs(cook_url, job_specs, clones=1, pool=None, headers=None, log_requ
         request_body['pool'] = default_pool
     else:
         logger.info(f'Submitting with no explicit pool')
-        
+
     request_body.update(kwargs)
     if log_request_body:
         logger.info(request_body)
@@ -1273,6 +1273,7 @@ def active_pools(cook_url):
     all_active_pools = [p for p in pools if p['state'] == 'active']
     return all_active_pools, resp
 
+
 def has_ephemeral_hosts():
     """Returns True if the cluster under test has ephemeral hosts"""
     s = os.getenv('COOK_TEST_EPHEMERAL_HOSTS')
@@ -1354,6 +1355,7 @@ def get_kubernetes_compute_cluster():
     else:
         return None
 
+
 @functools.lru_cache()
 def get_kubernetes_nodes():
     kubernetes_compute_cluster = get_kubernetes_compute_cluster()
@@ -1378,9 +1380,10 @@ def kubernetes_node_pool(nodename):
     poolname_taint = [taint for taint in node[0]['spec']['taints'] if taint['key'] == 'cook-pool']
     if len(poolname_taint) == 0:
         return None
-    poolname = poolname_taint[0].get('value',None)
+    poolname = poolname_taint[0].get('value', None)
     logging.info(f"K8S pool for {nodename} is {poolname}")
     return poolname
+
 
 @functools.lru_cache()
 def mesos_node_pool(nodename):
@@ -1388,6 +1391,7 @@ def mesos_node_pool(nodename):
     mesos_url = retrieve_mesos_url()
     node_pool = slave_pool(cook_url, mesos_url, nodename)
     return node_pool
+
 
 def node_pool(nodename):
     """Get the pool for a node."""
@@ -1397,6 +1401,7 @@ def node_pool(nodename):
         return kubernetes_node_pool(nodename)
     else:
         raise RuntimeError(f'Unable to determine node pool for {nodename}')
+
 
 def max_kubernetes_node_cpus():
     nodes = get_kubernetes_nodes()
@@ -1414,6 +1419,7 @@ def get_compute_cluster_type(compute_cluster_dictionary):
     else:
         raise Exception(
             "compute-cluster-dictionary is " + repr(compute_cluster_dictionary) + " Cannot determine the type")
+
 
 def task_constraint_cpus(cook_url):
     """Returns the max cpus that can be submitted to the cluster"""
@@ -1463,11 +1469,16 @@ def docker_tests_enabled():
 @functools.lru_cache()
 def is_preemption_enabled():
     """Returns true if task preemption is enabled on the cluster"""
+    max_preemption = rebalancer_settings().get('max-preemption')
+    return max_preemption is not None
+
+
+@functools.lru_cache()
+def rebalancer_settings():
     cook_url = retrieve_cook_url()
     init_cook_session(cook_url)
     _wait_for_cook(cook_url)
-    max_preemption = settings(cook_url)['rebalancer'].get('max-preemption')
-    return max_preemption is not None
+    return settings(cook_url)['rebalancer']
 
 
 def current_milli_time():
@@ -1641,8 +1652,10 @@ def _get_compute_cluster_factory_fn():
     compute_clusters = settings(cook_url)['compute-clusters']
     return compute_clusters[0]['factory-fn']
 
+
 def get_compute_cluster_test_mode():
     return os.getenv("COOK_TEST_COMPUTE_CLUSTER_TYPE", "mesos")
+
 
 def using_kubernetes():
     return get_compute_cluster_test_mode() == "kubernetes"
@@ -1650,6 +1663,7 @@ def using_kubernetes():
 
 def using_mesos():
     return get_compute_cluster_test_mode() == "mesos"
+
 
 def has_one_agent():
     return node_count() == 1
@@ -1676,13 +1690,26 @@ def running_tasks(cook_url):
 def timeout_interval_minutes():
     cook_url = retrieve_cook_url()
     _wait_for_cook(cook_url)
-    settings_timeout_interval_minutes = get_in(settings(cook_url), 'task-constraints', 
+    settings_timeout_interval_minutes = get_in(settings(cook_url), 'task-constraints',
                                                'timeout-interval-minutes')
     return settings_timeout_interval_minutes
 
-                     
+
 def reset_share_and_quota(cook_url, user):
     pool = default_submit_pool()
     logger.info(f'Resetting share and quota for {user} in pool {pool}')
     set_limit_to_default(cook_url, 'share', user, pool)
     set_limit_to_default(cook_url, 'quota', user, pool)
+
+
+@functools.lru_cache()
+def rebalancer_interval_seconds():
+    interval_seconds = rebalancer_settings().get('interval-seconds', 0)
+    return interval_seconds
+                     
+                     
+def job_progress_is_present(job, progress):
+    present = any(i['progress'] == progress for i in job['instances'])
+    if not present:
+        logger.info(f'Job does not yet have progress {progress}: {json.dumps(job, indent=2)}')
+    return present

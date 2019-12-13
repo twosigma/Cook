@@ -437,19 +437,16 @@ class CookTest(util.CookTest):
                                          env={progress_file_env: 'progress.txt'},
                                          executor=job_executor_type, max_runtime=60000)
         self.assertEqual(201, resp.status_code, msg=resp.content)
-        job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
-        message = json.dumps(job['instances'], sort_keys=True)
-        self.assertIn('success', (i['status'] for i in job['instances']), message)
-
+        util.wait_for_job_in_statuses(self.cook_url, job_uuid, ['running', 'completed'])
         instance = util.wait_for_sandbox_directory(self.cook_url, job_uuid)
         message = json.dumps(instance, sort_keys=True)
         self.assertIsNotNone(instance['output_url'], message)
         self.assertIsNotNone(instance['sandbox_directory'], message)
         self.assertEqual('cook', instance['executor'])
         util.sleep_for_publish_interval(self.cook_url)
-        instance = util.wait_for_exit_code(self.cook_url, job_uuid)
-        message = json.dumps(instance, sort_keys=True)
-        self.assertEqual(0, instance['exit_code'], message)
+        job = util.wait_until(lambda: util.load_job(self.cook_url, job_uuid),
+                              lambda j: util.job_progress_is_present(j, 25))
+        instance = next(i for i in job['instances'] if i['progress'] == 25)
         self.assertEqual(25, instance['progress'], message)
         self.assertEqual('Twenty-five percent in progress.txt', instance['progress_message'], message)
 
@@ -1048,11 +1045,13 @@ class CookTest(util.CookTest):
         self.assertFalse(util.contains_job_uuid(resp.json(), job_uuid_6), job_uuid_6)
 
     def test_list_jobs_by_pool(self):
-        # Submit two jobs to each active pool -- one that will be
+        # Submit two jobs to each of up to two active pools -- one that will be
         # running or waiting for the duration of this test, and another that will complete
         jobs = []
         name = str(util.make_temporal_uuid())
         pools, _ = util.active_pools(self.cook_url)
+        # Running this for the first two pools only is enough
+        pools = pools[:2]
         start = util.current_milli_time()
         sleep_command = f'sleep {util.DEFAULT_TEST_TIMEOUT_SECS}'
         for pool in pools:

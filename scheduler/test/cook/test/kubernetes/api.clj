@@ -186,4 +186,14 @@
 
       (is (= {:state :pod/waiting
               :reason "waiting"}
+             (api/pod->synthesized-pod-state pod)))))
+
+  (testing "pod failed phase"
+    (let [pod (V1Pod.)
+          pod-status (V1PodStatus.)]
+      (.setPhase pod-status "Failed")
+      (.setReason pod-status "SomeSillyReason")
+      (.setStatus pod pod-status)
+      (is (= {:state :pod/failed
+              :reason "SomeSillyReason"}
              (api/pod->synthesized-pod-state pod))))))

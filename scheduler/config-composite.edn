@@ -12,44 +12,50 @@
                         :authorization-fn cook.rest.authorization/configfile-admins-auth-open-gets
                         ;; users that are allowed to do things on behalf of others
                         :impersonators #{"poser" "other-impersonator"}}
- :mesos {:leader-path "/cook-scheduler"}
- :compute-clusters [{:factory-fn cook.mesos.mesos-compute-cluster/factory-fn
+ :container-defaults {:volumes [{:host-path "/tmp/cook-integration-mount"
+                                 :container-path "/mnt/cook-integration"
+                                 :mode "RW"}]}
+ :mesos {:leader-path "/cook-scheduler"
+         ; because the minikube users and the local users may have different IDs, tests that require file permissions
+         ; (like test_default_container_volumes) will fail without this set.
+         :run-as-user "root"}
+ :compute-clusters [{:factory-fn cook.kubernetes.compute-cluster/factory-fn
+                     :config {:compute-cluster-name "minikube"
+                              ;; Location of the kubernetes config file. Hardcoded to the location specified by bin/make-gke-test-cluster
+                              :config-file "../scheduler/.cook_kubeconfig_1"}}
+                    {:factory-fn cook.kubernetes.compute-cluster/factory-fn
+                     :config {:compute-cluster-name "minikube-2"
+                              ;; Location of the kubernetes config file. Hardcoded to the location specified by bin/make-gke-test-cluster
+                              :config-file "../scheduler/.cook_kubeconfig_2"}}
+                    {:factory-fn cook.mesos.mesos-compute-cluster/factory-fn
                      :config {:failover-timeout-ms nil ; When we close the instance of Cook, all its tasks are killed by Mesos
                               :master #config/env "MESOS_MASTER"
                               :framework-id #config/env "COOK_FRAMEWORK_ID"
-                              :compute-cluster-name "local-mesos"
-                              :container-defaults {:volumes [{:host-path "/tmp/cook-integration-mount"
-                                                              :container-path "/mnt/cook-integration"
-                                                              :mode "RW"}]}}}]
+                              :compute-cluster-name "local-mesos"}}]
  :cors-origins ["https?://cors.example.com"]
  :data-local {:fitness-calculator {:cache-ttl-ms 60000
                                    :cost-endpoint #config/env "DATA_LOCAL_ENDPOINT"
                                    :update-interval-ms 1000}}
  :database {:datomic-uri #config/env "COOK_DATOMIC_URI"}
- :executor {:command #config/env "COOK_EXECUTOR_COMMAND"
-            :environment {"EXECUTOR_DEFAULT_PROGRESS_OUTPUT_NAME" "stdout"}
-            :portion #config/env-int "COOK_EXECUTOR_PORTION"
-            :uri {:cache false
-                  :executable false
-                  :extract true
-                  :value #config/env "COOK_EXECUTOR"}}
  :plugins {:job-submission-validator {:batch-timeout-seconds 40
                                       :factory-fns ["cook.plugins.demo-plugin/submission-factory"
                                                     "cook.plugins.demo-plugin/submission-factory2"]}
            :job-launch-filter {:age-out-last-seen-deadline-minutes 10
                                :age-out-first-seen-deadline-minutes 10000
                                :age-out-seen-count 10
-                               :factory-fn "cook.plugins.demo-plugin/launch-factory"}
-           :job-adjuster {:factory-fn "cook.plugins.demo-plugin/adjuster-factory"}}
+                               :factory-fn "cook.plugins.demo-plugin/launch-factory"}}
  :hostname #config/env "COOK_HOSTNAME"
+ :kubernetes {:disallowed-container-paths #{"/mnt/bad"}
+              :disallowed-var-names #{"BADVAR"}}
  :log {:file #config/env "COOK_LOG_FILE"
        :levels {"datomic.db" :warn
                 "datomic.kv-cluster" :warn
                 "datomic.peer" :warn
                 "cook.scheduler.data-locality" :debug
                 "cook.mesos.fenzo-utils" :debug
-                "cook.mesos.rebalancer" :debug
-                "cook.mesos.scheduler" :debug
+                "cook.scheduler.rebalancer" :debug
+                "cook.scheduler.scheduler" :debug
+                "cook.kubernetes.compute-cluster" :debug
                 :default :info}}
  :metrics {:jmx true
            :user-metrics-interval-seconds 60}
