@@ -224,7 +224,10 @@
 
   (restore-offers [this pool-name offers])
 
-  (container-defaults [_] {}))
+  (container-defaults [_]
+    ; We don't currently support specifying
+    ; container defaults for k8s compute clusters
+    {}))
 
 (defn get-or-create-cluster-entity-id
   [conn compute-cluster-name]
