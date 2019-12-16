@@ -44,6 +44,9 @@
   (restore-offers [this pool-name offers]
     "Called when offers are not processed to ensure they're still available.")
 
+  (use-cook-executor? [this]
+    "Returns true if this compute cluster makes use of the Cook executor for running tasks")
+
   (container-defaults [this]
     "Default values to use for containers launched in this compute cluster"))
 

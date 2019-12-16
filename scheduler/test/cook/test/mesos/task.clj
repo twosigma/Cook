@@ -348,6 +348,7 @@
                         :value "file:///path/to/cook-executor"}}
         mesos-run-as-user nil]
     (with-redefs [cook.config/executor-config (constantly executor)
+                  cc/use-cook-executor? (constantly true)
                   cc/container-defaults (constantly {})]
       (testing "custom-executor with simple job"
         (let [task-id (str (UUID/randomUUID))

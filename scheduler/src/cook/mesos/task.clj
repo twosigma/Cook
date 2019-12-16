@@ -131,7 +131,8 @@
   (let [container (->> job-ent
                        util/job-ent->container
                        (merge-container-defaults compute-cluster))
-        cook-executor? (use-cook-executor? job-ent)
+        cook-executor? (and (cc/use-cook-executor? compute-cluster)
+                            (use-cook-executor? job-ent))
         executor-key (job->executor-key job-ent)
         executor (executor-key->executor executor-key)
         resources (util/job-ent->resources job-ent)

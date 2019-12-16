@@ -286,6 +286,8 @@
     (async/go
       (async/>! (pool->offers-chan pool-name) offers)))
 
+  (use-cook-executor? [_] true)
+
   (container-defaults [_]
     container-defaults))
 

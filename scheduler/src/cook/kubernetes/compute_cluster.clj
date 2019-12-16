@@ -224,6 +224,8 @@
 
   (restore-offers [this pool-name offers])
 
+  (use-cook-executor? [_] false)
+
   (container-defaults [_]
     ; We don't currently support specifying
     ; container defaults for k8s compute clusters
