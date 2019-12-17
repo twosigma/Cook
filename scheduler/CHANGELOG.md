@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.36.2] - 2019-12-17
+### Fixed
+- Avoid using Cook executor when launching on k8s, from @dposada
+### Changed
+- Made container defaults be compute-cluster specific, from @dposada
+- Added mapping for the Failed pod phase on k8s, from @dposada
+
 ## [1.36.1] - 2019-12-05
 ### Changed
 - Reverted a change that added unexpectedly expensive logging, from @scrosby
