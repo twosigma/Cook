@@ -35,13 +35,16 @@
  :hostname #config/env "COOK_HOSTNAME"
  :kubernetes {:disallowed-container-paths #{"/mnt/bad"}
               :disallowed-var-names #{"BADVAR"}
+              :init-container {:command "pwd; ls -la; echo test test | tee cook-init; ls -la"
+                               :image "byrnedo/alpine-curl:latest"}
               :sandbox-fileserver {:command "fileserver"
                                    :image "twosigma/cook-fileserver:latest"
                                    :port 23906
                                    :resource-requirements {:cpu-request 0.1
                                                            :cpu-limit 0.1
                                                            :memory-request 128.0
-                                                           :memory-limit 128.0}}}
+                                                           :memory-limit 128.0}}
+              :wrapper-script "/bin/sh -c "}
  :log {:file #config/env "COOK_LOG_FILE"
        :levels {"datomic.db" :warn
                 "datomic.kv-cluster" :warn
