@@ -215,7 +215,7 @@
 
 (defrecord MesosComputeCluster [compute-cluster-name framework-id db-id driver-atom
                                 sandbox-syncer-state exit-code-syncer-state mesos-heartbeat-chan
-                                trigger-chans mesos-config pool->offers-chan]
+                                trigger-chans mesos-config pool->offers-chan container-defaults]
   cc/ComputeCluster
   (compute-cluster-name [this]
     compute-cluster-name)
@@ -284,7 +284,12 @@
 
   (restore-offers [this pool-name offers]
     (async/go
-      (async/>! (pool->offers-chan pool-name) offers))))
+      (async/>! (pool->offers-chan pool-name) offers)))
+
+  (use-cook-executor? [_] true)
+
+  (container-defaults [_]
+    container-defaults))
 
 ; Internal method
 (defn- mesos-cluster->compute-cluster-map-for-datomic
@@ -333,7 +338,8 @@
            principal
            role
            framework-name
-           gpu-enabled?]}
+           gpu-enabled?
+           container-defaults]}
    {:keys [exit-code-syncer-state
            mesos-agent-query-cache
            mesos-heartbeat-chan
@@ -371,7 +377,8 @@
                                                        mesos-heartbeat-chan
                                                        trigger-chans
                                                        mesos-config
-                                                       pool->offer-chan)]
+                                                       pool->offer-chan
+                                                       container-defaults)]
       (log/info "Registering compute cluster" mesos-compute-cluster)
       (cc/register-compute-cluster! mesos-compute-cluster)
       mesos-compute-cluster)
