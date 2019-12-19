@@ -921,11 +921,16 @@ class MultiUserCookTest(util.CookTest):
     def test_pool_mover_plugin(self):
         pool = os.getenv('COOK_TEST_POOL_MOVER_POOL')
         user = os.getenv('COOK_TEST_POOL_MOVER_USER')
+        if not pool or not user:
+            self.skipTest('Requires COOK_TEST_POOL_MOVER_POOL and COOK_TEST_POOL_MOVER_USER environment variables')
+
         plugins = settings_dict['plugins']
         pool_config = plugins.get('pool-mover', {}).get(pool, {})
+        self.logger.info(f'Pool mover config for {pool} is: {json.dumps(pool_config, indent=2)}')
         portion = pool_config.get('users', {}).get(user, {}).get('portion', 0)
-        if portion != 0.5:
-            self.skipTest(f'Requires pool mover plugin for {user} in {pool} pool to have portion == 0.5')
+        self.logger.info(f'Pool mover plugin for {user} in {pool} pool has portion {portion}')
+        if portion < 0.5:
+            self.skipTest(f'Requires pool mover plugin for {user} in {pool} pool to have portion >= 0.5')
 
         with self.user_factory.specific_user(user):
             def submit_job():
@@ -935,5 +940,9 @@ class MultiUserCookTest(util.CookTest):
                 self.logger.info(json.dumps(job, indent=2))
                 return job
 
-            util.wait_until(submit_job, lambda j: pool_config['destination-pool'] == j['pool'])
-            util.wait_until(submit_job, lambda j: pool == j['pool'])
+            destination_pool = pool_config['destination-pool']
+            self.logger.info(f'Waiting for pool to get moved to {destination_pool}')
+            util.wait_until(submit_job, lambda j: destination_pool == j['pool'])
+            if portion == 0.5:
+                self.logger.info(f'Waiting for pool to not get moved')
+                util.wait_until(submit_job, lambda j: pool == j['pool'])
