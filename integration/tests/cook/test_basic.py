@@ -1822,7 +1822,7 @@ class CookTest(util.CookTest):
         num_hosts = util.num_hosts_to_consider(self.cook_url)
         group = {'uuid': str(util.make_temporal_uuid()),
                  'host-placement': {'type': 'unique'}}
-        job_spec = {'group': group['uuid'], 'command': 'sleep 600'}
+        job_spec = {'group': group['uuid'], 'command': f'sleep {util.DEFAULT_TEST_TIMEOUT_SECS}'}
         # Don't submit too many jobs for the test. If the cluster is larger than 9 hosts, only submit 10 jobs.
         num_jobs = min(num_hosts + 1, 10)
         uuids, resp = util.submit_jobs(self.cook_url, job_spec, num_jobs, groups=[group])
