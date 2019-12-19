@@ -269,7 +269,7 @@ class UserFactory(object):
         return self.user_class(name)
 
     def specific_user(self, name):
-        """TODO(DPO)"""
+        """Return the specific user provided"""
         return self.user_class(name)
 
 
