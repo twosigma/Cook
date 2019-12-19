@@ -924,7 +924,7 @@ class MultiUserCookTest(util.CookTest):
         if not pool or not user:
             self.skipTest('Requires COOK_TEST_POOL_MOVER_POOL and COOK_TEST_POOL_MOVER_USER environment variables')
 
-        settings_dict = util.settings(cook_url)
+        settings_dict = util.settings(self.cook_url)
         plugins = settings_dict['plugins']
         pool_config = plugins.get('pool-mover', {}).get(pool, {})
         self.logger.info(f'Pool mover config for {pool} is: {json.dumps(pool_config, indent=2)}')
