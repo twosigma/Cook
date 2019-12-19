@@ -268,6 +268,10 @@ class UserFactory(object):
         name = os.getenv('COOK_IMPERSONATOR_USER_NAME', _default_impersonator_name)
         return self.user_class(name)
 
+    def specific_user(self, name):
+        """TODO(DPO)"""
+        return self.user_class(name)
+
 
 def multi_cluster_tests_enabled():
     """
@@ -1584,11 +1588,12 @@ def demo_plugins_are_configured(cook_url):
 
 
 @functools.lru_cache()
-def demo_job_adjuster_plugin_configured():
+def pool_mover_plugin_configured():
     cook_url = retrieve_cook_url()
     settings_dict = settings(cook_url)
-    configured = settings_dict['plugins'].get('job-adjuster', {}).get('factory-fn') == \
-                 "cook.plugins.demo-plugin/adjuster-factory"
+    plugins = settings_dict['plugins']
+    configured = plugins.get('job-adjuster', {}).get('factory-fn') == \
+                 'cook.plugins.pool-mover/make-pool-mover-job-adjuster'
     return configured
 
 
@@ -1709,8 +1714,8 @@ def reset_share_and_quota(cook_url, user):
 def rebalancer_interval_seconds():
     interval_seconds = rebalancer_settings().get('interval-seconds', 0)
     return interval_seconds
-                     
-                     
+
+
 def job_progress_is_present(job, progress):
     present = any(i['progress'] == progress for i in job['instances'])
     if not present:

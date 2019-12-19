@@ -2874,16 +2874,3 @@ class CookTest(util.CookTest):
                             resp.text)
         finally:
             util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
-
-    @unittest.skipUnless(util.demo_job_adjuster_plugin_configured(), 'Requires the "demo" job adjuster plugin')
-    def test_job_adjuster_plugin(self):
-        job_uuid, resp = util.submit_job(self.cook_url)
-        self.assertEqual(resp.status_code, 201, resp.content)
-        try:
-            job = util.load_job(self.cook_url, job_uuid)
-            self.logger.info(json.dumps(job, indent=2))
-            self.assertIn('labels', job)
-            self.assertIn('demo-add-label-job-adjuster', job['labels'])
-            self.assertEqual('', job['labels']['demo-add-label-job-adjuster'])
-        finally:
-            util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)

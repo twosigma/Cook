@@ -916,3 +916,24 @@ class MultiUserCookTest(util.CookTest):
                 self.assertFalse('group/job' in job_group.keys())
         finally:
             util.kill_jobs(self.cook_url, uuids)
+
+    @unittest.skipUnless(util.pool_mover_plugin_configured(), 'Requires the "pool mover" job adjuster plugin')
+    def test_pool_mover_plugin(self):
+        pool = os.getenv('COOK_TEST_POOL_MOVER_POOL')
+        user = os.getenv('COOK_TEST_POOL_MOVER_USER')
+        plugins = settings_dict['plugins']
+        pool_config = plugins.get('pool-mover', {}).get(pool, {})
+        portion = pool_config.get('users', {}).get(user, {}).get('portion', 0)
+        if portion != 0.5:
+            self.skipTest(f'Requires pool mover plugin for {user} in {pool} pool to have portion == 0.5')
+
+        with self.user_factory.specific_user(user):
+            def submit_job():
+                job_uuid, resp = util.submit_job(self.cook_url, pool=pool)
+                self.assertEqual(resp.status_code, 201, resp.content)
+                job = util.load_job(self.cook_url, job_uuid)
+                self.logger.info(json.dumps(job, indent=2))
+                return job
+
+            util.wait_until(submit_job, lambda j: pool_config['destination-pool'] == j['pool'])
+            util.wait_until(submit_job, lambda j: pool == j['pool'])
