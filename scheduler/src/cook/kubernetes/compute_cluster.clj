@@ -272,7 +272,14 @@
                    (count task-requests) "un-matched task(s) in" pool-name "pool"))))
 
   (last-autoscale-time [_]
-    @last-autoscale-atom))
+    @last-autoscale-atom)
+
+  (use-cook-executor? [_] false)
+
+  (container-defaults [_]
+    ; We don't currently support specifying
+    ; container defaults for k8s compute clusters
+    {}))
 
 (defn get-or-create-cluster-entity-id
   [conn compute-cluster-name]

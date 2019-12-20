@@ -51,7 +51,13 @@
     "TODO(DPO)")
 
   (last-autoscale-time [this]
-    "TODO(DPO)"))
+    "TODO(DPO)")
+
+  (use-cook-executor? [this]
+    "Returns true if this compute cluster makes use of the Cook executor for running tasks")
+
+  (container-defaults [this]
+    "Default values to use for containers launched in this compute cluster"))
 
 (defn safe-kill-task
   "A safe version of kill task that never throws. This reduces the risk that errors in one compute cluster propagate and cause problems in another compute cluster."

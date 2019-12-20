@@ -1305,6 +1305,9 @@ def is_cook_executor_in_use():
             logger.info('Using mesos executor (cook executor is configured, but so is HTTP basic auth, and they are '
                         'incompatible)')
             return False
+        elif using_kubernetes():
+            logger.info('Not using cook executor (it is configured, but we are using k8s)')
+            return False
         else:
             logger.info('Using cook executor as configured')
             return True
