@@ -472,7 +472,7 @@
   (getSoftConstraints [_] [])
   (taskGroupName [_] (str (:job/uuid job))))
 
-(def adjust-job-resources-for-pool-fn
+(defn- adjust-job-resources-for-pool-fn
   (memoize
     (fn [pool-name]
       (if-let [{:keys [pool-regex adjust-job-resources-fn]} (config/job-resource-adjustments)]

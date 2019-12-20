@@ -1,10 +1,11 @@
 (ns cook.kubernetes.controller
   (:require [clojure.tools.logging :as log]
+            [cook.config :as config]
             [cook.datomic :as datomic]
             [cook.kubernetes.api :as api]
             [cook.mesos.sandbox :as sandbox]
             [cook.scheduler.scheduler :as scheduler]
-            [cook.config :as config]
+            [cook.util :as util]
             [clojure.string :as str])
   (:import (clojure.lang IAtom)
            (io.kubernetes.client.models V1Pod V1ContainerStatus V1PodStatus)
@@ -143,6 +144,11 @@
     (write-status-to-datomic kcc status)
     {:expected-state :expected/running}))
 
+(def pod-ip->hostname-fn-resolved
+  (if-let [{:keys [pod-ip->hostname-fn]} (config/kubernetes)]
+    (util/lazy-load-var pod-ip->hostname-fn)
+    identity))
+
 (defn record-sandbox-url
   "Record the sandbox file server URL in datomic."
   [{:keys [pod]}]
@@ -152,7 +158,10 @@
         sandbox-fileserver-port (:port sandbox-fileserver)
         sandbox-url (try
                       (when (and sandbox-fileserver-port (not (str/blank? pod-ip)))
-                        (str "http://" pod-ip ":" sandbox-fileserver-port "/files/read.json?path="
+                        (str "http://"
+                             (pod-ip->hostname-fn-resolved pod-ip)
+                             ":" sandbox-fileserver-port
+                             "/files/read.json?path="
                              (URLEncoder/encode default-workdir "UTF-8")))
                       (catch Exception e
                         (log/debug e "Unable to retrieve directory path for" task-id)
