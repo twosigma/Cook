@@ -1015,7 +1015,7 @@ def wait_for_instance(cook_url, job_uuid, max_wait_ms=DEFAULT_TIMEOUT_MS, wait_i
 
     job = wait_until(lambda: load_job(cook_url, job_uuid), lambda j: len(instances_with_status(j)) >= 1,
                      max_wait_ms=max_wait_ms, wait_interval_ms=wait_interval_ms)
-    instance = job['instances'][0]
+    instance = instances_with_status(job)[0]
     instance['parent'] = job
     return instance
 
