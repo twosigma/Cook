@@ -1,5 +1,6 @@
 (ns cook.plugins.pool-mover
   (:require [clojure.tools.logging :as log]
+            [cook.config :as config]
             [cook.plugins.definitions :as chd]
             [cook.tools :as util]
             [datomic.api :as d]
@@ -10,12 +11,12 @@
 (defrecord PoolMoverJobAdjuster [pool-mover-config]
   chd/JobAdjuster
   (adjust-job [_ {:keys [job/uuid job/pool] :as job-txn} db]
-    (let [submission-pool (-> db (d/entity pool) :pool/name)]
+    (let [submission-pool (-> db (d/entity pool) :pool/name (or (config/default-pool)))]
       (if-let [{:keys [users destination-pool]} (get pool-mover-config submission-pool)]
         (let [user (util/job-ent->user job-txn)]
           (if-let [{:keys [portion]} (get users user)]
             (if (and (number? portion)
-                       (> (* portion 100) (-> uuid hash (mod 100))))
+                     (> (* portion 100) (-> uuid hash (mod 100))))
               (try
                 (log/info "Moving job" uuid "(" user ") from" submission-pool "pool to"
                           destination-pool "pool due to pool-mover configuration")
