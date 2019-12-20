@@ -144,22 +144,17 @@
     (write-status-to-datomic kcc status)
     {:expected-state :expected/running}))
 
-(def pod-ip->hostname-fn-resolved
-  (if-let [{:keys [pod-ip->hostname-fn]} (config/kubernetes)]
-    (util/lazy-load-var pod-ip->hostname-fn)
-    identity))
-
 (defn record-sandbox-url
   "Record the sandbox file server URL in datomic."
   [{:keys [pod]}]
   (let [task-id (-> pod .getMetadata .getName)
         pod-ip (-> pod .getStatus .getPodIP)
-        {:keys [default-workdir sandbox-fileserver]} (config/kubernetes)
+        {:keys [default-workdir sandbox-fileserver pod-ip->hostname-fn]} (config/kubernetes)
         sandbox-fileserver-port (:port sandbox-fileserver)
         sandbox-url (try
                       (when (and sandbox-fileserver-port (not (str/blank? pod-ip)))
                         (str "http://"
-                             (pod-ip->hostname-fn-resolved pod-ip)
+                             (pod-ip->hostname-fn pod-ip)
                              ":" sandbox-fileserver-port
                              "/files/read.json?path="
                              (URLEncoder/encode default-workdir "UTF-8")))

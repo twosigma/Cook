@@ -60,8 +60,8 @@
  :nrepl {:enabled? true
          :port #config/env-int "COOK_NREPL_PORT"}
  :pools {:default "k8s-alpha"
-         :job-resource-adjustment {:pool-regex #config/regex "^k8s-.+"
-                                   :adjust-job-resources-fn cook.kubernetes.api/adjust-job-resources-fn}}
+         :job-resource-adjustment {:adjust-job-resources-fn cook.kubernetes.api/adjust-job-resources-fn
+                                   :pool-regex "^k8s-.+"}}
  :port #config/env-int "COOK_PORT"
  :ssl {:port #config/env-int "COOK_SSL_PORT"
        :keystore-path #config/env "COOK_KEYSTORE_PATH"

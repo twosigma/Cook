@@ -49,8 +49,7 @@
                                   (Integer/parseInt value)
                                   default))
       'config/env-int #(Integer/parseInt (env %))
-      'config/env-bool #(Boolean/valueOf (env %))
-      'config/regex (fn [expr] (re-pattern expr))}}
+      'config/env-bool #(Boolean/valueOf (env %))}}
     config))
 
 (defn init-logger
@@ -131,6 +130,10 @@
       calculator
       (throw (IllegalArgumentException.
                (str config-string " is not a VMTaskFitnessCalculator"))))))
+
+(defn- resolve-optional-function
+  [function-symbol default-function]
+  (if function-symbol (util/lazy-load-var function-symbol) default-function))
 
 (def config-settings
   "Parses the settings out of a config file"
@@ -394,7 +397,12 @@
                        ((util/lazy-load-var 'clojure.tools.nrepl.server/start-server) :port port)))
 
      :pools (fnk [[:config {pools nil}]]
-              pools)
+              (cond-> pools
+                (:job-resource-adjustment pools)
+                (update :job-resource-adjustment
+                        #(-> %
+                           (update :pool-regex re-pattern)
+                           (update :adjust-job-resources-fn resolve-optional-function identity)))))
 
      :api-only? (fnk [[:config {api-only? false}]]
                   api-only?)
@@ -430,8 +438,8 @@
                                   :default-pool "no-pool"}
                                  pool-selection)})))
      :kubernetes (fnk [[:config {kubernetes {}}]]
-                   (merge kubernetes
-                          {:default-workdir "/mnt/sandbox"}))}))
+                   (let [kubernetes (merge {:default-workdir "/mnt/sandbox"} kubernetes)]
+                     (update kubernetes :pod-ip->hostname-fn resolve-optional-function identity)))}))
 
 (defn read-config
   "Given a config file path, reads the config and returns the map"

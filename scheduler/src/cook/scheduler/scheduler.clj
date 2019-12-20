@@ -476,9 +476,7 @@
   (memoize
     (fn [pool-name]
       (if-let [{:keys [pool-regex adjust-job-resources-fn]} (config/job-resource-adjustments)]
-        (if (re-matches pool-regex pool-name)
-          (util/lazy-load-var adjust-job-resources-fn)
-          identity)
+        (if (re-matches pool-regex pool-name) adjust-job-resources-fn identity)
         identity))))
 
 (defn make-task-request
