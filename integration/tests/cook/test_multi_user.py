@@ -669,11 +669,11 @@ class MultiUserCookTest(util.CookTest):
 
     def test_instance_stats_success(self):
         name = str(util.make_temporal_uuid())
-        job_uuid_1, resp = util.submit_job(self.cook_url, command='exit 0', name=name, cpus=0.1, mem=32)
+        job_uuid_1, resp = util.submit_job(self.cook_url, command='exit 0', name=name, cpus=0.10, mem=32)
         self.assertEqual(resp.status_code, 201, msg=resp.content)
-        job_uuid_2, resp = util.submit_job(self.cook_url, command='sleep 1', name=name, cpus=0.2, mem=64)
+        job_uuid_2, resp = util.submit_job(self.cook_url, command='sleep 1', name=name, cpus=0.11, mem=33)
         self.assertEqual(resp.status_code, 201, msg=resp.content)
-        job_uuid_3, resp = util.submit_job(self.cook_url, command='sleep 2', name=name, cpus=0.4, mem=128)
+        job_uuid_3, resp = util.submit_job(self.cook_url, command='sleep 2', name=name, cpus=0.12, mem=34)
         self.assertEqual(resp.status_code, 201, msg=resp.content)
         job_uuids = [job_uuid_1, job_uuid_2, job_uuid_3]
         try:
