@@ -1242,12 +1242,23 @@ class CookTest(util.CookTest):
             resp = util.retry_jobs(self.cook_url, retries=4, failed_only=True, jobs=jobs)
             self.assertEqual(201, resp.status_code, resp.text)
             jobs = util.query_jobs(self.cook_url, True, uuid=jobs).json()
-            # We expect both jobs to be running now.
-            # The first job (which we killed and retried) should have 3 retries remaining
-            # (the attempt before resetting the total retries count is still included).
-            job_details = f"Job details: {json.dumps(jobs[0], sort_keys=True)}"
+            # We expect both jobs to be waiting or running now.
+            job_details = f"Job details: {json.dumps(jobs[0], sort_keys=True, indent=2)}"
+            self.logger.info(job_details)
             self.assertIn(jobs[0]['status'], ['waiting', 'running'], job_details)
-            self.assertEqual(3, jobs[0]['retries_remaining'], job_details)
+            non_mea_culpa_failure_exists = any(not i['reason_mea_culpa'] for i in jobs[0]['instances'])
+            if non_mea_culpa_failure_exists:
+                self.logger.info(f'Job {job_uuid} has a non-mea-culpa failure (because we killed it)')
+                # There was a non-mea-culpa failure on the first job, so:
+                # The first job (which we killed and retried) should have 3 retries remaining
+                # (the attempt before resetting the total retries count is still included).
+                self.assertEqual(3, jobs[0]['retries_remaining'], job_details)
+            else:
+                self.logger.info(f'Job {job_uuid} does not have a non-mea-culpa failure')
+                # There was no non-mea-culpa failure on the first job, so:
+                # We should now have the full 4 retries that we asked for.
+                self.assertEqual(4, jobs[0]['retries_remaining'], job_details)
+
             # The second job (which started with the default 1 retries)
             # should have 1 remaining since the failed_only flag was set.
             job_details = f"Job details: {json.dumps(jobs[1], sort_keys=True)}"

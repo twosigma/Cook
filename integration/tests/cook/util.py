@@ -423,7 +423,7 @@ def docker_image():
 
 
 def get_default_cpus():
-    return float(os.getenv('COOK_DEFAULT_JOB_CPUS', 1.0))
+    return float(os.getenv('COOK_DEFAULT_JOB_CPUS', 0.5))
 
 
 def make_temporal_uuid():
