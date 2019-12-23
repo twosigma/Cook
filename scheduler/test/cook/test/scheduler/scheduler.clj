@@ -1583,7 +1583,8 @@
                                             mesos-run-as-user nil
                                             result (sched/handle-resource-offers!
                                                      conn fenzo pool-name->pending-jobs-atom mesos-run-as-user
-                                                     user->usage user->quota num-considerable offers rebalancer-reservation-atom pool)]
+                                                     user->usage user->quota num-considerable offers
+                                                     rebalancer-reservation-atom pool nil)]
                                         (async/>!! offers-chan :end-marker)
                                         result))]
     (with-redefs [cook.config/executor-config (constantly executor)]
@@ -1844,7 +1845,8 @@
                                               mesos-run-as-user nil
                                               result (sched/handle-resource-offers!
                                                        conn fenzo pool-name->pending-jobs-atom mesos-run-as-user
-                                                       user->usage user->quota num-considerable offers rebalancer-reservation-atom :normal)]
+                                                       user->usage user->quota num-considerable offers
+                                                       rebalancer-reservation-atom :normal nil)]
                                           result))]
       (testing "enough offers for all normal jobs"
         (let [num-considerable 10
