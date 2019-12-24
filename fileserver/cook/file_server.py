@@ -76,7 +76,7 @@ def try_parse_int(param_name, val):
 
 
 @app.route('/files/read')
-@app.route('/files/read.json')
+@app.route('/files/read.json')# FIXME DO NOT COMMIT THIS!! need to limit max length
 def read():
     path = request.args.get('path')
     offset_param = request.args.get('offset')
