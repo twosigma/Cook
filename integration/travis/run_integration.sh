@@ -125,7 +125,7 @@ FLASK_APP=${PROJECT_DIR}/src/data_locality/service.py flask run --port=${DATA_LO
 
 # Seed running jobs, which are used to test the task reconciler
 cd ${SCHEDULER_DIR}
-lein exec -p datomic/data/seed_running_jobs.clj ${COOK_DATOMIC_URI_1}
+COOK_FRAMEWORK_ID=cook-framework-1 lein exec -p datomic/data/seed_running_jobs.clj ${COOK_DATOMIC_URI_1}
 
 # Start three cook schedulers.
 # We want one cluster with two cooks to run MasterSlaveTest, and a second cluster to run MultiClusterTest.
@@ -136,6 +136,7 @@ export COOK_EXECUTOR_COMMAND=${COOK_EXECUTOR_COMMAND}
 if [[ ! -z "${COOK_TEST_DOCKER_IMAGE}" ]]; then
     export COOK_TEST_DOCKER_IMAGE=${COOK_TEST_DOCKER_IMAGE}
 fi
+
 # Start one cook listening on port 12321, this will be the master of the "cook-framework-1" framework
 LIBPROCESS_IP=172.17.0.1 COOK_DATOMIC="${COOK_DATOMIC_URI_1}" COOK_PORT=12321 COOK_SSL_PORT=12322 COOK_FRAMEWORK_ID=cook-framework-1 COOK_LOGFILE="log/cook-12321.log" COOK_DEFAULT_POOL=${DEFAULT_POOL} lein run ${PROJECT_DIR}/travis/${CONFIG_FILE} &
 # Start a second cook listening on port 22321, this will be the master of the "cook-framework-2" framework

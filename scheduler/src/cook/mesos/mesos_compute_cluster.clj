@@ -105,7 +105,7 @@
         (future
           (try
             (sched/reconcile-jobs conn)
-            (sched/reconcile-tasks (d/db conn) driver pool->fenzo)
+            (sched/reconcile-tasks (d/db conn) compute-cluster driver pool->fenzo)
             (catch Exception e
               (log/error e "Reconciliation error")))))
       (reregistered
@@ -114,7 +114,7 @@
         (future
           (try
             (sched/reconcile-jobs conn)
-            (sched/reconcile-tasks (d/db conn) driver pool->fenzo)
+            (sched/reconcile-tasks (d/db conn) compute-cluster driver pool->fenzo)
             (catch Exception e
               (log/error e "Reconciliation error")))))
       ;; Ignore this--we can just wait for new offers
@@ -292,7 +292,7 @@
     container-defaults))
 
 ; Internal method
-(defn- mesos-cluster->compute-cluster-map-for-datomic
+(defn mesos-cluster->compute-cluster-map-for-datomic
   "Given a mesos cluster dictionary, determine the datomic entity it should correspond to."
   [{:keys [compute-cluster-name framework-id]}]
   {:compute-cluster/type :compute-cluster.type/mesos
