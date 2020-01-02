@@ -427,7 +427,7 @@ def docker_image():
 
 
 def get_default_cpus():
-    return float(os.getenv('COOK_DEFAULT_JOB_CPUS', 1.0))
+    return float(os.getenv('COOK_DEFAULT_JOB_CPUS', 0.5))
 
 
 def make_temporal_uuid():
@@ -1350,13 +1350,19 @@ def max_mesos_slave_cpus(mesos_url):
 
 
 @functools.lru_cache()
-def get_kubernetes_compute_cluster():
+def get_kubernetes_compute_clusters():
     cook_url = retrieve_cook_url()
     _wait_for_cook(cook_url)
     init_cook_session(cook_url)
     compute_clusters = settings(cook_url)['compute-clusters']
     kubernetes_compute_clusters = [cc for cc in compute_clusters
                                    if cc['factory-fn'] == 'cook.kubernetes.compute-cluster/factory-fn']
+    return kubernetes_compute_clusters
+
+
+@functools.lru_cache()
+def get_kubernetes_compute_cluster():
+    kubernetes_compute_clusters = get_kubernetes_compute_clusters()
     if len(kubernetes_compute_clusters) > 0:
         return kubernetes_compute_clusters[0]
     else:

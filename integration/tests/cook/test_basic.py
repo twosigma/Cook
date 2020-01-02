@@ -2877,3 +2877,26 @@ class CookTest(util.CookTest):
                             resp.text)
         finally:
             util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
+
+    @unittest.skipUnless(util.using_kubernetes(), 'Test requires kubernetes')
+    def test_max_pods_per_node(self):
+        k8s_compute_clusters = util.get_kubernetes_compute_clusters()
+        max_pods_per_node_values = set(c['config'].get('max-pods-per-node') for c in k8s_compute_clusters)
+        if len(max_pods_per_node_values) > 1:
+            self.skipTest('Test requires all k8s compute clusters to have the same max-pods-per-node')
+
+        max_pods_per_node = list(max_pods_per_node_values)[0] or 32
+        job_count = max_pods_per_node + 1
+        self.logger.info(f'Submitting {job_count} jobs')
+        sleep_command = f'sleep {util.DEFAULT_TEST_TIMEOUT_SECS}'
+        job_resources = {'cpus': 0.05, 'mem': 16}
+        job_specs = util.minimal_jobs(job_count, command=sleep_command, **job_resources)
+        job_uuids, resp = util.submit_jobs(self.cook_url, job_specs)
+        self.assertEqual(resp.status_code, 201, resp.content)
+        try:
+            util.wait_for_jobs_in_statuses(self.cook_url, job_uuids, ['running', 'completed'])
+            hosts = [util.wait_for_instance(self.cook_url, j)['hostname'] for j in job_uuids]
+            host_count = Counter(hosts)
+            self.assertLessEqual(2, len(host_count), hosts)
+        finally:
+            util.kill_jobs(self.cook_url, job_uuids)
