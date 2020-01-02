@@ -100,7 +100,7 @@ class CookTest(util.CookTest):
     def test_output_url(self):
         job_executor_type = util.get_job_executor_type()
         job_uuid, resp = util.submit_job(self.cook_url,
-                                         command='echo foo ; echo bar ; echo baz ; sleep 600',
+                                         command='echo foobarbaz ; sleep 600',
                                          executor=job_executor_type)
         try:
             output_url = util.wait_for_output_url(self.cook_url, job_uuid)['output_url']
@@ -114,9 +114,9 @@ class CookTest(util.CookTest):
             self.assertEqual(200, resp.status_code)
             self.assertIn('data', resp_json)
             self.assertIn('offset', resp_json)
-            self.assertIn('foo\nbar\nbaz\n', resp_json['data'])
+            self.assertIn('foobarbaz\n', resp_json['data'])
             self.assertEqual(0, resp_json['offset'])
-            index = resp_json['data'].index('foo\nbar\nbaz\n')
+            index = resp_json['data'].index('foobarbaz\n')
             self.assertLessEqual(0, index)
 
             # offset = 0, with length
@@ -126,29 +126,29 @@ class CookTest(util.CookTest):
             self.assertEqual(200, resp.status_code)
             self.assertIn('data', resp_json)
             self.assertIn('offset', resp_json)
-            self.assertNotIn('foo\nbar\nbaz\n', resp_json['data'])
+            self.assertNotIn('foobarbaz\n', resp_json['data'])
             self.assertEqual(0, resp_json['offset'])
 
             # offset > 0, no length
-            offset = index + 4
+            offset = index + 3
             resp = util.session.get(f'{output_url}/stdout&offset={offset}')
             resp_json = resp.json()
             self.logger.info(json.dumps(resp_json, indent=2))
             self.assertEqual(200, resp.status_code)
             self.assertIn('data', resp_json)
             self.assertIn('offset', resp_json)
-            self.assertIn('bar\nbaz\n', resp_json['data'])
+            self.assertIn('barbaz\n', resp_json['data'])
             self.assertEqual(offset, resp_json['offset'])
-            self.assertEqual(0, resp_json['data'].index('bar\nbaz\n'))
+            self.assertEqual(0, resp_json['data'].index('barbaz\n'))
 
             # offset > 0, with length
-            resp = util.session.get(f'{output_url}/stdout&offset={offset}&length=4')
+            resp = util.session.get(f'{output_url}/stdout&offset={offset}&length=3')
             resp_json = resp.json()
             self.logger.info(json.dumps(resp_json, indent=2))
             self.assertEqual(200, resp.status_code)
             self.assertIn('data', resp_json)
             self.assertIn('offset', resp_json)
-            self.assertEqual('bar\n', resp_json['data'])
+            self.assertEqual('bar', resp_json['data'])
             self.assertEqual(offset, resp_json['offset'])
 
             # offset < 0 (returns no data + offset = total size)
