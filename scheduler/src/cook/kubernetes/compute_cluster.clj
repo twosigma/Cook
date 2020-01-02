@@ -22,31 +22,35 @@
 
 (defn schedulable-node-filter
   "Is a node schedulable?"
-  [node-name->node [node-name _]]
+  [node-name->node [node-name _] compute-cluster pods]
   (when-not (-> node-name node-name->node)
-    (log/error "Unable to get node from node name" node-name))
-  (-> node-name node-name->node api/node-schedulable?))
+    (log/error "In" (cc/compute-cluster-name compute-cluster)
+               "compute cluster, unable to get node from node name" node-name))
+  (-> node-name node-name->node (api/node-schedulable? (cc/max-tasks-per-host compute-cluster) pods)))
 
 
 (defn generate-offers
   "Given a compute cluster and maps with node capacity and existing pods, return a map from pool to offers."
   [compute-cluster node-name->node namespaced-pod-name->pod starting-namespaced-pod-name->pod]
   (let [node-name->capacity (api/get-capacity node-name->node)
-        node-name->consumed (api/get-consumption (merge namespaced-pod-name->pod
-                                                        starting-namespaced-pod-name->pod))
+        all-namespaced-pod-name->pod (merge namespaced-pod-name->pod starting-namespaced-pod-name->pod)
+        node-name->consumed (api/get-consumption all-namespaced-pod-name->pod)
         node-name->available (pc/map-from-keys (fn [node-name]
                                                  (merge-with -
                                                              (node-name->capacity node-name)
                                                              (node-name->consumed node-name)))
                                                (keys node-name->capacity))
-        compute-cluster-name (cc/compute-cluster-name compute-cluster)]
+        compute-cluster-name (cc/compute-cluster-name compute-cluster)
+        pods (vals all-namespaced-pod-name->pod)]
     (log/info "In" compute-cluster-name "compute cluster, capacity:" node-name->capacity)
     (log/info "In" compute-cluster-name "compute cluster, consumption:" node-name->consumed)
-    (log/info "In" compute-cluster-name "compute cluster, filtering out" (->> node-name->available
-                                                             (remove #(schedulable-node-filter node-name->node %))
-                                                             count) "nodes as not schedulable")
+    (log/info "In" compute-cluster-name "compute cluster, filtering out"
+              (->> node-name->available
+                   (remove #(schedulable-node-filter node-name->node % compute-cluster pods))
+                   count)
+              "nodes as not schedulable")
     (->> node-name->available
-         (filter #(schedulable-node-filter node-name->node %))
+         (filter #(schedulable-node-filter node-name->node % compute-cluster pods))
          (map (fn [[node-name available]]
                 {:id {:value (str (UUID/randomUUID))}
                  :framework-id compute-cluster-name
@@ -167,7 +171,7 @@
 
 (defrecord KubernetesComputeCluster [^ApiClient api-client name entity-id match-trigger-chan exit-code-syncer-state
                                      all-pods-atom current-nodes-atom expected-state-map existing-state-map
-                                     pool->fenzo-atom namespace-config scan-frequency-seconds-config]
+                                     pool->fenzo-atom namespace-config scan-frequency-seconds-config max-pods-per-node]
   cc/ComputeCluster
   (launch-tasks [this offers task-metadata-seq]
     (doseq [task-metadata task-metadata-seq]
@@ -229,7 +233,9 @@
   (container-defaults [_]
     ; We don't currently support specifying
     ; container defaults for k8s compute clusters
-    {}))
+    {})
+
+  (max-tasks-per-host [_] max-pods-per-node))
 
 (defn get-or-create-cluster-entity-id
   [conn compute-cluster-name]
@@ -306,11 +312,13 @@
            verifying-ssl
            bearer-token-refresh-seconds
            namespace
-           scan-frequency-seconds]
+           scan-frequency-seconds
+           max-pods-per-node]
     :or {bearer-token-refresh-seconds 300
          namespace {:kind :static
                     :namespace "cook"}
-         scan-frequency-seconds 120}}
+         scan-frequency-seconds 120
+         max-pods-per-node 32}}
    {:keys [exit-code-syncer-state
            trigger-chans]}]
   (let [conn cook.datomic/conn
@@ -323,6 +331,7 @@
                                                     (atom {})
                                                     (atom nil)
                                                     namespace
-                                                    scan-frequency-seconds)]
+                                                    scan-frequency-seconds
+                                                    max-pods-per-node)]
     (cc/register-compute-cluster! compute-cluster)
     compute-cluster))

@@ -289,7 +289,9 @@
   (use-cook-executor? [_] true)
 
   (container-defaults [_]
-    container-defaults))
+    container-defaults)
+
+  (max-tasks-per-host [_]))
 
 ; Internal method
 (defn mesos-cluster->compute-cluster-map-for-datomic
