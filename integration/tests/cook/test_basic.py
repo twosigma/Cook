@@ -102,14 +102,9 @@ class CookTest(util.CookTest):
                                          command='echo foobarbaz ; sleep 600',
                                          executor=job_executor_type)
         try:
-            # waiting for output_url on kubernetes might not be reliable if we're using (.getRunning state) for the file server container
             output_url = util.wait_for_output_url(self.cook_url, job_uuid)['output_url']
             self.logger.info(f'Output URL is {output_url}')
             self.assertTrue(len(output_url) > 0)
-
-            if util.using_kubernetes() and not util.to_bool(os.getenv('COOK_TEST_ALLOW_K8S_POD_CONNECTIONS')):
-                self.logger.info("Can't test output_url endpoint unless we can connect to kubernetes pod")
-                return
 
             # offset = 0, no length
             resp = util.session.get(f'{output_url}/stdout&offset=0')
@@ -176,6 +171,18 @@ class CookTest(util.CookTest):
             self.assertEqual(400, resp.status_code)
             self.assertIn('Failed to parse offset', resp.text)
 
+            # length not a valid number
+            resp = util.session.get(f'{output_url}/stdout&length=foo')
+            self.logger.info(resp.text)
+            self.assertEqual(400, resp.status_code)
+            self.assertIn('Failed to parse length', resp.text)
+
+            # length is negative
+            resp = util.session.get(f'{output_url}/stdout&length=-1')
+            self.logger.info(resp.text)
+            self.assertEqual(400, resp.status_code)
+            self.assertIn('Negative length provided', resp.text)
+
             # invalid path + offset not a valid number
             resp = util.session.get(f'{output_url}/{uuid.uuid4()}&offset=foo')
             self.logger.info(resp.text)
@@ -194,6 +201,63 @@ class CookTest(util.CookTest):
             self.logger.info(resp.text)
             self.assertEqual(400, resp.status_code)
             self.assertIn("Cannot read a directory", resp.text)
+
+            download_url = output_url.replace("files/browse", "files/download")
+
+            # download file
+            resp = util.session.get(f'{download_url}/stdout')
+            self.logger.info(resp.text)
+            self.assertEqual(200, resp.status_code)
+            self.assertIn('foo\nbar\nbaz\n', resp.text)
+
+            # download file - invalid path
+            resp = util.session.get(f'{download_url}/{uuid.uuid4()}')
+            self.logger.info(resp.text)
+            self.assertEqual(404, resp.status_code)
+
+            # download file - no path
+            url = urlparse(download_url)
+            resp = util.session.get(f'http://{url.netloc}{url.path}')
+            self.logger.info(resp.text)
+            self.assertEqual(400, resp.status_code)
+            self.assertIn("Expecting 'path=value'", resp.text)
+
+            # download file - path is a folder
+            resp = util.session.get(f'{download_url}/')
+            self.logger.info(resp.text)
+            self.assertEqual(400, resp.status_code)
+            self.assertIn("Cannot download a directory", resp.text)
+
+            browse_url = output_url.replace("files/browse", "files/browse")
+
+            # browse - invalid path
+            resp = util.session.get(f'{browse_url}/{uuid.uuid4()}')
+            self.logger.info(resp.text)
+            self.assertEqual(404, resp.status_code)
+
+            # browse - no path
+            url = urlparse(browse_url)
+            resp = util.session.get(f'http://{url.netloc}{url.path}')
+            self.logger.info(resp.text)
+            self.assertEqual(400, resp.status_code)
+            self.assertIn("Expecting 'path=value'", resp.text)
+
+            # browse
+            resp = util.session.get(f'{browse_url}/')
+            resp_json = resp.json()
+            self.logger.info(json.dumps(resp_json, indent=2))
+            self.assertEqual(200, resp.status_code)
+            self.assertEqual(1, len(resp_json))
+            file_record = resp_json[0]
+            self.assertIn('gid', file_record)
+            self.assertIn('mode', file_record)
+            self.assertIn('mtime', file_record)
+            self.assertIn('nlink', file_record)
+            self.assertIn('path', file_record)
+            self.assertIn('size', file_record)
+            self.assertIn('uid', file_record)
+            self.assertEqual(url.query['path'][0], file_record['path'])
+
 
             job = util.query_jobs(self.cook_url, True, uuid=[job_uuid]).json()[0]
             if util.should_expect_sandbox_directory_for_job(job):

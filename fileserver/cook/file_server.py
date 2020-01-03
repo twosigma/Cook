@@ -68,9 +68,9 @@ def try_parse_int(param_name, val):
     err_message = lambda: f"Failed to parse {param_name}: Failed to convert '{val}' to number.\n"
     try:
         int_val = int(val)
-    except ValueError as err:
+    except ValueError as _:
         return (None, err_message())
-    except Exception as ex:
+    except Exception as _:
         return (None, err_message())
     return (int_val, None)
 
@@ -151,6 +151,9 @@ def browse():
     return jsonify(sorted(retval, key=itemgetter("path")))
 
 
+# This endpoint is used by the kubernetes readiness probe on the fileserver container. Cook will see that the
+# fileserver is ready to serve files and will set the output_url. If we expose the output_url before the server
+# is ready, then someone might use it and get an error.
 @app.route('/readiness-probe')
 def readiness_probe():
     return ""
