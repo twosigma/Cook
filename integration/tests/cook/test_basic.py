@@ -244,7 +244,7 @@ class CookTest(util.CookTest):
             resp = util.session.get(f'{download_url}/stdout')
             self.logger.info(resp.text)
             self.assertEqual(200, resp.status_code)
-            self.assertIn('foo\nbar\nbaz\n', resp.text)
+            self.assertIn('foobarbaz\n', resp.text)
 
             # download file - invalid path
             resp = util.session.get(f'{download_url}/{uuid.uuid4()}')
