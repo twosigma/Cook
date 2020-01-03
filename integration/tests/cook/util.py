@@ -414,7 +414,8 @@ def settings(cook_url):
 @functools.lru_cache()
 def scheduler_info(cook_url):
     resp = session.get(f'{cook_url}/info', auth=None)
-    assert resp.status_code == 200
+    response_info = {'code': resp.status_code, 'msg': resp.content}
+    assert resp.status_code == 200, response_info
     return resp.json()
 
 
