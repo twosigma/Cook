@@ -238,7 +238,7 @@ class CookTest(util.CookTest):
             self.assertEqual(400, resp.status_code)
             self.assertIn("Cannot read a directory", resp.text)
 
-            download_url = output_url.replace("files/browse", "files/download")
+            download_url = output_url.replace("files/read", "files/download")
 
             # download file
             resp = util.session.get(f'{download_url}/stdout')
@@ -264,7 +264,7 @@ class CookTest(util.CookTest):
             self.assertEqual(400, resp.status_code)
             self.assertIn("Cannot download a directory", resp.text)
 
-            browse_url = output_url.replace("files/browse", "files/browse")
+            browse_url = output_url.replace("files/read", "files/browse")
 
             # browse - invalid path
             resp = util.session.get(f'{browse_url}/{uuid.uuid4()}')
