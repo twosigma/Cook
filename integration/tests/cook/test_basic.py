@@ -1222,39 +1222,37 @@ class CookTest(util.CookTest):
             util.kill_jobs(self.cook_url, [job_uuid])
 
     def test_change_failed_retries(self):
-        job_specs = util.minimal_jobs(2, max_retries=1, command='sleep 60')
+        jobs = []
         try:
-            jobs, resp = util.submit_jobs(self.cook_url, job_specs)
-            self.assertEqual(resp.status_code, 201)
-            # wait for first job to start running, and kill it
-            job_uuid = jobs[0]
-            util.wait_for_job(self.cook_url, job_uuid, 'running')
-            util.kill_jobs(self.cook_url, [job_uuid])
+            failed_job = util.make_failed_job(self.cook_url, max_retries=1, command='sleep 60')
+            jobs.append(failed_job['uuid'])
+            second_job_uuid, resp = util.submit_job(self.cook_url, max_retries=1, command='sleep 60')
+            self.assertEqual(resp.status_code, 201, resp.text)
+            jobs.append(second_job_uuid)
 
-            def instance_query():
-                return util.query_jobs(self.cook_url, True, uuid=[job_uuid])
-
-            # Wait for the job (and its instances) to die
-            util.wait_until(instance_query, util.all_instances_killed)
-            job = util.load_job(self.cook_url, job_uuid)
-            self.assertEqual('failed', job['state'])
             # retry both jobs, but with the failed_only=true flag
             resp = util.retry_jobs(self.cook_url, retries=4, failed_only=True, jobs=jobs)
             self.assertEqual(201, resp.status_code, resp.text)
             jobs = util.query_jobs(self.cook_url, True, uuid=jobs).json()
-            # We expect both jobs to be running now.
+
+            # We expect both jobs to be waiting or running now.
+
             # The first job (which we killed and retried) should have 3 retries remaining
             # (the attempt before resetting the total retries count is still included).
-            job_details = f"Job details: {json.dumps(jobs[0], sort_keys=True)}"
+            job_details = f"Job details: {json.dumps(jobs[0], sort_keys=True, indent=2)}"
+            self.logger.info(job_details)
             self.assertIn(jobs[0]['status'], ['waiting', 'running'], job_details)
+            self.assertEqual(4, jobs[0]['max_retries'], job_details)
             self.assertEqual(3, jobs[0]['retries_remaining'], job_details)
+
             # The second job (which started with the default 1 retries)
             # should have 1 remaining since the failed_only flag was set.
             job_details = f"Job details: {json.dumps(jobs[1], sort_keys=True)}"
             self.assertIn(jobs[1]['status'], ['waiting', 'running'], job_details)
+            self.assertEqual(1, jobs[1]['max_retries'], job_details)
             self.assertEqual(1, jobs[1]['retries_remaining'], job_details)
         finally:
-            util.kill_jobs(self.cook_url, job_specs)
+            util.kill_jobs(self.cook_url, jobs)
 
     @unittest.skipIf(util.has_one_agent(), 'Test requires multiple agents')
     def test_cancel_instance(self):
