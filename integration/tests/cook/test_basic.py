@@ -128,6 +128,16 @@ class CookTest(util.CookTest):
             self.assertNotIn('foobarbaz\n', resp_json['data'])
             self.assertEqual(0, resp_json['offset'])
 
+            # offset = 0, with length = 0
+            resp = util.session.get(f'{output_url}/stdout&offset=0&length=0')
+            resp_json = resp.json()
+            self.logger.info(json.dumps(resp_json, indent=2))
+            self.assertEqual(200, resp.status_code)
+            self.assertIn('data', resp_json)
+            self.assertIn('offset', resp_json)
+            self.assertEqual('', resp_json['data'])
+            self.assertEqual(0, resp_json['offset'])
+
             # offset > 0, no length
             offset = index + 3
             resp = util.session.get(f'{output_url}/stdout&offset={offset}')
@@ -150,8 +160,24 @@ class CookTest(util.CookTest):
             self.assertEqual('bar', resp_json['data'])
             self.assertEqual(offset, resp_json['offset'])
 
-            # offset < 0 (returns no data + offset = total size)
+            # offset is -1 (returns no data, offset = total size)
             resp = util.session.get(f'{output_url}/stdout&offset={-1}')
+            resp_json = resp.json()
+            self.logger.info(json.dumps(resp_json, indent=2))
+            self.assertEqual(200, resp.status_code)
+            self.assertIn('data', resp_json)
+            self.assertIn('offset', resp_json)
+            self.assertEqual('', resp_json['data'])
+            self.assertLess(0, resp_json['offset'])
+
+            # offset < -1
+            resp = util.session.get(f'{output_url}/stdout&offset={-2}')
+            self.logger.info(resp.text)
+            self.assertEqual(400, resp.status_code)
+            self.assertIn('Negative offset provided', resp.text)
+
+            # no offset (returns no data, offset = total size)
+            resp = util.session.get(f'{output_url}/stdout')
             resp_json = resp.json()
             self.logger.info(json.dumps(resp_json, indent=2))
             self.assertEqual(200, resp.status_code)
@@ -177,13 +203,23 @@ class CookTest(util.CookTest):
             self.assertEqual(400, resp.status_code)
             self.assertIn('Failed to parse length', resp.text)
 
-            # length is negative
+            # length is -1
             resp = util.session.get(f'{output_url}/stdout&length=-1')
+            resp_json = resp.json()
+            self.logger.info(json.dumps(resp_json, indent=2))
+            self.assertEqual(200, resp.status_code)
+            self.assertIn('data', resp_json)
+            self.assertIn('offset', resp_json)
+            self.assertEqual('', resp_json['data'])
+            self.assertLess(0, resp_json['offset'])
+
+            # length is < -1
+            resp = util.session.get(f'{output_url}/stdout&length=-2')
             self.logger.info(resp.text)
             self.assertEqual(400, resp.status_code)
             self.assertIn('Negative length provided', resp.text)
 
-            # invalid path + offset not a valid number
+            # invalid path and offset not a valid number
             resp = util.session.get(f'{output_url}/{uuid.uuid4()}&offset=foo')
             self.logger.info(resp.text)
             self.assertEqual(400, resp.status_code)

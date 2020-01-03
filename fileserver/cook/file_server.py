@@ -89,20 +89,22 @@ def read():
     length, err = (None, None) if length_param is None else try_parse_int("length", length_param)
     if not err is None:
         return err, 400
-    if not length is None and length < 0:
+    if not length is None and length < -1:
         return f"Negative length provided: {length}.\n", 400
+    if not offset is None and offset < -1:
+        return f"Negative offset provided: {offset}.\n", 400
     if not os.path.exists(path):
         return "", 404
     if os.path.isdir(path):
         return "Cannot read a directory.\n", 400
-    if offset is None or offset < 0:
+    if offset is None or offset == -1:
         return jsonify({
             "data": "",
             "offset": os.path.getsize(path),
         })
     f = open(path)
     f.seek(offset)
-    data = f.read() if length is None else f.read(length)
+    data = f.read() if length is None or length == -1 else f.read(length)
     f.close()
     return jsonify({
         "data": data,
