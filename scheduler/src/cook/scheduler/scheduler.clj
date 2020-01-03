@@ -926,16 +926,18 @@
 ;; TODO test that this fenzo recovery system actually works
 (defn reconcile-tasks
   "Finds all non-completed tasks, and has Mesos let us know if any have changed."
-  [db driver pool->fenzo]
+  [db compute-cluster driver pool->fenzo]
   (let [running-tasks (q '[:find ?task-id ?status ?slave-id
-                           :in $ [?status ...]
+                           :in $ [?status ...] ?compute-cluster-id
                            :where
                            [?i :instance/status ?status]
                            [?i :instance/task-id ?task-id]
-                           [?i :instance/slave-id ?slave-id]]
+                           [?i :instance/slave-id ?slave-id]
+                           [?i :instance/compute-cluster ?compute-cluster-id]]
                          db
                          [:instance.status/unknown
-                          :instance.status/running])
+                          :instance.status/running]
+                         (cc/db-id compute-cluster))
         sched->mesos {:instance.status/unknown :task-staging
                       :instance.status/running :task-running}]
     (when (seq running-tasks)

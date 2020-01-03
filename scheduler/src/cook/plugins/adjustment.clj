@@ -7,7 +7,7 @@
 
 (def no-op
   (reify JobAdjuster
-    (adjust-job [_ job-map] job-map)))
+    (adjust-job [_ job-map _] job-map)))
 
 (defn create-default-plugin-object
   "Returns the configured JobAdjuster, or a no-op if none is defined."
