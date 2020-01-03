@@ -26,7 +26,9 @@
             [cook.rate-limit :as ratelimit]
             [swiss.arrows :refer :all])
   (:import com.netflix.fenzo.VirtualMachineLease
-           java.util.Date))
+           java.util.Date
+    ; TODO(DPO): Fix these imports
+           (com.netflix.fenzo ConstraintEvaluator VirtualMachineCurrentState ConstraintEvaluator$Result TaskRequest TaskTrackerState)))
 
 ;; Wisdom:
 ;; * This code expects that attributes COOK_GPU? and HOSTNAME are set for all
@@ -246,26 +248,50 @@
   (let [enforcing? (ratelimit/enforce? ratelimit/global-job-launch-rate-limiter)
         max-tasks (ratelimit/get-token-count! ratelimit/global-job-launch-rate-limiter ratelimit/global-job-launch-rate-limiter-key)]
     (when enforcing?
-      (reify com.netflix.fenzo.ConstraintEvaluator
+      (reify ConstraintEvaluator
         (getName [_] "launch_max_tasks")
         (evaluate [_ _ _ task-tracker-state]
           (let [num-assigned (-> task-tracker-state .getAllCurrentlyAssignedTasks .size)]
-            (com.netflix.fenzo.ConstraintEvaluator$Result.
+            (ConstraintEvaluator$Result.
               (< num-assigned max-tasks)
               (str "Hit the global rate limit"))))))))
+
+(defn build-max-tasks-per-host-constraint
+  "TODO(DPO)"
+  []
+  (reify ConstraintEvaluator
+    (getName [_] "max_tasks_per_host")
+    (^ConstraintEvaluator$Result evaluate
+      [^ConstraintEvaluator _
+       ^TaskRequest _
+       ^VirtualMachineCurrentState target-vm
+       ^TaskTrackerState _]
+      (let [vm-resources (.getCurrAvailableResources target-vm)
+            vm-attributes (get-vm-lease-attr-map vm-resources)
+            max-per-host (get vm-attributes "COOK_MAX_TASKS_PER_HOST")]
+        (if max-per-host
+          (let [num-running (-> target-vm .getRunningTasks count)
+                num-assigned (-> target-vm .getTasksCurrentlyAssigned count)
+                num-total (+ num-running num-assigned)]
+            (ConstraintEvaluator$Result.
+              (< num-total max-per-host)
+              "Host is already running or assigned the maximum number of tasks"))
+          (ConstraintEvaluator$Result.
+            true
+            ""))))))
 
 (def job-constraint-constructors [build-novel-host-constraint build-gpu-host-constraint build-user-defined-constraint build-estimated-completion-constraint build-data-locality-constraint])
 
 (defn fenzoize-job-constraint
   "Makes the JobConstraint 'constraint' Fenzo-compatible."
   [constraint]
-  (reify com.netflix.fenzo.ConstraintEvaluator
+  (reify ConstraintEvaluator
     (getName [_] (job-constraint-name constraint))
-    (^com.netflix.fenzo.ConstraintEvaluator$Result evaluate
-      [^com.netflix.fenzo.ConstraintEvaluator _
-       ^com.netflix.fenzo.TaskRequest task-request
-       ^com.netflix.fenzo.VirtualMachineCurrentState target-vm
-       ^com.netflix.fenzo.TaskTrackerState _]
+    (^ConstraintEvaluator$Result evaluate
+      [^ConstraintEvaluator _
+       ^TaskRequest task-request
+       ^VirtualMachineCurrentState target-vm
+       ^TaskTrackerState _]
       (let [vm-resources (.getCurrAvailableResources target-vm)
             vm-attributes (get-vm-lease-attr-map vm-resources)
             [passes? reason] (job-constraint-evaluate constraint vm-resources vm-attributes
@@ -275,7 +301,7 @@
                                                               (map (fn [^com.netflix.fenzo.TaskAssignmentResult result]
                                                                      (.getRequest result))
                                                                    (.getTasksCurrentlyAssigned target-vm))))]
-        (com.netflix.fenzo.ConstraintEvaluator$Result. passes? reason)))))
+        (ConstraintEvaluator$Result. passes? reason)))))
 
 (defn make-fenzo-job-constraints
   "Returns a sequence of all the constraints for 'job', in Fenzo-compatible format."
@@ -285,7 +311,9 @@
                  (map (fn [constructor] (constructor job)))
                  (remove nil?)
                  (map fenzoize-job-constraint))
-            launch-max-tasks-constraint (conj (build-launch-max-tasks-constraint)))))
+            launch-max-tasks-constraint (conj (build-launch-max-tasks-constraint))
+            true (conj (build-max-tasks-per-host-constraint))
+            )))
 
 (defn build-rebalancer-reservation-constraint
   "Constructs a rebalancer-reservation-constraint"
@@ -456,7 +484,7 @@
         constraint-constructor (constraint-type-to-constraint-constructor constraint-type)
         constraint (when constraint-constructor (constraint-constructor group))]
     (when constraint
-      (reify com.netflix.fenzo.ConstraintEvaluator
+      (reify ConstraintEvaluator
         (getName [_] (group-constraint-name constraint))
         (evaluate [_ task-request target-vm task-tracker-state]
           (let [task-id (.getId task-request)
@@ -468,7 +496,7 @@
                                       (map #(.getTotalLease %))
                                       (map get-vm-lease-attr-map))
                 [passes? reason] (group-constraint-evaluate constraint target-attr-map cotask-attr-maps)]
-            (com.netflix.fenzo.ConstraintEvaluator$Result. (boolean passes?) reason)))))))
+            (ConstraintEvaluator$Result. (boolean passes?) reason)))))))
 
 (defn make-rebalancer-group-constraint
   "Returns a rebalancer-compatible (rebalancer.clj) group host placement constraint for tasks that

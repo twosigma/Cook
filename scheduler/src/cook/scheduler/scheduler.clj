@@ -89,7 +89,10 @@
                          "COOK_GPU?" (-> offer
                                          (offer-resource-scalar "gpus")
                                          (or 0.0)
-                                         pos?)}]
+                                         pos?)
+                         "COOK_MAX_TASKS_PER_HOST" (-> offer
+                                                       :compute-cluster
+                                                       cc/max-tasks-per-host)}]
     (merge mesos-attributes cook-attributes)))
 
 (timers/deftimer [cook-mesos scheduler handle-status-update-duration])
