@@ -1921,16 +1921,18 @@
         mock-driver (reify msched/SchedulerDriver
                       (reconcile-tasks [_ tasks]
                         (reset! task-atom tasks)))
+        fake-compute-cluster (testutil/setup-fake-test-compute-cluster conn)
+        fake-compute-cluster-dbid (cc/db-id fake-compute-cluster)
         [_ [running-instance-id]] (create-dummy-job-with-instances conn
                                                                    :job-state :job.state/running
-                                                                   :instances [{:instance-status :instance.status/running}])
+                                                                   :instances [{:instance-status :instance.status/running :instance/compute-cluster fake-compute-cluster-dbid}])
         [_ [unknown-instance-id]] (create-dummy-job-with-instances conn
                                                                    :job-state :job.state/running
-                                                                   :instances [{:instance-status :instance.status/unknown}])
+                                                                   :instances [{:instance-status :instance.status/unknown :instance/compute-cluster fake-compute-cluster-dbid}])
         _ (create-dummy-job-with-instances conn
                                            :job-state :job.state/completed
-                                           :instances [{:instance-status :instance.status/success}])]
-    (sched/reconcile-tasks (d/db conn) mock-driver (constantly fenzo))
+                                           :instances [{:instance-status :instance.status/success :instance/compute-cluster fake-compute-cluster-dbid}])]
+    (sched/reconcile-tasks (d/db conn) fake-compute-cluster mock-driver (constantly fenzo))
     (let [reconciled-tasks (set @task-atom)
           running-instance (d/entity (d/db conn) running-instance-id)
           unknown-instance (d/entity (d/db conn) unknown-instance-id)]

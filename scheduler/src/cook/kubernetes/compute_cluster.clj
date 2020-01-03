@@ -319,10 +319,8 @@
         compute-cluster (->KubernetesComputeCluster api-client compute-cluster-name cluster-entity-id
                                                     (:match-trigger-chan trigger-chans)
                                                     exit-code-syncer-state (atom {}) (atom {})
-                                                    ; These :type keys are here to make it easier to trace provenance
-                                                    ; when debugging and exist for no other reason.
-                                                    (atom {:type :expected-state-map})
-                                                    (atom {:type :existing-state-map})
+                                                    (atom {})
+                                                    (atom {})
                                                     (atom nil)
                                                     namespace
                                                     scan-frequency-seconds)]
