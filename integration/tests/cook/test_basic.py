@@ -283,8 +283,9 @@ class CookTest(util.CookTest):
             resp_json = resp.json()
             self.logger.info(json.dumps(resp_json, indent=2))
             self.assertEqual(200, resp.status_code)
-            self.assertEqual(1, len(resp_json))
-            file_record = resp_json[0]
+            stdout_file_records = list(filter(lambda x: "/stdout" in x['path'], resp_json))
+            self.assertEqual(0, len(stdout_file_records))
+            file_record = stdout_file_records[0]
             self.assertIn('gid', file_record)
             self.assertIn('mode', file_record)
             self.assertIn('mtime', file_record)
