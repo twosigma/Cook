@@ -11,7 +11,7 @@ import unittest
 import uuid
 from collections import Counter
 from datetime import datetime
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 import dateutil.parser
 import pytest
@@ -293,7 +293,7 @@ class CookTest(util.CookTest):
             self.assertIn('path', file_record)
             self.assertIn('size', file_record)
             self.assertIn('uid', file_record)
-            self.assertEqual(url.query['path'][0], file_record['path'])
+            self.assertEqual(parse_qs(url.query)['path'][0], file_record['path'])
 
 
             job = util.query_jobs(self.cook_url, True, uuid=[job_uuid]).json()[0]
