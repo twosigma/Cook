@@ -293,7 +293,7 @@ class CookTest(util.CookTest):
             self.assertIn('path', file_record)
             self.assertIn('size', file_record)
             self.assertIn('uid', file_record)
-            self.assertEqual(parse_qs(url.query)['path'][0], file_record['path'])
+            self.assertEqual(f'{parse_qs(url.query)["path"][0]}/stdout', file_record['path'])
 
 
             job = util.query_jobs(self.cook_url, True, uuid=[job_uuid]).json()[0]
