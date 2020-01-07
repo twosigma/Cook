@@ -284,7 +284,7 @@ class CookTest(util.CookTest):
             self.logger.info(json.dumps(resp_json, indent=2))
             self.assertEqual(200, resp.status_code)
             stdout_file_records = list(filter(lambda x: "/stdout" in x['path'], resp_json))
-            self.assertEqual(0, len(stdout_file_records))
+            self.assertEqual(1, len(stdout_file_records))
             file_record = stdout_file_records[0]
             self.assertIn('gid', file_record)
             self.assertIn('mode', file_record)
