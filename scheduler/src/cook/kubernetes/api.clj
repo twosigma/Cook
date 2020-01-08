@@ -205,6 +205,12 @@
   [^V1Pod pod]
   (-> pod .getSpec .getNodeName))
 
+(defn num-pods-on-node
+  "TODO(DPO)"
+  [node-name pods]
+  (let [node-name->pods (group-by pod->node-name pods)]
+    (-> node-name->pods (get node-name []) count)))
+
 (defn node-schedulable?
   "Can we schedule on a node. For now, yes, unless there are other taints on it. TODO: Incorporate other node-health measures here."
   [^V1Node node pod-count-capacity pods]
@@ -214,13 +220,13 @@
           other-taints (remove #(= "cook-pool" (.getKey %)) taints-on-node)
           schedulable (zero? (count other-taints))
           node-name (some-> node .getMetadata .getName)
-          node-name->pods (group-by pod->node-name pods)
-          num-pods-on-node (-> node-name->pods (get node-name []) count)
-          below-pod-count-capacity (< num-pods-on-node pod-count-capacity)]
+          pods-on-node (num-pods-on-node node-name pods)
+          below-pod-count-capacity (< pods-on-node pod-count-capacity)]
       (when-not schedulable
         (log/info "Filtering out" node-name "because it has taints" other-taints))
       (when-not below-pod-count-capacity
-        (log/info "Filtering out" node-name "because it has reached its pod count capacity of" pod-count-capacity))
+        (log/info "Filtering out" node-name "because it is at or above its pod count capacity of"
+                  pod-count-capacity "(" pods-on-node ")"))
       (and schedulable below-pod-count-capacity))))
 
 (defn get-capacity
@@ -235,9 +241,8 @@
 
   When accounting for resources, we use resource requests to determine how much is used, not limits.
   See https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/#resource-requests-and-limits-of-pod-and-container"
-  [namespaced-pod-name->pod]
-  (let [node-name->pods (group-by pod->node-name
-                                  (vals namespaced-pod-name->pod))
+  [pods]
+  (let [node-name->pods (group-by pod->node-name pods)
         node-name->requests (pc/map-vals (fn [pods]
                                            (->> pods
                                                 (map (fn [^V1Pod pod]

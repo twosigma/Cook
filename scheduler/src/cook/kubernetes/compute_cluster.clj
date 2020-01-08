@@ -31,17 +31,15 @@
 
 (defn generate-offers
   "Given a compute cluster and maps with node capacity and existing pods, return a map from pool to offers."
-  [compute-cluster node-name->node namespaced-pod-name->pod starting-namespaced-pod-name->pod]
+  [compute-cluster node-name->node pods]
   (let [node-name->capacity (api/get-capacity node-name->node)
-        all-namespaced-pod-name->pod (merge namespaced-pod-name->pod starting-namespaced-pod-name->pod)
-        node-name->consumed (api/get-consumption all-namespaced-pod-name->pod)
+        node-name->consumed (api/get-consumption pods)
         node-name->available (pc/map-from-keys (fn [node-name]
                                                  (merge-with -
                                                              (node-name->capacity node-name)
                                                              (node-name->consumed node-name)))
                                                (keys node-name->capacity))
-        compute-cluster-name (cc/compute-cluster-name compute-cluster)
-        pods (vals all-namespaced-pod-name->pod)]
+        compute-cluster-name (cc/compute-cluster-name compute-cluster)]
     (log/info "In" compute-cluster-name "compute cluster, capacity:" node-name->capacity)
     (log/info "In" compute-cluster-name "compute cluster, consumption:" node-name->consumed)
     (log/info "In" compute-cluster-name "compute cluster, filtering out"
@@ -169,6 +167,11 @@
                   :command
                   :user)))
 
+(defn- all-pods
+  [compute-cluster all-pods-atom]
+  (let [starting-pods (controller/starting-namespaced-pod-name->pod compute-cluster)]
+    (-> @all-pods-atom (merge starting-pods) vals)))
+
 (defrecord KubernetesComputeCluster [^ApiClient api-client name entity-id match-trigger-chan exit-code-syncer-state
                                      all-pods-atom current-nodes-atom expected-state-map existing-state-map
                                      pool->fenzo-atom namespace-config scan-frequency-seconds-config max-pods-per-node]
@@ -216,9 +219,8 @@
 
   (pending-offers [this pool-name]
     (let [nodes @current-nodes-atom
-          pods @all-pods-atom
-          starting-instances (controller/starting-namespaced-pod-name->pod this)
-          offers-all-pools (generate-offers this nodes pods starting-instances)
+          pods (all-pods this all-pods-atom)
+          offers-all-pools (generate-offers this nodes pods)
           ; TODO: We are generating offers for every pool here, and filtering out only offers for this one pool.
           ; TODO: We should be smarter here and generate once, then reuse for each pool, instead of generating for each pool each time and only keeping one
           offers-this-pool (get offers-all-pools pool-name)]
@@ -235,7 +237,11 @@
     ; container defaults for k8s compute clusters
     {})
 
-  (max-tasks-per-host [_] max-pods-per-node))
+  (max-tasks-per-host [_] max-pods-per-node)
+
+  (num-tasks-on-host [this hostname]
+    (let [pods (all-pods this all-pods-atom)]
+      (api/num-pods-on-node hostname pods))))
 
 (defn get-or-create-cluster-entity-id
   [conn compute-cluster-name]
