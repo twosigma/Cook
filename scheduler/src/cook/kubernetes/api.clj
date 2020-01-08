@@ -15,10 +15,9 @@
     (io.kubernetes.client.models V1Pod V1Container V1Node V1Pod V1ResourceRequirements V1EnvVar
                                  V1ObjectMeta V1PodSpec V1PodStatus V1ContainerState V1DeleteOptionsBuilder
                                  V1DeleteOptions V1HostPathVolumeSource V1VolumeMount V1VolumeBuilder V1Taint
-                                 V1Toleration V1PodSecurityContext V1EmptyDirVolumeSource V1EnvVarBuilder V1ContainerPort V1Probe V1HTTPGetAction)
+                                 V1Toleration V1PodSecurityContext V1EmptyDirVolumeSource V1EnvVarBuilder V1ContainerPort V1Probe V1HTTPGetAction V1Volume)
     (io.kubernetes.client.util Watch Yaml)
-    (java.util.concurrent Executors ExecutorService)
-    (java.util UUID)))
+    (java.util.concurrent Executors ExecutorService)))
 
 
 (def cook-pod-label "twosigma.com/cook-scheduler-job")
@@ -390,6 +389,31 @@
       :mem (add-as-decimals mem memory-request))
     resources))
 
+(defn- make-volume
+  "Make a kubernetes volume"
+  [name]
+  (.. (V1VolumeBuilder.)
+      (withName name)
+      (withEmptyDir (V1EmptyDirVolumeSource.))
+      (build)))
+
+(defn- make-volume-mount
+  "Make a kubernetes volume mount"
+  [^V1Volume volume path read-only]
+  (when volume
+    (doto (V1VolumeMount.)
+      (setName (.getName volume))
+      (setMountPath path)
+      (setReadOnly read-only))))
+
+(defn- make-env
+  "Make a kubernetes environment variable"
+  [key value]
+  (.. (V1EnvVarBuilder.)
+      (withName key)
+      (withValue value)
+      (build)))
+
 (defn ^V1Pod task-metadata->pod
   "Given a task-request and other data generate the kubernetes V1Pod to launch that task."
   [namespace compute-cluster-name {:keys [task-id command container task-request hostname]}]
@@ -413,34 +437,24 @@
         {:keys [volumes volume-mounts]} (make-volumes volumes)
         security-context (make-security-context parameters (:user command))
         workdir (get-workdir parameters)
-        workdir-volume (-> (V1VolumeBuilder.)
-                           (.withName "cook-workdir")
-                           (.withEmptyDir (V1EmptyDirVolumeSource.))
-                           (.build))
-        workdir-volume-mount (V1VolumeMount.)
-        workdir-env-vars [(-> (V1EnvVarBuilder.)
-                              (.withName "HOME")
-                              (.withValue workdir)
-                              (.build))
-                          (-> (V1EnvVarBuilder.)
-                              (.withName "MESOS_SANDBOX")
-                              (.withValue workdir)
-                              (.build))]
-        {:keys [wrapper-script]} (config/kubernetes)
-        init-volume (when wrapper-script (-> (V1VolumeBuilder.)
-                                              (.withName "init-volume")
-                                              (.withEmptyDir (V1EmptyDirVolumeSource.))
-                                              (.build)))
-        init-volume-mount (when wrapper-script (V1VolumeMount.))]
-    ; workdir mount
-    (.setName workdir-volume-mount "cook-workdir")
-    (.setMountPath workdir-volume-mount workdir)
-    (.setReadOnly workdir-volume-mount false)
+        workdir-volume (make-volume "cook-workdir-volume")
+        workdir-volume-mount-fn (partial make-volume-mount workdir-volume workdir)
+        {:keys [wrapper-script init-container sandbox-fileserver]} (config/kubernetes)
+        wrapper-script-workdir "/mnt/wrapper-script"
+        wrapper-script-workdir-volume (when wrapper-script (make-volume "cook-wrapper-script-workdir-volume"))
+        wrapper-script-workdir-volume-mount-fn (partial make-volume-mount wrapper-script-workdir-volume wrapper-script-workdir)
+        fileserver-workdir "/mnt/fileserver"
+        fileserver-workdir-volume (when sandbox-fileserver (make-volume "cook-fileserver-workdir-volume"))
+        fileserver-workdir-volume-mount-fn (partial make-volume-mount fileserver-workdir-volume fileserver-workdir)
+        workdir-env-vars [(make-env "HOME" workdir)
+                          (make-env "MESOS_SANDBOX" workdir)
+                          (make-env "FILESERVER_WORKDIR" fileserver-workdir)]]
 
-    (when init-volume-mount
-      (.setName init-volume-mount "init-volume")
-      (.setMountPath init-volume-mount "/mnt/init")
-      (.setReadOnly init-volume-mount true))
+    (when (or wrapper-script init-container)
+      (when-not (and wrapper-script init-container)
+        (throw (ex-info
+                 "Bad kubernetes configuration. wrapper-script and init-container should both be set, or neither should be set."
+                 {:kubernetes-config (config/kubernetes)}))))
 
     ; metadata
     (.setName metadata (str task-id))
@@ -451,7 +465,7 @@
     (.setName container cook-container-name-for-job)
     (if wrapper-script
       (.setCommand container
-                   ["/bin/sh" "-c" (str wrapper-script " '" (str/escape (:value command) {\' "'\\''"}) "'")])
+                   ["/bin/sh" "-c" (str wrapper-script-workdir "/" wrapper-script " '" (str/escape (:value command) {\' "'\\''"}) "'")])
       (.setCommand container
                    ["/bin/sh" "-c" (:value command)]))
 
@@ -469,35 +483,42 @@
     ; "Guaranteed" QoS which requires limits for both memory and cpu.
     (.putLimitsItem resources "cpu" (double->quantity cpus))
     (.setResources container resources)
-    (.setVolumeMounts container (into [] (remove nil? (conj volume-mounts workdir-volume-mount init-volume-mount))))
+    (.setVolumeMounts container (into [] (remove nil? (conj volume-mounts
+                                                            (workdir-volume-mount-fn false)
+                                                            (wrapper-script-workdir-volume-mount-fn true)
+                                                            (fileserver-workdir-volume-mount-fn true)))))
     (.setWorkingDir container workdir)
 
     ; pod-spec
     (.addContainersItem pod-spec container)
 
+    ; init container
+    (when-let [{:keys [command image]} init-container]
+      (let [container (V1Container.)]
+        ; container
+        (.setName container cook-init-container-name)
+        (.setImage container image)
+        (.setCommand container ["/bin/sh" "-c" command])
+        (.setWorkingDir container wrapper-script-workdir)
+
+        (.setVolumeMounts container [(wrapper-script-workdir-volume-mount-fn false)])
+        (.addInitContainersItem pod-spec container)))
+
     ; sandbox file server container
-    (when-let [{:keys [command image port resource-requirements]} (:sandbox-fileserver (config/kubernetes))]
+    (when-let [{:keys [command image port resource-requirements]} sandbox-fileserver]
       (let [{:keys [cpu-request cpu-limit memory-request memory-limit]} resource-requirements
             container (V1Container.)
-            workdir-volume-mount (V1VolumeMount.)
             resources (V1ResourceRequirements.)
             readiness-probe (V1Probe.)
             http-get-action (V1HTTPGetAction.)]
-        ; workdir mount
-        (.setName workdir-volume-mount "cook-workdir")
-        (.setMountPath workdir-volume-mount workdir)
-        (.setReadOnly workdir-volume-mount true)
-
         ; container
         (.setName container cook-container-name-for-file-server)
         (.setImage container image)
         (.setCommand container [command (str port)])
+        (.setWorkingDir container fileserver-workdir)
         (.setPorts container [(.containerPort (V1ContainerPort.) (int port))])
 
-        (.setEnv container [(-> (V1EnvVarBuilder.)
-                              (.withName "COOK_WORKDIR")
-                              (.withValue workdir)
-                              (.build))])
+        (.setEnv container [(make-env "COOK_WORKDIR" workdir)])
 
         (.setPort http-get-action (IntOrString. port))
         (.setPath http-get-action "readiness-probe")
@@ -511,40 +532,14 @@
         (.putLimitsItem resources "memory" (double->quantity (* memory-multiplier memory-limit)))
         (.setResources container resources)
 
-        (.setVolumeMounts container [workdir-volume-mount])
+        (.setVolumeMounts container [(workdir-volume-mount-fn true) (fileserver-workdir-volume-mount-fn false)])
         (.addContainersItem pod-spec container)))
-
-    ; init container
-    (when-let [{:keys [command image]} (:init-container (config/kubernetes))]
-      (let [container (V1Container.)
-            init-volume-mount (V1VolumeMount.)]
-
-        ; workdir mount
-        (.setName init-volume-mount "init-volume")
-        (.setMountPath init-volume-mount "/mnt/init")
-        (.setReadOnly init-volume-mount false)
-
-        ; container
-        (.setName container cook-init-container-name)
-        (.setImage container image)
-        (.setCommand container ["/bin/sh" "-c" command])
-        (.setWorkingDir container "/mnt/init")
-
-        ; resources TODO: delete this
-        (.putRequestsItem resources "cpu" (double->quantity 0.1))
-        (.putLimitsItem resources "cpu" (double->quantity 0.1))
-        (.putRequestsItem resources "memory" (double->quantity (* memory-multiplier 128.0)))
-        (.putLimitsItem resources "memory" (double->quantity (* memory-multiplier 128.0)))
-        (.setResources container resources)
-
-        (.setVolumeMounts container [init-volume-mount])
-        (.addInitContainersItem pod-spec container)))
 
     (.setNodeName pod-spec hostname)
     (.setRestartPolicy pod-spec "Never")
     (when pool-name
       (.addTolerationsItem pod-spec (toleration-for-pool pool-name)))
-    (.setVolumes pod-spec (into [] (remove nil? (conj volumes workdir-volume init-volume))))
+    (.setVolumes pod-spec (into [] (remove nil? (conj volumes workdir-volume wrapper-script-workdir-volume fileserver-workdir-volume))))
     (.setSecurityContext pod-spec security-context)
 
     ; pod

@@ -35,7 +35,7 @@
  :hostname #config/env "COOK_HOSTNAME"
  :kubernetes {:disallowed-container-paths #{"/mnt/bad"}
               :disallowed-var-names #{"BADVAR"}
-              :init-container {:command "pwd; ls -la; echo test test | tee cook-init; ls -la"
+              :init-container {:command "echo test"
                                :image "byrnedo/alpine-curl:latest"}
               :sandbox-fileserver {:command "fileserver"
                                    :image "twosigma/cook-fileserver:latest"
