@@ -402,9 +402,9 @@
   [^V1Volume volume path read-only]
   (when volume
     (doto (V1VolumeMount.)
-      (setName (.getName volume))
-      (setMountPath path)
-      (setReadOnly read-only))))
+      (.setName (.getName volume))
+      (.setMountPath path)
+      (.setReadOnly read-only))))
 
 (defn- make-env
   "Make a kubernetes environment variable"
