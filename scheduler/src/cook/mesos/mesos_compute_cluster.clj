@@ -291,7 +291,9 @@
   (container-defaults [_]
     container-defaults)
 
-  (max-tasks-per-host [_]))
+  (max-tasks-per-host [_])
+
+  (num-tasks-on-host [_ _]))
 
 ; Internal method
 (defn mesos-cluster->compute-cluster-map-for-datomic

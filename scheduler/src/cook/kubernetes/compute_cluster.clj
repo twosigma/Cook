@@ -240,8 +240,9 @@
   (max-tasks-per-host [_] max-pods-per-node)
 
   (num-tasks-on-host [this hostname]
-    (let [pods (all-pods this all-pods-atom)]
-      (api/num-pods-on-node hostname pods))))
+    (->> all-pods-atom
+         (all-pods this)
+         (api/num-pods-on-node hostname))))
 
 (defn get-or-create-cluster-entity-id
   [conn compute-cluster-name]

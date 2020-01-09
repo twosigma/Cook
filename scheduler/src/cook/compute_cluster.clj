@@ -53,8 +53,8 @@
   (max-tasks-per-host [this]
     "The maximum number of tasks that a given host should run at the same time")
 
-  (num-tasks-on-host [this]
-    "TODO(DPO)"))
+  (num-tasks-on-host [this hostname]
+    "The number of tasks currently running on the given hostname"))
 
 (defn safe-kill-task
   "A safe version of kill task that never throws. This reduces the risk that errors in one compute cluster propagate and cause problems in another compute cluster."

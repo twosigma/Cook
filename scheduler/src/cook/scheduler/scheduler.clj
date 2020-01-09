@@ -74,9 +74,8 @@
 (defn get-offer-attr-map
   "Gets all the attributes from an offer and puts them in a simple, less structured map of the form
    name->value"
-  [offer]
-  (let [mesos-attributes (->> offer
-                              :attributes
+  [{:keys [attributes compute-cluster hostname] :as offer}]
+  (let [mesos-attributes (->> attributes
                               (map #(vector (:name %) (case (:type %)
                                                         :value-scalar (:scalar %)
                                                         :value-ranges (:ranges %)
@@ -85,14 +84,13 @@
                                                         ; Default
                                                         (:value %))))
                               (into {}))
-        cook-attributes {"HOSTNAME" (:hostname offer)
+        cook-attributes {"HOSTNAME" hostname
                          "COOK_GPU?" (-> offer
                                          (offer-resource-scalar "gpus")
                                          (or 0.0)
                                          pos?)
-                         "COOK_MAX_TASKS_PER_HOST" (-> offer
-                                                       :compute-cluster
-                                                       cc/max-tasks-per-host)}]
+                         "COOK_MAX_TASKS_PER_HOST" (cc/max-tasks-per-host compute-cluster)
+                         "COOK_NUM_TASKS_ON_HOST" (cc/num-tasks-on-host compute-cluster hostname)}]
     (merge mesos-attributes cook-attributes)))
 
 (timers/deftimer [cook-mesos scheduler handle-status-update-duration])

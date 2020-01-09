@@ -270,12 +270,12 @@
             vm-attributes (get-vm-lease-attr-map vm-resources)
             max-per-host (get vm-attributes "COOK_MAX_TASKS_PER_HOST")]
         (if max-per-host
-          (let [num-running (-> target-vm .getRunningTasks count)
+          (let [num-running (get vm-attributes "COOK_NUM_TASKS_ON_HOST")
                 num-assigned (-> target-vm .getTasksCurrentlyAssigned count)
                 num-total (+ num-running num-assigned)]
             (ConstraintEvaluator$Result.
               (< num-total max-per-host)
-              "Host is already running or assigned the maximum number of tasks"))
+              "Host already has the maximum number of tasks"))
           (ConstraintEvaluator$Result.
             true
             ""))))))
