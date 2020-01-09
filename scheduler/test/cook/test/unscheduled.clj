@@ -134,7 +134,7 @@
             running-job-uuids [(-> running-job-ent1 :job/uuid str)
                                (-> running-job-ent2 :job/uuid str)]
             reasons
-            (with-redefs [scheduler/pool->user->number-jobs (atom {:pool0 {"mforsythr" 3}})
+            (with-redefs [scheduler/pool->user->num-rate-limited-jobs (atom {:pool0 {"mforsythr" 3}})
                           rate-limit/job-launch-rate-limiter
                           (rate-limit/create-job-launch-rate-limiter
                             {:settings {:rate-limit {:expire-minutes 180

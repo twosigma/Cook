@@ -152,11 +152,11 @@
   "Return the appropriate error message if a user's job is unscheduled because they're over the job launch rate limit threshold"
   [{:keys [job/user]}]
   (let [enforcing-job-launch-rate-limit? (ratelimit/enforce? ratelimit/job-launch-rate-limiter)
-        num-ratelimited (->> @scheduler/pool->user->number-jobs
+        num-ratelimited (->> @scheduler/pool->user->num-rate-limited-jobs
                              vals
                              (map #(get % user 0))
                              (reduce + 0))
-        being-ratelimited? (not (zero? num-ratelimited))
+        being-ratelimited? (pos? num-ratelimited)
         {:keys [tokens-replenished-per-minute]} ratelimit/job-launch-rate-limiter]
     (when (and enforcing-job-launch-rate-limit? being-ratelimited?)
       ["You are currently rate limited on how many jobs you launch per minute."

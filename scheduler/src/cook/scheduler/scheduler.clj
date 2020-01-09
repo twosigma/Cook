@@ -563,8 +563,9 @@
                              (map util/job->usage)
                              (reduce (partial merge-with +))))))))
 
-;Shared as we use this for unscheduled too.
-(defonce pool->user->number-jobs (atom {}))
+; This is used by the /unscheduled_jobs code to determine whether
+; or not to report rate-limiting as a reason for being pending
+(defonce pool->user->num-rate-limited-jobs (atom {}))
 
 (defn pending-jobs->considerable-jobs
   "Limit the pending jobs to considerable jobs based on usage and quota.
@@ -594,7 +595,7 @@
              (take num-considerable)
              ; Force this to be taken eagerly so that the log line is accurate.
              (doall))]
-    (swap! pool->user->number-jobs update pool-name (constantly @user->rate-limit-count))
+    (swap! pool->user->num-rate-limited-jobs update pool-name (constantly @user->rate-limit-count))
     (log/info "Users whose job launches are rate-limited " @user->rate-limit-count "( enforcing =" enforcing-job-launch-rate-limit? ")")
     considerable-jobs))
 
