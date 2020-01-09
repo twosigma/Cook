@@ -2897,6 +2897,21 @@ class CookTest(util.CookTest):
             util.wait_for_jobs_in_statuses(self.cook_url, job_uuids, ['running', 'completed'])
             hosts = [util.wait_for_instance(self.cook_url, j)['hostname'] for j in job_uuids]
             host_count = Counter(hosts)
+            self.logger.info(host_count)
             self.assertLessEqual(2, len(host_count), hosts)
+
+            # def query_unscheduled():
+            #     resp = util.unscheduled_jobs(self.cook_url, job_uuid)[0][0]
+            #     placement_reasons = [reason for reason in resp['reasons']
+            #                          if reason['reason'] == reasons.COULD_NOT_PLACE_JOB]
+            #     self.logger.info(f"unscheduled_jobs response: {resp}")
+            #     return placement_reasons
+            #
+            # placement_reasons = util.wait_until(query_unscheduled, lambda r: len(r) > 0)
+            # self.assertEqual(1, len(placement_reasons), str(placement_reasons))
+            # reason = placement_reasons[0]
+            # data_locality_reasons = [r for r in reason['data']['reasons']
+            #                          if r['reason'] == 'data-locality-constraint']
+            # self.assertEqual(1, len(data_locality_reasons))
         finally:
             util.kill_jobs(self.cook_url, job_uuids)
