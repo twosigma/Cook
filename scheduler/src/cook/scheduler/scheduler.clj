@@ -594,7 +594,7 @@
              (take num-considerable)
              ; Force this to be taken eagerly so that the log line is accurate.
              (doall))]
-    (swap! pool->user->number-jobs update pool-name (constantly @user->number-jobs))
+    (swap! pool->user->number-jobs update pool-name (constantly @user->rate-limit-count))
     (log/info "Users whose job launches are rate-limited " @user->rate-limit-count "( enforcing =" enforcing-job-launch-rate-limit? ")")
     considerable-jobs))
 
