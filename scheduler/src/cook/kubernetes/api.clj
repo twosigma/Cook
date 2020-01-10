@@ -206,7 +206,7 @@
   (-> pod .getSpec .getNodeName))
 
 (defn num-pods-on-node
-  "TODO(DPO)"
+  "Returns the number of pods assigned to the given node"
   [node-name pods]
   (let [node-name->pods (group-by pod->node-name pods)]
     (-> node-name->pods (get node-name []) count)))

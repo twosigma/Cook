@@ -25,10 +25,13 @@
             [cook.tools :as util]
             [cook.rate-limit :as ratelimit]
             [swiss.arrows :refer :all])
-  (:import com.netflix.fenzo.VirtualMachineLease
-           java.util.Date
-    ; TODO(DPO): Fix these imports
-           (com.netflix.fenzo ConstraintEvaluator VirtualMachineCurrentState ConstraintEvaluator$Result TaskRequest TaskTrackerState)))
+  (:import (com.netflix.fenzo ConstraintEvaluator
+                              ConstraintEvaluator$Result
+                              TaskRequest
+                              TaskTrackerState
+                              VirtualMachineCurrentState
+                              VirtualMachineLease)
+           java.util.Date))
 
 ;; Wisdom:
 ;; * This code expects that attributes COOK_GPU? and HOSTNAME are set for all
@@ -257,7 +260,8 @@
               (str "Hit the global rate limit"))))))))
 
 (defn build-max-tasks-per-host-constraint
-  "TODO(DPO)"
+  "Returns a Fenzo constraint that ensures that we don't
+  match more tasks per host than is allowed (configured)"
   []
   (reify ConstraintEvaluator
     (getName [_] "max_tasks_per_host")
