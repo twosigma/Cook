@@ -316,8 +316,7 @@
                  (remove nil?)
                  (map fenzoize-job-constraint))
             launch-max-tasks-constraint (conj (build-launch-max-tasks-constraint))
-            true (conj (build-max-tasks-per-host-constraint))
-            )))
+            true (conj (build-max-tasks-per-host-constraint)))))
 
 (defn build-rebalancer-reservation-constraint
   "Constructs a rebalancer-reservation-constraint"
