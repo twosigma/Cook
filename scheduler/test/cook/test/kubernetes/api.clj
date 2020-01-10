@@ -8,34 +8,34 @@
 
 (deftest test-get-consumption
   (testing "correctly computes consumption for a single pod"
-    (let [pod-name->pod {"podA" (tu/pod-helper "podA" "hostA" {:cpus 1.0 :mem 100.0})}]
+    (let [pods [(tu/pod-helper "podA" "hostA" {:cpus 1.0 :mem 100.0})]]
       (is (= {"hostA" {:cpus 1.0
                        :mem 100.0}}
-             (api/get-consumption pod-name->pod)))))
+             (api/get-consumption pods)))))
 
   (testing "correctly computes consumption for a pod with multiple containers"
-    (let [pod-name->pod {"podA" (tu/pod-helper "podA" "hostA"
-                                            {:cpus 1.0 :mem 100.0}
-                                            {:cpus 1.0 :mem 0.0}
-                                            {:mem 100.0})}]
+    (let [pods [(tu/pod-helper "podA" "hostA"
+                               {:cpus 1.0 :mem 100.0}
+                               {:cpus 1.0 :mem 0.0}
+                               {:mem 100.0})]]
       (is (= {"hostA" {:cpus 2.0
                        :mem 200.0}}
-             (api/get-consumption pod-name->pod)))))
+             (api/get-consumption pods)))))
 
   (testing "correctly aggregates pods by node name"
-    (let [pod-name->pod {"podA" (tu/pod-helper "podA" "hostA"
-                                            {:cpus 1.0 :mem 100.0})
-                         "podB" (tu/pod-helper "podB" "hostA"
-                                            {:cpus 1.0})
-                         "podC" (tu/pod-helper "podC" "hostB"
-                                            {:cpus 1.0}
-                                            {:mem 100.0})
-                         "podD" (tu/pod-helper "podD" "hostC"
-                                            {:cpus 1.0})}]
+    (let [pods [(tu/pod-helper "podA" "hostA"
+                               {:cpus 1.0 :mem 100.0})
+                (tu/pod-helper "podB" "hostA"
+                               {:cpus 1.0})
+                (tu/pod-helper "podC" "hostB"
+                               {:cpus 1.0}
+                               {:mem 100.0})
+                (tu/pod-helper "podD" "hostC"
+                               {:cpus 1.0})]]
       (is (= {"hostA" {:cpus 2.0 :mem 100.0}
               "hostB" {:cpus 1.0 :mem 100.0}
               "hostC" {:cpus 1.0 :mem 0.0}}
-             (api/get-consumption pod-name->pod))))))
+             (api/get-consumption pods))))))
 
 (deftest test-get-capacity
   (let [node-name->node {"nodeA" (tu/node-helper "nodeA" 1.0 100.0 nil)

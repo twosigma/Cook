@@ -98,8 +98,7 @@
                                                                          {:cpus 1.0 :mem 1100.0})
                          {:namespace "cook" :name task-1-id} (tu/pod-helper task-1-id "my.fake.host"
                                                                             {:cpus 0.1 :mem 10.0})}
-          all-offers (kcc/generate-offers compute-cluster node-name->node pod-name->pod
-                                      (controller/starting-namespaced-pod-name->pod compute-cluster))
+          all-offers (kcc/generate-offers compute-cluster node-name->node (kcc/all-pods compute-cluster pod-name->pod))
           offers (get all-offers "no-pool")]
       (is (= 4 (count offers)))
       (let [offer (first (filter #(= "nodeA" (:hostname %))

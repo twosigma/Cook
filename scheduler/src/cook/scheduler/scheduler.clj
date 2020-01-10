@@ -84,13 +84,15 @@
                                                         ; Default
                                                         (:value %))))
                               (into {}))
-        cook-attributes {"HOSTNAME" hostname
-                         "COOK_GPU?" (-> offer
-                                         (offer-resource-scalar "gpus")
-                                         (or 0.0)
-                                         pos?)
-                         "COOK_MAX_TASKS_PER_HOST" (cc/max-tasks-per-host compute-cluster)
-                         "COOK_NUM_TASKS_ON_HOST" (cc/num-tasks-on-host compute-cluster hostname)}]
+        cook-attributes (cond->
+                          {"HOSTNAME" hostname
+                           "COOK_GPU?" (-> offer
+                                           (offer-resource-scalar "gpus")
+                                           (or 0.0)
+                                           pos?)}
+                          compute-cluster
+                          (assoc "COOK_MAX_TASKS_PER_HOST" (cc/max-tasks-per-host compute-cluster)
+                                 "COOK_NUM_TASKS_ON_HOST" (cc/num-tasks-on-host compute-cluster hostname)))]
     (merge mesos-attributes cook-attributes)))
 
 (timers/deftimer [cook-mesos scheduler handle-status-update-duration])

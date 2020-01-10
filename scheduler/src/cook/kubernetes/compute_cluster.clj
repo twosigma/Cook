@@ -167,10 +167,10 @@
                   :command
                   :user)))
 
-(defn- all-pods
-  [compute-cluster all-pods-atom]
+(defn all-pods
+  [compute-cluster pods]
   (let [starting-pods (controller/starting-namespaced-pod-name->pod compute-cluster)]
-    (-> @all-pods-atom (merge starting-pods) vals)))
+    (-> pods (merge starting-pods) vals)))
 
 (defrecord KubernetesComputeCluster [^ApiClient api-client name entity-id match-trigger-chan exit-code-syncer-state
                                      all-pods-atom current-nodes-atom expected-state-map existing-state-map
@@ -219,7 +219,7 @@
 
   (pending-offers [this pool-name]
     (let [nodes @current-nodes-atom
-          pods (all-pods this all-pods-atom)
+          pods (all-pods this @all-pods-atom)
           offers-all-pools (generate-offers this nodes pods)
           ; TODO: We are generating offers for every pool here, and filtering out only offers for this one pool.
           ; TODO: We should be smarter here and generate once, then reuse for each pool, instead of generating for each pool each time and only keeping one
@@ -240,7 +240,7 @@
   (max-tasks-per-host [_] max-pods-per-node)
 
   (num-tasks-on-host [this hostname]
-    (->> all-pods-atom
+    (->> @all-pods-atom
          (all-pods this)
          (api/num-pods-on-node hostname))))
 
