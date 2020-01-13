@@ -610,10 +610,12 @@
         :else :not-running))))
 
 (defn kill-task
-  "Kill this kubernetes pod"
+  "Kill this kubernetes pod. This is the same as deleting it."
   [^ApiClient api-client ^V1Pod pod]
   (let [api (CoreV1Api. api-client)
         ^V1DeleteOptions deleteOptions (-> (V1DeleteOptionsBuilder.) (.withPropagationPolicy "Background") .build)]
+    ; TODO: This likes to noisily throw NotFound multiple times as we delete away from kubernetes.
+    ; I suspect our predicate of existing-states-equivalent needs tweaking.
     (try
       (.deleteNamespacedPod
         api
@@ -637,15 +639,6 @@
         ; They actually advise catching the exception and moving on!
         ;
         ))))
-
-
-(defn remove-finalization-if-set-and-delete
-  "Remove finalization for a pod if it's there. No-op if it's not there.
-  We always delete unconditionally, so finalization doesn't matter."
-  [^ApiClient api-client ^V1Pod pod]
-  ; TODO: This likes to noisily throw NotFound multiple times as we delete away from kubernetes.
-  ; I suspect our predicate of existing-states-equivalent needs tweaking.
-  (kill-task api-client pod))
 
 (defn launch-task
   "Given a V1Pod, launch it."

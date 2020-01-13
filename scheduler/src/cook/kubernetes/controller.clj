@@ -35,23 +35,43 @@
   ; suppress otherwise identical states so we don't spam.
   (= old-state new-state))
 
-(defn remove-finalization-if-set-and-delete
-  [api-client expected-state-dict pod]
-  (api/remove-finalization-if-set-and-delete api-client pod)
-  expected-state-dict)
+(defn delete-task
+  "Kill task is the same as deleting a task. I semantically distinguish them. Delete is used for completed tasks that
+  we're done with. Kill is used for possibly running tasks we want to kill so that they fail. Returns a new expected state
+  dict of nil."
+  [api-client pod]
+  (api/kill-task api-client pod)
+  nil) ; Return new expected state dict of nil.
 
 (defn kill-task
+  "Kill task is the same as deleting a task. I semantically distinguish them. Delete is used for completed tasks that
+  we're done with. Kill is used for possibly running tasks we want to kill so that they fail."
   [api-client expected-state-dict pod]
   (api/kill-task api-client pod)
+  expected-state-dict)
+
+(defn weird
+  "Weird. This pod is in a weird state. Log its weird state."
+  [expected-state-dict pod]
+  (log/error "Pod in a weird state:" expected-state-dict "and pod" pod))
+
+(defn kill-task-weird
+  "We're in a weird state that shouldn't occur with any of the normal expected races. This 'shouldn't occur. However,
+  we're going to pessimistically assume that anything that could happen will, whether it shouldn't or not."
+  [api-client expected-state-dict pod]
+  (weird expected-state-dict pod)
+  (kill-task api-client expected-state-dict pod)
   expected-state-dict)
 
 (defn launch-task
   [api-client expected-state-dict]
   (api/launch-task api-client expected-state-dict)
+  ; TODO: Should detect if we don't have a :launch-pod key and force a mea culpa retry and :expecte/killed so that we retry.
   expected-state-dict)
 
 (defn update-or-delete!
-  "Given a map atom, key, and value, if the value is not nil, set the key to the value in the map. If the value is nil, delete the key entirely."
+  "Given a map atom, key, and value, if the value is not nil, set the key to the value in the map. If the value is nil,
+  delete the key entirely."
   [^IAtom map-atom key value]
   (if (nil? value)
     (swap! map-atom dissoc key)
@@ -99,14 +119,20 @@
        first))
 
 (defn pod-has-just-completed
-  "A pod has completed. So now we need to update the status in datomic and store the exit code."
+  "A pod has completed, or we're treating it as completed. E.g., it may be really be running, but something is weird.
+
+  This is supposed to look at the pod status, update datomic (with success, failure, and possibly mea culpa),
+   and return a new expected-state of :expected/completed."
   [kcc {:keys [synthesized-state pod] :as existing-state-dictionary}]
   (let [task-id (-> pod .getMetadata .getName)
         pod-status (.getStatus pod)
         ^V1ContainerStatus job-container-status (get-job-container-status pod-status)
         mesos-state (case (:state synthesized-state)
                       :pod/failed :task-failed
-                      :pod/succeeded :task-finished)
+                      :pod/succeeded :task-finished
+                      :pod/unknown :task-failed
+                      :pod/waiting :task-failed ; Handle the (:expected/running,:pod/waiting) case.
+                      nil :task-failed)
         status {:task-id {:value task-id}
                 :state mesos-state
                 :reason (container-status->failure-reason kcc task-id pod-status job-container-status)}
@@ -114,6 +140,8 @@
     (write-status-to-datomic kcc status)
     (when exit-code
       (sandbox/aggregate-exit-code (:exit-code-syncer-state kcc) task-id exit-code))
+    ; Must never return nil, we want it to return non-nil so that we will retry with writing the state to datomic in case we lose a race.
+    ; The (completed,*) will cause use to delete the task, transitioning to (completed,missing), and thence to deleting from the map, to (missing,missing)
     {:expected-state :expected/completed}))
 
 (defn prepare-expected-state-dict-for-logging
@@ -182,41 +210,112 @@
     (log/info "In compute cluster" name ", processing pod" pod-name ";"
               "expected:" (prepare-expected-state-dict-for-logging expected-state-dict) ","
               "existing:" (prepare-existing-state-dict-for-logging existing-state-dict))
-    ; TODO: We added an :expected/starting state to the machine, to represent when a pod is starting. We map instance.status/unknown to that state
-    ; The todo is to add in cases for [:expected/starting *] for those other states.
+    ; We should have the cross product of
+    ;      :expected/starting :expected/running :expected/completed :expected/killed :missing
+    ; and
+    ;      :pod/waiting :pod/running :pod/succeeded :pod/failed :pod/unknown :missing
+    ;
+    ; for a total of 30 states.
+    ;
+    ; The only terminal expected state is :expected/completed and :missing
+    ; The only terminal pod state is :pod/succeeded :pod/failed and :missing. We also treat :pod/unknown as a terminal state.
+
+    ; Approach:
+    ;   All of the :pod/unknown states go at the end. We should have 6 of them. I'll ignore their existance below.
+    ;   We should have 5 matches for each expected state.
+    ;
+    ; We use expected/killed to represent a user-chosen kill. If we're doing a state-machine-induced kill (because something
+    ; went wrong) it should occur by deleting the pod, so we go, e.g.,  (:running,:waiting) (an illegal state) to (:running,:missing)
+    ; to (:completed, :missing), to (:missing,missing) to deleted. We put a flag on when we delete so that we can indicate
+    ; the provenance (e..g., induced because of a wierd state)
+    ;
+    ; Invariants:
+    ;   pod-has-just-completed/pod-was-killed/pod-has-started: These are callbacks invoked when kubernetes has moved
+    ;       to a new state. They handle writeback to datomic only. pod-was-killed is called in all of the weird
+    ;       kubernetes states that are not expected to occur, while pod-has-just-completed is invoked in all of the
+    ;       normal exit states (including exit-with-failure). I.e., these MUST only be invoked if expected state is not
+    ;       in a terminal state. These functions return new expected-state-dict's so should be invoked last in almost
+    ;       all cases. (However, in a few cases, (delete-task ? ?) can be invoked afterwards. It deletes the key from
+    ;       the expected state completely. Should only be invoked if we're nil.)
+    ;
+    ;   weird can be called at any time to indicate we're in a wierd state and extra logging is warranted.
+    ;
+    ;   We always end with one of  pod-has-just-completed/pod-was-killed/pod-has-started or delete-task.
+    ;
+    ;   We always update datomic first (with pod-has-* pod-was-*), etc, then we update kubernetes so we can handle restarts.
+    ;
+    ;   (delete-task ? ?) is only valid when kubernetes is in a terminal-state.
+    ;
+    ;   Note that we have release semantics. We could fail to process any operation. This means that, where relevant, we
+    ;     first write to datomic, then change into the next step. We thus show some intermediate states in the machine
+    ;     that seem like they could be skipped.
+    ;
+    ;   In the (:completed,*) states, we delete from datomic, transitioning into (:completed,:missing) and thence to (:missing, :missing)
+    ;     When we're in a terminal pod state.
+    ;
+    ;   We only delete a pod if and only if the pod is in a terminal (or unknown) state.
+    ; In some cases, we may mark mea culpa retries (if e.g., the node got reclaimed, so the pod got killed). In weird cases, we always need to mark mea culpa retries.
     (let
       [new-expected-state-dict (case (vector (or expected-state :missing) (or (:state synthesized-state) :missing))
                                  [:expected/starting :missing] (launch-task api-client expected-state-dict)
                                  [:expected/starting :pod/running] (pod-has-started kcc existing-state-dict)
-                                 ; TODO We need to add cases for the other [:expected/starting *] states in.
-                                 [:expected/starting :pod/waiting] expected-state-dict
-                                 [:expected/starting :pod/succeeded] (pod-has-just-completed kcc existing-state-dict)
-                                 [:expected/starting :pod/failed] (pod-has-just-completed kcc existing-state-dict)
+                                 [:expected/starting :pod/waiting] expected-state-dict ; Its starting. Can be stuck here.
+                                 [:expected/starting :pod/succeeded] (pod-has-just-completed kcc existing-state-dict) ; Finished fast.
+                                 [:expected/starting :pod/failed] (pod-has-just-completed kcc existing-state-dict) ; TODO: May need to mark mea culpa retry
                                  [:expected/running :pod/running] expected-state-dict
                                  [:expected/running :pod/succeeded] (pod-has-just-completed kcc existing-state-dict)
-                                 [:expected/completed :pod/succeeded] (remove-finalization-if-set-and-delete api-client expected-state-dict pod)
-                                 [:expected/running :pod/failed] (pod-has-just-completed kcc existing-state-dict)
-                                 [:expected/completed :pod/failed] (remove-finalization-if-set-and-delete api-client expected-state-dict pod)
+                                 [:expected/completed :pod/succeeded]
+                                 ; This is an exception. The writeback to datomic has occurred, so there's nothing to do except to delete the task from kubernetes
+                                 ; and remove it from our tracking.
+                                 (delete-task api-client pod)
+                                 [:expected/running :pod/failed] (pod-has-just-completed kcc existing-state-dict) ; TODO: May need to mark mea culpa retry
+                                 [:expected/running :pod/waiting]
+                                 (do ; This case is weird.
+                                   (kill-task-weird api-client expected-state-dict pod) ; This breaks our rule of calling pod-has-completed on a non-terminal pod state.
+                                   (pod-has-just-completed kcc existing-state-dict)) ; TODO: Should mark mea culpa retry
+
+                                 [:expected/completed :pod/failed] (delete-task api-client pod)
                                  [:expected/completed :missing] nil ; Cause it to be deleted.
                                  [:expected/killed :pod/waiting] (kill-task api-client expected-state-dict pod)
                                  [:expected/killed :pod/running] (kill-task api-client expected-state-dict pod)
 
-                                 [:expected/killed :pod/succeeded] (do
-                                                                     (pod-has-just-completed kcc existing-state-dict)
-                                                                     (remove-finalization-if-set-and-delete api-client expected-state-dict pod))
-                                 [:expected/killed :pod/failed]
-                                 (do
-                                   (pod-has-just-completed kcc existing-state-dict)
-                                   (remove-finalization-if-set-and-delete api-client expected-state-dict pod))
-                                 [:expected/killed :missing] (pod-was-killed kcc pod-name)
-                                 ; TODO: Implement :pod/unknown cases.
-                                 ; TODO: Implement :pod/pending cases.
-                                 ; TODO: Implement :pod/need-to-fail cases.
-                                 [:missing :pod/running] (kill-task api-client expected-state-dict pod)
-                                 [:missing :pod/pending] (kill-task api-client expected-state-dict pod)
-                                 [:missing :pod/need-to-fail] (kill-task api-client expected-state-dict pod)
-                                 [:missing :pod/succeeded] (remove-finalization-if-set-and-delete api-client expected-state-dict pod)
-                                 [:missing :pod/failed] (remove-finalization-if-set-and-delete api-client expected-state-dict pod)
+                                 [:expected/killed :pod/succeeded] ; There was a race and it completed normally before being it was killed.
+                                 (pod-has-just-completed kcc existing-state-dict)
+                                 [:expected/killed :pod/failed] (pod-has-just-completed kcc existing-state-dict)
+                                 [:expected/killed :missing]
+                                 (do ; Weird. We always update datomic first. Could happen if someone manually removed stuff from kubernetes.
+                                   (weird expected-state-dict pod)
+                                   (pod-was-killed kcc pod-name))
+                                 ; These cases are weird.
+                                 [:expected/completed :pod/waiting] (kill-task-weird api-client expected-state-dict pod)
+                                 [:expected/completed :pod/running] (kill-task-weird api-client expected-state-dict pod)
+
+                                 ; This is interesting. This indicates that something deleted it behind our back!
+                                 ; Other 3 cases of [{completed,starting,killed}, :missing] already handled.
+                                 [:expected/running :missing] (do
+                                                                (log/error "Something deleted" pod-name "behind our back")
+                                                                (pod-has-just-completed kcc existing-state-dict)) ; TODO: Should mark mea culpa retry
+
+                                 ; This block of :missing,* cases can only occur in testing when you're e.g., blowing away the database. 
+                                 ; The next two will go through :missing,running or :missing,waiting to :missing,failed and then be deleted.
+                                 ; TODO: These may be evidence of a bug where we process pod changes when we're starting up.
+                                 [:missing :pod/running] (kill-task-weird api-client nil pod)
+                                 [:missing :pod/waiting] (kill-task-weird api-client nil pod)
+
+                                 ; We shouldn't hit these unless we get a database rollback.
+                                 [:missing :pod/succeeded] (kill-task-weird api-client nil pod)
+                                 [:missing :pod/failed] (kill-task-weird api-client nil pod)
+
+                                 [:missing :pod/unknown] (kill-task-weird api-client expected-state-dict pod)
+                                 [:expected/starting :pod/unknown] ; TODO: Should mark mea culpa retry
+                                 (kill-task-weird api-client (pod-has-just-completed kcc existing-state-dict) pod)
+                                 [:expected/running :pod/unknown] ; TODO: Should mark mea culpa retry
+                                 (kill-task-weird api-client (pod-has-just-completed kcc existing-state-dict) pod)
+                                 [:expected/killed :pod/unknown] ; TODO: Should mark mea culpa retry
+                                 (kill-task-weird api-client (pod-has-just-completed kcc existing-state-dict) pod)
+                                 [:expected/completed :pod/unknown] ; TODO: Should mark mea culpa retry
+                                 (kill-task-weird api-client (pod-has-just-completed kcc existing-state-dict) pod)
+
                                  [:missing :missing] nil ; this can come up due to the recur at the end
                                  (do
                                    (log/error "Unexpected state: "
