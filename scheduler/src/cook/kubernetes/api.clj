@@ -248,16 +248,10 @@
                                                 (map (fn [^V1Pod pod]
                                                        (let [containers (-> pod .getSpec .getContainers)
                                                              container-requests (map (fn [^V1Container c]
-                                                                                       (try
-                                                                                         ; TODO FIXME DO NOT COMMIT THIS!!!!!
-                                                                                         (-> c
-                                                                                              .getResources
-                                                                                              .getRequests
-                                                                                              convert-resource-map)
-                                                                                         (catch Exception e
-                                                                                           (log/error e "nsinkov 20191115 this container caused NPE " c)
-                                                                                           {:mem 0.0
-                                                                                            :cpus 0.0})))
+                                                                                       (-> c
+                                                                                         .getResources
+                                                                                         .getRequests
+                                                                                         convert-resource-map))
                                                                                      containers)]
                                                          (apply merge-with + container-requests))))
                                                 (apply merge-with +)))

@@ -76,7 +76,7 @@ def try_parse_int(param_name, val):
 
 
 @app.route('/files/read')
-@app.route('/files/read.json')# FIXME DO NOT COMMIT THIS!! need to limit max length
+@app.route('/files/read.json')
 def read():
     path = request.args.get('path')
     offset_param = request.args.get('offset')
@@ -104,7 +104,10 @@ def read():
         })
     f = open(path)
     f.seek(offset)
-    data = f.read() if length is None or length == -1 else f.read(length)
+    max_length = int(os.getenv('COOK_FILE_SERVER_MAX_READ_LENGTH', '25000000'))
+    if length > max_length:
+        return f"Requested length for file read, {length} is greater than max allowed length, {max_length}", 400
+    data = f.read(max_length if length is None or length == -1 else length)
     f.close()
     return jsonify({
         "data": data,

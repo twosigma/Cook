@@ -1,12 +1,11 @@
 (ns cook.kubernetes.controller
-  (:require [clojure.tools.logging :as log]
-            [cook.config :as config]
+  (:require [cook.config :as config]
             [cook.datomic :as datomic]
             [cook.kubernetes.api :as api]
             [cook.mesos.sandbox :as sandbox]
             [cook.scheduler.scheduler :as scheduler]
-            [cook.util :as util]
-            [clojure.string :as str])
+            [clojure.string :as str]
+            [clojure.tools.logging :as log])
   (:import (clojure.lang IAtom)
            (io.kubernetes.client.models V1Pod V1ContainerStatus V1PodStatus)
            (java.net URLEncoder)))

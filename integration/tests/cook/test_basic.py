@@ -219,6 +219,12 @@ class CookTest(util.CookTest):
             self.assertEqual(400, resp.status_code)
             self.assertIn('Negative length provided', resp.text)
 
+            # length is > max length
+            resp = util.session.get(f'{output_url}/stdout&length=25000001')
+            self.logger.info(resp.text)
+            self.assertEqual(400, resp.status_code)
+            self.assertIn('Requested length for file read, 25000001 is greater than max allowed length, 25000000', resp.text)
+
             # invalid path and offset not a valid number
             resp = util.session.get(f'{output_url}/{uuid.uuid4()}&offset=foo')
             self.logger.info(resp.text)
