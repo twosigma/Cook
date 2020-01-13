@@ -220,10 +220,15 @@ class CookTest(util.CookTest):
             self.assertIn('Negative length provided', resp.text)
 
             # length is > max length
-            resp = util.session.get(f'{output_url}/stdout&length=25000001')
-            self.logger.info(resp.text)
-            self.assertEqual(400, resp.status_code)
-            self.assertIn('Requested length for file read, 25000001 is greater than max allowed length, 25000000', resp.text)
+            # limit maximum file chunk in kubernetes. we have to allocate more memory to the file server side car
+            # if we want to serve larger chunks
+            if util.using_kubernetes():
+                max_length = int(os.getenv('COOK_FILE_SERVER_MAX_READ_LENGTH', '25000000'))
+                max_length_plus_one = max_length + 1
+                resp = util.session.get(f'{output_url}/stdout&length={max_length_plus_one}')
+                self.logger.info(resp.text)
+                self.assertEqual(400, resp.status_code)
+                self.assertIn(f'Requested length for file read, {max_length_plus_one} is greater than max allowed length, {max_length}', resp.text)
 
             # invalid path and offset not a valid number
             resp = util.session.get(f'{output_url}/{uuid.uuid4()}&offset=foo')
