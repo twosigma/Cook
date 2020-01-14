@@ -83,7 +83,7 @@ def try_parse_int(param_name, val):
     except Exception as _:
         return (None, err_message())
     if int_val < -1:
-        return f"Negative {param_name} provided: {int_val}.\n", 400
+        return (None, f"Negative {param_name} provided: {int_val}.\n")
     return (int_val, None)
 
 
