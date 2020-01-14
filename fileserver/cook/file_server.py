@@ -20,7 +20,7 @@
 #  FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 #  IN THE SOFTWARE.
 #
-"""Module implementing a file server to serve Cook job logs. """
+"""Module implementing the Mesos file access REST API to serve Cook job logs. """
 
 import os
 from operator import itemgetter
@@ -29,26 +29,35 @@ from stat import *
 
 import gunicorn.app.base
 from flask import Flask, jsonify, request, send_file
-from gunicorn.six import iteritems
 
 app = Flask(__name__)
+sandbox_directory = None
+max_read_length = int(os.getenv('COOK_FILE_SERVER_MAX_READ_LENGTH', '25000000'))
 
 
 class FileServerApplication(gunicorn.app.base.BaseApplication):
 
-    def __init__(self, options=None):
+    def __init__(self, cook_workdir, options=None):
         self.options = options or {}
         self.application = app
+        global sandbox_directory
+        sandbox_directory = cook_workdir
         super(FileServerApplication, self).__init__()
 
     def load_config(self):
-        config = dict([(key, value) for key, value in iteritems(self.options)
-                       if key in self.cfg.settings and value is not None])
-        for key, value in iteritems(config):
-            self.cfg.set(key.lower(), value)
+        for key, value in self.options.items():
+            if key in self.cfg.settings and value is not None:
+                self.cfg.set(key.lower(), value)
 
     def load(self):
         return self.application
+
+
+def path_is_valid(path):
+    if not os.path.exists(path):
+        return False
+    normalized_path = os.path.normpath(path)
+    return normalized_path.startswith(sandbox_directory)
 
 
 @app.route('/files/download')
@@ -57,7 +66,7 @@ def download():
     path = request.args.get('path')
     if path is None:
         return "Expecting 'path=value' in query.\n", 400
-    if not os.path.exists(path):
+    if not path_is_valid(path):
         return "", 404
     if os.path.isdir(path):
         return "Cannot download a directory.\n", 400
@@ -65,13 +74,16 @@ def download():
 
 
 def try_parse_int(param_name, val):
-    err_message = lambda: f"Failed to parse {param_name}: Failed to convert '{val}' to number.\n"
+    def err_message():
+        return f"Failed to parse {param_name}: Failed to convert '{val}' to number.\n"
     try:
         int_val = int(val)
     except ValueError as _:
         return (None, err_message())
     except Exception as _:
         return (None, err_message())
+    if int_val < -1:
+        return f"Negative {param_name} provided: {int_val}.\n", 400
     return (int_val, None)
 
 
@@ -79,35 +91,31 @@ def try_parse_int(param_name, val):
 @app.route('/files/read.json')
 def read():
     path = request.args.get('path')
-    offset_param = request.args.get('offset')
-    length_param = request.args.get('length')
+    offset_param = request.args.get('offset', -1)
+    length_param = request.args.get('length', -1)
     if path is None:
         return "Expecting 'path=value' in query.\n", 400
-    offset, err = (None, None) if offset_param is None else try_parse_int("offset", offset_param)
+    offset, err = try_parse_int("offset", offset_param)
     if not err is None:
         return err, 400
-    length, err = (None, None) if length_param is None else try_parse_int("length", length_param)
+    length, err = try_parse_int("length", length_param)
     if not err is None:
         return err, 400
-    if not length is None and length < -1:
-        return f"Negative length provided: {length}.\n", 400
-    if not offset is None and offset < -1:
-        return f"Negative offset provided: {offset}.\n", 400
-    if not os.path.exists(path):
+    if not path_is_valid(path):
         return "", 404
     if os.path.isdir(path):
         return "Cannot read a directory.\n", 400
-    if offset is None or offset == -1:
+    if offset == -1:
         return jsonify({
             "data": "",
             "offset": os.path.getsize(path),
         })
     f = open(path)
     f.seek(offset)
-    max_length = int(os.getenv('COOK_FILE_SERVER_MAX_READ_LENGTH', '25000000'))
-    if length > max_length:
-        return f"Requested length for file read, {length} is greater than max allowed length, {max_length}", 400
-    data = f.read(max_length if length is None or length == -1 else length)
+    length = max_read_length if length == -1 else length
+    if length > max_read_length:
+        return f"Requested length for file read, {length} is greater than max allowed length, {max_read_length}", 400
+    data = f.read(length)
     f.close()
     return jsonify({
         "data": data,
@@ -123,7 +131,7 @@ permission_strings = {
     '4': 'r--',
     '5': 'r-x',
     '6': 'rw-',
-    '7': 'rwx'
+    '7': 'rwx',
 }
 # maps permission bit masks to a linux permission string. e.g. 775 -> "rwxrwxr-x"
 permissions = {n - 512: ''.join(permission_strings[c] for c in str(oct(n))[-3:]) for n in range(512, 1024)}
@@ -135,7 +143,7 @@ def browse():
     path = request.args.get('path')
     if path is None:
         return "Expecting 'path=value' in query.\n", 400
-    if not os.path.exists(path):
+    if not path_is_valid(path):
         return "", 404
     if not os.path.isdir(path):
         return jsonify([])
@@ -156,9 +164,9 @@ def browse():
     return jsonify(sorted(retval, key=itemgetter("path")))
 
 
-# This endpoint is used by the kubernetes readiness probe on the fileserver container. Cook will see that the
-# fileserver is ready to serve files and will set the output_url. If we expose the output_url before the server
-# is ready, then someone might use it and get an error.
+# This endpoint is not part of the Mesos API. It is used by the kubernetes readiness probe on the fileserver container.
+# Cook will see that the fileserver is ready to serve files and will set the output_url. If we expose the output_url
+# before the server is ready, then someone might use it and get an error.
 @app.route('/readiness-probe')
 def readiness_probe():
     return ""

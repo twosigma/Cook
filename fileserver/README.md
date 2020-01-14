@@ -16,7 +16,11 @@ $ pip3 install -e .
 
 Usage:
 
+The `COOK_WORKDIR` environment variable must be set. Only files with `COOK_WORKDIR` as the root will be served.
+
 ```fileserver PORT [NUM_WORKERS]```
+
+`NUM_WORKERS` defaults to `4`.
 
 Examples:
 

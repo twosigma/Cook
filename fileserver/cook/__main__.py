@@ -22,6 +22,7 @@
 #
 
 import logging
+import os
 import sys
 
 from cook.file_server import FileServerApplication
@@ -31,12 +32,15 @@ def main(args=None):
     if args is None:
         args = sys.argv[1:]
     try:
-        print(sys.version)
         port, workers = (args + [None] * 2)[0:2]
         if port is None:
             logging.error('Must provide port')
             sys.exit(1)
-        FileServerApplication({
+        cook_workdir = os.getenv('COOK_WORKDIR')
+        if not cook_workdir:
+            logging.error('COOK_WORKDIR environment variable must be set')
+            sys.exit(1)
+        FileServerApplication(cook_workdir, {
             'bind': f'0.0.0.0:{port}',
             'workers': 4 if workers is None else workers,
         }).run()
