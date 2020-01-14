@@ -158,14 +158,14 @@
                   (if-let [offers-chan (get pool->offers-chan pool-name)]
                     (do
                       (log/info "Processing" offer-count "offer(s) for known pool" pool-name)
-                      (sched/receive-offers offers-chan match-trigger-chan this pool-name offers))
+                      (sched/receive-offers offers-chan match-trigger-chan compute-cluster pool-name offers))
                     (do
                       (log/warn "Declining" offer-count "offer(s) for non-existent pool" pool-name)
                       (sched/decline-offers-safe compute-cluster offers)))
                   (if-let [offers-chan (get pool->offers-chan "no-pool")]
                     (do
                       (log/info "Processing" offer-count "offer(s) for pool" pool-name "(not using pools)")
-                      (sched/receive-offers offers-chan match-trigger-chan this pool-name offers))
+                      (sched/receive-offers offers-chan match-trigger-chan compute-cluster pool-name offers))
                     (do
                       (log/error "Declining" offer-count "offer(s) for pool" pool-name "(missing no-pool offer chan)")
                       (sched/decline-offers-safe compute-cluster offers))))))
