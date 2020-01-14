@@ -465,7 +465,7 @@
 
 
 (defn pod-helper [pod-name node-name & requests]
-  "Make a fake node for kubernetes unit tests"
+  "Make a fake pod for kubernetes unit tests"
   (let [pod (V1Pod.)
         metadata (V1ObjectMeta.)
         spec (V1PodSpec.)]
