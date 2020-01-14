@@ -282,6 +282,12 @@ class CookTest(util.CookTest):
             self.logger.info(resp.text)
             self.assertEqual(404, resp.status_code)
 
+            # browse - path outside of sandbox directory
+            url = urlparse(browse_url)
+            resp = util.session.get(f'http://{url.netloc}{url.path}?path=/mnt')
+            self.logger.info(resp.text)
+            self.assertEqual(404, resp.status_code)
+
             # browse - no path
             url = urlparse(browse_url)
             resp = util.session.get(f'http://{url.netloc}{url.path}')
