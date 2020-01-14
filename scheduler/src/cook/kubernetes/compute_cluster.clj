@@ -15,6 +15,7 @@
             [plumbing.core :as pc])
   (:import (com.google.auth.oauth2 GoogleCredentials)
            (io.kubernetes.client ApiClient)
+           (io.kubernetes.client.models V1Node)
            (io.kubernetes.client.util Config)
            (java.io FileInputStream File)
            (java.util UUID)
@@ -23,10 +24,12 @@
 (defn schedulable-node-filter
   "Is a node schedulable?"
   [node-name->node [node-name _] compute-cluster pods]
-  (when-not (-> node-name node-name->node)
-    (log/error "In" (cc/compute-cluster-name compute-cluster)
-               "compute cluster, unable to get node from node name" node-name))
-  (-> node-name node-name->node (api/node-schedulable? (cc/max-tasks-per-host compute-cluster) pods)))
+  (if-let [^V1Node node (node-name->node node-name)]
+    (api/node-schedulable? node (cc/max-tasks-per-host compute-cluster) pods)
+    (do
+      (log/error "In" (cc/compute-cluster-name compute-cluster)
+                 "compute cluster, unable to get node from node name" node-name)
+      false)))
 
 
 (defn generate-offers
