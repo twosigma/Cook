@@ -307,21 +307,22 @@
 (defn write-sandbox-url-to-datomic
   "Takes a sandbox file server URL from the compute cluster and saves it to datomic."
   [conn task-id sandbox-url]
-  (try (let [db (db conn)
-             _ (when-not task-id
-                 (throw (ex-info "task-id is nil. Something unexpected has happened."
-                                 {:sandbox-url sandbox-url
-                                  :task-id task-id})))
-             [instance] (first (q '[:find ?i
-                                    :in $ ?task-id
-                                    :where
-                                    [?i :instance/task-id ?task-id]]
-                                  db task-id))]
-         (if (nil? instance)
-           (log/error (str "Sandbox file server URL update error. No instance for task-id " task-id))
-           @(d/transact conn [[:db/add instance :instance/sandbox-url sandbox-url]])))
-       (catch Exception e
-         (log/error e "Sandbox file server URL update error"))))
+  (try
+    (let [db (db conn)
+          _ (when-not task-id
+              (throw (ex-info "task-id is nil. Something unexpected has happened."
+                              {:sandbox-url sandbox-url
+                               :task-id task-id})))
+          [instance] (first (q '[:find ?i
+                                 :in $ ?task-id
+                                 :where
+                                 [?i :instance/task-id ?task-id]]
+                               db task-id))]
+      (if (nil? instance)
+        (log/error "Sandbox file server URL update error. No instance for task-id" task-id)
+        @(d/transact conn [[:db/add instance :instance/sandbox-url sandbox-url]])))
+    (catch Exception e
+      (log/error e "Sandbox file server URL update error"))))
 
 (defn- task-id->instance-id
   "Retrieves the instance-id given a task-id"

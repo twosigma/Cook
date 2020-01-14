@@ -369,12 +369,9 @@
   "Takes two doubles and adds them as decimals to avoid floating point error. Kubernetes will not be able to launch a
    pod if the required cpu has too much precision. For example, adding 0.1 and 0.02 as doubles results in 0.12000000000000001"
   [a b]
-  (-> a
-    BigDecimal/valueOf
-    (.add (BigDecimal/valueOf b))
-    .doubleValue))
+  (double (+ (bigdec a) (bigdec b))))
 
-(defn adjust-job-resources-fn
+(defn adjust-job-resources
   "Given the required resources for a job, add to them the resources for any sidecars that will be launched with the job."
   [{:keys [cpus mem] :as resources}]
   (if-let [{:keys [cpu-request memory-request]} (-> (config/kubernetes) :sandbox-fileserver :resource-requirements)]
@@ -477,10 +474,10 @@
     ; "Guaranteed" QoS which requires limits for both memory and cpu.
     (.putLimitsItem resources "cpu" (double->quantity cpus))
     (.setResources container resources)
-    (.setVolumeMounts container (into [] (remove nil? (conj volume-mounts
-                                                            (workdir-volume-mount-fn false)
-                                                            (wrapper-script-workdir-volume-mount-fn true)
-                                                            (fileserver-workdir-volume-mount-fn true)))))
+    (.setVolumeMounts container (filterv some? (conj volume-mounts
+                                                     (workdir-volume-mount-fn false)
+                                                     (wrapper-script-workdir-volume-mount-fn true)
+                                                     (fileserver-workdir-volume-mount-fn true))))
     (.setWorkingDir container workdir)
 
     ; pod-spec
@@ -533,7 +530,7 @@
     (.setRestartPolicy pod-spec "Never")
     (when pool-name
       (.addTolerationsItem pod-spec (toleration-for-pool pool-name)))
-    (.setVolumes pod-spec (into [] (remove nil? (conj volumes workdir-volume wrapper-script-workdir-volume fileserver-workdir-volume))))
+    (.setVolumes pod-spec (filterv some? (conj volumes workdir-volume wrapper-script-workdir-volume fileserver-workdir-volume)))
     (.setSecurityContext pod-spec security-context)
 
     ; pod
@@ -618,9 +615,10 @@
           container-statuses (.getContainerStatuses pod-status)
           file-server-status (first (filter (fn [c] (= cook-container-name-for-file-server (.getName c)))
                                             container-statuses))]
-      (if file-server-status
-        (if (.isReady file-server-status) :running :not-running)
-        :unknown))))
+      (cond
+        (nil? file-server-status) :unknown
+        (.isReady file-server-status) :running
+        :else :not-running))))
 
 (defn kill-task
   "Kill this kubernetes pod"

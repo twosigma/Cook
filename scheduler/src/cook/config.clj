@@ -438,8 +438,8 @@
                                   :default-pool "no-pool"}
                                  pool-selection)})))
      :kubernetes (fnk [[:config {kubernetes {}}]]
-                   (let [kubernetes (merge {:default-workdir "/mnt/sandbox"} kubernetes)]
-                     (update kubernetes :pod-ip->hostname-fn resolve-optional-function identity)))}))
+                   (merge {:default-workdir "/mnt/sandbox"}
+                          (update kubernetes :pod-ip->hostname-fn resolve-optional-function identity)))}))
 
 (defn read-config
   "Given a config file path, reads the config and returns the map"
@@ -497,7 +497,8 @@
       pool)))
 
 (defn job-resource-adjustments
-  "Returns the specification for how to adjust resources requested by a job based on the pool it's scheduled on"
+  "Returns the specification for how to adjust resources requested by a job based on the pool it's scheduled on.
+   The specification consists of an applicable pool name regex and the name of a function that adjusts resources."
   []
   (-> config :settings :pools :job-resource-adjustment))
 

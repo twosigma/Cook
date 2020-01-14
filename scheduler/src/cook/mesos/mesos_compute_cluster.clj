@@ -297,11 +297,11 @@
   (num-tasks-on-host [_ _])
 
   (retrieve-sandbox-url-path
-    ;"Constructs a URL to query the sandbox directory of the task.
-    ; Uses the sandbox-directory to determine the sandbox directory.
-    ; Hard codes fun stuff like the port we run the agent on.
-    ; Users will need to add the file path & offset to their query.
-    ; Refer to the 'Using the output_url' section in docs/scheduler-rest-api.adoc for further details."
+    ;; Constructs a URL to query the sandbox directory of the task.
+    ;; Uses the sandbox-directory to determine the sandbox directory.
+    ;; Hard codes fun stuff like the port we run the agent on.
+    ;; Users will need to add the file path & offset to their query.
+    ;; Refer to the 'Using the output_url' section in docs/scheduler-rest-api.adoc for further details.
     [_ {:keys [instance/hostname instance/task-id instance/sandbox-directory]}]
     (try
       (when sandbox-directory
