@@ -430,22 +430,16 @@
         workdir (get-workdir parameters)
         workdir-volume (make-volume "cook-workdir-volume")
         workdir-volume-mount-fn (partial make-volume-mount workdir-volume workdir)
-        {:keys [wrapper-script init-container sandbox-fileserver]} (config/kubernetes)
-        wrapper-script-workdir "/mnt/wrapper-script"
-        wrapper-script-workdir-volume (when wrapper-script (make-volume "cook-wrapper-script-workdir-volume"))
-        wrapper-script-workdir-volume-mount-fn (partial make-volume-mount wrapper-script-workdir-volume wrapper-script-workdir)
+        {:keys [custom-shell init-container sandbox-fileserver]} (config/kubernetes)
+        init-container-workdir "/mnt/init-container"
+        init-container-workdir-volume (when init-container (make-volume "cook-init-container-workdir-volume"))
+        init-container-workdir-volume-mount-fn (partial make-volume-mount init-container-workdir-volume init-container-workdir)
         fileserver-workdir "/mnt/fileserver"
         fileserver-workdir-volume (when sandbox-fileserver (make-volume "cook-fileserver-workdir-volume"))
         fileserver-workdir-volume-mount-fn (partial make-volume-mount fileserver-workdir-volume fileserver-workdir)
         workdir-env-vars [(make-env "HOME" workdir)
                           (make-env "MESOS_SANDBOX" workdir)
                           (make-env "FILESERVER_WORKDIR" fileserver-workdir)]]
-
-    (when (or wrapper-script init-container)
-      (when-not (and wrapper-script init-container)
-        (throw (ex-info
-                 "Bad kubernetes configuration. wrapper-script and init-container should both be set, or neither should be set."
-                 {:kubernetes-config (config/kubernetes)}))))
 
     ; metadata
     (.setName metadata (str task-id))
@@ -454,12 +448,7 @@
 
     ; container
     (.setName container cook-container-name-for-job)
-    (if wrapper-script
-      (.setCommand container
-                   ["/bin/sh" "-c" (str wrapper-script-workdir "/" wrapper-script " '" (str/escape (:value command) {\' "'\\''"}) "'")])
-      (.setCommand container
-                   ["/bin/sh" "-c" (:value command)]))
-
+    (.setCommand container (conj (or custom-shell ["/bin/sh" "-c"]) (:value command)))
     (.setEnv container (-> []
                            (into env)
                            (into (param-env-vars parameters))
@@ -476,7 +465,7 @@
     (.setResources container resources)
     (.setVolumeMounts container (filterv some? (conj volume-mounts
                                                      (workdir-volume-mount-fn false)
-                                                     (wrapper-script-workdir-volume-mount-fn true)
+                                                     (init-container-workdir-volume-mount-fn true)
                                                      (fileserver-workdir-volume-mount-fn true))))
     (.setWorkingDir container workdir)
 
@@ -489,10 +478,10 @@
         ; container
         (.setName container cook-init-container-name)
         (.setImage container image)
-        (.setCommand container ["/bin/sh" "-c" command])
-        (.setWorkingDir container wrapper-script-workdir)
+        (.setCommand container command)
+        (.setWorkingDir container init-container-workdir)
 
-        (.setVolumeMounts container [(wrapper-script-workdir-volume-mount-fn false)])
+        (.setVolumeMounts container [(init-container-workdir-volume-mount-fn false)])
         (.addInitContainersItem pod-spec container)))
 
     ; sandbox file server container
@@ -505,7 +494,7 @@
         ; container
         (.setName container cook-container-name-for-file-server)
         (.setImage container image)
-        (.setCommand container [command (str port)])
+        (.setCommand container (conj command (str port)))
         (.setWorkingDir container fileserver-workdir)
         (.setPorts container [(.containerPort (V1ContainerPort.) (int port))])
 
@@ -530,7 +519,7 @@
     (.setRestartPolicy pod-spec "Never")
     (when pool-name
       (.addTolerationsItem pod-spec (toleration-for-pool pool-name)))
-    (.setVolumes pod-spec (filterv some? (conj volumes workdir-volume wrapper-script-workdir-volume fileserver-workdir-volume)))
+    (.setVolumes pod-spec (filterv some? (conj volumes workdir-volume init-container-workdir-volume fileserver-workdir-volume)))
     (.setSecurityContext pod-spec security-context)
 
     ; pod

@@ -73,20 +73,6 @@ def download():
     return send_file(path, as_attachment=True)
 
 
-def try_parse_int(param_name, val):
-    def err_message():
-        return f"Failed to parse {param_name}: Failed to convert '{val}' to number.\n"
-    try:
-        int_val = int(val)
-    except ValueError as _:
-        return (None, err_message())
-    except Exception as _:
-        return (None, err_message())
-    if int_val < -1:
-        return (None, f"Negative {param_name} provided: {int_val}.\n")
-    return (int_val, None)
-
-
 @app.route('/files/read')
 @app.route('/files/read.json')
 def read():
@@ -95,12 +81,18 @@ def read():
     length_param = request.args.get('length', -1)
     if path is None:
         return "Expecting 'path=value' in query.\n", 400
-    offset, err = try_parse_int("offset", offset_param)
-    if not err is None:
-        return err, 400
-    length, err = try_parse_int("length", length_param)
-    if not err is None:
-        return err, 400
+    try:
+        offset = int(offset_param)
+    except ValueError as _:
+        return f"Failed to parse offset: Failed to convert '{offset_param}' to number.\n", 400
+    if offset < -1:
+        return f"Negative offset provided: {offset_param}.\n", 400
+    try:
+        length = int(length_param)
+    except ValueError as _:
+        return f"Failed to parse length: Failed to convert '{length_param}' to number.\n", 400
+    if length < -1:
+        return f"Negative length provided: {length_param}.\n", 400
     if not path_is_valid(path):
         return "", 404
     if os.path.isdir(path):

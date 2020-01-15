@@ -160,7 +160,7 @@
                       (catch Exception e
                         (log/debug e "Unable to retrieve directory path for" task-id)
                         nil))]
-    (scheduler/write-sandbox-url-to-datomic datomic/conn task-id sandbox-url)))
+    (when sandbox-url (scheduler/write-sandbox-url-to-datomic datomic/conn task-id sandbox-url))))
 
 (defn pod-was-killed
   "A pod was killed. So now we need to update the status in datomic and store the exit code."

@@ -26,12 +26,14 @@ import os
 import sys
 
 from cook.file_server import FileServerApplication
+from cook.version import VERSION
 
 
 def main(args=None):
     if args is None:
         args = sys.argv[1:]
     try:
+        print(f'Starting cook.file_server {VERSION}')
         port, workers = (args + [None] * 2)[0:2]
         if port is None:
             logging.error('Must provide port')
