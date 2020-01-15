@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.37.0] - 2020-01-15
+### Added
+- Support for moving a portion of a user's jobs to a different pool, from @dposada
+- Support in k8s compute clusters for max pods per node, from @dposada
+### Fixed
+- Made Mesos reconciler only reconcile Mesos tasks, from @scrosby
+- Made declining Mesos offers work, from @shamsimam
+- Removed incorrect rate-limit reason in `/unscheduled_jobs`, from @dposada
+
 ## [1.36.2] - 2019-12-17
 ### Fixed
 - Avoid using Cook executor when launching on k8s, from @dposada
@@ -21,7 +30,7 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/) and this p
 - Support for mesos and kubernetes compute clusters simultaneously, from @scrosby
 - Scripts for creating compute clusters on GKE, from @scrosby
 ### Changed
-- Optimized quota reading, from @shams
+- Optimized quota reading, from @shamsimam
 - Integration test improvements, from @dposada
 - Bug fixes for kubernetes support, from @scrosby
 
