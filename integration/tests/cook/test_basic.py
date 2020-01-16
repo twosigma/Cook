@@ -368,7 +368,7 @@ class CookTest(util.CookTest):
         self.assertEqual(False, docker['force-pull-image'])
         # the user parameter is added when missing
         self.assertEqual(3, len(docker['parameters']))
-        self.assertTrue(next(True for p in docker['parameters'] if p['key'] == 'env'))
+        self.assertTrue(any(p['key'] == 'user' for p in docker['parameters']))
         self.assertEqual('FOO=bar', next(p['value'] for p in docker['parameters'] if p['key'] == 'env'))
         self.assertEqual('/var/lib/pqr', next(p['value'] for p in docker['parameters'] if p['key'] == 'workdir'))
         self.assertLessEqual(4, len(volumes))
