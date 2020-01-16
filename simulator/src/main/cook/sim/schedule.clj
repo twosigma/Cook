@@ -41,7 +41,6 @@
                               :job/duration (:duration job-spec)
                               :job/memory (:memory job-spec)
                               :job/cpu (:cpu job-spec)
-                              :job/docker? (:docker? job-spec)
                               :job/exit-code (:exit-code job-spec)}
                        (:group job-spec) (assoc :job/group (:group job-spec)))]))
 
@@ -80,7 +79,6 @@
    :duration (random-long (:job-duration profile))
    :memory (random-long (:job-memory profile))
    :cpu (float (random-long (:job-cpu profile)))
-   :docker? (<= (rand) (:docker-tendency profile))
    ;; TODO simulate jobs that will always fail, or fail sometimes?
    :exit-code 0})
 
