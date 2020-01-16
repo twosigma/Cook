@@ -99,7 +99,7 @@ class CookTest(util.CookTest):
     def test_output_url(self):
         job_executor_type = util.get_job_executor_type()
         job_uuid, resp = util.submit_job(self.cook_url,
-                                         command='echo foobarbaz; cd $MESOS_SANDBOX'
+                                         command='echo foobarbaz; cd $MESOS_SANDBOX; '
                                                  'touch test_perms; chmod a-rwx test_perms; '
                                                  'touch test_perms2; chmod a-rwx test_perms2; '
                                                  'chmod u+rwx test_perms2; chmod g+rx test_perms2; chmod o+x test_perms2;'
