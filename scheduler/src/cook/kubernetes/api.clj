@@ -609,7 +609,7 @@
         (.isReady file-server-status) :running
         :else :not-running))))
 
-(defn kill-task
+(defn delete-pod
   "Kill this kubernetes pod. This is the same as deleting it."
   [^ApiClient api-client ^V1Pod pod]
   (let [api (CoreV1Api. api-client)
