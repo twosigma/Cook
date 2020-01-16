@@ -43,7 +43,7 @@
       (testing "static namespace"
         (let [compute-cluster (kcc/->KubernetesComputeCluster nil "kubecompute" nil nil nil
                                                               (atom {}) (atom {}) (atom {}) (atom {}) (atom nil)
-                                                              {:kind :static :namespace "cook"} nil nil nil)
+                                                              {:kind :static :namespace "cook"} nil nil nil nil)
               task-metadata (task/TaskAssignmentResult->task-metadata (d/db conn)
                                                                       nil
                                                                       compute-cluster
@@ -58,7 +58,7 @@
       (testing "per-user namespace"
         (let [compute-cluster (kcc/->KubernetesComputeCluster nil "kubecompute" nil nil nil
                                                               (atom {}) (atom {}) (atom {}) (atom {}) (atom nil)
-                                                              {:kind :per-user} nil nil nil)
+                                                              {:kind :per-user} nil nil nil nil)
               task-metadata (task/TaskAssignmentResult->task-metadata (d/db conn)
                                                                       nil
                                                                       compute-cluster
@@ -75,7 +75,7 @@
     (let [conn (tu/restore-fresh-database! "datomic:mem://test-generate-offers")
           compute-cluster (kcc/->KubernetesComputeCluster nil "kubecompute" nil nil nil
                                                           (atom {}) (atom {}) (atom {}) (atom {}) (atom nil)
-                                                          {:kind :static :namespace "cook"} nil nil nil)
+                                                          {:kind :static :namespace "cook"} nil 3 nil nil)
           node-name->node {"nodeA" (tu/node-helper "nodeA" 1.0 1000.0 nil)
                            "nodeB" (tu/node-helper "nodeB" 1.0 1000.0 nil)
                            "nodeC" (tu/node-helper "nodeC" 1.0 1000.0 nil)
@@ -98,8 +98,7 @@
                                                                          {:cpus 1.0 :mem 1100.0})
                          {:namespace "cook" :name task-1-id} (tu/pod-helper task-1-id "my.fake.host"
                                                                             {:cpus 0.1 :mem 10.0})}
-          all-offers (kcc/generate-offers compute-cluster node-name->node pod-name->pod
-                                      (controller/starting-namespaced-pod-name->pod compute-cluster))
+          all-offers (kcc/generate-offers compute-cluster node-name->node (kcc/all-pods compute-cluster pod-name->pod))
           offers (get all-offers "no-pool")]
       (is (= 4 (count offers)))
       (let [offer (first (filter #(= "nodeA" (:hostname %))

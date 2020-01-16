@@ -268,6 +268,10 @@ class UserFactory(object):
         name = os.getenv('COOK_IMPERSONATOR_USER_NAME', _default_impersonator_name)
         return self.user_class(name)
 
+    def specific_user(self, name):
+        """Return the specific user provided"""
+        return self.user_class(name)
+
 
 def multi_cluster_tests_enabled():
     """
@@ -414,7 +418,8 @@ def settings(cook_url):
 @functools.lru_cache()
 def scheduler_info(cook_url):
     resp = session.get(f'{cook_url}/info', auth=None)
-    assert resp.status_code == 200
+    response_info = {'code': resp.status_code, 'msg': resp.content}
+    assert resp.status_code == 200, response_info
     return resp.json()
 
 
@@ -423,7 +428,7 @@ def docker_image():
 
 
 def get_default_cpus():
-    return float(os.getenv('COOK_DEFAULT_JOB_CPUS', 1.0))
+    return float(os.getenv('COOK_DEFAULT_JOB_CPUS', 0.5))
 
 
 def make_temporal_uuid():
@@ -1015,7 +1020,7 @@ def wait_for_instance(cook_url, job_uuid, max_wait_ms=DEFAULT_TIMEOUT_MS, wait_i
 
     job = wait_until(lambda: load_job(cook_url, job_uuid), lambda j: len(instances_with_status(j)) >= 1,
                      max_wait_ms=max_wait_ms, wait_interval_ms=wait_interval_ms)
-    instance = job['instances'][0]
+    instance = instances_with_status(job)[0]
     instance['parent'] = job
     return instance
 
@@ -1346,13 +1351,19 @@ def max_mesos_slave_cpus(mesos_url):
 
 
 @functools.lru_cache()
-def get_kubernetes_compute_cluster():
+def get_kubernetes_compute_clusters():
     cook_url = retrieve_cook_url()
     _wait_for_cook(cook_url)
     init_cook_session(cook_url)
     compute_clusters = settings(cook_url)['compute-clusters']
     kubernetes_compute_clusters = [cc for cc in compute_clusters
                                    if cc['factory-fn'] == 'cook.kubernetes.compute-cluster/factory-fn']
+    return kubernetes_compute_clusters
+
+
+@functools.lru_cache()
+def get_kubernetes_compute_cluster():
+    kubernetes_compute_clusters = get_kubernetes_compute_clusters()
     if len(kubernetes_compute_clusters) > 0:
         return kubernetes_compute_clusters[0]
     else:
@@ -1584,11 +1595,12 @@ def demo_plugins_are_configured(cook_url):
 
 
 @functools.lru_cache()
-def demo_job_adjuster_plugin_configured():
+def pool_mover_plugin_configured():
     cook_url = retrieve_cook_url()
     settings_dict = settings(cook_url)
-    configured = settings_dict['plugins'].get('job-adjuster', {}).get('factory-fn') == \
-                 "cook.plugins.demo-plugin/adjuster-factory"
+    plugins = settings_dict['plugins']
+    configured = plugins.get('job-adjuster', {}).get('factory-fn') == \
+                 'cook.plugins.pool-mover/make-pool-mover-job-adjuster'
     return configured
 
 
@@ -1709,10 +1721,38 @@ def reset_share_and_quota(cook_url, user):
 def rebalancer_interval_seconds():
     interval_seconds = rebalancer_settings().get('interval-seconds', 0)
     return interval_seconds
-                     
-                     
+
+
 def job_progress_is_present(job, progress):
     present = any(i['progress'] == progress for i in job['instances'])
     if not present:
         logger.info(f'Job does not yet have progress {progress}: {json.dumps(job, indent=2)}')
     return present
+
+
+def make_failed_job(cook_url, **kwargs):
+    def __make_failed_job():
+        job_uuid, resp = submit_job(cook_url, **kwargs)
+        assert resp.status_code == 201
+
+        # Wait for the job to start running, and kill it
+        # It's possible for our kill below to race with
+        # e.g. an "Agent removed" failure, which is why
+        # we check for a non-mea-culpa failure at the end
+        wait_for_job(cook_url, job_uuid, 'running')
+        kill_jobs(cook_url, [job_uuid])
+
+        def instance_query():
+            return query_jobs(cook_url, True, uuid=[job_uuid])
+
+        # Wait for the job (and its instances) to die
+        wait_until(instance_query, all_instances_killed)
+        job = load_job(cook_url, job_uuid)
+        assert 'failed' == job['state']
+
+        # Ensure that there is a non-mea culpa failure
+        non_mea_culpa_failure_exists = any(not i['reason_mea_culpa'] for i in job['instances'])
+        assert non_mea_culpa_failure_exists
+        return job
+
+    return wait_until(__make_failed_job, lambda _: True)

@@ -74,9 +74,8 @@
 (defn get-offer-attr-map
   "Gets all the attributes from an offer and puts them in a simple, less structured map of the form
    name->value"
-  [offer]
-  (let [mesos-attributes (->> offer
-                              :attributes
+  [{:keys [attributes compute-cluster hostname] :as offer}]
+  (let [mesos-attributes (->> attributes
                               (map #(vector (:name %) (case (:type %)
                                                         :value-scalar (:scalar %)
                                                         :value-ranges (:ranges %)
@@ -85,11 +84,15 @@
                                                         ; Default
                                                         (:value %))))
                               (into {}))
-        cook-attributes {"HOSTNAME" (:hostname offer)
-                         "COOK_GPU?" (-> offer
-                                         (offer-resource-scalar "gpus")
-                                         (or 0.0)
-                                         pos?)}]
+        cook-attributes (cond->
+                          {"HOSTNAME" hostname
+                           "COOK_GPU?" (-> offer
+                                           (offer-resource-scalar "gpus")
+                                           (or 0.0)
+                                           pos?)}
+                          compute-cluster
+                          (assoc "COOK_MAX_TASKS_PER_HOST" (cc/max-tasks-per-host compute-cluster)
+                                 "COOK_NUM_TASKS_ON_HOST" (cc/num-tasks-on-host compute-cluster hostname)))]
     (merge mesos-attributes cook-attributes)))
 
 (timers/deftimer [cook-mesos scheduler handle-status-update-duration])
@@ -563,8 +566,9 @@
                              (map util/job->usage)
                              (reduce (partial merge-with +))))))))
 
-;Shared as we use this for unscheduled too.
-(defonce pool->user->number-jobs (atom {}))
+; This is used by the /unscheduled_jobs code to determine whether
+; or not to report rate-limiting as a reason for being pending
+(defonce pool->user->num-rate-limited-jobs (atom {}))
 
 (defn pending-jobs->considerable-jobs
   "Limit the pending jobs to considerable jobs based on usage and quota.
@@ -594,7 +598,7 @@
              (take num-considerable)
              ; Force this to be taken eagerly so that the log line is accurate.
              (doall))]
-    (swap! pool->user->number-jobs update pool-name (constantly @user->number-jobs))
+    (swap! pool->user->num-rate-limited-jobs update pool-name (constantly @user->rate-limit-count))
     (log/info "Users whose job launches are rate-limited " @user->rate-limit-count "( enforcing =" enforcing-job-launch-rate-limit? ")")
     considerable-jobs))
 
@@ -959,16 +963,18 @@
 ;; TODO test that this fenzo recovery system actually works
 (defn reconcile-tasks
   "Finds all non-completed tasks, and has Mesos let us know if any have changed."
-  [db driver pool->fenzo]
+  [db compute-cluster driver pool->fenzo]
   (let [running-tasks (q '[:find ?task-id ?status ?slave-id
-                           :in $ [?status ...]
+                           :in $ [?status ...] ?compute-cluster-id
                            :where
                            [?i :instance/status ?status]
                            [?i :instance/task-id ?task-id]
-                           [?i :instance/slave-id ?slave-id]]
+                           [?i :instance/slave-id ?slave-id]
+                           [?i :instance/compute-cluster ?compute-cluster-id]]
                          db
                          [:instance.status/unknown
-                          :instance.status/running])
+                          :instance.status/running]
+                         (cc/db-id compute-cluster))
         sched->mesos {:instance.status/unknown :task-staging
                       :instance.status/running :task-running}]
     (when (seq running-tasks)

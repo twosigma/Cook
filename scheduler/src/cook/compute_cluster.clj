@@ -57,7 +57,13 @@
     "Returns true if this compute cluster makes use of the Cook executor for running tasks")
 
   (container-defaults [this]
-    "Default values to use for containers launched in this compute cluster"))
+    "Default values to use for containers launched in this compute cluster")
+
+  (max-tasks-per-host [this]
+    "The maximum number of tasks that a given host should run at the same time")
+
+  (num-tasks-on-host [this hostname]
+    "The number of tasks currently running on the given hostname"))
 
 (defn safe-kill-task
   "A safe version of kill task that never throws. This reduces the risk that errors in one compute cluster propagate and cause problems in another compute cluster."

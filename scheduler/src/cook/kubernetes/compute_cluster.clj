@@ -15,6 +15,7 @@
             [plumbing.core :as pc])
   (:import (com.google.auth.oauth2 GoogleCredentials)
            (io.kubernetes.client ApiClient)
+           (io.kubernetes.client.models V1Node)
            (io.kubernetes.client.util Config)
            (java.io FileInputStream File)
            (java.util UUID)
@@ -22,18 +23,20 @@
 
 (defn schedulable-node-filter
   "Is a node schedulable?"
-  [node-name->node [node-name _]]
-  (when-not (-> node-name node-name->node)
-    (log/error "Unable to get node from node name" node-name))
-  (-> node-name node-name->node api/node-schedulable?))
+  [node-name->node [node-name _] compute-cluster pods]
+  (if-let [^V1Node node (node-name->node node-name)]
+    (api/node-schedulable? node (cc/max-tasks-per-host compute-cluster) pods)
+    (do
+      (log/error "In" (cc/compute-cluster-name compute-cluster)
+                 "compute cluster, unable to get node from node name" node-name)
+      false)))
 
 
 (defn generate-offers
   "Given a compute cluster and maps with node capacity and existing pods, return a map from pool to offers."
-  [compute-cluster node-name->node namespaced-pod-name->pod starting-namespaced-pod-name->pod]
+  [compute-cluster node-name->node pods]
   (let [node-name->capacity (api/get-capacity node-name->node)
-        node-name->consumed (api/get-consumption (merge namespaced-pod-name->pod
-                                                        starting-namespaced-pod-name->pod))
+        node-name->consumed (api/get-consumption pods)
         node-name->available (pc/map-from-keys (fn [node-name]
                                                  (merge-with -
                                                              (node-name->capacity node-name)
@@ -42,11 +45,13 @@
         compute-cluster-name (cc/compute-cluster-name compute-cluster)]
     (log/info "In" compute-cluster-name "compute cluster, capacity:" node-name->capacity)
     (log/info "In" compute-cluster-name "compute cluster, consumption:" node-name->consumed)
-    (log/info "In" compute-cluster-name "compute cluster, filtering out" (->> node-name->available
-                                                             (remove #(schedulable-node-filter node-name->node %))
-                                                             count) "nodes as not schedulable")
+    (log/info "In" compute-cluster-name "compute cluster, filtering out"
+              (->> node-name->available
+                   (remove #(schedulable-node-filter node-name->node % compute-cluster pods))
+                   count)
+              "nodes as not schedulable")
     (->> node-name->available
-         (filter #(schedulable-node-filter node-name->node %))
+         (filter #(schedulable-node-filter node-name->node % compute-cluster pods))
          (map (fn [[node-name available]]
                 {:id {:value (str (UUID/randomUUID))}
                  :framework-id compute-cluster-name
@@ -165,9 +170,14 @@
                   :command
                   :user)))
 
+(defn all-pods
+  [compute-cluster pods]
+  (let [starting-pods (controller/starting-namespaced-pod-name->pod compute-cluster)]
+    (-> pods (merge starting-pods) vals)))
+
 (defrecord KubernetesComputeCluster [^ApiClient api-client name entity-id match-trigger-chan exit-code-syncer-state
                                      all-pods-atom current-nodes-atom expected-state-map existing-state-map
-                                     pool->fenzo-atom namespace-config scan-frequency-seconds-config
+                                     pool->fenzo-atom namespace-config scan-frequency-seconds-config max-pods-per-node
                                      last-autoscale-atom synthetic-tasks]
   cc/ComputeCluster
   (launch-tasks [this offers task-metadata-seq]
@@ -213,9 +223,8 @@
 
   (pending-offers [this pool-name]
     (let [nodes @current-nodes-atom
-          pods @all-pods-atom
-          starting-instances (controller/starting-namespaced-pod-name->pod this)
-          offers-all-pools (generate-offers this nodes pods starting-instances)
+          pods (all-pods this @all-pods-atom)
+          offers-all-pools (generate-offers this nodes pods)
           ; TODO: We are generating offers for every pool here, and filtering out only offers for this one pool.
           ; TODO: We should be smarter here and generate once, then reuse for each pool, instead of generating for each pool each time and only keeping one
           offers-this-pool (get offers-all-pools pool-name)]
@@ -279,7 +288,14 @@
   (container-defaults [_]
     ; We don't currently support specifying
     ; container defaults for k8s compute clusters
-    {}))
+    {})
+
+  (max-tasks-per-host [_] max-pods-per-node)
+
+  (num-tasks-on-host [this hostname]
+    (->> @all-pods-atom
+         (all-pods this)
+         (api/num-pods-on-node hostname))))
 
 (defn get-or-create-cluster-entity-id
   [conn compute-cluster-name]
@@ -357,11 +373,13 @@
            bearer-token-refresh-seconds
            namespace
            scan-frequency-seconds
+           max-pods-per-node
            synthetic-tasks]
     :or {bearer-token-refresh-seconds 300
          namespace {:kind :static
                     :namespace "cook"}
-         scan-frequency-seconds 120}}
+         scan-frequency-seconds 120
+         max-pods-per-node 32}}
    {:keys [exit-code-syncer-state
            trigger-chans]}]
   (let [conn cook.datomic/conn
@@ -370,13 +388,12 @@
         compute-cluster (->KubernetesComputeCluster api-client compute-cluster-name cluster-entity-id
                                                     (:match-trigger-chan trigger-chans)
                                                     exit-code-syncer-state (atom {}) (atom {})
-                                                    ; These :type keys are here to make it easier to trace provenance
-                                                    ; when debugging and exist for no other reason.
-                                                    (atom {:type :expected-state-map})
-                                                    (atom {:type :existing-state-map})
+                                                    (atom {})
+                                                    (atom {})
                                                     (atom nil)
                                                     namespace
                                                     scan-frequency-seconds
+                                                    max-pods-per-node
                                                     (atom (time/epoch))
                                                     synthetic-tasks)]
     (cc/register-compute-cluster! compute-cluster)

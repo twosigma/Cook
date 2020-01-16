@@ -633,7 +633,7 @@
 
 (s/defn make-job-txn
   "Creates the necessary txn data to insert a job into the database"
-  [pool commit-latch-id job :- Job]
+  [pool commit-latch-id db job :- Job]
   (let [{:keys [uuid command max-retries max-runtime expected-runtime priority cpus mem gpus
                 user name ports uris env labels container group application disable-mea-culpa-retries
                 constraints executor progress-output-file progress-regex-string datasets]
@@ -735,7 +735,8 @@
                     progress-output-file (assoc :job/progress-output-file progress-output-file)
                     progress-regex-string (assoc :job/progress-regex-string progress-regex-string)
                     pool (assoc :job/pool (:db/id pool))
-                    (seq datasets) (assoc :job/datasets datasets))]
+                    (seq datasets) (assoc :job/datasets datasets))
+        txn (plugins/adjust-job adjustment/plugin txn db)]
 
     ;; TODO batch these transactions to improve performance
     (-> ports
@@ -1665,8 +1666,7 @@
   [conn {:keys [::groups ::jobs ::pool] :as ctx}]
   (try
     (log/info "Submitting jobs through raw api:" (map #(dissoc % :command) jobs))
-    (let [jobs (mapv #(plugins/adjust-job adjustment/plugin %) jobs)
-          group-uuids (set (map :uuid groups))
+    (let [group-uuids (set (map :uuid groups))
           group-asserts (map (fn [guuid] [:entity/ensure-not-exists [:group/uuid guuid]])
                              group-uuids)
           ;; Create new implicit groups (with all default settings)
@@ -1679,7 +1679,8 @@
           groups (into (vec implicit-groups) groups)
           job-asserts (map (fn [j] [:entity/ensure-not-exists [:job/uuid (:uuid j)]]) jobs)
           [commit-latch-id commit-latch] (make-commit-latch)
-          job-txns (mapcat (partial make-job-txn pool commit-latch-id) jobs)
+          db (d/db conn)
+          job-txns (mapcat (partial make-job-txn pool commit-latch-id db) jobs)
           job-uuids->dbids (->> job-txns
                                 ;; Not all txns are for the top level job
                                 (filter :job/uuid)

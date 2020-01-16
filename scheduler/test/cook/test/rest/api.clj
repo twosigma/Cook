@@ -2097,7 +2097,23 @@
               ; out-of-timeout by the check-job-submission-default which returns
               ; Reject for accept-accept-plugin.
               (is true (str/starts-with? "Total of 5 errors. First 3 are " (:error body)))
-              (is (str/includes? body "Default Rejected")))))))))
+              (is (str/includes? body "Default Rejected"))))))
+
+      (testing "pool mover plugin"
+        (create-pool conn "pool-1")
+        (create-pool conn "pool-2")
+        ; Configure the pool-mover to move the user's jobs from pool-1 to pool-2 on submission
+        (testutil/setup :config
+                        {:plugins {:job-adjuster {:factory-fn 'cook.plugins.pool-mover/make-pool-mover-job-adjuster}
+                                   :pool-mover {"pool-1" {:destination-pool "pool-2"
+                                                          :users {"user" {:portion 1.0}}}}}})
+        (let [handler (api/create-jobs-handler conn task-constraints gpu-enabled? is-authorized-fn)
+              request (assoc-in (new-request) [:body-params :pool] "pool-1")
+              job-uuid (-> request :body-params :jobs first :uuid)
+              {:keys [status] :as response} (handler request)]
+          ; Assert that the request succeeded and that the pool in the database is pool-2
+          (is (= 201 status) (str response))
+          (is (= "pool-2" (-> conn d/db (d/entity [:job/uuid job-uuid]) util/job->pool-name))))))))
 
 (deftest test-validate-partitions
   (is (api/validate-partitions {:dataset {"foo" "bar"}}))

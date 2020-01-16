@@ -105,7 +105,7 @@
         (future
           (try
             (sched/reconcile-jobs conn)
-            (sched/reconcile-tasks (d/db conn) driver pool->fenzo)
+            (sched/reconcile-tasks (d/db conn) compute-cluster driver pool->fenzo)
             (catch Exception e
               (log/error e "Reconciliation error")))))
       (reregistered
@@ -114,7 +114,7 @@
         (future
           (try
             (sched/reconcile-jobs conn)
-            (sched/reconcile-tasks (d/db conn) driver pool->fenzo)
+            (sched/reconcile-tasks (d/db conn) compute-cluster driver pool->fenzo)
             (catch Exception e
               (log/error e "Reconciliation error")))))
       ;; Ignore this--we can just wait for new offers
@@ -158,14 +158,14 @@
                   (if-let [offers-chan (get pool->offers-chan pool-name)]
                     (do
                       (log/info "Processing" offer-count "offer(s) for known pool" pool-name)
-                      (sched/receive-offers offers-chan match-trigger-chan this pool-name offers))
+                      (sched/receive-offers offers-chan match-trigger-chan compute-cluster pool-name offers))
                     (do
                       (log/warn "Declining" offer-count "offer(s) for non-existent pool" pool-name)
                       (sched/decline-offers-safe compute-cluster offers)))
                   (if-let [offers-chan (get pool->offers-chan "no-pool")]
                     (do
                       (log/info "Processing" offer-count "offer(s) for pool" pool-name "(not using pools)")
-                      (sched/receive-offers offers-chan match-trigger-chan this pool-name offers))
+                      (sched/receive-offers offers-chan match-trigger-chan compute-cluster pool-name offers))
                     (do
                       (log/error "Declining" offer-count "offer(s) for pool" pool-name "(missing no-pool offer chan)")
                       (sched/decline-offers-safe compute-cluster offers))))))
@@ -295,10 +295,14 @@
   (use-cook-executor? [_] true)
 
   (container-defaults [_]
-    container-defaults))
+    container-defaults)
+
+  (max-tasks-per-host [_])
+
+  (num-tasks-on-host [_ _]))
 
 ; Internal method
-(defn- mesos-cluster->compute-cluster-map-for-datomic
+(defn mesos-cluster->compute-cluster-map-for-datomic
   "Given a mesos cluster dictionary, determine the datomic entity it should correspond to."
   [{:keys [compute-cluster-name framework-id]}]
   {:compute-cluster/type :compute-cluster.type/mesos

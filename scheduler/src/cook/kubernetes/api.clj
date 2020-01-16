@@ -200,17 +200,34 @@
           (-> cook-pool-taint first .getValue)
       "no-pool")))
 
+(defn pod->node-name
+  "Given a pod, returns the node name on the pod spec"
+  [^V1Pod pod]
+  (-> pod .getSpec .getNodeName))
+
+(defn num-pods-on-node
+  "Returns the number of pods assigned to the given node"
+  [node-name pods]
+  (let [node-name->pods (group-by pod->node-name pods)]
+    (-> node-name->pods (get node-name []) count)))
+
 (defn node-schedulable?
   "Can we schedule on a node. For now, yes, unless there are other taints on it. TODO: Incorporate other node-health measures here."
-  [^V1Node node]
+  [^V1Node node pod-count-capacity pods]
   (if (nil? node)
     false
     (let [taints-on-node (or (some-> node .getSpec .getTaints) [])
           other-taints (remove #(= "cook-pool" (.getKey %)) taints-on-node)
-          schedulable (zero? (count other-taints))]
+          schedulable (zero? (count other-taints))
+          node-name (some-> node .getMetadata .getName)
+          pods-on-node (num-pods-on-node node-name pods)
+          below-pod-count-capacity (< pods-on-node pod-count-capacity)]
       (when-not schedulable
-        (log/info "Filtering out" (some-> node .getMetadata .getName) "because it has taints" other-taints))
-      schedulable)))
+        (log/info "Filtering out" node-name "because it has taints" other-taints))
+      (when-not below-pod-count-capacity
+        (log/info "Filtering out" node-name "because it is at or above its pod count capacity of"
+                  pod-count-capacity "(" pods-on-node ")"))
+      (and schedulable below-pod-count-capacity))))
 
 (defn get-capacity
   "Given a map from node-name to node, generate a map from node-name->resource-type-><capacity>"
@@ -224,9 +241,8 @@
 
   When accounting for resources, we use resource requests to determine how much is used, not limits.
   See https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/#resource-requests-and-limits-of-pod-and-container"
-  [namespaced-pod-name->pod]
-  (let [node-name->pods (group-by (fn [^V1Pod p] (-> p .getSpec .getNodeName))
-                                  (vals namespaced-pod-name->pod))
+  [pods]
+  (let [node-name->pods (group-by pod->node-name pods)
         node-name->requests (pc/map-vals (fn [pods]
                                            (->> pods
                                                 (map (fn [^V1Pod pod]
