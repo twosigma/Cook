@@ -19,6 +19,8 @@
             [clj-time.core :as t]
             [clj-time.format :as tf]
             [clj-time.periodic :as tp]
+            [clojure.java.shell :as sh]
+            [clojure.string :as str]
             [cook.cache :as ccache]
             [cook.config :as config]
             [cook.pool :as pool]
@@ -35,6 +37,26 @@
     [java.util.concurrent TimeUnit]
     [java.util Date]
     [org.joda.time DateTime ReadablePeriod]))
+
+(defn retrieve-system-id
+  "Executes a shell command to retrieve the user/group id for the specified user"
+  [mode-flag value]
+  (let [{:keys [exit out err]} (sh/sh "/usr/bin/id" mode-flag value)]
+    (when-not (zero? exit)
+      (log/error "error retrieving system id"
+                 {:in {:mode mode-flag :value value}
+                  :out {:exit-code exit :stderr err :stdout out}}))
+    (let [result (some-> out str/trim)]
+      (when-not (str/blank? result)
+        (Long/parseLong result)))))
+
+(defn user->user-id [user-name]
+  "Retrieves the system user id for the specified user"
+  (retrieve-system-id "-u" user-name))
+
+(defn user->group-id [user-name]
+  "Retrieves the system group id for the specified user"
+  (retrieve-system-id "-g" user-name))
 
 (defn new-cache []
   "Build a new cache"

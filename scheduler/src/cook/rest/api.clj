@@ -50,7 +50,6 @@
             [datomic.api :as d :refer [q]]
             [liberator.core :as liberator]
             [liberator.util :refer [combine]]
-            [me.raynes.conch :as sh]
             [mesomatic.scheduler]
             [metatransaction.core :refer [db]]
             [metrics.histograms :as histograms]
@@ -76,15 +75,6 @@
 ;; We use Liberator to handle requests on our REST endpoints.
 ;; The control flow among Liberator's handler functions is described here:
 ;; https://clojure-liberator.github.io/liberator/doc/decisions.html
-
-;; This is necessary to prevent a user from requesting a uid:gid
-;; pair other than their own (for example, root)
-(sh/let-programs
-  [_id "/usr/bin/id"]
-  (defn uid [user-name]
-    (str/trim (_id "-u" user-name)))
-  (defn gid [user-name]
-    (str/trim (_id "-g" user-name))))
 
 (defn render-error
   [{:keys [::error request]}]
@@ -553,20 +543,34 @@
                           ports)]
       {:docker/port-mapping port-maps})))
 
+(defn- ensure-user-parameter
+  "Ensures the presence of the user parameter by attaching it when missing in params."
+  [user id params]
+  (let [user-id (util/user->user-id user)
+        group-id (util/user->group-id user)
+        expected-user-param (str user-id ":" group-id)]
+    (if-let [user-params (seq (filter #(= (:key %) "user") params))]
+      (do
+        ;; Validate the user parameter if it was provided in the job.
+        ;; Prevents a user from requesting a user-id:group-id pair other than their own.
+        (when (some #(not= expected-user-param (:value %)) user-params)
+          (throw (ex-info "user parameter must match uid and gid of user submitting"
+                          {:expected-user-param expected-user-param
+                           :user-params-submitted user-params})))
+        params)
+      (do
+        (log/info "attaching user" expected-user-param "to parameters for job" id)
+        (conj params {:key "user" :value expected-user-param})))))
+
 (defn- build-docker-container
   [user id container]
   (let [container-id (d/tempid :db.part/user)
         docker-id (d/tempid :db.part/user)
         volumes (or (:volumes container) [])
         docker (:docker container)
-        params (or (:parameters docker) [])
-        port-mappings (or (:port-mapping docker) [])
-        user-params (filter #(= (:key %) "user") params)
-        expected-user-param (str (uid user) ":" (gid user))]
-    (when (some #(not= expected-user-param (:value %)) user-params)
-      (throw (ex-info "user parameter must match uid and gid of user submitting"
-                      {:expected-user-param expected-user-param
-                       :user-params-submitted user-params})))
+        params (->> (or (:parameters docker) [])
+                 (ensure-user-parameter user id))
+        port-mappings (or (:port-mapping docker) [])]
     [[:db/add id :job/container container-id]
      (merge {:db/id container-id
              :container/type "DOCKER"}
