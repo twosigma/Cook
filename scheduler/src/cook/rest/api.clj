@@ -546,21 +546,23 @@
 (defn- ensure-user-parameter
   "Ensures the presence of the user parameter by attaching it when missing in params."
   [user id params]
-  (let [user-id (util/user->user-id user)
-        group-id (util/user->group-id user)
-        expected-user-param (str user-id ":" group-id)]
-    (if-let [user-params (seq (filter #(= (:key %) "user") params))]
-      (do
-        ;; Validate the user parameter if it was provided in the job.
-        ;; Prevents a user from requesting a user-id:group-id pair other than their own.
-        (when (some #(not= expected-user-param (:value %)) user-params)
-          (throw (ex-info "user parameter must match uid and gid of user submitting"
-                          {:expected-user-param expected-user-param
-                           :user-params-submitted user-params})))
-        params)
-      (do
-        (log/info "attaching user" expected-user-param "to parameters for job" id)
-        (conj params {:key "user" :value expected-user-param})))))
+  (if-let [user-id (util/user->user-id user)]
+    (if-let [group-id (util/user->group-id user)]
+      (let [expected-user-param (str user-id ":" group-id)]
+        (if-let [user-params (seq (filter #(= (:key %) "user") params))]
+          (do
+            ;; Validate the user parameter if it was provided in the job.
+            ;; Prevents a user from requesting a user-id:group-id pair other than their own.
+            (when (some #(not= expected-user-param (:value %)) user-params)
+              (throw (ex-info "user parameter must match uid and gid of user submitting"
+                              {:expected-user-param expected-user-param
+                               :user-params-submitted user-params})))
+            params)
+          (do
+            (log/info "attaching user" expected-user-param "to parameters for job" id)
+            (conj params {:key "user" :value expected-user-param}))))
+      (throw (ex-info "The gid is unavailable for the user" {:job-id id :user user})))
+    (throw (ex-info "The uid is unavailable for the user" {:job-id id :user user}))))
 
 (defn- build-docker-container
   [user id container]
