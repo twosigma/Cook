@@ -99,7 +99,11 @@ class CookTest(util.CookTest):
     def test_output_url(self):
         job_executor_type = util.get_job_executor_type()
         job_uuid, resp = util.submit_job(self.cook_url,
-                                         command='echo foobarbaz ; sleep 600',
+                                         command='echo foobarbaz; '
+                                                 'touch test_perms; chmod a-rwx test_perms; '
+                                                 'touch test_perms2; chmod a-rwx test_perms2; '
+                                                 'chmod u+rwx test_perms2; chmod g+rx test_perms2; chmod o+x test_perms2;'
+                                                 'sleep 600',
                                          executor=job_executor_type)
         try:
             output_url = util.wait_for_output_url(self.cook_url, job_uuid)['output_url']
@@ -225,7 +229,7 @@ class CookTest(util.CookTest):
             if util.using_kubernetes():
                 max_length = int(os.getenv('COOK_FILE_SERVER_MAX_READ_LENGTH', '25000000'))
                 max_length_plus_one = max_length + 1
-                resp = util.session.get(f'{output_url}/stdout&length={max_length_plus_one}')
+                resp = util.session.get(f'{output_url}/stdout&offset=0&length={max_length_plus_one}')
                 self.logger.info(resp.text)
                 self.assertEqual(400, resp.status_code)
                 self.assertIn(f'Requested length for file read, {max_length_plus_one} is greater than max allowed length, {max_length}', resp.text)
@@ -300,7 +304,9 @@ class CookTest(util.CookTest):
             resp_json = resp.json()
             self.logger.info(json.dumps(resp_json, indent=2))
             self.assertEqual(200, resp.status_code)
-            stdout_file_records = list(filter(lambda x: "/stdout" in x['path'], resp_json))
+            path = parse_qs(url.query)["path"][0]
+
+            stdout_file_records = list(filter(lambda x: f"{path}/stdout" == x['path'], resp_json))
             self.assertEqual(1, len(stdout_file_records))
             file_record = stdout_file_records[0]
             self.assertIn('gid', file_record)
@@ -310,8 +316,16 @@ class CookTest(util.CookTest):
             self.assertIn('path', file_record)
             self.assertIn('size', file_record)
             self.assertIn('uid', file_record)
-            self.assertEqual(f'{parse_qs(url.query)["path"][0]}/stdout', file_record['path'])
 
+            test_perms_file_records = list(filter(lambda x: f"{path}/test_perms" == x['path'], resp_json))
+            self.assertEqual(1, len(test_perms_file_records))
+            file_record = test_perms_file_records[0]
+            self.assertEqual("----------", file_record["mode"])
+
+            test_perms2_file_records = list(filter(lambda x: f"{path}/test_perms2" == x['path'], resp_json))
+            self.assertEqual(1, len(test_perms2_file_records))
+            file_record = test_perms2_file_records[0]
+            self.assertEqual("-rwxr-x--x", file_record["mode"])
 
             job = util.query_jobs(self.cook_url, True, uuid=[job_uuid]).json()[0]
             if util.should_expect_sandbox_directory_for_job(job):

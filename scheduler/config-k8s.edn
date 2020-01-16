@@ -59,7 +59,7 @@
            :user-metrics-interval-seconds 60}
  :nrepl {:enabled? true
          :port #config/env-int "COOK_NREPL_PORT"}
- :pools {:default "k8s-alpha"
+ :pools {:default "k8s-gamma"
          :job-resource-adjustment {:adjust-job-resources-fn cook.kubernetes.api/adjust-job-resources
                                    :pool-regex "^k8s-.+"}}
  :port #config/env-int "COOK_PORT"

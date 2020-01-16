@@ -115,18 +115,8 @@ def read():
     })
 
 
-permission_strings = {
-    '0': '---',
-    '1': '--x',
-    '2': '-w-',
-    '3': '-wx',
-    '4': 'r--',
-    '5': 'r-x',
-    '6': 'rw-',
-    '7': 'rwx',
-}
-# maps permission bit masks to a linux permission string. e.g. 775 -> "rwxrwxr-x"
-permissions = {n - 512: ''.join(permission_strings[c] for c in str(oct(n))[-3:]) for n in range(512, 1024)}
+def make_permission_string(permission_bits):
+    return ''.join(["rwxrwxrwx"[i] if (permission_bits & (1 << (8 - i)) != 0) else "-" for i in range(0, 9)])
 
 
 @app.route('/files/browse')
@@ -142,7 +132,7 @@ def browse():
     retval = [
         {
             "gid": path_obj.group(),
-            "mode": ('d' if S_ISDIR(st.st_mode) else '-') + permissions[S_IMODE(st.st_mode) % 512],
+            "mode": ('d' if S_ISDIR(st.st_mode) else '-') + make_permission_string(S_IMODE(st.st_mode) % 512),
             "mtime": int(st.st_mtime),
             "nlink": st.st_nlink,
             "path": path,
