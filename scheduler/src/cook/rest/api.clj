@@ -2926,7 +2926,7 @@
                    :responses {200 {:schema [JobResponseDeprecated]
                                     :description "The jobs and their instances were returned."}
                                400 {:description "Non-UUID values were passed as jobs."}
-                               403 {:description "The supplied UUIDs don't correspond to valid jobs."}}
+                               404 {:description "The supplied UUIDs don't correspond to valid jobs."}}
                    :handler (read-jobs-handler-deprecated conn is-authorized-fn)}
              :post {:summary "Schedules one or more jobs (deprecated)."
                     :parameters {:body-params RawSchedulerRequestDeprecated}
@@ -2937,7 +2937,7 @@
              :delete {:summary "Cancels jobs, halting execution when possible."
                       :responses {204 {:description "The jobs have been marked for termination."}
                                   400 {:description "Non-UUID values were passed as jobs."}
-                                  403 {:description "The supplied UUIDs don't correspond to valid jobs."}}
+                                  404 {:description "The supplied UUIDs don't correspond to valid jobs."}}
                       :parameters {:query-params JobOrInstanceIds}
                       :handler (destroy-jobs-handler conn is-authorized-fn)}}))
 
@@ -2949,7 +2949,7 @@
                    :responses {200 {:schema JobResponse
                                     :description "The job was returned."}
                                400 {:description "A non-UUID value was passed."}
-                               403 {:description "The supplied UUID doesn't correspond to a valid job."}}
+                               404 {:description "The supplied UUID doesn't correspond to a valid job."}}
                    :handler (read-jobs-handler-single conn is-authorized-fn)}}))
 
         (c-api/context
@@ -2960,7 +2960,7 @@
                    :responses {200 {:schema [JobResponse]
                                     :description "The jobs were returned."}
                                400 {:description "Non-UUID values were passed."}
-                               403 {:description "The supplied UUIDs don't correspond to valid jobs."}}
+                               404 {:description "The supplied UUIDs don't correspond to valid jobs."}}
                    :handler (read-jobs-handler-multiple conn is-authorized-fn)}
              :post {:summary "Schedules one or more jobs."
                     :parameters {:body-params JobSubmissionRequest}
@@ -2985,7 +2985,7 @@
                    :responses {200 {:schema InstanceResponse
                                     :description "The job instance was returned."}
                                400 {:description "A non-UUID value was passed."}
-                               403 {:description "The supplied UUID doesn't correspond to a valid job instance."}}
+                               404 {:description "The supplied UUID doesn't correspond to a valid job instance."}}
                    :handler (read-instances-handler-single conn is-authorized-fn)}}))
 
         (c-api/context
@@ -2996,7 +2996,7 @@
                    :responses {200 {:schema [InstanceResponse]
                                     :description "The job instances were returned."}
                                400 {:description "Non-UUID values were passed."}
-                               403 {:description "The supplied UUIDs don't correspond to valid job instances."}}
+                               404 {:description "The supplied UUIDs don't correspond to valid job instances."}}
                    :handler (read-instances-handler-multiple conn is-authorized-fn)}}))
 
         (c-api/context
@@ -3005,8 +3005,8 @@
             {:produces ["application/json"],
              :responses {200 {:schema UserLimitsResponse
                               :description "User's share found"}
-                         401 {:description "Not authorized to read shares."}
-                         403 {:description "Invalid request format."}}
+                         400 {:description "Invalid request format."}
+                         401 {:description "Not authorized to read shares."}}
              :get {:summary "Read a user's share"
                    :parameters {:query-params UserParam}
                    :handler (read-limit-handler :share share/get-share conn is-authorized-fn)}
@@ -3025,8 +3025,8 @@
             {:produces ["application/json"],
              :responses {200 {:schema UserLimitsResponse
                               :description "User's quota found"}
-                         401 {:description "Not authorized to read quota."}
-                         403 {:description "Invalid request format."}}
+                         400 {:description "Invalid request format."}
+                         401 {:description "Not authorized to read quota."}}
              :get {:summary "Read a user's quota"
                    :parameters {:query-params UserParam}
                    :handler (read-limit-handler :quota quota/get-quota conn is-authorized-fn)}
@@ -3045,8 +3045,8 @@
             {:produces ["application/json"],
              :responses {200 {:schema UserUsageResponse
                               :description "User's usage calculated."}
-                         401 {:description "Not authorized to read usage."}
-                         403 {:description "Invalid request format."}}
+                         400 {:description "Invalid request format."}
+                         401 {:description "Not authorized to read usage."}}
              :get {:summary "Query a user's current resource usage."
                    :parameters {:query-params UserUsageParams}
                    :handler (read-usage-handler conn is-authorized-fn)}}))
@@ -3089,14 +3089,14 @@
                    :responses {200 {:schema [GroupResponse]
                                     :description "The groups were returned."}
                                400 {:description "Non-UUID values were passed."}
-                               403 {:description "The supplied UUIDs don't correspond to valid groups."}}
+                               404 {:description "The supplied UUIDs don't correspond to valid groups."}}
                    :handler (groups-action-handler conn task-constraints is-authorized-fn)}
              :delete
              {:summary "Kill all jobs within a set of groups"
               :parameters {:query-params KillGroupsParams}
               :responses {204 {:description "The groups' jobs have been marked for termination."}
                           400 {:description "Non-UUID values were passed."}
-                          403 {:description "The supplied UUIDs don't correspond to valid groups."}}
+                          404 {:description "The supplied UUIDs don't correspond to valid groups."}}
               :handler (groups-action-handler conn task-constraints is-authorized-fn)}}))
 
         (c-api/context
@@ -3132,8 +3132,8 @@
             {:produces ["application/json"],
              :responses {200 {:schema TaskStatsResponse
                               :description "Task stats calculated."}
-                         401 {:description "Not authorized to read stats."}
-                         403 {:description "Invalid request format."}}
+                         400 {:description "Invalid request format."}
+                         401 {:description "Not authorized to read stats."}}
              :get {:summary "Query statistics for instances started in a time range."
                    :parameters {:query-params TaskStatsParams}
                    :handler (task-stats-handler conn is-authorized-fn)}}))
