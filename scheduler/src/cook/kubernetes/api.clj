@@ -333,7 +333,8 @@
                         (filter (fn [{:keys [key]}] (= key "user")))
                         first)
         [uid gid] (if user-param
-                    ;; TODO validate whether the user can run with these credentials
+                    ;; TODO new jobs should always have the user with correct credentials;
+                    ;; TODO validate and fail when the user parameter is missing.
                     (let [[uid gid] (str/split (:value user-param) #":")]
                       [(Long/parseLong uid) (Long/parseLong gid)])
                     [(util/user->user-id user) (util/user->group-id user)])
