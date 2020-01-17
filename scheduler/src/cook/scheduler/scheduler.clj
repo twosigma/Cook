@@ -872,7 +872,7 @@
                       ;;    b. Cook doesn't update the job state when cook hears from mesos about the
                       ;;       state of an instance. Cook waits until it hears from datomic about the
                       ;;       instance state change to change the state of the job. This means that it
-                      ;;       is possible to have large delays between when a instance changes status
+                      ;;       is possible to have large delays between when an instance changes status
                       ;;       and the job reflects that change
                       ;;  2. Once the above two items are addressed, user->usage should always correctly
                       ;;     reflect *Cook*'s understanding of the state of the world at this point.

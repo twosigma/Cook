@@ -657,7 +657,7 @@
         (catch ApiException e
           (log/error e "Error submitting pod with name" pod-name "in namespace" namespace ":" (.getResponseBody e)))))
     ; Because of the complicated nature of task-metadata-seq, we can't easily run the V1Pod creation code for a
-    ; launching pod on a server restart. Thus, if we create a instance, store into datomic, but then the cook scheduler
+    ; launching pod on a server restart. Thus, if we create an instance, store into datomic, but then the cook scheduler
     ; fails --- before kubernetes creates a pod (either the message isn't sent, or there's a kubernetes problem) ---
     ; we will be unable to create a new V1Pod and we can't retry this at the kubernetes level.
     ;

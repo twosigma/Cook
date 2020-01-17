@@ -36,10 +36,10 @@
                               :cook-expected-state-map (atom {name {:synthesized-state existing :pod nil}})}
                              name)]
                        (get result name)))]
-    (with-redefs [controller/log-weird-state (fn [_ _] :illegal)
+    (with-redefs [controller/delete-pod  (fn [_ _] nil)
                   controller/kill-pod  (fn [_ cook-expected-state-dict _] cook-expected-state-dict)
-                  controller/delete-pod  (fn [_ _] nil)
                   controller/launch-pod (fn [_ cook-expected-state-dict] cook-expected-state-dict)
+                  controller/log-weird-state (fn [_ _] :illegal)
                   controller/pod-has-just-completed (fn [_] {:cook-expected-state :cook-expected-state/completed})
                   controller/write-status-to-datomic (fn [_] :illegal)]
 

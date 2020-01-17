@@ -56,7 +56,7 @@
   [cook-expected-state-dict k8s-actual-state-dict]
   (log/error "Pod in a weird state:" cook-expected-state-dict "and k8s actual state" k8s-actual-state-dict))
 
-(defn kill-pod-weird
+(defn kill-pod-in-weird-state
   "We're in a weird state that shouldn't occur with any of the normal expected races. This 'shouldn't occur. However,
   we're going to pessimistically assume that anything that could happen will, whether it shouldn't or not. Returns
   the cook-expected-state-dict passed in."
@@ -206,13 +206,13 @@
     {:cook-expected-state :cook-expected-state/completed}))
 
 
-(defn mark-pod-completed-and-kill-weird-task
+(defn mark-pod-completed-and-kill-pod-in-weird-state
   "This function is writes a completed state to datomic and also deletes a pod in kubernetes.
   It is unusual (and unique) because it both modifies kubernetes and modifies datomic. It is intended
   only to be invoked in pods in state :k8s-actual-state/unknown and handle their recovery."
   [{:keys [api-client] :as compute-cluster} k8s-actual-state-dict pod]
   ; TODO: Should mark mea culpa retry
-  (kill-pod-weird api-client (pod-has-just-completed compute-cluster k8s-actual-state-dict) pod))
+  (kill-pod-in-weird-state api-client (pod-has-just-completed compute-cluster k8s-actual-state-dict) pod))
 
 (defn process
   "Visit this pod-name, processing the new level-state. Returns the new cook expected state. Returns
@@ -272,73 +272,83 @@
        new-cook-expected-state-dict (case (or cook-expected-state :missing)
                                       :cook-expected-state/completed
                                       (case pod-synthesized-state-modified
-                                        :missing nil ; Cause this entry to be deleted by update-or-delete! called later down.
+                                        ; Cause this entry to be deleted by update-or-delete! called later down.
+                                        :missing nil
                                         ; This is an exception. The writeback to datomic has occurred, so there's nothing to do except to delete the pod from kubernetes
                                         ; and remove it from our tracking.
                                         :pod/succeeded (delete-pod api-client pod)
                                         :pod/failed (delete-pod api-client pod)
-                                        :pod/running (kill-pod-weird api-client cook-expected-state-dict k8s-actual-state-dict) ; Who resurrected this pod? Where did it come from? Do we have two instances of cook?
-                                        :pod/unknown (mark-pod-completed-and-kill-weird-task compute-cluster k8s-actual-state-dict pod) ; TODO: Should mark mea culpa retry
-                                        :pod/waiting (kill-pod-weird api-client cook-expected-state-dict k8s-actual-state-dict) ; Who resurrected this pod? Where did it come from? Do we have two instances of cook?
-                                        )
+                                        ; Who resurrected this pod? Where did it come from? Do we have two instances of cook?
+                                        :pod/running (kill-pod-in-weird-state api-client cook-expected-state-dict k8s-actual-state-dict)
+                                        ; TODO: Should mark mea culpa retry
+                                        :pod/unknown (mark-pod-completed-and-kill-pod-in-weird-state compute-cluster k8s-actual-state-dict pod)
+                                        ; Who resurrected this pod? Where did it come from? Do we have two instances of cook?
+                                        :pod/waiting (kill-pod-in-weird-state api-client cook-expected-state-dict k8s-actual-state-dict))
 
                                       :cook-expected-state/killed
                                       (case pod-synthesized-state-modified
                                         ; This is interesting. This indicates that something deleted it behind our back!
-                                        :missing (do ; Weird. We always update datomic first. Could happen if someone manually removed stuff from kubernetes.
+                                        ; Weird. We always update datomic first. Could happen if someone manually removed stuff from kubernetes.
+                                        :missing (do
                                                    (log-weird-state cook-expected-state-dict k8s-actual-state-dict)
                                                    (pod-was-killed compute-cluster pod-name))
-                                        :pod/succeeded (do ; There was a race and it completed normally before being it was killed.
+                                        ; There was a race and it completed normally before being it was killed.
+                                        :pod/succeeded (do
                                                          (pod-has-just-completed compute-cluster k8s-actual-state-dict))
                                         :pod/failed (pod-has-just-completed compute-cluster k8s-actual-state-dict)
                                         :pod/running (kill-pod api-client cook-expected-state-dict pod)
-                                        :pod/unknown (mark-pod-completed-and-kill-weird-task compute-cluster k8s-actual-state-dict pod) ; TODO: Should mark mea culpa retry
-                                        :pod/waiting (kill-pod api-client cook-expected-state-dict pod)
-                                        )
+                                        ; TODO: Should mark mea culpa retry
+                                        :pod/unknown (mark-pod-completed-and-kill-pod-in-weird-state compute-cluster k8s-actual-state-dict pod)
+                                        :pod/waiting (kill-pod api-client cook-expected-state-dict pod))
 
                                       :cook-expected-state/running
                                       (case pod-synthesized-state-modified
                                         ; This is interesting. This indicates that something deleted it behind our back!
                                         :missing (do
                                                    (log/error "Something deleted" pod-name "behind our back")
-                                                   (pod-has-just-completed compute-cluster k8s-actual-state-dict)) ; TODO: Should mark mea culpa retry
+                                                   ; TODO: Should mark mea culpa retry
+                                                   (pod-has-just-completed compute-cluster k8s-actual-state-dict))
                                         :pod/succeeded (pod-has-just-completed compute-cluster k8s-actual-state-dict)
-                                        :pod/failed (pod-has-just-completed compute-cluster k8s-actual-state-dict) ; TODO: May need to mark mea culpa retry
+                                        ; TODO: May need to mark mea culpa retry
+                                        :pod/failed (pod-has-just-completed compute-cluster k8s-actual-state-dict)
                                         :pod/running cook-expected-state-dict
-                                        :pod/unknown (mark-pod-completed-and-kill-weird-task compute-cluster k8s-actual-state-dict pod) ; TODO: Should mark mea culpa retry
+                                        ; TODO: Should mark mea culpa retry
+                                        :pod/unknown (mark-pod-completed-and-kill-pod-in-weird-state compute-cluster k8s-actual-state-dict pod)
                                         :pod/waiting (do ; This case is weird.
                                                        ; This breaks our rule of calling pod-has-completed on a non-terminal pod state.
-                                                       (kill-pod-weird api-client cook-expected-state-dict k8s-actual-state-dict)
-                                                       (pod-has-just-completed compute-cluster k8s-actual-state-dict)) ; TODO: Should mark mea culpa retry
-                                        )
+                                                       (kill-pod-in-weird-state api-client cook-expected-state-dict k8s-actual-state-dict)
+                                                       ; TODO: Should mark mea culpa retry
+                                                       (pod-has-just-completed compute-cluster k8s-actual-state-dict)))
 
                                       :cook-expected-state/starting
                                       (case pod-synthesized-state-modified
                                         :missing (launch-pod api-client cook-expected-state-dict)
                                         :pod/succeeded (pod-has-just-completed compute-cluster k8s-actual-state-dict) ; Finished fast.
-                                        :pod/failed (pod-has-just-completed compute-cluster k8s-actual-state-dict) ; TODO: May need to mark mea culpa retry
+                                        ; TODO: May need to mark mea culpa retry
+                                        :pod/failed (pod-has-just-completed compute-cluster k8s-actual-state-dict)
                                         :pod/running (pod-has-started compute-cluster k8s-actual-state-dict)
-                                        :pod/unknown (mark-pod-completed-and-kill-weird-task compute-cluster k8s-actual-state-dict pod) ; TODO: Should mark mea culpa retry
-                                        :pod/waiting cook-expected-state-dict ; Its starting. Can be stuck here. TODO: Stuck state detector to detect being stuck.
-                                        )
+                                        ; TODO: Should mark mea culpa retry
+                                        :pod/unknown (mark-pod-completed-and-kill-pod-in-weird-state compute-cluster k8s-actual-state-dict pod)
+                                        ; Its starting. Can be stuck here. TODO: Stuck state detector to detect being stuck.
+                                        :pod/waiting cook-expected-state-dict)
 
                                       :missing
                                       (case pod-synthesized-state-modified
                                         :missing nil
                                         ; We shouldn't hit these unless we get a database rollback.
-                                        :pod/succeeded  (kill-pod-weird api-client nil k8s-actual-state-dict)
+                                        :pod/succeeded (kill-pod-in-weird-state api-client nil k8s-actual-state-dict)
                                         ; We shouldn't hit these unless we get a database rollback.
-                                        :pod/failed  (kill-pod-weird api-client nil k8s-actual-state-dict)
+                                        :pod/failed (kill-pod-in-weird-state api-client nil k8s-actual-state-dict)
                                         ; This can only occur in testing when you're e.g., blowing away the database.
                                         ; It will go through :missing,:missing and then be deleted from the map.
                                         ; TODO: May be evidence of a bug where we process pod changes when we're starting up.
-                                        :pod/running (kill-pod-weird api-client nil k8s-actual-state-dict)
+                                        :pod/running (kill-pod-in-weird-state api-client nil k8s-actual-state-dict)
                                         ; Unlike the other :pod/unknown states, no datomic state to update.
-                                        :pod/unknown (kill-pod-weird api-client cook-expected-state-dict k8s-actual-state-dict)
+                                        :pod/unknown (kill-pod-in-weird-state api-client cook-expected-state-dict k8s-actual-state-dict)
                                         ; This can only occur in testing when you're e.g., blowing away the database.
                                         ; It will go through :missing,:missing and then be deleted from the map.
                                         ; TODO: May be evidence of a bug where we process pod changes when we're starting up.
-                                        :pod/waiting (kill-pod-weird api-client nil k8s-actual-state-dict)))]
+                                        :pod/waiting (kill-pod-in-weird-state api-client nil k8s-actual-state-dict)))]
       (when-not (cook-expected-state-equivalent? cook-expected-state-dict new-cook-expected-state-dict)
         (update-or-delete! cook-expected-state-map pod-name new-cook-expected-state-dict)
         (log/info "Processing: WANT TO RECUR")
