@@ -205,6 +205,15 @@
     (sandbox/aggregate-exit-code (:exit-code-syncer-state compute-cluster) instance-id 143)
     {:cook-expected-state :cook-expected-state/completed}))
 
+
+(defn mark-pod-completed-and-kill-weird-task
+  "This function is writes a completed state to datomic and also deletes a pod in kubernetes.
+  It is unusual (and unique) because it both modifies kubernetes and modifies datomic. It is intended
+  only to be invoked in pods in state :k8s-actual-state/unknown and handle their recovery."
+  [{:keys [api-client] :as compute-cluster} k8s-actual-state-dict pod]
+  ; TODO: Should mark mea culpa retry
+  (kill-pod-weird api-client (pod-has-just-completed compute-cluster k8s-actual-state-dict) pod))
+
 (defn process
   "Visit this pod-name, processing the new level-state. Returns the new cook expected state. Returns
   empty dictionary to indicate that the result should be deleted. NOTE: Must be invoked with the lock."
@@ -315,10 +324,10 @@
                                       [:missing :pod/failed] (kill-pod-weird api-client nil pod)
 
                                       [:missing :pod/unknown] (kill-pod-weird api-client cook-expected-state-dict k8s-actual-state-dict)
-                                      [:cook-expected-state/starting :pod/unknown] (kill-pod-weird api-client (pod-has-just-completed compute-cluster k8s-actual-state-dict) pod) ; TODO: Should mark mea culpa retry
-                                      [:cook-expected-state/running :pod/unknown] (kill-pod-weird api-client (pod-has-just-completed compute-cluster k8s-actual-state-dict) pod) ; TODO: Should mark mea culpa retry
-                                      [:cook-expected-state/killed :pod/unknown] (kill-pod-weird api-client (pod-has-just-completed compute-cluster k8s-actual-state-dict) pod) ; TODO: Should mark mea culpa retry
-                                      [:cook-expected-state/completed :pod/unknown] (kill-pod-weird api-client (pod-has-just-completed compute-cluster k8s-actual-state-dict) pod) ; TODO: Should mark mea culpa retry
+                                      [:cook-expected-state/starting :pod/unknown] (mark-pod-completed-and-kill-weird-task compute-cluster k8s-actual-state-dict pod) ; TODO: Should mark mea culpa retry
+                                      [:cook-expected-state/running :pod/unknown] (mark-pod-completed-and-kill-weird-task compute-cluster k8s-actual-state-dict pod) ; TODO: Should mark mea culpa retry
+                                      [:cook-expected-state/killed :pod/unknown] (mark-pod-completed-and-kill-weird-task compute-cluster k8s-actual-state-dict pod) ; TODO: Should mark mea culpa retry
+                                      [:cook-expected-state/completed :pod/unknown] (mark-pod-completed-and-kill-weird-task compute-cluster k8s-actual-state-dict pod) ; TODO: Should mark mea culpa retry
 
                                       [:missing :missing] nil ; this can come up due to the recur at the end
                                       (do
