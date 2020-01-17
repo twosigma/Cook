@@ -221,7 +221,7 @@
     ; The only terminal expected states are :expected/completed and :missing
     ; The only terminal pod states are :pod/succeeded :pod/failed and :missing. We also treat :pod/unknown as a terminal state.
 
-    ; If you ignore the reloading on startup, the initial state is set at (:starting, missing) when we first add a pod to launch.
+    ; If you ignore the reloading on startup, the initial state is set at (:expected/starting, :missing) when we first add a pod to launch.
     ; The final state is (:missing, :missing)
 
     ; Approach:
@@ -280,7 +280,7 @@
                                                                     (pod-has-just-completed compute-cluster existing-state-dict)) ; TODO: Should mark mea culpa retry
 
                                  [:expected/completed :pod/failed] (delete-task api-client pod)
-                                 [:expected/completed :missing] nil ; Cause it to be deleted.
+                                 [:expected/completed :missing] nil ; Cause it to be deleted by update-or-delete! called later down.
                                  [:expected/killed :pod/waiting] (kill-task api-client expected-state-dict pod)
                                  [:expected/killed :pod/running] (kill-task api-client expected-state-dict pod)
 
