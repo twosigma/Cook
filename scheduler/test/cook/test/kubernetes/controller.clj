@@ -27,12 +27,12 @@
              (controller/container-status->failure-reason {:name "test-cluster"} "12345"
                                                           pod-status container-status))))))
 (deftest test-process
-  (let [do-process (fn [expected existing]
+  (let [do-process (fn [cook-expected-state existing]
                      (let [name "name"
                            result
                            (controller/process
                              {:api-client nil
-                              :existing-state-map (atom {name {:cook-expected-state expected}})
+                              :existing-state-map (atom {name {:cook-expected-state cook-expected-state}})
                               :cook-expected-state-map (atom {name {:synthesized-state existing :pod nil}})}
                              name)]
                        (get result name)))]
@@ -116,7 +116,7 @@
   ;; TODO
   )
 
-(deftest update-expected-state
+(deftest update-cook-expected-state
   ;; TODO
   )
 

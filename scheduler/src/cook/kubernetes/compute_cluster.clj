@@ -67,7 +67,7 @@
          (group-by (fn [offer] (-> offer :hostname node-name->node api/get-node-pool))))))
 
 (defn taskids-to-scan
-  "Determine all taskids to scan by unioning task id's from expected and existing taskid maps. "
+  "Determine all taskids to scan by unioning task id's from cook expected state and existing taskid maps. "
   [{:keys [cook-expected-state-map existing-state-map] :as kcc}]
   (->>
     (set/union (keys @cook-expected-state-map) (keys @existing-state-map))

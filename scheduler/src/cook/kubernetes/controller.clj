@@ -37,8 +37,8 @@
 
 (defn delete-task
   "Kill task is the same as deleting a task. I semantically distinguish them. Delete is used for completed tasks that
-  we're done with. Kill is used for possibly running tasks we want to kill so that they fail. Returns a new cook expected
-  state dict of nil."
+  we're done with. Kill is used for possibly running tasks we want to kill so that they fail. Returns a new
+  cook expected state dict of nil."
   [api-client pod]
   (api/delete-pod api-client pod)
   nil)
@@ -206,7 +206,7 @@
   "Visit this pod-name, processing the new level-state. Returns the new cook expected state. Returns
   empty dictionary to indicate that the result should be deleted. NOTE: Must be invoked with the lock."
   [{:keys [api-client existing-state-map cook-expected-state-map name] :as compute-cluster} ^String pod-name]
-  (loop [{:keys [expected-state] :as cook-expected-state-dict} (get @cook-expected-state-map pod-name)
+  (loop [{:keys [cook-expected-state] :as cook-expected-state-dict} (get @cook-expected-state-map pod-name)
          {:keys [synthesized-state pod] :as existing-state-dict} (get @existing-state-map pod-name)]
     (log/info "In compute cluster" name ", processing pod" pod-name ";"
               "expected:" (prepare-cook-expected-state-dict-for-logging cook-expected-state-dict) ","
@@ -226,9 +226,9 @@
 
     ; Approach:
     ;   All of the :pod/unknown states go at the end. We should have 6 of them. I'll ignore their existance below.
-    ;   We should have 5 matches for each expected state.
+    ;   We should have 5 matches for each cook expected state.
     ;
-    ; We use expected/killed to represent a user-chosen kill. If we're doing a state-machine-induced kill (because something
+    ; We use :cook-expected-state/killed to represent a user-chosen kill. If we're doing a state-machine-induced kill (because something
     ; went wrong) it should occur by deleting the pod, so we go, e.g.,  (:running,:waiting) (an illegal state) to (:running,:missing)
     ; to (:completed, :missing), to (:missing,missing) to deleted. We put a flag on when we delete so that we can indicate
     ; the provenance (e.g., induced because of a weird state)
@@ -237,12 +237,12 @@
     ;   pod-has-just-completed/pod-was-killed/pod-has-started: These are callbacks invoked when kubernetes has moved
     ;       to a new state. They handle writeback to datomic only. pod-was-killed is called in all of the weird
     ;       kubernetes states that are not expected to occur, while pod-has-just-completed is invoked in all of the
-    ;       normal exit states (including exit-with-failure). I.e., these MUST only be invoked if expected state is not
+    ;       normal exit states (including exit-with-failure). I.e., these MUST only be invoked if cook expected state is not
     ;       in a terminal state. These functions return new cook-expected-state-dict's so should be invoked last in almost
     ;       all cases. (However, in a few cases, (delete-task ? ?) can be invoked afterwards. It deletes the key from
-    ;       the expected state completely. Should only be invoked if we're nil.)
+    ;       the cook expected state completely. Should only be invoked if we're nil.)
     ;
-    ;   weird can be called at any time to indicate we're in a wierd state and extra logging is warranted.
+    ;   weird can be called at any time to indicate we're in a weird state and extra logging is warranted.
     ;
     ;   We always end with one of  pod-has-just-completed/pod-was-killed/pod-has-started or delete-task.
     ;
@@ -260,7 +260,7 @@
     ;   We only delete a pod if and only if the pod is in a terminal (or unknown) state.
     ; In some cases, we may mark mea culpa retries (if e.g., the node got reclaimed, so the pod got killed). In weird cases, we always need to mark mea culpa retries.
     (let
-      [new-cook-expected-state-dict (case (vector (or expected-state :missing) (or (:state synthesized-state) :missing))
+      [new-cook-expected-state-dict (case (vector (or cook-expected-state :missing) (or (:state synthesized-state) :missing))
                                  [:cook-expected-state/starting :missing] (launch-task api-client cook-expected-state-dict)
                                  [:cook-expected-state/starting :pod/running] (pod-has-started compute-cluster existing-state-dict)
                                  [:cook-expected-state/starting :pod/waiting] cook-expected-state-dict ; Its starting. Can be stuck here. TODO: Stuck state detector to detect being stuck.
@@ -320,14 +320,14 @@
                                  [:missing :missing] nil ; this can come up due to the recur at the end
                                  (do
                                    (log/error "Unexpected state: "
-                                              (vector (or expected-state :missing) (or (:state synthesized-state) :missing))
+                                              (vector (or cook-expected-state :missing) (or (:state synthesized-state) :missing))
                                               "for pod" pod-name)
                                    cook-expected-state-dict))]
       (when-not (cook-expected-state-equivalent? cook-expected-state-dict new-cook-expected-state-dict)
         (update-or-delete! cook-expected-state-map pod-name new-cook-expected-state-dict)
         (log/info "Processing: WANT TO RECUR")
         (recur new-cook-expected-state-dict existing-state-dict)
-        ; TODO: Recur. We hay have changed the expected state, so we should reprocess it.
+        ; TODO: Recur. We hay have changed the cook expected state, so we should reprocess it.
         ))))
 
 (defn pod-update
@@ -366,7 +366,7 @@
 
 
 (defn update-cook-expected-state
-  "Update the expected state. Include some business logic to e.g., not change a state to the same value more than once. Marks any state changes Also has a lattice of state. Called externally and from state machine."
+  "Update the cook expected state. Include some business logic to e.g., not change a state to the same value more than once. Marks any state changes Also has a lattice of state. Called externally and from state machine."
   [{:keys [cook-expected-state-map] :as compute-cluster} pod-name new-cook-expected-state-dict]
   (locking (calculate-lock [pod-name])
     (let [old-state (get @cook-expected-state-map pod-name)]
@@ -379,8 +379,8 @@
    kubernetes to start."
   [{:keys [cook-expected-state-map] :as compute-cluster}]
   (->> @cook-expected-state-map
-       (filter (fn [[_ {:keys [expected-state launch-pod]}]]
-                 (and (= :cook-expected-state/starting expected-state)
+       (filter (fn [[_ {:keys [cook-expected-state launch-pod]}]]
+                 (and (= :cook-expected-state/starting cook-expected-state)
                       (some? (:pod launch-pod)))))
        (map (fn [[_ {:keys [launch-pod]}]]
               (let [{:keys [pod]} launch-pod]

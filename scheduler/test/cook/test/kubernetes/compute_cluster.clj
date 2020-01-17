@@ -126,6 +126,6 @@
                 {:name "disk" :type :value-scalar :scalar 0.0}]
                (:resources offer)))))))
 
-(deftest determine-expected-state
+(deftest determine-cook-expected-state
   ; TODO
   )
