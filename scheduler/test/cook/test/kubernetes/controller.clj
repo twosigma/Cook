@@ -37,9 +37,9 @@
                              name)]
                        (get result name)))]
     (with-redefs [controller/log-weird-state (fn [_ _] :illegal)
-                  controller/kill-task  (fn [_ cook-expected-state-dict _] cook-expected-state-dict)
-                  controller/delete-task  (fn [_ _] nil)
-                  controller/launch-task (fn [_ cook-expected-state-dict] cook-expected-state-dict)
+                  controller/kill-pod  (fn [_ cook-expected-state-dict _] cook-expected-state-dict)
+                  controller/delete-pod  (fn [_ _] nil)
+                  controller/launch-pod (fn [_ cook-expected-state-dict] cook-expected-state-dict)
                   controller/pod-has-just-completed (fn [_] {:cook-expected-state :cook-expected-state/completed})
                   controller/write-status-to-datomic (fn [_] :illegal)
 
