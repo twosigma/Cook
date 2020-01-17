@@ -2,11 +2,10 @@
 # which kubernetes staes the system may be in when it makes the transition.
 
 digraph g {
-	Starting -> Starting [label=":waiting\n:missing"]
-	Starting -> Running [label=":running"]
+        Starting -> Starting [label=":waiting\n:missing"]
+        Starting -> Running [label=":running"]
         Starting -> Completed [label=":succeeded\n:failed\n:unknown"]
 
-       
         Running -> Running [label=":running"]
         Running -> Completed [label=":waiting\n:succeeded\n:failed\n:unknown\n:missing"]
 
@@ -16,6 +15,6 @@ digraph g {
         Killed -> Killed [label=":waiting\n:running\n:unknown\n"]        
         Killed -> Completed [label=":succeeded\n:failed\n:missing"]
 
-       	Missing [peripheries=2]
-        Missing -> Missing [label=":waiting\n:running\n:succeeded\n:failed\n:unknown"]
+        Missing [peripheries=2]
+        Missing -> Missing [label=":waiting\n:running\n:succeeded\n:failed\n:unknown\n:missing"]
 }
