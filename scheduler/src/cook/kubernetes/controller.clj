@@ -37,11 +37,11 @@
 
 (defn delete-task
   "Kill task is the same as deleting a task. I semantically distinguish them. Delete is used for completed tasks that
-  we're done with. Kill is used for possibly running tasks we want to kill so that they fail. Returns a new expected state
-  dict of nil."
+  we're done with. Kill is used for possibly running tasks we want to kill so that they fail. Returns a new cook expected
+  state dict of nil."
   [api-client pod]
   (api/delete-pod api-client pod)
-  nil) ; Return new expected state dict of nil.
+  nil)
 
 (defn kill-task
   "Kill task is the same as deleting a task. I semantically distinguish them. Delete is used for completed tasks that
@@ -123,7 +123,7 @@
   "A pod has completed, or we're treating it as completed. E.g., it may really be running, but something is weird.
 
   This is supposed to look at the pod status, update datomic (with success, failure, and possibly mea culpa),
-   and return a new expected-state of :cook-expected-state/completed."
+   and return a new cook expected state of :cook-expected-state/completed."
   [compute-cluster {:keys [synthesized-state pod] :as existing-state-dictionary}]
   (let [task-id (-> pod .getMetadata .getName)
         pod-status (.getStatus pod)
@@ -203,7 +203,7 @@
     {:cook-expected-state :cook-expected-state/completed}))
 
 (defn process
-  "Visit this pod-name, processing the new level-state. Returns the new expected state. Returns
+  "Visit this pod-name, processing the new level-state. Returns the new cook expected state. Returns
   empty dictionary to indicate that the result should be deleted. NOTE: Must be invoked with the lock."
   [{:keys [api-client existing-state-map cook-expected-state-map name] :as compute-cluster} ^String pod-name]
   (loop [{:keys [expected-state] :as cook-expected-state-dict} (get @cook-expected-state-map pod-name)
