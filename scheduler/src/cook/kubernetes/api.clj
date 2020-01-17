@@ -642,7 +642,7 @@
 
 (defn launch-task
   "Given a V1Pod, launch it."
-  [api-client {:keys [launch-pod] :as expected-state-dict}]
+  [api-client {:keys [launch-pod] :as cook-expected-state-dict}]
   ;; TODO: make namespace configurable
   (if launch-pod
     (let [{:keys [pod]} launch-pod

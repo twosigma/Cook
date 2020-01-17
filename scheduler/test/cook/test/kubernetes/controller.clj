@@ -10,7 +10,7 @@
   (testing "different states"
     (is (not (controller/existing-state-equivalent? {:state :pod/failed} {:state :pod/succeeded})))))
 
-(deftest expected-state-equivalent?
+(deftest cook-expected-state-equivalent?
   ;; TODO
   )
 
@@ -32,45 +32,45 @@
                            result
                            (controller/process
                              {:api-client nil
-                              :existing-state-map (atom {name {:expected-state expected}})
-                              :expected-state-map (atom {name {:synthesized-state existing :pod nil}})}
+                              :existing-state-map (atom {name {:cook-expected-state expected}})
+                              :cook-expected-state-map (atom {name {:synthesized-state existing :pod nil}})}
                              name)]
                        (get result name)))]
     (with-redefs [controller/log-weird-state (fn [_ _] :illegal)
-                  controller/kill-task  (fn [_ expected-state-dict _] expected-state-dict)
+                  controller/kill-task  (fn [_ cook-expected-state-dict _] cook-expected-state-dict)
                   controller/delete-task  (fn [_ _] nil)
-                  controller/launch-task (fn [_ expected-state-dict] expected-state-dict)
-                  controller/pod-has-just-completed (fn [_] {:expected-state :expected/completed})
+                  controller/launch-task (fn [_ cook-expected-state-dict] cook-expected-state-dict)
+                  controller/pod-has-just-completed (fn [_] {:cook-expected-state :cook-expected-state/completed})
                   controller/write-status-to-datomic (fn [_] :illegal)
 
                   ]
-      (is (= :expected/starting) (do-process :expected/starting :missing))
-      (is (= :expected/completed) (do-process :expected/starting :pod/completed))
-      (is (= :expected/completed) (do-process :expected/starting :pod/failed))
-      (is (= :expected/running) (do-process :expected/starting :pod/running))
-      (is (= :expected/completed) (do-process :expected/starting :pod/unknown))
-      (is (= :expected/starting) (do-process :expected/starting :pod/waiting))
+      (is (= :cook-expected-state/starting) (do-process :cook-expected-state/starting :missing))
+      (is (= :cook-expected-state/completed) (do-process :cook-expected-state/starting :pod/completed))
+      (is (= :cook-expected-state/completed) (do-process :cook-expected-state/starting :pod/failed))
+      (is (= :cook-expected-state/running) (do-process :cook-expected-state/starting :pod/running))
+      (is (= :cook-expected-state/completed) (do-process :cook-expected-state/starting :pod/unknown))
+      (is (= :cook-expected-state/starting) (do-process :cook-expected-state/starting :pod/waiting))
 
-      (is (= :expected/completed) (do-process :expected/running :missing))
-      (is (= :expected/completed) (do-process :expected/running :pod/completed))
-      (is (= :expected/completed) (do-process :expected/running :pod/failed))
-      (is (= :expected/running) (do-process :expected/running :pod/running))
-      (is (= :expected/completed) (do-process :expected/running :pod/unknown))
-      (is (= :expected/completed) (do-process :expected/running :pod/waiting))
+      (is (= :cook-expected-state/completed) (do-process :cook-expected-state/running :missing))
+      (is (= :cook-expected-state/completed) (do-process :cook-expected-state/running :pod/completed))
+      (is (= :cook-expected-state/completed) (do-process :cook-expected-state/running :pod/failed))
+      (is (= :cook-expected-state/running) (do-process :cook-expected-state/running :pod/running))
+      (is (= :cook-expected-state/completed) (do-process :cook-expected-state/running :pod/unknown))
+      (is (= :cook-expected-state/completed) (do-process :cook-expected-state/running :pod/waiting))
 
-      (is (= nil) (do-process :expected/completed :missing))
-      (is (= :expected/completed) (do-process :expected/completed :pod/completed))
-      (is (= :expected/completed) (do-process :expected/completed :pod/failed))
-      (is (= :expected/completed) (do-process :expected/completed :pod/running))
-      (is (= :expected/completed) (do-process :expected/completed :pod/unknown))
-      (is (= :expected/completed) (do-process :expected/completed :pod/waiting))
+      (is (= nil) (do-process :cook-expected-state/completed :missing))
+      (is (= :cook-expected-state/completed) (do-process :cook-expected-state/completed :pod/completed))
+      (is (= :cook-expected-state/completed) (do-process :cook-expected-state/completed :pod/failed))
+      (is (= :cook-expected-state/completed) (do-process :cook-expected-state/completed :pod/running))
+      (is (= :cook-expected-state/completed) (do-process :cook-expected-state/completed :pod/unknown))
+      (is (= :cook-expected-state/completed) (do-process :cook-expected-state/completed :pod/waiting))
 
-      (is (= :expected/killed) (do-process :expected/killed :missing))
-      (is (= :expected/completed) (do-process :expected/killed :pod/completed))
-      (is (= :expected/completed) (do-process :expected/killed :pod/failed))
-      (is (= :expected/killed) (do-process :expected/killed :pod/running))
-      (is (= :expected/killed) (do-process :expected/killed :pod/unknown))
-      (is (= :expected/killed) (do-process :expected/killed :pod/waiting))
+      (is (= :cook-expected-state/killed) (do-process :cook-expected-state/killed :missing))
+      (is (= :cook-expected-state/completed) (do-process :cook-expected-state/killed :pod/completed))
+      (is (= :cook-expected-state/completed) (do-process :cook-expected-state/killed :pod/failed))
+      (is (= :cook-expected-state/killed) (do-process :cook-expected-state/killed :pod/running))
+      (is (= :cook-expected-state/killed) (do-process :cook-expected-state/killed :pod/unknown))
+      (is (= :cook-expected-state/killed) (do-process :cook-expected-state/killed :pod/waiting))
 
       (is (= nil) (do-process :missing :missing))
       (is (= nil) (do-process :missing :pod/completed))
@@ -129,5 +129,5 @@
       (.setReason pod-status "OutOfcpu")
       (.setStatus pod pod-status)
       (with-redefs [controller/write-status-to-datomic (constantly nil)]
-        (is (= {:expected-state :expected/completed}
+        (is (= {:cook-expected-state :cook-expected-state/completed}
                (controller/pod-has-just-completed nil {:pod pod :synthesized-state {:state :pod/failed}})))))))

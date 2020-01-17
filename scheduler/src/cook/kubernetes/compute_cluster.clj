@@ -68,9 +68,9 @@
 
 (defn taskids-to-scan
   "Determine all taskids to scan by unioning task id's from expected and existing taskid maps. "
-  [{:keys [expected-state-map existing-state-map] :as kcc}]
+  [{:keys [cook-expected-state-map existing-state-map] :as kcc}]
   (->>
-    (set/union (keys @expected-state-map) (keys @existing-state-map))
+    (set/union (keys @cook-expected-state-map) (keys @existing-state-map))
     (into #{})))
 
 (defn scan-tasks
@@ -116,24 +116,25 @@
        (map (fn [task-ent] [(str (:instance/task-id task-ent)) task-ent]))
        (into {})))
 
-(defn task-ent->expected-state
-  "When we startup, we need to initialize the expected state from datomic. This implements a map from datomic's :instance.status/*
-  to the kubernetes expected state."
+(defn task-ent->cook-expected-state
+  "When we startup, we need to initialize the cook expected state from datomic. This implements a map from datomic's :instance.status/*
+  to the cook expected state."
   [task-ent]
   (case (:instance/status task-ent)
-    :instance.status/unknown {:expected-state :expected/starting}
-    :instance.status/running {:expected-state :expected/running}
-    :instance.status/failed {:expected-state :expected/completed}
-    :instance.status/success {:expected-state :expected/completed}))
+    :instance.status/unknown {:cook-expected-state :cook-expected-state/starting}
+    :instance.status/running {:cook-expected-state :cook-expected-state/running}
+    :instance.status/failed {:cook-expected-state :cook-expected-state/completed}
+    :instance.status/success {:cook-expected-state :cook-expected-state/completed}))
 
-(defn determine-expected-state-on-startup
-  "We need to determine everything we should be tracking when we construct the expected state. We should be tracking all tasks that are in the running state as well
-  as all pods in kubernetes. We're given an already existing list of all running tasks entities (via (->> (cook.tools/get-running-task-ents)."
+(defn determine-cook-expected-state-on-startup
+  "We need to determine everything we should be tracking when we construct the cook expected state. We should be tracking
+  all tasks that are in the running state as well as all pods in kubernetes. We're given an already existing list of
+  all running tasks entities (via (->> (cook.tools/get-running-task-ents)."
   [conn api-client compute-cluster-name running-tasks-ents]
   (let [db (d/db conn)
         [_ pod-name->pod] (api/get-all-pods-in-kubernetes api-client)
         all-tasks-ids-in-pods (into #{} (keys pod-name->pod))
-        _ (log/debug "All tasks in pods (for initializing expected state): " all-tasks-ids-in-pods)
+        _ (log/debug "All tasks in pods (for initializing cook expected state): " all-tasks-ids-in-pods)
         running-tasks-in-cc-ents (filter
                                    #(-> % cook.task/task-entity->compute-cluster-name (= compute-cluster-name))
                                    running-tasks-ents)
@@ -158,9 +159,9 @@
               "For a total expected state size of "
               (count all-task-id->task) "tasks in expected state.")
     (doseq [[k v] all-task-id->task]
-      (log/debug "Setting expected state for " k " ---> " (task-ent->expected-state v)))
+      (log/debug "Setting cook expected state for " k " ---> " (task-ent->cook-expected-state v)))
     (into {}
-          (map (fn [[k v]] [k (task-ent->expected-state v)]) all-task-id->task))))
+          (map (fn [[k v]] [k (task-ent->cook-expected-state v)]) all-task-id->task))))
 
 (defn- get-namespace-from-task-metadata
   [{:keys [kind namespace]} task-metadata]
@@ -176,19 +177,19 @@
     (-> pods (merge starting-pods) vals)))
 
 (defrecord KubernetesComputeCluster [^ApiClient api-client name entity-id match-trigger-chan exit-code-syncer-state
-                                     all-pods-atom current-nodes-atom expected-state-map existing-state-map
+                                     all-pods-atom current-nodes-atom cook-expected-state-map existing-state-map
                                      pool->fenzo-atom namespace-config scan-frequency-seconds-config max-pods-per-node]
   cc/ComputeCluster
   (launch-tasks [this offers task-metadata-seq]
     (doseq [task-metadata task-metadata-seq]
       (let [pod-namespace (get-namespace-from-task-metadata namespace-config task-metadata)]
-        (controller/update-expected-state
+        (controller/update-cook-expected-state
           this
           (:task-id task-metadata)
-          {:expected-state :expected/starting :launch-pod {:pod (api/task-metadata->pod pod-namespace name task-metadata)}}))))
+          {:cook-expected-state :cook-expected-state/starting :launch-pod {:pod (api/task-metadata->pod pod-namespace name task-metadata)}}))))
 
   (kill-task [this task-id]
-    (controller/update-expected-state this task-id {:expected-state :expected/killed}))
+    (controller/update-cook-expected-state this task-id {:cook-expected-state :cook-expected-state/killed}))
 
   (decline-offers [this offer-ids]
     (log/debug "Rejecting offer ids" offer-ids))
@@ -204,8 +205,9 @@
     (log/info "Initializing Kubernetes compute cluster" name)
     (let [conn cook.datomic/conn
           cook-pod-callback (make-cook-pod-watch-callback this)]
-      ; We set expected state first because initialize-pod-watch sets (and invokes callbacks on and reacts to) the expected and the gruadually discovere existing.
-      (reset! expected-state-map (determine-expected-state-on-startup conn api-client name running-task-ents))
+      ; We set cook expected state first because initialize-pod-watch sets (and invokes callbacks on and reacts to) the
+      ; expected and the gradually discover existing pods.
+      (reset! cook-expected-state-map (determine-cook-expected-state-on-startup conn api-client name running-task-ents))
 
       (api/initialize-pod-watch api-client name all-pods-atom cook-pod-callback)
       (if scan-frequency-seconds-config
