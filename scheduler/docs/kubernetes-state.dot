@@ -9,10 +9,10 @@ digraph g {
         Running -> Running [label=":running"]
         Running -> Completed [label=":waiting\n:succeeded\n:failed\n:unknown\n:missing"]
 
-        Completed -> Completed [label=":waiting\n:running\n:unknown\n"]        
-        Completed -> Missing [label=":missing\n:succeeded\n:failed"]        
+        Completed -> Completed [label=":waiting\n:running\n:unknown\n:succeeded\n:failed"]
+        Completed -> Missing [label=":missing"]
 
-        Killed -> Killed [label=":waiting\n:running\n:unknown\n"]        
+        Killed -> Killed [label=":waiting\n:running\n:unknown\n"]
         Killed -> Completed [label=":succeeded\n:failed\n:missing"]
 
         Missing [peripheries=2]
