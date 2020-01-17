@@ -68,9 +68,9 @@
 
 (defn taskids-to-scan
   "Determine all taskids to scan by unioning task id's from cook expected state and existing taskid maps. "
-  [{:keys [cook-expected-state-map existing-state-map] :as kcc}]
+  [{:keys [cook-expected-state-map k8s-actual-state-map] :as kcc}]
   (->>
-    (set/union (keys @cook-expected-state-map) (keys @existing-state-map))
+    (set/union (keys @cook-expected-state-map) (keys @k8s-actual-state-map))
     (into #{})))
 
 (defn scan-tasks
@@ -157,7 +157,7 @@
               "We need to load an extra "
               (count extra-tasks-id->task) " pods that aren't running in datomic. "
               "For a total expected state size of "
-              (count all-task-id->task) "tasks in expected state.")
+              (count all-task-id->task) "tasks in cook expected state.")
     (doseq [[k v] all-task-id->task]
       (log/debug "Setting cook expected state for " k " ---> " (task-ent->cook-expected-state v)))
     (into {}
@@ -177,7 +177,7 @@
     (-> pods (merge starting-pods) vals)))
 
 (defrecord KubernetesComputeCluster [^ApiClient api-client name entity-id match-trigger-chan exit-code-syncer-state
-                                     all-pods-atom current-nodes-atom cook-expected-state-map existing-state-map
+                                     all-pods-atom current-nodes-atom cook-expected-state-map k8s-actual-state-map
                                      pool->fenzo-atom namespace-config scan-frequency-seconds-config max-pods-per-node]
   cc/ComputeCluster
   (launch-tasks [this offers task-metadata-seq]
@@ -206,7 +206,7 @@
     (let [conn cook.datomic/conn
           cook-pod-callback (make-cook-pod-watch-callback this)]
       ; We set cook expected state first because initialize-pod-watch sets (and invokes callbacks on and reacts to) the
-      ; expected and the gradually discover existing pods.
+      ; expected and the gradually discovered existing pods.
       (reset! cook-expected-state-map (determine-cook-expected-state-on-startup conn api-client name running-task-ents))
 
       (api/initialize-pod-watch api-client name all-pods-atom cook-pod-callback)

@@ -615,7 +615,7 @@
   (let [api (CoreV1Api. api-client)
         ^V1DeleteOptions deleteOptions (-> (V1DeleteOptionsBuilder.) (.withPropagationPolicy "Background") .build)]
     ; TODO: This likes to noisily throw NotFound multiple times as we delete away from kubernetes.
-    ; I suspect our predicate of existing-states-equivalent needs tweaking.
+    ; I suspect our predicate of k8s-actual-state-equivalent needs tweaking.
     (try
       (.deleteNamespacedPod
         api

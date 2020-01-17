@@ -6,9 +6,9 @@
   (:import (io.kubernetes.client.models V1ObjectMeta V1Pod V1PodStatus V1Pod V1PodStatus)))
 
 
-(deftest test-existing-state-equivalent?
+(deftest test-k8s-actual-state-equivalent?
   (testing "different states"
-    (is (not (controller/existing-state-equivalent? {:state :pod/failed} {:state :pod/succeeded})))))
+    (is (not (controller/k8s-actual-state-equivalent? {:state :pod/failed} {:state :pod/succeeded})))))
 
 (deftest cook-expected-state-equivalent?
   ;; TODO
@@ -32,7 +32,7 @@
                            result
                            (controller/process
                              {:api-client nil
-                              :existing-state-map (atom {name {:cook-expected-state cook-expected-state}})
+                              :k8s-actual-state-map (atom {name {:cook-expected-state cook-expected-state}})
                               :cook-expected-state-map (atom {name {:synthesized-state existing :pod nil}})}
                              name)]
                        (get result name)))]
