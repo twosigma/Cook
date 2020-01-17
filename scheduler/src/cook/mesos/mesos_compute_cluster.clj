@@ -32,7 +32,8 @@
             [mesomatic.scheduler :as mesos]
             [metrics.meters :as meters]
             [plumbing.core :as pc]
-            [metrics.counters :as counters]))
+            [metrics.counters :as counters])
+  (:import (java.net URLEncoder)))
 
 (meters/defmeter [cook-mesos scheduler mesos-error])
 (meters/defmeter [cook-mesos scheduler handle-framework-message-rate])
@@ -293,7 +294,22 @@
 
   (max-tasks-per-host [_])
 
-  (num-tasks-on-host [_ _]))
+  (num-tasks-on-host [_ _])
+
+  (retrieve-sandbox-url-path
+    ;; Constructs a URL to query the sandbox directory of the task.
+    ;; Uses the sandbox-directory to determine the sandbox directory.
+    ;; Hard codes fun stuff like the port we run the agent on.
+    ;; Users will need to add the file path & offset to their query.
+    ;; Refer to the 'Using the output_url' section in docs/scheduler-rest-api.adoc for further details.
+    [_ {:keys [instance/hostname instance/task-id instance/sandbox-directory]}]
+    (try
+      (when sandbox-directory
+        (str "http://" hostname ":5051" "/files/read.json?path="
+             (URLEncoder/encode sandbox-directory "UTF-8")))
+      (catch Exception e
+        (log/debug e "Unable to retrieve directory path for" task-id "on agent" hostname)
+        nil))))
 
 ; Internal method
 (defn mesos-cluster->compute-cluster-map-for-datomic

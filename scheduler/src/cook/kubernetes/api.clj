@@ -2,6 +2,7 @@
   (:require [clojure.set :as set]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
+            [datomic.api :as d]
             [cook.config :as config]
             [me.raynes.conch :as sh]
             [plumbing.core :as pc])
@@ -10,14 +11,13 @@
     (com.twosigma.cook.kubernetes WatchHelper)
     (io.kubernetes.client ApiClient ApiException)
     (io.kubernetes.client.apis CoreV1Api)
-    (io.kubernetes.client.custom Quantity Quantity$Format)
-    (io.kubernetes.client.models V1Pod V1Container V1Node V1Pod V1Container V1ResourceRequirements V1EnvVar
+    (io.kubernetes.client.custom Quantity Quantity$Format IntOrString)
+    (io.kubernetes.client.models V1Pod V1Container V1Node V1Pod V1ResourceRequirements V1EnvVar
                                  V1ObjectMeta V1PodSpec V1PodStatus V1ContainerState V1DeleteOptionsBuilder
                                  V1DeleteOptions V1HostPathVolumeSource V1VolumeMount V1VolumeBuilder V1Taint
-                                 V1Toleration V1PodSecurityContext V1EmptyDirVolumeSource V1EnvVarBuilder)
-    (io.kubernetes.client.util Watch)
-    (java.util.concurrent Executors ExecutorService)
-    (java.util UUID)))
+                                 V1Toleration V1PodSecurityContext V1EmptyDirVolumeSource V1EnvVarBuilder V1ContainerPort V1Probe V1HTTPGetAction V1Volume)
+    (io.kubernetes.client.util Watch Yaml)
+    (java.util.concurrent Executors ExecutorService)))
 
 
 (def cook-pod-label "twosigma.com/cook-scheduler-job")
@@ -249,17 +249,24 @@
                                                        (let [containers (-> pod .getSpec .getContainers)
                                                              container-requests (map (fn [^V1Container c]
                                                                                        (-> c
-                                                                                           .getResources
-                                                                                           .getRequests
-                                                                                           convert-resource-map))
+                                                                                         .getResources
+                                                                                         .getRequests
+                                                                                         convert-resource-map))
                                                                                      containers)]
                                                          (apply merge-with + container-requests))))
                                                 (apply merge-with +)))
                                          node-name->pods)]
     node-name->requests))
 
+; see pod->synthesized-pod-state comment for container naming conventions
 (def cook-container-name-for-job
   "required-cook-job-container")
+; see pod->synthesized-pod-state comment for container naming conventions
+(def cook-container-name-for-file-server
+  "aux-cook-sandbox-file-server-container")
+; see pod->synthesized-pod-state comment for container naming conventions
+(def cook-init-container-name
+  "aux-cook-init-container")
 
 (defn double->quantity
   "Converts a double to a Quantity"
@@ -278,7 +285,7 @@
                                                             path))
                                             true)))
                                       cook-volumes)
-        host-path->name (pc/map-from-keys (fn [_] (str (UUID/randomUUID)))
+        host-path->name (pc/map-from-keys (fn [_] (str "syn-" (d/squuid)))
                                           (map :host-path filtered-cook-volumes))
         volumes (map (fn [{:keys [host-path]}]
                        (let [host-path-source (V1HostPathVolumeSource.)]
@@ -358,6 +365,46 @@
                    (not (contains? disallowed-var-names (.getName var)))))
          (into []))))
 
+(defn- add-as-decimals
+  "Takes two doubles and adds them as decimals to avoid floating point error. Kubernetes will not be able to launch a
+   pod if the required cpu has too much precision. For example, adding 0.1 and 0.02 as doubles results in 0.12000000000000001"
+  [a b]
+  (double (+ (bigdec a) (bigdec b))))
+
+(defn adjust-job-resources
+  "Given the required resources for a job, add to them the resources for any sidecars that will be launched with the job."
+  [{:keys [cpus mem] :as resources}]
+  (if-let [{:keys [cpu-request memory-request]} (-> (config/kubernetes) :sandbox-fileserver :resource-requirements)]
+    (assoc resources
+      :cpus (add-as-decimals cpus cpu-request)
+      :mem (add-as-decimals mem memory-request))
+    resources))
+
+(defn- make-volume
+  "Make a kubernetes volume"
+  [name]
+  (.. (V1VolumeBuilder.)
+      (withName name)
+      (withEmptyDir (V1EmptyDirVolumeSource.))
+      (build)))
+
+(defn- make-volume-mount
+  "Make a kubernetes volume mount"
+  [^V1Volume volume path read-only]
+  (when volume
+    (doto (V1VolumeMount.)
+      (.setName (.getName volume))
+      (.setMountPath path)
+      (.setReadOnly read-only))))
+
+(defn- make-env
+  "Make a kubernetes environment variable"
+  [key value]
+  (.. (V1EnvVarBuilder.)
+      (withName key)
+      (withValue value)
+      (build)))
+
 (defn ^V1Pod task-metadata->pod
   "Given a task-request and other data generate the kubernetes V1Pod to launch that task."
   [namespace compute-cluster-name {:keys [task-id command container task-request hostname]}]
@@ -381,23 +428,18 @@
         {:keys [volumes volume-mounts]} (make-volumes volumes)
         security-context (make-security-context parameters (:user command))
         workdir (get-workdir parameters)
-        workdir-volume (-> (V1VolumeBuilder.)
-                           (.withName "cook-workdir")
-                           (.withEmptyDir (V1EmptyDirVolumeSource.))
-                           (.build))
-        workdir-volume-mount (V1VolumeMount.)
-        workdir-env-vars [(-> (V1EnvVarBuilder.)
-                              (.withName "HOME")
-                              (.withValue workdir)
-                              (.build))
-                          (-> (V1EnvVarBuilder.)
-                              (.withName "MESOS_SANDBOX")
-                              (.withValue workdir)
-                              (.build))]]
-    ; workdir mount
-    (.setName workdir-volume-mount "cook-workdir")
-    (.setMountPath workdir-volume-mount workdir)
-    (.setReadOnly workdir-volume-mount false)
+        workdir-volume (make-volume "cook-workdir-volume")
+        workdir-volume-mount-fn (partial make-volume-mount workdir-volume workdir)
+        {:keys [custom-shell init-container sandbox-fileserver]} (config/kubernetes)
+        init-container-workdir "/mnt/init-container"
+        init-container-workdir-volume (when init-container (make-volume "cook-init-container-workdir-volume"))
+        init-container-workdir-volume-mount-fn (partial make-volume-mount init-container-workdir-volume init-container-workdir)
+        fileserver-workdir "/mnt/fileserver"
+        fileserver-workdir-volume (when sandbox-fileserver (make-volume "cook-fileserver-workdir-volume"))
+        fileserver-workdir-volume-mount-fn (partial make-volume-mount fileserver-workdir-volume fileserver-workdir)
+        workdir-env-vars [(make-env "HOME" workdir)
+                          (make-env "MESOS_SANDBOX" workdir)
+                          (make-env "FILESERVER_WORKDIR" fileserver-workdir)]]
 
     ; metadata
     (.setName metadata (str task-id))
@@ -406,9 +448,7 @@
 
     ; container
     (.setName container cook-container-name-for-job)
-    (.setCommand container
-                 ["/bin/sh" "-c" (:value command)])
-
+    (.setCommand container (conj (or custom-shell ["/bin/sh" "-c"]) (:value command)))
     (.setEnv container (-> []
                            (into env)
                            (into (param-env-vars parameters))
@@ -423,16 +463,63 @@
     ; "Guaranteed" QoS which requires limits for both memory and cpu.
     (.putLimitsItem resources "cpu" (double->quantity cpus))
     (.setResources container resources)
-    (.setVolumeMounts container (into [] (conj volume-mounts workdir-volume-mount)))
+    (.setVolumeMounts container (filterv some? (conj volume-mounts
+                                                     (workdir-volume-mount-fn false)
+                                                     (init-container-workdir-volume-mount-fn true)
+                                                     (fileserver-workdir-volume-mount-fn true))))
     (.setWorkingDir container workdir)
 
     ; pod-spec
     (.addContainersItem pod-spec container)
+
+    ; init container
+    (when-let [{:keys [command image]} init-container]
+      (let [container (V1Container.)]
+        ; container
+        (.setName container cook-init-container-name)
+        (.setImage container image)
+        (.setCommand container command)
+        (.setWorkingDir container init-container-workdir)
+
+        (.setVolumeMounts container [(init-container-workdir-volume-mount-fn false)])
+        (.addInitContainersItem pod-spec container)))
+
+    ; sandbox file server container
+    (when-let [{:keys [command image port resource-requirements]} sandbox-fileserver]
+      (let [{:keys [cpu-request cpu-limit memory-request memory-limit]} resource-requirements
+            container (V1Container.)
+            resources (V1ResourceRequirements.)
+            readiness-probe (V1Probe.)
+            http-get-action (V1HTTPGetAction.)]
+        ; container
+        (.setName container cook-container-name-for-file-server)
+        (.setImage container image)
+        (.setCommand container (conj command (str port)))
+        (.setWorkingDir container fileserver-workdir)
+        (.setPorts container [(.containerPort (V1ContainerPort.) (int port))])
+
+        (.setEnv container [(make-env "COOK_WORKDIR" workdir)])
+
+        (.setPort http-get-action (IntOrString. port))
+        (.setPath http-get-action "readiness-probe")
+        (.setHttpGet readiness-probe http-get-action)
+        (.setReadinessProbe container readiness-probe)
+
+        ; resources
+        (.putRequestsItem resources "cpu" (double->quantity cpu-request))
+        (.putLimitsItem resources "cpu" (double->quantity cpu-limit))
+        (.putRequestsItem resources "memory" (double->quantity (* memory-multiplier memory-request)))
+        (.putLimitsItem resources "memory" (double->quantity (* memory-multiplier memory-limit)))
+        (.setResources container resources)
+
+        (.setVolumeMounts container [(workdir-volume-mount-fn true) (fileserver-workdir-volume-mount-fn false)])
+        (.addContainersItem pod-spec container)))
+
     (.setNodeName pod-spec hostname)
     (.setRestartPolicy pod-spec "Never")
     (when pool-name
       (.addTolerationsItem pod-spec (toleration-for-pool pool-name)))
-    (.setVolumes pod-spec (into [] (conj volumes workdir-volume)))
+    (.setVolumes pod-spec (filterv some? (conj volumes workdir-volume init-container-workdir-volume fileserver-workdir-volume)))
     (.setSecurityContext pod-spec security-context)
 
     ; pod
@@ -462,7 +549,7 @@
           ; * In the future, we want support for cook sidecars. In order to determine the pod status
           ;   from the main cook job status and the sidecar statuses, we'll use a naming scheme for sidecars
           ; * A pod will be considered complete if all containers with name required-* are complete.
-          ; * The main job container will always be named required-cookJobContainer
+          ; * The main job container will always be named required-cook-job-container
           ; * We want a pod to be considered failed if any container with the name required-* fails or any container
           ;   with the name extra-* fails.
           ; * A job may have additional containers with the name aux-*
@@ -505,6 +592,22 @@
                         :reason (.getReason pod-status)}
               {:state :pod/waiting
                :reason "Pending"})))))))
+
+(defn pod->sandbox-file-server-container-state
+  "From a V1Pod object, determine the state of the sandbox file server container, running, not running, or unknown.
+
+  We're using this as first-order approximation that the sandbox file server is ready to serve files. We can later add
+  health checks to the server to be more precise."
+  [^V1Pod pod]
+  (when pod
+    (let [^V1PodStatus pod-status (.getStatus pod)
+          container-statuses (.getContainerStatuses pod-status)
+          file-server-status (first (filter (fn [c] (= cook-container-name-for-file-server (.getName c)))
+                                            container-statuses))]
+      (cond
+        (nil? file-server-status) :unknown
+        (.isReady file-server-status) :running
+        :else :not-running))))
 
 (defn kill-task
   "Kill this kubernetes pod"
@@ -554,7 +657,7 @@
           namespace (-> pod .getMetadata .getNamespace)
           ;; TODO: IF there's an error, log it and move on. We'll try again later.
           api (CoreV1Api. api-client)]
-      (log/info "Launching pod with name" pod-name "in namespace" namespace ":" pod)
+      (log/info "Launching pod with name" pod-name "in namespace" namespace ":" (Yaml/dump pod))
       (try
         (-> api
             (.createNamespacedPod namespace pod nil nil nil))

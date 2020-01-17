@@ -245,7 +245,14 @@
   (num-tasks-on-host [this hostname]
     (->> @all-pods-atom
          (all-pods this)
-         (api/num-pods-on-node hostname))))
+         (api/num-pods-on-node hostname)))
+
+  (retrieve-sandbox-url-path
+    ;; Constructs a URL to query the sandbox directory of the task.
+    ;; Users will need to add the file path & offset to their query.
+    ;; Refer to the 'Using the output_url' section in docs/scheduler-rest-api.adoc for further details.
+    [_ {:keys [instance/sandbox-url]}]
+    sandbox-url))
 
 (defn get-or-create-cluster-entity-id
   [conn compute-cluster-name]

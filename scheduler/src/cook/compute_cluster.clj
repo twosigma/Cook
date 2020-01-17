@@ -54,7 +54,12 @@
     "The maximum number of tasks that a given host should run at the same time")
 
   (num-tasks-on-host [this hostname]
-    "The number of tasks currently running on the given hostname"))
+    "The number of tasks currently running on the given hostname")
+
+  (retrieve-sandbox-url-path [this instance-entity]
+    "Constructs a URL to query the sandbox directory of the task.
+     Users will need to add the file path & offset to their query.
+     Refer to the 'Using the output_url' section in docs/scheduler-rest-api.adoc for further details."))
 
 (defn safe-kill-task
   "A safe version of kill task that never throws. This reduces the risk that errors in one compute cluster propagate and cause problems in another compute cluster."

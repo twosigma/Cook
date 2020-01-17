@@ -11,7 +11,7 @@ import unittest
 import uuid
 from collections import Counter
 from datetime import datetime
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 import dateutil.parser
 import pytest
@@ -96,11 +96,14 @@ class CookTest(util.CookTest):
         finally:
             util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
 
-    @unittest.skipIf(util.using_kubernetes(), 'Output url is not currently supported on kubernetes')
     def test_output_url(self):
         job_executor_type = util.get_job_executor_type()
         job_uuid, resp = util.submit_job(self.cook_url,
-                                         command='echo foobarbaz ; sleep 600',
+                                         command='echo foobarbaz; cd $MESOS_SANDBOX; '
+                                                 'touch test_perms; chmod a-rwx test_perms; '
+                                                 'touch test_perms2; chmod a-rwx test_perms2; '
+                                                 'chmod u+rwx test_perms2; chmod g+rx test_perms2; chmod o+x test_perms2;'
+                                                 'sleep 600',
                                          executor=job_executor_type)
         try:
             output_url = util.wait_for_output_url(self.cook_url, job_uuid)['output_url']
@@ -129,6 +132,16 @@ class CookTest(util.CookTest):
             self.assertNotIn('foobarbaz\n', resp_json['data'])
             self.assertEqual(0, resp_json['offset'])
 
+            # offset = 0, with length = 0
+            resp = util.session.get(f'{output_url}/stdout&offset=0&length=0')
+            resp_json = resp.json()
+            self.logger.info(json.dumps(resp_json, indent=2))
+            self.assertEqual(200, resp.status_code)
+            self.assertIn('data', resp_json)
+            self.assertIn('offset', resp_json)
+            self.assertEqual('', resp_json['data'])
+            self.assertEqual(0, resp_json['offset'])
+
             # offset > 0, no length
             offset = index + 3
             resp = util.session.get(f'{output_url}/stdout&offset={offset}')
@@ -151,8 +164,24 @@ class CookTest(util.CookTest):
             self.assertEqual('bar', resp_json['data'])
             self.assertEqual(offset, resp_json['offset'])
 
-            # offset < 0 (returns no data + offset = total size)
+            # offset is -1 (returns no data, offset = total size)
             resp = util.session.get(f'{output_url}/stdout&offset={-1}')
+            resp_json = resp.json()
+            self.logger.info(json.dumps(resp_json, indent=2))
+            self.assertEqual(200, resp.status_code)
+            self.assertIn('data', resp_json)
+            self.assertIn('offset', resp_json)
+            self.assertEqual('', resp_json['data'])
+            self.assertLess(0, resp_json['offset'])
+
+            # offset < -1
+            resp = util.session.get(f'{output_url}/stdout&offset={-2}')
+            self.logger.info(resp.text)
+            self.assertEqual(400, resp.status_code)
+            self.assertIn('Negative offset provided', resp.text)
+
+            # no offset (returns no data, offset = total size)
+            resp = util.session.get(f'{output_url}/stdout')
             resp_json = resp.json()
             self.logger.info(json.dumps(resp_json, indent=2))
             self.assertEqual(200, resp.status_code)
@@ -172,7 +201,40 @@ class CookTest(util.CookTest):
             self.assertEqual(400, resp.status_code)
             self.assertIn('Failed to parse offset', resp.text)
 
-            # invalid path + offset not a valid number
+            # length not a valid number
+            resp = util.session.get(f'{output_url}/stdout&length=foo')
+            self.logger.info(resp.text)
+            self.assertEqual(400, resp.status_code)
+            self.assertIn('Failed to parse length', resp.text)
+
+            # length is -1
+            resp = util.session.get(f'{output_url}/stdout&length=-1')
+            resp_json = resp.json()
+            self.logger.info(json.dumps(resp_json, indent=2))
+            self.assertEqual(200, resp.status_code)
+            self.assertIn('data', resp_json)
+            self.assertIn('offset', resp_json)
+            self.assertEqual('', resp_json['data'])
+            self.assertLess(0, resp_json['offset'])
+
+            # length is < -1
+            resp = util.session.get(f'{output_url}/stdout&length=-2')
+            self.logger.info(resp.text)
+            self.assertEqual(400, resp.status_code)
+            self.assertIn('Negative length provided', resp.text)
+
+            # length is > max length
+            # limit maximum file chunk in kubernetes. we have to allocate more memory to the file server side car
+            # if we want to serve larger chunks
+            if util.using_kubernetes():
+                max_length = int(os.getenv('COOK_FILE_SERVER_MAX_READ_LENGTH', '25000000'))
+                max_length_plus_one = max_length + 1
+                resp = util.session.get(f'{output_url}/stdout&offset=0&length={max_length_plus_one}')
+                self.logger.info(resp.text)
+                self.assertEqual(400, resp.status_code)
+                self.assertIn(f'Requested length for file read, {max_length_plus_one} is greater than max allowed length, {max_length}', resp.text)
+
+            # invalid path and offset not a valid number
             resp = util.session.get(f'{output_url}/{uuid.uuid4()}&offset=foo')
             self.logger.info(resp.text)
             self.assertEqual(400, resp.status_code)
@@ -190,6 +252,80 @@ class CookTest(util.CookTest):
             self.logger.info(resp.text)
             self.assertEqual(400, resp.status_code)
             self.assertIn("Cannot read a directory", resp.text)
+
+            download_url = output_url.replace("files/read", "files/download")
+
+            # download file
+            resp = util.session.get(f'{download_url}/stdout')
+            self.logger.info(resp.text)
+            self.assertEqual(200, resp.status_code)
+            self.assertIn('foobarbaz\n', resp.text)
+
+            # download file - invalid path
+            resp = util.session.get(f'{download_url}/{uuid.uuid4()}')
+            self.logger.info(resp.text)
+            self.assertEqual(404, resp.status_code)
+
+            # download file - no path
+            url = urlparse(download_url)
+            resp = util.session.get(f'http://{url.netloc}{url.path}')
+            self.logger.info(resp.text)
+            self.assertEqual(400, resp.status_code)
+            self.assertIn("Expecting 'path=value'", resp.text)
+
+            # download file - path is a folder
+            resp = util.session.get(f'{download_url}/')
+            self.logger.info(resp.text)
+            self.assertEqual(400, resp.status_code)
+            self.assertIn("Cannot download a directory", resp.text)
+
+            browse_url = output_url.replace("files/read", "files/browse")
+
+            # browse - invalid path
+            resp = util.session.get(f'{browse_url}/{uuid.uuid4()}')
+            self.logger.info(resp.text)
+            self.assertEqual(404, resp.status_code)
+
+            # browse - path outside of sandbox directory
+            url = urlparse(browse_url)
+            resp = util.session.get(f'http://{url.netloc}{url.path}?path=/mnt')
+            self.logger.info(resp.text)
+            self.assertEqual(404, resp.status_code)
+
+            # browse - no path
+            url = urlparse(browse_url)
+            resp = util.session.get(f'http://{url.netloc}{url.path}')
+            self.logger.info(resp.text)
+            self.assertEqual(400, resp.status_code)
+            self.assertIn("Expecting 'path=value'", resp.text)
+
+            # browse
+            resp = util.session.get(f'{browse_url}/')
+            resp_json = resp.json()
+            self.logger.info(json.dumps(resp_json, indent=2))
+            self.assertEqual(200, resp.status_code)
+            path = parse_qs(url.query)["path"][0]
+
+            stdout_file_records = list(filter(lambda x: f"{path}/stdout" == x['path'], resp_json))
+            self.assertEqual(1, len(stdout_file_records))
+            file_record = stdout_file_records[0]
+            self.assertIn('gid', file_record)
+            self.assertIn('mode', file_record)
+            self.assertIn('mtime', file_record)
+            self.assertIn('nlink', file_record)
+            self.assertIn('path', file_record)
+            self.assertIn('size', file_record)
+            self.assertIn('uid', file_record)
+
+            test_perms_file_records = list(filter(lambda x: f"{path}/test_perms" == x['path'], resp_json))
+            self.assertEqual(1, len(test_perms_file_records))
+            file_record = test_perms_file_records[0]
+            self.assertEqual("----------", file_record["mode"])
+
+            test_perms2_file_records = list(filter(lambda x: f"{path}/test_perms2" == x['path'], resp_json))
+            self.assertEqual(1, len(test_perms2_file_records))
+            file_record = test_perms2_file_records[0]
+            self.assertEqual("-rwxr-x--x", file_record["mode"])
 
             job = util.query_jobs(self.cook_url, True, uuid=[job_uuid]).json()[0]
             if util.should_expect_sandbox_directory_for_job(job):
