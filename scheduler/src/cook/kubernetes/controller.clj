@@ -326,19 +326,19 @@
                                       (case pod-synthesized-state-modified
                                         :missing nil
                                         ; We shouldn't hit these unless we get a database rollback.
-                                        :pod/succeeded  (kill-pod-weird api-client nil pod)
+                                        :pod/succeeded  (kill-pod-weird api-client nil k8s-actual-state-dict)
                                         ; We shouldn't hit these unless we get a database rollback.
-                                        :pod/failed  (kill-pod-weird api-client nil pod)
+                                        :pod/failed  (kill-pod-weird api-client nil k8s-actual-state-dict)
                                         ; This can only occur in testing when you're e.g., blowing away the database.
                                         ; It will go through :missing,:missing and then be deleted from the map.
                                         ; TODO: May be evidence of a bug where we process pod changes when we're starting up.
-                                        :pod/running (kill-pod-weird api-client nil pod)
+                                        :pod/running (kill-pod-weird api-client nil k8s-actual-state-dict)
                                         ; Unlike the other :pod/unknown states, no datomic state to update.
                                         :pod/unknown (kill-pod-weird api-client cook-expected-state-dict k8s-actual-state-dict)
                                         ; This can only occur in testing when you're e.g., blowing away the database.
                                         ; It will go through :missing,:missing and then be deleted from the map.
                                         ; TODO: May be evidence of a bug where we process pod changes when we're starting up.
-                                        :pod/waiting (kill-pod-weird api-client nil pod)))]
+                                        :pod/waiting (kill-pod-weird api-client nil k8s-actual-state-dict)))]
       (when-not (cook-expected-state-equivalent? cook-expected-state-dict new-cook-expected-state-dict)
         (update-or-delete! cook-expected-state-map pod-name new-cook-expected-state-dict)
         (log/info "Processing: WANT TO RECUR")
