@@ -38,7 +38,7 @@
                                               tu/make-task-assignment-result)))
         launched-pod-atom (atom nil)]
     (with-redefs [api/launch-pod (fn [api {:keys [launch-pod]}]
-                                    (reset! launched-pod-atom launch-pod))
+                                   (reset! launched-pod-atom launch-pod))
                   api/make-security-context (constantly (V1PodSecurityContext.))]
       (testing "static namespace"
         (let [compute-cluster (kcc/->KubernetesComputeCluster nil "kubecompute" nil nil nil

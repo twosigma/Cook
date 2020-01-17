@@ -41,9 +41,8 @@
                   controller/delete-pod  (fn [_ _] nil)
                   controller/launch-pod (fn [_ cook-expected-state-dict] cook-expected-state-dict)
                   controller/pod-has-just-completed (fn [_] {:cook-expected-state :cook-expected-state/completed})
-                  controller/write-status-to-datomic (fn [_] :illegal)
+                  controller/write-status-to-datomic (fn [_] :illegal)]
 
-                  ]
       (is (= :cook-expected-state/starting) (do-process :cook-expected-state/starting :missing))
       (is (= :cook-expected-state/completed) (do-process :cook-expected-state/starting :pod/completed))
       (is (= :cook-expected-state/completed) (do-process :cook-expected-state/starting :pod/failed))

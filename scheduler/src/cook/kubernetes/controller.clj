@@ -264,68 +264,68 @@
     ; In some cases, we may mark mea culpa retries (if e.g., the node got reclaimed, so the pod got killed). In weird cases, we always need to mark mea culpa retries.
     (let
       [new-cook-expected-state-dict (case (vector (or cook-expected-state :missing) (or (:state synthesized-state) :missing))
-                                 [:cook-expected-state/starting :missing] (launch-pod api-client cook-expected-state-dict)
-                                 [:cook-expected-state/starting :pod/running] (pod-has-started compute-cluster k8s-actual-state-dict)
-                                 [:cook-expected-state/starting :pod/waiting] cook-expected-state-dict ; Its starting. Can be stuck here. TODO: Stuck state detector to detect being stuck.
-                                 [:cook-expected-state/starting :pod/succeeded] (pod-has-just-completed compute-cluster k8s-actual-state-dict) ; Finished fast.
-                                 [:cook-expected-state/starting :pod/failed] (pod-has-just-completed compute-cluster k8s-actual-state-dict) ; TODO: May need to mark mea culpa retry
-                                 [:cook-expected-state/running :pod/running] cook-expected-state-dict
-                                 [:cook-expected-state/running :pod/succeeded] (pod-has-just-completed compute-cluster k8s-actual-state-dict)
+                                      [:cook-expected-state/starting :missing] (launch-pod api-client cook-expected-state-dict)
+                                      [:cook-expected-state/starting :pod/running] (pod-has-started compute-cluster k8s-actual-state-dict)
+                                      [:cook-expected-state/starting :pod/waiting] cook-expected-state-dict ; Its starting. Can be stuck here. TODO: Stuck state detector to detect being stuck.
+                                      [:cook-expected-state/starting :pod/succeeded] (pod-has-just-completed compute-cluster k8s-actual-state-dict) ; Finished fast.
+                                      [:cook-expected-state/starting :pod/failed] (pod-has-just-completed compute-cluster k8s-actual-state-dict) ; TODO: May need to mark mea culpa retry
+                                      [:cook-expected-state/running :pod/running] cook-expected-state-dict
+                                      [:cook-expected-state/running :pod/succeeded] (pod-has-just-completed compute-cluster k8s-actual-state-dict)
 
-                                 ; This is an exception. The writeback to datomic has occurred, so there's nothing to do except to delete the pod from kubernetes
-                                 ; and remove it from our tracking.
-                                 [:cook-expected-state/completed :pod/succeeded] (delete-pod api-client pod)
+                                      ; This is an exception. The writeback to datomic has occurred, so there's nothing to do except to delete the pod from kubernetes
+                                      ; and remove it from our tracking.
+                                      [:cook-expected-state/completed :pod/succeeded] (delete-pod api-client pod)
 
-                                 [:cook-expected-state/running :pod/failed] (pod-has-just-completed compute-cluster k8s-actual-state-dict) ; TODO: May need to mark mea culpa retry
-                                 [:cook-expected-state/running :pod/waiting] (do ; This case is weird.
-                                                                    ; This breaks our rule of calling pod-has-completed on a non-terminal pod state.
-                                                                    (kill-pod-weird api-client cook-expected-state-dict k8s-actual-state-dict)
-                                                                    (pod-has-just-completed compute-cluster k8s-actual-state-dict)) ; TODO: Should mark mea culpa retry
+                                      [:cook-expected-state/running :pod/failed] (pod-has-just-completed compute-cluster k8s-actual-state-dict) ; TODO: May need to mark mea culpa retry
+                                      [:cook-expected-state/running :pod/waiting] (do ; This case is weird.
+                                                                                    ; This breaks our rule of calling pod-has-completed on a non-terminal pod state.
+                                                                                    (kill-pod-weird api-client cook-expected-state-dict k8s-actual-state-dict)
+                                                                                    (pod-has-just-completed compute-cluster k8s-actual-state-dict)) ; TODO: Should mark mea culpa retry
 
-                                 [:cook-expected-state/completed :pod/failed] (delete-pod api-client pod)
-                                 [:cook-expected-state/completed :missing] nil ; Cause this entry to be deleted by update-or-delete! called later down.
-                                 [:cook-expected-state/killed :pod/waiting] (kill-pod api-client cook-expected-state-dict pod)
-                                 [:cook-expected-state/killed :pod/running] (kill-pod api-client cook-expected-state-dict pod)
+                                      [:cook-expected-state/completed :pod/failed] (delete-pod api-client pod)
+                                      [:cook-expected-state/completed :missing] nil ; Cause this entry to be deleted by update-or-delete! called later down.
+                                      [:cook-expected-state/killed :pod/waiting] (kill-pod api-client cook-expected-state-dict pod)
+                                      [:cook-expected-state/killed :pod/running] (kill-pod api-client cook-expected-state-dict pod)
 
-                                 [:cook-expected-state/killed :pod/succeeded] (do ; There was a race and it completed normally before being it was killed.
-                                                                     (pod-has-just-completed compute-cluster k8s-actual-state-dict))
-                                 [:cook-expected-state/killed :pod/failed] (pod-has-just-completed compute-cluster k8s-actual-state-dict)
-                                 [:cook-expected-state/killed :missing] (do ; Weird. We always update datomic first. Could happen if someone manually removed stuff from kubernetes.
-                                                               (log-weird-state cook-expected-state-dict k8s-actual-state-dict)
-                                                               (pod-was-killed compute-cluster pod-name))
+                                      [:cook-expected-state/killed :pod/succeeded] (do ; There was a race and it completed normally before being it was killed.
+                                                                                     (pod-has-just-completed compute-cluster k8s-actual-state-dict))
+                                      [:cook-expected-state/killed :pod/failed] (pod-has-just-completed compute-cluster k8s-actual-state-dict)
+                                      [:cook-expected-state/killed :missing] (do ; Weird. We always update datomic first. Could happen if someone manually removed stuff from kubernetes.
+                                                                               (log-weird-state cook-expected-state-dict k8s-actual-state-dict)
+                                                                               (pod-was-killed compute-cluster pod-name))
 
-                                 ; These cases are weird.
-                                 [:cook-expected-state/completed :pod/waiting] (kill-pod-weird api-client cook-expected-state-dict k8s-actual-state-dict)
-                                 [:cook-expected-state/completed :pod/running] (kill-pod-weird api-client cook-expected-state-dict k8s-actual-state-dict)
+                                      ; These cases are weird.
+                                      [:cook-expected-state/completed :pod/waiting] (kill-pod-weird api-client cook-expected-state-dict k8s-actual-state-dict)
+                                      [:cook-expected-state/completed :pod/running] (kill-pod-weird api-client cook-expected-state-dict k8s-actual-state-dict)
 
-                                 ; This is interesting. This indicates that something deleted it behind our back!
-                                 ; Other 3 cases of [{completed,starting,killed}, :missing] already handled.
-                                 [:cook-expected-state/running :missing] (do
-                                                                (log/error "Something deleted" pod-name "behind our back")
-                                                                (pod-has-just-completed compute-cluster k8s-actual-state-dict)) ; TODO: Should mark mea culpa retry
+                                      ; This is interesting. This indicates that something deleted it behind our back!
+                                      ; Other 3 cases of [{completed,starting,killed}, :missing] already handled.
+                                      [:cook-expected-state/running :missing] (do
+                                                                                (log/error "Something deleted" pod-name "behind our back")
+                                                                                (pod-has-just-completed compute-cluster k8s-actual-state-dict)) ; TODO: Should mark mea culpa retry
 
-                                 ; This block of :missing,* cases can only occur in testing when you're e.g., blowing away the database. 
-                                 ; The next two will go through :missing,running or :missing,waiting to :missing,failed and then be deleted.
-                                 ; TODO: These may be evidence of a bug where we process pod changes when we're starting up.
-                                 [:missing :pod/running] (kill-pod-weird api-client nil pod)
-                                 [:missing :pod/waiting] (kill-pod-weird api-client nil pod)
+                                      ; This block of :missing,* cases can only occur in testing when you're e.g., blowing away the database.
+                                      ; The next two will go through :missing,running or :missing,waiting to :missing,failed and then be deleted.
+                                      ; TODO: These may be evidence of a bug where we process pod changes when we're starting up.
+                                      [:missing :pod/running] (kill-pod-weird api-client nil pod)
+                                      [:missing :pod/waiting] (kill-pod-weird api-client nil pod)
 
-                                 ; We shouldn't hit these unless we get a database rollback.
-                                 [:missing :pod/succeeded] (kill-pod-weird api-client nil pod)
-                                 [:missing :pod/failed] (kill-pod-weird api-client nil pod)
+                                      ; We shouldn't hit these unless we get a database rollback.
+                                      [:missing :pod/succeeded] (kill-pod-weird api-client nil pod)
+                                      [:missing :pod/failed] (kill-pod-weird api-client nil pod)
 
-                                 [:missing :pod/unknown] (kill-pod-weird api-client cook-expected-state-dict k8s-actual-state-dict)
-                                 [:cook-expected-state/starting :pod/unknown] (kill-pod-weird api-client (pod-has-just-completed compute-cluster k8s-actual-state-dict) pod) ; TODO: Should mark mea culpa retry
-                                 [:cook-expected-state/running :pod/unknown] (kill-pod-weird api-client (pod-has-just-completed compute-cluster k8s-actual-state-dict) pod) ; TODO: Should mark mea culpa retry
-                                 [:cook-expected-state/killed :pod/unknown] (kill-pod-weird api-client (pod-has-just-completed compute-cluster k8s-actual-state-dict) pod) ; TODO: Should mark mea culpa retry
-                                 [:cook-expected-state/completed :pod/unknown] (kill-pod-weird api-client (pod-has-just-completed compute-cluster k8s-actual-state-dict) pod) ; TODO: Should mark mea culpa retry
+                                      [:missing :pod/unknown] (kill-pod-weird api-client cook-expected-state-dict k8s-actual-state-dict)
+                                      [:cook-expected-state/starting :pod/unknown] (kill-pod-weird api-client (pod-has-just-completed compute-cluster k8s-actual-state-dict) pod) ; TODO: Should mark mea culpa retry
+                                      [:cook-expected-state/running :pod/unknown] (kill-pod-weird api-client (pod-has-just-completed compute-cluster k8s-actual-state-dict) pod) ; TODO: Should mark mea culpa retry
+                                      [:cook-expected-state/killed :pod/unknown] (kill-pod-weird api-client (pod-has-just-completed compute-cluster k8s-actual-state-dict) pod) ; TODO: Should mark mea culpa retry
+                                      [:cook-expected-state/completed :pod/unknown] (kill-pod-weird api-client (pod-has-just-completed compute-cluster k8s-actual-state-dict) pod) ; TODO: Should mark mea culpa retry
 
-                                 [:missing :missing] nil ; this can come up due to the recur at the end
-                                 (do
-                                   (log/error "Unexpected state: "
-                                              (vector (or cook-expected-state :missing) (or (:state synthesized-state) :missing))
-                                              "for pod" pod-name)
-                                   cook-expected-state-dict))]
+                                      [:missing :missing] nil ; this can come up due to the recur at the end
+                                      (do
+                                        (log/error "Unexpected state: "
+                                                   (vector (or cook-expected-state :missing) (or (:state synthesized-state) :missing))
+                                                   "for pod" pod-name)
+                                        cook-expected-state-dict))]
       (when-not (cook-expected-state-equivalent? cook-expected-state-dict new-cook-expected-state-dict)
         (update-or-delete! cook-expected-state-map pod-name new-cook-expected-state-dict)
         (log/info "Processing: WANT TO RECUR")
