@@ -280,7 +280,7 @@
                                                                     (pod-has-just-completed compute-cluster existing-state-dict)) ; TODO: Should mark mea culpa retry
 
                                  [:expected/completed :pod/failed] (delete-task api-client pod)
-                                 [:expected/completed :missing] nil ; Cause it to be deleted by update-or-delete! called later down.
+                                 [:expected/completed :missing] nil ; Cause this entry to be deleted by update-or-delete! called later down.
                                  [:expected/killed :pod/waiting] (kill-task api-client expected-state-dict pod)
                                  [:expected/killed :pod/running] (kill-task api-client expected-state-dict pod)
 
