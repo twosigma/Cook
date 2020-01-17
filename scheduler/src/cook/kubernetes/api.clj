@@ -241,22 +241,28 @@
     (-> node-name->pods (get node-name []) count)))
 
 (defn node-schedulable?
-  "Can we schedule on a node. For now, yes, unless there are other taints on it. TODO: Incorporate other node-health measures here."
-  [^V1Node node pod-count-capacity pods]
+  "Can we schedule on a node. For now, yes, unless there are other taints on it. TODO: Incorporate other node-health measures here.
+   If blacklist-labels is not nil, a node is unschedulable if it contains any label in that list."
+  [^V1Node node pod-count-capacity pods blacklist-labels]
   (if (nil? node)
     false
     (let [taints-on-node (or (some-> node .getSpec .getTaints) [])
           other-taints (remove #(= "cook-pool" (.getKey %)) taints-on-node)
-          schedulable (zero? (count other-taints))
           node-name (some-> node .getMetadata .getName)
           pods-on-node (num-pods-on-node node-name pods)
-          below-pod-count-capacity (< pods-on-node pod-count-capacity)]
-      (when-not schedulable
-        (log/info "Filtering out" node-name "because it has taints" other-taints))
-      (when-not below-pod-count-capacity
-        (log/info "Filtering out" node-name "because it is at or above its pod count capacity of"
-                  pod-count-capacity "(" pods-on-node ")"))
-      (and schedulable below-pod-count-capacity))))
+          labels-on-node (or (some-> node .getMetadata .getLabels) {})
+          matching-blacklist-labels (some #(get labels-on-node %) blacklist-labels)]
+      (cond  (seq other-taints) (do
+                                  (log/info "Filtering out" node-name "because it has taints" other-taints)
+                                  false)
+             (>= pods-on-node pod-count-capacity) (do
+                                                    (log/info "Filtering out" node-name "because it is at or above its pod count capacity of"
+                                                              pod-count-capacity "(" pods-on-node ")")
+                                                    false)
+             (seq matching-blacklist-labels) (do
+                                               (log/info "Filtering out" node-name "because it has blacklist labels" matching-blacklist-labels)
+                                               false)
+             :else true))))
 
 (defn get-capacity
   "Given a map from node-name to node, generate a map from node-name->resource-type-><capacity>"

@@ -23,9 +23,9 @@
 
 (defn schedulable-node-filter
   "Is a node schedulable?"
-  [node-name->node [node-name _] compute-cluster pods]
+  [node-name->node [node-name _] {:keys [blacklist-labels] :as compute-cluster} pods]
   (if-let [^V1Node node (node-name->node node-name)]
-    (api/node-schedulable? node (cc/max-tasks-per-host compute-cluster) pods)
+    (api/node-schedulable? node (cc/max-tasks-per-host compute-cluster) pods blacklist-labels)
     (do
       (log/error "In" (cc/compute-cluster-name compute-cluster)
                  "compute cluster, unable to get node from node name" node-name)
@@ -178,7 +178,8 @@
 
 (defrecord KubernetesComputeCluster [^ApiClient api-client name entity-id match-trigger-chan exit-code-syncer-state
                                      all-pods-atom current-nodes-atom cook-expected-state-map k8s-actual-state-map
-                                     pool->fenzo-atom namespace-config scan-frequency-seconds-config max-pods-per-node]
+                                     pool->fenzo-atom namespace-config scan-frequency-seconds-config max-pods-per-node
+                                     blacklist-labels]
   cc/ComputeCluster
   (launch-tasks [this offers task-metadata-seq]
     (doseq [task-metadata task-metadata-seq]
@@ -339,12 +340,14 @@
            bearer-token-refresh-seconds
            namespace
            scan-frequency-seconds
-           max-pods-per-node]
+           max-pods-per-node
+           blacklist-labels]
     :or {bearer-token-refresh-seconds 300
          namespace {:kind :static
                     :namespace "cook"}
          scan-frequency-seconds 120
-         max-pods-per-node 32}}
+         max-pods-per-node 32
+         blacklist-labels (list)}}
    {:keys [exit-code-syncer-state
            trigger-chans]}]
   (let [conn cook.datomic/conn
@@ -358,6 +361,7 @@
                                                     (atom nil)
                                                     namespace
                                                     scan-frequency-seconds
-                                                    max-pods-per-node)]
+                                                    max-pods-per-node
+                                                    blacklist-labels)]
     (cc/register-compute-cluster! compute-cluster)
     compute-cluster))

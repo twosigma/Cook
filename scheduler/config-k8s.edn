@@ -19,11 +19,13 @@
  :compute-clusters [{:factory-fn cook.kubernetes.compute-cluster/factory-fn
                      :config {:compute-cluster-name "gke-1"
                               ;; Location of the kubernetes config file. Hardcoded to the location specified by bin/make-gke-test-cluster
-                              :config-file "../scheduler/.cook_kubeconfig_1"}}
+                              :config-file "../scheduler/.cook_kubeconfig_1"
+                              :blacklist-labels ["blacklist-nodes-with-this-label-key"]}}
                     {:factory-fn cook.kubernetes.compute-cluster/factory-fn
                      :config {:compute-cluster-name "gke-2"
                               ;; Location of the kubernetes config file. Hardcoded to the location specified by bin/make-gke-test-cluster
-                              :config-file "../scheduler/.cook_kubeconfig_2"}}]
+                              :config-file "../scheduler/.cook_kubeconfig_2"
+                              :blacklist-labels ["blacklist-nodes-with-this-label-key-1" "blacklist-nodes-with-this-label-key-2"]}}]
  :cors-origins ["https?://cors.example.com"]
  :database {:datomic-uri #config/env "COOK_DATOMIC_URI"}
  :plugins {:job-submission-validator {:batch-timeout-seconds 40
