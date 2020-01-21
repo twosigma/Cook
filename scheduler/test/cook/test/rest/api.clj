@@ -97,9 +97,8 @@
                                      :task-constraints {:cpus cpus :memory-gb memory-gb :retry-limit retry-limit}}
                                     (Object.)
                                     (atom true))]
-      (with-redefs [api/retrieve-url-path
-                    (fn [hostname task-id _]
-                      (str "http://" hostname "/" task-id))
+      (with-redefs [api/retrieve-sandbox-url-path (fn [{:keys [instance/hostname instance/task-id]}]
+                                                    (str "http://" hostname "/" task-id))
                     rate-limit/job-submission-rate-limiter rate-limit/AllowAllRateLimiter]
         (handler request)))))
 
@@ -1490,19 +1489,30 @@
                       "reasons" [{"reason" "The job is now under investigation. Check back in a minute for more details!"
                                   "data" {}}]}]))))
 
-(deftest test-retrieve-url-path
+(deftest test-retrieve-sandbox-url-path
   (let [agent-hostname "www.mesos-agent-com"]
-    (testing "retrieve-url-path"
-      (is (nil? (api/retrieve-url-path agent-hostname "task-100" nil)))
-      (is (= (str "http://" agent-hostname ":5051/files/read.json?path=%2Fsandbox%2Flocation")
-             (api/retrieve-url-path agent-hostname "task-100" "/sandbox/location")))
-      (is (= (str "http://" agent-hostname ":5051/files/read.json?path=%2Fsandbox%2Flocation")
-             (api/retrieve-url-path agent-hostname "task-101" "/sandbox/location")))
-      (is (nil? (api/retrieve-url-path agent-hostname "task-103" nil))))))
+    (with-redefs [cc/retrieve-sandbox-url-path (fn [_ {:keys [instance/hostname instance/sandbox-directory instance/task-id]}]
+                                                 (when (and hostname sandbox-directory)
+                                                   (str "http://" hostname ":5051" "/" task-id "/files/read.json?path=" sandbox-directory)))]
+      (testing "retrieve-sandbox-url-path"
+        (is (nil? (api/retrieve-sandbox-url-path {:instance/hostname agent-hostname
+                                                  :instance/sandbox-directory nil
+                                                  :instance/task-id "task-100"})))
+        (is (= (str "http://" agent-hostname ":5051/task-101/files/read.json?path=/sandbox/location")
+               (api/retrieve-sandbox-url-path {:instance/hostname agent-hostname
+                                               :instance/sandbox-directory "/sandbox/location"
+                                               :instance/task-id "task-101"})))
+        (is (= (str "http://" agent-hostname ":5051/task-102/files/read.json?path=/sandbox/location")
+               (api/retrieve-sandbox-url-path {:instance/hostname agent-hostname
+                                               :instance/sandbox-directory "/sandbox/location"
+                                               :instance/task-id "task-102"})))
+        (is (nil? (api/retrieve-sandbox-url-path {:instance/hostname agent-hostname
+                                                  :instance/sandbox-directory nil
+                                                  :instance/task-id "task-103"})))))))
 
 (deftest test-instance-progress
-  (with-redefs [api/retrieve-url-path
-                (fn retrieve-url-path [hostname task-id _]
+  (with-redefs [api/retrieve-sandbox-url-path
+                (fn retrieve-sandbox-url-path [{:keys [instance/hostname instance/task-id]}]
                   (str "http://" hostname "/" task-id))]
     (let [uri "datomic:mem://test-instance-progress"
           conn (restore-fresh-database! uri)
