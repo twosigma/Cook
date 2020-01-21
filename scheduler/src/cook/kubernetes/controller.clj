@@ -124,7 +124,7 @@
 
   This is supposed to look at the pod status, update datomic (with success, failure, and possibly mea culpa),
    and return a new cook expected state of :cook-expected-state/completed."
-  [compute-cluster {:keys [synthesized-state pod] :as k8s-actual-state-dict}]
+  [compute-cluster {:keys [synthesized-state pod]}]
   (let [instance-id (-> pod .getMetadata .getName)
         pod-status (.getStatus pod)
         ^V1ContainerStatus job-container-status (get-job-container-status pod-status)
@@ -166,7 +166,7 @@
 
 (defn pod-has-started
   "A pod has started. So now we need to update the status in datomic."
-  [compute-cluster {:keys [pod] :as k8s-actual-state-dict}]
+  [compute-cluster {:keys [pod]}]
   (let [instance-id (-> pod .getMetadata .getName)
         ; We leak mesos terminology here ('task') because of backward compatibility.
         status {:task-id {:value instance-id}
@@ -210,9 +210,9 @@
   "This function is writes a completed state to datomic and also deletes a pod in kubernetes.
   It is unusual (and unique) because it both modifies kubernetes and modifies datomic. It is intended
   only to be invoked in pods in state :k8s-actual-state/unknown and handle their recovery."
-  [{:keys [api-client] :as compute-cluster} {:keys [pod] :as k8s-actual-state-dict}]
+  [{:keys [api-client] :as compute-cluster} k8s-actual-state-dict]
   ; TODO: Should mark mea culpa retry
-  (kill-pod-in-weird-state api-client (pod-has-just-completed compute-cluster k8s-actual-state-dict) pod))
+  (kill-pod-in-weird-state api-client (pod-has-just-completed compute-cluster k8s-actual-state-dict) k8s-actual-state-dict))
 
 (defn process
   "Visit this pod-name, processing the new level-state. Returns the new cook expected state. Returns
