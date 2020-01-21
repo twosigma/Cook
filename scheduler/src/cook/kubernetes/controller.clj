@@ -57,7 +57,7 @@
   (log/error "In compute cluster" name ", pod in a weird state:" cook-expected-state-dict "and k8s actual state" k8s-actual-state-dict))
 
 (defn kill-pod-in-weird-state
-  "We're in a weird state that shouldn't occur with any of the normal expected races. This 'shouldn't occur. However,
+  "We're in a weird state that shouldn't occur with any of the normal expected races. This shouldn't occur. However,
   we're going to pessimistically assume that anything that could happen will, whether it should or not. Returns
   the cook-expected-state-dict passed in."
   [{:keys [api-client] :as compute-cluster} cook-expected-state-dict {:keys [pod] :as k8s-actual-state-dict}]
