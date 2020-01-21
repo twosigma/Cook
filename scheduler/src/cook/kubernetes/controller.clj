@@ -352,10 +352,8 @@
                                         :pod/waiting (kill-pod-in-weird-state compute-cluster nil k8s-actual-state-dict)))]
       (when-not (cook-expected-state-equivalent? cook-expected-state-dict new-cook-expected-state-dict)
         (update-or-delete! cook-expected-state-map pod-name new-cook-expected-state-dict)
-        (log/info "Processing: WANT TO RECUR")
-        (recur new-cook-expected-state-dict k8s-actual-state-dict)
-        ; TODO: Recur. We hay have changed the cook expected state, so we should reprocess it.
-        ))))
+        (log/info "In compute cluster" name ", processing pod" pod-name "after cook-expected-state-change")
+        (recur new-cook-expected-state-dict k8s-actual-state-dict)))))
 
 (defn pod-update
   "Update the k8s actual state for a pod. Include some business logic to e.g., not change a state to the same value more than once.

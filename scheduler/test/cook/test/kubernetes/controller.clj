@@ -80,47 +80,6 @@
       (is (nil? (do-process :missing :pod/unknown)))
       (is (nil? (do-process :missing :pod/waiting))))))
 
-(deftest process-successful
-  ;; TODO
-  ;; Drive a pod through the successful job completion, failed job, and killed job paths.
-  ;; Make sure the correct state gets written back to datomic.
-  )
-
-(deftest process-failed
-  ;; TODO
-  ;; Drive a pod through the failed job completion, failed job, and killed job paths.
-  ;; Make sure the correct state gets written back to datomic.
-  )
-
-(deftest process-killed
-  ;; TODO
-  ;; Drive a pod through the killed job completion, failed job, and killed job paths.
-  ;; Make sure the correct state gets written back to datomic.
-  )
-
-(deftest process-killed-complete-race
-  ;; TODO
-  ;; Drive a pod through, but have killing race with success.
-  ;; Make sure the correct state gets written back to datomic.
-  )
-
-(deftest process-visit-all-states
-  ;; TODO
-  ;; Run all state pairs. Make sure no exceptions.
-  )
-
-(deftest pod-update
-  ;; TODO
-  )
-
-(deftest pod-deleted
-  ;; TODO
-  )
-
-(deftest update-cook-expected-state
-  ;; TODO
-  )
-
 (deftest test-pod-has-just-completed
   (testing "graceful handling of lack of exit code"
     (let [pod (V1Pod.)
