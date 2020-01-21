@@ -54,7 +54,7 @@
 (defn log-weird-state
   "This pod is in a weird state. Log so that we can later trace if we want to."
   [{:keys [name]} cook-expected-state-dict k8s-actual-state-dict]
-  (log/error "In compute cluster" name ", pod in a weird state:" cook-expected-state-dict "and k8s actual state" k8s-actual-state-dict))
+  (log/error "In compute cluster" name ", pod in a weird cook expected state:" cook-expected-state-dict "and k8s actual state" k8s-actual-state-dict))
 
 (defn kill-pod-in-weird-state
   "We're in a weird state that shouldn't occur with any of the normal expected races. This shouldn't occur. However,
@@ -143,7 +143,7 @@
     (when exit-code
       (sandbox/aggregate-exit-code (:exit-code-syncer-state compute-cluster) instance-id exit-code))
     ; Must never return nil, we want it to return non-nil so that we will retry with writing the state to datomic in case we lose a race.
-    ; Being in the (completed,*) state, will cause use to delete the pod, transitioning to (completed,missing), and thence
+    ; Being in the (completed,*) state, will cause us to delete the pod, transitioning to (completed,missing), and thence
     ; to deleting from the map, into (missing,missing) state.
     {:cook-expected-state :cook-expected-state/completed}))
 
