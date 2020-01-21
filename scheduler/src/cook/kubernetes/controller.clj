@@ -345,7 +345,7 @@
                                         ; We shouldn't hit these unless we get a database rollback.
                                         :pod/succeeded (kill-pod-in-weird-state api-client nil k8s-actual-state-dict)
                                         ; Unlike the other :pod/unknown states, no datomic state to update.
-                                        :pod/unknown (kill-pod-in-weird-state api-client cook-expected-state-dict k8s-actual-state-dict)
+                                        :pod/unknown (kill-pod-in-weird-state api-client nil k8s-actual-state-dict)
                                         ; This can only occur in testing when you're e.g., blowing away the database.
                                         ; It will go through :missing,:missing and then be deleted from the map.
                                         ; TODO: May be evidence of a bug where we process pod changes when we're starting up.
