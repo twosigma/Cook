@@ -233,7 +233,10 @@
     ;
     ; The only terminal expected states are :cook-expected-state/completed and :missing
     ; The only terminal pod states are :pod/succeeded :pod/failed and :missing. We also treat :pod/unknown as a terminal state.
-
+    ;
+    ; We don't know if :pod/unknown is a terminal state for kubernetes. We treat it as a terminal state as far
+    ; as the state machine is concerned, and force a retry at the cook level.
+    ;
     ; If you ignore the reloading on startup, the initial state is set at (:cook-expected-state/starting, :missing) when we first add a pod to launch.
     ; The final state is (:missing, :missing)
     ;
