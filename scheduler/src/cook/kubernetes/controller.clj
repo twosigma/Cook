@@ -210,7 +210,7 @@
   "This function is writes a completed state to datomic and also deletes a pod in kubernetes.
   It is unusual (and unique) because it both modifies kubernetes and modifies datomic. It is intended
   only to be invoked in pods in state :k8s-actual-state/unknown and handle their recovery."
-  [{:keys [api-client] :as compute-cluster} k8s-actual-state-dict pod]
+  [{:keys [api-client] :as compute-cluster} {:keys [pod] :as k8s-actual-state-dict}]
   ; TODO: Should mark mea culpa retry
   (kill-pod-in-weird-state api-client (pod-has-just-completed compute-cluster k8s-actual-state-dict) pod))
 
@@ -274,14 +274,16 @@
                                       (case pod-synthesized-state-modified
                                         ; Cause this entry to be deleted by update-or-delete! called later down.
                                         :missing nil
+                                        ; The writeback to datomic has occurred, so there's nothing to do except to delete the pod from kubernetes
+                                        ; and remove it from our tracking.
                                         :pod/failed (delete-pod api-client pod)
                                         ; Who resurrected this pod? Where did it come from? Do we have two instances of cook?
                                         :pod/running (kill-pod-in-weird-state api-client cook-expected-state-dict k8s-actual-state-dict)
-                                        ; This is an exception. The writeback to datomic has occurred, so there's nothing to do except to delete the pod from kubernetes
+                                        ; The writeback to datomic has occurred, so there's nothing to do except to delete the pod from kubernetes
                                         ; and remove it from our tracking.
                                         :pod/succeeded (delete-pod api-client pod)
                                         ; TODO: Should mark mea culpa retry
-                                        :pod/unknown (mark-pod-completed-and-kill-pod-in-weird-state compute-cluster k8s-actual-state-dict pod)
+                                        :pod/unknown (mark-pod-completed-and-kill-pod-in-weird-state compute-cluster k8s-actual-state-dict)
                                         ; Who resurrected this pod? Where did it come from? Do we have two instances of cook?
                                         :pod/waiting (kill-pod-in-weird-state api-client cook-expected-state-dict k8s-actual-state-dict))
 
@@ -297,7 +299,7 @@
                                         ; There was a race and it completed normally before being it was killed.
                                         :pod/succeeded (pod-has-just-completed compute-cluster k8s-actual-state-dict)
                                         ; TODO: Should mark mea culpa retry
-                                        :pod/unknown (mark-pod-completed-and-kill-pod-in-weird-state compute-cluster k8s-actual-state-dict pod)
+                                        :pod/unknown (mark-pod-completed-and-kill-pod-in-weird-state compute-cluster k8s-actual-state-dict)
                                         :pod/waiting (kill-pod api-client cook-expected-state-dict pod))
 
                                       :cook-expected-state/running
@@ -312,7 +314,7 @@
                                         :pod/running cook-expected-state-dict
                                         :pod/succeeded (pod-has-just-completed compute-cluster k8s-actual-state-dict)
                                         ; TODO: Should mark mea culpa retry
-                                        :pod/unknown (mark-pod-completed-and-kill-pod-in-weird-state compute-cluster k8s-actual-state-dict pod)
+                                        :pod/unknown (mark-pod-completed-and-kill-pod-in-weird-state compute-cluster k8s-actual-state-dict)
                                         :pod/waiting (do ; This case is weird.
                                                        ; This breaks our rule of calling pod-has-completed on a non-terminal pod state.
                                                        (kill-pod-in-weird-state api-client cook-expected-state-dict k8s-actual-state-dict)
@@ -323,11 +325,11 @@
                                       (case pod-synthesized-state-modified
                                         :missing (launch-pod api-client cook-expected-state-dict)
                                         ; TODO: May need to mark mea culpa retry
-                                        :pod/failed (pod-has-just-completed compute-cluster k8s-actual-state-dict)
+                                        :pod/failed (pod-has-just-completed compute-cluster k8s-actual-state-dict) ; Finished or failed fast.
                                         :pod/running (pod-has-started compute-cluster k8s-actual-state-dict)
                                         :pod/succeeded (pod-has-just-completed compute-cluster k8s-actual-state-dict) ; Finished fast.
                                         ; TODO: Should mark mea culpa retry
-                                        :pod/unknown (mark-pod-completed-and-kill-pod-in-weird-state compute-cluster k8s-actual-state-dict pod)
+                                        :pod/unknown (mark-pod-completed-and-kill-pod-in-weird-state compute-cluster k8s-actual-state-dict)
                                         ; Its starting. Can be stuck here. TODO: Stuck state detector to detect being stuck.
                                         :pod/waiting cook-expected-state-dict)
 

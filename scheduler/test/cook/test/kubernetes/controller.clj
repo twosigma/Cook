@@ -1,9 +1,8 @@
 (ns cook.test.kubernetes.controller
   (:require [clojure.test :refer :all]
             [cook.kubernetes.controller :as controller]
-            [cook.test.testutil :as tu]
             [datomic.api :as d])
-  (:import (io.kubernetes.client.models V1ObjectMeta V1Pod V1PodStatus V1Pod V1PodStatus)))
+  (:import (io.kubernetes.client.models V1ObjectMeta V1Pod V1PodStatus)))
 
 
 (deftest test-k8s-actual-state-equivalent?
