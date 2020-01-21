@@ -36,7 +36,7 @@
   (= old-state new-state))
 
 (defn delete-pod
-  "Kill pod is the same as deleting a pod. I semantically distinguish them. Delete is used for completed pods that
+  "Kill pod is the same as deleting a pod. We semantically distinguish them. Delete is used for completed pods that
   we're done with. Kill is used for possibly running pods we want to kill so that they fail. Returns a new
   cook expected state dict of nil."
   [api-client pod]
@@ -44,7 +44,7 @@
   nil)
 
 (defn kill-pod
-  "Kill pod is the same as deleting a pod. I semantically distinguish them. Delete is used for completed pods that
+  "Kill pod is the same as deleting a pod. We semantically distinguish them. Delete is used for completed pods that
   we're done with. Kill is used for possibly running pods we want to kill so that they fail. Returns the
   cook-expected-state-dict passed in."
   [api-client cook-expected-state-dict pod]
@@ -52,13 +52,13 @@
   cook-expected-state-dict)
 
 (defn log-weird-state
-  "Weird. This pod is in a weird state. Log its weird state."
+  "This pod is in a weird state. Log so that we can later trace if we want to."
   [{:keys [name]} cook-expected-state-dict k8s-actual-state-dict]
-  (log/error "In compute cluster" name "Pod in a weird state:" cook-expected-state-dict "and k8s actual state" k8s-actual-state-dict))
+  (log/error "In compute cluster" name ", pod in a weird state:" cook-expected-state-dict "and k8s actual state" k8s-actual-state-dict))
 
 (defn kill-pod-in-weird-state
   "We're in a weird state that shouldn't occur with any of the normal expected races. This 'shouldn't occur. However,
-  we're going to pessimistically assume that anything that could happen will, whether it shouldn't or not. Returns
+  we're going to pessimistically assume that anything that could happen will, whether it should or not. Returns
   the cook-expected-state-dict passed in."
   [{:keys [api-client] :as compute-cluster} cook-expected-state-dict {:keys [pod] :as k8s-actual-state-dict}]
   (log-weird-state compute-cluster cook-expected-state-dict k8s-actual-state-dict)
@@ -122,7 +122,7 @@
 (defn pod-has-just-completed
   "A pod has completed, or we're treating it as completed. E.g., it may really be running, but something is weird.
 
-  This is supposed to look at the pod status, update datomic (with success, failure, and possibly mea culpa),
+   Looks at the pod status, updates datomic (with success, failure, and possibly mea culpa),
    and return a new cook expected state of :cook-expected-state/completed."
   [compute-cluster {:keys [synthesized-state pod]}]
   (let [instance-id (-> pod .getMetadata .getName)
@@ -143,7 +143,8 @@
     (when exit-code
       (sandbox/aggregate-exit-code (:exit-code-syncer-state compute-cluster) instance-id exit-code))
     ; Must never return nil, we want it to return non-nil so that we will retry with writing the state to datomic in case we lose a race.
-    ; The (completed,*) will cause use to delete the pod, transitioning to (completed,missing), and thence to deleting from the map, to (missing,missing)
+    ; Being in the (completed,*) state, will cause use to delete the pod, transitioning to (completed,missing), and thence
+    ; to deleting from the map, into (missing,missing) state.
     {:cook-expected-state :cook-expected-state/completed}))
 
 (defn prepare-cook-expected-state-dict-for-logging
@@ -207,7 +208,7 @@
 
 
 (defn mark-pod-completed-and-kill-pod-in-weird-state
-  "This function is writes a completed state to datomic and also deletes a pod in kubernetes.
+  "Writes the completed state to datomic and deletes the pod in kubernetes.
   It is unusual (and unique) because it both modifies kubernetes and modifies datomic. It is intended
   only to be invoked in pods in state :k8s-actual-state/unknown and handle their recovery."
   [compute-cluster k8s-actual-state-dict]
@@ -248,11 +249,11 @@
     ;       normal exit states (including exit-with-failure). I.e., these MUST only be invoked if cook expected state is not
     ;       in a terminal state. These functions return new cook-expected-state-dict's so should be invoked last in almost
     ;       all cases. (However, in a few cases, (delete-pod ? ?) can be invoked afterwards. It deletes the key from
-    ;       the cook expected state completely. Should only be invoked if we're nil.)
+    ;       the cook expected state completely. Should only be invoked if we're in a :missing cook-expected-state.)
     ;
     ;   weird can be called at any time to indicate we're in a weird state and extra logging is warranted.
     ;
-    ;   We always end with one of  pod-has-just-completed/pod-was-killed/pod-has-started or delete-pod.
+    ;   We always end with one of pod-has-just-completed/pod-was-killed/pod-has-started or delete-pod.
     ;
     ;   We always update datomic first (with pod-has-* pod-was-*), etc, then we update kubernetes so we can handle restarts.
     ;
@@ -263,9 +264,9 @@
     ;     that seem like they could be skipped.
     ;
     ;   In the (:completed,*) states, we delete from datomic, transitioning into (:completed,:missing) and thence to (:missing, :missing)
-    ;     When we're in a terminal pod state.
+    ;     when we're in a terminal pod state.
     ;
-    ;   We only delete a pod if and only if the pod is in a terminal (or unknown) state.
+    ;   We delete a pod if and only if the pod is in a terminal (or unknown) state.
     ; In some cases, we may mark mea culpa retries (if e.g., the node got reclaimed, so the pod got killed). In weird cases, we always need to mark mea culpa retries.
     (let
       [pod-synthesized-state-modified (or (:state synthesized-state) :missing)

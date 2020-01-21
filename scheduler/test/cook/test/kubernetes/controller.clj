@@ -9,14 +9,6 @@
   (testing "different states"
     (is (not (controller/k8s-actual-state-equivalent? {:state :pod/failed} {:state :pod/succeeded})))))
 
-(deftest cook-expected-state-equivalent?
-  ;; TODO
-  )
-
-(deftest update-or-delete!
-  ;; TODO
-  )
-
 (deftest test-container-status->failure-reason
   (testing "no container status + out-of-cpu pod status"
     (let [pod-status (V1PodStatus.)
@@ -27,21 +19,21 @@
                                                           pod-status container-status))))))
 (deftest test-process
   (let [name "TestPodName"
-        do-process (fn [cook-expected-state existing]
+        do-process (fn [cook-expected-state k8s-actual-state]
                      (let [cook-expected-state-map
                            (atom {name {:cook-expected-state cook-expected-state}})]
                        (controller/process
                          {:api-client nil
                           :cook-expected-state-map cook-expected-state-map
-                          :k8s-actual-state-map (atom {name {:synthesized-state {:state existing} :pod nil}})}
+                          :k8s-actual-state-map (atom {name {:synthesized-state {:state k8s-actual-state} :pod nil}})}
                          name)
                        (:cook-expected-state (get @cook-expected-state-map name {}))))]
     (with-redefs [controller/delete-pod  (fn [_ _] nil)
                   controller/kill-pod  (fn [_ cook-expected-state-dict _] cook-expected-state-dict)
                   controller/launch-pod (fn [_ cook-expected-state-dict] cook-expected-state-dict)
                   controller/log-weird-state (fn [_ _ _] :illegal_return_value_should_be_unused)
-                  controller/pod-has-started (fn [_ _] {:cook-expected-state :cook-expected-state/running})
                   controller/pod-has-just-completed (fn [_ _] {:cook-expected-state :cook-expected-state/completed})
+                  controller/pod-has-started (fn [_ _] {:cook-expected-state :cook-expected-state/running})
                   controller/pod-was-killed (fn [_ _] {:cook-expected-state :cook-expected-state/completed})
                   controller/write-status-to-datomic (fn [_] :illegal_return_value_should_be_unused)]
 
