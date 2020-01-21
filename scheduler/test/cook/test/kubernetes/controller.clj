@@ -39,11 +39,11 @@
     (with-redefs [controller/delete-pod  (fn [_ _] nil)
                   controller/kill-pod  (fn [_ cook-expected-state-dict _] cook-expected-state-dict)
                   controller/launch-pod (fn [_ cook-expected-state-dict] cook-expected-state-dict)
-                  controller/log-weird-state (fn [_ _] :illegal)
+                  controller/log-weird-state (fn [_ _ _] :illegal_return_value_should_be_unused)
                   controller/pod-has-started (fn [_ _] {:cook-expected-state :cook-expected-state/running})
                   controller/pod-has-just-completed (fn [_ _] {:cook-expected-state :cook-expected-state/completed})
                   controller/pod-was-killed (fn [_ _] {:cook-expected-state :cook-expected-state/completed})
-                  controller/write-status-to-datomic (fn [_] :illegal)]
+                  controller/write-status-to-datomic (fn [_] :illegal_return_value_should_be_unused)]
 
       (is (nil? (do-process :cook-expected-state/completed :missing)))
       (is (nil? (do-process :cook-expected-state/completed :pod/succeeded)))
