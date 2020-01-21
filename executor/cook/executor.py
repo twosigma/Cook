@@ -359,7 +359,9 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
         progress_termination_signal = Event()
 
         def launch_progress_tracker(progress_location, location_tag):
-            logging.info('Location {} tagged as [tag={}]'.format(progress_location, location_tag))
+            progress_file_path = os.path.abspath(progress_location)
+            logging.info('Location {} (absolute path={}) tagged as [tag={}]'.format(
+                progress_location, progress_file_path, location_tag))
             progress_tracker = cp.ProgressTracker(config, stop_signal, task_completed_signal, sequence_counter,
                                                   progress_updater, progress_termination_signal, progress_location,
                                                   location_tag, inner_os_error_handler)
