@@ -236,8 +236,6 @@
 
   (autoscaling? [_]
     (and
-      (some-> synthetic-tasks :cpus pos?)
-      (some-> synthetic-tasks :mem pos?)
       (some-> synthetic-tasks :image count pos?)
       (some-> synthetic-tasks :user count pos?)
       (some-> synthetic-tasks :max-tasks pos?)))
@@ -248,29 +246,21 @@
               (str "Request to autoscale despite invalid / missing config"))
       (let [using-pools? (config/default-pool)
             synthetic-task-pool-name (if using-pools? pool-name nil)
-            {:keys [cpus mem image user command max-tasks multiplier]
-             :or {command "exit 0" multiplier 1.0}}
-            synthetic-tasks
-            total-cpus (reduce + (map #(-> % :job tools/job-ent->resources :cpus) task-requests))
-            total-mem (reduce + (map #(-> % :job tools/job-ent->resources :mem) task-requests))
-            num-tasks-by-cpu (/ total-cpus cpus)
-            num-tasks-by-mem (/ total-mem mem)
-            num-tasks (-> (max num-tasks-by-cpu num-tasks-by-mem)
-                          (* multiplier)
-                          Math/ceil
-                          int
-                          (min max-tasks))
-            task-metadata-seq (repeat num-tasks
-                                      {:task-id (str (UUID/randomUUID))
-                                       :command {:user user :value command}
-                                       :container {:docker {:image image}}
-                                       :task-request {:resources {:mem mem :cpus cpus}
-                                                      :job {:job/pool {:pool/name synthetic-task-pool-name}}}
-                                       ; We need to label the synthetic tasks so that we
-                                       ; can opt them out of some of the normal plumbing,
-                                       ; like mapping status back to a job instance
-                                       :labels {controller/cook-synthetic-task-label "true"}})]
-        (log/info "In" name "compute cluster, launching" num-tasks "synthetic task(s) for"
+            {:keys [image user command max-tasks] :or {command "exit 0"}} synthetic-tasks
+            task-metadata-seq (->>
+                                task-requests
+                                (map (fn [{:keys [job]}]
+                                       {:task-id (str (UUID/randomUUID))
+                                        :command {:user user :value command}
+                                        :container {:docker {:image image}}
+                                        :task-request {:resources (tools/job-ent->resources job)
+                                                       :job {:job/pool {:pool/name synthetic-task-pool-name}}}
+                                        ; We need to label the synthetic tasks so that we
+                                        ; can opt them out of some of the normal plumbing,
+                                        ; like mapping status back to a job instance
+                                        :labels {controller/cook-synthetic-task-label "true"}}))
+                                (take max-tasks))]
+        (log/info "In" name "compute cluster, launching" (count task-metadata-seq) "synthetic task(s) for"
                   (count task-requests) "un-matched task(s) in" synthetic-task-pool-name "pool")
         (reset! last-autoscale-atom (time/now))
         (cc/launch-tasks this
