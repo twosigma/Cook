@@ -49,6 +49,7 @@
   (let [sandbox-syncer-state nil
         exit-code-syncer-state nil
         mesos-heartbeat-chan nil
+        progress-update-chans nil
         trigger-chans nil]
     (mcc/->MesosComputeCluster compute-cluster-name
                                framework-id
@@ -57,6 +58,7 @@
                                sandbox-syncer-state
                                exit-code-syncer-state
                                mesos-heartbeat-chan
+                               progress-update-chans
                                trigger-chans
                                {}
                                {"no-pool" (async/chan 100)}

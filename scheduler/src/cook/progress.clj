@@ -154,3 +154,12 @@
                                         {:error-handler progress-update-transactor-error-handler
                                          :on-finished progress-update-transactor-on-finished})
        :progress-state-chan progress-state-chan})))
+
+(defn make-progress-update-channels
+  "Top-level function for building a progress-update-transactor and progress-update-aggregator."
+  [progress-updater-trigger-chan progress-config conn]
+  (let [{:keys [batch-size]} progress-config
+        {:keys [progress-state-chan]} (progress-update-transactor progress-updater-trigger-chan batch-size conn)
+        progress-update-aggregator-chan (progress-update-aggregator progress-config progress-state-chan)]
+    {:progress-state-chan progress-state-chan
+     :progress-aggregator-chan progress-update-aggregator-chan}))
