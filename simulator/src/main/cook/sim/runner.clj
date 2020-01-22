@@ -31,7 +31,6 @@
                     duration :job/duration
                     mem :job/memory
                     cpu :job/cpu
-                    docker? :job/docker?
                     exit-code :job/exit-code}]
   (let [cmd (str "sleep " duration "; exit " exit-code)
         group-id (@group-ids-atom group)
@@ -47,12 +46,6 @@
                               :cpus cpu
                               :uuid job-id
                               :command cmd}
-                             (when docker?
-                               {:container {:type "docker"
-                                            :docker {:image "python:3"}
-                                            :volumes [{:container-path "/host-tmp"
-                                                       :host-path "/tmp"
-                                                       :mode "RW"}]}})
                              (when group-id {:group group-id}))]})]
     (println "scheduling cook job with payload: " body)
     (http/post (str cook-uri "/rawscheduler")

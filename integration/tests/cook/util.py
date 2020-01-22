@@ -427,6 +427,10 @@ def docker_image():
     return os.getenv('COOK_TEST_DOCKER_IMAGE')
 
 
+def docker_working_directory():
+    return os.getenv('COOK_TEST_DOCKER_WORKING_DIRECTORY')
+
+
 def get_default_cpus():
     return float(os.getenv('COOK_DEFAULT_JOB_CPUS', 0.5))
 
@@ -459,12 +463,17 @@ def minimal_job(**kwargs):
     }
     image = docker_image()
     if image:
+        work_dir = docker_working_directory()
+        docker_parameters = []
+        if work_dir:
+            docker_parameters.append({'key': 'workdir', 'value': work_dir})
         job['container'] = {
             'type': 'docker',
             'docker': {
                 'image': image,
                 'network': 'HOST',
-                'force-pull-image': False
+                'force-pull-image': False,
+                'parameters': docker_parameters
             }
         }
 
