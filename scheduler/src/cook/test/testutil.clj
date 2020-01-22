@@ -315,6 +315,7 @@
         running-cotask-cache (atom (cache/fifo-cache-factory {} :threshold 1))]
     (sched/make-task-request db
                              job-ent
+                             nil
                              :guuid->considerable-cotask-ids
                              (util/make-guuid->considerable-cotask-ids considerable->task-id)
                              :reserved-hosts []

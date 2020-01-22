@@ -22,7 +22,7 @@ fi
 
 PROJECT=$1
 ZONE=${2:-us-central1-a}
-CLUSTERNAME=${3:-$USER-test-cluster-$(date '+%Y%m%d-%H%M%S')}
+CLUSTERNAME=${3:-$USER-test-$(date '+%m%d-%H%M%S')}
 
 gcloud="gcloud --project $PROJECT"
 
