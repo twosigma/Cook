@@ -38,7 +38,8 @@
             [cook.mesos.reason :as reason]
             [cook.scheduler.share :as share]
             [cook.mesos.task :as task]
-            [cook.tools :as util]
+            [cook.tools :as tools]
+            [cook.util :as util]
             [cook.rate-limit :as ratelimit]
             [cook.task]
             [datomic.api :as d :refer (q)]
@@ -245,8 +246,8 @@
                current-time (now)
                instance-runtime (- (.getTime current-time) ; Used for reporting
                                    (.getTime (or (:instance/start-time instance-ent) current-time)))
-               job-resources (util/job-ent->resources job-ent)
-               pool-name (util/job->pool-name job-ent)
+               job-resources (tools/job-ent->resources job-ent)
+               pool-name (tools/job->pool-name job-ent)
                ^TaskScheduler fenzo (get pool->fenzo pool-name)]
            (when (#{:instance.status/success :instance.status/failed} instance-status)
              (log/debug "Unassigning task" task-id "from" (:instance/hostname instance-ent))
@@ -271,23 +272,23 @@
              ;; The database can become inconsistent if we make multiple calls to :instance/update-state in a single
              ;; transaction; see the comment in the definition of :instance/update-state for more details
              (let [transaction-chan (datomic/transact-with-retries
-                                     conn
-                                     (reduce
-                                      into
-                                      [[:instance/update-state instance instance-status (or (:db/id previous-reason)
-                                                                                            (reason/mesos-reason->cook-reason-entity-id db reason)
-                                                                                            [:reason.name :unknown])]] ; Warning: Default is not mea-culpa
-                                      [(when (and (#{:instance.status/failed} instance-status) (not previous-reason) reason)
-                                         [[:db/add instance :instance/reason (reason/mesos-reason->cook-reason-entity-id db reason)]])
-                                       (when (and (#{:instance.status/success
-                                                     :instance.status/failed} instance-status)
-                                                  (nil? (:instance/end-time instance-ent)))
-                                         [[:db/add instance :instance/end-time (now)]])
-                                       (when (and (#{:task-starting :task-running} task-state)
-                                                  (nil? (:instance/mesos-start-time instance-ent)))
-                                         [[:db/add instance :instance/mesos-start-time (now)]])
-                                       (when progress
-                                         [[:db/add instance :instance/progress progress]])]))]
+                                      conn
+                                      (reduce
+                                        into
+                                        [[:instance/update-state instance instance-status (or (:db/id previous-reason)
+                                                                                              (reason/mesos-reason->cook-reason-entity-id db reason)
+                                                                                              [:reason.name :unknown])]] ; Warning: Default is not mea-culpa
+                                        [(when (and (#{:instance.status/failed} instance-status) (not previous-reason) reason)
+                                           [[:db/add instance :instance/reason (reason/mesos-reason->cook-reason-entity-id db reason)]])
+                                         (when (and (#{:instance.status/success
+                                                       :instance.status/failed} instance-status)
+                                                    (nil? (:instance/end-time instance-ent)))
+                                           [[:db/add instance :instance/end-time (now)]])
+                                         (when (and (#{:task-starting :task-running} task-state)
+                                                    (nil? (:instance/mesos-start-time instance-ent)))
+                                           [[:db/add instance :instance/mesos-start-time (now)]])
+                                         (when progress
+                                           [[:db/add instance :instance/progress progress]])]))]
                (async/go
                  ; Wait for the transcation to complete before running the plugin
                  (let [chan-result (async/<! transaction-chan)]
@@ -302,6 +303,26 @@
                    chan-result)))))
          (catch Exception e
            (log/error e "Mesos scheduler status update error")))))
+
+(defn write-sandbox-url-to-datomic
+  "Takes a sandbox file server URL from the compute cluster and saves it to datomic."
+  [conn task-id sandbox-url]
+  (try
+    (let [db (db conn)
+          _ (when-not task-id
+              (throw (ex-info "task-id is nil. Something unexpected has happened."
+                              {:sandbox-url sandbox-url
+                               :task-id task-id})))
+          [instance] (first (q '[:find ?i
+                                 :in $ ?task-id
+                                 :where
+                                 [?i :instance/task-id ?task-id]]
+                               db task-id))]
+      (if (nil? instance)
+        (log/error "Sandbox file server URL update error. No instance for task-id" task-id)
+        @(d/transact conn [[:db/add instance :instance/sandbox-url sandbox-url]])))
+    (catch Exception e
+      (log/error e "Sandbox file server URL update error"))))
 
 (defn- task-id->instance-id
   "Retrieves the instance-id given a task-id"
@@ -452,34 +473,42 @@
   (getSoftConstraints [_] [])
   (taskGroupName [_] (str (:job/uuid job))))
 
+(def adjust-job-resources-for-pool-fn
+  (memoize
+    (fn [pool-name]
+      (if-let [{:keys [pool-regex adjust-job-resources-fn]} (config/job-resource-adjustments)]
+        (if (re-matches pool-regex pool-name) adjust-job-resources-fn identity)
+        identity))))
+
 (defn make-task-request
   "Helper to create a TaskRequest using TaskRequestAdapter. TaskRequestAdapter implements Fenzo's TaskRequest interface
    given a job, its resources, its task-id and a function assigned-cotask-getter. assigned-cotask-getter should be a
    function that takes a group uuid and returns a set of task-ids, which correspond to the tasks that will be assigned
    during the same Fenzo scheduling cycle as the newly created TaskRequest."
-  [db job & {:keys [resources task-id assigned-resources guuid->considerable-cotask-ids reserved-hosts running-cotask-cache]
-             :or {resources (util/job-ent->resources job)
-                  task-id (str (d/squuid))
-                  assigned-resources (atom nil)
-                  guuid->considerable-cotask-ids (constantly #{})
-                  running-cotask-cache (atom (cache/fifo-cache-factory {} :threshold 1))
-                  reserved-hosts #{}}}]
+  [db job pool-name & {:keys [resources task-id assigned-resources guuid->considerable-cotask-ids reserved-hosts running-cotask-cache]
+                       :or {resources (tools/job-ent->resources job)
+                            task-id (str (d/squuid))
+                            assigned-resources (atom nil)
+                            guuid->considerable-cotask-ids (constantly #{})
+                            running-cotask-cache (atom (cache/fifo-cache-factory {} :threshold 1))
+                            reserved-hosts #{}}}]
   (let [constraints (-> (constraints/make-fenzo-job-constraints job)
-                        (conj (constraints/build-rebalancer-reservation-constraint reserved-hosts))
-                        (into
-                          (remove nil?
-                                  (mapv (fn make-group-constraints [group]
-                                          (constraints/make-fenzo-group-constraint
-                                            db group #(guuid->considerable-cotask-ids (:group/uuid group)) running-cotask-cache))
-                                        (:group/_job job)))))
+                      (conj (constraints/build-rebalancer-reservation-constraint reserved-hosts))
+                      (into
+                        (remove nil?
+                                (mapv (fn make-group-constraints [group]
+                                        (constraints/make-fenzo-group-constraint
+                                          db group #(guuid->considerable-cotask-ids (:group/uuid group)) running-cotask-cache))
+                                      (:group/_job job)))))
         needs-gpus? (constraints/job-needs-gpus? job)
         scalar-requests (reduce (fn [result resource]
                                   (if-let [value (:resource/amount resource)]
                                     (assoc result (name (:resource/type resource)) value)
                                     result))
                                 {}
-                                (:job/resource job))]
-    (->TaskRequestAdapter job resources task-id assigned-resources guuid->considerable-cotask-ids constraints needs-gpus? scalar-requests)))
+                                (:job/resource job))
+        pool-specific-resources ((adjust-job-resources-for-pool-fn pool-name) resources)]
+    (->TaskRequestAdapter job pool-specific-resources task-id assigned-resources guuid->considerable-cotask-ids constraints needs-gpus? scalar-requests)))
 
 (defn match-offer-to-schedule
   "Given an offer and a schedule, computes all the tasks should be launched as a result.
@@ -496,13 +525,13 @@
   (let [t (System/currentTimeMillis)
         leases (mapv #(->VirtualMachineLeaseAdapter % t) offers)
         considerable->task-id (plumbing.core/map-from-keys (fn [_] (str (d/squuid))) considerable)
-        guuid->considerable-cotask-ids (util/make-guuid->considerable-cotask-ids considerable->task-id)
+        guuid->considerable-cotask-ids (tools/make-guuid->considerable-cotask-ids considerable->task-id)
         running-cotask-cache (atom (cache/fifo-cache-factory {} :threshold (max 1 (count considerable))))
         job-uuid->reserved-host (or (:job-uuid->reserved-host @rebalancer-reservation-atom) {})
         reserved-hosts (into (hash-set) (vals job-uuid->reserved-host))
         ; Important that requests maintains the same order as considerable
         requests (mapv (fn [job]
-                         (make-task-request db job
+                         (make-task-request db job pool-name
                                             :guuid->considerable-cotask-ids guuid->considerable-cotask-ids
                                             :reserved-hosts (disj reserved-hosts (job-uuid->reserved-host (:job/uuid job)))
                                             :running-cotask-cache running-cotask-cache
@@ -557,13 +586,13 @@
   [unfiltered-db pool-name]
   (timers/time!
     generate-user-usage-map-duration
-    (->> (util/get-running-task-ents unfiltered-db)
+    (->> (tools/get-running-task-ents unfiltered-db)
          (map :job/_instance)
-         (remove #(not= pool-name (util/job->pool-name %)))
+         (remove #(not= pool-name (tools/job->pool-name %)))
          (group-by :job/user)
          (pc/map-vals (fn [jobs]
                         (->> jobs
-                             (map util/job->usage)
+                             (map tools/job->usage)
                              (reduce (partial merge-with +))))))))
 
 ; This is used by the /unscheduled_jobs code to determine whether
@@ -591,8 +620,8 @@
             (not (and is-rate-limited? enforcing-job-launch-rate-limit?))))
         considerable-jobs
         (->> pending-jobs
-             (util/filter-based-on-quota user->quota user->usage)
-             (filter (fn [job] (util/job-allowed-to-start? db job)))
+             (tools/filter-based-on-quota user->quota user->usage)
+             (filter (fn [job] (tools/job-allowed-to-start? db job)))
              (filter user-within-launch-rate-limit?-fn)
              (filter launch-plugin/filter-job-launches)
              (take num-considerable)
@@ -612,7 +641,7 @@
         job-uuids (set (map :job/uuid jobs))]
     (log/debug "In" pool-name "pool, matched jobs:" (count job-uuids))
     (when (seq matches)
-      (let [matched-normal-jobs-resource-requirements (util/sum-resources-of-jobs jobs)]
+      (let [matched-normal-jobs-resource-requirements (tools/sum-resources-of-jobs jobs)]
         (meters/mark! (meters/meter (metric-title "matched-tasks-cpus" pool-name))
                       (:cpus matched-normal-jobs-resource-requirements))
         (meters/mark! (meters/meter (metric-title "matched-tasks-mem" pool-name))
@@ -796,7 +825,7 @@
               matched-job-uuids (timers/time!
                                   (timers/timer (metric-title "handle-resource-offer!-match-job-uuids-duration" pool-name))
                                   (matches->job-uuids matches pool-name))
-              first-considerable-job-resources (-> considerable-jobs first util/job-ent->resources)
+              first-considerable-job-resources (-> considerable-jobs first tools/job-ent->resources)
               matched-considerable-jobs-head? (contains? matched-job-uuids (-> considerable-jobs first :job/uuid))]
 
           (fenzo/record-placement-failures! conn failures)
@@ -857,7 +886,7 @@
    mesos-run-as-user pool-name compute-clusters]
   (let [resources-atom (atom (view-incubating-offers fenzo))]
     (reset! fenzo-num-considerable-atom max-considerable)
-    (util/chime-at-ch
+    (tools/chime-at-ch
       trigger-chan
       (fn match-jobs-event []
         (let [num-considerable @fenzo-num-considerable-atom
@@ -984,9 +1013,10 @@
                                        :let [[task-id] task
                                              task-ent (d/entity db [:instance/task-id task-id])
                                              hostname (:instance/hostname task-ent)]]
-                                   (when-let [job (util/job-ent->map (:job/_instance task-ent))]
-                                     (let [task-request (make-task-request db job :task-id task-id)
-                                           ^TaskScheduler fenzo (-> job util/job->pool-name pool->fenzo)]
+                                   (when-let [job (tools/job-ent->map (:job/_instance task-ent))]
+                                     (let [pool-name (tools/job->pool-name job)
+                                           task-request (make-task-request db job pool-name :task-id task-id)
+                                           ^TaskScheduler fenzo (pool->fenzo pool-name)]
                                        ;; Need to lock on fenzo when accessing taskAssigner because taskAssigner and
                                        ;; scheduleOnce can not be called at the same time.
                                        (locking fenzo
@@ -1078,7 +1108,7 @@
   [conn config trigger-chan]
   (let [config (merge {:timeout-hours (* 2 24)}
                       config)]
-    (util/chime-at-ch trigger-chan
+    (tools/chime-at-ch trigger-chan
                       (fn kill-linger-task-event []
                         (kill-lingering-tasks (time/now) conn config))
                       {:error-handler (fn [e]
@@ -1087,7 +1117,7 @@
 (defn handle-stragglers
   "Searches for running jobs in groups and runs the associated straggler handler"
   [conn kill-task-fn]
-  (let [running-task-ents (util/get-running-task-ents (d/db conn))
+  (let [running-task-ents (tools/get-running-task-ents (d/db conn))
         running-job-ents (map :job/_instance running-task-ents)
         groups (distinct (mapcat :group/_job running-job-ents))]
     (doseq [group groups]
@@ -1109,7 +1139,7 @@
   "Periodically checks for running jobs that are in groups and runs the associated
    straggler handler."
   [conn trigger-chan]
-  (util/chime-at-ch trigger-chan
+  (tools/chime-at-ch trigger-chan
                     (fn straggler-handler-event []
                       (handle-stragglers conn (fn [task-ent]
                                                 (cc/kill-task-if-possible (cook.task/task-ent->ComputeCluster task-ent)
@@ -1132,7 +1162,7 @@
 (defn cancelled-task-killer
   "Every trigger, kill tasks that have been cancelled (e.g. via the API)."
   [conn trigger-chan]
-  (util/chime-at-ch
+  (tools/chime-at-ch
     trigger-chan
     (fn cancelled-task-killer-event []
       (timers/time!
@@ -1166,7 +1196,7 @@
                                           (d/entity db eid)))
                                    (group-by :job/user)
                                    (map (fn [[user job-ents]]
-                                          [user (util/sum-resources-of-jobs job-ents)]))
+                                          [user (tools/sum-resources-of-jobs job-ents)]))
                                    (into {}))]
      user->used-resources))
   ([db user]
@@ -1178,21 +1208,21 @@
                                 db user)
                              (map (fn [[eid]]
                                     (d/entity db eid)))
-                             (util/sum-resources-of-jobs))]
+                             (tools/sum-resources-of-jobs))]
      {user (if (seq used-resources)
              used-resources
              ;; Return all 0's for a user who does NOT have any running job.
-             (zipmap (util/get-all-resource-types db) (repeat 0.0)))})))
+             (zipmap (tools/get-all-resource-types db) (repeat 0.0)))})))
 
 (defn limit-over-quota-jobs
   "Filters task-ents, preserving at most (config/max-over-quota-jobs) that would exceed the user's quota"
   [task-ents quota]
   (let [over-quota-job-limit (config/max-over-quota-jobs)]
     (->> task-ents
-         (map (fn [task-ent] [task-ent (util/job->usage (:job/_instance task-ent))]))
+         (map (fn [task-ent] [task-ent (tools/job->usage (:job/_instance task-ent))]))
          (reductions (fn [[prev-task total-usage over-quota-jobs] [task-ent usage]]
                        (let [total-usage' (merge-with + total-usage usage)]
-                         (if (util/below-quota? quota total-usage')
+                         (if (tools/below-quota? quota total-usage')
                            [task-ent total-usage' over-quota-jobs]
                            [task-ent total-usage' (inc over-quota-jobs)])))
                      [nil {} 0])
@@ -1204,12 +1234,12 @@
   "Return a list of job entities ordered by the provided sort function"
   [pending-task-ents running-task-ents user->dru-divisors sort-task-scored-task-pairs sort-jobs-duration pool-name user->quota]
   (let [tasks (into (vec running-task-ents) pending-task-ents)
-        task-comparator (util/same-user-task-comparator tasks)
+        task-comparator (tools/same-user-task-comparator tasks)
         pending-task-ents-set (into #{} pending-task-ents)
         jobs (timers/time!
                sort-jobs-duration
                (->> tasks
-                    (group-by util/task-ent->user)
+                    (group-by tools/task-ent->user)
                     (map (fn [[user task-ents]] (let [sorted-tasks (sort task-comparator task-ents)]
                                                   [user (limit-over-quota-jobs sorted-tasks (user->quota user))])))
                     (into (hash-map))
@@ -1246,10 +1276,10 @@
   ;; e.g. running jobs or when it is always considered committed e.g. shares
   ;; The unfiltered db can also be used on pending job entities once the filtered db is used to limit
   ;; to only those jobs that have been committed.
-  (let [pool-name->pending-job-ents (group-by util/job->pool-name (util/get-pending-job-ents unfiltered-db))
-        pool-name->pending-task-ents (pc/map-vals #(map util/create-task-ent %1) pool-name->pending-job-ents)
-        pool-name->running-task-ents (group-by (comp util/job->pool-name :job/_instance)
-                                               (util/get-running-task-ents unfiltered-db))
+  (let [pool-name->pending-job-ents (group-by tools/job->pool-name (tools/get-pending-job-ents unfiltered-db))
+        pool-name->pending-task-ents (pc/map-vals #(map tools/create-task-ent %1) pool-name->pending-job-ents)
+        pool-name->running-task-ents (group-by (comp tools/job->pool-name :job/_instance)
+                                               (tools/get-running-task-ents unfiltered-db))
         pools (pool/all-pools unfiltered-db)
         using-pools? (-> pools count pos?)
         pool-name->user->dru-divisors (if using-pools?
@@ -1277,7 +1307,7 @@
 (defn is-offensive?
   [max-memory-mb max-cpus job]
   (let [{memory-mb :mem
-         cpus :cpus} (util/job-ent->resources job)]
+         cpus :cpus} (tools/job-ent->resources job)]
     (or (> memory-mb max-memory-mb)
         (> cpus max-cpus))))
 
@@ -1347,7 +1377,7 @@
       (->> (sort-jobs-by-dru-pool unfiltered-db)
            ;; Apply the offensive job filter first before taking.
            (pc/map-vals offensive-job-filter)
-           (pc/map-vals #(map util/job-ent->map %))
+           (pc/map-vals #(map tools/job-ent->map %))
            (pc/map-vals #(remove nil? %)))
       (catch Throwable t
         (log/error t "Failed to rank jobs")
@@ -1358,7 +1388,7 @@
   [conn pool-name->pending-jobs-atom task-constraints trigger-chan]
   (let [offensive-jobs-ch (make-offensive-job-stifler conn)
         offensive-job-filter (partial filter-offensive-jobs task-constraints offensive-jobs-ch)]
-    (util/chime-at-ch trigger-chan
+    (tools/chime-at-ch trigger-chan
                       (fn rank-jobs-event []
                         (reset! pool-name->pending-jobs-atom
                                 (rank-jobs (d/db conn) offensive-job-filter))))))

@@ -1,11 +1,14 @@
 (ns cook.kubernetes.controller
-  (:require [clojure.tools.logging :as log]
+  (:require [cook.config :as config]
             [cook.datomic :as datomic]
             [cook.kubernetes.api :as api]
             [cook.mesos.sandbox :as sandbox]
-            [cook.scheduler.scheduler :as scheduler])
+            [cook.scheduler.scheduler :as scheduler]
+            [clojure.string :as str]
+            [clojure.tools.logging :as log])
   (:import (clojure.lang IAtom)
-           (io.kubernetes.client.models V1Pod V1ContainerStatus V1PodStatus)))
+           (io.kubernetes.client.models V1Pod V1ContainerStatus V1PodStatus)
+           (java.net URLEncoder)))
 
 (def cook-synthetic-task-label "cook-synthetic-task")
 
@@ -149,6 +152,25 @@
       (write-status-to-datomic kcc status)))
   {:expected-state :expected/running})
 
+(defn record-sandbox-url
+  "Record the sandbox file server URL in datomic."
+  [{:keys [pod]}]
+  (let [task-id (-> pod .getMetadata .getName)
+        pod-ip (-> pod .getStatus .getPodIP)
+        {:keys [default-workdir sandbox-fileserver pod-ip->hostname-fn]} (config/kubernetes)
+        sandbox-fileserver-port (:port sandbox-fileserver)
+        sandbox-url (try
+                      (when (and sandbox-fileserver-port (not (str/blank? pod-ip)))
+                        (str "http://"
+                             (pod-ip->hostname-fn pod-ip)
+                             ":" sandbox-fileserver-port
+                             "/files/read.json?path="
+                             (URLEncoder/encode default-workdir "UTF-8")))
+                      (catch Exception e
+                        (log/debug e "Unable to retrieve directory path for" task-id)
+                        nil))]
+    (when sandbox-url (scheduler/write-sandbox-url-to-datomic datomic/conn task-id sandbox-url))))
+
 (defn pod-was-killed
   "A pod was killed. So now we need to update the status in datomic and store the exit code."
   [kcc pod-name]
@@ -228,10 +250,16 @@
   [{:keys [existing-state-map name] :as kcc} ^V1Pod new-pod]
   (let [pod-name (api/V1Pod->name new-pod)]
     (locking (calculate-lock pod-name)
-      (let [new-state {:pod new-pod :synthesized-state (api/pod->synthesized-pod-state new-pod)}
+      (let [new-state {:pod new-pod
+                       :synthesized-state (api/pod->synthesized-pod-state new-pod)
+                       :sandbox-file-server-container-state (api/pod->sandbox-file-server-container-state new-pod)}
             old-state (get @existing-state-map pod-name)]
         ; We always store the updated state, but only reprocess it if it is genuinely different.
         (swap! existing-state-map assoc pod-name new-state)
+        (let [new-file-server-state (:sandbox-file-server-container-state new-state)
+              old-file-server-state (:sandbox-file-server-container-state old-state)]
+          (when (and (= new-file-server-state :running) (not= old-file-server-state :running))
+            (record-sandbox-url new-state)))
         (when-not (existing-state-equivalent? old-state new-state)
           (try
             (process kcc pod-name)

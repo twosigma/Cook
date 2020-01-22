@@ -152,7 +152,7 @@
         task-ids (take (count jobs) (repeatedly #(str (java.util.UUID/randomUUID))))
         guuid->considerable-cotask-ids (util/make-guuid->considerable-cotask-ids (zipmap jobs task-ids))
         cache (atom (cache/fifo-cache-factory {} :threshold (count job-ids)))
-        tasks (map #(sched/make-task-request db %1 :task-id %2 :guuid->considerable-cotask-ids guuid->considerable-cotask-ids
+        tasks (map #(sched/make-task-request db %1 nil :task-id %2 :guuid->considerable-cotask-ids guuid->considerable-cotask-ids
                                              :running-cotask-cache cache)
                    jobs task-ids)
         result (-> scheduler
@@ -1408,6 +1408,7 @@
                                                  :job/resource (cond-> [{:resource/type :resource.type/mem, :resource/amount 1000.0}
                                                                         {:resource/type :resource.type/cpus, :resource/amount 1.0}]
                                                                        gpus (conj {:resource/type :resource.type/gpus, :resource/amount gpus}))}
+                                                nil
                                                 :task-id (str "task-id-" job-uuid)))
                                  (.getMock)))
         job-1 (create-task-result "job-1" 1 1024 nil)
@@ -1904,7 +1905,7 @@
           logged-atom (atom nil)
           job-id (create-dummy-job conn)
           job (d/entity (d/db conn) job-id)
-          ^TaskRequest task-request (sched/make-task-request (d/db conn) job)
+          ^TaskRequest task-request (sched/make-task-request (d/db conn) job nil)
           matches [{:tasks [(SimpleAssignmentResult. [] nil task-request)]}]]
       (with-redefs [cc/db-id (constantly -1) ; So we don't throw prematurely when trying to create the task structure.
                     d/transact (fn [_ _]

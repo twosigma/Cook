@@ -45,6 +45,7 @@
             [cook.plugins.file :as file-plugin]
             [cook.plugins.submission :as submission-plugin]
             [cook.rate-limit :as rate-limit]
+            [cook.task :as task]
             [cook.util :refer [ZeroInt PosNum NonNegNum PosInt NonNegInt PosDouble UserName NonEmptyString]]
             [datomic.api :as d :refer [q]]
             [liberator.core :as liberator]
@@ -64,7 +65,7 @@
            com.codahale.metrics.ScheduledReporter
            com.netflix.fenzo.VMTaskFitnessCalculator
            (java.io OutputStreamWriter)
-           (java.net ServerSocket URLEncoder)
+           (java.net ServerSocket)
            (java.util Date UUID)
            javax.servlet.ServletResponse
            org.apache.curator.test.TestingServer
@@ -965,20 +966,16 @@
       (throw (ex-info (str "Group UUID " (:uuid group) " already used") {:uuid group})))
     group))
 
-(defn retrieve-url-path
-  "Constructs a URL to query the sandbox directory of the task.
-   Uses the provided sandbox-directory to determine the sandbox directory.
-   Hard codes fun stuff like the port we run the agent on.
+(defn retrieve-sandbox-url-path
+  "Gets a URL to query the sandbox directory of the task.
    Users will need to add the file path & offset to their query.
-   Refer to the 'Using the output_url' section in docs/scheduler-rest-api.adoc for further details."
-  [agent-hostname task-id sandbox-directory]
-  (try
-    (when sandbox-directory
-      (str "http://" agent-hostname ":5051" "/files/read.json?path="
-           (URLEncoder/encode sandbox-directory "UTF-8")))
-    (catch Exception e
-      (log/debug e "Unable to retrieve directory path for" task-id "on agent" agent-hostname)
-      nil)))
+   Refer to the 'Using the output_url' section in docs/scheduler-rest-api.adoc for further details.
+   Delegates to the compute cluster implimentation."
+  [instance-entity]
+  (if-let [sandbox-url (:instance/sandbox-url instance-entity)]
+    sandbox-url
+    (let [compute-cluster (task/task-ent->ComputeCluster instance-entity)]
+      (cc/retrieve-sandbox-url-path compute-cluster instance-entity))))
 
 (defn compute-cluster-entity->map
   "Attached to the the instance object when we send it in API responses"
@@ -1010,7 +1007,7 @@
           task-id (:instance/task-id instance)
           executor (:instance/executor instance)
           sandbox-directory (:instance/sandbox-directory instance)
-          url-path (retrieve-url-path hostname task-id sandbox-directory)
+          url-path (retrieve-sandbox-url-path instance)
           start (:instance/start-time instance)
           mesos-start (:instance/mesos-start-time instance)
           end (:instance/end-time instance)
@@ -2926,7 +2923,7 @@
                    :responses {200 {:schema [JobResponseDeprecated]
                                     :description "The jobs and their instances were returned."}
                                400 {:description "Non-UUID values were passed as jobs."}
-                               403 {:description "The supplied UUIDs don't correspond to valid jobs."}}
+                               404 {:description "The supplied UUIDs don't correspond to valid jobs."}}
                    :handler (read-jobs-handler-deprecated conn is-authorized-fn)}
              :post {:summary "Schedules one or more jobs (deprecated)."
                     :parameters {:body-params RawSchedulerRequestDeprecated}
@@ -2937,7 +2934,7 @@
              :delete {:summary "Cancels jobs, halting execution when possible."
                       :responses {204 {:description "The jobs have been marked for termination."}
                                   400 {:description "Non-UUID values were passed as jobs."}
-                                  403 {:description "The supplied UUIDs don't correspond to valid jobs."}}
+                                  404 {:description "The supplied UUIDs don't correspond to valid jobs."}}
                       :parameters {:query-params JobOrInstanceIds}
                       :handler (destroy-jobs-handler conn is-authorized-fn)}}))
 
@@ -2949,7 +2946,7 @@
                    :responses {200 {:schema JobResponse
                                     :description "The job was returned."}
                                400 {:description "A non-UUID value was passed."}
-                               403 {:description "The supplied UUID doesn't correspond to a valid job."}}
+                               404 {:description "The supplied UUID doesn't correspond to a valid job."}}
                    :handler (read-jobs-handler-single conn is-authorized-fn)}}))
 
         (c-api/context
@@ -2960,7 +2957,7 @@
                    :responses {200 {:schema [JobResponse]
                                     :description "The jobs were returned."}
                                400 {:description "Non-UUID values were passed."}
-                               403 {:description "The supplied UUIDs don't correspond to valid jobs."}}
+                               404 {:description "The supplied UUIDs don't correspond to valid jobs."}}
                    :handler (read-jobs-handler-multiple conn is-authorized-fn)}
              :post {:summary "Schedules one or more jobs."
                     :parameters {:body-params JobSubmissionRequest}
@@ -2985,7 +2982,7 @@
                    :responses {200 {:schema InstanceResponse
                                     :description "The job instance was returned."}
                                400 {:description "A non-UUID value was passed."}
-                               403 {:description "The supplied UUID doesn't correspond to a valid job instance."}}
+                               404 {:description "The supplied UUID doesn't correspond to a valid job instance."}}
                    :handler (read-instances-handler-single conn is-authorized-fn)}}))
 
         (c-api/context
@@ -2996,7 +2993,7 @@
                    :responses {200 {:schema [InstanceResponse]
                                     :description "The job instances were returned."}
                                400 {:description "Non-UUID values were passed."}
-                               403 {:description "The supplied UUIDs don't correspond to valid job instances."}}
+                               404 {:description "The supplied UUIDs don't correspond to valid job instances."}}
                    :handler (read-instances-handler-multiple conn is-authorized-fn)}}))
 
         (c-api/context
@@ -3005,8 +3002,8 @@
             {:produces ["application/json"],
              :responses {200 {:schema UserLimitsResponse
                               :description "User's share found"}
-                         401 {:description "Not authorized to read shares."}
-                         403 {:description "Invalid request format."}}
+                         400 {:description "Invalid request format."}
+                         401 {:description "Not authorized to read shares."}}
              :get {:summary "Read a user's share"
                    :parameters {:query-params UserParam}
                    :handler (read-limit-handler :share share/get-share conn is-authorized-fn)}
@@ -3025,8 +3022,8 @@
             {:produces ["application/json"],
              :responses {200 {:schema UserLimitsResponse
                               :description "User's quota found"}
-                         401 {:description "Not authorized to read quota."}
-                         403 {:description "Invalid request format."}}
+                         400 {:description "Invalid request format."}
+                         401 {:description "Not authorized to read quota."}}
              :get {:summary "Read a user's quota"
                    :parameters {:query-params UserParam}
                    :handler (read-limit-handler :quota quota/get-quota conn is-authorized-fn)}
@@ -3045,8 +3042,8 @@
             {:produces ["application/json"],
              :responses {200 {:schema UserUsageResponse
                               :description "User's usage calculated."}
-                         401 {:description "Not authorized to read usage."}
-                         403 {:description "Invalid request format."}}
+                         400 {:description "Invalid request format."}
+                         401 {:description "Not authorized to read usage."}}
              :get {:summary "Query a user's current resource usage."
                    :parameters {:query-params UserUsageParams}
                    :handler (read-usage-handler conn is-authorized-fn)}}))
@@ -3089,14 +3086,14 @@
                    :responses {200 {:schema [GroupResponse]
                                     :description "The groups were returned."}
                                400 {:description "Non-UUID values were passed."}
-                               403 {:description "The supplied UUIDs don't correspond to valid groups."}}
+                               404 {:description "The supplied UUIDs don't correspond to valid groups."}}
                    :handler (groups-action-handler conn task-constraints is-authorized-fn)}
              :delete
              {:summary "Kill all jobs within a set of groups"
               :parameters {:query-params KillGroupsParams}
               :responses {204 {:description "The groups' jobs have been marked for termination."}
                           400 {:description "Non-UUID values were passed."}
-                          403 {:description "The supplied UUIDs don't correspond to valid groups."}}
+                          404 {:description "The supplied UUIDs don't correspond to valid groups."}}
               :handler (groups-action-handler conn task-constraints is-authorized-fn)}}))
 
         (c-api/context
@@ -3132,8 +3129,8 @@
             {:produces ["application/json"],
              :responses {200 {:schema TaskStatsResponse
                               :description "Task stats calculated."}
-                         401 {:description "Not authorized to read stats."}
-                         403 {:description "Invalid request format."}}
+                         400 {:description "Invalid request format."}
+                         401 {:description "Not authorized to read stats."}}
              :get {:summary "Query statistics for instances started in a time range."
                    :parameters {:query-params TaskStatsParams}
                    :handler (task-stats-handler conn is-authorized-fn)}}))
