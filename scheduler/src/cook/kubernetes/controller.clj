@@ -248,7 +248,7 @@
     ; when we delete to indicate the provenance (e.g., induced because of a weird state)
     ;
     ; Invariants:
-    ;   handle-pod-completed/handle-killed/handle-pod-started: These are callbacks invoked when kubernetes has moved
+    ;   handle-pod-completed/handle-pod-killed/handle-pod-started: These are callbacks invoked when kubernetes has moved
     ;       to a new state. They handle writeback to datomic only. handle-pod-killed is called in all of the weird
     ;       kubernetes states that are not expected to occur, while handle-pod-completed is invoked in all of the
     ;       normal exit states (including exit-with-failure). I.e., these MUST only be invoked if cook expected state is not
