@@ -36,17 +36,19 @@
   (= old-state new-state))
 
 (defn delete-pod
-  "Kill pod is the same as deleting a pod. We semantically distinguish them. Delete is used for completed pods that
-  we're done with. Kill is used for possibly running pods we want to kill so that they fail. Returns a new
-  cook expected state dict of nil."
+  "Kill pod is the same as deleting a pod, we semantically distinguish the two operations.
+  Delete is used for completed pods that we're done with.
+  Kill is used for possibly running pods we want to kill so that they fail.
+  Returns the cook-expected-state-dict of nil."
   [api-client pod]
   (api/delete-pod api-client pod)
   nil)
 
 (defn kill-pod
-  "Kill pod is the same as deleting a pod. We semantically distinguish them. Delete is used for completed pods that
-  we're done with. Kill is used for possibly running pods we want to kill so that they fail. Returns the
-  cook-expected-state-dict passed in."
+  "Kill pod is the same as deleting a pod, we semantically distinguish the two operations.
+  Delete is used for completed pods that we're done with.
+  Kill is used for possibly running pods we want to kill so that they fail.
+  Returns the cook-expected-state-dict passed in."
   [api-client cook-expected-state-dict pod]
   (api/delete-pod api-client pod)
   cook-expected-state-dict)
@@ -242,8 +244,8 @@
     ;
     ; We use :cook-expected-state/killed to represent a user-chosen kill. If we're doing a state-machine-induced kill (because something
     ; went wrong) it should occur by deleting the pod, so we go, e.g.,  (:running,:waiting) (an illegal state) to (:running,:missing)
-    ; to (:completed, :missing), to (:missing,missing) to deleted. We put a flag on when we delete so that we can indicate
-    ; the provenance (e.g., induced because of a weird state)
+    ; to (:completed, :missing), to (:missing,missing) to deleted. We will put a flag in the cook expected state dictionary
+    ; when we delete to indicate the provenance (e.g., induced because of a weird state)
     ;
     ; Invariants:
     ;   pod-has-just-completed/pod-was-killed/pod-has-started: These are callbacks invoked when kubernetes has moved
