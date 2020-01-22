@@ -609,11 +609,13 @@
         (.isReady file-server-status) :running
         :else :not-running))))
 
-(defn kill-task
-  "Kill this kubernetes pod"
+(defn delete-pod
+  "Kill this kubernetes pod. This is the same as deleting it."
   [^ApiClient api-client ^V1Pod pod]
   (let [api (CoreV1Api. api-client)
         ^V1DeleteOptions deleteOptions (-> (V1DeleteOptionsBuilder.) (.withPropagationPolicy "Background") .build)]
+    ; TODO: This likes to noisily throw NotFound multiple times as we delete away from kubernetes.
+    ; I suspect our predicate of k8s-actual-state-equivalent needs tweaking.
     (try
       (.deleteNamespacedPod
         api
@@ -638,18 +640,9 @@
         ;
         ))))
 
-
-(defn remove-finalization-if-set-and-delete
-  "Remove finalization for a pod if it's there. No-op if it's not there.
-  We always delete unconditionally, so finalization doesn't matter."
-  [^ApiClient api-client ^V1Pod pod]
-  ; TODO: This likes to noisily throw NotFound multiple times as we delete away from kubernetes.
-  ; I suspect our predicate of existing-states-equivalent needs tweaking.
-  (kill-task api-client pod))
-
-(defn launch-task
+(defn launch-pod
   "Given a V1Pod, launch it."
-  [api-client {:keys [launch-pod] :as expected-state-dict}]
+  [api-client {:keys [launch-pod] :as cook-expected-state-dict}]
   ;; TODO: make namespace configurable
   (if launch-pod
     (let [{:keys [pod]} launch-pod
@@ -664,12 +657,12 @@
         (catch ApiException e
           (log/error e "Error submitting pod with name" pod-name "in namespace" namespace ":" (.getResponseBody e)))))
     ; Because of the complicated nature of task-metadata-seq, we can't easily run the V1Pod creation code for a
-    ; launching pod on a server restart. Thus, if we create a task, store into datomic, but then the cook scheduler
+    ; launching pod on a server restart. Thus, if we create an instance, store into datomic, but then the cook scheduler
     ; fails --- before kubernetes creates a pod (either the message isn't sent, or there's a kubernetes problem) ---
     ; we will be unable to create a new V1Pod and we can't retry this at the kubernetes level.
     ;
-    ; Eventually, the stuck pod detector will recognize the stuck pod, kill the task, and a cook-level retry will make
-    ; a new task.
+    ; Eventually, the stuck pod detector will recognize the stuck pod, kill the instance, and a cook-level retry will make
+    ; a new instance.
     ;
     ; Because the issue is relatively rare and auto-recoverable, we're going to punt on the task-metadata-seq refactor need
     ; to handle this situation better.
