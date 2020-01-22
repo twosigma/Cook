@@ -76,24 +76,26 @@
         (is (< 0 (-> pod .getSpec .getSecurityContext .getRunAsGroup)))
         (is (< 0 (-> pod .getSpec .getSecurityContext .getRunAsUser)))
 
-        (let [workdir-volume (->> pod
+        (let [cook-workdir-volume (->> pod
                                   .getSpec
                                   .getVolumes
                                   (filter (fn [^V1Volume v] (= "cook-workdir-volume" (.getName v))))
                                   first)]
-          (is (not (nil? (.getEmptyDir workdir-volume)))))
+          (is (not (nil? cook-workdir-volume)))
+          (is (not (nil? (.getEmptyDir cook-workdir-volume)))))
 
         (let [^V1Container container (-> pod .getSpec .getContainers first)]
           (is (= "required-cook-job-container" (.getName container)))
           (is (= ["/bin/sh" "-c" "foo && bar"] (.getCommand container)))
           (is (= "alpine:latest" (.getImage container)))
+          (is (not (nil? container)))
           (is (= 4 (count (.getEnv container))))
           (is (= "/mnt/sandbox" (.getWorkingDir container)))
-          (let [workdir-mount (->> container
+          (let [cook-workdir-mount (->> container
                                    .getVolumeMounts
                                    (filter (fn [^V1VolumeMount m] (= "cook-workdir-volume" (.getName m))))
                                    first)]
-            (is (= "/mnt/sandbox" (.getMountPath workdir-mount))))
+            (is (= "/mnt/sandbox" (.getMountPath cook-workdir-mount))))
 
           (assert-env-var-value container "FOO" "BAR")
           (assert-env-var-value container "HOME" (.getWorkingDir container))
