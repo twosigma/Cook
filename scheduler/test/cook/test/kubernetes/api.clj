@@ -79,7 +79,7 @@
         (let [workdir-volume (->> pod
                                   .getSpec
                                   .getVolumes
-                                  (filter (fn [^V1Volume v] (= "cook-workdir" (.getName v))))
+                                  (filter (fn [^V1Volume v] (= "cook-workdir-volume" (.getName v))))
                                   first)]
           (is (not (nil? (.getEmptyDir workdir-volume)))))
 
@@ -87,11 +87,11 @@
           (is (= "required-cook-job-container" (.getName container)))
           (is (= ["/bin/sh" "-c" "foo && bar"] (.getCommand container)))
           (is (= "alpine:latest" (.getImage container)))
-          (is (= 3 (count (.getEnv container))))
+          (is (= 4 (count (.getEnv container))))
           (is (= "/mnt/sandbox" (.getWorkingDir container)))
           (let [workdir-mount (->> container
                                    .getVolumeMounts
-                                   (filter (fn [^V1VolumeMount m] (= "cook-workdir" (.getName m))))
+                                   (filter (fn [^V1VolumeMount m] (= "cook-workdir-volume" (.getName m))))
                                    first)]
             (is (= "/mnt/sandbox" (.getMountPath workdir-mount))))
 
