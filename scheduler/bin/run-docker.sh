@@ -4,6 +4,7 @@
 # Runs the cook scheduler inside a docker container.
 #   --auth={http-basic,one-user}    Use the specified authentication scheme. Default is one-user.
 #   --executor={cook,mesos}         Use the specified job executor. Default is cook.
+#   --zk={local,minimesos}          Use local (in-memory) or minimesos zookeper. Default is local.
 
 set -e
 
@@ -14,6 +15,7 @@ set -e
 : ${COOK_FRAMEWORK_ID:=cook-framework-$(date +%s)}
 : ${COOK_AUTH:=one-user}
 : ${COOK_EXECUTOR:=cook}
+: ${COOK_ZOOKEEPER_LOCAL:=true}
 
 while (( $# > 0 )); do
   case "$1" in
@@ -23,6 +25,14 @@ while (( $# > 0 )); do
       ;;
     --executor=*)
       COOK_EXECUTOR="${1#--executor=}"
+      shift
+      ;;
+    --zk=local)
+      COOK_ZOOKEEPER_LOCAL=true
+      shift
+      ;;
+    --zk=minimesos)
+      COOK_ZOOKEEPER_LOCAL=false
       shift
       ;;
     *)
@@ -101,7 +111,6 @@ if [ "${COOK_ZOOKEEPER_LOCAL}" = false ] ; then
     COOK_ZOOKEEPER="${MINIMESOS_ZOOKEEPER_IP}:2181"
 else
     COOK_ZOOKEEPER=""
-    COOK_ZOOKEEPER_LOCAL=true
 fi
 
 echo "About to: Setup data local service"
