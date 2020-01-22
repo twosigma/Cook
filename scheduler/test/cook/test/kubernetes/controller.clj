@@ -32,9 +32,9 @@
                   controller/kill-pod  (fn [_ cook-expected-state-dict _] cook-expected-state-dict)
                   controller/launch-pod (fn [_ cook-expected-state-dict] cook-expected-state-dict)
                   controller/log-weird-state (fn [_ _ _] :illegal_return_value_should_be_unused)
-                  controller/pod-has-just-completed (fn [_ _] {:cook-expected-state :cook-expected-state/completed})
-                  controller/pod-has-started (fn [_ _] {:cook-expected-state :cook-expected-state/running})
-                  controller/pod-was-killed (fn [_ _] {:cook-expected-state :cook-expected-state/completed})
+                  controller/handle-pod-completed (fn [_ _] {:cook-expected-state :cook-expected-state/completed})
+                  controller/handle-pod-started (fn [_ _] {:cook-expected-state :cook-expected-state/running})
+                  controller/handle-pod-killed (fn [_ _] {:cook-expected-state :cook-expected-state/completed})
                   controller/write-status-to-datomic (fn [_] :illegal_return_value_should_be_unused)]
 
       (is (nil? (do-process :cook-expected-state/completed :missing)))
@@ -72,7 +72,7 @@
       (is (nil? (do-process :missing :pod/unknown)))
       (is (nil? (do-process :missing :pod/waiting))))))
 
-(deftest test-pod-has-just-completed
+(deftest test-handle-pod-completed
   (testing "graceful handling of lack of exit code"
     (let [pod (V1Pod.)
           pod-metadata (V1ObjectMeta.)
@@ -82,4 +82,4 @@
       (.setStatus pod pod-status)
       (with-redefs [controller/write-status-to-datomic (constantly nil)]
         (is (= {:cook-expected-state :cook-expected-state/completed}
-               (controller/pod-has-just-completed nil {:pod pod :synthesized-state {:state :pod/failed}})))))))
+               (controller/handle-pod-completed nil {:pod pod :synthesized-state {:state :pod/failed}})))))))
