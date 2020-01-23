@@ -147,7 +147,7 @@
                   (initialize-pod-watch-helper api-client compute-cluster-name all-pods-atom cook-pod-callback)
                   (catch Exception e
                     (log/error e "Error during initial setup of looking at pods for" compute-cluster-name)
-                    (Thread/sleep 60000)
+                    (Thread/sleep (get-in config/config [:settings :kubernetes :reconnect-delay-ms]))
                     nil)))
         ^Callable first-success (->> tmpfn repeatedly (some identity))]
     (.submit kubernetes-executor ^Callable first-success)))
@@ -192,7 +192,7 @@
                   (initialize-node-watch-helper api-client compute-cluster-name current-nodes-atom)
                   (catch Exception e
                     (log/error e "Error during initial setup of looking at nodes for" compute-cluster-name)
-                    (Thread/sleep 60000)
+                    (Thread/sleep (get-in config/config [:settings :kubernetes :reconnect-delay-ms]))
                     nil)))
         ^Callable first-success (->> tmpfn repeatedly (some identity))]
     (.submit kubernetes-executor ^Callable first-success)))
