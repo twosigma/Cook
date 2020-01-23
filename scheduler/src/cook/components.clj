@@ -281,6 +281,7 @@
                              mesos-agent-query-cache
                              mesos-heartbeat-chan
                              settings
+                             progress-update-chans
                              trigger-chans]
                          (doall (map (fn [{:keys [factory-fn config]}]
                                        (let [resolved (util/lazy-load-var factory-fn)]
@@ -289,8 +290,15 @@
                                                            :mesos-agent-query-cache mesos-agent-query-cache
                                                            :mesos-heartbeat-chan mesos-heartbeat-chan
                                                            :sandbox-syncer-config (:sandbox-syncer settings)
+                                                           :progress-update-chans progress-update-chans
                                                            :trigger-chans trigger-chans})))
                                      (:compute-clusters settings))))
+     :progress-update-chans (fnk [[:settings [:progress :as progress-config]] trigger-chans]
+                              (let [{:keys [progress-updater-trigger-chan]} trigger-chans]
+                                ;; XXX - We should be able to :require cook.progress rather than using lazy-load-var here,
+                                ;; but there's currently a compile-time bug that prevents that: https://github.com/twosigma/Cook/issues/1370
+                                ((util/lazy-load-var 'cook.progress/make-progress-update-channels)
+                                 progress-updater-trigger-chan progress-config datomic/conn)))
      :mesos-datomic-mult (fnk []
                            (first ((util/lazy-load-var 'cook.datomic/create-tx-report-mult) datomic/conn)))
      ; TODO(pschorf): Remove hearbeat support
