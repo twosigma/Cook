@@ -11,7 +11,7 @@ def kubectl_exec_to_instance(instance_uuid, _):
               'exec',
               '-c', os.getenv('COOK_CONTAINER_NAME_FOR_JOB', 'required-cook-job-container'),
               '-it', instance_uuid,
-              '--', '/bin/bash')
+              '--', '/bin/sh')
 
 
 def ssh_to_instance(instance, sandbox_dir, cluster):
