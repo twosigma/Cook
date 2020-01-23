@@ -89,7 +89,7 @@ def retrieve_entries_from_mesos(instance, sandbox_dir, path):
     return entries
 
 
-def ls_for_instance(instance, sandbox_dir, path, long_format, as_json):
+def ls_for_instance(instance, sandbox_dir, _, path, long_format, as_json):
     """Lists contents of the Mesos sandbox path for the given instance"""
     retrieve_fn = plugins.get_fn('retrieve-job-instance-files', retrieve_entries_from_mesos)
     entries = retrieve_fn(instance, sandbox_dir, path)

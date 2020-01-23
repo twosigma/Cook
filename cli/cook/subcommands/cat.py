@@ -9,7 +9,7 @@ from cook.querying import parse_entity_refs, query_unique_and_run, parse_entity_
 from cook.util import guard_no_cluster
 
 
-def cat_for_instance(instance, sandbox_dir, path):
+def cat_for_instance(instance, sandbox_dir, _, path):
     """Outputs the contents of the Mesos sandbox path for the given instance."""
     retrieve_fn = plugins.get_fn('download-job-instance-file', download_file)
     download = retrieve_fn(instance, sandbox_dir, path)

@@ -1,13 +1,12 @@
 import logging
 import os
 
-from cook import plugins
-from cook import terminal
+from cook import http, plugins, terminal
 from cook.querying import query_unique_and_run, parse_entity_refs
 from cook.util import print_info, guard_no_cluster
 
 
-def kubectl_exec_to_instance(instance_uuid):
+def kubectl_exec_to_instance(instance_uuid, _):
     os.execlp('kubectl', 'kubectl',
               'exec',
               '-c', os.getenv('COOK_CONTAINER_NAME_FOR_JOB', 'required-cook-job-container'),
@@ -15,14 +14,19 @@ def kubectl_exec_to_instance(instance_uuid):
               '--', '/bin/bash')
 
 
-def ssh_to_instance(instance, sandbox_dir):
+def ssh_to_instance(instance, sandbox_dir, cluster):
     """When using Mesos, attempts to ssh (using os.execlp) to the Mesos agent corresponding to the given instance.
     When using Kubernetes, calls the exec command of the kubectl cli."""
     print_info(f'Attempting ssh for job instance {terminal.bold(instance["task_id"])}...')
-    compute_cluster_type = instance["compute-cluster"]["type"]
+    compute_cluster = instance["compute-cluster"]
+    compute_cluster_type = compute_cluster["type"]
+    compute_cluster_name = compute_cluster["name"]
     if compute_cluster_type == "kubernetes":
         kubectl_exec_to_instance_fn = plugins.get_fn('kubectl-exec-to-instance', kubectl_exec_to_instance)
-        kubectl_exec_to_instance_fn(instance["task_id"])
+        cook_cluster_settings = http.get(cluster, 'settings', params={}).json()
+        compute_cluster_config = next(c for c in (s['config'] for s in cook_cluster_settings['compute-clusters']) if
+                                      c['compute-cluster-name'] == compute_cluster_name)
+        kubectl_exec_to_instance_fn(instance["task_id"], compute_cluster_config)
     else:
         command = os.environ.get('CS_SSH', 'ssh')
         logging.info(f'using ssh command: {command}')
