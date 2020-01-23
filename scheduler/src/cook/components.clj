@@ -79,13 +79,14 @@
                 "max-age=0"))))
 
 (def raw-scheduler-routes
-  {:scheduler (fnk [mesos leadership-atom pool-name->pending-jobs-atom settings]
+  {:scheduler (fnk [mesos leadership-atom pool-name->pending-jobs-atom progress-update-chans settings]
                 ((util/lazy-load-var 'cook.rest.api/main-handler)
                   datomic/conn
                   (fn [] @pool-name->pending-jobs-atom)
                   settings
                   (get-in mesos [:mesos-scheduler :leader-selector])
-                  leadership-atom))
+                  leadership-atom
+                  progress-update-chans))
    :view (fnk [scheduler]
            scheduler)})
 
@@ -208,9 +209,10 @@
 (defn conditional-auth-bypass
   "Skip authentication on some hard-coded endpoints."
   [h auth-middleware]
-  (let [auth-fn (auth-middleware h)]
+  (let [auth-fn (auth-middleware h)
+        no-auth-pattern #"/(?:info|progress/[-\w]+)"]
     (fn filtered-auth [{:keys [uri request-method] :as req}]
-      (if (and (= "/info" uri) (= :get request-method))
+      (if (re-matches no-auth-pattern uri)
         (h req)
         (auth-fn req)))))
 

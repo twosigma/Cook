@@ -241,8 +241,9 @@
     (let [conn cook.datomic/conn
           {:keys [match-trigger-chan]} trigger-chans
           {:keys [progress-aggregator-chan]} progress-update-chans
-          handle-progress-message (fn handle-progress-message-curried [progress-message-map]
-                                    (progress/handle-progress-message! progress-aggregator-chan progress-message-map))
+          handle-progress-message (fn handle-progress-message-curried [db task-id progress-message-map]
+                                    (progress/handle-progress-message!
+                                      db task-id progress-aggregator-chan progress-message-map))
           handle-exit-code (fn handle-exit-code [task-id exit-code]
                              (sandbox/aggregate-exit-code exit-code-syncer-state task-id exit-code))
           scheduler (create-mesos-scheduler (:gpu-enabled? mesos-config)
