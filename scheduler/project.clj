@@ -88,7 +88,6 @@
                                com.amazonaws/aws-java-sdk]] ; Brings in a lot of dependencies
 
                  ;;External system integrations
-                 [me.raynes/conch "0.5.2"]
                  [org.clojure/tools.nrepl "0.2.3"]
 
                  ;;Ring

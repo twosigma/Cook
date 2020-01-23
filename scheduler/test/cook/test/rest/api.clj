@@ -319,7 +319,8 @@
               499)))
 
     (testing "allow all docker params by default"
-      (with-redefs [config/task-constraints (constantly {:max-ports 5})]
+      (with-redefs [config/task-constraints (constantly {:max-ports 5})
+                    util/retrieve-system-id (fn [& args] (-> args reverse str/join))]
         (let [minimal-job (basic-job)
               container-job (assoc minimal-job "container" {"type" "docker"
                                                             "docker" {"image" "dummy:latest"
@@ -351,7 +352,8 @@
 
       (testing "allowed docker parameters"
         (with-redefs [config/task-constraints (constantly {:docker-parameters-allowed #{"foo"}
-                                                           :max-ports 5})]
+                                                           :max-ports 5})
+                      util/retrieve-system-id (fn [& args] (-> args reverse str/join))]
           (let [minimal-job (basic-job)
                 container-job (assoc minimal-job "container" {"type" "docker"
                                                               "docker" {"image" "dummy:latest"
@@ -1374,7 +1376,69 @@
                    (testutil/create-jobs! conn {::api/jobs [job]})))
             (is (= (expected-job-map job)
                    (-> (api/fetch-job-map (db conn) uuid)
-                       (dissoc :submit_time))))))))
+                       (dissoc :submit_time))))))
+
+        (testing "should work for docker containers with"
+          (let [docker-container {:docker {:force-pull-image false
+                                           :image "docker-image"}
+                                  :type "DOCKER"}
+                basic-docker-job (assoc (minimal-job) :container docker-container)]
+
+            (with-redefs [util/user->group-id (constantly 2345)
+                          util/user->user-id (constantly 1234)]
+              (testing "no parameter provided"
+                (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
+                      parameters []
+                      {:keys [uuid] :as job} (assoc-in basic-docker-job [:container :docker :parameters] parameters)]
+                  (is (= {::api/results (str "submitted jobs " uuid)}
+                         (testutil/create-jobs! conn {::api/jobs [job]})))
+                  (is (= (assoc (expected-job-map job)
+                           :container (assoc-in docker-container
+                                                [:docker :parameters]
+                                                [{:key "user" :value "1234:2345"}]))
+                         (dissoc (api/fetch-job-map (db conn) uuid) :submit_time)))))
+
+              (testing "invalid user parameter provided"
+                (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
+                      parameters [{:key "fee" :value "fie"}
+                                  {:key "user" :value "user:group"}]
+                      job (assoc-in basic-docker-job [:container :docker :parameters] parameters)]
+                  (with-redefs [util/retrieve-system-id (fn [& args] (str/join "" (reverse args)))]
+                    (is (thrown-with-msg? ExceptionInfo
+                                          #"user parameter must match uid and gid of user submitting"
+                                          (testutil/create-jobs! conn {::api/jobs [job]}))))))
+
+              (testing "user parameter provided"
+                (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
+                      parameters [{:key "fee" :value "fie"}
+                                  {:key "tee" :value "tie"}
+                                  {:key "user" :value "1234:2345"}]
+                      {:keys [uuid] :as job} (assoc-in basic-docker-job [:container :docker :parameters] parameters)]
+                  (is (= {::api/results (str "submitted jobs " uuid)}
+                         (testutil/create-jobs! conn {::api/jobs [job]})))
+                  (is (= (assoc (expected-job-map job)
+                           :container (assoc-in docker-container
+                                                [:docker :parameters]
+                                                [{:key "user" :value "1234:2345"}
+                                                 {:key "tee" :value "tie"}
+                                                 {:key "fee" :value "fie"}]))
+                         (dissoc (api/fetch-job-map (db conn) uuid) :submit_time)))))
+
+              (testing "user parameter absent"
+                (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
+                      parameters [{:key "fee" :value "fie"}
+                                  {:key "tee" :value "tie"}]
+                      {:keys [uuid] :as job} (assoc-in basic-docker-job [:container :docker :parameters] parameters)]
+                  (is (= {::api/results (str "submitted jobs " uuid)}
+                         (testutil/create-jobs! conn {::api/jobs [job]})))
+                  (is (= (assoc (expected-job-map job)
+                           :container (assoc-in docker-container
+                                                [:docker :parameters]
+                                                [{:key "user" :value "1234:2345"}
+                                                 {:key "tee" :value "tie"}
+                                                 {:key "fee" :value "fie"}]))
+                         (dissoc (api/fetch-job-map (db conn) uuid) :submit_time))))))))))
+
     (testing "returns unsupported for multiple compute clusters"
       (with-redefs [config/compute-clusters (constantly [{:factory-fn 'cook.mesos.mesos-compute-cluster/factory-fn
                                                           :config {:factory-fn "first"}}

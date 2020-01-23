@@ -99,11 +99,6 @@
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}
    {:db/id #db/id[:db.part/db]
-    :db/ident :job/docker?
-    :db/valueType :db.type/boolean
-    :db/cardinality :db.cardinality/one
-    :db.install/_attribute :db.part/db}
-   {:db/id #db/id[:db.part/db]
     :db/ident :job/exit-code
     :db/valueType :db.type/long
     :db/cardinality :db.cardinality/one

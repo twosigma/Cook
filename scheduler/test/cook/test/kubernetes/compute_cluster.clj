@@ -37,8 +37,8 @@
                                               tu/make-task-request
                                               tu/make-task-assignment-result)))
         launched-pod-atom (atom nil)]
-    (with-redefs [api/launch-task (fn [api {:keys [launch-pod]}]
-                                    (reset! launched-pod-atom launch-pod))
+    (with-redefs [api/launch-pod (fn [api {:keys [launch-pod]}]
+                                   (reset! launched-pod-atom launch-pod))
                   api/make-security-context (constantly (V1PodSecurityContext.))]
       (testing "static namespace"
         (let [compute-cluster (kcc/->KubernetesComputeCluster nil "kubecompute" nil nil nil
@@ -71,7 +71,7 @@
 
 (deftest test-generate-offers
   (tu/setup)
-  (with-redefs [api/launch-task (constantly nil)]
+  (with-redefs [api/launch-pod (constantly nil)]
     (let [conn (tu/restore-fresh-database! "datomic:mem://test-generate-offers")
           compute-cluster (kcc/->KubernetesComputeCluster nil "kubecompute" nil nil nil
                                                           (atom {}) (atom {}) (atom {}) (atom {}) (atom nil)
@@ -126,6 +126,6 @@
                 {:name "disk" :type :value-scalar :scalar 0.0}]
                (:resources offer)))))))
 
-(deftest determine-expected-state
+(deftest determine-cook-expected-state
   ; TODO
   )
