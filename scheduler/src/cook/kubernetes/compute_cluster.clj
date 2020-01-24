@@ -222,7 +222,7 @@
         (api/initialize-node-watch api-client name current-nodes-atom)
 
         (reset! pool->fenzo-atom pool->fenzo)
-        (catch Exception e
+        (catch Throwable e
           (log/error e "Failed to bring up compute cluster" name))))
 
     ; We keep leadership indefinitely in kubernetes.
