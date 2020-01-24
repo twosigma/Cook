@@ -665,6 +665,15 @@
       (let [update-resp (h bad-update-req-attrs :leader? true)]
         (is (= (:status update-resp) 404))))
 
+    (testing "Valid progress update posted when leader is unknown"
+      (with-redefs [error-msg "leader is currently unknown"
+                    api/leader-selector->leader-id (fn [_] (throw (IllegalStateException. error-msg)))
+                    api/streaming-json-encoder identity]
+        (let [update-resp (h update-req-attrs :leader? false)
+              redirect-location (str sample-leader-base-url target-endpoint)]
+          (is (= (:status update-resp) 503))
+          (is (= (:body update-resp) {:message error-msg})))))
+
     (testing "Valid progress update posted to non-leader results in redirect"
       (with-redefs [api/leader-selector->leader-id (constantly sample-leader-id)
                     api/streaming-json-encoder identity]

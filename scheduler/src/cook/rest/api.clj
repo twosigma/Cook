@@ -69,6 +69,7 @@
            (java.util Date UUID)
            javax.servlet.ServletResponse
            org.apache.curator.test.TestingServer
+           (org.apache.curator.framework.recipes.leader LeaderSelector)
            (org.joda.time DateTime Minutes)
            schema.core.OptionalKey))
 
@@ -1430,10 +1431,19 @@
 (def leader-hostname-regex #"^([^#]*)#([0-9]*)#([a-z]*)#.*")
 
 (defn leader-selector->leader-id
-  [leader-selector]
-  (-> leader-selector .getLeader .getId))
+  "Get the current leader node's id from a leader-selector object.
+   Throws if there is currently no leader available."
+  [^LeaderSelector leader-selector]
+  (let [leader (.getLeader leader-selector)]
+    ;; NOTE: .getLeader returns a dummy object when no leader is available,
+    ;; but the dummy object always returns false for the .isLeader predicate.
+    (when-not (.isLeader leader)
+      (throw (IllegalStateException. "Leader is temporarily unavailable.")))
+    (.getId leader)))
 
-(defn leader-url
+(defn leader-selector->leader-url
+  "Get the URL for the current Cook leader node.
+   This is useful for building redirects."
   [leader-selector]
   (let [leader-id (leader-selector->leader-id leader-selector)
         leader-match (re-matcher leader-hostname-regex leader-id)]
@@ -1457,7 +1467,7 @@
                      :commit @cook.util/commit
                      :start-time start-up-time
                      :version @cook.util/version
-                     :leader-url (leader-url leader-selector)})})))
+                     :leader-url (leader-selector->leader-url leader-selector)})})))
 
 ;;; On GET; use repeated job argument
 (defn read-jobs-handler-deprecated
@@ -1657,9 +1667,16 @@
   (base-cook-handler
     {:allowed-methods [:post]
      :service-available? (fn [ctx]
-                           ;; injecting ::instances into ctx for later handlers
-                           (let [instance-uuid (get-in ctx [:request :params :uuid])]
-                             [true {::instances [instance-uuid]}]))
+                           (if @leadership-atom
+                             ;; injecting ::instances into ctx for later handlers
+                             [true {::instances [(get-in ctx [:request :params :uuid])]}]
+                             (try
+                               ;; recording target leader-url for redirect
+                               [true {:leader-url (leader-selector->leader-url leader-selector)}]
+                               ;; handle leader-not-found errors by responding 503
+                               (catch IllegalStateException e
+                                 [false {:message (.getMessage e)}]))))
+     :handle-service-not-available (fn [ctx] (select-keys ctx [:message]))
      :allowed? (partial instance-request-allowed? conn is-authorized-fn)
      :exists? (constantly false)  ;; triggers path for moved-temporarily?
      :existed? instance-request-exists?
@@ -1667,11 +1684,12 @@
      :moved-temporarily? (fn [ctx]
                            ;; only the leader handles progress updates
                            ;; the client is expected to cache the redirect location
-                           (let [request-path (get-in ctx [:request :uri])]
-                             (if @leadership-atom
-                               [false {}]
-                               [true {:location (str (leader-url leader-selector) request-path)}])))
-     :handle-moved-temporarily (fn [ctx] {:location (:location ctx) :message "redirecting to master"})
+                           (if-let [leader-url (:leader-url ctx)]
+                             (let [request-path (get-in ctx [:request :uri])]
+                               [true {:location (str leader-url request-path)}])
+                             [false {}]))
+     :handle-moved-temporarily (fn [ctx] {:location (:location ctx)
+                                          :message "redirecting to master"})
      :can-post-to-gone? (constantly true)
      :post! (fn [ctx]
               (let [progress-message-map (get-in ctx [:request :body-params])
@@ -2017,7 +2035,7 @@
     :moved-temporarily? (fn [_]
                           (if @leadership-atom
                             [false {}]
-                            [true {:location (str (leader-url leader-selector) "/queue")}]))
+                            [true {:location (str (leader-selector->leader-url leader-selector) "/queue")}]))
     :handle-forbidden (fn [ctx]
                         (log/info (get-in ctx [:request :authorization/user]) " is not authorized to access queue")
                         (render-error ctx))
