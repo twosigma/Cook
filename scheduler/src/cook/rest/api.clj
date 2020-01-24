@@ -1666,17 +1666,19 @@
   [conn is-authorized-fn leadership-atom leader-selector progress-aggregator-chan]
   (base-cook-handler
     {:allowed-methods [:post]
+     :initialize-context (fn [ctx]
+                           ;; injecting ::instances into ctx for later handlers
+                           {::instances [(get-in ctx [:request :params :uuid])]})
      :service-available? (fn [ctx]
                            (if @leadership-atom
-                             ;; injecting ::instances into ctx for later handlers
-                             [true {::instances [(get-in ctx [:request :params :uuid])]}]
+                             [true {}]
                              (try
                                ;; recording target leader-url for redirect
-                               [true {:leader-url (leader-selector->leader-url leader-selector)}]
+                               [true {::leader-url (leader-selector->leader-url leader-selector)}]
                                ;; handle leader-not-found errors by responding 503
                                (catch IllegalStateException e
-                                 [false {:message (.getMessage e)}]))))
-     :handle-service-not-available (fn [ctx] (select-keys ctx [:message]))
+                                 [false {::message (.getMessage e)}]))))
+     :handle-service-not-available (fn [ctx] {:message (::message ctx)})
      :allowed? (partial instance-request-allowed? conn is-authorized-fn)
      :exists? (constantly false)  ;; triggers path for moved-temporarily?
      :existed? instance-request-exists?
@@ -1684,7 +1686,7 @@
      :moved-temporarily? (fn [ctx]
                            ;; only the leader handles progress updates
                            ;; the client is expected to cache the redirect location
-                           (if-let [leader-url (:leader-url ctx)]
+                           (if-let [leader-url (::leader-url ctx)]
                              (let [request-path (get-in ctx [:request :uri])]
                                [true {:location (str leader-url request-path)}])
                              [false {}]))

@@ -657,15 +657,16 @@
         sample-leader-id "cook-scheduler.example#12321#http#dada4195-0b69-48a9-b288-8bbcd4ce5a88"
         sample-leader-base-url "http://cook-scheduler.example:12321"]
 
-    (testing "Invalid progress update posted to non-leader results in 4XX"
-      (let [update-resp (h bad-update-req-attrs :leader? false)]
-        (is (= (:status update-resp) 404))))
+    (with-redefs [api/leader-selector->leader-url (constantly sample-leader-base-url)]
+      (testing "Invalid progress update posted to non-leader results in 4XX"
+        (let [update-resp (h bad-update-req-attrs :leader? false)]
+          (is (= (:status update-resp) 404))))
 
-    (testing "Invalid progress update posted to leader results in 4XX"
-      (let [update-resp (h bad-update-req-attrs :leader? true)]
-        (is (= (:status update-resp) 404))))
+      (testing "Invalid progress update posted to leader results in 4XX"
+        (let [update-resp (h bad-update-req-attrs :leader? true)]
+          (is (= (:status update-resp) 404)))))
 
-    (testing "Valid progress update posted when leader is unknown"
+    (testing "Valid progress update posted when leader is unknown results in 503"
       (let [error-msg "leader is currently unknown"]
         (with-redefs [api/leader-selector->leader-id (fn [_] (throw (IllegalStateException. error-msg)))
                       api/streaming-json-encoder identity]
