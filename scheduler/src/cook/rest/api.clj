@@ -68,8 +68,8 @@
            (java.net ServerSocket)
            (java.util Date UUID)
            javax.servlet.ServletResponse
-           org.apache.curator.test.TestingServer
            (org.apache.curator.framework.recipes.leader LeaderSelector)
+           org.apache.curator.test.TestingServer
            (org.joda.time DateTime Minutes)
            schema.core.OptionalKey))
 
@@ -3229,7 +3229,8 @@
                       :responses {202 {:description "The progress update was accepted."}
                                   307 {:description "Redirecting request to leader node."}
                                   400 {:description "Invalid request format."}
-                                  404 {:description "The supplied UUID doesn't correspond to a valid job instance."}}
+                                  404 {:description "The supplied UUID doesn't correspond to a valid job instance."}
+                                  503 {:description "The leader node is temporarily unavailable."}}
                       :handler (let [;; TODO: add lightweight auth -- https://github.com/twosigma/Cook/issues/1367
                                      mock-auth-fn (constantly true)]
                                  (update-instance-progress-handler
