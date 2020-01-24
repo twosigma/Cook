@@ -142,12 +142,14 @@
   "Initialize the pod watch. This fills all-pods-atom with data and invokes the callback on pod changes."
   [^ApiClient api-client compute-cluster-name all-pods-atom cook-pod-callback]
   ; We'll iterate trying to connect to k8s until the initialize-pod-watch-helper returns a watch function.
-  (let [tmpfn (fn []
+  (let [{:keys [reconnect-delay-ms]} (config/kubernetes)
+        tmpfn (fn []
                 (try
                   (initialize-pod-watch-helper api-client compute-cluster-name all-pods-atom cook-pod-callback)
                   (catch Exception e
                     (log/error e "Error during initial setup of looking at pods for" compute-cluster-name)
-                    (Thread/sleep (:reconnect-delay-ms config/kubernetes))
+                    (log/info "Sleeping" reconnect-delay-ms "milliseconds before reconnect")
+                    (Thread/sleep reconnect-delay-ms)
                     nil)))
         ^Callable first-success (->> tmpfn repeatedly (some identity))]
     (.submit kubernetes-executor ^Callable first-success)))
@@ -187,12 +189,14 @@
   "Initialize the node watch. This fills current-nodes-atom with data and invokes the callback on pod changes."
   [^ApiClient api-client compute-cluster-name current-nodes-atom]
   ; We'll iterate trying to connect to k8s until the initialize-node-watch-helper returns a watch function.
-  (let [tmpfn (fn []
+  (let [{:keys [reconnect-delay-ms]} (config/kubernetes)
+        tmpfn (fn []
                 (try
                   (initialize-node-watch-helper api-client compute-cluster-name current-nodes-atom)
                   (catch Exception e
                     (log/error e "Error during initial setup of looking at nodes for" compute-cluster-name)
-                    (Thread/sleep (:reconnect-delay-ms config/kubernetes))
+                    (log/info "Sleeping" reconnect-delay-ms "milliseconds before reconnect")
+                    (Thread/sleep reconnect-delay-ms)
                     nil)))
         ^Callable first-success (->> tmpfn repeatedly (some identity))]
     (.submit kubernetes-executor ^Callable first-success)))
