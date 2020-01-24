@@ -105,7 +105,7 @@ def tail_follow(file_size, read_fn, follow_sleep_seconds):
         time.sleep(follow_sleep_seconds)
 
 
-def tail_for_instance(instance, sandbox_dir, path, num_lines_to_print, follow, follow_sleep_seconds):
+def tail_for_instance(instance, sandbox_dir, _, path, num_lines_to_print, follow, follow_sleep_seconds):
     """
     Tails the contents of the Mesos sandbox path for the given instance. If follow is truthy, it will
     try and read more data from the file until the user terminates. This assumes files will not shrink.
