@@ -223,7 +223,8 @@
 
         (reset! pool->fenzo-atom pool->fenzo)
         (catch Throwable e
-          (log/error e "Failed to bring up compute cluster" name))))
+          (log/error e "Failed to bring up compute cluster" name)
+          (throw e))))
 
     ; We keep leadership indefinitely in kubernetes.
     (async/chan 1))
