@@ -102,7 +102,7 @@
                (str "Multiple compute-clusters have the same name: " compute-cluster
                     " and " (get @cluster-name->compute-cluster-atom compute-cluster-name)
                     " with name " compute-cluster-name))))
-    (log/info "Setting up compute cluster: " compute-cluster)
+    (log/info "Setting up compute cluster:" compute-cluster-name)
     (swap! cluster-name->compute-cluster-atom assoc compute-cluster-name compute-cluster)
     nil))
 
