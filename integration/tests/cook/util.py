@@ -1732,28 +1732,16 @@ def rebalancer_interval_seconds():
     return interval_seconds
 
 
-__auto_sequence_lock = threading.Lock()
-__auto_sequence_counter = 0
-
-
 def send_progress_update(cook_url, instance, assert_response=True, allow_redirects=True,
-                         sequence=None, percent=None, message=None, json=None):
+                         sequence=None, percent=None, message=None):
     """Submit a job instance progress update via the rest api"""
-    global __auto_sequence_counter
-    if json is not None:
-        payload = json
-    else:
-        payload = {}
-        if sequence is not None:
-            payload['progress_sequence'] = sequence
-        elif sequence is not False:
-            with __auto_sequence_lock:
-                __auto_sequence_counter += 1
-                payload['progress_sequence'] = __auto_sequence_counter
-        if percent is not None:
-            payload['progress_percent'] = percent
-        if message is not None:
-            payload['progress_message'] = message
+    payload = {}
+    if sequence is not None:
+        payload['progress_sequence'] = sequence
+    if percent is not None:
+        payload['progress_percent'] = percent
+    if message is not None:
+        payload['progress_message'] = message
     # NOTE: using `requests` rather than `session` here because this endpoint should not require authentication
     response = requests.post(f'{cook_url}/progress/{instance}', allow_redirects=allow_redirects, json=payload)
     if assert_response:

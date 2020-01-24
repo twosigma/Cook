@@ -714,39 +714,39 @@ class CookTest(util.CookTest):
             util.wait_until(lambda: util.load_instance(self.cook_url, instance_uuid),
                             predicate, max_wait_ms=10000)
         # send progress percentage update
-        util.send_progress_update(self.cook_url, instance_uuid, percent=10)
+        util.send_progress_update(self.cook_url, instance_uuid, sequence=100, percent=10)
         wait_until_instance(lambda i: i['progress'] == 10)
         # send progress message update
-        util.send_progress_update(self.cook_url, instance_uuid, message='working')
+        util.send_progress_update(self.cook_url, instance_uuid, sequence=200, message='working')
         wait_until_instance(lambda i: i['progress'] == 10 and i['progress_message'] == 'working')
         # send both progress message and percentage update
-        util.send_progress_update(self.cook_url, instance_uuid, percent=99, message='finalizing')
+        util.send_progress_update(self.cook_url, instance_uuid, sequence=300, percent=99, message='finalizing')
         wait_until_instance(lambda i: i['progress'] == 99 and i['progress_message'] == 'finalizing')
         # out-of-sequence progress updates should be ignored
         util.send_progress_update(self.cook_url, instance_uuid, sequence=0, message='ignored')
         # send progress percentage update (message unchanged)
-        util.send_progress_update(self.cook_url, instance_uuid, percent=100)
+        util.send_progress_update(self.cook_url, instance_uuid, sequence=400, percent=100)
         wait_until_instance(lambda i: i['progress'] == 100 and i['progress_message'] == 'finalizing')
         # send progress message update (percentage unchanged)
-        util.send_progress_update(self.cook_url, instance_uuid, message='done')
+        util.send_progress_update(self.cook_url, instance_uuid, sequence=500, message='done')
         wait_until_instance(lambda i: i['progress'] == 100 and i['progress_message'] == 'done')
         # send progress update with empty json body
-        response = util.send_progress_update(self.cook_url, instance_uuid, assert_response=False, json={})
+        response = util.send_progress_update(self.cook_url, instance_uuid, assert_response=False)
         assert response.status_code == 400, response.content
         # send progress update without message or percentage
-        response = util.send_progress_update(self.cook_url, instance_uuid, assert_response=False)
+        response = util.send_progress_update(self.cook_url, instance_uuid, assert_response=False, sequence=600)
         assert response.status_code == 400, response.content
         # send progress update with non-integer sequence id
         response = util.send_progress_update(self.cook_url, instance_uuid, assert_response=False, sequence=0.1, percent=0)
         assert response.status_code == 400, response.content
         # send progress update with non-integer percentage
-        response = util.send_progress_update(self.cook_url, instance_uuid, assert_response=False, percent=0.1)
+        response = util.send_progress_update(self.cook_url, instance_uuid, assert_response=False, sequence=700, percent=0.1)
         assert response.status_code == 400, response.content
         # send progress update with non-string message
-        response = util.send_progress_update(self.cook_url, instance_uuid, assert_response=False, message=12345)
+        response = util.send_progress_update(self.cook_url, instance_uuid, assert_response=False, sequence=800, message=12345)
         assert response.status_code == 400, response.content
         # send progress update with instance id that does not exist
-        response = util.send_progress_update(self.cook_url, job_uuid, assert_response=False, percent=0)
+        response = util.send_progress_update(self.cook_url, job_uuid, assert_response=False, sequence=900, percent=0)
         assert response.status_code == 404, response.content
         # ensure that none of the above errors erased our previous progress state
         i = util.load_instance(self.cook_url, instance_uuid)
