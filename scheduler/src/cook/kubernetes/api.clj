@@ -147,8 +147,8 @@
                 (try
                   (initialize-pod-watch-helper api-client compute-cluster-name all-pods-atom cook-pod-callback)
                   (catch Exception e
-                    (log/error e "Error during initial setup of looking at pods for" compute-cluster-name)
-                    (log/info "Sleeping" reconnect-delay-ms "milliseconds before reconnect")
+                    (log/error e "Error during initial setup of looking at pods for" compute-cluster-name
+                               "and sleeping" reconnect-delay-ms "milliseconds before reconnect")
                     (Thread/sleep reconnect-delay-ms)
                     nil)))
         ^Callable first-success (->> tmpfn repeatedly (some identity))]
@@ -194,8 +194,8 @@
                 (try
                   (initialize-node-watch-helper api-client compute-cluster-name current-nodes-atom)
                   (catch Exception e
-                    (log/error e "Error during initial setup of looking at nodes for" compute-cluster-name)
-                    (log/info "Sleeping" reconnect-delay-ms "milliseconds before reconnect")
+                    (log/error e "Error during initial setup of looking at nodes for" compute-cluster-name
+                               "and sleeping" reconnect-delay-ms "milliseconds before reconnect")
                     (Thread/sleep reconnect-delay-ms)
                     nil)))
         ^Callable first-success (->> tmpfn repeatedly (some identity))]
