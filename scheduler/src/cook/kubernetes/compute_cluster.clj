@@ -201,23 +201,30 @@
     name)
 
   (initialize-cluster [this pool->fenzo running-task-ents]
-    ; Initialize the pod watch path.
-    (log/info "Initializing Kubernetes compute cluster" name)
-    (let [conn cook.datomic/conn
-          cook-pod-callback (make-cook-pod-watch-callback this)]
-      ; We set cook expected state first because initialize-pod-watch sets (and invokes callbacks on and reacts to) the
-      ; expected and the gradually discovered existing pods.
-      (reset! cook-expected-state-map (determine-cook-expected-state-on-startup conn api-client name running-task-ents))
+    ; We may iterate forever trying to bring up kubernetes. However, our caller expects us to eventually return,
+    ; so we launch within a future so that our caller can continue initializing other clusters.
+    (future
+      (try
+        ; Initialize the pod watch path.
+        (log/info "Initializing Kubernetes compute cluster" name)
+        (let [conn cook.datomic/conn
+              cook-pod-callback (make-cook-pod-watch-callback this)]
+          ; We set cook expected state first because initialize-pod-watch sets (and invokes callbacks on and reacts to) the
+          ; expected and the gradually discovered existing pods.
+          (reset! cook-expected-state-map (determine-cook-expected-state-on-startup conn api-client name running-task-ents))
 
-      (api/initialize-pod-watch api-client name all-pods-atom cook-pod-callback)
-      (if scan-frequency-seconds-config
-        (regular-scanner this (time/seconds scan-frequency-seconds-config))
-        (log/info "State scan disabled because no interval has been set")))
+          (api/initialize-pod-watch api-client name all-pods-atom cook-pod-callback)
+          (if scan-frequency-seconds-config
+            (regular-scanner this (time/seconds scan-frequency-seconds-config))
+            (log/info "State scan disabled because no interval has been set")))
 
-    ; Initialize the node watch path.
-    (api/initialize-node-watch api-client current-nodes-atom)
+        ; Initialize the node watch path.
+        (api/initialize-node-watch api-client name current-nodes-atom)
 
-    (reset! pool->fenzo-atom pool->fenzo)
+        (reset! pool->fenzo-atom pool->fenzo)
+        (catch Throwable e
+          (log/error e "Failed to bring up compute cluster" name)
+          (throw e))))
 
     ; We keep leadership indefinitely in kubernetes.
     (async/chan 1))
