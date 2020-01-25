@@ -1699,7 +1699,7 @@ def supports_exit_code():
 
 def kill_running_and_waiting_jobs(cook_url, user):
     one_hour_in_millis = 60 * 60 * 1000
-    start = current_milli_time() - (4 * one_hour_in_millis)
+    start = current_milli_time() - (72 * one_hour_in_millis)
     end = current_milli_time() + one_hour_in_millis
     running = jobs(cook_url, user=user, state=['running', 'waiting'], start=start, end=end).json()
     logger.info(f'Currently running/waiting jobs: {json.dumps(running, indent=2)}')
