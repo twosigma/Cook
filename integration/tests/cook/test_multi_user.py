@@ -71,6 +71,7 @@ class MultiUserCookTest(util.CookTest):
             # Start jobs for several users
             for i, user in enumerate(users):
                 with user:
+                    util.kill_running_and_waiting_jobs(self.cook_url, user.name)
                     for j in range(i):
                         job_uuid, resp = util.submit_job(self.cook_url, command='sleep 480',
                                                          max_retries=2, **job_resources)
