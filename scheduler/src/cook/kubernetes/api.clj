@@ -133,7 +133,7 @@
           (handle-watch-updates all-pods-atom watch get-pod-namespaced-key
                                 callbacks)
           (catch Exception e
-            (log/error e "Error during pod watch for compute cluster" compute-cluster-name))
+            (log/info e "Error during pod watch for compute cluster" compute-cluster-name))
           (finally
             (.close watch)
             (initialize-pod-watch api-client compute-cluster-name all-pods-atom cook-pod-callback)))))))
