@@ -360,6 +360,8 @@
                                         ; This can only occur in testing when you're e.g., blowing away the database.
                                         ; It will go through :missing,:missing and then be deleted from the map.
                                         ; TODO: May be evidence of a bug where we process pod changes when we're starting up.
+                                        ; Currently occurs because kill's can race ahead of launches, we kill something that has
+                                        ; been added to datomic, but hasn't been submitted to k8s yet.
                                         :pod/running (kill-pod api-client cook-expected-state-dict pod)
                                         ; We shouldn't hit these unless we get a database rollback.
                                         :pod/succeeded (kill-pod-in-weird-state compute-cluster pod-name nil k8s-actual-state-dict)
@@ -368,6 +370,8 @@
                                         ; This can only occur in testing when you're e.g., blowing away the database.
                                         ; It will go through :missing,:missing and then be deleted from the map.
                                         ; TODO: May be evidence of a bug where we process pod changes when we're starting up.
+                                        ; Currently occurs because kill's can race ahead of launches, we kill something that has
+                                        ; been added to datomic, but hasn't been submitted to k8s yet.
                                         :pod/waiting (kill-pod api-client cook-expected-state-dict pod)))]
       (when-not (cook-expected-state-equivalent? cook-expected-state-dict new-cook-expected-state-dict)
         (update-or-delete! cook-expected-state-map pod-name new-cook-expected-state-dict)
