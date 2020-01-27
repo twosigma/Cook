@@ -704,8 +704,7 @@ class CookTest(util.CookTest):
     def test_progress_update_rest(self):
         job_uuid, resp = util.submit_job(self.cook_url)
         self.assertEqual(201, resp.status_code, msg=resp.content)
-        job = util.wait_for_job_in_statuses(self.cook_url, job_uuid, ['running', 'completed'])
-        instance = job['instances'][0]
+        instance = util.wait_for_instance(self.cook_url, job_uuid)
         instance_uuid = instance['task_id']
         def wait_until_instance(predicate):
             util.wait_until(lambda: util.load_instance(self.cook_url, instance_uuid),
