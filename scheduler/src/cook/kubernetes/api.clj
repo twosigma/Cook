@@ -133,7 +133,10 @@
           (handle-watch-updates all-pods-atom watch get-pod-namespaced-key
                                 callbacks)
           (catch Exception e
-            (log/error e "Error during pod watch for compute cluster" compute-cluster-name))
+            (let [cause (.getCause e)]
+              (if (and cause (instance? java.net.SocketTimeoutException cause))
+                (log/info e "In" compute-cluster-name "compute cluster, pod watch timed out")
+                (log/error e "In" compute-cluster-name "compute cluster, error during pod watch"))))
           (finally
             (.close watch)
             (initialize-pod-watch api-client compute-cluster-name all-pods-atom cook-pod-callback)))))))
