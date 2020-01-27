@@ -704,12 +704,9 @@ class CookTest(util.CookTest):
     def test_progress_update_rest(self):
         job_uuid, resp = util.submit_job(self.cook_url)
         self.assertEqual(201, resp.status_code, msg=resp.content)
-        util.wait_for_job_in_statuses(self.cook_url, job_uuid, ['running', 'completed'])
-        instance = util.wait_for_sandbox_directory(self.cook_url, job_uuid)
+        job = util.wait_for_job_in_statuses(self.cook_url, job_uuid, ['running', 'completed'])
+        instance = job['instances'][0]
         instance_uuid = instance['task_id']
-        message = json.dumps(instance, sort_keys=True)
-        self.assertIsNotNone(instance['output_url'], message)
-        self.assertIsNotNone(instance['sandbox_directory'], message)
         def wait_until_instance(predicate):
             util.wait_until(lambda: util.load_instance(self.cook_url, instance_uuid),
                             predicate, max_wait_ms=10000)
