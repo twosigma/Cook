@@ -53,6 +53,13 @@ if ! [ -x "$(command -v flask)" ]; then
     exit 1
 fi
 
+function cleanup {
+    echo CLEANUP: Attempting to kill flask...
+    kill %1
+    echo CLEANUP: Done
+}
+trap cleanup EXIT
+
 INTEGRATION_DIR="$(dirname ${SCHEDULER_DIR})/integration"
 FLASK_APP=${INTEGRATION_DIR}/src/data_locality/service.py flask run -p 35847 &
 
@@ -79,4 +86,4 @@ export COOK_KEYSTORE_PATH="${COOK_KEYSTORE_PATH}"
 export DATA_LOCAL_ENDPOINT="http://localhost:35847/retrieve-costs"
 
 echo "Starting cook..."
-lein run config.edn
+lein run ${COOK_CONFIG:-config.edn}
