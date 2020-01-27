@@ -4,10 +4,6 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
-## [1.38.1] - 2020-01-26
-### Changed
-- Improved logging for k8s compute clusters, from @dposada
-
 ## [1.38.0] - 2020-01-24
 ### Added
 - Logs fileserver for k8s jobs, from @nsinkov
