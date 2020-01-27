@@ -90,13 +90,14 @@
 (defn basic-handler
   [conn & {:keys [cpus memory-gb gpus-enabled retry-limit is-authorized-fn]
            :or {cpus 12, memory-gb 100, gpus-enabled false, retry-limit 200, is-authorized-fn authorized-fn}}]
-  (fn [request]
+  (fn [request & {:keys [leader?] :or {leader? true}}]
     (let [handler (api/main-handler conn (fn [] [])
                                     {:is-authorized-fn is-authorized-fn
                                      :mesos-gpu-enabled gpus-enabled
                                      :task-constraints {:cpus cpus :memory-gb memory-gb :retry-limit retry-limit}}
                                     (Object.)
-                                    (atom true))]
+                                    (atom leader?)
+                                    {:progress-aggregator-chan (async/chan)})]
       (with-redefs [api/retrieve-sandbox-url-path (fn [{:keys [instance/hostname instance/task-id]}]
                                                     (str "http://" hostname "/" task-id))
                     rate-limit/job-submission-rate-limiter rate-limit/AllowAllRateLimiter]
@@ -632,6 +633,63 @@
         (is (= "No content." (:body cancel-resp)))
         (is followup-instance-cancelled?)))))
 
+(deftest progress-update-api
+  (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
+        is-authorized-fn (constantly false)
+        h (basic-handler conn :is-authorized-fn is-authorized-fn)
+        [job [inst]] (create-dummy-job-with-instances conn
+                                                      :retry-count 1
+                                                      :user "nick"
+                                                      :job-state :job.state/running
+                                                      :instances [{:instance-status :instance.status/running}])
+        job-uuid (:job/uuid (d/entity (d/db conn) job))
+        task-id (str (:instance/task-id (d/entity (d/db conn) inst)))
+        target-endpoint (str "/progress/" task-id)
+        update-req-attrs {:scheme :http
+                          :uri target-endpoint
+                          :request-method :post
+                          :body-params {:progress-sequence 0
+                                        :progress-message "starting..."
+                                        :progress-percent 0}}
+        no-such-task-id (str (UUID/randomUUID))
+        no-such-task-endpoint (str "/progress/" no-such-task-id)
+        bad-update-req-attrs (assoc update-req-attrs :uri no-such-task-endpoint)
+        sample-leader-id "cook-scheduler.example#12321#http#dada4195-0b69-48a9-b288-8bbcd4ce5a88"
+        sample-leader-base-url "http://cook-scheduler.example:12321"]
+
+    (with-redefs [api/leader-selector->leader-url (constantly sample-leader-base-url)]
+      (testing "Invalid progress update posted to non-leader results in 4XX"
+        (let [update-resp (h bad-update-req-attrs :leader? false)]
+          (is (= (:status update-resp) 404))))
+
+      (testing "Invalid progress update posted to leader results in 4XX"
+        (let [update-resp (h bad-update-req-attrs :leader? true)]
+          (is (= (:status update-resp) 404)))))
+
+    (testing "Valid progress update posted when leader is unknown results in 503"
+      (let [error-msg "leader is currently unknown"]
+        (with-redefs [api/leader-selector->leader-id (fn [_] (throw (IllegalStateException. error-msg)))
+                      api/streaming-json-encoder identity]
+          (let [update-resp (h update-req-attrs :leader? false)
+                redirect-location (str sample-leader-base-url target-endpoint)]
+            (is (= (:status update-resp) 503))
+            (is (= (:body update-resp) {:message error-msg}))))))
+
+    (testing "Valid progress update posted to non-leader results in redirect"
+      (with-redefs [api/leader-selector->leader-id (constantly sample-leader-id)
+                    api/streaming-json-encoder identity]
+        (let [update-resp (h update-req-attrs :leader? false)
+              redirect-location (str sample-leader-base-url target-endpoint)]
+          (is (= (:status update-resp) 307))
+          (is (= (:location update-resp) redirect-location))
+          (is (= (:body update-resp) {:location redirect-location, :message "redirecting to master"})))))
+
+    (testing "Valid progress update posted to leader results 202 Accepted"
+      (with-redefs [api/streaming-json-encoder identity]
+        (let [update-resp (h update-req-attrs :leader? true)
+              redirect-location (str sample-leader-base-url target-endpoint)]
+          (is (= (:status update-resp) 202))
+          (is (= (:body update-resp) {:instance task-id :job job-uuid :message "progress update accepted"})))))))
 
 (deftest quota-api
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")

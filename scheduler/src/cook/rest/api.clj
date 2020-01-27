@@ -44,6 +44,7 @@
             [cook.plugins.definitions :as plugins]
             [cook.plugins.file :as file-plugin]
             [cook.plugins.submission :as submission-plugin]
+            [cook.progress :as progress]
             [cook.rate-limit :as rate-limit]
             [cook.task :as task]
             [cook.util :refer [ZeroInt PosNum NonNegNum PosInt NonNegInt PosDouble UserName NonEmptyString]]
@@ -67,6 +68,7 @@
            (java.net ServerSocket)
            (java.util Date UUID)
            javax.servlet.ServletResponse
+           (org.apache.curator.framework.recipes.leader LeaderSelector)
            org.apache.curator.test.TestingServer
            (org.joda.time DateTime Minutes)
            schema.core.OptionalKey))
@@ -505,6 +507,14 @@
   "Schema for a POST request to the /jobs endpoint."
   (assoc JobSubmission
     (s/optional-key :pool) s/Str))
+
+(def JobInstanceProgressRequest
+  "Schema for a POST request to the /progress/:uuid endpoint."
+  (s/both
+    (s/pred (some-fn :progress-message :progress-percent) 'message-or-percent-required)
+    {:progress-sequence s/Int
+     (s/optional-key :progress-message) s/Str
+     (s/optional-key :progress-percent) s/Int}))
 
 (defn- mk-container-params
   "Helper for build-container.  Transforms parameters into the datomic schema."
@@ -1420,9 +1430,22 @@
 
 (def leader-hostname-regex #"^([^#]*)#([0-9]*)#([a-z]*)#.*")
 
-(defn leader-url
+(defn leader-selector->leader-id
+  "Get the current leader node's id from a leader-selector object.
+   Throws if there is currently no leader available."
+  [^LeaderSelector leader-selector]
+  (let [leader (.getLeader leader-selector)]
+    ;; NOTE: .getLeader returns a dummy object when no leader is available,
+    ;; but the dummy object always returns false for the .isLeader predicate.
+    (when-not (.isLeader leader)
+      (throw (IllegalStateException. "Leader is temporarily unavailable.")))
+    (.getId leader)))
+
+(defn leader-selector->leader-url
+  "Get the URL for the current Cook leader node.
+   This is useful for building redirects."
   [leader-selector]
-  (let [leader-id (-> leader-selector .getLeader .getId)
+  (let [leader-id (leader-selector->leader-id leader-selector)
         leader-match (re-matcher leader-hostname-regex leader-id)]
     (if (.matches leader-match)
       (let [leader-hostname (.group leader-match 1)
@@ -1444,7 +1467,7 @@
                      :commit @cook.util/commit
                      :start-time start-up-time
                      :version @cook.util/version
-                     :leader-url (leader-url leader-selector)})})))
+                     :leader-url (leader-selector->leader-url leader-selector)})})))
 
 ;;; On GET; use repeated job argument
 (defn read-jobs-handler-deprecated
@@ -1638,6 +1661,48 @@
   (let [handle-ok (->> (partial render-instances-for-response conn)
                        (comp first))]
     (base-read-instances-handler conn is-authorized-fn {:handle-ok handle-ok})))
+
+(defn update-instance-progress-handler
+  [conn is-authorized-fn leadership-atom leader-selector progress-aggregator-chan]
+  (base-cook-handler
+    {:allowed-methods [:post]
+     :initialize-context (fn [ctx]
+                           ;; injecting ::instances into ctx for later handlers
+                           {::instances [(get-in ctx [:request :params :uuid])]})
+     :service-available? (fn [ctx]
+                           (if @leadership-atom
+                             [true {}]
+                             (try
+                               ;; recording target leader-url for redirect
+                               [true {::leader-url (leader-selector->leader-url leader-selector)}]
+                               ;; handle leader-not-found errors by responding 503
+                               (catch IllegalStateException e
+                                 [false {::message (.getMessage e)}]))))
+     :handle-service-not-available (fn [ctx] {:message (::message ctx)})
+     :allowed? (partial instance-request-allowed? conn is-authorized-fn)
+     :exists? (constantly false)  ;; triggers path for moved-temporarily?
+     :existed? instance-request-exists?
+     :can-post-to-missing? (constantly false)
+     :moved-temporarily? (fn [ctx]
+                           ;; only the leader handles progress updates
+                           ;; the client is expected to cache the redirect location
+                           (if-let [leader-url (::leader-url ctx)]
+                             (let [request-path (get-in ctx [:request :uri])]
+                               [true {:location (str leader-url request-path)}])
+                             [false {}]))
+     :handle-moved-temporarily (fn [ctx] {:location (:location ctx)
+                                          :message "redirecting to master"})
+     :can-post-to-gone? (constantly true)
+     :post! (fn [ctx]
+              (let [progress-message-map (get-in ctx [:request :body-params])
+                    task-id (-> ctx ::instances first)]
+                (progress/handle-progress-message!
+                  (d/db conn) task-id progress-aggregator-chan progress-message-map)))
+     :post-enacted? (constantly false)  ;; triggers http 202 "accepted" response
+     :handle-accepted (fn [ctx]
+                        (let [instance (-> ctx ::instances first)
+                              job (-> ctx ::jobs first)]
+                          {:instance instance :job job :message "progress update accepted"}))}))
 
 ;;; On DELETE; use repeated job argument
 (defn destroy-jobs-handler
@@ -1972,7 +2037,7 @@
     :moved-temporarily? (fn [_]
                           (if @leadership-atom
                             [false {}]
-                            [true {:location (str (leader-url leader-selector) "/queue")}]))
+                            [true {:location (str (leader-selector->leader-url leader-selector) "/queue")}]))
     :handle-forbidden (fn [ctx]
                         (log/info (get-in ctx [:request :authorization/user]) " is not authorized to access queue")
                         (render-error ctx))
@@ -2283,7 +2348,7 @@
      ;; :new? decides whether to respond with Created (true) or OK (false).
      :new? (comp seq ::jobs)
      :respond-with-entity? (constantly true)
-     ;; :handle-ok and :handle-accepted both return the number of jobs to be retried,
+     ;; :handle-ok and :handle-created both return the number of jobs to be retried,
      ;; but :handle-ok is only triggered when there are no failed jobs to retry.
      :handle-created (partial display-retries conn)
      :handle-ok (constantly 0)}))
@@ -2821,7 +2886,7 @@
      :handle-ok (fn [{:keys [costs]}]
                   costs)}))
 
-(defn- streaming-json-encoder
+(defn streaming-json-encoder
   "Takes as input the response body which can be converted into JSON,
   and returns a function which takes a ServletResponse and writes the JSON
   encoded response data. This is suitable for use with jet's server API."
@@ -2859,6 +2924,7 @@
         body-matchers (merged-matchers
                         {;; can't use form->kebab-case because env and label
                          ;; accept arbitrary kvs
+                         JobInstanceProgressRequest (partial pc/map-keys ->kebab-case)
                          JobRequestMap (partial pc/map-keys ->kebab-case)
                          Group (partial pc/map-keys ->kebab-case)
                          HostPlacement (fn [hp]
@@ -2907,7 +2973,8 @@
     gpu-enabled? :mesos-gpu-enabled
     :as settings}
    leader-selector
-   leadership-atom]
+   leadership-atom
+   {:keys [progress-aggregator-chan]}]
   (->
     (routes
       (c-api/api
@@ -3148,7 +3215,26 @@
              :responses {200 {:schema PoolsResponse
                               :description "The pools were returned."}}
              :get {:summary "Returns the pools."
-                   :handler (pools-handler)}})))
+                   :handler (pools-handler)}}))
+
+        (c-api/undocumented
+          ;; internal api endpoints (don't include in swagger)
+          (c-api/context
+            "/progress/:uuid" [uuid]
+            :path-params [uuid :- s/Uuid]
+            (c-api/resource
+              ;; NOTE: The authentication for this endpoint is disabled via cook.components/conditional-auth-bypass
+              {:post {:summary "Update the progress of a Job Instance"
+                      :parameters {:body-params JobInstanceProgressRequest}
+                      :responses {202 {:description "The progress update was accepted."}
+                                  307 {:description "Redirecting request to leader node."}
+                                  400 {:description "Invalid request format."}
+                                  404 {:description "The supplied UUID doesn't correspond to a valid job instance."}
+                                  503 {:description "The leader node is temporarily unavailable."}}
+                      :handler (let [;; TODO: add lightweight auth -- https://github.com/twosigma/Cook/issues/1367
+                                     mock-auth-fn (constantly true)]
+                                 (update-instance-progress-handler
+                                   conn mock-auth-fn leadership-atom leader-selector progress-aggregator-chan))}}))))
 
       ; Data locality debug endpoints
       (c-api/context

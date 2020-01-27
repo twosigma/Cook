@@ -345,19 +345,14 @@
     (try
       (when (str/blank? task-id)
         (throw (ex-info "task-id is empty in framework message" {:message message})))
-      (let [instance-id (task-id->instance-id (db conn) task-id)]
-        (if (nil? instance-id)
-          (throw (ex-info "No instance found!" {:task-id task-id}))
-          (do
-            (when (or progress-message progress-percent)
-              (log/debug "Updating instance" instance-id "progress to" progress-percent progress-message)
-              (handle-progress-message {:instance-id instance-id
-                                        :progress-message progress-message
-                                        :progress-percent progress-percent
-                                        :progress-sequence progress-sequence}))
-            (when exit-code
-              (log/info "Updating instance" instance-id "exit-code to" exit-code)
-              (handle-exit-code task-id exit-code)))))
+      (when (or progress-message progress-percent)
+        (handle-progress-message (d/db conn) task-id
+                                 {:progress-message progress-message
+                                  :progress-percent progress-percent
+                                  :progress-sequence progress-sequence}))
+      (when exit-code
+        (log/info "Updating instance" task-id "exit-code to" exit-code)
+        (handle-exit-code task-id exit-code))
       (catch Exception e
         (log/error e "Mesos scheduler framework message error")))))
 

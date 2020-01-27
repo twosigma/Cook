@@ -1732,6 +1732,27 @@ def rebalancer_interval_seconds():
     return interval_seconds
 
 
+def send_progress_update(cook_url, instance, assert_response=True, allow_redirects=True,
+                         sequence=None, percent=None, message=None):
+    """Submit a job instance progress update via the rest api"""
+    payload = {}
+    if sequence is not None:
+        payload['progress_sequence'] = sequence
+    if percent is not None:
+        payload['progress_percent'] = percent
+    if message is not None:
+        payload['progress_message'] = message
+    # NOTE: using `requests` rather than `session` here because this endpoint should not require authentication
+    response = requests.post(f'{cook_url}/progress/{instance}', allow_redirects=allow_redirects, json=payload)
+    if assert_response:
+        response_info = {'code': response.status_code, 'msg': response.content}
+        assert response.status_code == 202, response_info
+        response_json = response.json()
+        assert response_json['instance'] == instance, response_info
+        assert response_json['message'] == 'progress update accepted', response_info
+    return response
+
+
 def job_progress_is_present(job, progress):
     present = any(i['progress'] == progress for i in job['instances'])
     if not present:

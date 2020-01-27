@@ -131,7 +131,8 @@
                                                :mesos-gpu-enabled false
                                                :task-constraints {:cpus 12 :memory-gb 100 :retry-limit 200}}
                                               (Object.)
-                                              (atom true))]
+                                              (atom true)
+                                              {:progress-aggregator-chan (async/chan)})]
                         (fn [request]
                           (with-redefs [cook.config/batch-timeout-seconds-config (constantly (t/seconds 30))
                                         rate-limit/job-submission-rate-limiter rate-limit/AllowAllRateLimiter]
