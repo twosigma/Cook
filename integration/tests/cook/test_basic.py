@@ -48,7 +48,7 @@ class CookTest(util.CookTest):
         except:
             self.fail(f"Unable to parse start time: {info_details}")
         if 'leader-url' in info:
-            url_regex = 'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+'
+            url_regex = r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+'
             self.assertIsNotNone(re.match(url_regex, info['leader-url']), info_details)
 
     def test_basic_submit(self):
@@ -593,12 +593,12 @@ class CookTest(util.CookTest):
         command = 'echo "message: 25 Twenty-five percent" > progress_file.txt; sleep 1; exit 0'
         job_uuid, resp = util.submit_job(self.cook_url, command=command, executor=job_executor_type, max_runtime=60000,
                                          progress_output_file='progress_file.txt',
-                                         progress_regex_string='message: (\d*) (.*)')
+                                         progress_regex_string='message: (\\d*) (.*)')
         self.assertEqual(201, resp.status_code, msg=resp.content)
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
         message = json.dumps(job, sort_keys=True)
         self.assertEqual('progress_file.txt', job['progress_output_file'], message)
-        self.assertEqual('message: (\d*) (.*)', job['progress_regex_string'], message)
+        self.assertEqual('message: (\\d*) (.*)', job['progress_regex_string'], message)
         self.assertEqual('success', job['state'], message)
 
         instance = util.wait_for_sandbox_directory(self.cook_url, job_uuid, 'success')
@@ -1301,7 +1301,7 @@ class CookTest(util.CookTest):
         self.assertEqual(400, resp.status_code)
         resp = util.list_jobs(self.cook_url, user=user, state=any_state, name='[a-z0-9_-]')
         self.assertEqual(400, resp.status_code)
-        resp = util.list_jobs(self.cook_url, user=user, state=any_state, name='\d+')
+        resp = util.list_jobs(self.cook_url, user=user, state=any_state, name='\\d+')
         self.assertEqual(400, resp.status_code)
         resp = util.list_jobs(self.cook_url, user=user, state=any_state, name='a+')
         self.assertEqual(400, resp.status_code)
