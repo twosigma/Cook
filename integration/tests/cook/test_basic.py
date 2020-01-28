@@ -48,7 +48,7 @@ class CookTest(util.CookTest):
         except:
             self.fail(f"Unable to parse start time: {info_details}")
         if 'leader-url' in info:
-            url_regex = 'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+'
+            url_regex = r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+'
             self.assertIsNotNone(re.match(url_regex, info['leader-url']), info_details)
 
     def test_basic_submit(self):
@@ -593,12 +593,12 @@ class CookTest(util.CookTest):
         command = 'echo "message: 25 Twenty-five percent" > progress_file.txt; sleep 1; exit 0'
         job_uuid, resp = util.submit_job(self.cook_url, command=command, executor=job_executor_type, max_runtime=60000,
                                          progress_output_file='progress_file.txt',
-                                         progress_regex_string='message: (\d*) (.*)')
+                                         progress_regex_string='message: (\\d*) (.*)')
         self.assertEqual(201, resp.status_code, msg=resp.content)
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
         message = json.dumps(job, sort_keys=True)
         self.assertEqual('progress_file.txt', job['progress_output_file'], message)
-        self.assertEqual('message: (\d*) (.*)', job['progress_regex_string'], message)
+        self.assertEqual('message: (\\d*) (.*)', job['progress_regex_string'], message)
         self.assertEqual('success', job['state'], message)
 
         instance = util.wait_for_sandbox_directory(self.cook_url, job_uuid, 'success')
@@ -700,6 +700,54 @@ class CookTest(util.CookTest):
         self.assertEqual(0, instance['exit_code'], message)
         self.assertEqual(80, instance['progress'], message)
         self.assertEqual('80%', instance['progress_message'], message)
+
+    def test_progress_update_rest(self):
+        job_uuid, resp = util.submit_job(self.cook_url)
+        self.assertEqual(201, resp.status_code, msg=resp.content)
+        instance = util.wait_for_instance(self.cook_url, job_uuid)
+        instance_uuid = instance['task_id']
+        def wait_until_instance(predicate):
+            util.wait_until(lambda: util.load_instance(self.cook_url, instance_uuid),
+                            predicate, max_wait_ms=10000)
+        # send progress percentage update
+        util.send_progress_update(self.cook_url, instance_uuid, sequence=100, percent=10)
+        wait_until_instance(lambda i: i['progress'] == 10)
+        # send progress message update
+        util.send_progress_update(self.cook_url, instance_uuid, sequence=200, message='working')
+        wait_until_instance(lambda i: i['progress'] == 10 and i['progress_message'] == 'working')
+        # send both progress message and percentage update
+        util.send_progress_update(self.cook_url, instance_uuid, sequence=300, percent=99, message='finalizing')
+        wait_until_instance(lambda i: i['progress'] == 99 and i['progress_message'] == 'finalizing')
+        # out-of-sequence progress updates should be ignored
+        util.send_progress_update(self.cook_url, instance_uuid, sequence=0, message='ignored')
+        # send progress percentage update (message unchanged)
+        util.send_progress_update(self.cook_url, instance_uuid, sequence=400, percent=100)
+        wait_until_instance(lambda i: i['progress'] == 100 and i['progress_message'] == 'finalizing')
+        # send progress message update (percentage unchanged)
+        util.send_progress_update(self.cook_url, instance_uuid, sequence=500, message='done')
+        wait_until_instance(lambda i: i['progress'] == 100 and i['progress_message'] == 'done')
+        # send progress update with empty json body
+        response = util.send_progress_update(self.cook_url, instance_uuid, assert_response=False)
+        assert response.status_code == 400, response.content
+        # send progress update without message or percentage
+        response = util.send_progress_update(self.cook_url, instance_uuid, assert_response=False, sequence=600)
+        assert response.status_code == 400, response.content
+        # send progress update with non-integer sequence id
+        response = util.send_progress_update(self.cook_url, instance_uuid, assert_response=False, sequence=0.1, percent=0)
+        assert response.status_code == 400, response.content
+        # send progress update with non-integer percentage
+        response = util.send_progress_update(self.cook_url, instance_uuid, assert_response=False, sequence=700, percent=0.1)
+        assert response.status_code == 400, response.content
+        # send progress update with non-string message
+        response = util.send_progress_update(self.cook_url, instance_uuid, assert_response=False, sequence=800, message=12345)
+        assert response.status_code == 400, response.content
+        # send progress update with instance id that does not exist
+        response = util.send_progress_update(self.cook_url, job_uuid, assert_response=False, sequence=900, percent=0)
+        assert response.status_code == 404, response.content
+        # ensure that none of the above errors erased our previous progress state
+        i = util.load_instance(self.cook_url, instance_uuid)
+        assert i['progress'] == 100, i
+        assert i['progress_message'] == 'done', i
 
     @pytest.mark.timeout((2 * util.timeout_interval_minutes() * 60) + 60)
     # This test fails when the job fails due to "Container launch failed"
@@ -1301,7 +1349,7 @@ class CookTest(util.CookTest):
         self.assertEqual(400, resp.status_code)
         resp = util.list_jobs(self.cook_url, user=user, state=any_state, name='[a-z0-9_-]')
         self.assertEqual(400, resp.status_code)
-        resp = util.list_jobs(self.cook_url, user=user, state=any_state, name='\d+')
+        resp = util.list_jobs(self.cook_url, user=user, state=any_state, name='\\d+')
         self.assertEqual(400, resp.status_code)
         resp = util.list_jobs(self.cook_url, user=user, state=any_state, name='a+')
         self.assertEqual(400, resp.status_code)

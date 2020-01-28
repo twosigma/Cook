@@ -36,6 +36,7 @@
             [cook.plugins.completion :as completion]
             [cook.plugins.definitions :as pd]
             [cook.plugins.launch :as launch-plugin]
+            [cook.progress :as progress]
             [cook.quota :as quota]
             [cook.rate-limit :as rate-limit]
             [cook.test.testutil :as testutil :refer [restore-fresh-database! create-dummy-group create-dummy-job
@@ -1092,8 +1093,9 @@
                            [?i :instance/task-id ?task-id]]
                          (db conn) instance-id field)))
             (handle-progress-message-factory [progress-aggregator-promise]
-              (fn handle-progress-message [progress-message-map]
-                (deliver progress-aggregator-promise progress-message-map)))]
+              (fn handle-progress-message [db task-id progress-message-map]
+                (with-redefs [async/put! (fn [_ data] (deliver progress-aggregator-promise data))]
+                  (progress/handle-progress-message! db task-id nil progress-message-map))))]
 
       (testing "missing task-id in message"
         (let [task-id (str (UUID/randomUUID))]

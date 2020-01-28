@@ -250,14 +250,19 @@
                pool-name (tools/job->pool-name job-ent)
                ^TaskScheduler fenzo (get pool->fenzo pool-name)]
            (when (#{:instance.status/success :instance.status/failed} instance-status)
-             (log/debug "Unassigning task" task-id "from" (:instance/hostname instance-ent))
-             (try
-               (locking fenzo
-                 (.. fenzo
-                     (getTaskUnAssigner)
-                     (call task-id (:instance/hostname instance-ent))))
-               (catch Exception e
-                 (log/error e "Failed to unassign task" task-id "from" (:instance/hostname instance-ent)))))
+             (if fenzo
+               (try
+                 (log/debug "In" pool-name "pool, unassigning task"
+                            task-id "from" (:instance/hostname instance-ent))
+                 (locking fenzo
+                   (.. fenzo
+                       (getTaskUnAssigner)
+                       (call task-id (:instance/hostname instance-ent))))
+                 (catch Exception e
+                   (log/error e "In" pool-name "pool, failed to unassign task"
+                              task-id "from" (:instance/hostname instance-ent))))
+               (log/error "In" pool-name "pool, unable to unassign task" task-id "from"
+                          (:instance/hostname instance-ent) "because fenzo is nil:" pool->fenzo)))
            (when (= instance-status :instance.status/success)
              (handle-throughput-metrics job-resources instance-runtime :succeeded pool-name)
              (handle-throughput-metrics job-resources instance-runtime :completed pool-name))
@@ -340,19 +345,14 @@
     (try
       (when (str/blank? task-id)
         (throw (ex-info "task-id is empty in framework message" {:message message})))
-      (let [instance-id (task-id->instance-id (db conn) task-id)]
-        (if (nil? instance-id)
-          (throw (ex-info "No instance found!" {:task-id task-id}))
-          (do
-            (when (or progress-message progress-percent)
-              (log/debug "Updating instance" instance-id "progress to" progress-percent progress-message)
-              (handle-progress-message {:instance-id instance-id
-                                        :progress-message progress-message
-                                        :progress-percent progress-percent
-                                        :progress-sequence progress-sequence}))
-            (when exit-code
-              (log/info "Updating instance" instance-id "exit-code to" exit-code)
-              (handle-exit-code task-id exit-code)))))
+      (when (or progress-message progress-percent)
+        (handle-progress-message (d/db conn) task-id
+                                 {:progress-message progress-message
+                                  :progress-percent progress-percent
+                                  :progress-sequence progress-sequence}))
+      (when exit-code
+        (log/info "Updating instance" task-id "exit-code to" exit-code)
+        (handle-exit-code task-id exit-code))
       (catch Exception e
         (log/error e "Mesos scheduler framework message error")))))
 
@@ -1510,6 +1510,7 @@
                         (assoc-in [:pool->resources-atom pool-name] resources-atom))))
                 {}
                 pools')]
+    (log/info "Pool name to fenzo scheduler map:" pool-name->fenzo)
     (start-jobs-prioritizer! conn pool-name->pending-jobs-atom task-constraints rank-trigger-chan)
     {:pool-name->fenzo pool-name->fenzo
      :view-incubating-offers (fn get-resources-atom [p]

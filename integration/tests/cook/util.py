@@ -1699,7 +1699,7 @@ def supports_exit_code():
 
 def kill_running_and_waiting_jobs(cook_url, user):
     one_hour_in_millis = 60 * 60 * 1000
-    start = current_milli_time() - (4 * one_hour_in_millis)
+    start = current_milli_time() - (72 * one_hour_in_millis)
     end = current_milli_time() + one_hour_in_millis
     running = jobs(cook_url, user=user, state=['running', 'waiting'], start=start, end=end).json()
     logger.info(f'Currently running/waiting jobs: {json.dumps(running, indent=2)}')
@@ -1730,6 +1730,27 @@ def reset_share_and_quota(cook_url, user):
 def rebalancer_interval_seconds():
     interval_seconds = rebalancer_settings().get('interval-seconds', 0)
     return interval_seconds
+
+
+def send_progress_update(cook_url, instance, assert_response=True, allow_redirects=True,
+                         sequence=None, percent=None, message=None):
+    """Submit a job instance progress update via the rest api"""
+    payload = {}
+    if sequence is not None:
+        payload['progress_sequence'] = sequence
+    if percent is not None:
+        payload['progress_percent'] = percent
+    if message is not None:
+        payload['progress_message'] = message
+    # NOTE: using `requests` rather than `session` here because this endpoint should not require authentication
+    response = requests.post(f'{cook_url}/progress/{instance}', allow_redirects=allow_redirects, json=payload)
+    if assert_response:
+        response_info = {'code': response.status_code, 'msg': response.content}
+        assert response.status_code == 202, response_info
+        response_json = response.json()
+        assert response_json['instance'] == instance, response_info
+        assert response_json['message'] == 'progress update accepted', response_info
+    return response
 
 
 def job_progress_is_present(job, progress):

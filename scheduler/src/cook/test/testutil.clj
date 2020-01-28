@@ -49,6 +49,7 @@
   (let [sandbox-syncer-state nil
         exit-code-syncer-state nil
         mesos-heartbeat-chan nil
+        progress-update-chans nil
         trigger-chans nil]
     (mcc/->MesosComputeCluster compute-cluster-name
                                framework-id
@@ -57,6 +58,7 @@
                                sandbox-syncer-state
                                exit-code-syncer-state
                                mesos-heartbeat-chan
+                               progress-update-chans
                                trigger-chans
                                {}
                                {"no-pool" (async/chan 100)}
@@ -129,7 +131,8 @@
                                                :mesos-gpu-enabled false
                                                :task-constraints {:cpus 12 :memory-gb 100 :retry-limit 200}}
                                               (Object.)
-                                              (atom true))]
+                                              (atom true)
+                                              {:progress-aggregator-chan (async/chan)})]
                         (fn [request]
                           (with-redefs [cook.config/batch-timeout-seconds-config (constantly (t/seconds 30))
                                         rate-limit/job-submission-rate-limiter rate-limit/AllowAllRateLimiter]

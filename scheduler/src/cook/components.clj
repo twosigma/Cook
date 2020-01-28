@@ -79,13 +79,14 @@
                 "max-age=0"))))
 
 (def raw-scheduler-routes
-  {:scheduler (fnk [mesos leadership-atom pool-name->pending-jobs-atom settings]
+  {:scheduler (fnk [mesos leadership-atom pool-name->pending-jobs-atom progress-update-chans settings]
                 ((util/lazy-load-var 'cook.rest.api/main-handler)
                   datomic/conn
                   (fn [] @pool-name->pending-jobs-atom)
                   settings
                   (get-in mesos [:mesos-scheduler :leader-selector])
-                  leadership-atom))
+                  leadership-atom
+                  progress-update-chans))
    :view (fnk [scheduler]
            scheduler)})
 
@@ -208,9 +209,10 @@
 (defn conditional-auth-bypass
   "Skip authentication on some hard-coded endpoints."
   [h auth-middleware]
-  (let [auth-fn (auth-middleware h)]
+  (let [auth-fn (auth-middleware h)
+        no-auth-pattern #"/(?:info|progress/[-\w]+)"]
     (fn filtered-auth [{:keys [uri request-method] :as req}]
-      (if (and (= "/info" uri) (= :get request-method))
+      (if (re-matches no-auth-pattern uri)
         (h req)
         (auth-fn req)))))
 
@@ -281,6 +283,7 @@
                              mesos-agent-query-cache
                              mesos-heartbeat-chan
                              settings
+                             progress-update-chans
                              trigger-chans]
                          (doall (map (fn [{:keys [factory-fn config]}]
                                        (let [resolved (util/lazy-load-var factory-fn)]
@@ -289,8 +292,15 @@
                                                            :mesos-agent-query-cache mesos-agent-query-cache
                                                            :mesos-heartbeat-chan mesos-heartbeat-chan
                                                            :sandbox-syncer-config (:sandbox-syncer settings)
+                                                           :progress-update-chans progress-update-chans
                                                            :trigger-chans trigger-chans})))
                                      (:compute-clusters settings))))
+     :progress-update-chans (fnk [[:settings [:progress :as progress-config]] trigger-chans]
+                              (let [{:keys [progress-updater-trigger-chan]} trigger-chans]
+                                ;; XXX - We should be able to :require cook.progress rather than using lazy-load-var here,
+                                ;; but there's currently a compile-time bug that prevents that: https://github.com/twosigma/Cook/issues/1370
+                                ((util/lazy-load-var 'cook.progress/make-progress-update-channels)
+                                 progress-updater-trigger-chan progress-config datomic/conn)))
      :mesos-datomic-mult (fnk []
                            (first ((util/lazy-load-var 'cook.datomic/create-tx-report-mult) datomic/conn)))
      ; TODO(pschorf): Remove hearbeat support

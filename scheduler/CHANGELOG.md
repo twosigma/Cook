@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.38.1] - 2020-01-26
+### Changed
+- Improved logging for k8s compute clusters, from @dposada
+
+## [1.38.0] - 2020-01-24
+### Added
+- Logs fileserver for k8s jobs, from @nsinkov
+- Missing state pairs in the k8s controller, from @scrosby
+### Fixed
+- Default the user parameter in docker, from @shamsimam
+- Improve k8s node and pod watches so that they retry forver, from @scrosby
+- Correct misnumbered 403 error codes for Swagger, from @DaoWen
+
 ## [1.37.0] - 2020-01-15
 ### Added
 - Support for moving a portion of a user's jobs to a different pool, from @dposada

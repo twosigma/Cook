@@ -93,10 +93,21 @@
       (log/info "Progress update aggregator exited"))
     progress-aggregator-chan))
 
+(defn- task-id->instance-id
+  "Retrieves the instance-id given a task-id"
+  [db task-id]
+  (-> (d/entity db [:instance/task-id task-id])
+      :db/id))
+
 (defn handle-progress-message!
   "Processes a progress message by sending it along the progress-aggregator-chan channel."
-  [progress-aggregator-chan progress-message-map]
-  (async/put! progress-aggregator-chan progress-message-map))
+  [db task-id progress-aggregator-chan progress-message-map]
+  (let [instance-id (task-id->instance-id db task-id)]
+    (when-not instance-id
+      (throw (ex-info "No instance found!" {:task-id task-id})))
+    (log/debug "Updating instance" instance-id "progress to" progress-message-map)
+    (async/put! progress-aggregator-chan
+                (assoc progress-message-map :instance-id instance-id))))
 
 (histograms/defhistogram [cook-mesos scheduler progress-updater-pending-states])
 (meters/defmeter [cook-mesos scheduler progress-updater-publish-rate])
@@ -154,3 +165,12 @@
                                         {:error-handler progress-update-transactor-error-handler
                                          :on-finished progress-update-transactor-on-finished})
        :progress-state-chan progress-state-chan})))
+
+(defn make-progress-update-channels
+  "Top-level function for building a progress-update-transactor and progress-update-aggregator."
+  [progress-updater-trigger-chan progress-config conn]
+  (let [{:keys [batch-size]} progress-config
+        {:keys [progress-state-chan]} (progress-update-transactor progress-updater-trigger-chan batch-size conn)
+        progress-update-aggregator-chan (progress-update-aggregator progress-config progress-state-chan)]
+    {:progress-state-chan progress-state-chan
+     :progress-aggregator-chan progress-update-aggregator-chan}))

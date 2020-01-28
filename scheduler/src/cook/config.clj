@@ -438,7 +438,8 @@
                                   :default-pool "no-pool"}
                                  pool-selection)})))
      :kubernetes (fnk [[:config {kubernetes {}}]]
-                   (merge {:default-workdir "/mnt/sandbox"}
+                   (merge {:default-workdir "/mnt/sandbox"
+                           :reconnect-delay-ms 60000}
                           (update kubernetes :pod-ip->hostname-fn resolve-optional-function identity)))
      :autoscaler (fnk [[:config {autoscaler {}}]]
                    autoscaler)}))

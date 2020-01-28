@@ -210,6 +210,7 @@ def query_unique(clusters, entity_ref):
         raise Exception('There is more than one match for the given uuid.')
 
     cluster_name, entities = next((c, e) for (c, e) in iter(query_result['clusters'].items()) if e['count'] > 0)
+    cluster = next(c for c in clusters if c['name'] == cluster_name)
 
     # Check for a group, which will raise an Exception
     if len(entities['groups']) > 0:
@@ -219,13 +220,13 @@ def query_unique(clusters, entity_ref):
     jobs = entities['jobs']
     if len(jobs) > 0:
         job = jobs[0]
-        return {'type': Types.JOB, 'data': job}
+        return {'type': Types.JOB, 'data': job, 'cluster': cluster}
 
     # Check for a job instance
     instances = entities['instances']
     if len(instances) > 0:
         instance, job = instances[0]
-        return {'type': Types.INSTANCE, 'data': (instance, job)}
+        return {'type': Types.INSTANCE, 'data': (instance, job), 'cluster': cluster}
 
     # This should not happen (the only entities we generate are jobs, instances, and groups)
     raise Exception(f'Encountered unexpected error when querying for {entity_ref}.')
@@ -251,11 +252,11 @@ def query_unique_and_run(clusters, entity_ref, command_fn, wait=False):
             job = query_result['data']
             instance = __get_latest_instance(job)
             directory = mesos.retrieve_instance_sandbox_directory(instance, job)
-            command_fn(instance, directory)
+            command_fn(instance, directory, query_result['cluster'])
         elif query_result['type'] == Types.INSTANCE:
             instance, job = query_result['data']
             directory = mesos.retrieve_instance_sandbox_directory(instance, job)
-            command_fn(instance, directory)
+            command_fn(instance, directory, query_result['cluster'])
         else:
             # This should not happen, because query_unique should
             # only return a map with type "job" or type "instance"

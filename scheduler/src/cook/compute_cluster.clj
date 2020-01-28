@@ -72,20 +72,21 @@
 
 (defn safe-kill-task
   "A safe version of kill task that never throws. This reduces the risk that errors in one compute cluster propagate and cause problems in another compute cluster."
-  [compute-cluster task-id]
+  [{:keys [name] :as compute-cluster} task-id]
   (try
     (kill-task compute-cluster task-id)
     (catch Throwable t
-      (log/error t "In compute cluster" compute-cluster "error killing task" task-id))))
+      (log/error t "In compute cluster" name ", error killing task" task-id))))
 
-(defn kill-task-if-possible [compute-cluster task-id]
+(defn kill-task-if-possible
   "If compute cluster is nil, print a warning instead of killing the task. There are cases, in particular,
   lingering tasks, stragglers, or cancelled tasks where the task might outlive the compute cluster it was
   member of. When this occurs, the looked up compute cluster is null and trying to kill via it would cause an NPE,
   when in reality, it's relatively innocuous. So, we have this wrapper to use in those circumstances."
+  [compute-cluster task-id]
   (if compute-cluster
     (safe-kill-task compute-cluster task-id)
-    (log/warn "Unable to kill task " task-id " because compute-cluster is nil")))
+    (log/warn "Unable to kill task" task-id "because compute-cluster is nil")))
 
 ; Internal method
 (defn write-compute-cluster
