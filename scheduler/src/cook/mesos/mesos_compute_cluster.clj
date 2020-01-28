@@ -288,8 +288,6 @@
 
   (autoscale! [_ _ _])
 
-  (last-autoscale-time [_] nil)
-
   (use-cook-executor? [_] true)
 
   (container-defaults [_]

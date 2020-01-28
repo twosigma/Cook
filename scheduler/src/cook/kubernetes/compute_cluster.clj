@@ -179,7 +179,7 @@
 (defrecord KubernetesComputeCluster [^ApiClient api-client name entity-id match-trigger-chan exit-code-syncer-state
                                      all-pods-atom current-nodes-atom cook-expected-state-map k8s-actual-state-map
                                      pool->fenzo-atom namespace-config scan-frequency-seconds-config max-pods-per-node
-                                     last-autoscale-atom synthetic-tasks]
+                                     synthetic-pods-config]
   cc/ComputeCluster
   (launch-tasks [this offers task-metadata-seq]
     (doseq [task-metadata task-metadata-seq]
@@ -245,42 +245,51 @@
 
   (autoscaling? [_]
     (and
-      (some-> synthetic-tasks :image count pos?)
-      (some-> synthetic-tasks :user count pos?)
-      (some-> synthetic-tasks :max-tasks pos?)))
+      (some-> synthetic-pods-config :image count pos?)
+      (some-> synthetic-pods-config :user count pos?)
+      (some-> synthetic-pods-config :max-pods-outstanding pos?)))
 
   (autoscale! [this pool-name task-requests]
     (try
       (assert (cc/autoscaling? this)
-              (str "Request to autoscale despite invalid / missing config"))
-      (let [using-pools? (config/default-pool)
-            synthetic-task-pool-name (if using-pools? pool-name nil)
-            {:keys [image user command max-tasks] :or {command "exit 0"}} synthetic-tasks
-            task-metadata-seq (->>
-                                task-requests
-                                (map (fn [{:keys [job]}]
-                                       {:task-id (str (UUID/randomUUID))
-                                        :command {:user user :value command}
-                                        :container {:docker {:image image}}
-                                        :task-request {:resources (tools/job-ent->resources job)
-                                                       :job {:job/pool {:pool/name synthetic-task-pool-name}}}
-                                        ; We need to label the synthetic tasks so that we
-                                        ; can opt them out of some of the normal plumbing,
-                                        ; like mapping status back to a job instance
-                                        :labels {controller/cook-synthetic-task-label "true"}}))
-                                (take max-tasks))]
-        (log/info "In" name "compute cluster, launching" (count task-metadata-seq) "synthetic task(s) for"
-                  (count task-requests) "un-matched task(s) in" synthetic-task-pool-name "pool")
-        (reset! last-autoscale-atom (time/now))
-        (cc/launch-tasks this
-                         nil ; offers (not used by KubernetesComputeCluster)
-                         task-metadata-seq))
+              (str "In " name " compute cluster, request to autoscale despite invalid / missing config"))
+      (let [outstanding-synthetic-pods (->> @all-pods-atom
+                                            (all-pods this)
+                                            (filter controller/synthetic-pod-label))
+            num-synthetic-pods (count outstanding-synthetic-pods)
+            {:keys [image user command max-pods-outstanding] :or {command "sleep 60"}} synthetic-pods-config]
+        (log/info "In" name "compute cluster, there are" num-synthetic-pods
+                  "outstanding synthetic pod(s), and a max of" max-pods-outstanding "are allowed")
+        (if (>= num-synthetic-pods max-pods-outstanding)
+          (log/info "In" name "compute cluster, cannot launch more synthetic pods")
+          (let [using-pools? (config/default-pool)
+                synthetic-task-pool-name (if using-pools? pool-name nil)
+                new-task-requests (remove (fn [{:keys [job]}]
+                                            (some #(= (-> job :job/uuid str) (controller/synthetic-pod-label %))
+                                                  outstanding-synthetic-pods))
+                                          task-requests)
+                task-metadata-seq (->>
+                                    new-task-requests
+                                    (map (fn [{:keys [job]}]
+                                           {:task-id (str (UUID/randomUUID))
+                                            :command {:user user :value command}
+                                            :container {:docker {:image image}}
+                                            :task-request {:resources (tools/job-ent->resources job)
+                                                           :job {:job/pool {:pool/name synthetic-task-pool-name}}}
+                                            ; We need to label the synthetic tasks so that we
+                                            ; can opt them out of some of the normal plumbing,
+                                            ; like mapping status back to a job instance
+                                            :labels {controller/cook-synthetic-task-label (-> job :job/uuid str)}}))
+                                    (take (- max-pods-outstanding num-synthetic-pods)))]
+            (log/info "In" name "compute cluster, launching" (count task-metadata-seq) "synthetic pod(s) for"
+                      (count new-task-requests) "new un-matched task(s) in" synthetic-task-pool-name "pool"
+                      "(there were" (count task-requests) "total un-matched task(s), new and old)")
+            (cc/launch-tasks this
+                             nil ; offers (not used by KubernetesComputeCluster)
+                             task-metadata-seq))))
       (catch Throwable e
-        (log/error e "In" name "compute cluster, encountered error launching synthetic tasks for"
+        (log/error e "In" name "compute cluster, encountered error launching synthetic pod(s) for"
                    (count task-requests) "un-matched task(s) in" pool-name "pool"))))
-
-  (last-autoscale-time [_]
-    @last-autoscale-atom)
 
   (use-cook-executor? [_] false)
 
@@ -400,7 +409,6 @@
                                                     namespace
                                                     scan-frequency-seconds
                                                     max-pods-per-node
-                                                    (atom (time/epoch))
                                                     synthetic-tasks)]
     (cc/register-compute-cluster! compute-cluster)
     compute-cluster))

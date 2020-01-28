@@ -766,11 +766,11 @@
 
 (defn distribute-task-requests-to-compute-clusters
   "TODO(DPO)"
-  [task-requests pool-name compute-clusters]
-  (let [{:keys [name] :as compute-cluster} (first (sort-by cc/last-autoscale-time compute-clusters))]
-    (log/info "In" pool-name "pool, assigning all" (count task-requests)
-              "un-matched task(s) to" name "compute cluster for autoscaling")
-    {compute-cluster task-requests}))
+  [task-requests compute-clusters]
+  (group-by (fn [{:keys [job]}]
+              (nth compute-clusters
+                   (-> job :job/uuid hash (mod (count compute-clusters)))))
+            task-requests))
 
 (let [pool-name->last-autoscale-atom (atom {})]
   (defn trigger-autoscaling!
@@ -786,10 +786,9 @@
                 autoscaling-compute-clusters (filter cc/autoscaling? compute-clusters)
                 num-autoscaling-compute-clusters (count autoscaling-compute-clusters)]
             (when (and (pos? num-autoscaling-compute-clusters) (pos? num-task-requests))
-              (log/info "In" pool-name "pool, triggering autoscaling for" num-task-requests "un-matched task(s)")
               (swap! pool-name->last-autoscale-atom assoc pool-name (time/now))
               (let [compute-cluster->task-requests (distribute-task-requests-to-compute-clusters
-                                                     task-requests pool-name autoscaling-compute-clusters)]
+                                                     task-requests autoscaling-compute-clusters)]
                 (doseq [[compute-cluster requests-for-cluster] compute-cluster->task-requests]
                   (cc/autoscale! compute-cluster pool-name requests-for-cluster)))))))
       (catch Throwable e

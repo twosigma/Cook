@@ -144,7 +144,7 @@
                                          (.getName container-status))))
        first))
 
-(defn synthetic-task?
+(defn synthetic-pod-label
   "TODO(DPO)"
   [pod]
   (some-> pod .getMetadata .getLabels (.get cook-synthetic-task-label)))
@@ -155,7 +155,7 @@
    Looks at the pod status, updates datomic (with success, failure, and possibly mea culpa),
    and return a new cook expected state of :cook-expected-state/completed."
   [compute-cluster {:keys [synthesized-state pod]}]
-  (when-not (synthetic-task? pod)
+  (when-not (synthetic-pod-label pod)
     (let [instance-id (-> pod .getMetadata .getName)
           pod-status (.getStatus pod)
           ^V1ContainerStatus job-container-status (get-job-container-status pod-status)
@@ -181,7 +181,7 @@
 (defn handle-pod-started
   "A pod has started. So now we need to update the status in datomic."
   [compute-cluster {:keys [pod]}]
-  (when-not (synthetic-task? pod)
+  (when-not (synthetic-pod-label pod)
     (let [instance-id (-> pod .getMetadata .getName)
           ; We leak mesos terminology here ('task') because of backward compatibility.
           status {:task-id {:value instance-id}

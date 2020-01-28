@@ -50,9 +50,6 @@
   (autoscale! [this pool-name task-requests]
     "TODO(DPO)")
 
-  (last-autoscale-time [this]
-    "TODO(DPO)")
-
   (use-cook-executor? [this]
     "Returns true if this compute cluster makes use of the Cook executor for running tasks")
 
