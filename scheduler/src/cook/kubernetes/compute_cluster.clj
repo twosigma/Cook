@@ -257,7 +257,7 @@
                                             (all-pods this)
                                             (filter controller/synthetic-pod-label))
             num-synthetic-pods (count outstanding-synthetic-pods)
-            {:keys [image user command max-pods-outstanding] :or {command "sleep 60"}} synthetic-pods-config]
+            {:keys [image user command max-pods-outstanding] :or {command "exit 0"}} synthetic-pods-config]
         (log/info "In" name "compute cluster, there are" num-synthetic-pods
                   "outstanding synthetic pod(s), and a max of" max-pods-outstanding "are allowed")
         (if (>= num-synthetic-pods max-pods-outstanding)
