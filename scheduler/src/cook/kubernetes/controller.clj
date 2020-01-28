@@ -315,24 +315,26 @@
 
                                       :cook-expected-state/killed
                                       (case pod-synthesized-state-modified
-                                        ; TODO: This can also legitimately occur in a
-                                        ; normal occurrence if someone submits a kill request on a job that fails to launch.
-                                        :missing (do
-                                                   ; TODO: We will review these and may downgrade this to an info later.
-                                                   (log/warn "In compute cluster" name ", pod" pod-name
-                                                             "in a weird cook expected state:"
-                                                             (prepare-cook-expected-state-dict-for-logging cook-expected-state-dict)
-                                                             "and k8s actual state"
-                                                             (prepare-k8s-actual-state-dict-for-logging k8s-actual-state-dict))
-                                                   ; TODO: Avoid a race. Say a launch occurs, followed by a kill, followed by a watch update.
-                                                   ; Before the watch update, we'll think the k8s-actual-state is missing.
-                                                   ; We see (:killed,:missing), with nothing to do, so we move to (;missing,:missing)
-                                                   ; Then the watch update occurs and we see (:missing,:starting), log a weird state,
-                                                   ; and kill it off. We want to avoid that path by doing an opportunistic kill here.
-                                                   ; That way we if we're seeing a stale :missing, we'll kill it anyways.
-                                                   ; We can't do that now because pod is nil, and kill-pod requires non-nil pod.
-
-                                                   (handle-pod-killed compute-cluster pod-name))
+                                        :missing
+                                        ; There's a race where we can launch then kill, when the kill arrives after
+                                        ; the launch, but before the watch updates k8s-actual-state-dict.
+                                        ; (k8s-actual-state isn't the actual state, because of this watch lag)
+                                        ; When that happens, we will have an actual state of :missing.
+                                        ; If we did nothing, we'd log this as a weird state, then when the watch
+                                        ; shows up, we'd see (:missing, :starting) and log that as a weird state too.
+                                        ;
+                                        ; So, a better approach. If we detect a :missing,:killed, then we opportunistically
+                                        ; try to kill the pod. This is why update-cook-expected-state saves :launch-pod,
+                                        ; so its available here.
+                                        (if-let [pod (:launch-pod cook-expected-state-dict)]
+                                          ; This is interesting. This indicates that something deleted it behind our back!
+                                          ; Weird. We always update datomic first. Could happen if someone manually removed stuff from kubernetes.
+                                          (do (log/info "In compute cluster" name ", opportunistically killing" name "because of potential race where kill arrives before the watch responds to the launch")
+                                              (kill-pod api-client :ignored pod))
+                                          (do
+                                            (log-weird-state compute-cluster pod-name
+                                                             cook-expected-state-dict k8s-actual-state-dict)
+                                            (handle-pod-killed compute-cluster pod-name)))
                                         :pod/failed (handle-pod-completed compute-cluster k8s-actual-state-dict)
                                         :pod/running (kill-pod api-client cook-expected-state-dict pod)
                                         ; There was a race and it completed normally before being it was killed.
@@ -446,9 +448,12 @@
   "Update the cook expected state. Include some business logic to e.g., not change a state to the same value more than once. Marks any state changes Also has a lattice of state. Called externally and from state machine."
   [{:keys [cook-expected-state-map] :as compute-cluster} pod-name new-cook-expected-state-dict]
   (locking (calculate-lock [pod-name])
-    (let [old-state (get @cook-expected-state-map pod-name)]
-      (when-not (cook-expected-state-equivalent? new-cook-expected-state-dict old-state)
-        (swap! cook-expected-state-map assoc pod-name new-cook-expected-state-dict)
+    (let [old-state (get @cook-expected-state-map pod-name)
+          ; Save the launch pod. We may need it in order to kill it. See note under (:killed, :missing) in process, above.
+          old-pod (:launch-pod old-state)
+          new-expected-state-dict-merged (merge {:launch-pod old-pod} new-cook-expected-state-dict)]
+      (when-not (cook-expected-state-equivalent? new-expected-state-dict-merged old-state)
+        (swap! cook-expected-state-map assoc pod-name new-expected-state-dict-merged)
         (process compute-cluster pod-name)))))
 
 (defn starting-namespaced-pod-name->pod
