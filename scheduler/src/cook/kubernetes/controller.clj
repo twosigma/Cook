@@ -307,6 +307,7 @@
                                         ; TODO: This can also legitimately occur in a
                                         ; normal occurrence if someone submits a kill request on a job that fails to launch.
                                         :missing (do
+                                                   ; TODO: We will review these and may downgrade this to an info later.
                                                    (log/warn "In compute cluster" name ", pod" pod-name "in a weird cook expected state:" cook-expected-state-dict "and k8s actual state" k8s-actual-state-dict)
                                                    ; TODO: Avoid a race. Say a launch occurs, followed by a kill, followed by a watch update.
                                                    ; Before the watch update, we'll think the k8s-actual-state is missing.
