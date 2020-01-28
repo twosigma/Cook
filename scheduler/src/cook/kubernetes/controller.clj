@@ -39,7 +39,7 @@
   "Kill pod is the same as deleting a pod, we semantically distinguish the two operations.
   Delete is used for completed pods that we're done with.
   Kill is used for possibly running pods we want to kill so that they fail.
-  Returns the cook-expected-state-dict of nil."
+  Returns the cook-expected-state-dict passed in."
   [api-client cook-expected-state-dict pod]
   (api/delete-pod api-client pod)
   cook-expected-state-dict)
@@ -367,7 +367,7 @@
                                         ; We shouldn't hit these unless we get a database rollback.
                                         :pod/failed (kill-pod-in-weird-state compute-cluster pod-name
                                                                              nil k8s-actual-state-dict)
-                                        ; This can only occur in testing when you're e.g., blowing away the database.
+                                        ; This can occur in testing when you're e.g., blowing away the database.
                                         ; It will go through :missing,:missing and then be deleted from the map.
                                         ; TODO: May be evidence of a bug where we process pod changes when we're starting up.
                                         ; Currently occurs because kill's can race ahead of launches, we kill something that has
@@ -379,7 +379,7 @@
                                         ; Unlike the other :pod/unknown states, no datomic state to update.
                                         :pod/unknown (kill-pod-in-weird-state compute-cluster pod-name
                                                                               nil k8s-actual-state-dict)
-                                        ; This can only occur in testing when you're e.g., blowing away the database.
+                                        ; This can occur in testing when you're e.g., blowing away the database.
                                         ; It will go through :missing,:missing and then be deleted from the map.
                                         ; TODO: May be evidence of a bug where we process pod changes when we're starting up.
                                         ; Currently occurs because kill's can race ahead of launches, we kill something that has
