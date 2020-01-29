@@ -70,8 +70,9 @@ if 'TEST_METRICS_URL' in os.environ:
                 'runtime-milliseconds': (end - start) * 1000,
                 'expected-to-fail': xfail_mark is not None and xfail_mark.name == 'xfail'
             }
-            logging.info(f'Updating test metrics: {json.dumps(metrics, indent=2)}')
-            resp = util.session.post(f'{elastic_search_url}/{index}/test-result', json=metrics)
+            timeout = os.getenv('TEST_METRICS_POST_TIMEOUT_SECONDS', 10)
+            logging.info(f'Updating test metrics (timeout = {timeout} seconds): {json.dumps(metrics, indent=2)}')
+            resp = util.session.post(f'{elastic_search_url}/{index}/test-result', json=metrics, timeout=timeout)
             logging.info(f'Response from updating test metrics: {resp.text}')
         except:
             logging.exception('Encountered exception while recording test metrics')
