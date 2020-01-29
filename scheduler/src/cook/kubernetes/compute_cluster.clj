@@ -389,7 +389,7 @@
            namespace
            scan-frequency-seconds
            max-pods-per-node
-           synthetic-tasks]
+           synthetic-pods]
     :or {bearer-token-refresh-seconds 300
          namespace {:kind :static
                     :namespace "cook"}
@@ -409,6 +409,6 @@
                                                     namespace
                                                     scan-frequency-seconds
                                                     max-pods-per-node
-                                                    synthetic-tasks)]
+                                                    synthetic-pods)]
     (cc/register-compute-cluster! compute-cluster)
     compute-cluster))
