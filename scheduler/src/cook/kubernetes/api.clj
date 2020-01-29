@@ -686,18 +686,18 @@
         (-> api
             (.createNamespacedPod namespace pod nil nil nil))
         (catch ApiException e
-          (log/error e "Error submitting pod with name" pod-name "in namespace" namespace ":" (.getResponseBody e)))))
-    ; Because of the complicated nature of task-metadata-seq, we can't easily run the V1Pod creation code for a
-    ; launching pod on a server restart. Thus, if we create an instance, store into datomic, but then the cook scheduler
-    ; fails --- before kubernetes creates a pod (either the message isn't sent, or there's a kubernetes problem) ---
-    ; we will be unable to create a new V1Pod and we can't retry this at the kubernetes level.
-    ;
-    ; Eventually, the stuck pod detector will recognize the stuck pod, kill the instance, and a cook-level retry will make
-    ; a new instance.
-    ;
-    ; Because the issue is relatively rare and auto-recoverable, we're going to punt on the task-metadata-seq refactor need
-    ; to handle this situation better.
-    (log/warn "Unimplemented Operation to launch a pod because we do not reconstruct the V1Pod on startup.")))
+          (let [code (.getCode e)
+                bad-pod-spec? (= code 422)]
+            (log/error e "Error submitting pod with name" pod-name "in namespace" namespace
+                       ", code:" code ", response body:" (.getResponseBody e))
+            (not bad-pod-spec?)))))
+    (do
+      ; Because of the complicated nature of task-metadata-seq, we can't easily run the V1Pod creation code for a
+      ; launching pod on a server restart. Thus, if we create an instance, store into datomic, but then the cook
+      ; scheduler fails --- before kubernetes creates a pod (either the message isn't sent, or there's a kubernetes
+      ; problem) --- we will be unable to create a new V1Pod and we can't retry this at the kubernetes level.
+      (log/warn "Unimplemented Operation to launch a pod because we do not reconstruct the V1Pod on startup.")
+      false)))
 
 
 ;; TODO: Need the 'stuck pod scanner' to detect stuck states and move them into killed.
