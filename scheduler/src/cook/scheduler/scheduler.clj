@@ -765,7 +765,9 @@
                                         :launched-job-uuids (into matched-job-uuids launched-job-uuids)})))
 
 (defn distribute-task-requests-to-compute-clusters
-  "TODO(DPO)"
+  "Given a collection of un-matched task requests and a collection of
+  compute clusters, distributes the task requests amongst the compute
+  clusters, using a hash of the pending job's uuid."
   [task-requests compute-clusters]
   (group-by (fn [{:keys [job]}]
               (nth compute-clusters
@@ -774,7 +776,10 @@
 
 (let [pool-name->last-autoscale-atom (atom {})]
   (defn trigger-autoscaling!
-    "TODO(DPO)"
+    "Autoscales the given pool to satisfy the given match failures (i.e. pending jobs), if:
+    - There is at least one failure
+    - Enough time has passed since the pool last autoscaled
+    - There is at least one compute cluster configured to do autoscaling"
     [failures pool-name compute-clusters]
     (try
       (when-let [autoscaler-interval-seconds (get (config/autoscaler) :interval-seconds)]

@@ -138,7 +138,7 @@
         outstanding-synthetic-pod-1 (tu/pod-helper "podA" "nodeA")
         _ (-> outstanding-synthetic-pod-1
               .getMetadata
-              (.setLabels {controller/cook-synthetic-task-label job-uuid-1}))
+              (.setLabels {controller/cook-synthetic-pod-job-uuid-label job-uuid-1}))
         compute-cluster (tu/make-kubernetes-compute-cluster {nil outstanding-synthetic-pod-1})
         make-task-request-fn (fn [job-uuid]
                                {:job {:job/resource [{:resource/type :cpus, :resource/amount 0.1}
@@ -152,5 +152,5 @@
                                    (swap! launched-tasks-atom conj cook-expected-state-dict))]
       (cc/autoscale! compute-cluster "test-pool" task-requests))
     (is (= 2 (count @launched-tasks-atom)))
-    (is (= job-uuid-2 (-> @launched-tasks-atom (nth 0) :launch-pod :pod controller/synthetic-pod-label)))
-    (is (= job-uuid-3 (-> @launched-tasks-atom (nth 1) :launch-pod :pod controller/synthetic-pod-label)))))
+    (is (= job-uuid-2 (-> @launched-tasks-atom (nth 0) :launch-pod :pod controller/synthetic-pod-job-uuid)))
+    (is (= job-uuid-3 (-> @launched-tasks-atom (nth 1) :launch-pod :pod controller/synthetic-pod-job-uuid)))))

@@ -255,7 +255,7 @@
               (str "In " name " compute cluster, request to autoscale despite invalid / missing config"))
       (let [outstanding-synthetic-pods (->> @all-pods-atom
                                             (all-pods this)
-                                            (filter controller/synthetic-pod-label))
+                                            (filter controller/synthetic-pod-job-uuid))
             num-synthetic-pods (count outstanding-synthetic-pods)
             {:keys [image user command max-pods-outstanding] :or {command "exit 0"}} synthetic-pods-config]
         (log/info "In" name "compute cluster, there are" num-synthetic-pods
@@ -265,7 +265,7 @@
           (let [using-pools? (config/default-pool)
                 synthetic-task-pool-name (if using-pools? pool-name nil)
                 new-task-requests (remove (fn [{:keys [job]}]
-                                            (some #(= (-> job :job/uuid str) (controller/synthetic-pod-label %))
+                                            (some #(= (-> job :job/uuid str) (controller/synthetic-pod-job-uuid %))
                                                   outstanding-synthetic-pods))
                                           task-requests)
                 task-metadata-seq (->>
@@ -279,7 +279,7 @@
                                             ; We need to label the synthetic tasks so that we
                                             ; can opt them out of some of the normal plumbing,
                                             ; like mapping status back to a job instance
-                                            :labels {controller/cook-synthetic-task-label (-> job :job/uuid str)}}))
+                                            :labels {controller/cook-synthetic-pod-job-uuid-label (-> job :job/uuid str)}}))
                                     (take (- max-pods-outstanding num-synthetic-pods)))]
             (log/info "In" name "compute cluster, launching" (count task-metadata-seq) "synthetic pod(s) for"
                       (count new-task-requests) "new un-matched task(s) in" synthetic-task-pool-name "pool"
