@@ -212,11 +212,11 @@
 (defn handle-pod-killed
   "A pod was killed. So now we need to update the status in datomic and store the exit code."
   [compute-cluster pod-name]
-  ; Ideally, we would guard against synthetic tasks here, as in handle-pod-started and
-  ; handle-pod-completed. However, we don't have the pod object, only the name, so there's
-  ; no way to know if the killed pod was synthetic. In practice, this path will never get
-  ; called for a synthetic task, because synthetic tasks never end up with an expected state
-  ; of :expected/killed.
+  ; Why not guard against synthetic pods here, as in handle-pod-started and
+  ; handle-pod-completed? We don't have the pod object, only the pod name, so we can't check
+  ; the labels of the killed pod. In practice, this doesn't matter; this path will never get
+  ; called for a synthetic pod, because synthetic pods never end up with a Cook expected
+  ; state of `killed` (they are not exposed to the outside world).
   (let [instance-id pod-name
         ; We leak mesos terminology here ('task') because of backward compatibility.
         status {:task-id {:value instance-id}
