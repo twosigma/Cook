@@ -132,29 +132,14 @@
   )
 
 (deftest test-autoscale!
-  (let [outstanding-synthetic-pod-1 (tu/pod-helper "podA" "nodeA")
-        job-uuid-1 (str (UUID/randomUUID))
+  (let [job-uuid-1 (str (UUID/randomUUID))
         job-uuid-2 (str (UUID/randomUUID))
         job-uuid-3 (str (UUID/randomUUID))
+        outstanding-synthetic-pod-1 (tu/pod-helper "podA" "nodeA")
         _ (-> outstanding-synthetic-pod-1
               .getMetadata
               (.setLabels {controller/cook-synthetic-task-label job-uuid-1}))
-        compute-cluster
-        (kcc/->KubernetesComputeCluster nil ; api-client
-                                        "kubecompute" ; name
-                                        nil ; entity-id
-                                        nil ; match-trigger-chan
-                                        nil ; exit-code-syncer-state
-                                        (atom {nil outstanding-synthetic-pod-1}) ; all-pods-atom
-                                        (atom {}) ; current-nodes-atom
-                                        (atom {}) ; cook-expected-state-map
-                                        (atom {}) ; k8s-actual-state-map
-                                        (atom nil) ; pool->fenzo-atom
-                                        {:kind :static :namespace "cook"} ; namespace-config
-                                        nil ; scan-frequency-seconds-config
-                                        nil ; max-pods-per-node
-                                        {:image "image" :user "user" :max-pods-outstanding 4} ; synthetic-pods-config
-                                        )
+        compute-cluster (tu/make-kubernetes-compute-cluster {nil outstanding-synthetic-pod-1})
         make-task-request-fn (fn [job-uuid]
                                {:job {:job/resource [{:resource/type :cpus, :resource/amount 0.1}
                                                      {:resource/type :mem, :resource/amount 32}]
