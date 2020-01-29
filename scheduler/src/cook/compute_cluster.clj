@@ -18,6 +18,28 @@
             [cook.config :as config]
             [datomic.api :as d]))
 
+; There's an ugly race where the core cook scheduler can kill a job before it tries to launch it.
+; What happens is:
+;   1. In launch-matched-tasks, we write instance objects to datomic for everything that matches, we have not submitted these to the compute cluster backends yet.
+;   2. A kill command arrives to kill the job. THe job is put into completed.
+;   3. This monitor-tx-queue happens to notice the job just completed. It sees the instance written in step 1.
+;   4. We submit a kill-task to the compute cluster backend.
+;   5. Kill task processes. There's not much to do, as there's no task to kill.
+;   6. launch-matched-tasks now visits the task and submits it to the compute cluster backend.
+;   7. Task executes and is not killed.
+;
+; At the core the bug is an atomicity bug. The intermediate state of written-to-datomic but not yet sent (via launch-task)
+; to the backend. We work around this race by having a lock around of all launch-matched-tasks that contains the database
+; update and the submit to kubernetes. We re-use the same lock to wrap kill-task to force an ordering relationship, so
+; that kill-task must happen after the write-to-datomic and launch-task have been invoked.
+;
+; ComputeCluster/kill-task cannot be invoked before we write the task to datomic. If it is invoked after the write to
+; datomic, the lock ensures that it won't be acted upon until after launch-task has been invoked on the compute cluster.
+;
+; So, we must grab this lock before calling kill-task in the compute cluster API. As all of our invocations to it are via
+; safe-kill-task, we add the lock there.
+(def kill-lock-object (Object.))
+
 (defprotocol ComputeCluster
   ; These methods should accept bulk data and process in batches.
   ;(kill-tasks [this task]
@@ -64,10 +86,11 @@
 (defn safe-kill-task
   "A safe version of kill task that never throws. This reduces the risk that errors in one compute cluster propagate and cause problems in another compute cluster."
   [{:keys [name] :as compute-cluster} task-id]
-  (try
-    (kill-task compute-cluster task-id)
-    (catch Throwable t
-      (log/error t "In compute cluster" name ", error killing task" task-id))))
+  (locking kill-lock-object
+    (try
+      (kill-task compute-cluster task-id)
+      (catch Throwable t
+        (log/error t "In compute cluster" name ", error killing task" task-id)))))
 
 (defn kill-task-if-possible
   "If compute cluster is nil, print a warning instead of killing the task. There are cases, in particular,
