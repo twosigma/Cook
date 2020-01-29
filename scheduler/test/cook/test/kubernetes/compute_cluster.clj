@@ -147,10 +147,10 @@
         task-requests [(make-task-request-fn job-uuid-1)
                        (make-task-request-fn job-uuid-2)
                        (make-task-request-fn job-uuid-3)]
-        launched-tasks-atom (atom [])]
+        launched-pods-atom (atom [])]
     (with-redefs [api/launch-pod (fn [_ cook-expected-state-dict]
-                                   (swap! launched-tasks-atom conj cook-expected-state-dict))]
+                                   (swap! launched-pods-atom conj cook-expected-state-dict))]
       (cc/autoscale! compute-cluster "test-pool" task-requests))
-    (is (= 2 (count @launched-tasks-atom)))
-    (is (= job-uuid-2 (-> @launched-tasks-atom (nth 0) :launch-pod :pod controller/synthetic-pod-job-uuid)))
-    (is (= job-uuid-3 (-> @launched-tasks-atom (nth 1) :launch-pod :pod controller/synthetic-pod-job-uuid)))))
+    (is (= 2 (count @launched-pods-atom)))
+    (is (= job-uuid-2 (-> @launched-pods-atom (nth 0) :launch-pod :pod controller/synthetic-pod-job-uuid)))
+    (is (= job-uuid-3 (-> @launched-pods-atom (nth 1) :launch-pod :pod controller/synthetic-pod-job-uuid)))))

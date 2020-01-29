@@ -276,10 +276,11 @@
                                             :container {:docker {:image image}}
                                             :task-request {:resources (tools/job-ent->resources job)
                                                            :job {:job/pool {:pool/name synthetic-task-pool-name}}}
-                                            ; We need to label the synthetic tasks so that we
+                                            ; We need to label the synthetic pods so that we
                                             ; can opt them out of some of the normal plumbing,
                                             ; like mapping status back to a job instance
-                                            :labels {controller/cook-synthetic-pod-job-uuid-label (-> job :job/uuid str)}}))
+                                            :pod-labels {controller/cook-synthetic-pod-job-uuid-label
+                                                         (-> job :job/uuid str)}}))
                                     (take (- max-pods-outstanding num-synthetic-pods)))]
             (log/info "In" name "compute cluster, launching" (count task-metadata-seq) "synthetic pod(s) for"
                       (count new-task-requests) "new un-matched task(s) in" synthetic-task-pool-name "pool"
