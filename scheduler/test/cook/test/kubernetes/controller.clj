@@ -85,11 +85,10 @@
                        (:cook-expected-state (get @cook-expected-state-map name {}))))
         count-delete-pod (atom 0)]
     (with-redefs [controller/delete-pod  (fn [_ cook-expected-state-dict _] (swap! count-delete-pod inc) cook-expected-state-dict)
-                  controller/log-weird-state (fn [_ _ _ _] :illegal_return_value_should_be_unused)
                   controller/handle-pod-completed (fn [_ _] {:cook-expected-state :cook-expected-state/completed})
                   controller/write-status-to-datomic (fn [_] :illegal_return_value_should_be_unused)]
 
-      (is (= :cook-expected-state/completed (do-process :cook-expected-state/killed :pod/succeeded)))
+      (is (= :cook-expected-state/completed (do-process :cook-expected-state/completed :pod/succeeded)))
       (is (= 1 @count-delete-pod))
       ; Implicitly assume the watch triggers, moving us to next state in kubernetes:
       (is (nil? (do-process :cook-expected-state/completed :missing)))
