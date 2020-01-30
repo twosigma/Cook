@@ -679,11 +679,11 @@
   (if launch-pod
     (let [{:keys [pod]} launch-pod
           pod-name-from-pod (-> pod .getMetadata .getName)
-          (assert (= pod-name-from-pod pod-name)
-                  (str "Pod name from pod (" pod-name-from-pod ") "
-                       "does not match pod name argument (" pod-name ")"))
           namespace (-> pod .getMetadata .getNamespace)
           api (CoreV1Api. api-client)]
+      (assert (= pod-name-from-pod pod-name)
+              (str "Pod name from pod (" pod-name-from-pod ") "
+                   "does not match pod name argument (" pod-name ")"))
       (log/info "Launching pod with name" pod-name "in namespace" namespace ":" (Yaml/dump pod))
       (try
         (.createNamespacedPod api namespace pod nil nil nil)

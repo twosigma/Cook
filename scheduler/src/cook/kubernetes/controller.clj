@@ -95,7 +95,8 @@
                                      mesos-status))
 
 (defn handle-pod-submission-failed
-  "TODO(DPO)"
+  "Marks the corresponding job instance as failed in the database and
+  returns the `completed` cook expected state"
   [{:keys [name] :as compute-cluster} pod-name]
   (log/info "In compute cluster" name ", pod" pod-name "submission failed")
   (let [instance-id pod-name

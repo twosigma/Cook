@@ -3084,3 +3084,15 @@ class CookTest(util.CookTest):
             self.assertLessEqual(2, len(host_count), hosts)
         finally:
             util.kill_jobs(self.cook_url, job_uuids)
+
+    @unittest.skipUnless(util.using_kubernetes(), 'Test requires kubernetes')
+    def test_pod_submission_failed(self):
+        # Environment variable names in k8s cannot start with a digit
+        job_uuid, resp = util.submit_job(self.cook_url, env={'1': '2'})
+        self.assertEqual(resp.status_code, 201, resp.content)
+        job = util.wait_for_job_in_statuses(self.cook_url, job_uuid, ['completed'])
+        self.logger.info(json.dumps(job, indent=2))
+        self.assertEqual('failed', job['state'], job)
+        self.assertEqual(1, len(job['instances']))
+        self.assertEqual('failed', job['instances'][0]['status'], job)
+        self.assertEqual('Invalid task', job['instances'][0]['reason_string'], job)
