@@ -673,30 +673,32 @@
 
 (defn launch-pod
   "Given a V1Pod, launch it."
-  [api-client {:keys [launch-pod] :as cook-expected-state-dict}]
-  ;; TODO: make namespace configurable
+  [api-client {:keys [launch-pod]} pod-name]
   (if launch-pod
     (let [{:keys [pod]} launch-pod
-          pod-name (-> pod .getMetadata .getName)
+          pod-name-from-pod (-> pod .getMetadata .getName)
+          (assert (= pod-name-from-pod pod-name)
+                  (str "Pod name from pod (" pod-name-from-pod ") "
+                       "does not match pod name argument (" pod-name ")"))
           namespace (-> pod .getMetadata .getNamespace)
-          ;; TODO: IF there's an error, log it and move on. We'll try again later.
           api (CoreV1Api. api-client)]
       (log/info "Launching pod with name" pod-name "in namespace" namespace ":" (Yaml/dump pod))
       (try
-        (-> api
-            (.createNamespacedPod namespace pod nil nil nil))
+        (.createNamespacedPod api namespace pod nil nil nil)
+        true
         (catch ApiException e
           (let [code (.getCode e)
                 bad-pod-spec? (= code 422)]
-            (log/error e "Error submitting pod with name" pod-name "in namespace" namespace
-                       ", code:" code ", response body:" (.getResponseBody e))
+            (log/info e "Error submitting pod with name" pod-name "in namespace" namespace
+                      ", code:" code ", response body:" (.getResponseBody e))
             (not bad-pod-spec?)))))
     (do
-      ; Because of the complicated nature of task-metadata-seq, we can't easily run the V1Pod creation code for a
-      ; launching pod on a server restart. Thus, if we create an instance, store into datomic, but then the cook
-      ; scheduler fails --- before kubernetes creates a pod (either the message isn't sent, or there's a kubernetes
-      ; problem) --- we will be unable to create a new V1Pod and we can't retry this at the kubernetes level.
-      (log/warn "Unimplemented Operation to launch a pod because we do not reconstruct the V1Pod on startup.")
+      ; Because of the complicated nature of task-metadata-seq, we can't easily run the pod
+      ; creation code for launching a pod on a server restart. Thus, if we create an instance,
+      ; store into datomic, but then the Cook Scheduler exits --- before k8s creates a pod (either
+      ; the message isn't sent, or there's a k8s problem) --- we will be unable to create a new
+      ; pod and we can't retry this at the kubernetes level.
+      (log/info "Unable to launch pod because we do not reconstruct the pod on startup:" pod-name)
       false)))
 
 

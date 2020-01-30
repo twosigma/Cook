@@ -106,16 +106,10 @@
     {:cook-expected-state :cook-expected-state/completed}))
 
 (defn launch-pod
-  [compute-cluster api-client {:keys [launch-pod] :as cook-expected-state-dict}]
-  (if (api/launch-pod api-client cook-expected-state-dict)
-    ; TODO:
-    ; Should detect if we don't have a :launch-pod key and
-    ; force a mea culpa retry and :cook-expected-state/killed
-    ; so that we retry.
+  [compute-cluster api-client cook-expected-state-dict pod-name]
+  (if (api/launch-pod api-client cook-expected-state-dict pod-name)
     cook-expected-state-dict
-    (let [{:keys [pod]} launch-pod
-          pod-name (-> pod .getMetadata .getName)]
-      (handle-pod-submission-failed compute-cluster pod-name))))
+    (handle-pod-submission-failed compute-cluster pod-name)))
 
 (defn update-or-delete!
   "Given a map atom, key, and value, if the value is not nil, set the key to the value in the map.
@@ -359,7 +353,8 @@
 
                                       :cook-expected-state/starting
                                       (case pod-synthesized-state-modified
-                                        :missing (launch-pod compute-cluster api-client cook-expected-state-dict)
+                                        :missing (launch-pod compute-cluster api-client
+                                                             cook-expected-state-dict pod-name)
                                         ; TODO: May need to mark mea culpa retry
                                         :pod/failed (handle-pod-completed compute-cluster k8s-actual-state-dict) ; Finished or failed fast.
                                         :pod/running (handle-pod-started compute-cluster k8s-actual-state-dict)
