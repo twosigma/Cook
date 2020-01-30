@@ -317,7 +317,7 @@
                                       (case pod-synthesized-state-modified
                                         :missing
                                         ; There's a race where we can launch then kill, when the kill arrives after
-                                        ; the launch, but before the watch updates k8s-actual-state-dict.
+                                        ; the launch, but before the watch updates k8s-actual-state.
                                         ; (k8s-actual-state isn't the actual state, because of this watch lag)
                                         ; When that happens, we will have an actual state of :missing.
                                         ; If we did nothing, we'd log this as a weird state, then when the watch
@@ -331,9 +331,9 @@
                                               (kill-pod api-client :ignored pod))
                                           (do
                                             ; We treat a deleting pod in kubernetes the same as a missing pod when coming up with a synthesized state.
-                                            ; Thats good for (almost) all parts of the system. However,
+                                            ; That's good for (almost) all parts of the system. However,
                                             ; If it is legitimately missing, then something weird is going on. If it is
-                                            ; deleting, thats an expected state. So, lets be selective with our logging.
+                                            ; deleting, that's an expected state. So, lets be selective with our logging.
                                             (if (= (:state synthesized-state) :missing)
                                               (log/info "In compute cluster" name ", pod" pod-name
                                                         "was killed with cook expected state"
@@ -342,10 +342,10 @@
                                                         (prepare-k8s-actual-state-dict-for-logging k8s-actual-state-dict))
                                               (log-weird-state compute-cluster pod-name
                                                                cook-expected-state-dict k8s-actual-state-dict))
-                                              (handle-pod-killed compute-cluster pod-name)))
-                                          :pod/failed (handle-pod-completed compute-cluster k8s-actual-state-dict)
-                                          :pod/running (kill-pod api-client cook-expected-state-dict pod)
-                                          ; There was a race and it completed normally before being it was killed.
+                                            (handle-pod-killed compute-cluster pod-name)))
+                                        :pod/failed (handle-pod-completed compute-cluster k8s-actual-state-dict)
+                                        :pod/running (kill-pod api-client cook-expected-state-dict pod)
+                                        ; There was a race and it completed normally before being it was killed.
                                         :pod/succeeded (handle-pod-completed compute-cluster k8s-actual-state-dict)
                                         ; TODO: Should mark mea culpa retry
                                         :pod/unknown (handle-pod-completed-and-kill-pod-in-weird-state

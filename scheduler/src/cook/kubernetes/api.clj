@@ -590,7 +590,7 @@
                                     container-statuses))]
       (if (some-> pod .getMetadata .getDeletionTimestamp)
         ; If a pod has been ordered deleted, treat it as if it was gone, It's being async removed.
-        ; Note that we distinguish between this explicit :missing, and not being there at all, when processing
+        ; Note that we distinguish between this explicit :missing, and not being there at all when processing
         ; (:cook-expected-state/killed, :missing) in cook.kubernetes.controller/process
         {:state :missing :reason "Pod was explicitly deleted"}
         ; If pod isn't being async removed, then look at the containers inside it.
