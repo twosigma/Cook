@@ -326,12 +326,17 @@
                                         ; So, a better approach. If we detect a :missing,:killed, then we opportunistically
                                         ; try to kill the pod. This is why update-cook-expected-state saves :launch-pod,
                                         ; so its available here.
-                                        (if-let [pod (:launch-pod cook-expected-state-dict)]
+                                        (if-let [pod (some-> cook-expected-state-dict :launch-pod :pod)]
                                           ; This is interesting. This indicates that something deleted it behind our back!
                                           ; Weird. We always update datomic first. Could happen if someone manually removed stuff from kubernetes.
-                                          (do (log/info "In compute cluster" name ", opportunistically killing" name "because of potential race where kill arrives before the watch responds to the launch")
+                                          (do (log/info "In compute cluster" name ", opportunistically killing" pod-name "because of potential race where kill arrives before the watch responds to the launch")
                                               (kill-pod api-client :ignored pod))
                                           (do
+                                            (log/info "In compute cluster" name ", pod" pod-name
+                                                      "was killed with cook expected state"
+                                                      (prepare-cook-expected-state-dict-for-logging cook-expected-state-dict)
+                                                      "and k8s actual state"
+                                                      (prepare-k8s-actual-state-dict-for-logging k8s-actual-state-dict))
                                             (log-weird-state compute-cluster pod-name
                                                              cook-expected-state-dict k8s-actual-state-dict)
                                             (handle-pod-killed compute-cluster pod-name)))
