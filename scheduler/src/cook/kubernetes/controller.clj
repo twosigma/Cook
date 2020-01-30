@@ -41,10 +41,10 @@
   "Kill pod is the same as deleting a pod, we semantically distinguish the two operations.
   Delete is used for completed pods that we're done with.
   Kill is used for possibly running pods we want to kill so that they fail.
-  Returns the cook-expected-state-dict of nil."
-  [api-client pod]
+  Returns the cook-expected-state-dict passed in."
+  [api-client cook-expected-state-dict pod]
   (api/delete-pod api-client pod)
-  nil)
+  cook-expected-state-dict)
 
 (defn kill-pod
   "Kill pod is the same as deleting a pod, we semantically distinguish the two operations.
@@ -301,14 +301,14 @@
                                         :missing nil
                                         ; The writeback to datomic has occurred, so there's nothing to do except to delete the pod from kubernetes
                                         ; and remove it from our tracking.
-                                        :pod/failed (delete-pod api-client pod)
+                                        :pod/failed (delete-pod api-client cook-expected-state-dict pod)
                                         ; Who resurrected this pod? Where did it come from? Do we have two instances of cook?
                                         :pod/running (kill-pod-in-weird-state compute-cluster pod-name
                                                                               cook-expected-state-dict
                                                                               k8s-actual-state-dict)
                                         ; The writeback to datomic has occurred, so there's nothing to do except to delete the pod from kubernetes
                                         ; and remove it from our tracking.
-                                        :pod/succeeded (delete-pod api-client pod)
+                                        :pod/succeeded (delete-pod api-client cook-expected-state-dict pod)
                                         ; TODO: Should mark mea culpa retry
                                         :pod/unknown (handle-pod-completed-and-kill-pod-in-weird-state
                                                        compute-cluster pod-name k8s-actual-state-dict)
@@ -319,11 +319,23 @@
 
                                       :cook-expected-state/killed
                                       (case pod-synthesized-state-modified
-                                        ; This is interesting. This indicates that something deleted it behind our back!
-                                        ; Weird. We always update datomic first. Could happen if someone manually removed stuff from kubernetes.
+                                        ; TODO: This can also legitimately occur in a
+                                        ; normal occurrence if someone submits a kill request on a job that fails to launch.
                                         :missing (do
-                                                   (log-weird-state compute-cluster pod-name
-                                                                    cook-expected-state-dict k8s-actual-state-dict)
+                                                   ; TODO: We will review these and may downgrade this to an info later.
+                                                   (log/warn "In compute cluster" name ", pod" pod-name
+                                                             "in a weird cook expected state:"
+                                                             (prepare-cook-expected-state-dict-for-logging cook-expected-state-dict)
+                                                             "and k8s actual state"
+                                                             (prepare-k8s-actual-state-dict-for-logging k8s-actual-state-dict))
+                                                   ; TODO: Avoid a race. Say a launch occurs, followed by a kill, followed by a watch update.
+                                                   ; Before the watch update, we'll think the k8s-actual-state is missing.
+                                                   ; We see (:killed,:missing), with nothing to do, so we move to (;missing,:missing)
+                                                   ; Then the watch update occurs and we see (:missing,:starting), log a weird state,
+                                                   ; and kill it off. We want to avoid that path by doing an opportunistic kill here.
+                                                   ; That way we if we're seeing a stale :missing, we'll kill it anyways.
+                                                   ; We can't do that now because pod is nil, and kill-pod requires non-nil pod.
+
                                                    (handle-pod-killed compute-cluster pod-name))
                                         :pod/failed (handle-pod-completed compute-cluster k8s-actual-state-dict)
                                         :pod/running (kill-pod api-client cook-expected-state-dict pod)
@@ -375,22 +387,24 @@
                                         ; We shouldn't hit these unless we get a database rollback.
                                         :pod/failed (kill-pod-in-weird-state compute-cluster pod-name
                                                                              nil k8s-actual-state-dict)
-                                        ; This can only occur in testing when you're e.g., blowing away the database.
+                                        ; This can occur in testing when you're e.g., blowing away the database.
                                         ; It will go through :missing,:missing and then be deleted from the map.
                                         ; TODO: May be evidence of a bug where we process pod changes when we're starting up.
-                                        :pod/running (kill-pod-in-weird-state compute-cluster pod-name
-                                                                              nil k8s-actual-state-dict)
+                                        ; Currently occurs because kill's can race ahead of launches, we kill something that has
+                                        ; been added to datomic, but hasn't been submitted to k8s yet.
+                                        :pod/running (kill-pod api-client cook-expected-state-dict pod)
                                         ; We shouldn't hit these unless we get a database rollback.
                                         :pod/succeeded (kill-pod-in-weird-state compute-cluster pod-name
                                                                                 nil k8s-actual-state-dict)
                                         ; Unlike the other :pod/unknown states, no datomic state to update.
                                         :pod/unknown (kill-pod-in-weird-state compute-cluster pod-name
                                                                               nil k8s-actual-state-dict)
-                                        ; This can only occur in testing when you're e.g., blowing away the database.
+                                        ; This can occur in testing when you're e.g., blowing away the database.
                                         ; It will go through :missing,:missing and then be deleted from the map.
                                         ; TODO: May be evidence of a bug where we process pod changes when we're starting up.
-                                        :pod/waiting (kill-pod-in-weird-state compute-cluster pod-name
-                                                                              nil k8s-actual-state-dict)))]
+                                        ; Currently occurs because kill's can race ahead of launches, we kill something that has
+                                        ; been added to datomic, but hasn't been submitted to k8s yet.
+                                        :pod/waiting (kill-pod api-client cook-expected-state-dict pod)))]
       (when-not (cook-expected-state-equivalent? cook-expected-state-dict new-cook-expected-state-dict)
         (update-or-delete! cook-expected-state-map pod-name new-cook-expected-state-dict)
         (log/info "In compute cluster" name ", processing pod" pod-name "after cook-expected-state-change")

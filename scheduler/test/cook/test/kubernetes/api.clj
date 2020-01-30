@@ -63,8 +63,12 @@
                                      :user (System/getProperty "user.name")}
                            :container {:type :docker
                                        :docker {:image "alpine:latest"}}
-                           :task-request {:resources {:mem 512
-                                                      :cpus 1.0}}
+                           ;; assume this task requested {cpu:1.0,mem:512} for the job's container
+                           ;; plus an additional {cpu:0.1,mem:64} for a sidecar container
+                           :task-request {:resources {:mem 576
+                                                      :cpus 1.1}
+                                          :scalar-requests {"mem" 512
+                                                            "cpus" 1.0}}
                            :hostname "kubehost"}
             pod (api/task-metadata->pod "cook" "testing-cluster" task-metadata)]
         (is (= "my-task" (-> pod .getMetadata .getName)))
@@ -115,8 +119,12 @@
                                      :docker {:image "alpine:latest"
                                               :parameters [{:key "user"
                                                             :value "100:10"}]}}
-                         :task-request {:resources {:mem 512
-                                                    :cpus 1.0}}
+                         ;; assume this task requested {cpu:1.0,mem:512} for the job's container
+                         ;; plus an additional {cpu:0.1,mem:64} for a sidecar container
+                         :task-request {:resources {:mem 576
+                                                    :cpus 1.1}
+                                        :scalar-requests {"mem" 512
+                                                          "cpus" 1.0}}
                          :hostname "kubehost"}
           pod (api/task-metadata->pod "cook" "test-cluster" task-metadata)]
       (is (= 100 (-> pod .getSpec .getSecurityContext .getRunAsUser)))

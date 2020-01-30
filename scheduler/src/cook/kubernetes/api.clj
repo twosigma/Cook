@@ -439,8 +439,10 @@
 (defn ^V1Pod task-metadata->pod
   "Given a task-request and other data generate the kubernetes V1Pod to launch that task."
   [namespace compute-cluster-name {:keys [task-id command container task-request hostname pod-labels]}]
-  (let [{:keys [resources job]} task-request
-        {:keys [mem cpus]} resources
+  (let [{:keys [scalar-requests job]} task-request
+        ;; NOTE: The scheduler's adjust-job-resources-for-pool-fn may modify :resources,
+        ;; whereas :scalar-requests always contains the unmodified job resource values.
+        {:strs [mem cpus]} scalar-requests
         {:keys [docker volumes]} container
         {:keys [image parameters]} docker
         pod (V1Pod.)
