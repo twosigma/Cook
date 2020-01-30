@@ -327,22 +327,25 @@
                                         ; try to kill the pod. This is why update-cook-expected-state saves :launch-pod,
                                         ; so its available here.
                                         (if-let [pod (some-> cook-expected-state-dict :launch-pod :pod)]
-                                          ; This is interesting. This indicates that something deleted it behind our back!
-                                          ; Weird. We always update datomic first. Could happen if someone manually removed stuff from kubernetes.
                                           (do (log/info "In compute cluster" name ", opportunistically killing" pod-name "because of potential race where kill arrives before the watch responds to the launch")
                                               (kill-pod api-client :ignored pod))
                                           (do
-                                            (log/info "In compute cluster" name ", pod" pod-name
-                                                      "was killed with cook expected state"
-                                                      (prepare-cook-expected-state-dict-for-logging cook-expected-state-dict)
-                                                      "and k8s actual state"
-                                                      (prepare-k8s-actual-state-dict-for-logging k8s-actual-state-dict))
-                                            (log-weird-state compute-cluster pod-name
-                                                             cook-expected-state-dict k8s-actual-state-dict)
-                                            (handle-pod-killed compute-cluster pod-name)))
-                                        :pod/failed (handle-pod-completed compute-cluster k8s-actual-state-dict)
-                                        :pod/running (kill-pod api-client cook-expected-state-dict pod)
-                                        ; There was a race and it completed normally before being it was killed.
+                                            ; We treat a deleting pod in kubernetes the same as a missing pod when coming up with a synthesized state.
+                                            ; Thats good for (almost) all parts of the system. However,
+                                            ; If it is legitimately missing, then something weird is going on. If it is
+                                            ; deleting, thats an expected state. So, lets be selective with our logging.
+                                            (if (= (:state synthesized-state) :missing)
+                                              (log/info "In compute cluster" name ", pod" pod-name
+                                                        "was killed with cook expected state"
+                                                        (prepare-cook-expected-state-dict-for-logging cook-expected-state-dict)
+                                                        "and k8s actual state"
+                                                        (prepare-k8s-actual-state-dict-for-logging k8s-actual-state-dict))
+                                              (log-weird-state compute-cluster pod-name
+                                                               cook-expected-state-dict k8s-actual-state-dict))
+                                              (handle-pod-killed compute-cluster pod-name)))
+                                          :pod/failed (handle-pod-completed compute-cluster k8s-actual-state-dict)
+                                          :pod/running (kill-pod api-client cook-expected-state-dict pod)
+                                          ; There was a race and it completed normally before being it was killed.
                                         :pod/succeeded (handle-pod-completed compute-cluster k8s-actual-state-dict)
                                         ; TODO: Should mark mea culpa retry
                                         :pod/unknown (handle-pod-completed-and-kill-pod-in-weird-state
