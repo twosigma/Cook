@@ -673,6 +673,11 @@
         ;
         ))))
 
+(defn create-namespaced-pod
+  "Delegates to the k8s API .createNamespacedPod function"
+  [api namespace pod]
+  (.createNamespacedPod api namespace pod nil nil nil))
+
 (defn launch-pod
   "Attempts to submit the given pod to k8s. If pod submission fails, we inspect the
   response code to determine whether or not this is a bad pod spec (e.g. the
@@ -692,7 +697,7 @@
                    "does not match pod name argument (" pod-name ")"))
       (log/info "Launching pod with name" pod-name "in namespace" namespace ":" (Yaml/dump pod))
       (try
-        (.createNamespacedPod api namespace pod nil nil nil)
+        (create-namespaced-pod api namespace pod)
         true
         (catch ApiException e
           (let [code (.getCode e)
