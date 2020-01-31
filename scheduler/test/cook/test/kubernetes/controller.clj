@@ -86,6 +86,46 @@
     (is (nil? (do-process :missing :pod/unknown)))
     (is (= :missing (do-process :missing :pod/waiting)))))
 
+(deftest test-launch-kill-process
+  (let [pod-name "TestPodName-LKP"
+        cook-expected-state-map (atom {})
+        k8s-actual-state-map (atom {})
+        mock-cc {:api-client nil
+                 :cook-expected-state-map cook-expected-state-map
+                 :k8s-actual-state-map k8s-actual-state-map}
+        extract-cook-expected-state (fn []
+                                      (:cook-expected-state (get @cook-expected-state-map pod-name {})))
+        count-kill-pod (atom 0)]
+    (with-redefs [controller/kill-pod  (fn [_ cook-expected-state-dict _] (swap! count-kill-pod inc) cook-expected-state-dict)
+                  controller/launch-pod (fn [_ cook-expected-state-dict] cook-expected-state-dict)
+                  controller/log-weird-state (fn [_ _ _ _] :illegal_return_value_should_be_unused)
+                  controller/handle-pod-completed (fn [_ _] {:cook-expected-state :cook-expected-state/completed})
+                  ;controller/handle-pod-killed (fn [_ _] {:cook-expected-state :cook-expected-state/completed})
+                  controller/write-status-to-datomic (fn [_] :illegal_return_value_should_be_unused)
+                  controller/prepare-k8s-actual-state-dict-for-logging identity]
+
+      (controller/update-cook-expected-state mock-cc pod-name {:cook-expected-state :cook-expected-state/starting
+                                                               :launch-pod {:pod :the-launch-pod}})
+      ; controller/process is implicitly run by update-cook-expected-state.
+      (is (= :cook-expected-state/starting (extract-cook-expected-state)))
+
+      ;; Now the kill arrives.
+      (controller/update-cook-expected-state mock-cc pod-name {:cook-expected-state :cook-expected-state/killed})
+      ; controller/process is implicitly run by update-cook-expected-state.
+
+      ; The resulting expected state should be nil; we have opportunistically killed it.
+      (is (nil? (extract-cook-expected-state)))
+      (is (= 1 @count-kill-pod))
+
+      ; Now pretend the watch returns
+      (swap! k8s-actual-state-map assoc pod-name {:pod :a-watch-pod
+                                                  :synthesized-state {:state :pod/waiting}})
+      ; We're in :missing, :pod/starting. Should kill the pod and move to missing,missing.
+      (controller/process mock-cc pod-name)
+      (is (nil? (extract-cook-expected-state)))
+
+      (is (= 2 @count-kill-pod)))))
+
 (deftest test-completion-protocol
   (let [name "TestPodName"
         do-process (fn [cook-expected-state k8s-actual-state]
