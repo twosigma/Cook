@@ -574,7 +574,11 @@ class CookTest(util.CookTest):
                                          env={progress_file_env: 'progress.txt'},
                                          executor=job_executor_type, max_runtime=60000)
         self.assertEqual(201, resp.status_code, msg=resp.content)
-        util.wait_for_job_in_statuses(self.cook_url, job_uuid, ['running', 'completed'])
+        # We specifically need to wait for the job to complete here. If we only wait
+        # until Running, the job might start running, then the instance might fail with
+        # e.g. "Agent removed", and then we'd have to wait for it to get scheduled again
+        # but we'd already have moved past this wait, which can cause the test to flake.
+        util.wait_for_job_in_statuses(self.cook_url, job_uuid, ['completed'])
         instance = util.wait_for_sandbox_directory(self.cook_url, job_uuid)
         message = json.dumps(instance, sort_keys=True)
         self.assertIsNotNone(instance['output_url'], message)
