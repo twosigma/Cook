@@ -107,7 +107,7 @@
     {:cook-expected-state :cook-expected-state/completed}))
 
 (defn launch-pod
-  [compute-cluster api-client cook-expected-state-dict pod-name]
+  [{:keys [api-client] :as compute-cluster} cook-expected-state-dict pod-name]
   (if (api/launch-pod api-client cook-expected-state-dict pod-name)
     cook-expected-state-dict
     (handle-pod-submission-failed compute-cluster pod-name)))
@@ -378,7 +378,7 @@
 
                                       :cook-expected-state/starting
                                       (case pod-synthesized-state-modified
-                                        :missing (launch-pod compute-cluster api-client
+                                        :missing (launch-pod compute-cluster
                                                              cook-expected-state-dict pod-name)
                                         ; TODO: May need to mark mea culpa retry
                                         :pod/failed (handle-pod-completed compute-cluster k8s-actual-state-dict) ; Finished or failed fast.

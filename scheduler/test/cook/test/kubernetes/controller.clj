@@ -97,7 +97,7 @@
                                       (:cook-expected-state (get @cook-expected-state-map pod-name {})))
         count-kill-pod (atom 0)]
     (with-redefs [controller/kill-pod  (fn [_ cook-expected-state-dict _] (swap! count-kill-pod inc) cook-expected-state-dict)
-                  controller/launch-pod (fn [_ cook-expected-state-dict] cook-expected-state-dict)
+                  controller/launch-pod (fn [_ cook-expected-state-dict _] cook-expected-state-dict)
                   controller/handle-pod-completed (fn [_ _] {:cook-expected-state :cook-expected-state/completed})
                   controller/write-status-to-datomic (fn [_] :illegal_return_value_should_be_unused)
                   controller/prepare-k8s-actual-state-dict-for-logging identity]
