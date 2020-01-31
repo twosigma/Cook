@@ -241,9 +241,10 @@
     (-> node-name->pods (get node-name []) count)))
 
 (defn node-schedulable?
-  "Can we schedule on a node. For now, yes, unless there are other taints on it. TODO: Incorporate other node-health measures here.
-   If blacklist-labels is not nil, a node is unschedulable if it contains any label in that list."
-  [^V1Node node pod-count-capacity pods blacklist-labels]
+  "Can we schedule on a node. For now, yes, unless there are other taints on it or it contains any label in the
+  node-blocklist-labels list.
+  TODO: Incorporate other node-health measures here."
+  [^V1Node node pod-count-capacity pods node-blocklist-labels]
   (if (nil? node)
     false
     (let [taints-on-node (or (some-> node .getSpec .getTaints) [])
@@ -251,7 +252,7 @@
           node-name (some-> node .getMetadata .getName)
           pods-on-node (num-pods-on-node node-name pods)
           labels-on-node (or (some-> node .getMetadata .getLabels) {})
-          matching-blacklist-labels (some #(get labels-on-node %) blacklist-labels)]
+          matching-node-blocklist-labels (some #(get labels-on-node %) node-blocklist-labels)]
       (cond  (seq other-taints) (do
                                   (log/info "Filtering out" node-name "because it has taints" other-taints)
                                   false)
@@ -259,9 +260,9 @@
                                                     (log/info "Filtering out" node-name "because it is at or above its pod count capacity of"
                                                               pod-count-capacity "(" pods-on-node ")")
                                                     false)
-             (seq matching-blacklist-labels) (do
-                                               (log/info "Filtering out" node-name "because it has blacklist labels" matching-blacklist-labels)
-                                               false)
+             (seq matching-node-blocklist-labels) (do
+                                                    (log/info "Filtering out" node-name "because it has node blocklist labels" matching-node-blocklist-labels)
+                                                    false)
              :else true))))
 
 (defn get-capacity
