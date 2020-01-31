@@ -100,9 +100,9 @@
   [{:keys [name] :as compute-cluster} pod-name]
   (log/info "In compute cluster" name ", pod" pod-name "submission failed")
   (let [instance-id pod-name
-        status {:task-id {:value instance-id}
+        status {:reason :reason-task-invalid
                 :state :task-failed
-                :reason :reason-task-invalid}]
+                :task-id {:value instance-id}}]
     (write-status-to-datomic compute-cluster status)
     {:cook-expected-state :cook-expected-state/completed}))
 

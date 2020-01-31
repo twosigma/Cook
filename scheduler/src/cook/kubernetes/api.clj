@@ -674,7 +674,13 @@
         ))))
 
 (defn launch-pod
-  "Given a V1Pod, launch it."
+  "Attempts to submit the given pod to k8s. If pod submission fails, we inspect the
+  response code to determine whether or not this is a bad pod spec (e.g. the
+  namespace doesn't exist on the cluster or there is an invalid environment
+  variable name), or whether the failure is something less offensive (like a 409
+  conflict error because we've attempted to re-submit a pod that the watch has not
+  yet notified us exists). The function returns false if we should consider the
+  launch operation failed."
   [api-client {:keys [launch-pod]} pod-name]
   (if launch-pod
     (let [{:keys [pod]} launch-pod
