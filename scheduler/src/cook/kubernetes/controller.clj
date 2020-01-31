@@ -323,7 +323,7 @@
                                         ; If we did nothing, we'd log this as a weird state, then when the watch
                                         ; shows up, we'd see (:missing, :starting) and log that as a weird state too.
                                         ;
-                                        ; So, a better approach. If we detect a :missing,:killed, then we opportunistically
+                                        ; So, a better approach. If we detect a (:killed, :missing), then we opportunistically
                                         ; try to kill the pod. This is why update-cook-expected-state saves :launch-pod,
                                         ; so its available here.
                                         (if-let [pod (some-> cook-expected-state-dict :launch-pod :pod)]
@@ -333,7 +333,7 @@
                                             ; We treat a deleting pod in kubernetes the same as a missing pod when coming up with a synthesized state.
                                             ; That's good for (almost) all parts of the system. However,
                                             ; If it is legitimately missing, then something weird is going on. If it is
-                                            ; deleting, that's an expected state. So, lets be selective with our logging.
+                                            ; deleting, that's an expected state. So, let's be selective with our logging.
                                             (if (= (:state synthesized-state) :missing)
                                               (log/info "In compute cluster" name ", pod" pod-name
                                                         "was killed with cook expected state"
