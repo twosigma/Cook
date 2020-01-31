@@ -327,8 +327,10 @@
                                         ; try to kill the pod. This is why update-cook-expected-state saves :launch-pod,
                                         ; so its available here.
                                         (if-let [pod (some-> cook-expected-state-dict :launch-pod :pod)]
-                                          (do (log/info "In compute cluster" name ", opportunistically killing" pod-name "because of potential race where kill arrives before the watch responds to the launch")
-                                              (kill-pod api-client :ignored pod))
+                                          (do
+                                            (log/info "In compute cluster" name ", opportunistically killing" pod-name
+                                                      "because of potential race where kill arrives before the watch responds to the launch")
+                                            (kill-pod api-client :ignored pod))
                                           (do
                                             ; We treat a deleting pod in kubernetes the same as a missing pod when coming up with a synthesized state.
                                             ; That's good for (almost) all parts of the system. However,
