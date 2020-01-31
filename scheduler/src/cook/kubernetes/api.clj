@@ -673,33 +673,46 @@
         ;
         ))))
 
+(defn create-namespaced-pod
+  "Delegates to the k8s API .createNamespacedPod function"
+  [api namespace pod]
+  (.createNamespacedPod api namespace pod nil nil nil))
+
 (defn launch-pod
-  "Given a V1Pod, launch it."
-  [api-client {:keys [launch-pod] :as cook-expected-state-dict}]
-  ;; TODO: make namespace configurable
+  "Attempts to submit the given pod to k8s. If pod submission fails, we inspect the
+  response code to determine whether or not this is a bad pod spec (e.g. the
+  namespace doesn't exist on the cluster or there is an invalid environment
+  variable name), or whether the failure is something less offensive (like a 409
+  conflict error because we've attempted to re-submit a pod that the watch has not
+  yet notified us exists). The function returns false if we should consider the
+  launch operation failed."
+  [api-client {:keys [launch-pod]} pod-name]
   (if launch-pod
     (let [{:keys [pod]} launch-pod
-          pod-name (-> pod .getMetadata .getName)
+          pod-name-from-pod (-> pod .getMetadata .getName)
           namespace (-> pod .getMetadata .getNamespace)
-          ;; TODO: IF there's an error, log it and move on. We'll try again later.
           api (CoreV1Api. api-client)]
+      (assert (= pod-name-from-pod pod-name)
+              (str "Pod name from pod (" pod-name-from-pod ") "
+                   "does not match pod name argument (" pod-name ")"))
       (log/info "Launching pod with name" pod-name "in namespace" namespace ":" (Yaml/dump pod))
       (try
-        (-> api
-            (.createNamespacedPod namespace pod nil nil nil))
+        (create-namespaced-pod api namespace pod)
+        true
         (catch ApiException e
-          (log/error e "Error submitting pod with name" pod-name "in namespace" namespace ":" (.getResponseBody e)))))
-    ; Because of the complicated nature of task-metadata-seq, we can't easily run the V1Pod creation code for a
-    ; launching pod on a server restart. Thus, if we create an instance, store into datomic, but then the cook scheduler
-    ; fails --- before kubernetes creates a pod (either the message isn't sent, or there's a kubernetes problem) ---
-    ; we will be unable to create a new V1Pod and we can't retry this at the kubernetes level.
-    ;
-    ; Eventually, the stuck pod detector will recognize the stuck pod, kill the instance, and a cook-level retry will make
-    ; a new instance.
-    ;
-    ; Because the issue is relatively rare and auto-recoverable, we're going to punt on the task-metadata-seq refactor need
-    ; to handle this situation better.
-    (log/warn "Unimplemented Operation to launch a pod because we do not reconstruct the V1Pod on startup.")))
+          (let [code (.getCode e)
+                bad-pod-spec? (contains? #{404 422} code)]
+            (log/info e "Error submitting pod with name" pod-name "in namespace" namespace
+                      ", code:" code ", response body:" (.getResponseBody e))
+            (not bad-pod-spec?)))))
+    (do
+      ; Because of the complicated nature of task-metadata-seq, we can't easily run the pod
+      ; creation code for launching a pod on a server restart. Thus, if we create an instance,
+      ; store into datomic, but then the Cook Scheduler exits --- before k8s creates a pod (either
+      ; the message isn't sent, or there's a k8s problem) --- we will be unable to create a new
+      ; pod and we can't retry this at the kubernetes level.
+      (log/info "Unable to launch pod because we do not reconstruct the pod on startup:" pod-name)
+      false)))
 
 
 ;; TODO: Need the 'stuck pod scanner' to detect stuck states and move them into killed.

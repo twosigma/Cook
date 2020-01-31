@@ -87,11 +87,30 @@
   (log-weird-state compute-cluster pod-name cook-expected-state-dict k8s-actual-state-dict)
   (kill-pod api-client cook-expected-state-dict pod))
 
+(defn write-status-to-datomic
+  "Helper function for calling scheduler/write-status-to-datomic"
+  [compute-cluster mesos-status]
+  (scheduler/write-status-to-datomic datomic/conn
+                                     @(:pool->fenzo-atom compute-cluster)
+                                     mesos-status))
+
+(defn handle-pod-submission-failed
+  "Marks the corresponding job instance as failed in the database and
+  returns the `completed` cook expected state"
+  [{:keys [name] :as compute-cluster} pod-name]
+  (log/info "In compute cluster" name ", pod" pod-name "submission failed")
+  (let [instance-id pod-name
+        status {:reason :reason-task-invalid
+                :state :task-failed
+                :task-id {:value instance-id}}]
+    (write-status-to-datomic compute-cluster status)
+    {:cook-expected-state :cook-expected-state/completed}))
+
 (defn launch-pod
-  [api-client cook-expected-state-dict]
-  (api/launch-pod api-client cook-expected-state-dict)
-  ; TODO: Should detect if we don't have a :launch-pod key and force a mea culpa retry and :cook-expected-state/killed so that we retry.
-  cook-expected-state-dict)
+  [compute-cluster api-client cook-expected-state-dict pod-name]
+  (if (api/launch-pod api-client cook-expected-state-dict pod-name)
+    cook-expected-state-dict
+    (handle-pod-submission-failed compute-cluster pod-name)))
 
 (defn update-or-delete!
   "Given a map atom, key, and value, if the value is not nil, set the key to the value in the map.
@@ -124,13 +143,6 @@
         (log/warn "In compute cluster" name ", unable to determine failure reason for" instance-id
                   {:pod-status pod-status :container-status container-status})
         :unknown))))
-
-(defn write-status-to-datomic
-  "Helper function for calling scheduler/write-status-to-datomic"
-  [compute-cluster mesos-status]
-  (scheduler/write-status-to-datomic datomic/conn
-                                     @(:pool->fenzo-atom compute-cluster)
-                                     mesos-status))
 
 (defn- get-job-container-status
   "Extract the container status for the main cook job container (defined in api/cook-container-name-for-job).
@@ -210,7 +222,6 @@
     (write-status-to-datomic compute-cluster status)
     (sandbox/aggregate-exit-code (:exit-code-syncer-state compute-cluster) instance-id 143)
     {:cook-expected-state :cook-expected-state/completed}))
-
 
 (defn handle-pod-completed-and-kill-pod-in-weird-state
   "Writes the completed state to datomic and deletes the pod in kubernetes.
@@ -355,7 +366,8 @@
 
                                       :cook-expected-state/starting
                                       (case pod-synthesized-state-modified
-                                        :missing (launch-pod api-client cook-expected-state-dict)
+                                        :missing (launch-pod compute-cluster api-client
+                                                             cook-expected-state-dict pod-name)
                                         ; TODO: May need to mark mea culpa retry
                                         :pod/failed (handle-pod-completed compute-cluster k8s-actual-state-dict) ; Finished or failed fast.
                                         :pod/running (handle-pod-started compute-cluster k8s-actual-state-dict)
