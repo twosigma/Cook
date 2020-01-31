@@ -30,7 +30,7 @@
                        (:cook-expected-state (get @cook-expected-state-map name {}))))]
     (with-redefs [controller/delete-pod  (fn [_ cook-expected-state-dict _] cook-expected-state-dict)
                   controller/kill-pod  (fn [_ cook-expected-state-dict _] cook-expected-state-dict)
-                  controller/launch-pod (fn [_ cook-expected-state-dict] cook-expected-state-dict)
+                  controller/launch-pod (fn [_ _ cook-expected-state-dict _] cook-expected-state-dict)
                   controller/log-weird-state (fn [_ _ _ _] :illegal_return_value_should_be_unused)
                   controller/handle-pod-completed (fn [_ _] {:cook-expected-state :cook-expected-state/completed})
                   controller/handle-pod-started (fn [_ _] {:cook-expected-state :cook-expected-state/running})
