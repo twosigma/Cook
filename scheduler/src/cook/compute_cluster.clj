@@ -20,7 +20,8 @@
 
 ; There's an ugly race where the core cook scheduler can kill a job before it tries to launch it.
 ; What happens is:
-;   1. In launch-matched-tasks, we write instance objects to datomic for everything that matches, we have not submitted these to the compute cluster backends yet.
+;   1. In launch-matched-tasks, we write instance objects to datomic for everything that matches,
+;      we have not submitted these to the compute cluster backends yet.
 ;   2. A kill command arrives to kill the job. The job is put into completed.
 ;   3. The monitor-tx-queue happens to notice the job just completed. It sees the instance written in step 1.
 ;   4. We submit a kill-task to the compute cluster backend.
