@@ -475,7 +475,7 @@
       (log/info "Configured logging")
       (log/info "Cook" @util/version "( commit" @util/commit ")")
       (let [settings {:settings (config-settings literal-config)}]
-        (log/info "Interpreted settings")
+        (log/info "Interpreted settings:" settings)
         settings))
     (catch Throwable t
       (log/error t "Failed to initialize settings")

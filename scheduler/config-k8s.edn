@@ -35,16 +35,19 @@
  :hostname #config/env "COOK_HOSTNAME"
  :kubernetes {:disallowed-container-paths #{"/mnt/bad"}
               :disallowed-var-names #{"BADVAR"}
-              :init-container {:command ["/bin/sh" "-c" "echo sample init container running"]
-                               :image "byrnedo/alpine-curl:latest"}
-              :sandbox-fileserver {:command ["fileserver"]
-                                   :image "twosigma/cook-fileserver:latest"
-                                   :port 23906
-                                   :resource-requirements {:cpu-request 0.1
-                                                           :cpu-limit 0.1
-                                                           :memory-request 128.0
-                                                           :memory-limit 128.0}}
-              :custom-shell ["/bin/sh" "-c"]}
+              ;; The job resource adjustment causes config/default-pool to return nil. Until
+              ;; we fix that, we should run without the sidecar.
+              ;:init-container {:command ["/bin/sh" "-c" "echo sample init container running"]
+              ;                 :image "byrnedo/alpine-curl:latest"}
+              ;:sandbox-fileserver {:command ["fileserver"]
+              ;                     :image "twosigma/cook-fileserver:latest"
+              ;                     :port 23906
+              ;                     :resource-requirements {:cpu-request 0.1
+              ;                                             :cpu-limit 0.1
+              ;                                             :memory-request 128.0
+              ;                                             :memory-limit 128.0}}
+              ;:custom-shell ["/bin/sh" "-c"]
+              }
  :log {:file #config/env "COOK_LOG_FILE"
        :levels {"datomic.db" :warn
                 "datomic.kv-cluster" :warn
@@ -60,8 +63,11 @@
  :nrepl {:enabled? true
          :port #config/env-int "COOK_NREPL_PORT"}
  :pools {:default "k8s-gamma"
-         :job-resource-adjustment {:adjust-job-resources-fn cook.kubernetes.api/adjust-job-resources
-                                   :pool-regex "^k8s-.+"}}
+         ;; The job resource adjustment causes config/default-pool to return nil. Until
+         ;; we fix that, we should run without the sidecar.
+         ;:job-resource-adjustment {:adjust-job-resources-fn cook.kubernetes.api/adjust-job-resources
+         ;                          :pool-regex "^k8s-.+"}
+         }
  :port #config/env-int "COOK_PORT"
  :ssl {:port #config/env-int "COOK_SSL_PORT"
        :keystore-path #config/env "COOK_KEYSTORE_PATH"

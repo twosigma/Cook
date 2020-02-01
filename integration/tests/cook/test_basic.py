@@ -3096,3 +3096,13 @@ class CookTest(util.CookTest):
         self.assertEqual(1, len(job['instances']))
         self.assertEqual('failed', job['instances'][0]['status'], job)
         self.assertEqual('Invalid task', job['instances'][0]['reason_string'], job)
+
+    def test_submit_pool_unspecified(self):
+        job_uuid, resp = util.submit_job(self.cook_url, pool=util.POOL_UNSPECIFIED)
+        self.assertEqual(resp.status_code, 201, resp.content)
+        job = util.wait_for_job_in_statuses(self.cook_url, job_uuid, ['completed'])
+        self.logger.info(json.dumps(job, indent=2))
+        self.assertNotIn('pool', job, job)
+        self.assertEqual('success', job['state'], job)
+        self.assertLessEqual(1, len(job['instances']))
+        self.assertIn('success', [i['status'] for i in job['instances']], job)
