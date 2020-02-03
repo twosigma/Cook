@@ -21,6 +21,7 @@
 
 
 (def cook-pod-label "twosigma.com/cook-scheduler-job")
+(def cook-workdir-volume-name "cook-workdir-volume")
 
 (def ^ExecutorService kubernetes-executor (Executors/newCachedThreadPool))
 
@@ -303,10 +304,29 @@
   (Quantity. (BigDecimal/valueOf value)
              Quantity$Format/DECIMAL_SI))
 
+(defn- make-empty-volume
+  "Make a kubernetes volume"
+  [name]
+  (.. (V1VolumeBuilder.)
+      (withName name)
+      (withEmptyDir (V1EmptyDirVolumeSource.))
+      (build)))
+
+(defn- make-volume-mount
+  "Make a kubernetes volume mount"
+  [^V1Volume volume path read-only]
+  (when volume
+    (doto (V1VolumeMount.)
+      (.setName (.getName volume))
+      (.setMountPath path)
+      (.setReadOnly read-only))))
+
 (defn make-volumes
   "Converts a list of cook volumes to kubernetes volumes and volume mounts."
-  [cook-volumes]
+  [cook-volumes workdir]
   (let [{:keys [disallowed-container-paths]} (config/kubernetes)
+        workdir-volume (make-empty-volume cook-workdir-volume-name)
+        workdir-volume-mount-fn (partial make-volume-mount workdir-volume workdir)
         filtered-cook-volumes (filter (fn [{:keys [host-path container-path]}]
                                         (let [path (or container-path host-path)]
                                           (if disallowed-container-paths
@@ -338,8 +358,9 @@
                                (.setReadOnly volume-mount read-only)
                                volume-mount))
                            filtered-cook-volumes)]
-    {:volumes volumes
-     :volume-mounts volume-mounts}))
+    {:volumes (conj volumes workdir-volume)
+     :volume-mounts volume-mounts
+     :workdir-volume-mount-fn workdir-volume-mount-fn}))
 
 (defn toleration-for-pool
   "For a given cook pool name, create the right V1Toleration so that Cook will ignore that cook-pool taint."
@@ -411,23 +432,6 @@
       :mem (add-as-decimals mem memory-request))
     resources))
 
-(defn- make-volume
-  "Make a kubernetes volume"
-  [name]
-  (.. (V1VolumeBuilder.)
-      (withName name)
-      (withEmptyDir (V1EmptyDirVolumeSource.))
-      (build)))
-
-(defn- make-volume-mount
-  "Make a kubernetes volume mount"
-  [^V1Volume volume path read-only]
-  (when volume
-    (doto (V1VolumeMount.)
-      (.setName (.getName volume))
-      (.setMountPath path)
-      (.setReadOnly read-only))))
-
 (defn- make-env
   "Make a kubernetes environment variable"
   [key value]
@@ -458,17 +462,16 @@
         resources (V1ResourceRequirements.)
         labels {cook-pod-label compute-cluster-name}
         pool-name (some-> job :job/pool :pool/name)
-        {:keys [volumes volume-mounts]} (make-volumes volumes)
         security-context (make-security-context parameters (:user command))
         workdir (get-workdir parameters)
-        workdir-volume (make-volume "cook-workdir-volume")
-        workdir-volume-mount-fn (partial make-volume-mount workdir-volume workdir)
+        {:keys [volumes volume-mounts workdir-volume-mount-fn]} (make-volumes volumes workdir)
+
         {:keys [custom-shell init-container sandbox-fileserver]} (config/kubernetes)
         init-container-workdir "/mnt/init-container"
-        init-container-workdir-volume (when init-container (make-volume "cook-init-container-workdir-volume"))
+        init-container-workdir-volume (when init-container (make-empty-volume "cook-init-container-workdir-volume"))
         init-container-workdir-volume-mount-fn (partial make-volume-mount init-container-workdir-volume init-container-workdir)
         fileserver-workdir "/mnt/fileserver"
-        fileserver-workdir-volume (when sandbox-fileserver (make-volume "cook-fileserver-workdir-volume"))
+        fileserver-workdir-volume (when sandbox-fileserver (make-empty-volume "cook-fileserver-workdir-volume"))
         fileserver-workdir-volume-mount-fn (partial make-volume-mount fileserver-workdir-volume fileserver-workdir)
         workdir-env-vars [(make-env "HOME" workdir)
                           (make-env "MESOS_SANDBOX" workdir)
@@ -552,7 +555,7 @@
     (.setRestartPolicy pod-spec "Never")
     (when pool-name
       (.addTolerationsItem pod-spec (toleration-for-pool pool-name)))
-    (.setVolumes pod-spec (filterv some? (conj volumes workdir-volume init-container-workdir-volume fileserver-workdir-volume)))
+    (.setVolumes pod-spec (filterv some? (conj volumes init-container-workdir-volume fileserver-workdir-volume)))
     (.setSecurityContext pod-spec security-context)
 
     ; pod
