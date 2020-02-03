@@ -243,11 +243,7 @@
 
   (restore-offers [this pool-name offers])
 
-  (autoscaling? [_]
-    (and
-      (some-> synthetic-pods-config :image count pos?)
-      (some-> synthetic-pods-config :user count pos?)
-      (some-> synthetic-pods-config :max-pods-outstanding pos?)))
+  (autoscaling? [_] synthetic-pods-config)
 
   (autoscale! [this pool-name task-requests]
     (try
@@ -255,7 +251,7 @@
               (str "In " name " compute cluster, request to autoscale despite invalid / missing config"))
       (let [outstanding-synthetic-pods (->> @all-pods-atom
                                             (all-pods this)
-                                            (filter controller/synthetic-pod-job-uuid))
+                                            (filter controller/synthetic-pod->job-uuid))
             num-synthetic-pods (count outstanding-synthetic-pods)
             {:keys [image user command max-pods-outstanding] :or {command "exit 0"}} synthetic-pods-config]
         (log/info "In" name "compute cluster, there are" num-synthetic-pods
@@ -265,7 +261,7 @@
           (let [using-pools? (config/default-pool)
                 synthetic-task-pool-name (if using-pools? pool-name nil)
                 new-task-requests (remove (fn [{:keys [job]}]
-                                            (some #(= (-> job :job/uuid str) (controller/synthetic-pod-job-uuid %))
+                                            (some #(= (-> job :job/uuid str) (controller/synthetic-pod->job-uuid %))
                                                   outstanding-synthetic-pods))
                                           task-requests)
                 task-metadata-seq (->>
@@ -380,6 +376,17 @@
 
     api-client))
 
+(defn guard-invalid-synthetic-pods-config
+  "If the synthetic pods configuration section is present, validates it (throws if invalid)"
+  [compute-cluster-name synthetic-pods-config]
+  (when synthetic-pods-config
+    (when-not (and
+                (-> synthetic-pods-config :image count pos?)
+                (-> synthetic-pods-config :user count pos?)
+                (-> synthetic-pods-config :max-pods-outstanding pos?))
+      (throw (ex-info (str "In " compute-cluster-name " compute cluster, invalid synthetic pods config")
+                      synthetic-pods-config)))))
+
 (defn factory-fn
   [{:keys [compute-cluster-name
            ^String config-file
@@ -398,6 +405,7 @@
          max-pods-per-node 32}}
    {:keys [exit-code-syncer-state
            trigger-chans]}]
+  (guard-invalid-synthetic-pods-config compute-cluster-name synthetic-pods)
   (let [conn cook.datomic/conn
         cluster-entity-id (get-or-create-cluster-entity-id conn compute-cluster-name)
         api-client (make-api-client config-file base-path google-credentials bearer-token-refresh-seconds verifying-ssl)

@@ -144,10 +144,10 @@
                                          (.getName container-status))))
        first))
 
-(defn synthetic-pod-job-uuid
+(defn synthetic-pod->job-uuid
   "If the given pod is a synthetic pod for autoscaling, returns the job uuid
   that the pod corresponds to (stored in a pod label). Otherwise, returns nil."
-  [pod]
+  [^V1Pod pod]
   (some-> pod .getMetadata .getLabels (.get cook-synthetic-pod-job-uuid-label)))
 
 (defn handle-pod-completed
@@ -156,7 +156,7 @@
    Looks at the pod status, updates datomic (with success, failure, and possibly mea culpa),
    and return a new cook expected state of :cook-expected-state/completed."
   [compute-cluster {:keys [synthesized-state pod]}]
-  (when-not (synthetic-pod-job-uuid pod)
+  (when-not (synthetic-pod->job-uuid pod)
     (let [instance-id (-> pod .getMetadata .getName)
           pod-status (.getStatus pod)
           ^V1ContainerStatus job-container-status (get-job-container-status pod-status)
@@ -182,7 +182,7 @@
 (defn handle-pod-started
   "A pod has started. So now we need to update the status in datomic."
   [compute-cluster {:keys [pod]}]
-  (when-not (synthetic-pod-job-uuid pod)
+  (when-not (synthetic-pod->job-uuid pod)
     (let [instance-id (-> pod .getMetadata .getName)
           ; We leak mesos terminology here ('task') because of backward compatibility.
           status {:task-id {:value instance-id}
