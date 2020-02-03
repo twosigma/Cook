@@ -66,7 +66,7 @@
                                ;; The value for :default is eagerly evaluated, unlike for other clauses
                                :default :dropped
                                :priority true)
-                         :dropped (log/error "dropped item from tx-report-mult--maybe there's a slow consumer?")
+                         :dropped (log/info "dropped item from tx-report-mult--maybe there's a slow consumer?")
                          nil))
                      (catch InterruptedException _ nil)))
                  (catch Exception e
