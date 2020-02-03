@@ -1793,3 +1793,9 @@ def make_failed_job(cook_url, **kwargs):
         return job
 
     return wait_until(__make_failed_job, lambda _: True)
+
+
+@functools.lru_cache()
+def kubernetes_settings():
+    cook_url = retrieve_cook_url()
+    return settings(cook_url)['kubernetes']

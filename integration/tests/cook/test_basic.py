@@ -97,6 +97,8 @@ class CookTest(util.CookTest):
             util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
 
     @pytest.mark.travis_skip
+    @unittest.skipIf(util.using_kubernetes() and 'sandbox-filesªªerver' not in util.kubernetes_settings(),
+                     'This test requires the fileserver to be configured when running in Kubernetes')
     def test_output_url(self):
         job_executor_type = util.get_job_executor_type()
         job_uuid, resp = util.submit_job(self.cook_url,
