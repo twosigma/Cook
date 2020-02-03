@@ -646,14 +646,16 @@
   "Kill this kubernetes pod. This is the same as deleting it."
   [^ApiClient api-client ^V1Pod pod]
   (let [api (CoreV1Api. api-client)
-        ^V1DeleteOptions deleteOptions (-> (V1DeleteOptionsBuilder.) (.withPropagationPolicy "Background") .build)]
+        ^V1DeleteOptions deleteOptions (-> (V1DeleteOptionsBuilder.) (.withPropagationPolicy "Background") .build)
+        pod-name (-> pod .getMetadata .getName)
+        pod-namespace (-> pod .getMetadata .getNamespace)]
     ; TODO: This likes to noisily throw NotFound multiple times as we delete away from kubernetes.
     ; I suspect our predicate of k8s-actual-state-equivalent needs tweaking.
     (try
       (.deleteNamespacedPod
         api
-        (-> pod .getMetadata .getName)
-        (-> pod .getMetadata .getNamespace)
+        pod-name
+        pod-namespace
         deleteOptions
         nil ; pretty
         nil ; dryRun
@@ -662,7 +664,6 @@
         nil ; propagationPolicy
         )
       (catch JsonSyntaxException e
-        (log/info "Caught the https://github.com/kubernetes-client/java/issues/252 exception.")
         ; Silently gobble this exception.
         ;
         ; The java API can throw a a JsonSyntaxException parsing the kubernetes reply!
@@ -671,7 +672,13 @@
         ;
         ; They actually advise catching the exception and moving on!
         ;
-        ))))
+        (log/info "Caught the https://github.com/kubernetes-client/java/issues/252 exception."))
+      (catch ApiException e
+        (let [code (.getCode e)
+              already-deleted? (contains? #{404} code)]
+          (if already-deleted?
+            (log/info e "Pod" pod-name "was already deleted")
+            (throw e)))))))
 
 (defn create-namespaced-pod
   "Delegates to the k8s API .createNamespacedPod function"
