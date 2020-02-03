@@ -4,7 +4,7 @@
             [cook.kubernetes.api :as api]
             [cook.test.testutil :as tu]
             [datomic.api :as d])
-  (:import (io.kubernetes.client.models V1Container V1EnvVar V1Pod V1PodStatus V1ContainerStatus V1ContainerState V1ContainerStateWaiting V1VolumeMount V1Volume)))
+  (:import (io.kubernetes.client.models V1Container V1EnvVar V1Pod V1PodStatus V1ContainerStatus V1ContainerState V1ContainerStateWaiting V1VolumeMount V1Volume V1NodeSpec V1Node V1ObjectMeta V1Taint)))
 
 (deftest test-get-consumption
   (testing "correctly computes consumption for a single pod"
@@ -207,3 +207,49 @@
       (is (= {:state :pod/failed
               :reason "SomeSillyReason"}
              (api/pod->synthesized-pod-state pod))))))
+
+(deftest test-node-schedulable
+  ;; TODO: Need the 'stuck pod scanner' to detect stuck states and move them into killed.
+  (with-redefs [api/num-pods-on-node (constantly 1)]
+    (testing "Blocklist-labels"
+      (let [^V1Node node (V1Node.)
+            metadata (V1ObjectMeta.)
+            ^V1NodeSpec spec (V1NodeSpec.)]
+        (.setLabels metadata {"blocklist-1" "val-1"})
+        (.setName metadata "NodeName")
+        (.setNamespace metadata "cook")
+        (.setMetadata node metadata)
+        (.setSpec node spec)
+        (is (not (api/node-schedulable? node 30 nil ["blocklist-1"])))
+        (is (api/node-schedulable? node 30 nil ["blocklist-2"]))))
+    (testing "Pool Taint"
+      (let [^V1Node node (V1Node.)
+            metadata (V1ObjectMeta.)
+            ^V1NodeSpec spec (V1NodeSpec.)
+            ^V1Taint taint (V1Taint.)]
+        (.setKey taint "cook-pool")
+        (.setValue taint "a-pool")
+        (.setEffect taint "NoSchedule")
+        (.addTaintsItem spec taint)
+
+        (.setName metadata "NodeName")
+        (.setNamespace metadata "cook")
+        (.setMetadata node metadata)
+        (.setSpec node spec)
+        (is (api/node-schedulable? node 30 nil ["blocklist-1"]))))
+    (testing "Other Taint"
+      (let [^V1Node node (V1Node.)
+            metadata (V1ObjectMeta.)
+            ^V1NodeSpec spec (V1NodeSpec.)
+            ^V1Taint taint (V1Taint.)]
+        (.setKey taint "othertaint")
+        (.setValue taint "othertaintvalue")
+        (.setEffect taint "NoSchedule")
+        (.addTaintsItem spec taint)
+
+        (.setName metadata "NodeName")
+        (.setNamespace metadata "cook")
+        (.setMetadata node metadata)
+        (.setSpec node spec)
+        (is (not (api/node-schedulable? node 30 nil ["blocklist-1"])))))))
+
