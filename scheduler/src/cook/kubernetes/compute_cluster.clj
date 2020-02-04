@@ -5,6 +5,7 @@
             [clojure.core.async :as async]
             [clojure.set :as set]
             [clojure.tools.logging :as log]
+            [clojure.walk :as walk]
             [cook.compute-cluster :as cc]
             [cook.config :as config]
             [cook.kubernetes.api :as api]
@@ -260,23 +261,23 @@
           (log/info "In" name "compute cluster, cannot launch more synthetic pods")
           (let [using-pools? (config/default-pool)
                 synthetic-task-pool-name (if using-pools? pool-name nil)
-                new-task-requests (remove (fn [{:keys [job]}]
-                                            (some #(= (-> job :job/uuid str) (controller/synthetic-pod->job-uuid %))
+                new-task-requests (remove (fn [{{:keys [job/uuid]} :job}]
+                                            (some #(= (str uuid) (controller/synthetic-pod->job-uuid %))
                                                   outstanding-synthetic-pods))
                                           task-requests)
                 task-metadata-seq (->>
                                     new-task-requests
-                                    (map (fn [{:keys [job]}]
-                                           {:task-id (str (UUID/randomUUID))
+                                    (map (fn [{{:keys [job/uuid] :as job} :job}]
+                                           {:task-id (str "synthetic-" pool-name "-" (d/squuid))
                                             :command {:user user :value command}
                                             :container {:docker {:image image}}
-                                            :task-request {:resources (tools/job-ent->resources job)
+                                            :task-request {:scalar-requests (walk/stringify-keys
+                                                                              (tools/job-ent->resources job))
                                                            :job {:job/pool {:pool/name synthetic-task-pool-name}}}
                                             ; We need to label the synthetic pods so that we
                                             ; can opt them out of some of the normal plumbing,
                                             ; like mapping status back to a job instance
-                                            :pod-labels {controller/cook-synthetic-pod-job-uuid-label
-                                                         (-> job :job/uuid str)}}))
+                                            :pod-labels {controller/cook-synthetic-pod-job-uuid-label (str uuid)}}))
                                     (take (- max-pods-outstanding num-synthetic-pods)))]
             (log/info "In" name "compute cluster, launching" (count task-metadata-seq) "synthetic pod(s) for"
                       (count new-task-requests) "new un-matched task(s) in" synthetic-task-pool-name "pool"
