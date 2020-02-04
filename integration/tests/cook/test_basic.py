@@ -357,30 +357,34 @@ class CookTest(util.CookTest):
                                   'host-path': '/var/lib/mno',
                                   'container-path': '/var/lib/pqr'}]}
         job_uuid, resp = util.submit_job(self.cook_url, container=container)
-        self.assertEqual(resp.status_code, 201, msg=resp.content)
-        self.assertEqual(resp.content, str.encode(f"submitted jobs {job_uuid}"))
-        job = util.load_job(self.cook_url, job_uuid)
-        container = job['container']
-        docker = container['docker']
-        volumes = container['volumes']
-        self.assertEqual('DOCKER', container['type'])
-        self.assertEqual(docker_image, docker['image'])
-        self.assertEqual('HOST', docker['network'])
-        self.assertEqual(False, docker['force-pull-image'])
-        # the user parameter is added when missing
-        self.assertEqual(3, len(docker['parameters']))
-        self.assertTrue(any(p['key'] == 'user' for p in docker['parameters']))
-        self.assertEqual('FOO=bar', next(p['value'] for p in docker['parameters'] if p['key'] == 'env'))
-        self.assertEqual('/var/lib/pqr', next(p['value'] for p in docker['parameters'] if p['key'] == 'workdir'))
-        self.assertLessEqual(4, len(volumes))
-        self.assertIn({'host-path': '/var/lib/abc'}, volumes)
-        self.assertIn({'mode': 'RW',
-                       'host-path': '/var/lib/def'}, volumes)
-        self.assertIn({'host-path': '/var/lib/ghi',
-                       'container-path': '/var/lib/jkl'}, volumes)
-        self.assertIn({'mode': 'RW',
-                       'host-path': '/var/lib/mno',
-                       'container-path': '/var/lib/pqr'}, volumes)
+        try:
+            self.assertEqual(resp.status_code, 201, msg=resp.content)
+            self.assertEqual(resp.content, str.encode(f"submitted jobs {job_uuid}"))
+            job = util.load_job(self.cook_url, job_uuid)
+            container = job['container']
+            docker = container['docker']
+            volumes = container['volumes']
+            self.assertEqual('DOCKER', container['type'])
+            self.assertEqual(docker_image, docker['image'])
+            self.assertEqual('HOST', docker['network'])
+            self.assertEqual(False, docker['force-pull-image'])
+            # the user parameter is added when missing
+            self.assertEqual(3, len(docker['parameters']))
+            self.assertTrue(any(p['key'] == 'user' for p in docker['parameters']))
+            self.assertEqual('FOO=bar', next(p['value'] for p in docker['parameters'] if p['key'] == 'env'))
+            self.assertEqual('/var/lib/pqr', next(p['value'] for p in docker['parameters'] if p['key'] == 'workdir'))
+            self.assertLessEqual(4, len(volumes))
+            self.assertIn({'host-path': '/var/lib/abc'}, volumes)
+            self.assertIn({'mode': 'RW',
+                           'host-path': '/var/lib/def'}, volumes)
+            self.assertIn({'host-path': '/var/lib/ghi',
+                           'container-path': '/var/lib/jkl'}, volumes)
+            self.assertIn({'mode': 'RW',
+                           'host-path': '/var/lib/mno',
+                           'container-path': '/var/lib/pqr'}, volumes)
+            util.wait_for_job_in_statuses(self.cook_url, job_uuid, ['running', 'completed'])
+        finally:
+            util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
 
     def test_no_cook_executor_on_subsequent_instances(self):
         settings = util.settings(self.cook_url)

@@ -336,7 +336,7 @@
                                       cook-volumes)
         host-path->name (pc/map-from-keys (fn [_] (str "syn-" (d/squuid)))
                                           (map :host-path filtered-cook-volumes))
-        volumes (map (fn [{:keys [host-path]}]
+        name->volume (into {} (map (fn [{:keys [host-path]}]
                        (let [host-path-source (V1HostPathVolumeSource.)
                              volume-name (host-path->name host-path)]
                          ; host path
@@ -344,11 +344,13 @@
                          (.setType host-path-source "DirectoryOrCreate")
 
                          ; volume
-                         (-> (V1VolumeBuilder.)
+                         [volume-name
+                          (-> (V1VolumeBuilder.)
                              (.withName volume-name)
                              (.withHostPath host-path-source)
-                             (.build))))
+                             (.build))])))
                      filtered-cook-volumes)
+        volumes (vals name->volume)
         container-path->volume-mounts (into {} (map (fn [{:keys [container-path host-path mode]
                                                           :or {mode "RO"}}]
                                                       (let [container-path (or container-path host-path)
@@ -364,7 +366,7 @@
         ; So we either need to map the the apropriate volume or make a new one.
         already-have-workdir-volume (container-path->volume-mounts workdir)
         workdir-volume (if already-have-workdir-volume
-                         (container-path->volume-mounts workdir)
+                         (-> workdir container-path->volume-mounts .getName name->volume)
                          (make-empty-volume "cook-workdir-volume"))
         workdir-volume-mount-fn (partial make-volume-mount workdir-volume workdir)]
     {:volumes (if already-have-workdir-volume volumes
