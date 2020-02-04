@@ -924,7 +924,9 @@
                                                   (try
                                                     (cc/pending-offers compute-cluster pool-name)
                                                     (catch Throwable t
-                                                      (log/error t "Error getting pending offers for " compute-cluster)
+                                                      (log/error t "In" pool-name
+                                                                 "pool, error getting pending offers for"
+                                                                 (cc/compute-cluster-name compute-cluster))
                                                       (list))))
                                                 compute-clusters))
                       _ (doseq [offer offers
@@ -951,13 +953,13 @@
                   (if matched-head?
                     max-considerable
                     (let [new-considerable (max 1 (long (* scaleback num-considerable)))] ;; With max=1000 and 1 iter/sec, this will take 88 seconds to reach 1
-                      (log/info "Failed to match head, reducing number of considerable jobs" {:prev-considerable num-considerable
-                                                                                              :new-considerable new-considerable
-                                                                                              :pool pool-name})
-                      new-considerable)
-                    ))
+                      (log/info "In" pool-name "pool, failed to match head, reducing number of considerable jobs"
+                                {:prev-considerable num-considerable
+                                 :new-considerable new-considerable
+                                 :pool pool-name})
+                      new-considerable)))
                 (catch Exception e
-                  (log/error e "Offer handler encountered exception; continuing")
+                  (log/error e "In" pool-name "pool, offer handler encountered exception; continuing")
                   max-considerable))]
 
           (if (= next-considerable 1)
@@ -965,20 +967,20 @@
             (counters/clear! iterations-at-fenzo-floor))
 
           (if (>= (counters/value iterations-at-fenzo-floor) floor-iterations-before-warn)
-            (log/warn "Offer handler has been showing Fenzo only 1 job for "
-                      (counters/value iterations-at-fenzo-floor) " iterations."))
+            (log/warn "In" pool-name "pool, offer handler has been showing Fenzo only 1 job for"
+                      (counters/value iterations-at-fenzo-floor) "iterations"))
 
           (reset! fenzo-num-considerable-atom
                   (if (>= (counters/value iterations-at-fenzo-floor) floor-iterations-before-reset)
                     (do
-                      (log/error "FENZO CANNOT MATCH THE MOST IMPORTANT JOB."
-                                 "Fenzo has seen only 1 job for " (counters/value iterations-at-fenzo-floor)
+                      (log/error "In" pool-name "pool, FENZO CANNOT MATCH THE MOST IMPORTANT JOB."
+                                 "Fenzo has seen only 1 job for" (counters/value iterations-at-fenzo-floor)
                                  "iterations, and still hasn't matched it.  Cook is now giving up and will "
-                                 "now give Fenzo " max-considerable " jobs to look at.")
+                                 "now give Fenzo" max-considerable "jobs to look at.")
                       (meters/mark! fenzo-abandon-and-reset-meter)
                       max-considerable)
                     next-considerable))))
-      {:error-handler (fn [ex] (log/error ex "Error occurred in match"))})
+      {:error-handler (fn [ex] (log/error ex "In" pool-name "pool, error occurred in match"))})
     resources-atom))
 
 (defn reconcile-jobs

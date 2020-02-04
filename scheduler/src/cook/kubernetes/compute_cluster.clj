@@ -16,7 +16,7 @@
             [plumbing.core :as pc])
   (:import (com.google.auth.oauth2 GoogleCredentials)
            (io.kubernetes.client ApiClient)
-           (io.kubernetes.client.models V1Node)
+           (io.kubernetes.client.models V1Node V1Pod)
            (io.kubernetes.client.util Config)
            (java.io FileInputStream File)
            (java.util UUID)
@@ -32,40 +32,64 @@
                  "compute cluster, unable to get node from node name" node-name)
       false)))
 
+(defn num-waiting-synthetic-pods
+  "Given a compute cluster and a collection of pods, returns the number of
+  waiting synthetic pods in the cluster, or 0 if the cluster is not autoscaling"
+  [compute-cluster pods]
+  (if (cc/autoscaling? compute-cluster)
+    (let [synthetic-pods (filter controller/synthetic-pod->job-uuid pods)
+          waiting-synthetic-pods (filter (fn [^V1Pod pod]
+                                           (or (-> pod
+                                                   .getStatus
+                                                   nil?)
+                                               (-> pod
+                                                   api/pod->synthesized-pod-state
+                                                   :state
+                                                   (= :pod/waiting))))
+                                         synthetic-pods)]
+      (count waiting-synthetic-pods))
+    0))
 
 (defn generate-offers
   "Given a compute cluster and maps with node capacity and existing pods, return a map from pool to offers."
   [compute-cluster node-name->node pods]
-  (let [node-name->capacity (api/get-capacity node-name->node)
-        node-name->consumed (api/get-consumption pods)
-        node-name->available (pc/map-from-keys (fn [node-name]
-                                                 (merge-with -
-                                                             (node-name->capacity node-name)
-                                                             (node-name->consumed node-name)))
-                                               (keys node-name->capacity))
+  (let [num-waiting-synthetic-pods (num-waiting-synthetic-pods compute-cluster pods)
         compute-cluster-name (cc/compute-cluster-name compute-cluster)]
-    (log/info "In" compute-cluster-name "compute cluster, capacity:" node-name->capacity)
-    (log/info "In" compute-cluster-name "compute cluster, consumption:" node-name->consumed)
-    (log/info "In" compute-cluster-name "compute cluster, filtering out"
-              (->> node-name->available
-                   (remove #(schedulable-node-filter node-name->node % compute-cluster pods))
-                   count)
-              "nodes as not schedulable")
-    (->> node-name->available
-         (filter #(schedulable-node-filter node-name->node % compute-cluster pods))
-         (map (fn [[node-name available]]
-                {:id {:value (str (UUID/randomUUID))}
-                 :framework-id compute-cluster-name
-                 :slave-id {:value node-name}
-                 :hostname node-name
-                 :resources [{:name "mem" :type :value-scalar :scalar (max 0.0 (:mem available))}
-                             {:name "cpus" :type :value-scalar :scalar (max 0.0 (:cpus available))}
-                             {:name "disk" :type :value-scalar :scalar 0.0}]
-                 :attributes []
-                 :executor-ids []
-                 :compute-cluster compute-cluster
-                 :reject-after-match-attempt true}))
-         (group-by (fn [offer] (-> offer :hostname node-name->node api/get-node-pool))))))
+    (if (pos? num-waiting-synthetic-pods)
+      ; If there are waiting synthetic pods in the cluster, we should let them get scheduled before we
+      ; generate offers. Otherwise, we will be racing against the k8s scheduler scheduling those
+      ; synthetic pods, and we will often lose, resulting in Failed instances for no good reason.
+      (log/info "In" compute-cluster-name "compute cluster, skipping offer generation because there are"
+                num-waiting-synthetic-pods "waiting synthetic pod(s)")
+      (let [node-name->capacity (api/get-capacity node-name->node)
+            node-name->consumed (api/get-consumption pods)
+            node-name->available (pc/map-from-keys (fn [node-name]
+                                                     (merge-with -
+                                                                 (node-name->capacity node-name)
+                                                                 (node-name->consumed node-name)))
+                                                   (keys node-name->capacity))]
+        (log/info "In" compute-cluster-name "compute cluster, capacity:" node-name->capacity)
+        (log/info "In" compute-cluster-name "compute cluster, consumption:" node-name->consumed)
+        (log/info "In" compute-cluster-name "compute cluster, filtering out"
+                  (->> node-name->available
+                       (remove #(schedulable-node-filter node-name->node % compute-cluster pods))
+                       count)
+                  "nodes as not schedulable")
+        (->> node-name->available
+             (filter #(schedulable-node-filter node-name->node % compute-cluster pods))
+             (map (fn [[node-name available]]
+                    {:id {:value (str (UUID/randomUUID))}
+                     :framework-id compute-cluster-name
+                     :slave-id {:value node-name}
+                     :hostname node-name
+                     :resources [{:name "mem" :type :value-scalar :scalar (max 0.0 (:mem available))}
+                                 {:name "cpus" :type :value-scalar :scalar (max 0.0 (:cpus available))}
+                                 {:name "disk" :type :value-scalar :scalar 0.0}]
+                     :attributes []
+                     :executor-ids []
+                     :compute-cluster compute-cluster
+                     :reject-after-match-attempt true}))
+             (group-by (fn [offer] (-> offer :hostname node-name->node api/get-node-pool))))))))
 
 (defn taskids-to-scan
   "Determine all taskids to scan by unioning task id's from cook expected state and existing taskid maps. "
