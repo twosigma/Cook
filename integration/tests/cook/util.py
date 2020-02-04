@@ -44,6 +44,11 @@ EPHEMERAL_HOSTS_SKIP_REASON = 'If the cluster under test has ephemeral hosts, th
                               'the process responsible for launching hosts to launch hosts that ' \
                               'never get used'
 
+# We need a way for tests to explicitly specify
+# that they don't want to specify a pool for a
+# particular job submission
+POOL_UNSPECIFIED = 'COOK_TEST_POOL_UNSPECIFIED'
+
 
 def continuous_integration():
     """Returns true if the CONTINUOUS_INTEGRATION environment variable is set, as done by Travis-CI."""
@@ -543,7 +548,9 @@ def submit_jobs(cook_url, job_specs, clones=1, pool=None, headers=None, log_requ
     jobs = [full_spec(j) for j in job_specs]
     request_body = {'jobs': jobs}
     default_pool = default_submit_pool()
-    if pool:
+    if pool == POOL_UNSPECIFIED:
+        logger.info('Submitting with no explicit pool (via POOL_UNSPECIFIED)')
+    elif pool:
         logger.info(f'Submitting explicitly to the {pool} pool')
         request_body['pool'] = pool
     elif 'x-cook-pool' in headers:
@@ -1786,3 +1793,9 @@ def make_failed_job(cook_url, **kwargs):
         return job
 
     return wait_until(__make_failed_job, lambda _: True)
+
+
+@functools.lru_cache()
+def kubernetes_settings():
+    cook_url = retrieve_cook_url()
+    return settings(cook_url)['kubernetes']

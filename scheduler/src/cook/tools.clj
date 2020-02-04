@@ -91,6 +91,7 @@
        (map first)))
 
 (let [default-pool (config/default-pool)
+      _ (log/info "The config/default-pool is" default-pool)
       miss-fn (fn [{:keys [job/pool]}]
                 (or (:pool/name pool) default-pool "no-pool"))]
   (defn job->pool-name
