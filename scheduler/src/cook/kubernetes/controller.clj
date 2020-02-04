@@ -10,7 +10,7 @@
            (io.kubernetes.client.models V1Pod V1ContainerStatus V1PodStatus)
            (java.net URLEncoder)))
 
-(def cook-synthetic-pod-job-uuid-label "cook-synthetic-pod-for-job-uuid")
+(def cook-synthetic-pod-job-uuid-label "cook.synthetic-pod.for-job-uuid")
 
 ;
 ;   Wire up a store with the results.
@@ -205,21 +205,22 @@
 (defn record-sandbox-url
   "Record the sandbox file server URL in datomic."
   [{:keys [pod]}]
-  (let [task-id (-> pod .getMetadata .getName)
-        pod-ip (-> pod .getStatus .getPodIP)
-        {:keys [default-workdir sandbox-fileserver pod-ip->hostname-fn]} (config/kubernetes)
-        sandbox-fileserver-port (:port sandbox-fileserver)
-        sandbox-url (try
-                      (when (and sandbox-fileserver-port (not (str/blank? pod-ip)))
-                        (str "http://"
-                             (pod-ip->hostname-fn pod-ip)
-                             ":" sandbox-fileserver-port
-                             "/files/read.json?path="
-                             (URLEncoder/encode default-workdir "UTF-8")))
-                      (catch Exception e
-                        (log/debug e "Unable to retrieve directory path for" task-id)
-                        nil))]
-    (when sandbox-url (scheduler/write-sandbox-url-to-datomic datomic/conn task-id sandbox-url))))
+  (when-not (synthetic-pod->job-uuid pod)
+    (let [task-id (-> pod .getMetadata .getName)
+          pod-ip (-> pod .getStatus .getPodIP)
+          {:keys [default-workdir sandbox-fileserver pod-ip->hostname-fn]} (config/kubernetes)
+          sandbox-fileserver-port (:port sandbox-fileserver)
+          sandbox-url (try
+                        (when (and sandbox-fileserver-port (not (str/blank? pod-ip)))
+                          (str "http://"
+                               (pod-ip->hostname-fn pod-ip)
+                               ":" sandbox-fileserver-port
+                               "/files/read.json?path="
+                               (URLEncoder/encode default-workdir "UTF-8")))
+                        (catch Exception e
+                          (log/debug e "Unable to retrieve directory path for" task-id)
+                          nil))]
+      (when sandbox-url (scheduler/write-sandbox-url-to-datomic datomic/conn task-id sandbox-url)))))
 
 (defn handle-pod-killed
   "A pod was killed. So now we need to update the status in datomic and store the exit code."

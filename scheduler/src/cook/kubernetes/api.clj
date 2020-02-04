@@ -246,7 +246,10 @@
   (if (nil? node)
     false
     (let [taints-on-node (or (some-> node .getSpec .getTaints) [])
-          other-taints (remove #(= "cook-pool" (.getKey %)) taints-on-node)
+          other-taints (remove #(contains?
+                                  #{"cook-pool" "DeletionCandidateOfClusterAutoscaler"}
+                                  (.getKey %))
+                               taints-on-node)
           schedulable (zero? (count other-taints))
           node-name (some-> node .getMetadata .getName)
           pods-on-node (num-pods-on-node node-name pods)
@@ -349,6 +352,13 @@
     (.setValue toleration pool-name)
     (.setOperator toleration "Equal")
     (.setEffect toleration "NoSchedule")
+    toleration))
+
+(def toleration-for-deletion-candidate-of-autoscaler
+  (let [^V1Toleration toleration (V1Toleration.)]
+    (.setKey toleration "DeletionCandidateOfClusterAutoscaler")
+    (.setOperator toleration "Exists")
+    (.setEffect toleration "PreferNoSchedule")
     toleration))
 
 (defn param-env-vars
@@ -557,6 +567,8 @@
     ; the default pool is not being fed offers from Kubernetes.
     (when pool-name
       (.addTolerationsItem pod-spec (toleration-for-pool pool-name)))
+
+    (.addTolerationsItem pod-spec toleration-for-deletion-candidate-of-autoscaler)
     (.setVolumes pod-spec (filterv some? (conj volumes workdir-volume init-container-workdir-volume fileserver-workdir-volume)))
     (.setSecurityContext pod-spec security-context)
 
