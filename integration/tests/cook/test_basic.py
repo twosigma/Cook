@@ -332,7 +332,7 @@ class CookTest(util.CookTest):
 
             job = util.query_jobs(self.cook_url, True, uuid=[job_uuid]).json()[0]
             if util.should_expect_sandbox_directory_for_job(job):
-                instance = util.wait_for_sandbox_directory(self.cook_url, job_uuid)
+                instance = util.wait_for_output_url(self.cook_url, job_uuid)
                 message = json.dumps(instance, sort_keys=True)
                 self.assertIsNotNone(instance['output_url'], message)
                 self.assertIsNotNone(instance['sandbox_directory'], message)
@@ -559,7 +559,7 @@ class CookTest(util.CookTest):
         self.assertFalse(instance['reason_mea_culpa'], message)
 
         if util.should_expect_sandbox_directory(instance):
-            instance = util.wait_for_sandbox_directory(self.cook_url, job_uuid)
+            instance = util.wait_for_output_url(self.cook_url, job_uuid)
             message = json.dumps(instance, sort_keys=True)
             self.assertIsNotNone(instance['output_url'], message)
             self.assertIsNotNone(instance['sandbox_directory'], message)
@@ -571,7 +571,7 @@ class CookTest(util.CookTest):
         else:
             self.logger.info(f'Exit code not checked because cook executor was not used for {instance}')
 
-    @unittest.skipUnless(util.is_cook_executor_in_use(), 'Test assumes the Cook Executor is in use')
+    @unittest.skipUnless(util.is_job_progress_supported(), 'Test depends on progress reporting')
     def test_progress_update_submit(self):
         job_executor_type = util.get_job_executor_type()
         progress_file_env = util.retrieve_progress_file_env(self.cook_url)
@@ -582,24 +582,12 @@ class CookTest(util.CookTest):
                                          env={progress_file_env: 'progress.txt'},
                                          executor=job_executor_type, max_runtime=60000)
         self.assertEqual(201, resp.status_code, msg=resp.content)
-        # We specifically need to wait for the job to complete here. If we only wait
-        # until Running, the job might start running, then the instance might fail with
-        # e.g. "Agent removed", and then we'd have to wait for it to get scheduled again
-        # but we'd already have moved past this wait, which can cause the test to flake.
-        util.wait_for_job_in_statuses(self.cook_url, job_uuid, ['completed'])
-        instance = util.wait_for_sandbox_directory(self.cook_url, job_uuid)
+        instance = util.wait_for_instance_with_progress(self.cook_url, job_uuid, 25)
         message = json.dumps(instance, sort_keys=True)
-        self.assertIsNotNone(instance['output_url'], message)
-        self.assertIsNotNone(instance['sandbox_directory'], message)
-        self.assertEqual('cook', instance['executor'])
-        util.sleep_for_publish_interval(self.cook_url)
-        job = util.wait_until(lambda: util.load_job(self.cook_url, job_uuid),
-                              lambda j: util.job_progress_is_present(j, 25))
-        instance = next(i for i in job['instances'] if i['progress'] == 25)
         self.assertEqual(25, instance['progress'], message)
         self.assertEqual('Twenty-five percent in progress.txt', instance['progress_message'], message)
 
-    @unittest.skipUnless(util.is_cook_executor_in_use(), 'Test assumes the Cook Executor is in use')
+    @unittest.skipUnless(util.is_job_progress_supported(), 'Test depends on progress reporting')
     def test_configurable_progress_update_submit(self):
         job_executor_type = util.get_job_executor_type()
         command = 'echo "message: 25 Twenty-five percent" > progress_file.txt; sleep 1; exit 0'
@@ -612,20 +600,15 @@ class CookTest(util.CookTest):
         self.assertEqual('progress_file.txt', job['progress_output_file'], message)
         self.assertEqual('message: (\\d*) (.*)', job['progress_regex_string'], message)
         self.assertEqual('success', job['state'], message)
-
-        instance = util.wait_for_sandbox_directory(self.cook_url, job_uuid, 'success')
-        message = json.dumps(instance, sort_keys=True)
-        self.assertIsNotNone(instance['output_url'], message)
-        self.assertIsNotNone(instance['sandbox_directory'], message)
-        self.assertEqual('cook', instance['executor'])
-        util.sleep_for_publish_interval(self.cook_url)
         instance = util.wait_for_exit_code(self.cook_url, job_uuid)
         message = json.dumps(instance, sort_keys=True)
         self.assertEqual(0, instance['exit_code'], message)
+        instance = util.wait_for_instance_with_progress(self.cook_url, job_uuid, 25)
+        message = json.dumps(instance, sort_keys=True)
         self.assertEqual(25, instance['progress'], message)
         self.assertEqual('Twenty-five percent', instance['progress_message'], message)
 
-    @unittest.skipUnless(util.is_cook_executor_in_use(), 'Test assumes the Cook Executor is in use')
+    @unittest.skipUnless(util.is_job_progress_supported(), 'Test depends on progress reporting')
     def test_multiple_progress_updates_submit(self):
         job_executor_type = util.get_job_executor_type()
         line_1 = util.progress_line(self.cook_url, 25, 'Twenty-five percent', True)
@@ -637,27 +620,23 @@ class CookTest(util.CookTest):
                   f'{line_3} && sleep 2 && {line_4} && sleep 2 && ' \
                   f'{line_5} && sleep 2 && echo "Done" && sleep 10 && exit 0'
         job_uuid, resp = util.submit_job(self.cook_url, command=command, executor=job_executor_type,
-                                         max_runtime=60000, max_retries=5)
+                                         max_runtime=60000, max_retries=5,
+                                         progress_output_file='progress_file.txt')
         self.assertEqual(201, resp.status_code, msg=resp.content)
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
         message = json.dumps(job, sort_keys=True)
         self.assertEqual('success', job['state'], message)
-
-        instance = util.wait_for_sandbox_directory(self.cook_url, job_uuid, 'success')
-        message = json.dumps(instance, sort_keys=True)
-        self.assertIsNotNone(instance['output_url'], message)
-        self.assertIsNotNone(instance['sandbox_directory'], message)
-        self.assertEqual('cook', instance['executor'])
-        util.sleep_for_publish_interval(self.cook_url)
         instance = util.wait_for_exit_code(self.cook_url, job_uuid)
         message = json.dumps(instance, sort_keys=True)
         self.assertEqual(0, instance['exit_code'], message)
+        instance = util.wait_for_instance_with_progress(self.cook_url, job_uuid, 75)
+        message = json.dumps(instance, sort_keys=True)
         self.assertEqual(75, instance['progress'], message)
         self.assertEqual('Seventy-five percent', instance['progress_message'], message)
 
     @unittest.skipUnless(
-        util.is_cook_executor_in_use() and not (util.docker_tests_enabled() and util.continuous_integration()),
-        'Test assumes the Cook Executor is in use. Fails on travis with docker')
+        util.is_job_progress_supported() and not (util.docker_tests_enabled() and util.continuous_integration()),
+        'Test depends on progress reporting. Fails on Travis (Mesos) with Docker.')
     def test_multiple_progress_updates_submit_stdout(self):
         job_executor_type = util.get_job_executor_type()
         line_1 = util.progress_line(self.cook_url, 25, 'Twenty-five percent')
@@ -673,20 +652,15 @@ class CookTest(util.CookTest):
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
         message = json.dumps(job, sort_keys=True)
         self.assertEqual('success', job['state'], message)
-
-        instance = util.wait_for_sandbox_directory(self.cook_url, job_uuid, 'success')
-        message = json.dumps(instance, sort_keys=True)
-        self.assertIsNotNone(instance['output_url'], message)
-        self.assertIsNotNone(instance['sandbox_directory'], message)
-        self.assertEqual('cook', instance['executor'])
-        util.sleep_for_publish_interval(self.cook_url)
         instance = util.wait_for_exit_code(self.cook_url, job_uuid)
         message = json.dumps(instance, sort_keys=True)
         self.assertEqual(0, instance['exit_code'], message)
+        instance = util.wait_for_instance_with_progress(self.cook_url, job_uuid, 75)
+        message = json.dumps(instance, sort_keys=True)
         self.assertEqual(75, instance['progress'], message)
         self.assertEqual('Seventy-five percent', instance['progress_message'], message)
 
-    @unittest.skipUnless(util.is_cook_executor_in_use(), 'Test assumes the Cook Executor is in use')
+    @unittest.skipUnless(util.is_job_progress_supported(), 'Test depends on progress reporting')
     def test_multiple_rapid_progress_updates_submit(self):
         job_executor_type = util.get_job_executor_type()
 
@@ -695,21 +669,18 @@ class CookTest(util.CookTest):
 
         items = list(range(1, 100, 4)) + list(range(99, 40, -4)) + list(range(40, 81, 2))
         command = ''.join([f'{progress_string(a)} && ' for a in items]) + 'echo "Done" && sleep 10 && exit 0'
-        job_uuid, resp = util.submit_job(self.cook_url, command=command, executor=job_executor_type, max_runtime=60000)
+        job_uuid, resp = util.submit_job(self.cook_url, command=command,
+                                         executor=job_executor_type, max_runtime=60000,
+                                         progress_output_file='progress_file.txt')
         self.assertEqual(201, resp.status_code, msg=resp.content)
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
         message = json.dumps(job, sort_keys=True)
         self.assertEqual('success', job['state'], message)
-
-        instance = util.wait_for_sandbox_directory(self.cook_url, job_uuid, 'success')
-        message = json.dumps(instance, sort_keys=True)
-        self.assertIsNotNone(instance['output_url'], message)
-        self.assertIsNotNone(instance['sandbox_directory'], message)
-        self.assertEqual('cook', instance['executor'])
-        util.sleep_for_publish_interval(self.cook_url)
         instance = util.wait_for_exit_code(self.cook_url, job_uuid)
         message = json.dumps(instance, sort_keys=True)
         self.assertEqual(0, instance['exit_code'], message)
+        instance = util.wait_for_instance_with_progress(self.cook_url, job_uuid, 80)
+        message = json.dumps(instance, sort_keys=True)
         self.assertEqual(80, instance['progress'], message)
         self.assertEqual('80%', instance['progress_message'], message)
 
@@ -807,7 +778,7 @@ class CookTest(util.CookTest):
 
             # verify additional fields set when the cook executor is used
             if instance['executor'] == 'cook':
-                instance = util.wait_for_sandbox_directory(self.cook_url, job_uuid)
+                instance = util.wait_for_output_url(self.cook_url, job_uuid)
                 message = json.dumps(instance, sort_keys=True)
                 self.assertIsNotNone(instance['output_url'], message)
                 self.assertIsNotNone(instance['sandbox_directory'], message)

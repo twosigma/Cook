@@ -849,18 +849,20 @@ def wait_for_exit_code(cook_url, job_id, max_wait_ms=DEFAULT_TIMEOUT_MS):
     return job['instance-with-exit-code']
 
 
-def wait_for_sandbox_directory(cook_url, job_id, status=None):
+def wait_for_output_url(cook_url, job_id, status=None):
     """
-    Wait for the given job's sandbox_directory field to appear.
+    Wait for the given job's output_url field to appear.
     Returns an up-to-date job description object on success,
     and raises an exception if the max_wait_ms wait time is exceeded.
     """
     job_id = unpack_uuid(job_id)
 
+    max_wait_ms = 4 * 60 * 1000
     cook_settings = settings(cook_url)
-    cache_ttl_ms = cook_settings['agent-query-cache']['ttl-ms']
-    sync_interval_ms = cook_settings['sandbox-syncer']['sync-interval-ms']
-    max_wait_ms = min(4 * max(cache_ttl_ms, sync_interval_ms), 4 * 60 * 1000)
+    if 'sandbox-syncer' in cook_settings and not using_kubernetes():
+        cache_ttl_ms = cook_settings['agent-query-cache']['ttl-ms']
+        sync_interval_ms = cook_settings['sandbox-syncer']['sync-interval-ms']
+        max_wait_ms = min(max_wait_ms, 4 * max(cache_ttl_ms, sync_interval_ms))
 
     def query():
         response = query_jobs(cook_url, True, uuid=[job_id])
@@ -871,18 +873,18 @@ def wait_for_sandbox_directory(cook_url, job_id, status=None):
             logger.info(f"Job {job_id} has no instances.")
         else:
             for inst in job['instances']:
-                if 'sandbox_directory' not in inst:
-                    logger.info(f"Job {job_id} instance {inst['task_id']} has no sandbox directory.")
+                if 'output_url' not in inst:
+                    logger.info(f"Job {job_id} instance {inst['task_id']} has no output url.")
                 elif status is not None and inst['status'] != status:
                     logger.info(f"Job {job_id} instance {inst['task_id']} has status {inst['status']}")
                 else:
                     logger.info(
-                        f"Job {job_id} instance {inst['task_id']} has sandbox directory {inst['sandbox_directory']}.")
+                        f"Job {job_id} instance {inst['task_id']} has output url {inst['output_url']}.")
                     return True
 
     job = wait_until(query, predicate, max_wait_ms=max_wait_ms, wait_interval_ms=250)
     for inst in job['instances']:
-        if 'sandbox_directory' in inst and (status is None or inst['status'] == status):
+        if 'output_url' in inst and (status is None or inst['status'] == status):
             return inst
 
 
@@ -944,30 +946,6 @@ def get_mesos_slaves(mesos_url):
     Queries mesos slave state from /slaves
     """
     return session.get('%s/slaves' % mesos_url).json()
-
-
-def wait_for_output_url(cook_url, job_uuid):
-    """
-    Wait for the output_url for the given job to be populated,
-    retrying every 5 seconds for a maximum of 2 minutes.
-    The retries are necessary because currently the Mesos
-    agent sandbox directories are cached in Cook.
-    """
-
-    def query():
-        return load_job(cook_url, job_uuid, assert_response=False)
-
-    def predicate(job):
-        for instance in job['instances']:
-            if 'output_url' in instance:
-                return True
-            else:
-                logger.info(f"Job {job['uuid']} instance {instance['task_id']} had no output_url")
-
-    job = wait_until(query, predicate)
-    for instance in job['instances']:
-        if 'output_url' in instance:
-            return instance
 
 
 def list_jobs(cook_url, **kwargs):
@@ -1050,21 +1028,24 @@ def sleep_for_publish_interval(cook_url):
 
 
 def progress_line(cook_url, percent, message, write_to_file=False):
-    """Simple text replacement of regex string using expected patterns of (\d+), (?: )? and (.*)."""
+    """Simple text replacement of regex string using the default progress patterns."""
     cook_settings = settings(cook_url)
     regex_string = get_in(cook_settings, 'executor', 'default-progress-regex-string')
+    percent_pattern = r'([0-9]*\.?[0-9]+)'
+    message_pattern = r'($|\s+.*)'
 
     if not regex_string:
-        regex_string = 'progress:\s+([0-9]*\.?[0-9]+)($|\s+.*)'
-    if '([0-9]*\.?[0-9]+)' not in regex_string:
-        raise Exception(f'([0-9]*\.?[0-9]+) not present in {regex_string} regex string')
-    if '($|\s+.*)' not in regex_string:
-        raise Exception(f'($|\s+.*) not present in {regex_string} regex string')
+        regex_string = f'progress:\\s+{percent_pattern}{message_pattern}'
+
+    assert percent_pattern in regex_string
+    assert message_pattern in regex_string
+
     progress_string = (regex_string
-                       .replace('([0-9]*\.?[0-9]+)', str(percent))
-                       .replace('($|\s+.*)', str(f' {message}'))
-                       .replace('\s+', ' ')
+                       .replace(percent_pattern, f'{percent}')
+                       .replace(message_pattern, f' {message}')
+                       .replace('\\s+', ' ')
                        .replace('\\', ''))
+
     if write_to_file:
         progress_env = retrieve_progress_file_env(cook_url)
         return f'echo "{progress_string}" >> ${{{progress_env}}}'
@@ -1252,8 +1233,12 @@ def reset_limit(cook_url, limit_type, user, reason='testing', pool=None, headers
 def retrieve_progress_file_env(cook_url):
     """Retrieves the environment variable used by the cook executor to lookup the progress file."""
     cook_settings = settings(cook_url)
-    default_value = 'EXECUTOR_PROGRESS_OUTPUT_FILE'
-    return get_in(cook_settings, 'executor', 'environment', 'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV') or default_value
+    default_env_value = 'EXECUTOR_PROGRESS_OUTPUT_FILE'
+    if using_kubernetes():
+        return default_env_value
+    else:
+        env_value = get_in(cook_settings, 'executor', 'environment', 'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV')
+        return env_value or default_env_value
 
 
 def get_instance_stats(cook_url, **kwargs):
@@ -1335,6 +1320,14 @@ def is_cook_executor_in_use():
     else:
         logger.info('Using mesos executor (cook executor is not configured)')
         return False
+
+
+@functools.lru_cache()
+def is_job_progress_supported():
+    """Returns true if the current job execution environment supports progress reporting"""
+    # Mesos supports progress reporting only with Cook Executor,
+    # but our progress reporter sidecar is always enabled on Kubernetes.
+    return is_cook_executor_in_use() # or using_kubernetes()
 
 
 def slave_cpus(mesos_url, hostname):
@@ -1765,6 +1758,12 @@ def job_progress_is_present(job, progress):
     if not present:
         logger.info(f'Job does not yet have progress {progress}: {json.dumps(job, indent=2)}')
     return present
+
+
+def wait_for_instance_with_progress(cook_url, job_uuid, progress_percent):
+    job = wait_until(lambda: load_job(cook_url, job_uuid),
+                     lambda j: job_progress_is_present(j, progress_percent))
+    return next(i for i in job['instances'] if i['progress'] == progress_percent)
 
 
 def make_failed_job(cook_url, **kwargs):
