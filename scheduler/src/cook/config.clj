@@ -265,6 +265,17 @@
                           datomic-uri)
      :hostname (fnk [[:config {hostname (.getCanonicalHostName (InetAddress/getLocalHost))}]]
                  hostname)
+     :cluster-dns-name (fnk [[:config {cluster-dns-name nil}]]
+                         cluster-dns-name)
+     :scheduler-rest-url (fnk [cluster-dns-name hostname server-https-port server-port]
+                           (let [[scheme port] (if server-port
+                                                 ["http://" server-port]
+                                                 ["https://" server-https-port])
+                                 host (or cluster-dns-name
+                                          (do (log/warn "Missing cluster-dns-name in config."
+                                                        "REST callbacks will use the master's hostname.")
+                                              hostname))]
+                             (str scheme host ":" port)))
      :leader-reports-unhealthy (fnk [[:config {mesos nil}]]
                                  (when mesos
                                    (or (:leader-reports-unhealthy mesos) false)))
@@ -551,6 +562,12 @@
 (defn kubernetes
   []
   (get-in config [:settings :kubernetes]))
+
+(defn scheduler-rest-url
+  "Get the URL for REST calls back to the Cook Scheduler API.
+   Used by Kubernetes pod sidecar to send messages back to Cook."
+  []
+  (get-in config [:settings :scheduler-rest-url]))
 
 (defn task-constraints
   []

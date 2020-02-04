@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 #
-#  Copyright (c) 2019 Two Sigma Open Source, LLC
+#  Copyright (c) 2020 Two Sigma Open Source, LLC
 #
 #  Permission is hereby granted, free of charge, to any person obtaining a copy
 #  of this software and associated documentation files (the "Software"), to
@@ -22,17 +22,60 @@
 #
 """Module implementing the Mesos file access REST API to serve Cook job logs. """
 
+import logging
 import os
+import signal
+import sys
 from operator import itemgetter
 from pathlib import Path
 from stat import *
 
 import gunicorn.app.base
+import gunicorn.arbiter
 from flask import Flask, jsonify, request, send_file
 
 app = Flask(__name__)
 sandbox_directory = None
-max_read_length = int(os.getenv('COOK_FILE_SERVER_MAX_READ_LENGTH', '25000000'))
+max_read_length = int(os.environ.get('COOK_FILE_SERVER_MAX_READ_LENGTH', '25000000'))
+
+
+def start_file_server(args):
+    try:
+        port, workers = (args + [None] * 2)[0:2]
+        if port is None:
+            logging.error('Must provide file server port')
+            sys.exit(1)
+        cook_workdir = os.environ.get('COOK_WORKDIR')
+        if not cook_workdir:
+            logging.error('COOK_WORKDIR environment variable must be set')
+            sys.exit(1)
+        FileServerApplication(cook_workdir, {
+            'bind': f'0.0.0.0:{port}',
+            'workers': 4 if workers is None else workers,
+        }).run()
+
+    except Exception as e:
+        logging.exception(f'exception when running file server with {args}')
+        sys.exit(1)
+
+
+class FileServerArbiter(gunicorn.arbiter.Arbiter):
+    def __init__(self, app):
+        self.user_signal_handlers = {}
+        for sig in range(1, signal.NSIG):
+            user_handler = signal.getsignal(sig)
+            if callable(user_handler):
+                logging.info(f'Saving user handler for signal {sig}')
+                self.user_signal_handlers[sig] = user_handler
+        super().__init__(app)
+
+    def signal(self, sig, frame):
+        user_handler = self.user_signal_handlers.get(sig)
+        if user_handler is not None:
+            logging.info(f'Entering user handler for signal {sig}')
+            user_handler(sig, frame)
+            logging.info(f'Exiting user handler for signal {sig}')
+        super().signal(sig, frame)
 
 
 class FileServerApplication(gunicorn.app.base.BaseApplication):
@@ -51,6 +94,12 @@ class FileServerApplication(gunicorn.app.base.BaseApplication):
 
     def load(self):
         return self.application
+
+    def run(self):
+        try:
+            FileServerArbiter(self).run()
+        except RuntimeError as e:
+            logging.exception('Error while running cook.sidecar file server')
 
 
 def path_is_valid(path):
@@ -146,9 +195,25 @@ def browse():
     return jsonify(sorted(retval, key=itemgetter("path")))
 
 
-# This endpoint is not part of the Mesos API. It is used by the kubernetes readiness probe on the fileserver container.
-# Cook will see that the fileserver is ready to serve files and will set the output_url. If we expose the output_url
+# This endpoint is not part of the Mesos API. It is used by the kubernetes readiness probe on the sidecar container.
+# Cook will see that the sidecar is ready to serve files and will set the output_url. If we expose the output_url
 # before the server is ready, then someone might use it and get an error.
 @app.route('/readiness-probe')
 def readiness_probe():
     return ""
+
+
+def main():
+    log_level = os.environ.get('EXECUTOR_LOG_LEVEL', 'INFO')
+    logging.basicConfig(level = log_level,
+                        stream = sys.stderr,
+                        format='%(asctime)s %(levelname)s %(message)s')
+    if len(sys.argv) == 2 and sys.argv[1] == "--version":
+        print(__version__)
+    else:
+        logging.info(f'Starting cook.sidecar {__version__} file server')
+        start_file_server(sys.argv[1:])
+
+
+if __name__ == '__main__':
+    main()
