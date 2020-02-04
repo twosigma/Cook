@@ -330,7 +330,10 @@
                                           (do
                                             (log/info "In compute cluster" name ", opportunistically killing" pod-name
                                                       "because of potential race where kill arrives before the watch responds to the launch")
-                                            (kill-pod api-client :ignored pod))
+                                            (kill-pod api-client :ignored pod)
+                                            ; This is needed to make sure if we take the opportunistic kill, we make
+                                            ; sure to write the status to datomic. Recall we're in kubernetes state missing.
+                                            (handle-pod-killed compute-cluster pod-name))
                                           (do
                                             ; We treat a deleting pod in kubernetes the same as a missing pod when coming up with a synthesized state.
                                             ; That's good for (almost) all parts of the system. However,
