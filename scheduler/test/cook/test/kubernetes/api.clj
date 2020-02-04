@@ -133,7 +133,7 @@
 (deftest test-make-volumes
   (testing "defaults for minimal volume"
     (let [host-path "/tmp/$_*/foo"
-          {:keys [volumes volume-mounts]} (api/make-volumes [{:host-path host-path}])]
+          {:keys [volumes volume-mounts]} (api/make-volumes [{:host-path host-path}] host-path)]
       (is (= 1 (count volumes)))
       (is (= 1 (count volume-mounts)))
       (let [volume (first volumes)
@@ -145,12 +145,37 @@
         (is (= host-path (-> volume .getHostPath .getPath)))
         (is (.isReadOnly volume-mount))
         (is (= host-path (.getMountPath volume-mount))))))
+
+  (testing "validate with separate workdir"
+    (let [host-path "/tmp/main/foo"
+          {:keys [volumes volume-mounts]} (api/make-volumes [{:host-path host-path}] "/mnt/sandbox")]
+      (is (= 2 (count volumes)))
+      (is (= 2 (count volume-mounts)))
+
+      (let [volume (first volumes)
+            volume-mount (first volume-mounts)]
+        (is (= (.getName volume)
+               (.getName volume-mount)))
+        ; validation regex for k8s names
+        (is (= "cook-workdir-volume" (.getName volume)))
+        (is (not (.isReadOnly volume-mount)))
+        (is (= "/mnt/sandbox" (.getMountPath volume-mount))))
+      (let [volume (second volumes)
+            volume-mount (second volume-mounts)]
+        (is (= (.getName volume)
+               (.getName volume-mount)))
+        ; validation regex for k8s names
+        (is (re-matches #"[a-z0-9]([-a-z0-9]*[a-z0-9])?" (.getName volume)))
+        (is (= host-path (-> volume .getHostPath .getPath)))
+        (is (.isReadOnly volume-mount))
+        (is (= host-path (.getMountPath volume-mount))))))
+
   (testing "correct values for fully specified volume"
     (let [host-path "/tmp/foo"
           container-path "/mnt/foo"
           {:keys [volumes volume-mounts]} (api/make-volumes [{:host-path host-path
                                                               :container-path container-path
-                                                              :mode "RW"}])
+                                                              :mode "RW"}] container-path)
           [volume] volumes
           [volume-mount] volume-mounts]
       (is (= (.getName volume)
@@ -158,15 +183,15 @@
       (is (= host-path (-> volume .getHostPath .getPath)))
       (is (not (.isReadOnly volume-mount)))
       (is (= container-path (.getMountPath volume-mount)))))
+
   (testing "disallows configured volumes"
     (with-redefs [config/kubernetes (constantly {:disallowed-container-paths #{"/tmp/foo"}})]
-      (is (= {:volumes []
-              :volume-mounts []}
-             (api/make-volumes [{:host-path "/tmp/foo"}])))
-      (is (= {:volumes []
-              :volume-mounts []}
-             (api/make-volumes [{:container-path "/tmp/foo"
-                                 :host-path "/mnt/foo"}]))))))
+      (let [{:keys [volumes volume-mounts]} (api/make-volumes [{:host-path "/tmp/foo"}] "/tmp/unused")]
+        (is (= 1 (count volumes)))
+        (is (= 1 (count volume-mounts))))
+      (let [{:keys [volumes volume-mounts]} (api/make-volumes [{:container-path "/tmp/foo"}] "/tmp/unused")]
+        (is (= 1 (count volumes)))
+        (is (= 1 (count volume-mounts)))))))
 
 
 (deftest test-pod->synthesized-pod-state

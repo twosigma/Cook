@@ -337,29 +337,40 @@
         host-path->name (pc/map-from-keys (fn [_] (str "syn-" (d/squuid)))
                                           (map :host-path filtered-cook-volumes))
         volumes (map (fn [{:keys [host-path]}]
-                       (let [host-path-source (V1HostPathVolumeSource.)]
+                       (let [host-path-source (V1HostPathVolumeSource.)
+                             volume-name (host-path->name host-path)]
                          ; host path
                          (.setPath host-path-source host-path)
                          (.setType host-path-source "DirectoryOrCreate")
 
                          ; volume
                          (-> (V1VolumeBuilder.)
-                             (.withName (host-path->name host-path))
+                             (.withName volume-name)
                              (.withHostPath host-path-source)
                              (.build))))
                      filtered-cook-volumes)
-        volume-mounts (map (fn [{:keys [container-path host-path mode]
-                                 :or {mode "RO"}}]
-                             (let [container-path (or container-path host-path)
-                                   volume-mount (V1VolumeMount.)
-                                   read-only (not (= mode "RW"))]
-                               (.setName volume-mount (host-path->name host-path))
-                               (.setMountPath volume-mount container-path)
-                               (.setReadOnly volume-mount read-only)
-                               volume-mount))
-                           filtered-cook-volumes)]
-    {:volumes (conj volumes workdir-volume)
-     :volume-mounts volume-mounts
+        container-path->volume-mounts (into {} (map (fn [{:keys [container-path host-path mode]
+                                                          :or {mode "RO"}}]
+                                                      (let [container-path (or container-path host-path)
+                                                            volume-mount (V1VolumeMount.)
+                                                            read-only (not (= mode "RW"))]
+                                                        (.setName volume-mount (host-path->name host-path))
+                                                        (.setMountPath volume-mount container-path)
+                                                        (.setReadOnly volume-mount read-only)
+                                                        [container-path volume-mount])))
+                                            filtered-cook-volumes)
+        volume-mounts (vals container-path->volume-mounts)
+        ; Workdir volume can overlap the main docker volumes.
+        ; So we either need to map the the apropriate volume or make a new one.
+        already-have-workdir-volume (container-path->volume-mounts workdir)
+        workdir-volume (if already-have-workdir-volume
+                         (container-path->volume-mounts workdir)
+                         (make-empty-volume "cook-workdir-volume"))
+        workdir-volume-mount-fn (partial make-volume-mount workdir-volume workdir)]
+    {:volumes (if already-have-workdir-volume volumes
+                                              (conj volumes workdir-volume))
+     :volume-mounts (if already-have-workdir-volume volume-mounts
+                                                    (conj volume-mounts (workdir-volume-mount-fn false)))
      :workdir-volume-mount-fn workdir-volume-mount-fn}))
 
 (defn toleration-for-pool
@@ -500,7 +511,6 @@
     (.putLimitsItem resources "cpu" (double->quantity cpus))
     (.setResources container resources)
     (.setVolumeMounts container (filterv some? (conj volume-mounts
-                                                     (workdir-volume-mount-fn false)
                                                      (init-container-workdir-volume-mount-fn true)
                                                      (fileserver-workdir-volume-mount-fn true))))
     (.setWorkingDir container workdir)
