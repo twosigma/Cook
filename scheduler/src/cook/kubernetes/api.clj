@@ -650,17 +650,19 @@
     ; TODO: This likes to noisily throw NotFound multiple times as we delete away from kubernetes.
     ; I suspect our predicate of k8s-actual-state-equivalent needs tweaking.
     (try
-      (.deleteNamespacedPod
-        api
-        (-> pod .getMetadata .getName)
-        (-> pod .getMetadata .getNamespace)
-        deleteOptions
-        nil ; pretty
-        nil ; dryRun
-        nil ; gracePeriodSeconds
-        nil ; oprphanDependents
-        nil ; propagationPolicy
-        )
+      (log/warn "~~~~~ DPO and Rodrigo experiment: normally this would be a call to deleteNamespacedPod for"
+                (-> pod .getMetadata .getName))
+      ;(.deleteNamespacedPod
+      ;  api
+      ;  (-> pod .getMetadata .getName)
+      ;  (-> pod .getMetadata .getNamespace)
+      ;  deleteOptions
+      ;  nil ; pretty
+      ;  nil ; dryRun
+      ;  nil ; gracePeriodSeconds
+      ;  nil ; oprphanDependents
+      ;  nil ; propagationPolicy
+      ;  )
       (catch JsonSyntaxException e
         (log/info "Caught the https://github.com/kubernetes-client/java/issues/252 exception.")
         ; Silently gobble this exception.
