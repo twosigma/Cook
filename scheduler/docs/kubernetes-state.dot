@@ -4,7 +4,8 @@
 digraph g {
         Starting -> Starting [label=":waiting\n:missing"]
         Starting -> Running [label=":running"]
-        Starting -> Completed [label=":succeeded\n:failed\n:unknown"]
+        // (Starting, missing) -> Completed happens for some failed pod submissions
+        Starting -> Completed [label=":succeeded\n:failed\n:unknown\n:missing"]
 
         Running -> Running [label=":running"]
         Running -> Completed [label=":waiting\n:succeeded\n:failed\n:unknown\n:missing"]

@@ -62,6 +62,7 @@ class MultiUserCookTest(util.CookTest):
             with user1:
                 util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
 
+    @unittest.skipIf(util.using_kubernetes(), 'This test is not yet supported on kubernetes')
     def test_multi_user_usage(self):
         users = self.user_factory.new_users(4)
         job_resources = {'cpus': 0.1, 'mem': 123}
@@ -492,6 +493,7 @@ class MultiUserCookTest(util.CookTest):
             self.trigger_preemption(pool=pool['name'])
 
     @unittest.skipUnless(util.are_pools_enabled(), "Requires pools")
+    @unittest.skipIf(util.using_kubernetes(), 'This test is not yet supported on kubernetes')
     def test_user_total_usage(self):
         user = self.user_factory.new_user()
         with user:
