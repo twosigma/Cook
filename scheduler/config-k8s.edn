@@ -35,6 +35,7 @@
  :hostname #config/env "COOK_HOSTNAME"
  :kubernetes {:disallowed-container-paths #{"/mnt/bad"}
               :disallowed-var-names #{"BADVAR"}
+              ;; TODO:
               ;; The job resource adjustment causes config/default-pool to return nil. Until
               ;; we fix that, we should run without the sidecar.
               ;:init-container {:command ["/bin/sh" "-c" "echo sample init container running"]
@@ -63,6 +64,7 @@
  :nrepl {:enabled? true
          :port #config/env-int "COOK_NREPL_PORT"}
  :pools {:default "k8s-gamma"
+         ;; TODO:
          ;; The job resource adjustment causes config/default-pool to return nil. Until
          ;; we fix that, we should run without the sidecar.
          ;:job-resource-adjustment {:adjust-job-resources-fn cook.kubernetes.api/adjust-job-resources
