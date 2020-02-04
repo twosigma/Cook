@@ -672,7 +672,7 @@
         ;
         ; They actually advise catching the exception and moving on!
         ;
-        (log/info "Caught the https://github.com/kubernetes-client/java/issues/252 exception."))
+        (log/info "Caught the https://github.com/kubernetes-client/java/issues/252 exception deleting" pod-name))
       (catch ApiException e
         (let [code (.getCode e)
               already-deleted? (contains? #{404} code)]
