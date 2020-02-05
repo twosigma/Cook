@@ -131,10 +131,6 @@
       (throw (IllegalArgumentException.
                (str config-string " is not a VMTaskFitnessCalculator"))))))
 
-(defn- resolve-optional-function
-  [function-symbol default-function]
-  (if function-symbol (util/lazy-load-var function-symbol) default-function))
-
 (def config-settings
   "Parses the settings out of a config file"
   (graph/eager-compile
@@ -401,8 +397,7 @@
                 (:job-resource-adjustment pools)
                 (update :job-resource-adjustment
                         #(-> %
-                           (update :pool-regex re-pattern)
-                           (update :adjust-job-resources-fn resolve-optional-function identity)))))
+                           (update :pool-regex re-pattern)))))
 
      :api-only? (fnk [[:config {api-only? false}]]
                   api-only?)
@@ -440,7 +435,7 @@
      :kubernetes (fnk [[:config {kubernetes {}}]]
                    (merge {:default-workdir "/mnt/sandbox"
                            :reconnect-delay-ms 60000}
-                          (update kubernetes :pod-ip->hostname-fn resolve-optional-function identity)))}))
+                          kubernetes))}))
 
 (defn read-config
   "Given a config file path, reads the config and returns the map"
