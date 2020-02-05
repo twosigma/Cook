@@ -4,6 +4,7 @@
             [cook.kubernetes.api :as api]
             [cook.mesos.sandbox :as sandbox]
             [cook.scheduler.scheduler :as scheduler]
+            [cook.util :as util]
             [clojure.string :as str]
             [clojure.tools.logging :as log])
   (:import (clojure.lang IAtom)
@@ -192,6 +193,11 @@
     (write-status-to-datomic compute-cluster status)
     {:cook-expected-state :cook-expected-state/running}))
 
+(def get-pod-ip->hostname-fn
+  (memoize
+    (fn [pod-ip->hostname-fn]
+      (if pod-ip->hostname-fn (util/lazy-load-var pod-ip->hostname-fn) identity))))
+
 (defn record-sandbox-url
   "Record the sandbox file server URL in datomic."
   [{:keys [pod]}]
@@ -202,7 +208,7 @@
         sandbox-url (try
                       (when (and sandbox-fileserver-port (not (str/blank? pod-ip)))
                         (str "http://"
-                             (pod-ip->hostname-fn pod-ip)
+                             ((get-pod-ip->hostname-fn pod-ip->hostname-fn) pod-ip)
                              ":" sandbox-fileserver-port
                              "/files/read.json?path="
                              (URLEncoder/encode default-workdir "UTF-8")))
