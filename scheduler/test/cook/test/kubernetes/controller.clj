@@ -21,31 +21,30 @@
                                                           pod-status container-status))))))
 (deftest test-process
   (let [name "TestPodName"
+        reason (atom nil)
         do-process (fn [cook-expected-state k8s-actual-state & {:keys [create-namespaced-pod-fn]
                                                                 :or {create-namespaced-pod-fn (constantly true)}}]
+                     (reset! reason nil)
                      (with-redefs [controller/delete-pod (fn [_ cook-expected-state-dict _]
                                                            cook-expected-state-dict)
                                    controller/kill-pod (fn [_ cook-expected-state-dict _]
                                                          cook-expected-state-dict)
-                                   controller/log-weird-state (fn [_ _ _ _]
-                                                                :illegal_return_value_should_be_unused)
-                                   controller/handle-pod-completed (fn [_ _]
-                                                                     {:cook-expected-state
-                                                                      :cook-expected-state/completed})
                                    controller/handle-pod-started (fn [_ _]
                                                                    {:cook-expected-state :cook-expected-state/running})
                                    controller/handle-pod-killed (fn [_ _]
                                                                   {:cook-expected-state :cook-expected-state/completed})
-                                   controller/write-status-to-datomic (fn [_ _]
-                                                                        :illegal_return_value_should_be_unused)
+                                   controller/write-status-to-datomic (fn [_ status]
+                                                                        (reset! reason (:reason status)))
                                    api/create-namespaced-pod create-namespaced-pod-fn]
-                       (let [cook-expected-state-map
+                       (let [pod (tu/pod-helper name "hostA" {:cpus 1.0 :mem 100.0})
+                             _ (.setStatus pod (V1PodStatus.))
+                             cook-expected-state-map
                              (atom {name {:cook-expected-state cook-expected-state
-                                          :launch-pod {:pod (tu/pod-helper name "hostA" {:cpus 1.0 :mem 100.0})}}})]
+                                          :launch-pod {:pod pod}}})]
                          (controller/process
                            {:api-client nil
                             :cook-expected-state-map cook-expected-state-map
-                            :k8s-actual-state-map (atom {name {:synthesized-state {:state k8s-actual-state} :pod nil}})}
+                            :k8s-actual-state-map (atom {name {:synthesized-state {:state k8s-actual-state} :pod pod}})}
                            name)
                          (:cook-expected-state (get @cook-expected-state-map name {})))))]
 
@@ -69,6 +68,7 @@
     (is (= :cook-expected-state/running (do-process :cook-expected-state/running :pod/running)))
     (is (= :cook-expected-state/completed (do-process :cook-expected-state/running :pod/unknown)))
     (is (= :cook-expected-state/completed (do-process :cook-expected-state/running :pod/waiting)))
+    (is (= :reason-slave-removed @reason))
 
     (is (= :cook-expected-state/starting (do-process :cook-expected-state/starting :missing)))
     (is (nil? (do-process :cook-expected-state/starting :missing :create-namespaced-pod-fn
@@ -150,12 +150,21 @@
 
 (deftest test-handle-pod-completed
   (testing "graceful handling of lack of exit code"
-    (let [pod (V1Pod.)
-          pod-metadata (V1ObjectMeta.)
+    (let [pod (tu/pod-helper "podA" "hostA" {})
           pod-status (V1PodStatus.)]
-      (.setMetadata pod pod-metadata)
       (.setReason pod-status "OutOfcpu")
       (.setStatus pod pod-status)
       (with-redefs [controller/write-status-to-datomic (constantly nil)]
         (is (= {:cook-expected-state :cook-expected-state/completed}
-               (controller/handle-pod-completed nil {:pod pod :synthesized-state {:state :pod/failed}})))))))
+               (controller/handle-pod-completed nil {:pod pod :synthesized-state {:state :pod/failed}}))))))
+
+  (testing "optional reason argument"
+    (let [pod (tu/pod-helper "podA" "hostA" {})
+          reason (atom nil)]
+      (.setStatus pod (V1PodStatus.))
+      (with-redefs [controller/write-status-to-datomic (fn [_ status] (reset! reason (:reason status)))
+                    controller/container-status->failure-reason (fn [_ _ _ _]
+                                                                  (throw (ex-info "Shouldn't get called" {})))]
+        (controller/handle-pod-completed nil {:pod pod :synthesized-state {:state :pod/failed}}
+                                         :reason :reason-task-invalid))
+      (is (= :reason-task-invalid @reason)))))

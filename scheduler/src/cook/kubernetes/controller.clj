@@ -160,20 +160,19 @@
 
    Looks at the pod status, updates datomic (with success, failure, and possibly mea culpa),
    and return a new cook expected state of :cook-expected-state/completed."
-  [compute-cluster {:keys [synthesized-state pod]}]
+  [compute-cluster {:keys [synthesized-state pod]} & {:keys [reason]}]
   (let [instance-id (-> pod .getMetadata .getName)
         pod-status (.getStatus pod)
         ^V1ContainerStatus job-container-status (get-job-container-status pod-status)
         ; We leak mesos terminology here ('task') because of backward compatibility.
-        task-state (case (:state synthesized-state)
-                     :pod/failed :task-failed
-                     :pod/succeeded :task-finished
-                     :pod/unknown :task-failed
-                     :pod/waiting :task-failed ; Handle the (:cook-expected-state/running,:pod/waiting) case.
-                     nil :task-failed)
+        task-state (if (= (:state synthesized-state) :pod/succeeded)
+                     :task-finished
+                     :task-failed)
         status {:task-id {:value instance-id}
                 :state task-state
-                :reason (container-status->failure-reason compute-cluster instance-id pod-status job-container-status)}
+                :reason (or reason
+                            (container-status->failure-reason compute-cluster instance-id
+                                                              pod-status job-container-status))}
         exit-code (some-> job-container-status .getState .getTerminated .getExitCode)]
     (write-status-to-datomic compute-cluster status)
     (when exit-code
@@ -365,9 +364,10 @@
 
                                       :cook-expected-state/running
                                       (case pod-synthesized-state-modified
-                                        ; This is interesting. This indicates that something deleted it behind our back!
+                                        ; This indicates that something deleted it behind our back
                                         :missing (do
-                                                   (log/error "In compute cluster" name ", something deleted" pod-name "behind our back")
+                                                   (log/error "In compute cluster" name ", something deleted"
+                                                              pod-name "behind our back")
                                                    ; TODO: Should mark mea culpa retry
                                                    (handle-pod-completed compute-cluster k8s-actual-state-dict))
                                         ; TODO: May need to mark mea culpa retry
@@ -377,13 +377,22 @@
                                         ; TODO: Should mark mea culpa retry
                                         :pod/unknown (handle-pod-completed-and-kill-pod-in-weird-state
                                                        compute-cluster pod-name k8s-actual-state-dict)
-                                        :pod/waiting (do ; This case is weird.
-                                                       ; This breaks our rule of calling pod-has-completed on a non-terminal pod state.
-                                                       (kill-pod-in-weird-state compute-cluster pod-name
-                                                                                cook-expected-state-dict
-                                                                                k8s-actual-state-dict)
-                                                       ; TODO: Should mark mea culpa retry
-                                                       (handle-pod-completed compute-cluster k8s-actual-state-dict)))
+                                        ; This is a sign that our pod was moved to a new node.
+                                        ;
+                                        ; For example, on GKE preemptible VMs:
+                                        ;  "there is no guarantee that Pods running on preemptible VMs
+                                        ;   can always shutdown gracefully. It may take several minutes
+                                        ;   for GKE to detect that the node was preempted and that the
+                                        ;   Pods are no longer running, which will delay the rescheduling
+                                        ;   of the Pods to a new node."
+                                        ;
+                                        ; (https://cloud.google.com/kubernetes-engine/docs/how-to/preemptible-vms#best_practices)
+                                        :pod/waiting (do
+                                                       (log/info "In compute cluster" name ", pod" pod-name
+                                                                 "went into waiting while it was expected running")
+                                                       (kill-pod api-client cook-expected-state-dict pod)
+                                                       (handle-pod-completed compute-cluster k8s-actual-state-dict
+                                                                             :reason :reason-slave-removed)))
 
                                       :cook-expected-state/starting
                                       (case pod-synthesized-state-modified

@@ -210,7 +210,7 @@
 (defn write-status-to-datomic
   "Takes a status update from mesos."
   [conn pool->fenzo status]
-  (log/info "Mesos status is:" status)
+  (log/info "Instance status is:" status)
   (timers/time!
     handle-status-update-duration
     (try (let [db (db conn)
