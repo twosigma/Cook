@@ -540,4 +540,4 @@
                                   nil ; scan-frequency-seconds-config
                                   nil ; max-pods-per-node
                                   {:image "image" :user "user" :max-pods-outstanding 4} ; synthetic-pods-config
-                                  ))
+                                  nil))

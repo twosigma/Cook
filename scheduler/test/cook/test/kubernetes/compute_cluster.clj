@@ -44,7 +44,7 @@
       (testing "static namespace"
         (let [compute-cluster (kcc/->KubernetesComputeCluster nil "kubecompute" nil nil nil
                                                               (atom {}) (atom {}) (atom {}) (atom {}) (atom nil)
-                                                              {:kind :static :namespace "cook"} nil nil nil)
+                                                              {:kind :static :namespace "cook"} nil nil nil nil)
               task-metadata (task/TaskAssignmentResult->task-metadata (d/db conn)
                                                                       nil
                                                                       compute-cluster
@@ -59,7 +59,7 @@
       (testing "per-user namespace"
         (let [compute-cluster (kcc/->KubernetesComputeCluster nil "kubecompute" nil nil nil
                                                               (atom {}) (atom {}) (atom {}) (atom {}) (atom nil)
-                                                              {:kind :per-user} nil nil nil)
+                                                              {:kind :per-user} nil nil nil nil)
               task-metadata (task/TaskAssignmentResult->task-metadata (d/db conn)
                                                                       nil
                                                                       compute-cluster
@@ -76,7 +76,7 @@
     (let [conn (tu/restore-fresh-database! "datomic:mem://test-generate-offers")
           compute-cluster (kcc/->KubernetesComputeCluster nil "kubecompute" nil nil nil
                                                           (atom {}) (atom {}) (atom {}) (atom {}) (atom nil)
-                                                          {:kind :static :namespace "cook"} nil 3 nil)
+                                                          {:kind :static :namespace "cook"} nil 3 nil nil)
           node-name->node {"nodeA" (tu/node-helper "nodeA" 1.0 1000.0 nil)
                            "nodeB" (tu/node-helper "nodeB" 1.0 1000.0 nil)
                            "nodeC" (tu/node-helper "nodeC" 1.0 1000.0 nil)
@@ -148,7 +148,7 @@
                        (make-task-request-fn job-uuid-2)
                        (make-task-request-fn job-uuid-3)]
         launched-pods-atom (atom [])]
-    (with-redefs [api/launch-pod (fn [_ cook-expected-state-dict]
+    (with-redefs [api/launch-pod (fn [_ cook-expected-state-dict _]
                                    (swap! launched-pods-atom conj cook-expected-state-dict))]
       (cc/autoscale! compute-cluster "test-pool" task-requests))
     (is (= 2 (count @launched-pods-atom)))
