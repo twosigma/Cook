@@ -2603,7 +2603,7 @@ class CookTest(util.CookTest):
     def test_set_retries_to_attempts_conflict(self):
         uuid, resp = util.submit_job(self.cook_url, command='sleep 30', max_retries=5, disable_mea_culpa_retries=True)
         util.wait_until(lambda: util.load_job(self.cook_url, uuid),
-                        lambda j: (len(j['instances']) == 1) and (j['instances'][0]['status'] == 'running'))
+                        lambda j: (len(j['instances']) >= 1) and any([i['status'] == 'running' for i in j['instances']]))
         util.kill_jobs(self.cook_url, [uuid])
 
         def instances_complete(job):
