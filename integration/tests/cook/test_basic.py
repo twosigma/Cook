@@ -97,6 +97,8 @@ class CookTest(util.CookTest):
             util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
 
     @pytest.mark.travis_skip
+    @unittest.skipIf(util.using_kubernetes() and 'sandbox-fileserver' not in util.kubernetes_settings(),
+                     'This test requires the fileserver to be configured when running in Kubernetes')
     def test_output_url(self):
         job_executor_type = util.get_job_executor_type()
         job_uuid, resp = util.submit_job(self.cook_url,
@@ -357,30 +359,36 @@ class CookTest(util.CookTest):
                                   'host-path': '/var/lib/mno',
                                   'container-path': '/var/lib/pqr'}]}
         job_uuid, resp = util.submit_job(self.cook_url, container=container)
-        self.assertEqual(resp.status_code, 201, msg=resp.content)
-        self.assertEqual(resp.content, str.encode(f"submitted jobs {job_uuid}"))
-        job = util.load_job(self.cook_url, job_uuid)
-        container = job['container']
-        docker = container['docker']
-        volumes = container['volumes']
-        self.assertEqual('DOCKER', container['type'])
-        self.assertEqual(docker_image, docker['image'])
-        self.assertEqual('HOST', docker['network'])
-        self.assertEqual(False, docker['force-pull-image'])
-        # the user parameter is added when missing
-        self.assertEqual(3, len(docker['parameters']))
-        self.assertTrue(any(p['key'] == 'user' for p in docker['parameters']))
-        self.assertEqual('FOO=bar', next(p['value'] for p in docker['parameters'] if p['key'] == 'env'))
-        self.assertEqual('/var/lib/pqr', next(p['value'] for p in docker['parameters'] if p['key'] == 'workdir'))
-        self.assertLessEqual(4, len(volumes))
-        self.assertIn({'host-path': '/var/lib/abc'}, volumes)
-        self.assertIn({'mode': 'RW',
-                       'host-path': '/var/lib/def'}, volumes)
-        self.assertIn({'host-path': '/var/lib/ghi',
-                       'container-path': '/var/lib/jkl'}, volumes)
-        self.assertIn({'mode': 'RW',
-                       'host-path': '/var/lib/mno',
-                       'container-path': '/var/lib/pqr'}, volumes)
+        try:
+            self.assertEqual(resp.status_code, 201, msg=resp.content)
+            self.assertEqual(resp.content, str.encode(f"submitted jobs {job_uuid}"))
+            job = util.load_job(self.cook_url, job_uuid)
+            container = job['container']
+            docker = container['docker']
+            volumes = container['volumes']
+            self.assertEqual('DOCKER', container['type'])
+            self.assertEqual(docker_image, docker['image'])
+            self.assertEqual('HOST', docker['network'])
+            self.assertEqual(False, docker['force-pull-image'])
+            # the user parameter is added when missing
+            self.assertEqual(3, len(docker['parameters']))
+            self.assertTrue(any(p['key'] == 'user' for p in docker['parameters']))
+            self.assertEqual('FOO=bar', next(p['value'] for p in docker['parameters'] if p['key'] == 'env'))
+            self.assertEqual('/var/lib/pqr', next(p['value'] for p in docker['parameters'] if p['key'] == 'workdir'))
+            self.assertLessEqual(4, len(volumes))
+            self.assertIn({'host-path': '/var/lib/abc'}, volumes)
+            self.assertIn({'mode': 'RW',
+                           'host-path': '/var/lib/def'}, volumes)
+            self.assertIn({'host-path': '/var/lib/ghi',
+                           'container-path': '/var/lib/jkl'}, volumes)
+            self.assertIn({'mode': 'RW',
+                           'host-path': '/var/lib/mno',
+                           'container-path': '/var/lib/pqr'}, volumes)
+            util.wait_for_job(self.cook_url, job_uuid, 'completed')
+            # TODO: Uncomment this assertion when it's passing in our internal environments
+            #util.wait_for_instance(self.cook_url, job_uuid, status='success')
+        finally:
+            util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
 
     def test_no_cook_executor_on_subsequent_instances(self):
         settings = util.settings(self.cook_url)
@@ -574,7 +582,11 @@ class CookTest(util.CookTest):
                                          env={progress_file_env: 'progress.txt'},
                                          executor=job_executor_type, max_runtime=60000)
         self.assertEqual(201, resp.status_code, msg=resp.content)
-        util.wait_for_job_in_statuses(self.cook_url, job_uuid, ['running', 'completed'])
+        # We specifically need to wait for the job to complete here. If we only wait
+        # until Running, the job might start running, then the instance might fail with
+        # e.g. "Agent removed", and then we'd have to wait for it to get scheduled again
+        # but we'd already have moved past this wait, which can cause the test to flake.
+        util.wait_for_job_in_statuses(self.cook_url, job_uuid, ['completed'])
         instance = util.wait_for_sandbox_directory(self.cook_url, job_uuid)
         message = json.dumps(instance, sort_keys=True)
         self.assertIsNotNone(instance['output_url'], message)
@@ -3096,3 +3108,13 @@ class CookTest(util.CookTest):
         self.assertEqual(1, len(job['instances']))
         self.assertEqual('failed', job['instances'][0]['status'], job)
         self.assertEqual('Invalid task', job['instances'][0]['reason_string'], job)
+
+    def test_submit_pool_unspecified(self):
+        job_uuid, resp = util.submit_job(self.cook_url, pool=util.POOL_UNSPECIFIED)
+        self.assertEqual(resp.status_code, 201, resp.content)
+        job = util.wait_for_job_in_statuses(self.cook_url, job_uuid, ['completed'])
+        self.logger.info(json.dumps(job, indent=2))
+        self.assertNotIn('pool', job, job)
+        self.assertEqual('success', job['state'], job)
+        self.assertLessEqual(1, len(job['instances']))
+        self.assertIn('success', [i['status'] for i in job['instances']], job)

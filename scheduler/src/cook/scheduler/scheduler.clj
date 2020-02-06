@@ -210,7 +210,7 @@
 (defn write-status-to-datomic
   "Takes a status update from mesos."
   [conn pool->fenzo status]
-  (log/info "Mesos status is:" status)
+  (log/info "Instance status is:" status)
   (timers/time!
     handle-status-update-duration
     (try (let [db (db conn)
@@ -477,7 +477,7 @@
   (memoize
     (fn [pool-name]
       (if-let [{:keys [pool-regex adjust-job-resources-fn]} (config/job-resource-adjustments)]
-        (if (re-matches pool-regex pool-name) adjust-job-resources-fn identity)
+        (if (re-matches pool-regex pool-name) (util/lazy-load-var adjust-job-resources-fn) identity)
         identity))))
 
 (defn make-task-request
