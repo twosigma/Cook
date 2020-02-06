@@ -358,7 +358,7 @@ class CookTest(util.CookTest):
                                  {'mode': 'RW',
                                   'host-path': '/var/lib/mno',
                                   'container-path': '/var/lib/pqr'}]}
-        job_uuid, resp = util.submit_job(self.cook_url, container=container)
+        job_uuid, resp = util.submit_job(self.cook_url, container=container, max_retries=5)
         try:
             self.assertEqual(resp.status_code, 201, msg=resp.content)
             self.assertEqual(resp.content, str.encode(f"submitted jobs {job_uuid}"))
