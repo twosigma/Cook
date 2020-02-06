@@ -1041,10 +1041,14 @@ def wait_for_instance(cook_url, job_uuid, max_wait_ms=DEFAULT_TIMEOUT_MS, wait_i
     return instance
 
 
-def sleep_for_publish_interval(cook_url):
-    # allow enough time for progress and sandbox updates to be submitted
+def get_publish_interval_ms(cook_url):
+    """Get the progress publisher's interval (in milliseconds)"""
     cook_settings = settings(cook_url)
-    progress_publish_interval_ms = get_in(cook_settings, 'progress', 'publish-interval-ms')
+    return get_in(cook_settings, 'progress', 'publish-interval-ms')
+
+
+def sleep_for_publish_interval(cook_url):
+    progress_publish_interval_ms = get_publish_interval_ms(cook_url)
     wait_publish_interval_ms = min(3 * progress_publish_interval_ms, 20000)
     time.sleep(wait_publish_interval_ms / 1000.0)
 

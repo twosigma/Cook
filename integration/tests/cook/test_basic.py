@@ -718,9 +718,14 @@ class CookTest(util.CookTest):
         self.assertEqual(201, resp.status_code, msg=resp.content)
         instance = util.wait_for_instance(self.cook_url, job_uuid)
         instance_uuid = instance['task_id']
+        publish_interval_ms = util.get_publish_interval_ms(self.cook_url)
+        progress_wait_timeout_ms = 10 * publish_interval_ms
+        progress_wait_interval_ms = min(1000, publish_interval_ms // 2)
         def wait_until_instance(predicate):
             util.wait_until(lambda: util.load_instance(self.cook_url, instance_uuid),
-                            predicate, max_wait_ms=10000)
+                            predicate,
+                            max_wait_ms=progress_wait_timeout_ms,
+                            wait_interval_ms=progress_wait_interval_ms)
         # send progress percentage update
         util.send_progress_update(self.cook_url, instance_uuid, sequence=100, percent=10)
         wait_until_instance(lambda i: i['progress'] == 10)
