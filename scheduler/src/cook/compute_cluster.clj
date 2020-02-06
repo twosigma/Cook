@@ -67,8 +67,8 @@
   (restore-offers [this pool-name offers]
     "Called when offers are not processed to ensure they're still available.")
 
-  (autoscaling? [this]
-    "Returns true if this compute cluster should autoscale to satisfy pending jobs")
+  (autoscaling? [this pool-name]
+    "Returns true if this compute cluster should autoscale the provided pool to satisfy pending jobs")
 
   (autoscale! [this pool-name task-requests]
     "Autoscales the provided pool to satisfy the provided pending task requests")

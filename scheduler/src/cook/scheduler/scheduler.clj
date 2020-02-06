@@ -791,7 +791,7 @@
                                       (-> autoscaler-interval-seconds time/seconds)))
           (let [task-requests (map #(.. (first %) (getRequest)) failures)
                 num-task-requests (count task-requests)
-                autoscaling-compute-clusters (filter cc/autoscaling? compute-clusters)
+                autoscaling-compute-clusters (filter #(cc/autoscaling? % pool-name) compute-clusters)
                 num-autoscaling-compute-clusters (count autoscaling-compute-clusters)]
             (when (and (pos? num-autoscaling-compute-clusters) (pos? num-task-requests))
               (swap! pool-name->last-autoscale-atom assoc pool-name (time/now))

@@ -1982,7 +1982,7 @@
   (setup)
   (let [autoscale!-invocations (atom [])
         compute-cluster (reify ComputeCluster
-                          (autoscaling? [_] true)
+                          (autoscaling? [_ _] true)
                           (autoscale! [compute-cluster pool-name task-requests]
                             (swap! autoscale!-invocations conj {:compute-cluster compute-cluster
                                                                 :pool-name pool-name

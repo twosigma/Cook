@@ -526,18 +526,23 @@
 
 (defn make-kubernetes-compute-cluster
   [namespaced-pod-name->pod]
-  (kcc/->KubernetesComputeCluster nil ; api-client
-                                  "kubecompute" ; name
-                                  nil ; entity-id
-                                  nil ; match-trigger-chan
-                                  nil ; exit-code-syncer-state
-                                  (atom namespaced-pod-name->pod) ; all-pods-atom
-                                  (atom {}) ; current-nodes-atom
-                                  (atom {}) ; cook-expected-state-map
-                                  (atom {}) ; k8s-actual-state-map
-                                  (atom nil) ; pool->fenzo-atom
-                                  {:kind :static :namespace "cook"} ; namespace-config
-                                  nil ; scan-frequency-seconds-config
-                                  nil ; max-pods-per-node
-                                  {:image "image" :user "user" :max-pods-outstanding 4} ; synthetic-pods-config
-                                  nil))
+  (let [synthetic-pods-config {:image "image"
+                               :user "user"
+                               :max-pods-outstanding 4
+                               :pools ["foo"]}]
+    (kcc/->KubernetesComputeCluster nil ; api-client
+                                    "kubecompute" ; name
+                                    nil ; entity-id
+                                    nil ; match-trigger-chan
+                                    nil ; exit-code-syncer-state
+                                    (atom namespaced-pod-name->pod) ; all-pods-atom
+                                    (atom {}) ; current-nodes-atom
+                                    (atom {}) ; cook-expected-state-map
+                                    (atom {}) ; k8s-actual-state-map
+                                    (atom nil) ; pool->fenzo-atom
+                                    {:kind :static :namespace "cook"} ; namespace-config
+                                    nil ; scan-frequency-seconds-config
+                                    nil ; max-pods-per-node
+                                    synthetic-pods-config ; synthetic-pods-config
+                                    nil ; node-blocklist-labels
+                                    )))

@@ -284,7 +284,7 @@
     (async/go
       (async/>! (pool->offers-chan pool-name) offers)))
 
-  (autoscaling? [_] false)
+  (autoscaling? [_ _] false)
 
   (autoscale! [_ _ _])
 
