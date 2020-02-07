@@ -383,7 +383,7 @@
                                                      ; A :cook-expected-state/running job suddenly disappearing in k8s is
                                                      ; a sign of a preemption, so treat this case as a missed preemption.
                                                      ; TODO: When we have a better story for preemption, we should switch this to
-                                                     ; go through the handle-pod-completed stack. THat needs to be guarded with a null
+                                                     ; go through the handle-pod-completed stack. That needs to be guarded with a null
                                                      ; check because handle-pod-completed cannot handle null pods. So, something like:
                                                      ; (if pod (handle-pod-completed ...) (....write a unknown reason to the pod....))
                                                    (handle-pod-preemption compute-cluster pod-name))
