@@ -525,11 +525,11 @@
   node))
 
 (defn make-kubernetes-compute-cluster
-  [namespaced-pod-name->pod]
+  [namespaced-pod-name->pod pool-names]
   (let [synthetic-pods-config {:image "image"
                                :user "user"
                                :max-pods-outstanding 4
-                               :pools ["foo"]}]
+                               :pools pool-names}]
     (kcc/->KubernetesComputeCluster nil ; api-client
                                     "kubecompute" ; name
                                     nil ; entity-id

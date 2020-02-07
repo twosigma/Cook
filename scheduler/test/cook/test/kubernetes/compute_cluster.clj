@@ -139,7 +139,8 @@
         _ (-> outstanding-synthetic-pod-1
               .getMetadata
               (.setLabels {controller/cook-synthetic-pod-job-uuid-label job-uuid-1}))
-        compute-cluster (tu/make-kubernetes-compute-cluster {nil outstanding-synthetic-pod-1})
+        pool-name "test-pool"
+        compute-cluster (tu/make-kubernetes-compute-cluster {nil outstanding-synthetic-pod-1} #{pool-name})
         make-task-request-fn (fn [job-uuid]
                                {:job {:job/resource [{:resource/type :cpus, :resource/amount 0.1}
                                                      {:resource/type :mem, :resource/amount 32}]
@@ -150,9 +151,7 @@
         launched-pods-atom (atom [])]
     (with-redefs [api/launch-pod (fn [_ cook-expected-state-dict _]
                                    (swap! launched-pods-atom conj cook-expected-state-dict))]
-      (cc/autoscale! compute-cluster "test-pool" task-requests))
+      (cc/autoscale! compute-cluster pool-name task-requests))
     (is (= 2 (count @launched-pods-atom)))
-    ;; TODO(DPO): Fix this
-    ;(is (= job-uuid-2 (-> @launched-pods-atom (nth 0) :launch-pod :pod controller/synthetic-pod->job-uuid)))
-    ;(is (= job-uuid-3 (-> @launched-pods-atom (nth 1) :launch-pod :pod controller/synthetic-pod->job-uuid)))
-    ))
+    (is (= job-uuid-2 (-> @launched-pods-atom (nth 0) :launch-pod :pod controller/synthetic-pod->job-uuid)))
+    (is (= job-uuid-3 (-> @launched-pods-atom (nth 1) :launch-pod :pod controller/synthetic-pod->job-uuid)))))
