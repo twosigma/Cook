@@ -14,7 +14,7 @@ def kubectl_exec_to_instance(instance_uuid, _):
               '--', '/bin/sh')
 
 
-def ssh_to_instance(instance, sandbox_dir, cluster):
+def ssh_to_instance(instance, sandbox_dir_fn, cluster):
     """When using Mesos, attempts to ssh (using os.execlp) to the Mesos agent corresponding to the given instance.
     When using Kubernetes, calls the exec command of the kubectl cli."""
     print_info(f'Attempting ssh for job instance {terminal.bold(instance["task_id"])}...')
@@ -28,11 +28,12 @@ def ssh_to_instance(instance, sandbox_dir, cluster):
                                       c['compute-cluster-name'] == compute_cluster_name)
         kubectl_exec_to_instance_fn(instance["task_id"], compute_cluster_config)
     else:
+        sandbox_dir = sandbox_dir_fn()
         command = os.environ.get('CS_SSH', 'ssh')
         logging.info(f'using ssh command: {command}')
         hostname = instance['hostname']
         print_info(f'Executing ssh to {terminal.bold(hostname)}.')
-        os.execlp(command, 'ssh', '-t', hostname, f'cd "{sandbox_dir}" ; bash')
+        os.execlp(command, 'ssh', '-t', hostname, f'cd "{sandbox_dir()}" ; bash')
 
 
 def ssh(clusters, args, _):
@@ -43,7 +44,7 @@ def ssh(clusters, args, _):
         # argparse should prevent this, but we'll be defensive anyway
         raise Exception(f'You can only provide a single uuid.')
 
-    query_unique_and_run(clusters_of_interest, entity_refs[0], ssh_to_instance)
+    query_unique_and_run(clusters_of_interest, entity_refs[0], ssh_to_instance, do_not_resove_sandbox_directory=True)
 
 
 def register(add_parser, _):
