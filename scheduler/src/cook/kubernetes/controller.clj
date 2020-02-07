@@ -1,5 +1,6 @@
 (ns cook.kubernetes.controller
-  (:require [cook.config :as config]
+  (:require [cook.compute-cluster :as cc]
+            [cook.config :as config]
             [cook.datomic :as datomic]
             [cook.kubernetes.api :as api]
             [cook.mesos.sandbox :as sandbox]
@@ -167,28 +168,54 @@
                                          (.getName container-status))))
        first))
 
+(defn make-failed-unknown-task-result
+  "Make a pod status result corresponding to a failed pod"
+  [instance-id reason]
+  {:status {:task-id {:value instance-id}
+            :state :task-failed
+            :reason (or reason :reason-task-unknown)}})
+
+(defn calculate-pod-status
+  "Calculate the pod status of a completed pod. Factored out so that we can wrap it in an exception handler."
+  [compute-cluster pod-name {:keys [synthesized-state pod]} & {:keys [reason]}]
+  (let [instance-id (some-> pod .getMetadata .getName)]
+    (when instance-id
+      (assert (= instance-id pod-name)))
+    ; If we have an actual pod here....
+    (try
+      (if instance-id
+        (let [pod-status (.getStatus pod)
+              ^V1ContainerStatus job-container-status (get-job-container-status pod-status)
+              ; We leak mesos terminology here ('task') because of backward compatibility.
+              task-state (if (= (:state synthesized-state) :pod/succeeded)
+                           :task-finished
+                           :task-failed)
+              status {:task-id {:value pod-name}
+                      :state task-state
+                      :reason (or reason
+                                  (container-status->failure-reason compute-cluster pod-name
+                                                                    pod-status job-container-status))}
+              exit-code (some-> job-container-status .getState .getTerminated .getExitCode)]
+          {:status status :exit-code exit-code})
+        (do
+          (log/error "In compute cluster" (cc/compute-cluster-name compute-cluster) ", pod" pod-name
+                     "had a null pod")
+          (make-failed-unknown-task-result pod-name reason)))
+      (catch Throwable t
+        (log/error t "In compute cluster" (cc/compute-cluster-name compute-cluster) ", pod" pod-name
+                   "threw an error computing calculate pod status for write to datomic.")
+        (make-failed-unknown-task-result pod-name reason)))))
+
 (defn handle-pod-completed
   "A pod has completed, or we're treating it as completed. E.g., it may really be running, but something is weird.
 
    Looks at the pod status, updates datomic (with success, failure, and possibly mea culpa),
    and return a new cook expected state of :cook-expected-state/completed."
-  [compute-cluster {:keys [synthesized-state pod]} & {:keys [reason]}]
-  (let [instance-id (-> pod .getMetadata .getName)
-        pod-status (.getStatus pod)
-        ^V1ContainerStatus job-container-status (get-job-container-status pod-status)
-        ; We leak mesos terminology here ('task') because of backward compatibility.
-        task-state (if (= (:state synthesized-state) :pod/succeeded)
-                     :task-finished
-                     :task-failed)
-        status {:task-id {:value instance-id}
-                :state task-state
-                :reason (or reason
-                            (container-status->failure-reason compute-cluster instance-id
-                                                              pod-status job-container-status))}
-        exit-code (some-> job-container-status .getState .getTerminated .getExitCode)]
+  [compute-cluster pod-name k8s-actual-state & {:keys [reason]}]
+  (let [{:keys [status exit-code]} (calculate-pod-status compute-cluster pod-name k8s-actual-state :reason reason)]
     (write-status-to-datomic compute-cluster status)
     (when exit-code
-      (sandbox/aggregate-exit-code (:exit-code-syncer-state compute-cluster) instance-id exit-code))
+      (sandbox/aggregate-exit-code (:exit-code-syncer-state compute-cluster) pod-name exit-code))
     ; Must never return nil, we want it to return non-nil so that we will retry with writing the state to datomic in case we lose a race.
     ; Being in the (completed,*) state, will cause us to delete the pod, transitioning to (completed,missing), and thence
     ; to deleting from the map, into (missing,missing) state.
@@ -247,7 +274,7 @@
   [compute-cluster pod-name k8s-actual-state-dict]
   ; TODO: Should mark mea culpa retry
   (kill-pod-in-weird-state compute-cluster pod-name
-                           (handle-pod-completed compute-cluster k8s-actual-state-dict) k8s-actual-state-dict))
+                           (handle-pod-completed compute-cluster pod-name k8s-actual-state-dict) k8s-actual-state-dict))
 
 (defn process
   "Visit this pod-name, processing the new level-state. Returns the new cook expected state. Returns
@@ -365,10 +392,10 @@
                                               (log-weird-state compute-cluster pod-name
                                                                cook-expected-state-dict k8s-actual-state-dict))
                                             (handle-pod-killed compute-cluster pod-name)))
-                                        :pod/failed (handle-pod-completed compute-cluster k8s-actual-state-dict)
+                                        :pod/failed (handle-pod-completed compute-cluster pod-name k8s-actual-state-dict)
                                         :pod/running (kill-pod api-client cook-expected-state-dict pod)
                                         ; There was a race and it completed normally before being it was killed.
-                                        :pod/succeeded (handle-pod-completed compute-cluster k8s-actual-state-dict)
+                                        :pod/succeeded (handle-pod-completed compute-cluster pod-name k8s-actual-state-dict)
                                         ; TODO: Should mark mea culpa retry
                                         :pod/unknown (handle-pod-completed-and-kill-pod-in-weird-state
                                                        compute-cluster pod-name k8s-actual-state-dict)
@@ -388,9 +415,9 @@
                                                      ; (if pod (handle-pod-completed ...) (....write a unknown reason to the pod....))
                                                    (handle-pod-preemption compute-cluster pod-name))
                                         ; TODO: May need to mark mea culpa retry
-                                        :pod/failed (handle-pod-completed compute-cluster k8s-actual-state-dict)
+                                        :pod/failed (handle-pod-completed compute-cluster pod-name k8s-actual-state-dict)
                                         :pod/running cook-expected-state-dict
-                                        :pod/succeeded (handle-pod-completed compute-cluster k8s-actual-state-dict)
+                                        :pod/succeeded (handle-pod-completed compute-cluster pod-name k8s-actual-state-dict)
                                         ; TODO: Should mark mea culpa retry
                                         :pod/unknown (handle-pod-completed-and-kill-pod-in-weird-state
                                                        compute-cluster pod-name k8s-actual-state-dict)
@@ -408,16 +435,16 @@
                                                        (log/info "In compute cluster" name ", pod" pod-name
                                                                  "went into waiting while it was expected running")
                                                        (kill-pod api-client cook-expected-state-dict pod)
-                                                       (handle-pod-preemption compute-cluster pod-name))
+                                                       (handle-pod-preemption compute-cluster pod-name)))
 
                                       :cook-expected-state/starting
                                       (case pod-synthesized-state-modified
                                         :missing (launch-pod compute-cluster
                                                              cook-expected-state-dict pod-name)
                                         ; TODO: May need to mark mea culpa retry
-                                        :pod/failed (handle-pod-completed compute-cluster k8s-actual-state-dict) ; Finished or failed fast.
+                                        :pod/failed (handle-pod-completed compute-cluster pod-name k8s-actual-state-dict) ; Finished or failed fast.
                                         :pod/running (handle-pod-started compute-cluster k8s-actual-state-dict)
-                                        :pod/succeeded (handle-pod-completed compute-cluster k8s-actual-state-dict) ; Finished fast.
+                                        :pod/succeeded (handle-pod-completed compute-cluster pod-name k8s-actual-state-dict) ; Finished fast.
                                         ; TODO: Should mark mea culpa retry
                                         :pod/unknown (handle-pod-completed-and-kill-pod-in-weird-state
                                                        compute-cluster pod-name k8s-actual-state-dict)
