@@ -107,6 +107,18 @@
     (write-status-to-datomic compute-cluster status)
     {:cook-expected-state :cook-expected-state/completed}))
 
+(defn handle-pod-preemption;
+  "Marks the corresponding job instance as failed in the database and
+  returns the `completed` cook expected state."
+  [{:keys [name] :as compute-cluster} pod-name]
+  (log/info "In compute cluster" name ", pod" pod-name "preemption has occurred")
+  (let [instance-id pod-name
+        status {:reason :reason-executor-preempted
+                :state :task-failed
+                :task-id {:value instance-id}}]
+    (write-status-to-datomic compute-cluster status)
+    {:cook-expected-state :cook-expected-state/completed}))
+
 (defn launch-pod
   [{:keys [api-client] :as compute-cluster} cook-expected-state-dict pod-name]
   (if (api/launch-pod api-client cook-expected-state-dict pod-name)
@@ -368,8 +380,13 @@
                                         :missing (do
                                                    (log/error "In compute cluster" name ", something deleted"
                                                               pod-name "behind our back")
-                                                   ; TODO: Should mark mea culpa retry
-                                                   (handle-pod-completed compute-cluster k8s-actual-state-dict))
+                                                     ; A :cook-expected-state/running job suddenly disappearing in k8s is
+                                                     ; a sign of a preemption, so treat this case as a missed preemption.
+                                                     ; TODO: When we have a better story for preemption, we should switch this to
+                                                     ; go through the handle-pod-completed stack. THat needs to be guarded with a null
+                                                     ; check because handle-pod-completed cannot handle null pods. So, something like:
+                                                     ; (if pod (handle-pod-completed ...) (....write a unknown reason to the pod....))
+                                                   (handle-pod-preemption compute-cluster pod-name))
                                         ; TODO: May need to mark mea culpa retry
                                         :pod/failed (handle-pod-completed compute-cluster k8s-actual-state-dict)
                                         :pod/running cook-expected-state-dict
