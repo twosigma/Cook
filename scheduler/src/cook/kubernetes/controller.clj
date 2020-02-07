@@ -378,7 +378,7 @@
                                       (case pod-synthesized-state-modified
                                         ; This indicates that something deleted it behind our back
                                         :missing (do
-                                                   (log/error "In compute cluster" name ", something deleted"
+                                                   (log/info "In compute cluster" name ", something deleted"
                                                               pod-name "behind our back")
                                                      ; A :cook-expected-state/running job suddenly disappearing in k8s is
                                                      ; a sign of a preemption, so treat this case as a missed preemption.
@@ -408,8 +408,7 @@
                                                        (log/info "In compute cluster" name ", pod" pod-name
                                                                  "went into waiting while it was expected running")
                                                        (kill-pod api-client cook-expected-state-dict pod)
-                                                       (handle-pod-completed compute-cluster k8s-actual-state-dict
-                                                                             :reason :reason-slave-removed)))
+                                                       (handle-pod-preemption compute-cluster pod-name))
 
                                       :cook-expected-state/starting
                                       (case pod-synthesized-state-modified
