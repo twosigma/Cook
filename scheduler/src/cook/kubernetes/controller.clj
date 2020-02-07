@@ -107,13 +107,13 @@
     (write-status-to-datomic compute-cluster status)
     {:cook-expected-state :cook-expected-state/completed}))
 
-(defn handle-pod-preemption;
+(defn handle-pod-preemption
   "Marks the corresponding job instance as failed in the database and
   returns the `completed` cook expected state."
   [{:keys [name] :as compute-cluster} pod-name]
   (log/info "In compute cluster" name ", pod" pod-name "preemption has occurred")
   (let [instance-id pod-name
-        status {:reason :reason-executor-preempted
+        status {:reason :reason-slave-removed
                 :state :task-failed
                 :task-id {:value instance-id}}]
     (write-status-to-datomic compute-cluster status)
