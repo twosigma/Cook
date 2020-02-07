@@ -11,8 +11,6 @@
            (io.kubernetes.client.models V1Pod V1ContainerStatus V1PodStatus)
            (java.net URLEncoder)))
 
-(def cook-synthetic-pod-job-uuid-label "cook.synthetic-pod.for-job-uuid")
-
 ;
 ;   Wire up a store with the results.
 ;
@@ -161,7 +159,7 @@
   "If the given pod is a synthetic pod for autoscaling, returns the job uuid
   that the pod corresponds to (stored in a pod label). Otherwise, returns nil."
   [^V1Pod pod]
-  (some-> pod .getMetadata .getLabels (.get cook-synthetic-pod-job-uuid-label)))
+  (some-> pod .getMetadata .getLabels (.get api/cook-synthetic-pod-job-uuid-label)))
 
 (defn handle-pod-completed
   "A pod has completed, or we're treating it as completed. E.g., it may really be running, but something is weird.

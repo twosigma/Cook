@@ -197,7 +197,9 @@
                   :command
                   :user)))
 
-(defn all-pods
+(defn add-starting-pods
+  "Given a compute cluster and a map from namespaced pod name -> pod, returns a
+  list of those pods with currently starting pods in the compute cluster added in"
   [compute-cluster pods]
   (let [starting-pods (controller/starting-namespaced-pod-name->pod compute-cluster)]
     (-> pods (merge starting-pods) vals)))
@@ -213,7 +215,8 @@
         (controller/update-cook-expected-state
           this
           (:task-id task-metadata)
-          {:cook-expected-state :cook-expected-state/starting :launch-pod {:pod (api/task-metadata->pod pod-namespace name task-metadata)}}))))
+          {:cook-expected-state :cook-expected-state/starting
+           :launch-pod {:pod (api/task-metadata->pod pod-namespace name task-metadata)}}))))
 
   (kill-task [this task-id]
     (controller/update-cook-expected-state this task-id {:cook-expected-state :cook-expected-state/killed}))
@@ -257,7 +260,7 @@
     (async/chan 1))
 
   (pending-offers [this pool-name]
-    (let [pods (all-pods this @all-pods-atom)
+    (let [pods (add-starting-pods this @all-pods-atom)
           num-waiting-synthetic-pods (num-waiting-synthetic-pods this pods pool-name)]
       (if (pos? num-waiting-synthetic-pods)
         (do
@@ -288,7 +291,7 @@
       (assert (cc/autoscaling? this pool-name)
               (str "In " name " compute cluster, request to autoscale despite invalid / missing config"))
       (let [outstanding-synthetic-pods (->> @all-pods-atom
-                                            (all-pods this)
+                                            (add-starting-pods this)
                                             (filter controller/synthetic-pod->job-uuid))
             num-synthetic-pods (count outstanding-synthetic-pods)
             {:keys [image user command max-pods-outstanding] :or {command "exit 0"}} synthetic-pods-config]
@@ -314,7 +317,7 @@
                                             ; We need to label the synthetic pods so that we
                                             ; can opt them out of some of the normal plumbing,
                                             ; like mapping status back to a job instance
-                                            :pod-labels {controller/cook-synthetic-pod-job-uuid-label (str uuid)}}))
+                                            :pod-labels {api/cook-synthetic-pod-job-uuid-label (str uuid)}}))
                                     (take (- max-pods-outstanding num-synthetic-pods)))]
             (log/info "In" name "compute cluster, launching" (count task-metadata-seq) "synthetic pod(s) for"
                       (count new-task-requests) "new un-matched task(s) in" synthetic-task-pool-name "pool"
@@ -337,7 +340,7 @@
 
   (num-tasks-on-host [this hostname]
     (->> @all-pods-atom
-         (all-pods this)
+         (add-starting-pods this)
          (api/num-pods-on-node hostname)))
 
   (retrieve-sandbox-url-path
@@ -422,6 +425,7 @@
                 (-> synthetic-pods-config :image count pos?)
                 (-> synthetic-pods-config :user count pos?)
                 (-> synthetic-pods-config :max-pods-outstanding pos?)
+                (-> synthetic-pods-config :pools set?)
                 (-> synthetic-pods-config :pools count pos?))
       (throw (ex-info (str "In " compute-cluster-name " compute cluster, invalid synthetic pods config")
                       synthetic-pods-config)))))

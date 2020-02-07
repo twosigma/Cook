@@ -11,7 +11,7 @@
             [cook.tools :as util]
             [datomic.api :as d])
   (:import (com.netflix.fenzo SimpleAssignmentResult)
-           (io.kubernetes.client.models V1PodSecurityContext)
+           (io.kubernetes.client.models V1Pod V1PodSecurityContext)
            (java.util UUID)))
 
 (deftest test-get-or-create-cluster-entity-id
@@ -99,7 +99,7 @@
                                                                          {:cpus 1.0 :mem 1100.0})
                          {:namespace "cook" :name task-1-id} (tu/pod-helper task-1-id "my.fake.host"
                                                                             {:cpus 0.1 :mem 10.0})}
-          all-offers (kcc/generate-offers compute-cluster node-name->node (kcc/all-pods compute-cluster pod-name->pod))
+          all-offers (kcc/generate-offers compute-cluster node-name->node (kcc/add-starting-pods compute-cluster pod-name->pod))
           offers (get all-offers "no-pool")]
       (is (= 4 (count offers)))
       (let [offer (first (filter #(= "nodeA" (:hostname %))
@@ -135,10 +135,10 @@
   (let [job-uuid-1 (str (UUID/randomUUID))
         job-uuid-2 (str (UUID/randomUUID))
         job-uuid-3 (str (UUID/randomUUID))
-        outstanding-synthetic-pod-1 (tu/pod-helper "podA" "nodeA")
+        ^V1Pod outstanding-synthetic-pod-1 (tu/pod-helper "podA" "nodeA")
         _ (-> outstanding-synthetic-pod-1
               .getMetadata
-              (.setLabels {controller/cook-synthetic-pod-job-uuid-label job-uuid-1}))
+              (.setLabels {api/cook-synthetic-pod-job-uuid-label job-uuid-1}))
         pool-name "test-pool"
         compute-cluster (tu/make-kubernetes-compute-cluster {nil outstanding-synthetic-pod-1} #{pool-name})
         make-task-request-fn (fn [job-uuid]

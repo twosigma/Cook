@@ -21,6 +21,7 @@
 
 
 (def cook-pod-label "twosigma.com/cook-scheduler-job")
+(def cook-synthetic-pod-job-uuid-label "twosigma.com/cook-scheduler-synthetic-pod-job-uuid")
 (def cook-workdir-volume-name "cook-workdir-volume")
 
 (def ^ExecutorService kubernetes-executor (Executors/newCachedThreadPool))
@@ -490,7 +491,7 @@
                      env))
                  (:environment command))
         resources (V1ResourceRequirements.)
-        labels (merge pod-labels {cook-pod-label compute-cluster-name})
+        labels (assoc pod-labels cook-pod-label compute-cluster-name)
         pool-name (some-> job :job/pool :pool/name)
         security-context (make-security-context parameters (:user command))
         workdir (get-workdir parameters)

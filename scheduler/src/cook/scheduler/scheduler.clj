@@ -770,7 +770,9 @@
 (defn distribute-task-requests-to-compute-clusters
   "Given a collection of un-matched task requests and a collection of
   compute clusters, distributes the task requests amongst the compute
-  clusters, using a hash of the pending job's uuid."
+  clusters, using a hash of the pending job's uuid. Returns a
+  compute-cluster->task-request map. That is the API any future
+  improvements need to stick to."
   [task-requests compute-clusters]
   (group-by (fn [{:keys [job]}]
               (nth compute-clusters
@@ -797,8 +799,17 @@
               (swap! pool-name->last-autoscale-atom assoc pool-name (time/now))
               (let [compute-cluster->task-requests (distribute-task-requests-to-compute-clusters
                                                      task-requests autoscaling-compute-clusters)]
+                (log/info "In" pool-name "pool, autoscaling for" num-task-requests
+                          "un-matched task(s), distributed to compute clusters as follows:"
+                          (->> compute-cluster->task-requests
+                               (pc/map-keys cc/compute-cluster-name)
+                               (pc/map-vals count)))
                 (doseq [[compute-cluster requests-for-cluster] compute-cluster->task-requests]
-                  (cc/autoscale! compute-cluster pool-name requests-for-cluster)))))))
+                  (timers/time!
+                    ;; TODO(DPO): Fix this metric to include compute cluster name
+                    (timers/timer (metric-title "handle-resource-offer!-duration" pool-name))
+                    (cc/autoscale! compute-cluster pool-name requests-for-cluster)))
+                (log/info "In" pool-name "pool, done autoscaling"))))))
       (catch Throwable e
         (log/error e "In" pool-name "pool, encountered error while triggering autoscaling")))))
 
