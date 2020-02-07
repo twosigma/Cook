@@ -857,13 +857,6 @@ def wait_for_output_url(cook_url, job_id, status=None):
     """
     job_id = unpack_uuid(job_id)
 
-    max_wait_ms = 4 * 60 * 1000
-    cook_settings = settings(cook_url)
-    if 'sandbox-syncer' in cook_settings and not using_kubernetes():
-        cache_ttl_ms = cook_settings['agent-query-cache']['ttl-ms']
-        sync_interval_ms = cook_settings['sandbox-syncer']['sync-interval-ms']
-        max_wait_ms = min(max_wait_ms, 4 * max(cache_ttl_ms, sync_interval_ms))
-
     def query():
         response = query_jobs(cook_url, True, uuid=[job_id])
         return response.json()[0]
@@ -882,7 +875,7 @@ def wait_for_output_url(cook_url, job_id, status=None):
                         f"Job {job_id} instance {inst['task_id']} has output url {inst['output_url']}.")
                     return True
 
-    job = wait_until(query, predicate, max_wait_ms=max_wait_ms, wait_interval_ms=250)
+    job = wait_until(query, predicate)
     for inst in job['instances']:
         if 'output_url' in inst and (status is None or inst['status'] == status):
             return inst
