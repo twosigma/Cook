@@ -33,7 +33,7 @@ def ssh_to_instance(instance, sandbox_dir_fn, cluster):
         logging.info(f'using ssh command: {command}')
         hostname = instance['hostname']
         print_info(f'Executing ssh to {terminal.bold(hostname)}.')
-        os.execlp(command, 'ssh', '-t', hostname, f'cd "{sandbox_dir()}" ; bash')
+        os.execlp(command, 'ssh', '-t', hostname, f'cd "{sandbox_dir}" ; bash')
 
 
 def ssh(clusters, args, _):
