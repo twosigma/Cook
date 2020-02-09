@@ -39,13 +39,13 @@
               :disallowed-var-names #{"BADVAR"}
               :init-container {:command ["/bin/sh" "-c" "echo sample init container running"]
                                :image "byrnedo/alpine-curl:latest"}
-              :sandbox-fileserver {:command ["fileserver"]
-                                   :image "twosigma/cook-fileserver:latest"
-                                   :port 23906
-                                   :resource-requirements {:cpu-request 0.1
-                                                           :cpu-limit 0.1
-                                                           :memory-request 128.0
-                                                           :memory-limit 128.0}}
+              :sidecar {:command ["cook-sidecar"]
+                        :image "twosigma/cook-sidecar:latest"
+                        :port 23906
+                        :resource-requirements {:cpu-request 0.1
+                                                :cpu-limit 0.1
+                                                :memory-request 128.0
+                                                :memory-limit 128.0}}
               :custom-shell ["/bin/sh" "-c"]}
  :log {:file #config/env "COOK_LOG_FILE"
        :levels {"datomic.db" :warn
