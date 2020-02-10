@@ -179,7 +179,7 @@
   "Calculate the pod status of a completed pod. Factored out so that we can wrap it in an exception handler."
   [compute-cluster pod-name {:keys [synthesized-state pod]} & {:keys [reason]}]
   (let [instance-id (some-> pod .getMetadata .getName)]
-    ; If we have an actual pod here, make sure its got the same name as pod-name.
+    ; If we have an actual pod here, make sure it has the same name as pod-name.
     (when instance-id
       (assert (= instance-id pod-name)))
     (try
