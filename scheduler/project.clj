@@ -33,7 +33,7 @@
                  [listora/ring-congestion "0.1.2"]
                  [lonocloud/synthread "1.0.4"]
                  [org.clojure/tools.namespace "0.2.4"]
-                 [org.clojure/core.cache "0.6.4"]
+                 [org.clojure/core.cache "0.8.2"]
                  [org.clojure/core.memoize "0.5.8"]
                  [clj-time "0.12.0"]
                  [org.clojure/core.async "0.3.442" :exclusions [org.clojure/tools.reader]]
