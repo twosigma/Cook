@@ -1,9 +1,9 @@
 (ns cook.test.kubernetes.controller
   (:require [clojure.test :refer :all]
+            [cook.compute-cluster :as cc]
             [cook.kubernetes.api :as api]
             [cook.kubernetes.controller :as controller]
-            [cook.test.testutil :as tu]
-            [cook.compute-cluster :as cc])
+            [cook.test.testutil :as tu])
   (:import (io.kubernetes.client ApiException)
            (io.kubernetes.client.models V1ObjectMeta V1Pod V1PodStatus)))
 
@@ -187,17 +187,14 @@
       (.setStatus pod (V1PodStatus.))
       (with-redefs [cc/compute-cluster-name (constantly "compute-cluster-name")
                     controller/write-status-to-datomic (fn [_ status] (reset! reason (:reason status)))]
-        (try
-        (controller/handle-pod-completed nil "podB" {:pod pod :synthesized-state {:state :pod/failed}})
-        ; We expect an AssertionError
-        (is false) ; This line shouldn't execute.
-        (catch AssertionError e)))))
+        ; We expect an AssertionError because of the name mismatch.
+        (is (thrown? AssertionError
+                     (controller/handle-pod-completed nil "podB" {:pod pod :synthesized-state {:state :pod/failed}}))))))
+
   (testing "pod is nil"
     (let [pod nil
           reason (atom nil)]
       (with-redefs [cc/compute-cluster-name (constantly "compute-cluster-name")
                     controller/write-status-to-datomic (fn [_ status] (reset! reason (:reason status)))]
         (controller/handle-pod-completed nil "podB" {:pod pod :synthesized-state {:state :pod/failed}})
-        (is (= :reason-task-unknown @reason)))))
-
-  )
+        (is (= :reason-task-unknown @reason))))))

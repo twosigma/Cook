@@ -168,7 +168,7 @@
                                          (.getName container-status))))
        first))
 
-(defn make-failed-unknown-task-result
+(defn make-failed-task-result
   "Make a pod status result corresponding to a failed pod"
   [instance-id reason]
   {:status {:task-id {:value instance-id}
@@ -179,10 +179,11 @@
   "Calculate the pod status of a completed pod. Factored out so that we can wrap it in an exception handler."
   [compute-cluster pod-name {:keys [synthesized-state pod]} & {:keys [reason]}]
   (let [instance-id (some-> pod .getMetadata .getName)]
+    ; If we have an actual pod here, make sure its got the same name as pod-name.
     (when instance-id
       (assert (= instance-id pod-name)))
-    ; If we have an actual pod here....
     (try
+      ; If we have a pod, we can look at it to calculate the status.
       (if instance-id
         (let [pod-status (.getStatus pod)
               ^V1ContainerStatus job-container-status (get-job-container-status pod-status)
@@ -197,14 +198,15 @@
                                                                     pod-status job-container-status))}
               exit-code (some-> job-container-status .getState .getTerminated .getExitCode)]
           {:status status :exit-code exit-code})
+        ; We didn't have a pod, so we have to generate a status, without it.
         (do
           (log/error "In compute cluster" (cc/compute-cluster-name compute-cluster) ", pod" pod-name
                      "had a null pod")
-          (make-failed-unknown-task-result pod-name reason)))
+          (make-failed-task-result pod-name reason)))
       (catch Throwable t
         (log/error t "In compute cluster" (cc/compute-cluster-name compute-cluster) ", pod" pod-name
-                   "threw an error computing calculate pod status for write to datomic.")
-        (make-failed-unknown-task-result pod-name reason)))))
+                   "threw an error computing pod status for write to datomic.")
+        (make-failed-task-result pod-name reason)))))
 
 (defn handle-pod-completed
   "A pod has completed, or we're treating it as completed. E.g., it may really be running, but something is weird.
