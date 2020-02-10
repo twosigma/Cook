@@ -70,7 +70,8 @@ def start_progress_trackers():
         progress_updater = cst.ProgressUpdater(max_message_length, sample_interval_ms, send_progress_message)
 
         def launch_progress_tracker(progress_location, location_tag):
-            logging.info(f'Location {progress_location} tagged as [tag={location_tag}]')
+            progress_file_path = os.path.abspath(progress_location)
+            logging.info('Location {progress_location} (absolute path={progress_file_path}) tagged as [tag={location_tag}]')
             progress_tracker = cst.ProgressTracker(config, sequence_counter, progress_updater, progress_location, location_tag)
             progress_tracker.start()
             return progress_tracker
