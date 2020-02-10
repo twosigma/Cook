@@ -95,23 +95,31 @@
                                      @(:pool->fenzo-atom compute-cluster)
                                      mesos-status))
 
+(defn synthetic-pod->job-uuid
+  "If the given pod is a synthetic pod for autoscaling, returns the job uuid
+  that the pod corresponds to (stored in a pod label). Otherwise, returns nil."
+  [^V1Pod pod]
+  (some-> pod .getMetadata .getLabels (.get api/cook-synthetic-pod-job-uuid-label)))
+
 (defn handle-pod-submission-failed
   "Marks the corresponding job instance as failed in the database and
   returns the `completed` cook expected state"
-  [{:keys [name] :as compute-cluster} pod-name]
+  [{:keys [name] :as compute-cluster} pod-name ^V1Pod pod]
   (log/info "In compute cluster" name ", pod" pod-name "submission failed")
-  (let [instance-id pod-name
-        status {:reason :reason-task-invalid
-                :state :task-failed
-                :task-id {:value instance-id}}]
-    (write-status-to-datomic compute-cluster status)
-    {:cook-expected-state :cook-expected-state/completed}))
+  (when-not (synthetic-pod->job-uuid pod)
+    (let [instance-id pod-name
+          status {:reason :reason-task-invalid
+                  :state :task-failed
+                  :task-id {:value instance-id}}]
+      (write-status-to-datomic compute-cluster status)))
+  {:cook-expected-state :cook-expected-state/completed})
 
 (defn launch-pod
   [{:keys [api-client] :as compute-cluster} cook-expected-state-dict pod-name]
   (if (api/launch-pod api-client cook-expected-state-dict pod-name)
     cook-expected-state-dict
-    (handle-pod-submission-failed compute-cluster pod-name)))
+    (handle-pod-submission-failed compute-cluster pod-name
+                                  (-> cook-expected-state-dict :launch-pod :pod))))
 
 (defn update-or-delete!
   "Given a map atom, key, and value, if the value is not nil, set the key to the value in the map.
@@ -154,12 +162,6 @@
        (filter (fn [container-status] (= api/cook-container-name-for-job
                                          (.getName container-status))))
        first))
-
-(defn synthetic-pod->job-uuid
-  "If the given pod is a synthetic pod for autoscaling, returns the job uuid
-  that the pod corresponds to (stored in a pod label). Otherwise, returns nil."
-  [^V1Pod pod]
-  (some-> pod .getMetadata .getLabels (.get api/cook-synthetic-pod-job-uuid-label)))
 
 (defn handle-pod-completed
   "A pod has completed, or we're treating it as completed. E.g., it may really be running, but something is weird.
