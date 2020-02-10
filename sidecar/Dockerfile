@@ -6,4 +6,4 @@ COPY README.md /app
 COPY setup.py /app
 WORKDIR /app
 RUN pip3 install -e .
-CMD ["fileserver", "8080"]
+CMD ["cook-sidecar", "8080"]

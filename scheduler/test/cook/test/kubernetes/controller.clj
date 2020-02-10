@@ -1,5 +1,6 @@
 (ns cook.test.kubernetes.controller
   (:require [clojure.test :refer :all]
+            [cook.compute-cluster :as cc]
             [cook.kubernetes.api :as api]
             [cook.kubernetes.controller :as controller]
             [cook.test.testutil :as tu])
@@ -98,7 +99,7 @@
         count-kill-pod (atom 0)]
     (with-redefs [controller/kill-pod  (fn [_ cook-expected-state-dict _] (swap! count-kill-pod inc) cook-expected-state-dict)
                   controller/launch-pod (fn [_ cook-expected-state-dict _] cook-expected-state-dict)
-                  controller/handle-pod-completed (fn [_ _] {:cook-expected-state :cook-expected-state/completed})
+                  controller/handle-pod-completed (fn [_ _ _] {:cook-expected-state :cook-expected-state/completed})
                   controller/handle-pod-killed (fn [_ _]
                                                  {:cook-expected-state :cook-expected-state/completed})
                   controller/write-status-to-datomic (fn [_] :illegal_return_value_should_be_unused)
@@ -139,7 +140,7 @@
                        (:cook-expected-state (get @cook-expected-state-map name {}))))
         count-delete-pod (atom 0)]
     (with-redefs [controller/delete-pod  (fn [_ cook-expected-state-dict _] (swap! count-delete-pod inc) cook-expected-state-dict)
-                  controller/handle-pod-completed (fn [_ _] {:cook-expected-state :cook-expected-state/completed})
+                  controller/handle-pod-completed (fn [_ _ _] {:cook-expected-state :cook-expected-state/completed})
                   controller/write-status-to-datomic (fn [_] :illegal_return_value_should_be_unused)]
 
       (is (= :cook-expected-state/completed (do-process :cook-expected-state/completed :pod/succeeded)))
@@ -156,7 +157,7 @@
       (.setStatus pod pod-status)
       (with-redefs [controller/write-status-to-datomic (constantly nil)]
         (is (= {:cook-expected-state :cook-expected-state/completed}
-               (controller/handle-pod-completed nil {:pod pod :synthesized-state {:state :pod/failed}}))))))
+               (controller/handle-pod-completed nil "podA" {:pod pod :synthesized-state {:state :pod/failed}}))))))
 
   (testing "optional reason argument"
     (let [pod (tu/pod-helper "podA" "hostA" {})
@@ -165,6 +166,35 @@
       (with-redefs [controller/write-status-to-datomic (fn [_ status] (reset! reason (:reason status)))
                     controller/container-status->failure-reason (fn [_ _ _ _]
                                                                   (throw (ex-info "Shouldn't get called" {})))]
-        (controller/handle-pod-completed nil {:pod pod :synthesized-state {:state :pod/failed}}
+        (controller/handle-pod-completed nil "podA" {:pod pod :synthesized-state {:state :pod/failed}}
                                          :reason :reason-task-invalid))
-      (is (= :reason-task-invalid @reason)))))
+      (is (= :reason-task-invalid @reason))))
+
+  (testing "throws exception"
+    (let [pod (tu/pod-helper "podA" "hostA" {})
+          reason (atom nil)]
+      (.setStatus pod (V1PodStatus.))
+      (with-redefs [cc/compute-cluster-name (constantly "compute-cluster-name")
+                    controller/write-status-to-datomic (fn [_ status] (reset! reason (:reason status)))
+                    controller/container-status->failure-reason (fn [_ _ _ _]
+                                                                  (throw (ex-info "Got Exception" {})))]
+        (controller/handle-pod-completed nil "podA" {:pod pod :synthesized-state {:state :pod/failed}})
+        (is (= :reason-task-unknown @reason)))))
+
+  (testing "pod mismatch"
+    (let [pod (tu/pod-helper "podA" "hostA" {})
+          reason (atom nil)]
+      (.setStatus pod (V1PodStatus.))
+      (with-redefs [cc/compute-cluster-name (constantly "compute-cluster-name")
+                    controller/write-status-to-datomic (fn [_ status] (reset! reason (:reason status)))]
+        ; We expect an AssertionError because of the name mismatch.
+        (is (thrown? AssertionError
+                     (controller/handle-pod-completed nil "podB" {:pod pod :synthesized-state {:state :pod/failed}}))))))
+
+  (testing "pod is nil"
+    (let [pod nil
+          reason (atom nil)]
+      (with-redefs [cc/compute-cluster-name (constantly "compute-cluster-name")
+                    controller/write-status-to-datomic (fn [_ status] (reset! reason (:reason status)))]
+        (controller/handle-pod-completed nil "podB" {:pod pod :synthesized-state {:state :pod/failed}})
+        (is (= :reason-task-unknown @reason))))))
