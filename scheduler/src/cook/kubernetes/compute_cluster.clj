@@ -10,6 +10,7 @@
             [cook.config :as config]
             [cook.kubernetes.api :as api]
             [cook.kubernetes.controller :as controller]
+            [cook.monitor :as monitor]
             [cook.pool]
             [cook.tools :as tools]
             [datomic.api :as d]
@@ -58,6 +59,17 @@
       (count waiting-synthetic-pods-in-pool))
     0))
 
+(defn total-resource
+  "Given a map from node-name->resource->amount and a resource,
+  returns the total amount of that resource for all nodes."
+  [node-name->resource-map resource]
+  (->> node-name->resource-map vals (map resource) (reduce +)))
+
+(defn metric-title
+  "Given a metric name and a compute cluster name, returns a metric title."
+  [metric-name compute-cluster-name]
+  ["cook" "k8s-compute-cluster" metric-name (str "compute-cluster-" compute-cluster-name)])
+
 (defn generate-offers
   "Given a compute cluster and maps with node capacity and existing pods, return a map from pool to offers."
   [compute-cluster node-name->node pods]
@@ -69,6 +81,14 @@
                                                              (node-name->capacity node-name)
                                                              (node-name->consumed node-name)))
                                                (keys node-name->capacity))]
+    (monitor/set-counter! (metric-title "capacity-cpus" compute-cluster-name)
+                          (total-resource node-name->capacity :cpus))
+    (monitor/set-counter! (metric-title "capacity-mem" compute-cluster-name)
+                          (total-resource node-name->capacity :mem))
+    (monitor/set-counter! (metric-title "consumption-cpus" compute-cluster-name)
+                          (total-resource node-name->consumed :cpus))
+    (monitor/set-counter! (metric-title "consumption-mem" compute-cluster-name)
+                          (total-resource node-name->consumed :mem))
     (log/info "In" compute-cluster-name "compute cluster, capacity:" node-name->capacity)
     (log/info "In" compute-cluster-name "compute cluster, consumption:" node-name->consumed)
     (log/info "In" compute-cluster-name "compute cluster, filtering out"

@@ -103,8 +103,11 @@
 (timers/deftimer [cook-mesos scheduler generate-user-usage-map-duration])
 
 (defn metric-title
-  [metric-name pool]
-  ["cook-mesos" "scheduler" metric-name (str "pool-" pool)])
+  ([metric-name pool]
+   ["cook-mesos" "scheduler" metric-name (str "pool-" pool)])
+  ([metric-name pool compute-cluster]
+   ["cook-mesos" "scheduler" metric-name (str "pool-" pool)
+    (str "compute-cluster-" (cc/compute-cluster-name compute-cluster))]))
 
 (defn completion-rate-meter
   [status pool]
@@ -805,9 +808,13 @@
                                (pc/map-keys cc/compute-cluster-name)
                                (pc/map-vals count)))
                 (doseq [[compute-cluster requests-for-cluster] compute-cluster->task-requests]
+                  (histograms/update! (histograms/histogram
+                                        (metric-title "autoscale!-tasks"
+                                                      pool-name
+                                                      compute-cluster))
+                                      (count requests-for-cluster))
                   (timers/time!
-                    ;; TODO(DPO): Fix this metric to include compute cluster name
-                    (timers/timer (metric-title "handle-resource-offer!-duration" pool-name))
+                    (timers/timer (metric-title "autoscale!-duration" pool-name compute-cluster))
                     (cc/autoscale! compute-cluster pool-name requests-for-cluster)))
                 (log/info "In" pool-name "pool, done autoscaling"))))))
       (catch Throwable e
