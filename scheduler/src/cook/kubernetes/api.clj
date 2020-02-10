@@ -609,6 +609,8 @@
           ; * A job may have additional containers with the name aux-*
           job-status (first (filter (fn [c] (= cook-container-name-for-job (.getName c)))
                                     container-statuses))]
+      ; TODO: When we add logic here that supports detecting pods that have a i-am-being-preempted label, we need to modify
+      ; the controller to set the failure reason to unknown for pods in  :running,:missing.
       (if (some-> pod .getMetadata .getDeletionTimestamp)
         ; If a pod has been ordered deleted, treat it as if it was gone, It's being async removed.
         ; Note that we distinguish between this explicit :missing, and not being there at all when processing
