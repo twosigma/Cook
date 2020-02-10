@@ -14,6 +14,7 @@
             [cook.pool]
             [cook.tools :as tools]
             [datomic.api :as d]
+            [metrics.counters :as counters]
             [plumbing.core :as pc])
   (:import (com.google.auth.oauth2 GoogleCredentials)
            (io.kubernetes.client ApiClient)
@@ -65,10 +66,13 @@
   [node-name->resource-map resource]
   (->> node-name->resource-map vals (map resource) (reduce +)))
 
-(defn metric-title
-  "Given a metric name and a compute cluster name, returns a metric title."
+(defn counter
+  "Given a metric name and a compute cluster name, returns a counter metric."
   [metric-name compute-cluster-name]
-  ["cook" "k8s-compute-cluster" metric-name (str "compute-cluster-" compute-cluster-name)])
+  (counters/counter ["cook"
+                     "k8s-compute-cluster"
+                     metric-name
+                     (str "compute-cluster-" compute-cluster-name)]))
 
 (defn generate-offers
   "Given a compute cluster and maps with node capacity and existing pods, return a map from pool to offers."
@@ -81,13 +85,13 @@
                                                              (node-name->capacity node-name)
                                                              (node-name->consumed node-name)))
                                                (keys node-name->capacity))]
-    (monitor/set-counter! (metric-title "capacity-cpus" compute-cluster-name)
+    (monitor/set-counter! (counter "capacity-cpus" compute-cluster-name)
                           (total-resource node-name->capacity :cpus))
-    (monitor/set-counter! (metric-title "capacity-mem" compute-cluster-name)
+    (monitor/set-counter! (counter "capacity-mem" compute-cluster-name)
                           (total-resource node-name->capacity :mem))
-    (monitor/set-counter! (metric-title "consumption-cpus" compute-cluster-name)
+    (monitor/set-counter! (counter "consumption-cpus" compute-cluster-name)
                           (total-resource node-name->consumed :cpus))
-    (monitor/set-counter! (metric-title "consumption-mem" compute-cluster-name)
+    (monitor/set-counter! (counter "consumption-mem" compute-cluster-name)
                           (total-resource node-name->consumed :mem))
     (log/info "In" compute-cluster-name "compute cluster, capacity:" node-name->capacity)
     (log/info "In" compute-cluster-name "compute cluster, consumption:" node-name->consumed)
