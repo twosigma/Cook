@@ -34,6 +34,9 @@ import gunicorn.app.base
 import gunicorn.arbiter
 from flask import Flask, jsonify, request, send_file
 
+import cook.sidecar import util
+from cook.sidecar.version import VERSION
+
 app = Flask(__name__)
 sandbox_directory = None
 max_read_length = int(os.environ.get('COOK_FILE_SERVER_MAX_READ_LENGTH', '25000000'))
@@ -41,6 +44,7 @@ max_read_length = int(os.environ.get('COOK_FILE_SERVER_MAX_READ_LENGTH', '250000
 
 def start_file_server(args):
     try:
+        logging.info(f'Starting cook.sidecar {VERSION} file server')
         port, workers = (args + [None] * 2)[0:2]
         if port is None:
             logging.error('Must provide file server port')
@@ -53,10 +57,11 @@ def start_file_server(args):
             'bind': f'0.0.0.0:{port}',
             'workers': 4 if workers is None else workers,
         }).run()
+        return 0
 
     except Exception as e:
         logging.exception(f'exception when running file server with {args}')
-        sys.exit(1)
+        return 1
 
 
 class FileServerArbiter(gunicorn.arbiter.Arbiter):
@@ -204,14 +209,10 @@ def readiness_probe():
 
 
 def main():
-    log_level = os.environ.get('EXECUTOR_LOG_LEVEL', 'INFO')
-    logging.basicConfig(level = log_level,
-                        stream = sys.stderr,
-                        format='%(asctime)s %(levelname)s %(message)s')
+    util.init_logging()
     if len(sys.argv) == 2 and sys.argv[1] == "--version":
-        print(__version__)
+        print(VERSION)
     else:
-        logging.info(f'Starting cook.sidecar {__version__} file server')
         start_file_server(sys.argv[1:])
 
 

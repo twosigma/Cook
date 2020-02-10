@@ -21,45 +21,45 @@
 #  IN THE SOFTWARE.
 #
 
+import argparse
 import logging
 import os
 import sys
 
-from cook.sidecar.file_server import FileServerApplication
+from cook.sidecar import file_server, progress, util
 from cook.sidecar.version import VERSION
 
 
 def main(args=None):
-    log_level = os.environ.get('EXECUTOR_LOG_LEVEL', 'INFO')
-    logging.basicConfig(level = log_level,
-                        stream = sys.stderr,
-                        format='%(asctime)s %(levelname)s %(message)s')
+    util.init_logging()
 
-    if args is None:
-        args = sys.argv[1:]
+    parser = argparse.ArgumentParser(description='Cook Sidecar')
+    parser.add_argument('--no-file-server', action='store_true', help='Disable sandbox file server')
+    parser.add_argument('--no-progress-reporter', action='store_true', help='Disable progress reporter')
+    parser.add_argument('file_server_args', metavar='FILE_SERVER_ARGS', nargs=argparse.REMAINDER,
+                        help='Arguments for file server: PORT [NUM_WORKERS]')
+    parser.add_argument('--version', action='version', version=f'Cook Sidecar {VERSION}')
+    options = parser.parse_args(args or sys.argv[1:])
+    logging.info(f'OPTIONS = {options}')
 
-    progress_reporter_enabled = True
-    file_server_enabled = True
+    logging.info(f'Starting cook.sidecar {VERSION}')
 
-    while len(args) > 0 and args[0].startswith('--no-'):
-        if args[0] == '--no-file-server':
-            file_server_enabled = False
-        elif args[0] == '--no-progress-reporting':
-            progress_reporter_enabled = False
-        else:
-            logging.warning(f'Ignoring unrecognized flag: {args[0]}')
-        args.pop(0)
-
-    logging.info(f'Starting cook.sidecar {__version__}')
-
-    if progress_reporter_enabled:
+    # Start progress reporter workers (non-blocking)
+    if not options.no_progress_reporter:
         progress_trackers = progress.start_progress_trackers()
 
-    if file_server_enabled:
-        file_server.start_file_server(args)
+    # Start Flask file server (blocking)
+    if not options.no_file_server:
+        exit_code = file_server.start_file_server(options.file_server_args)
+    else:
+        exit_code = 0
 
-    if progress_reporter_enabled:
+    # Wait for progress reporter threads (blocking)
+    if not options.no_progress_reporter:
         progress.await_progress_trackers(progress_trackers)
+
+    # Propagate file server's exit code
+    sys.exit(exit_code)
 
 if __name__ == '__main__':
     main()

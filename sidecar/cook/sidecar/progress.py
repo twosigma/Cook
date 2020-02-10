@@ -31,11 +31,13 @@ import sys
 
 import cook.sidecar.config as csc
 import cook.sidecar.tracker as cst
-from cook.sidecar.version import __version__
+import cook.sidecar import util
+from cook.sidecar.version import VERSION
 
 
 def start_progress_trackers():
     try:
+        logging.info(f'Starting cook.sidecar {VERSION} progress reporter')
         config = csc.initialize_config(os.environ)
 
         default_url = config.callback_url
@@ -46,7 +48,7 @@ def start_progress_trackers():
             try:
                 for i in range(config.max_post_attempts):
                     response = requests.post(current_url, allow_redirects=False, timeout=config.max_post_time_secs, json=message)
-                    if response.status_code == 202:
+                    if 200 <= response.status_code <= 299:
                         return True
                     elif response.is_redirect and response.status_code == 307:
                         current_url = response.headers['location']
@@ -86,12 +88,11 @@ def start_progress_trackers():
                 progress_tracker.force_send_progress_update()
                 progress_tracker.stop()
 
-        signal.signal(signal.SIGINT, handle_interrupt)
-        signal.signal(signal.SIGTERM, handle_interrupt)
-
         def dump_traceback(signal, frame):
             faulthandler.dump_traceback()
 
+        signal.signal(signal.SIGINT, handle_interrupt)
+        signal.signal(signal.SIGTERM, handle_interrupt)
         signal.signal(signal.SIGUSR1, dump_traceback)
 
         return progress_trackers
@@ -111,14 +112,10 @@ def await_progress_trackers(progress_trackers):
 
 
 def main():
-    log_level = os.environ.get('EXECUTOR_LOG_LEVEL', 'INFO')
-    logging.basicConfig(level = log_level,
-                        stream = sys.stderr,
-                        format='%(asctime)s %(levelname)s %(message)s')
+    util.init_logging()
     if len(sys.argv) == 2 and sys.argv[1] == "--version":
-        print(__version__)
+        print(VERSION)
     else:
-        logging.info(f'Starting cook.sidecar {__version__} progress reporter')
         progress_trackers = start_progress_trackers()
         await_progress_trackers(progress_trackers)
 
