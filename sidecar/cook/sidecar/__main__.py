@@ -25,8 +25,8 @@ import logging
 import os
 import sys
 
-from cook.file_server import FileServerApplication
-from cook.version import VERSION
+from cook.sidecar.file_server import FileServerApplication
+from cook.sidecar.version import VERSION
 
 
 def main(args=None):

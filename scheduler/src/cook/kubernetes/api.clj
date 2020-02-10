@@ -300,7 +300,7 @@
   "required-cook-job-container")
 ; see pod->synthesized-pod-state comment for container naming conventions
 (def cook-container-name-for-file-server
-  "aux-cook-sandbox-file-server-container")
+  "aux-cook-sidecar-container")
 ; see pod->synthesized-pod-state comment for container naming conventions
 (def cook-init-container-name
   "aux-cook-init-container")
@@ -446,7 +446,7 @@
 (defn adjust-job-resources
   "Given the required resources for a job, add to them the resources for any sidecars that will be launched with the job."
   [{:keys [cpus mem] :as resources}]
-  (if-let [{:keys [cpu-request memory-request]} (-> (config/kubernetes) :sandbox-fileserver :resource-requirements)]
+  (if-let [{:keys [cpu-request memory-request]} (-> (config/kubernetes) :sidecar :resource-requirements)]
     (assoc resources
       :cpus (add-as-decimals cpus cpu-request)
       :mem (add-as-decimals mem memory-request))
@@ -485,17 +485,16 @@
         security-context (make-security-context parameters (:user command))
         workdir (get-workdir parameters)
         {:keys [volumes volume-mounts workdir-volume-mount-fn]} (make-volumes volumes workdir)
-
-        {:keys [custom-shell init-container sandbox-fileserver]} (config/kubernetes)
+        {:keys [custom-shell init-container sidecar]} (config/kubernetes)
         init-container-workdir "/mnt/init-container"
         init-container-workdir-volume (when init-container (make-empty-volume "cook-init-container-workdir-volume"))
         init-container-workdir-volume-mount-fn (partial make-volume-mount init-container-workdir-volume init-container-workdir)
-        fileserver-workdir "/mnt/fileserver"
-        fileserver-workdir-volume (when sandbox-fileserver (make-empty-volume "cook-fileserver-workdir-volume"))
-        fileserver-workdir-volume-mount-fn (partial make-volume-mount fileserver-workdir-volume fileserver-workdir)
+        sidecar-workdir "/mnt/sidecar"
+        sidecar-workdir-volume (when sidecar (make-empty-volume "cook-sidecar-workdir-volume"))
+        sidecar-workdir-volume-mount-fn (partial make-volume-mount sidecar-workdir-volume sidecar-workdir)
         workdir-env-vars [(make-env "HOME" workdir)
                           (make-env "MESOS_SANDBOX" workdir)
-                          (make-env "FILESERVER_WORKDIR" fileserver-workdir)]]
+                          (make-env "SIDECAR_WORKDIR" sidecar-workdir)]]
 
     ; metadata
     (.setName metadata (str task-id))
@@ -521,7 +520,7 @@
     (.setResources container resources)
     (.setVolumeMounts container (filterv some? (conj volume-mounts
                                                      (init-container-workdir-volume-mount-fn true)
-                                                     (fileserver-workdir-volume-mount-fn true))))
+                                                     (sidecar-workdir-volume-mount-fn true))))
     (.setWorkingDir container workdir)
 
     ; pod-spec
@@ -540,7 +539,7 @@
         (.addInitContainersItem pod-spec container)))
 
     ; sandbox file server container
-    (when-let [{:keys [command image port resource-requirements]} sandbox-fileserver]
+    (when-let [{:keys [command image port resource-requirements]} sidecar]
       (let [{:keys [cpu-request cpu-limit memory-request memory-limit]} resource-requirements
             container (V1Container.)
             resources (V1ResourceRequirements.)
@@ -550,7 +549,7 @@
         (.setName container cook-container-name-for-file-server)
         (.setImage container image)
         (.setCommand container (conj command (str port)))
-        (.setWorkingDir container fileserver-workdir)
+        (.setWorkingDir container sidecar-workdir)
         (.setPorts container [(.containerPort (V1ContainerPort.) (int port))])
 
         (.setEnv container [(make-env "COOK_WORKDIR" workdir)])
@@ -567,14 +566,14 @@
         (.putLimitsItem resources "memory" (double->quantity (* memory-multiplier memory-limit)))
         (.setResources container resources)
 
-        (.setVolumeMounts container [(workdir-volume-mount-fn true) (fileserver-workdir-volume-mount-fn false)])
+        (.setVolumeMounts container [(workdir-volume-mount-fn true) (sidecar-workdir-volume-mount-fn false)])
         (.addContainersItem pod-spec container)))
 
     (.setNodeName pod-spec hostname)
     (.setRestartPolicy pod-spec "Never")
     (when pool-name
       (.addTolerationsItem pod-spec (toleration-for-pool pool-name)))
-    (.setVolumes pod-spec (filterv some? (conj volumes init-container-workdir-volume fileserver-workdir-volume)))
+    (.setVolumes pod-spec (filterv some? (conj volumes init-container-workdir-volume sidecar-workdir-volume)))
     (.setSecurityContext pod-spec security-context)
 
     ; pod
