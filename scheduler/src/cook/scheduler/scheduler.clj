@@ -782,43 +782,39 @@
                    (-> job :job/uuid hash (mod (count compute-clusters)))))
             task-requests))
 
-(let [pool-name->last-autoscale-atom (atom {})]
-  (defn trigger-autoscaling!
-    "Autoscales the given pool to satisfy the given match failures (i.e. pending jobs), if:
-    - There is at least one failure
-    - Enough time has passed since the pool last autoscaled
-    - There is at least one compute cluster configured to do autoscaling"
-    [failures pool-name compute-clusters]
-    (try
-      (when-let [autoscaler-interval-seconds (get (config/autoscaler) :interval-seconds)]
-        (when (time/after? (time/now)
-                           (time/plus (get @pool-name->last-autoscale-atom pool-name (time/epoch))
-                                      (-> autoscaler-interval-seconds time/seconds)))
-          (let [task-requests (map #(.. (first %) (getRequest)) failures)
-                num-task-requests (count task-requests)
-                autoscaling-compute-clusters (filter #(cc/autoscaling? % pool-name) compute-clusters)
-                num-autoscaling-compute-clusters (count autoscaling-compute-clusters)]
-            (when (and (pos? num-autoscaling-compute-clusters) (pos? num-task-requests))
-              (swap! pool-name->last-autoscale-atom assoc pool-name (time/now))
-              (let [compute-cluster->task-requests (distribute-task-requests-to-compute-clusters
-                                                     task-requests autoscaling-compute-clusters)]
-                (log/info "In" pool-name "pool, autoscaling for" num-task-requests
-                          "un-matched task(s), distributed to compute clusters as follows:"
-                          (->> compute-cluster->task-requests
-                               (pc/map-keys cc/compute-cluster-name)
-                               (pc/map-vals count)))
-                (doseq [[compute-cluster requests-for-cluster] compute-cluster->task-requests]
-                  (histograms/update! (histograms/histogram
-                                        (metric-title "autoscale!-tasks"
-                                                      pool-name
-                                                      compute-cluster))
-                                      (count requests-for-cluster))
-                  (timers/time!
-                    (timers/timer (metric-title "autoscale!-duration" pool-name compute-cluster))
-                    (cc/autoscale! compute-cluster pool-name requests-for-cluster)))
-                (log/info "In" pool-name "pool, done autoscaling"))))))
-      (catch Throwable e
-        (log/error e "In" pool-name "pool, encountered error while triggering autoscaling")))))
+(defn trigger-autoscaling!
+  "Autoscales the given pool to satisfy the given match failures (i.e. pending jobs), if:
+  - There is at least one failure
+  - There is at least one compute cluster configured to do autoscaling"
+  [failures pool-name compute-clusters]
+  (println "~~~~~" "trigger-autoscaling!")
+  (try
+    (let [task-requests (map #(.. (first %) (getRequest)) failures)
+          num-task-requests (count task-requests)
+          autoscaling-compute-clusters (filter #(cc/autoscaling? % pool-name) compute-clusters)
+          num-autoscaling-compute-clusters (count autoscaling-compute-clusters)]
+      (println "~~~~~" num-task-requests)
+      (println "~~~~~" num-autoscaling-compute-clusters)
+      (when (and (pos? num-autoscaling-compute-clusters) (pos? num-task-requests))
+        (let [compute-cluster->task-requests (distribute-task-requests-to-compute-clusters
+                                               task-requests autoscaling-compute-clusters)]
+          (log/info "In" pool-name "pool, autoscaling for" num-task-requests
+                    "un-matched task(s), distributed to compute clusters as follows:"
+                    (->> compute-cluster->task-requests
+                         (pc/map-keys cc/compute-cluster-name)
+                         (pc/map-vals count)))
+          (doseq [[compute-cluster requests-for-cluster] compute-cluster->task-requests]
+            (histograms/update! (histograms/histogram
+                                  (metric-title "autoscale!-tasks"
+                                                pool-name
+                                                compute-cluster))
+                                (count requests-for-cluster))
+            (timers/time!
+              (timers/timer (metric-title "autoscale!-duration" pool-name compute-cluster))
+              (cc/autoscale! compute-cluster pool-name requests-for-cluster)))
+          (log/info "In" pool-name "pool, done autoscaling"))))
+    (catch Throwable e
+      (log/error e "In" pool-name "pool, encountered error while triggering autoscaling"))))
 
 (defn handle-resource-offers!
   "Gets a list of offers from mesos. Decides what to do with them all--they should all

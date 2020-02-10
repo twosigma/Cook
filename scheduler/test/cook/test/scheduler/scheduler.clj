@@ -2003,8 +2003,7 @@
         failures [(make-match-failure-fn task-request-1)
                   (make-match-failure-fn task-request-2)
                   (make-match-failure-fn task-request-3)]]
-    (with-redefs [config/autoscaler (constantly {:interval-seconds 1})]
-      (sched/trigger-autoscaling! failures "test-pool" [compute-cluster]))
+    (sched/trigger-autoscaling! failures "test-pool" [compute-cluster])
     (is (= 1 (count @autoscale!-invocations)))
     (is (= compute-cluster (-> @autoscale!-invocations first :compute-cluster)))
     (is (= "test-pool" (-> @autoscale!-invocations first :pool-name)))
