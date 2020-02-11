@@ -114,23 +114,25 @@
         [(make-atom-updater all-pods-atom) ; Update the set of all pods.
          (partial cook-pod-callback-wrap cook-pod-callback compute-cluster-name)] ; Invoke the cook-pod-callback if its a cook pod.
         old-all-pods @all-pods-atom]
-    (log/info "Processing pods for compute cluster" compute-cluster-name ":" (keys namespaced-pod-name->pod))
+    (log/info "In" compute-cluster-name "compute cluster, pod watch processing pods:" (keys namespaced-pod-name->pod))
     ; We want to process all changes through the callback process.
     ; So compute the delta between the old and new and process those via the callbacks.
     ; Note as a side effect, the callbacks mutate all-pods-atom
     (doseq [task (set/union (keys namespaced-pod-name->pod) (keys old-all-pods))]
-      (log/info "In" compute-cluster-name "compute cluster, doing (startup) callback for" task)
+      (log/info "In" compute-cluster-name "compute cluster, pod watch doing (startup) callback for" task)
       (doseq [callback callbacks]
         (try
           (callback task (get old-all-pods task) (get namespaced-pod-name->pod task))
           (catch Exception e
-            (log/error e "Error while processing callback for" task)))))
+            (log/error e "In" compute-cluster-name
+                       "compute cluster, pod watch error while processing callback for" task)))))
 
     (let [watch (WatchHelper/createPodWatch api-client (-> current-pods
                                                            .getMetadata
                                                            .getResourceVersion))]
       (fn []
         (try
+          (log/info "In" compute-cluster-name "compute cluster, handling pod watch updates")
           (handle-watch-updates all-pods-atom watch get-pod-namespaced-key
                                 callbacks)
           (catch Exception e
@@ -145,13 +147,15 @@
 (defn initialize-pod-watch
   "Initialize the pod watch. This fills all-pods-atom with data and invokes the callback on pod changes."
   [^ApiClient api-client compute-cluster-name all-pods-atom cook-pod-callback]
+  (log/info "In" compute-cluster-name "compute cluster, initializing pod watch")
   ; We'll iterate trying to connect to k8s until the initialize-pod-watch-helper returns a watch function.
   (let [{:keys [reconnect-delay-ms]} (config/kubernetes)
         tmpfn (fn []
                 (try
+                  (log/info "In" compute-cluster-name "compute cluster, initializing pod watch helper")
                   (initialize-pod-watch-helper api-client compute-cluster-name all-pods-atom cook-pod-callback)
                   (catch Exception e
-                    (log/error e "Error during initial setup of looking at pods for" compute-cluster-name
+                    (log/error e "Error during pod watch initial setup of looking at pods for" compute-cluster-name
                                "and sleeping" reconnect-delay-ms "milliseconds before reconnect")
                     (Thread/sleep reconnect-delay-ms)
                     nil)))
@@ -181,6 +185,7 @@
     (let [watch (WatchHelper/createNodeWatch api-client (-> current-nodes .getMetadata .getResourceVersion))]
       (fn []
         (try
+          (log/info "In" compute-cluster-name "compute cluster, handling node watch updates")
           (handle-watch-updates current-nodes-atom watch (fn [n] (-> n .getMetadata .getName))
                                 [(make-atom-updater current-nodes-atom)]) ; Update the set of all nodes.
           (catch Exception e
@@ -192,13 +197,15 @@
 (defn initialize-node-watch
   "Initialize the node watch. This fills current-nodes-atom with data and invokes the callback on pod changes."
   [^ApiClient api-client compute-cluster-name current-nodes-atom]
+  (log/info "In" compute-cluster-name "compute cluster, initializing node watch")
   ; We'll iterate trying to connect to k8s until the initialize-node-watch-helper returns a watch function.
   (let [{:keys [reconnect-delay-ms]} (config/kubernetes)
         tmpfn (fn []
                 (try
+                  (log/info "In" compute-cluster-name "compute cluster, initializing node watch helper")
                   (initialize-node-watch-helper api-client compute-cluster-name current-nodes-atom)
                   (catch Exception e
-                    (log/error e "Error during initial setup of looking at nodes for" compute-cluster-name
+                    (log/error e "Error during node watch initial setup of looking at nodes for" compute-cluster-name
                                "and sleeping" reconnect-delay-ms "milliseconds before reconnect")
                     (Thread/sleep reconnect-delay-ms)
                     nil)))
