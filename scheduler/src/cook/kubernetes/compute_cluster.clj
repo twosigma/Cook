@@ -151,12 +151,12 @@
                              (filter (fn [[_ task-ent]] (some? task-ent)))
                              (into {}))
         all-task-id->task (merge extra-tasks-id->task running-task-id->task)]
-    (log/info "Initialized tasks on startup: "
-              (count all-tasks-ids-in-pods) " tasks in pods and "
-              (count running-task-id->task) " running tasks in this compute cluster in datomic. "
-              "We need to load an extra "
-              (count extra-tasks-id->task) " pods that aren't running in datomic. "
-              "For a total expected state size of "
+    (log/info "Initialized tasks on startup:"
+              (count all-tasks-ids-in-pods) "tasks in pods and"
+              (count running-task-id->task) "running tasks in compute cluster" compute-cluster-name "in datomic. "
+              "We need to load an extra"
+              (count extra-tasks-id->task) "pods that aren't running in datomic. "
+              "For a total expected state size of"
               (count all-task-id->task) "tasks in cook expected state.")
     (doseq [[k v] all-task-id->task]
       (log/debug "Setting cook expected state for " k " ---> " (task-ent->cook-expected-state v)))
