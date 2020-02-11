@@ -7,6 +7,7 @@ import os
 import os.path
 import re
 import subprocess
+import sys
 import threading
 import time
 import unittest
@@ -455,6 +456,17 @@ def make_temporal_uuid():
 def job_label():
     return os.getenv('COOK_TEST_JOB_LABEL')
 
+def get_caller():
+    """Get the name of the function that called the caller of this function."""
+    startFrame = sys._getframe(2)
+    while startFrame is not None:
+        name = startFrame.f_code.co_name
+        if name == '<listcomp>':
+            pass
+        else:
+            return startFrame.f_code.co_name
+        startFrame = startFrame.f_back
+    return ""
 
 def minimal_job(**kwargs):
     job = {
@@ -462,7 +474,7 @@ def minimal_job(**kwargs):
         'cpus': get_default_cpus(),
         'max_retries': 1,
         'mem': int(os.getenv('COOK_DEFAULT_JOB_MEM_MB', 32)),
-        'name': 'default_test_job',
+        'name': ('default_test_job-'+get_caller()),
         'priority': 1,
         'uuid': str(make_temporal_uuid())
     }
@@ -494,6 +506,9 @@ def minimal_job(**kwargs):
         job['labels'][label_parts[0]] = label_parts[1]
 
     job.update(kwargs)
+    if "name" in kwargs and kwargs["name"] is None:
+        del job["name"]
+
     no_container_volume = os.getenv('COOK_NO_CONTAINER_VOLUME') is not None
     if (not no_container_volume
             and is_cook_executor_in_use()
@@ -538,11 +553,15 @@ def submit_jobs(cook_url, job_specs, clones=1, pool=None, headers=None, log_requ
         headers = {}
     if isinstance(job_specs, dict):
         job_specs = [job_specs] * clones
-
+    caller = get_caller()
     def full_spec(spec):
+        if 'name' not in spec:
+            spec['name']="default_job-"+caller
         if 'uuid' not in spec:
             return minimal_job(**spec)
         else:
+            if "name" in spec and spec["name"] is None:
+                del spec["name"]
             return spec
 
     jobs = [full_spec(j) for j in job_specs]
@@ -615,6 +634,8 @@ def submit_job(cook_url, pool=None, headers=None, **kwargs):
     """Create and submit a single job"""
     if headers is None:
         headers = {}
+    if 'name' not in kwargs:
+        kwargs['name']="default_job-"+get_caller()
     uuids, resp = submit_jobs(cook_url, job_specs=[kwargs], pool=pool, headers=headers)
     return uuids[0], resp
 
