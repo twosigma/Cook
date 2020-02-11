@@ -435,9 +435,7 @@
      :kubernetes (fnk [[:config {kubernetes {}}]]
                    (merge {:default-workdir "/mnt/sandbox"
                            :reconnect-delay-ms 60000}
-                          kubernetes))
-     :autoscaler (fnk [[:config {autoscaler {}}]]
-                   autoscaler)}))
+                          kubernetes))}))
 
 (defn read-config
   "Given a config file path, reads the config and returns the map"
@@ -557,7 +555,3 @@
 (defn task-constraints
   []
   (get-in config [:settings :task-constraints]))
-
-(defn autoscaler
-  []
-  (get-in config [:settings :autoscaler]))
