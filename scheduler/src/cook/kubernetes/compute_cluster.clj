@@ -285,23 +285,27 @@
 
   (pending-offers [this pool-name]
     (let [pods (add-starting-pods this @all-pods-atom)
-          num-waiting-synthetic-pods (num-waiting-synthetic-pods this pods pool-name)]
+          num-waiting-synthetic-pods (num-waiting-synthetic-pods this pods pool-name)
+          nodes @current-nodes-atom]
+      (log/info "In" name "compute cluster, got asked for pending offers for pool" pool-name
+                {:total-pods (count pods)
+                 :synthetic-pods num-waiting-synthetic-pods
+                 :nodes (count nodes)})
       (if (pos? num-waiting-synthetic-pods)
         (do
           ; If there are waiting synthetic pods for the given pool in the cluster, we should let
           ; them get scheduled before we generate offers. Otherwise, we will be racing against the
           ; k8s scheduler scheduling those synthetic pods, and we will often lose, resulting in
           ; Failed instances for no good reason.
-          (log/info "In" name "compute cluster, skipping offer generation for" pool-name
-                    "pool because there are" num-waiting-synthetic-pods
+          (log/info "In" name "compute cluster, skipping offer generation for pool" pool-name
+                    "because there are" num-waiting-synthetic-pods
                     "waiting synthetic pod(s) in that pool")
           [])
-        (let [nodes @current-nodes-atom
-              offers-all-pools (generate-offers this nodes pods)
+        (let [offers-all-pools (generate-offers this nodes pods)
               ; TODO: We are generating offers for every pool here, and filtering out only offers for this one pool.
               ; TODO: We should be smarter here and generate once, then reuse for each pool, instead of generating for each pool each time and only keeping one
               offers-this-pool (get offers-all-pools pool-name)]
-          (log/info "Generated" (count offers-this-pool) "offers for pool" pool-name "in compute cluster" name
+          (log/info "In" name "compute cluster, generated" (count offers-this-pool) "offers for pool" pool-name
                     (into [] (map #(into {} (select-keys % [:hostname :resources])) offers-this-pool)))
           offers-this-pool))))
 
