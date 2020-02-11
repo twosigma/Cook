@@ -221,7 +221,7 @@
 
    Looks at the pod status, updates datomic (with success, failure, and possibly mea culpa),
    and return a new cook expected state of :cook-expected-state/completed."
-  [compute-cluster pod-name k8s-actual-state & {:keys [reason]}]
+  [compute-cluster pod-name {:keys [pod] :as k8s-actual-state} & {:keys [reason]}]
   (when-not (synthetic-pod->job-uuid pod)
     (let [{:keys [status exit-code]} (calculate-pod-status compute-cluster pod-name k8s-actual-state :reason reason)]
       (write-status-to-datomic compute-cluster status)

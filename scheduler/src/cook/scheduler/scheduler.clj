@@ -787,14 +787,11 @@
   - There is at least one failure
   - There is at least one compute cluster configured to do autoscaling"
   [failures pool-name compute-clusters]
-  (println "~~~~~" "trigger-autoscaling!")
   (try
     (let [task-requests (map #(.. (first %) (getRequest)) failures)
           num-task-requests (count task-requests)
           autoscaling-compute-clusters (filter #(cc/autoscaling? % pool-name) compute-clusters)
           num-autoscaling-compute-clusters (count autoscaling-compute-clusters)]
-      (println "~~~~~" num-task-requests)
-      (println "~~~~~" num-autoscaling-compute-clusters)
       (when (and (pos? num-autoscaling-compute-clusters) (pos? num-task-requests))
         (let [compute-cluster->task-requests (distribute-task-requests-to-compute-clusters
                                                task-requests autoscaling-compute-clusters)]

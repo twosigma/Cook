@@ -1986,7 +1986,8 @@
                           (autoscale! [compute-cluster pool-name task-requests]
                             (swap! autoscale!-invocations conj {:compute-cluster compute-cluster
                                                                 :pool-name pool-name
-                                                                :task-requests task-requests})))
+                                                                :task-requests task-requests}))
+                          (compute-cluster-name [_] "test-compute-cluster"))
         conn (restore-fresh-database! "datomic:mem://test-trigger-autoscaling")
         make-task-request-fn (fn []
                                (let [job-id (create-dummy-job conn)
