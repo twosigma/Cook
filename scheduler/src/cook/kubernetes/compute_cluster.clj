@@ -132,7 +132,7 @@
   all running tasks entities (via (->> (cook.tools/get-running-task-ents)."
   [conn api-client compute-cluster-name running-tasks-ents]
   (let [db (d/db conn)
-        [_ pod-name->pod] (api/get-all-pods-in-kubernetes api-client)
+        [_ pod-name->pod] (api/try-forever-get-all-pods-in-kubernetes compute-cluster-name api-client)
         all-tasks-ids-in-pods (into #{} (keys pod-name->pod))
         _ (log/debug "All tasks in pods (for initializing cook expected state): " all-tasks-ids-in-pods)
         running-tasks-in-cc-ents (filter
