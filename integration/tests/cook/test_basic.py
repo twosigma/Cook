@@ -917,7 +917,7 @@ class CookTest(util.CookTest):
 
     def test_list_jobs_by_state(self):
         # schedule a bunch of jobs in hopes of getting jobs into different statuses
-        job_specs = [util.minimal_job(command=f"sleep {i}") for i in range(1, 20)]
+        job_specs = [util.minimal_job(command=f"sleep {i}", cpus=1) for i in range(1, 20)]
         try:
             _, resp = util.submit_jobs(self.cook_url, job_specs)
             self.assertEqual(resp.status_code, 201)
