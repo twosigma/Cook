@@ -103,6 +103,21 @@
                                                    (.getItems current-pods))]
     [current-pods namespaced-pod-name->pod]))
 
+(defn try-forever-get-all-pods-in-kubernetes
+  "Try forever to get all pods in kubernetes. Used when starting a cluster up."
+  [compute-cluster-name api-client]
+  (loop []
+    (let [{:keys [reconnect-delay-ms]} (config/kubernetes)
+          out (try
+                (get-all-pods-in-kubernetes api-client)
+                (catch Throwable e
+                  (log/error e "Error during cluster startup getting all pods for" compute-cluster-name
+                             "and sleeping" reconnect-delay-ms "milliseconds before reconnect")
+                  (Thread/sleep reconnect-delay-ms)
+                  nil))]
+      (if out
+        out
+        (recur)))))
 
 (declare initialize-pod-watch)
 (defn ^Callable initialize-pod-watch-helper
