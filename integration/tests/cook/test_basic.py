@@ -408,6 +408,7 @@ class CookTest(util.CookTest):
             self.assertEqual(resp.content, str.encode(f"submitted jobs {job_uuid}"))
             job = util.load_job(self.cook_url, job_uuid)
             util.wait_for_job(self.cook_url, job_uuid, 'completed')
+            util.wait_for_instance(self.cook_url, job_uuid, status='success')
         finally:
             util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
 
