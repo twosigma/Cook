@@ -915,26 +915,6 @@ class CookTest(util.CookTest):
         self.assertEqual(resp.status_code, 201)
         return util.get_user(self.cook_url, job_uuid)
 
-    def test_list_jobs_by_state(self):
-        # schedule a bunch of jobs in hopes of getting jobs into different statuses
-        job_specs = [util.minimal_job(command=f"sleep {i}", cpus=1) for i in range(1, 20)]
-        try:
-            _, resp = util.submit_jobs(self.cook_url, job_specs)
-            self.assertEqual(resp.status_code, 201)
-
-            # let some jobs get scheduled
-            time.sleep(10)
-            user = self.determine_user()
-
-            for state in ['waiting', 'running', 'completed']:
-                resp = util.list_jobs(self.cook_url, user=user, state=state)
-                self.assertEqual(200, resp.status_code, msg=resp.content)
-                jobs = resp.json()
-                for job in jobs:
-                    self.assertEqual(state, job['status'])
-        finally:
-            util.kill_jobs(self.cook_url, job_specs)
-
     def test_list_jobs_by_time(self):
         # schedule two jobs with different submit times
         job_specs = [util.minimal_job() for _ in range(2)]
