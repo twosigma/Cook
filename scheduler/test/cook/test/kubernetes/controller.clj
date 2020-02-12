@@ -65,6 +65,7 @@
 
     (is (nil? (do-process :cook-expected-state/running :missing)))
     (is (= :cook-expected-state/completed (do-process :cook-expected-state/running :pod/succeeded)))
+    (is (= :reason-normal-exit @reason))
     (is (= :cook-expected-state/completed (do-process :cook-expected-state/running :pod/failed)))
     (is (= :cook-expected-state/running (do-process :cook-expected-state/running :pod/running)))
     (is (= :cook-expected-state/completed (do-process :cook-expected-state/running :pod/unknown)))
