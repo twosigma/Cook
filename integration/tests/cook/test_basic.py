@@ -385,8 +385,30 @@ class CookTest(util.CookTest):
                            'host-path': '/var/lib/mno',
                            'container-path': '/var/lib/pqr'}, volumes)
             util.wait_for_job(self.cook_url, job_uuid, 'completed')
-            # TODO: Uncomment this assertion when it's passing in our internal environments
-            #util.wait_for_instance(self.cook_url, job_uuid, status='success')
+        finally:
+            util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
+
+    @unittest.skipUnless(util.docker_tests_enabled(),
+                         'Requires setting the COOK_TEST_DOCKER_IMAGE environment variable')
+    def test_workdir_volume_overlap(self):
+        docker_image = util.docker_image()
+        self.assertIsNotNone(docker_image)
+        container = {'type': 'docker',
+                     'docker': {'image': docker_image,
+                                'network': 'HOST',
+                                'force-pull-image': False,
+                                'parameters': [{'key': 'env', 'value': 'FOO=bar'},
+                                               {'key': 'workdir', 'value': '/var/lib/pqr'}]},
+                     'volumes': [{'mode': 'RW',
+                                  'host-path': '/var/lib/mno',
+                                  'container-path': '/var/lib/pqr'}]}
+        job_uuid, resp = util.submit_job(self.cook_url, container=container)
+        try:
+            self.assertEqual(resp.status_code, 201, msg=resp.content)
+            self.assertEqual(resp.content, str.encode(f"submitted jobs {job_uuid}"))
+            job = util.load_job(self.cook_url, job_uuid)
+            util.wait_for_job(self.cook_url, job_uuid, 'completed')
+            util.wait_for_instance(self.cook_url, job_uuid, status='success')
         finally:
             util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
 
