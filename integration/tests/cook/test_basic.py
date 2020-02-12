@@ -2370,7 +2370,7 @@ class CookTest(util.CookTest):
             util.kill_jobs(self.cook_url, job_uuids)
 
     def test_submit_with_no_name(self):
-        # The code specialcases name=None and removes it before submitting.
+        # The job submission code special-cases name=None and removes it before submitting.
         job_with_no_name = {'uuid': str(util.make_temporal_uuid()),
                             'command': 'ls',
                             'cpus': 0.1,
