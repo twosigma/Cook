@@ -186,9 +186,9 @@
 (defn update-reason-metrics!
   "Updates histograms and counters for run time, cpu time, and memory time,
   where the histograms have the failure reason in the title"
-  [db mesos-reason instance-runtime {:keys [cpus mem]}]
+  [db task-id mesos-reason instance-runtime {:keys [cpus mem]}]
   (let [reason (->> mesos-reason
-                    (reason/mesos-reason->cook-reason-entity-id db)
+                    (reason/mesos-reason->cook-reason-entity-id db task-id)
                     (d/entity db)
                     :reason/name
                     name)
@@ -270,9 +270,8 @@
              (handle-throughput-metrics job-resources instance-runtime :failed pool-name)
              (handle-throughput-metrics job-resources instance-runtime :completed pool-name)
              (when-not previous-reason
-               (update-reason-metrics! db reason instance-runtime job-resources)))
+               (update-reason-metrics! db task-id reason instance-runtime job-resources)))
            (when-not (nil? instance)
-             ;; (println "update:" task-id task-state job instance instance-status prior-job-state)
              (log/debug "Transacting updated state for instance" instance "to status" instance-status)
              ;; The database can become inconsistent if we make multiple calls to :instance/update-state in a single
              ;; transaction; see the comment in the definition of :instance/update-state for more details
@@ -280,11 +279,17 @@
                                       conn
                                       (reduce
                                         into
-                                        [[:instance/update-state instance instance-status (or (:db/id previous-reason)
-                                                                                              (reason/mesos-reason->cook-reason-entity-id db reason)
-                                                                                              [:reason.name :unknown])]] ; Warning: Default is not mea-culpa
+                                        [[:instance/update-state
+                                          instance
+                                          instance-status
+                                          (or (:db/id previous-reason)
+                                              (reason/mesos-reason->cook-reason-entity-id db task-id reason)
+                                              [:reason.name :unknown])]]
                                         [(when (and (#{:instance.status/failed} instance-status) (not previous-reason) reason)
-                                           [[:db/add instance :instance/reason (reason/mesos-reason->cook-reason-entity-id db reason)]])
+                                           [[:db/add
+                                             instance
+                                             :instance/reason
+                                             (reason/mesos-reason->cook-reason-entity-id db task-id reason)]])
                                          (when (and (#{:instance.status/success
                                                        :instance.status/failed} instance-status)
                                                     (nil? (:instance/end-time instance-ent)))
