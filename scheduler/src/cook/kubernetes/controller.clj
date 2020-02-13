@@ -192,9 +192,9 @@
               task-state (if succeeded?
                            :task-finished
                            :task-failed)
-              reason (if succeeded?
-                       :reason-normal-exit
-                       (or reason
+              reason (or reason 
+                         (if succeeded?
+                           :reason-normal-exit
                            (container-status->failure-reason compute-cluster pod-name
                                                              pod-status job-container-status)))
               status {:task-id {:value pod-name}
