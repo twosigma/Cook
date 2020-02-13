@@ -2544,9 +2544,10 @@ class CookTest(util.CookTest):
         self.assertFalse(job_uuids[1] in error, resp.content)
 
     def test_set_retries_to_attempts_conflict(self):
-        uuid, resp = util.submit_job(self.cook_url, command='sleep 30', max_retries=5, disable_mea_culpa_retries=True)
-        util.wait_until(lambda: util.load_job(self.cook_url, uuid),
-                        lambda j: (len(j['instances']) >= 1) and any([i['status'] == 'running' for i in j['instances']]))
+        sleep_command = f'sleep {util.DEFAULT_TEST_TIMEOUT_SECS}'
+        uuid, resp = util.submit_job(self.cook_url, command=sleep_command,
+                                     max_retries=5, disable_mea_culpa_retries=True)
+        util.wait_for_running_instance(self.cook_url, uuid)
         util.kill_jobs(self.cook_url, [uuid])
 
         def instances_complete(job):
