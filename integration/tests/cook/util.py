@@ -437,7 +437,7 @@ def docker_working_directory():
 
 
 def get_default_cpus():
-    return float(os.getenv('COOK_DEFAULT_JOB_CPUS', 0.5))
+    return float(os.getenv('COOK_DEFAULT_JOB_CPUS', 0.05))
 
 
 def make_temporal_uuid():
@@ -461,7 +461,7 @@ def minimal_job(**kwargs):
         'command': 'echo Default Test Command',
         'cpus': get_default_cpus(),
         'max_retries': 1,
-        'mem': int(os.getenv('COOK_DEFAULT_JOB_MEM_MB', 256)),
+        'mem': int(os.getenv('COOK_DEFAULT_JOB_MEM_MB', 32)),
         'name': 'default_test_job',
         'priority': 1,
         'uuid': str(make_temporal_uuid())
