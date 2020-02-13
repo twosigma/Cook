@@ -328,7 +328,7 @@
         (if (>= num-synthetic-pods max-pods-outstanding)
           (log/info "In" name "compute cluster, cannot launch more synthetic pods")
           (let [using-pools? (config/default-pool)
-                synthetic-task-pool-name (if using-pools? pool-name nil)
+                synthetic-task-pool-name (when using-pools? pool-name)
                 new-task-requests (remove (fn [{{:keys [job/uuid]} :job}]
                                             (some #(= (str uuid) (controller/synthetic-pod->job-uuid %))
                                                   outstanding-synthetic-pods))
