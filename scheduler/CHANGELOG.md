@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.38.4] - 2020-02-13
+### Changed
+- Integration test improvements, from @dposada and @scrosby
+
 ## [1.38.3] - 2020-02-13
 ### Added
 - Support to blacklist nodes in k8s that have certain labels, from @scrosby
