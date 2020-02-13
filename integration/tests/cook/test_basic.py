@@ -780,19 +780,6 @@ class CookTest(util.CookTest):
             actual_running_time_ms = instance['end_time'] - instance['start_time']
             self.assertGreater(actual_running_time_ms, max_runtime_ms, job_details)
             self.assertGreater(job_sleep_ms, actual_running_time_ms, job_details)
-
-            # verify additional fields set when the cook executor is used
-            if instance['executor'] == 'cook':
-                instance = util.wait_for_output_url(self.cook_url, job_uuid)
-                message = json.dumps(instance, sort_keys=True)
-                self.assertIsNotNone(instance['output_url'], message)
-                self.assertIsNotNone(instance['sandbox_directory'], message)
-
-                instance = util.wait_for_exit_code(self.cook_url, job_uuid)
-                message = json.dumps(instance, sort_keys=True)
-                self.assertNotEqual(0, instance['exit_code'], message)
-            else:
-                self.logger.info(f'Exit code not checked because cook executor was not used for {instance}')
         finally:
             util.kill_jobs(self.cook_url, [job_uuid])
 
