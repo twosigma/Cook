@@ -44,7 +44,7 @@ def ssh(clusters, args, _):
         # argparse should prevent this, but we'll be defensive anyway
         raise Exception(f'You can only provide a single uuid.')
 
-    query_unique_and_run(clusters_of_interest, entity_refs[0], ssh_to_instance, resove_sandbox_directory=False)
+    query_unique_and_run(clusters_of_interest, entity_refs[0], ssh_to_instance, resolve_sandbox_directory=False)
 
 
 def register(add_parser, _):

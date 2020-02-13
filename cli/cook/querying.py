@@ -243,7 +243,7 @@ def __get_latest_instance(job):
     raise CookRetriableException(f'Job {job["uuid"]} currently has no instances.')
 
 
-def query_unique_and_run(clusters, entity_ref, command_fn, wait=False, resove_sandbox_directory=True):
+def query_unique_and_run(clusters, entity_ref, command_fn, wait=False, resolve_sandbox_directory=True):
     """Calls query_unique and then calls the given command_fn on the resulting job instance"""
 
     def query_unique_and_run():
@@ -251,12 +251,12 @@ def query_unique_and_run(clusters, entity_ref, command_fn, wait=False, resove_sa
         if query_result['type'] == Types.JOB:
             job = query_result['data']
             instance = __get_latest_instance(job)
-            directory = mesos.retrieve_instance_sandbox_directory(instance, job) if resove_sandbox_directory \
+            directory = mesos.retrieve_instance_sandbox_directory(instance, job) if resolve_sandbox_directory \
                 else partial(mesos.retrieve_instance_sandbox_directory, instance=instance, job=job)
             command_fn(instance, directory, query_result['cluster'])
         elif query_result['type'] == Types.INSTANCE:
             instance, job = query_result['data']
-            directory = mesos.retrieve_instance_sandbox_directory(instance, job) if resove_sandbox_directory \
+            directory = mesos.retrieve_instance_sandbox_directory(instance, job) if resolve_sandbox_directory \
                 else partial(mesos.retrieve_instance_sandbox_directory, instance=instance, job=job)
             command_fn(instance, directory, query_result['cluster'])
         else:
