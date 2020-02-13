@@ -688,7 +688,7 @@ class CookCliTest(util.CookTest):
         env['CS_SSH'] = 'echo'
         cp = cli.ssh(uuids[0], self.cook_url, env=env)
         stdout = cli.stdout(cp)
-        self.assertEqual(0, cp.returncode, cli.decode(cp.stderr))
+        self.assertEqual(0, cp.returncode, cli.output(cp))
         self.assertIn(f'Attempting ssh for job instance {instance["task_id"]}', stdout)
         self.assertIn('Executing ssh', stdout)
         self.assertIn(hostname, stdout)
@@ -740,7 +740,7 @@ class CookCliTest(util.CookTest):
         env['CS_SSH'] = 'echo'
         cp = cli.ssh(instance['task_id'], self.cook_url, env=env)
         stdout = cli.stdout(cp)
-        self.assertEqual(0, cp.returncode, cli.decode(cp.stderr))
+        self.assertEqual(0, cp.returncode, cli.output(cp))
         self.assertIn('Executing ssh', stdout)
         self.assertIn(hostname, stdout)
         self.assertIn(f'-t {hostname} cd', stdout)
