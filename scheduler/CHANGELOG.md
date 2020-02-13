@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.38.3] - 2020-02-13
+### Added
+- Support to blacklist nodes in k8s that have certain labels, from @scrosby
+### Fixed
+- Bug in reading default pool from config when using k8s sidecar, from @nsinkov
+- Bug in job progress aggregation, from @DaoWen
+- Handling of node preemption, from @dposada and @scrosby
+- Handling of k8s startup connection errors, from @scrosby
+- Handling of bad request response from k8s, from @scrosby 
+- Handling when a running pod goes completely missing, from @scrosby
+
 ## [1.38.2] - 2020-01-31
 ### Added
 - REST endpoint for posting job progress updates, from @DaoWen
@@ -23,7 +34,7 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/) and this p
 - Missing state pairs in the k8s controller, from @scrosby
 ### Fixed
 - Default the user parameter in docker, from @shamsimam
-- Improve k8s node and pod watches so that they retry forver, from @scrosby
+- Improve k8s node and pod watches so that they retry forever, from @scrosby
 - Correct misnumbered 403 error codes for Swagger, from @DaoWen
 
 ## [1.37.0] - 2020-01-15
