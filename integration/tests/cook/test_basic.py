@@ -408,7 +408,11 @@ class CookTest(util.CookTest):
             self.assertEqual(resp.content, str.encode(f"submitted jobs {job_uuid}"))
             job = util.load_job(self.cook_url, job_uuid)
             util.wait_for_job(self.cook_url, job_uuid, 'completed')
-            util.wait_for_instance(self.cook_url, job_uuid, status='success')
+            settings_dict = util.settings(self.cook_url)
+            if settings_dict['kubernetes'] and settings_dict['kubernetes']['custom-shell']:
+                util.wait_for_instance(self.cook_url, job_uuid)
+            else:
+                util.wait_for_instance(self.cook_url, job_uuid, status='success')
         finally:
             util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
 
