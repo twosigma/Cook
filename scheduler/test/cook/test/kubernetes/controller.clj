@@ -30,8 +30,6 @@
                                                            cook-expected-state-dict)
                                    controller/kill-pod (fn [_ cook-expected-state-dict _]
                                                          cook-expected-state-dict)
-                                   controller/handle-pod-started (fn [_ _]
-                                                                   {:cook-expected-state :cook-expected-state/running})
                                    controller/handle-pod-killed (fn [_ _]
                                                                   {:cook-expected-state :cook-expected-state/completed})
                                    controller/write-status-to-datomic (fn [_ status]
@@ -78,6 +76,7 @@
     (is (= :cook-expected-state/completed (do-process :cook-expected-state/starting :pod/succeeded)))
     (is (= :cook-expected-state/completed (do-process :cook-expected-state/starting :pod/failed)))
     (is (= :cook-expected-state/running (do-process :cook-expected-state/starting :pod/running)))
+    (is (= :reason-running @reason))
     (is (= :cook-expected-state/completed (do-process :cook-expected-state/starting :pod/unknown)))
     (is (= :cook-expected-state/starting (do-process :cook-expected-state/starting :pod/waiting)))
 

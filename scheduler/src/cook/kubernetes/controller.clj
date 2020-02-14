@@ -232,7 +232,8 @@
   (let [instance-id (-> pod .getMetadata .getName)
         ; We leak mesos terminology here ('task') because of backward compatibility.
         status {:task-id {:value instance-id}
-                :state :task-running}]
+                :state :task-running
+                :reason :reason-running}]
     (write-status-to-datomic compute-cluster status)
     {:cook-expected-state :cook-expected-state/running}))
 
