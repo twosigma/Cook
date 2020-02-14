@@ -1128,11 +1128,11 @@ def dummy_ls_entries(_, __, ___):
     def __wait_for_progress_message(self, uuids):
         return util.wait_until(lambda: cli.show_jobs(uuids, self.cook_url)[1][0],
                                lambda j: next(
-                                   i for i in job['instances'] if 'progress' in i and 'progress_message' in i))
+                                   i for i in j['instances'] if 'progress' in i and 'progress_message' in i))
 
     def __wait_for_exit_code(self, uuids):
         return util.wait_until(lambda: cli.show_jobs(uuids, self.cook_url)[1][0],
-                               lambda j: next(i for i in job['instances'] if 'exit_code' in i))
+                               lambda j: next(i for i in j['instances'] if 'exit_code' in i))
 
     def __wait_for_executor_completion_message(self, uuids):
         def query():
