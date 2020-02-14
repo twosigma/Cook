@@ -1443,7 +1443,8 @@ class CookTest(util.CookTest):
     @pytest.mark.xfail
     # The test timeout needs to be a little more than 2 times the timeout
     # interval to allow at least two runs of the straggler handler
-    @pytest.mark.timeout((2 * util.timeout_interval_minutes() * 60) + 60)
+    @pytest.mark.timeout(max((2 * util.timeout_interval_minutes() * 60) + 60,
+                             util.DEFAULT_TEST_TIMEOUT_SECS))
     def test_straggler_handling(self):
         straggler_handling = {
             'type': 'quantile-deviation',
