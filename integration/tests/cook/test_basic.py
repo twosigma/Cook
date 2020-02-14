@@ -2370,12 +2370,12 @@ class CookTest(util.CookTest):
             util.kill_jobs(self.cook_url, job_uuids)
 
     def test_submit_with_no_name(self):
-        # We need to manually set the 'uuid' to avoid having the
-        # job name automatically set by the submit_job function
+        # The job submission code special-cases name=None and removes it before submitting.
         job_with_no_name = {'uuid': str(util.make_temporal_uuid()),
                             'command': 'ls',
                             'cpus': 0.1,
                             'mem': 16,
+                            'name' : None,
                             'max-retries': 1}
         job_uuid, resp = util.submit_job(self.cook_url, **job_with_no_name)
         self.assertEqual(resp.status_code, 201, msg=resp.content)
