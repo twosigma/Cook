@@ -290,7 +290,9 @@
           node-name (some-> node .getMetadata .getName)
           pods-on-node (num-pods-on-node node-name pods)
           labels-on-node (or (some-> node .getMetadata .getLabels) {})
-          matching-node-blocklist-labels (some #(get labels-on-node %) node-blocklist-labels)]
+          label-names-on-node (into #{} (keys labels-on-node))
+          matching-node-blocklist-labels (filter #(contains? labels-on-node %) node-blocklist-labels)
+          matching-node-blocklist-keyvals (map (fn [key] [key (get labels-on-node key)]) matching-node-blocklist-labels)]
       (cond  (seq other-taints) (do
                                   (log/info "Filtering out" node-name "because it has taints" other-taints)
                                   false)
@@ -299,7 +301,7 @@
                                                               pod-count-capacity "(" pods-on-node ")")
                                                     false)
              (seq matching-node-blocklist-labels) (do
-                                                    (log/info "Filtering out" node-name "because it has node blocklist labels" matching-node-blocklist-labels)
+                                                    (log/info "Filtering out" node-name "because it has node blocklist labels" matching-node-blocklist-keyvals)
                                                     false)
              :else true))))
 
