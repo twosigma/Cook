@@ -1212,6 +1212,12 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :reason/name :mesos-container-preempted
     :reason/mea-culpa? false
     :reason/mesos-reason :reason-executor-preempted}
+   {:db/id (d/tempid :db.part/user)
+    :reason/code 1004
+    :reason/string "Killed during launch"
+    :reason/name :killed-during-launch
+    :reason/mea-culpa? false
+    :reason/mesos-reason :reason-killed-during-launch}
 
    {:db/id (d/tempid :db.part/user)
     :reason/code 2000

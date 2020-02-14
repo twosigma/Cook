@@ -12,7 +12,8 @@
             [mesomatic.types :as mtypes]
             [mesomatic.scheduler :as msched]
             [plumbing.core :as pc])
-  (:import (java.util.concurrent CountDownLatch TimeUnit)))
+  (:import (java.util.concurrent CountDownLatch TimeUnit)
+           org.apache.mesos.Protos$TaskStatus$Reason))
 
 (deftest test-in-order-status-update-processing
   (let [status-store (atom {})
@@ -161,17 +162,17 @@
 
 (deftest test-handle-status-update
   (let [uri "datomic:mem://test-handle-status-update"
-        conn (testutil/restore-fresh-database! uri)
         tasks-killed (atom #{})
         driver (reify msched/SchedulerDriver
                  (kill-task! [_ task] (swap! tasks-killed conj (:value task)))) ; Conjoin the task-id
-        compute-cluster (testutil/fake-test-compute-cluster-with-driver conn uri driver)
         fenzo (sched/make-fenzo-scheduler 1500 nil 0.8)
         synced-agents-atom (atom [])
         sync-agent-sandboxes-fn (fn sync-agent-sandboxes-fn [hostname _]
                                   (swap! synced-agents-atom conj hostname))]
     (testing "Tasks of completed jobs are killed"
-      (let [job-id (create-dummy-job conn
+      (let [conn (testutil/restore-fresh-database! uri)
+            compute-cluster (testutil/fake-test-compute-cluster-with-driver conn uri driver)
+            job-id (create-dummy-job conn
                                      :user "tsram"
                                      :job-state :job.state/completed
                                      :retry-count 3)
@@ -190,7 +191,25 @@
         (->> (make-dummy-status-update task-id-a :mesos-slave-restarted :task-running)
              (mcc/handle-status-update conn compute-cluster sync-agent-sandboxes-fn (constantly fenzo)))
         (is (true? (contains? @tasks-killed task-id-a)))
-        (is (= ["www.test-host.com"] @synced-agents-atom))))))
+        (is (= ["www.test-host.com"] @synced-agents-atom))))
+
+    (testing "task-killed-during-launch reason"
+      (let [conn (testutil/restore-fresh-database! uri)
+            compute-cluster (testutil/fake-test-compute-cluster-with-driver conn uri driver)
+            job-id (create-dummy-job conn :job-state :job.state/running)
+            task-id-a "taska"
+            mapped-reason (atom nil)]
+        (create-dummy-instance conn job-id
+                               :instance-status :instance.status/running
+                               :task-id task-id-a
+                               :reason :unknown)
+        (with-redefs [sched/write-status-to-datomic (fn [_ _ {:keys [reason]}]
+                                                      (reset! mapped-reason reason))]
+          (->> (make-dummy-status-update task-id-a
+                                         Protos$TaskStatus$Reason/REASON_TASK_KILLED_DURING_LAUNCH
+                                         :task-running)
+               (mcc/handle-status-update conn compute-cluster sync-agent-sandboxes-fn (constantly fenzo))))
+        (is (= :reason-killed-during-launch @mapped-reason))))))
 
 (defn- task-id->instance-entity
   [db-conn task-id]
