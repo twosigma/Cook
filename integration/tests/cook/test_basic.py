@@ -1594,6 +1594,9 @@ class CookTest(util.CookTest):
 
     @unittest.skipIf(util.using_kubernetes(), 'Ports are not yet supported on kubernetes')
     def test_ports(self):
+        settings_dict = util.settings(self.cook_url)
+        if settings_dict['task-constraints']['max-ports'] < 5:
+            self.skipTest("Test requires at least 5 ports")
         job_uuid, resp = util.submit_job(self.cook_url, ports=1)
         instance = util.wait_for_instance(self.cook_url, job_uuid)
         self.assertEqual(1, len(instance['ports']))
@@ -1844,6 +1847,9 @@ class CookTest(util.CookTest):
     @unittest.skipUnless(util.has_docker_service() and not util.using_kubernetes(),
                          "Requires `docker inspect`. On kubernetes, need to add support and write a separate test.")
     def test_docker_port_mapping(self):
+        settings_dict = util.settings(self.cook_url)
+        if settings_dict['task-constraints']['max-ports'] < 2:
+            self.skipTest("Test requires at least 2 ports")
         job_uuid, resp = util.submit_job(self.cook_url,
                                          command='python -m http.server 8080',
                                          ports=2,
