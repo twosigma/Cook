@@ -613,7 +613,7 @@ class CookTest(util.CookTest):
     def test_configurable_progress_update_submit(self):
         job_executor_type = util.get_job_executor_type()
         command = 'echo "message: 25 Twenty-five percent" > progress_file.txt; sleep 1; exit 0'
-        job_uuid, resp = util.submit_job(self.cook_url, command=command, executor=job_executor_type, max_runtime=60000,
+        job_uuid, resp = util.submit_job(self.cook_url, command=command, executor=job_executor_type,
                                          progress_output_file='progress_file.txt',
                                          progress_regex_string='message: (\\d*) (.*)')
         self.assertEqual(201, resp.status_code, msg=resp.content)
