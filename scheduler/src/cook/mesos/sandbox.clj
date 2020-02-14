@@ -228,7 +228,7 @@
                         (send pending-sync-agent aggregate-pending-sync-hostname host :pending))
                       :success)
                     (catch Exception e
-                      (log/error e "Failed to get mesos agent state on" host)
+                      (log/info e "Failed to get mesos agent state on" host)
                       (send pending-sync-agent aggregate-pending-sync-hostname host :error)
                       :error)))
             cs (swap! mesos-agent-query-cache
