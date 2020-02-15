@@ -409,7 +409,7 @@ class CookTest(util.CookTest):
             job = util.load_job(self.cook_url, job_uuid)
             util.wait_for_job(self.cook_url, job_uuid, 'completed')
             settings_dict = util.settings(self.cook_url)
-            if settings_dict['kubernetes'] and settings_dict['kubernetes']['custom-shell']:
+            if 'kubernetes' in settings_dict and 'custom-shell' in settings_dict['kubernetes']:
                 util.wait_for_instance(self.cook_url, job_uuid)
             else:
                 util.wait_for_instance(self.cook_url, job_uuid, status='success')
