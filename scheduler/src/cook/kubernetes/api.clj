@@ -430,11 +430,10 @@
     toleration))
 
 (def toleration-for-deletion-candidate-of-autoscaler
-  (let [^V1Toleration toleration (V1Toleration.)]
-    (.setKey toleration k8s-deletion-candidate-taint)
-    (.setOperator toleration "Exists")
-    (.setEffect toleration "PreferNoSchedule")
-    toleration))
+  (doto (V1Toleration.)
+    (.setKey k8s-deletion-candidate-taint)
+    (.setOperator "Exists")
+    (.setEffect "PreferNoSchedule")))
 
 (defn param-env-vars
   [params]
