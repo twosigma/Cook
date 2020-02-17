@@ -34,7 +34,7 @@
                  "compute cluster, unable to get node from node name" node-name)
       false)))
 
-(defn num-waiting-synthetic-pods
+(defn compute-num-waiting-synthetic-pods
   "Given a compute cluster and a collection of pods, returns the number of
   waiting synthetic pods in the cluster, or 0 if the cluster is not autoscaling"
   [compute-cluster pods pool-name]
@@ -287,7 +287,7 @@
 
   (pending-offers [this pool-name]
     (let [pods (add-starting-pods this @all-pods-atom)
-          num-waiting-synthetic-pods (num-waiting-synthetic-pods this pods pool-name)
+          num-waiting-synthetic-pods (compute-num-waiting-synthetic-pods this pods pool-name)
           nodes @current-nodes-atom]
       (log/info "In" name "compute cluster, got asked for pending offers for pool" pool-name
                 {:total-pods (count pods)
