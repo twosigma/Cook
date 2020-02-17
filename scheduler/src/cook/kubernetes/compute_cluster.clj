@@ -290,9 +290,9 @@
           num-waiting-synthetic-pods (compute-num-waiting-synthetic-pods this pods pool-name)
           nodes @current-nodes-atom]
       (log/info "In" name "compute cluster, got asked for pending offers for pool" pool-name
-                {:total-pods (count pods)
+                {:nodes (count nodes)
                  :synthetic-pods num-waiting-synthetic-pods
-                 :nodes (count nodes)})
+                 :total-pods (count pods)})
       (if (pos? num-waiting-synthetic-pods)
         (do
           ; If there are waiting synthetic pods for the given pool in the cluster, we should let
