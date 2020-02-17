@@ -24,6 +24,17 @@
 (def cook-synthetic-pod-job-uuid-label "twosigma.com/cook-scheduler-synthetic-pod-job-uuid")
 (def cook-workdir-volume-name "cook-workdir-volume")
 
+; DeletionCandidateTaint is a soft taint that k8s uses to mark unneeded
+; nodes as preferably unschedulable. This taint is added as soon as the
+; autoscaler detects that nodes are under-utilized and all pods could be
+; scheduled even with fewer nodes in the node pool. This taint is
+; subsequently "cleaned" if the node stops being unneeded. We need to
+; tolerate this taint so that we can use nodes even if the autoscaler
+; finds them to be temporarily unneeded. Note that there is a "harder"
+; taint, ToBeDeletedByClusterAutoscaler, which is added right before a
+; node is deleted, which we don't tolerate.
+(def k8s-deletion-candidate-taint "DeletionCandidateOfClusterAutoscaler")
+
 (def ^ExecutorService kubernetes-executor (Executors/newCachedThreadPool))
 
 ; Cook, Fenzo, and Mesos use MB for memory. Convert bytes from k8s to MB when passing to fenzo, and MB back to bytes
@@ -273,7 +284,7 @@
     false
     (let [taints-on-node (or (some-> node .getSpec .getTaints) [])
           other-taints (remove #(contains?
-                                  #{"cook-pool" "DeletionCandidateOfClusterAutoscaler"}
+                                  #{"cook-pool" k8s-deletion-candidate-taint}
                                   (.getKey %))
                                taints-on-node)
           node-name (some-> node .getMetadata .getName)
@@ -420,7 +431,7 @@
 
 (def toleration-for-deletion-candidate-of-autoscaler
   (let [^V1Toleration toleration (V1Toleration.)]
-    (.setKey toleration "DeletionCandidateOfClusterAutoscaler")
+    (.setKey toleration k8s-deletion-candidate-taint)
     (.setOperator toleration "Exists")
     (.setEffect toleration "PreferNoSchedule")
     toleration))
