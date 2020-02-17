@@ -1477,9 +1477,9 @@
                   (is (= (assoc (expected-job-map job)
                            :container (assoc-in docker-container
                                                 [:docker :parameters]
-                                                [{:key "user" :value "1234:2345"}
-                                                 {:key "tee" :value "tie"}
-                                                 {:key "fee" :value "fie"}]))
+                                                [{:key "tee" :value "tie"}
+                                                 {:key "fee" :value "fie"}
+                                                 {:key "user" :value "1234:2345"}]))
                          (dissoc (api/fetch-job-map (db conn) uuid) :submit_time)))))
 
               (testing "user parameter absent"
@@ -1492,9 +1492,9 @@
                   (is (= (assoc (expected-job-map job)
                            :container (assoc-in docker-container
                                                 [:docker :parameters]
-                                                [{:key "user" :value "1234:2345"}
-                                                 {:key "tee" :value "tie"}
-                                                 {:key "fee" :value "fie"}]))
+                                                [{:key "tee" :value "tie"}
+                                                 {:key "fee" :value "fie"}
+                                                 {:key "user" :value "1234:2345"}]))
                          (dissoc (api/fetch-job-map (db conn) uuid) :submit_time))))))))))
 
     (testing "returns unsupported for multiple compute clusters"
