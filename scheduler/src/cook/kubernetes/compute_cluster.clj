@@ -40,7 +40,8 @@
   [compute-cluster pods pool-name]
   (if (cc/autoscaling? compute-cluster pool-name)
     (let [synthetic-pods (filter controller/synthetic-pod->job-uuid pods)
-          waiting-synthetic-pods (filter (fn [^V1Pod pod]
+          waiting-synthetic-pods (filter (fn waiting?
+                                           [^V1Pod pod]
                                            (or (-> pod
                                                    .getStatus
                                                    nil?)
@@ -49,7 +50,8 @@
                                                    :state
                                                    (= :pod/waiting))))
                                          synthetic-pods)
-          waiting-synthetic-pods-in-pool (filter (fn [^V1Pod pod]
+          waiting-synthetic-pods-in-pool (filter (fn matching-cook-pool-toleration?
+                                                   [^V1Pod pod]
                                                    (let [pod-spec (.getSpec pod)
                                                          tolerations (.getTolerations pod-spec)]
                                                      (some (fn [^V1Toleration toleration]
