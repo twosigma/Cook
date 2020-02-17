@@ -63,10 +63,10 @@
     0))
 
 (defn total-resource
-  "Given a map from node-name->resource->amount and a resource,
+  "Given a map from node-name->resource-keyword->amount and a resource-keyword,
   returns the total amount of that resource for all nodes."
-  [node-name->resource-map resource]
-  (->> node-name->resource-map vals (map resource) (reduce +)))
+  [node-name->resource-map resource-keyword]
+  (->> node-name->resource-map vals (map resource-keyword) (reduce +)))
 
 (defn counter
   "Given a metric name and a compute cluster name, returns a counter metric."
