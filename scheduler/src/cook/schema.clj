@@ -1218,6 +1218,12 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :reason/name :killed-during-launch
     :reason/mea-culpa? false
     :reason/mesos-reason :reason-killed-during-launch}
+   {:db/id (d/tempid :db.part/user)
+    :reason/code 1005
+    :reason/string "Running"
+    :reason/name :running
+    :reason/mea-culpa? false
+    :reason/mesos-reason :reason-running}
 
    {:db/id (d/tempid :db.part/user)
     :reason/code 2000
