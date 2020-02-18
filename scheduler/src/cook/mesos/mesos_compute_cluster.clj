@@ -34,7 +34,7 @@
             [plumbing.core :as pc]
             [metrics.counters :as counters])
   (:import (java.net URLEncoder)
-           org.apache.mesos.Protos$TaskStatus$Reason))
+           (org.apache.mesos Protos$TaskStatus$Reason)))
 
 (meters/defmeter [cook-mesos scheduler mesos-error])
 (meters/defmeter [cook-mesos scheduler handle-framework-message-rate])
@@ -78,7 +78,8 @@
         (cc/safe-kill-task compute-cluster task-id))
       ; Mesomatic doesn't have a mapping for REASON_TASK_KILLED_DURING_LAUNCH
       ; (http://mesos.apache.org/documentation/latest/task-state-reasons/#for-state-task_killed),
-      ; so we're rolling our own mapping for it here.
+      ; so we're rolling our own mapping for it here. There is an open issue with Mesomatic:
+      ; https://github.com/clojusc/mesomatic/issues/53
       (let [status' (cond-> status
                       (= reason Protos$TaskStatus$Reason/REASON_TASK_KILLED_DURING_LAUNCH)
                       (assoc :reason :reason-killed-during-launch))]

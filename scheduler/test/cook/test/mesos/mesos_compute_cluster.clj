@@ -13,7 +13,7 @@
             [mesomatic.scheduler :as msched]
             [plumbing.core :as pc])
   (:import (java.util.concurrent CountDownLatch TimeUnit)
-           org.apache.mesos.Protos$TaskStatus$Reason))
+           (org.apache.mesos Protos$TaskStatus$Reason)))
 
 (deftest test-in-order-status-update-processing
   (let [status-store (atom {})
