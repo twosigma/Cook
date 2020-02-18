@@ -409,6 +409,8 @@ class CookTest(util.CookTest):
             job = util.load_job(self.cook_url, job_uuid)
             util.wait_for_job(self.cook_url, job_uuid, 'completed')
             settings_dict = util.settings(self.cook_url)
+            # This test provides a non-writeable workdir, so we're adding this temporary change until we separate
+            # the sandbox and workdir.
             if 'kubernetes' in settings_dict and 'custom-shell' in settings_dict['kubernetes']:
                 util.wait_for_instance(self.cook_url, job_uuid)
             else:
