@@ -96,17 +96,24 @@
                                      @(:pool->fenzo-atom compute-cluster)
                                      mesos-status))
 
+(defn synthetic-pod->job-uuid
+  "If the given pod is a synthetic pod for autoscaling, returns the job uuid
+  that the pod corresponds to (stored in a pod label). Otherwise, returns nil."
+  [^V1Pod pod]
+  (some-> pod .getMetadata .getLabels (.get api/cook-synthetic-pod-job-uuid-label)))
+
 (defn handle-pod-submission-failed
   "Marks the corresponding job instance as failed in the database and
   returns the `completed` cook expected state"
-  [{:keys [name] :as compute-cluster} pod-name]
+  [{:keys [name] :as compute-cluster} pod-name ^V1Pod pod]
   (log/info "In compute cluster" name ", pod" pod-name "submission failed")
-  (let [instance-id pod-name
-        status {:reason :reason-task-invalid
-                :state :task-failed
-                :task-id {:value instance-id}}]
-    (write-status-to-datomic compute-cluster status)
-    {:cook-expected-state :cook-expected-state/completed}))
+  (when-not (synthetic-pod->job-uuid pod)
+    (let [instance-id pod-name
+          status {:reason :reason-task-invalid
+                  :state :task-failed
+                  :task-id {:value instance-id}}]
+      (write-status-to-datomic compute-cluster status)))
+  {:cook-expected-state :cook-expected-state/completed})
 
 (defn handle-pod-preemption
   "Marks the corresponding job instance as failed in the database and
@@ -124,7 +131,8 @@
   [{:keys [api-client] :as compute-cluster} cook-expected-state-dict pod-name]
   (if (api/launch-pod api-client cook-expected-state-dict pod-name)
     cook-expected-state-dict
-    (handle-pod-submission-failed compute-cluster pod-name)))
+    (handle-pod-submission-failed compute-cluster pod-name
+                                  (-> cook-expected-state-dict :launch-pod :pod))))
 
 (defn update-or-delete!
   "Given a map atom, key, and value, if the value is not nil, set the key to the value in the map.
@@ -216,25 +224,27 @@
 
    Looks at the pod status, updates datomic (with success, failure, and possibly mea culpa),
    and return a new cook expected state of :cook-expected-state/completed."
-  [compute-cluster pod-name k8s-actual-state & {:keys [reason]}]
-  (let [{:keys [status exit-code]} (calculate-pod-status compute-cluster pod-name k8s-actual-state :reason reason)]
-    (write-status-to-datomic compute-cluster status)
-    (when exit-code
-      (sandbox/aggregate-exit-code (:exit-code-syncer-state compute-cluster) pod-name exit-code))
-    ; Must never return nil, we want it to return non-nil so that we will retry with writing the state to datomic in case we lose a race.
-    ; Being in the (completed,*) state, will cause us to delete the pod, transitioning to (completed,missing), and thence
-    ; to deleting from the map, into (missing,missing) state.
-    {:cook-expected-state :cook-expected-state/completed}))
+  [compute-cluster pod-name {:keys [pod] :as k8s-actual-state} & {:keys [reason]}]
+  (when-not (synthetic-pod->job-uuid pod)
+    (let [{:keys [status exit-code]} (calculate-pod-status compute-cluster pod-name k8s-actual-state :reason reason)]
+      (write-status-to-datomic compute-cluster status)
+      (when exit-code
+        (sandbox/aggregate-exit-code (:exit-code-syncer-state compute-cluster) pod-name exit-code))))
+  ; Must never return nil, we want it to return non-nil so that we will retry with writing the state to datomic in case we lose a race.
+  ; Being in the (completed,*) state, will cause us to delete the pod, transitioning to (completed,missing), and thence
+  ; to deleting from the map, into (missing,missing) state.
+  {:cook-expected-state :cook-expected-state/completed})
 
 (defn handle-pod-started
   "A pod has started. So now we need to update the status in datomic."
   [compute-cluster {:keys [pod]}]
-  (let [instance-id (-> pod .getMetadata .getName)
-        ; We leak mesos terminology here ('task') because of backward compatibility.
-        status {:task-id {:value instance-id}
-                :state :task-running}]
-    (write-status-to-datomic compute-cluster status)
-    {:cook-expected-state :cook-expected-state/running}))
+  (when-not (synthetic-pod->job-uuid pod)
+    (let [instance-id (-> pod .getMetadata .getName)
+          ; We leak mesos terminology here ('task') because of backward compatibility.
+          status {:task-id {:value instance-id}
+                  :state :task-running}]
+      (write-status-to-datomic compute-cluster status)))
+  {:cook-expected-state :cook-expected-state/running})
 
 (def get-pod-ip->hostname-fn
   (memoize
@@ -244,25 +254,31 @@
 (defn record-sandbox-url
   "Record the sandbox file server URL in datomic."
   [{:keys [pod]}]
-  (let [task-id (-> pod .getMetadata .getName)
-        pod-ip (-> pod .getStatus .getPodIP)
-        {:keys [default-workdir pod-ip->hostname-fn sidecar]} (config/kubernetes)
-        sandbox-fileserver-port (:port sidecar)
-        sandbox-url (try
-                      (when (and sandbox-fileserver-port (not (str/blank? pod-ip)))
-                        (str "http://"
-                             ((get-pod-ip->hostname-fn pod-ip->hostname-fn) pod-ip)
-                             ":" sandbox-fileserver-port
-                             "/files/read.json?path="
-                             (URLEncoder/encode default-workdir "UTF-8")))
-                      (catch Exception e
-                        (log/debug e "Unable to retrieve directory path for" task-id)
-                        nil))]
-    (when sandbox-url (scheduler/write-sandbox-url-to-datomic datomic/conn task-id sandbox-url))))
+  (when-not (synthetic-pod->job-uuid pod)
+    (let [task-id (-> pod .getMetadata .getName)
+          pod-ip (-> pod .getStatus .getPodIP)
+          {:keys [default-workdir pod-ip->hostname-fn sidecar]} (config/kubernetes)
+          sandbox-fileserver-port (:port sidecar)
+          sandbox-url (try
+                        (when (and sandbox-fileserver-port (not (str/blank? pod-ip)))
+                          (str "http://"
+                               ((get-pod-ip->hostname-fn pod-ip->hostname-fn) pod-ip)
+                               ":" sandbox-fileserver-port
+                               "/files/read.json?path="
+                               (URLEncoder/encode default-workdir "UTF-8")))
+                        (catch Exception e
+                          (log/debug e "Unable to retrieve directory path for" task-id)
+                          nil))]
+      (when sandbox-url (scheduler/write-sandbox-url-to-datomic datomic/conn task-id sandbox-url)))))
 
 (defn handle-pod-killed
   "A pod was killed. So now we need to update the status in datomic and store the exit code."
   [compute-cluster pod-name]
+  ; Why not guard against synthetic pods here, as in handle-pod-started and
+  ; handle-pod-completed? We don't have the pod object, only the pod name, so we can't check
+  ; the labels of the killed pod. In practice, this doesn't matter; this path will never get
+  ; called for a synthetic pod, because synthetic pods never end up with a Cook expected
+  ; state of `killed` (they are not exposed to the outside world).
   (let [instance-id pod-name
         ; We leak mesos terminology here ('task') because of backward compatibility.
         status {:task-id {:value instance-id}

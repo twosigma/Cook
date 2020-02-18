@@ -103,8 +103,11 @@
 (timers/deftimer [cook-mesos scheduler generate-user-usage-map-duration])
 
 (defn metric-title
-  [metric-name pool]
-  ["cook-mesos" "scheduler" metric-name (str "pool-" pool)])
+  ([metric-name pool]
+   ["cook-mesos" "scheduler" metric-name (str "pool-" pool)])
+  ([metric-name pool compute-cluster]
+   ["cook-mesos" "scheduler" metric-name (str "pool-" pool)
+    (str "compute-cluster-" (cc/compute-cluster-name compute-cluster))]))
 
 (defn completion-rate-meter
   [status pool]
@@ -772,11 +775,54 @@
                                        {:job-uuid->reserved-host (apply dissoc job-uuid->reserved-host matched-job-uuids)
                                         :launched-job-uuids (into matched-job-uuids launched-job-uuids)})))
 
+(defn distribute-task-requests-to-compute-clusters
+  "Given a collection of un-matched task requests and a collection of
+  compute clusters, distributes the task requests amongst the compute
+  clusters, using a hash of the pending job's uuid. Returns a
+  compute-cluster->task-request map. That is the API any future
+  improvements need to stick to."
+  [task-requests compute-clusters]
+  (group-by (fn [{:keys [job]}]
+              (nth compute-clusters
+                   (-> job :job/uuid hash (mod (count compute-clusters)))))
+            task-requests))
+
+(defn trigger-autoscaling!
+  "Autoscales the given pool to satisfy the given match failures (i.e. pending jobs), if:
+  - There is at least one failure
+  - There is at least one compute cluster configured to do autoscaling"
+  [failures pool-name compute-clusters]
+  (try
+    (let [task-requests (map #(.. (first %) (getRequest)) failures)
+          num-task-requests (count task-requests)
+          autoscaling-compute-clusters (filter #(cc/autoscaling? % pool-name) compute-clusters)
+          num-autoscaling-compute-clusters (count autoscaling-compute-clusters)]
+      (when (and (pos? num-autoscaling-compute-clusters) (pos? num-task-requests))
+        (let [compute-cluster->task-requests (distribute-task-requests-to-compute-clusters
+                                               task-requests autoscaling-compute-clusters)]
+          (log/info "In" pool-name "pool, autoscaling for" num-task-requests
+                    "un-matched task(s), distributed to compute clusters as follows:"
+                    (->> compute-cluster->task-requests
+                         (pc/map-keys cc/compute-cluster-name)
+                         (pc/map-vals count)))
+          (doseq [[compute-cluster requests-for-cluster] compute-cluster->task-requests]
+            (histograms/update! (histograms/histogram
+                                  (metric-title "autoscale!-tasks"
+                                                pool-name
+                                                compute-cluster))
+                                (count requests-for-cluster))
+            (timers/time!
+              (timers/timer (metric-title "autoscale!-duration" pool-name compute-cluster))
+              (cc/autoscale! compute-cluster pool-name requests-for-cluster)))
+          (log/info "In" pool-name "pool, done autoscaling"))))
+    (catch Throwable e
+      (log/error e "In" pool-name "pool, encountered error while triggering autoscaling"))))
+
 (defn handle-resource-offers!
   "Gets a list of offers from mesos. Decides what to do with them all--they should all
    be accepted or rejected at the end of the function."
   [conn ^TaskScheduler fenzo pool-name->pending-jobs-atom mesos-run-as-user
-   user->usage user->quota num-considerable offers rebalancer-reservation-atom pool-name]
+   user->usage user->quota num-considerable offers rebalancer-reservation-atom pool-name compute-clusters]
   (log/debug "In" pool-name "pool, invoked handle-resource-offers!")
   (let [offer-stash (atom nil)] ;; This is a way to ensure we never lose offers fenzo assigned if an error occurs in the middle of processing
     ;; TODO: It is possible to have an offer expire by mesos because we recycle it a bunch of times.
@@ -810,6 +856,8 @@
           (reset! offer-stash offers-scheduled)
           (reset! front-of-job-queue-mem-atom (or (:mem first-considerable-job-resources) 0))
           (reset! front-of-job-queue-cpus-atom (or (:cpus first-considerable-job-resources) 0))
+
+          (trigger-autoscaling! failures pool-name compute-clusters)
 
           (cond
             ;; Possible innocuous reasons for no matches: no offers, or no pending jobs.
@@ -892,7 +940,9 @@
                                                   (try
                                                     (cc/pending-offers compute-cluster pool-name)
                                                     (catch Throwable t
-                                                      (log/error t "Error getting pending offers for " compute-cluster)
+                                                      (log/error t "In" pool-name
+                                                                 "pool, error getting pending offers for"
+                                                                 (cc/compute-cluster-name compute-cluster))
                                                       (list))))
                                                 compute-clusters))
                       _ (doseq [offer offers
@@ -908,7 +958,7 @@
                       matched-head? (handle-resource-offers! conn fenzo pool-name->pending-jobs-atom
                                                              mesos-run-as-user @user->usage-future user->quota
                                                              num-considerable offers
-                                                             rebalancer-reservation-atom pool-name)]
+                                                             rebalancer-reservation-atom pool-name compute-clusters)]
                   (when (seq offers)
                     (reset! resources-atom (view-incubating-offers fenzo)))
                   ;; This check ensures that, although we value Fenzo's optimizations,
@@ -919,13 +969,13 @@
                   (if matched-head?
                     max-considerable
                     (let [new-considerable (max 1 (long (* scaleback num-considerable)))] ;; With max=1000 and 1 iter/sec, this will take 88 seconds to reach 1
-                      (log/info "Failed to match head, reducing number of considerable jobs" {:prev-considerable num-considerable
-                                                                                              :new-considerable new-considerable
-                                                                                              :pool pool-name})
-                      new-considerable)
-                    ))
+                      (log/info "In" pool-name "pool, failed to match head, reducing number of considerable jobs"
+                                {:prev-considerable num-considerable
+                                 :new-considerable new-considerable
+                                 :pool pool-name})
+                      new-considerable)))
                 (catch Exception e
-                  (log/error e "Offer handler encountered exception; continuing")
+                  (log/error e "In" pool-name "pool, offer handler encountered exception; continuing")
                   max-considerable))]
 
           (if (= next-considerable 1)
@@ -933,20 +983,20 @@
             (counters/clear! iterations-at-fenzo-floor))
 
           (if (>= (counters/value iterations-at-fenzo-floor) floor-iterations-before-warn)
-            (log/warn "Offer handler has been showing Fenzo only 1 job for "
-                      (counters/value iterations-at-fenzo-floor) " iterations."))
+            (log/warn "In" pool-name "pool, offer handler has been showing Fenzo only 1 job for"
+                      (counters/value iterations-at-fenzo-floor) "iterations"))
 
           (reset! fenzo-num-considerable-atom
                   (if (>= (counters/value iterations-at-fenzo-floor) floor-iterations-before-reset)
                     (do
-                      (log/error "FENZO CANNOT MATCH THE MOST IMPORTANT JOB."
-                                 "Fenzo has seen only 1 job for " (counters/value iterations-at-fenzo-floor)
+                      (log/error "In" pool-name "pool, FENZO CANNOT MATCH THE MOST IMPORTANT JOB."
+                                 "Fenzo has seen only 1 job for" (counters/value iterations-at-fenzo-floor)
                                  "iterations, and still hasn't matched it.  Cook is now giving up and will "
-                                 "now give Fenzo " max-considerable " jobs to look at.")
+                                 "now give Fenzo" max-considerable "jobs to look at.")
                       (meters/mark! fenzo-abandon-and-reset-meter)
                       max-considerable)
                     next-considerable))))
-      {:error-handler (fn [ex] (log/error ex "Error occurred in match"))})
+      {:error-handler (fn [ex] (log/error ex "In" pool-name "pool, error occurred in match"))})
     resources-atom))
 
 (defn reconcile-jobs

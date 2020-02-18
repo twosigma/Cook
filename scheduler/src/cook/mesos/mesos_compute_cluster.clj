@@ -295,6 +295,10 @@
     (async/go
       (async/>! (pool->offers-chan pool-name) offers)))
 
+  (autoscaling? [_ _] false)
+
+  (autoscale! [_ _ _])
+
   (use-cook-executor? [_] true)
 
   (container-defaults [_]

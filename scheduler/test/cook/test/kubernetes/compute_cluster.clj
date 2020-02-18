@@ -11,7 +11,8 @@
             [cook.tools :as util]
             [datomic.api :as d])
   (:import (com.netflix.fenzo SimpleAssignmentResult)
-           (io.kubernetes.client.models V1PodSecurityContext)))
+           (io.kubernetes.client.models V1Pod V1PodSecurityContext)
+           (java.util UUID)))
 
 (deftest test-get-or-create-cluster-entity-id
   (let [conn (tu/restore-fresh-database! "datomic:mem://test-get-or-create-cluster-entity-id")]
@@ -43,7 +44,7 @@
       (testing "static namespace"
         (let [compute-cluster (kcc/->KubernetesComputeCluster nil "kubecompute" nil nil nil
                                                               (atom {}) (atom {}) (atom {}) (atom {}) (atom nil)
-                                                              {:kind :static :namespace "cook"} nil nil nil)
+                                                              {:kind :static :namespace "cook"} nil nil nil nil)
               task-metadata (task/TaskAssignmentResult->task-metadata (d/db conn)
                                                                       nil
                                                                       compute-cluster
@@ -58,7 +59,7 @@
       (testing "per-user namespace"
         (let [compute-cluster (kcc/->KubernetesComputeCluster nil "kubecompute" nil nil nil
                                                               (atom {}) (atom {}) (atom {}) (atom {}) (atom nil)
-                                                              {:kind :per-user} nil nil nil)
+                                                              {:kind :per-user} nil nil nil nil)
               task-metadata (task/TaskAssignmentResult->task-metadata (d/db conn)
                                                                       nil
                                                                       compute-cluster
@@ -75,7 +76,7 @@
     (let [conn (tu/restore-fresh-database! "datomic:mem://test-generate-offers")
           compute-cluster (kcc/->KubernetesComputeCluster nil "kubecompute" nil nil nil
                                                           (atom {}) (atom {}) (atom {}) (atom {}) (atom nil)
-                                                          {:kind :static :namespace "cook"} nil 3 nil)
+                                                          {:kind :static :namespace "cook"} nil 3 nil nil)
           node-name->node {"nodeA" (tu/node-helper "nodeA" 1.0 1000.0 nil)
                            "nodeB" (tu/node-helper "nodeB" 1.0 1000.0 nil)
                            "nodeC" (tu/node-helper "nodeC" 1.0 1000.0 nil)
@@ -98,7 +99,7 @@
                                                                          {:cpus 1.0 :mem 1100.0})
                          {:namespace "cook" :name task-1-id} (tu/pod-helper task-1-id "my.fake.host"
                                                                             {:cpus 0.1 :mem 10.0})}
-          all-offers (kcc/generate-offers compute-cluster node-name->node (kcc/all-pods compute-cluster pod-name->pod))
+          all-offers (kcc/generate-offers compute-cluster node-name->node (kcc/add-starting-pods compute-cluster pod-name->pod))
           offers (get all-offers "no-pool")]
       (is (= 4 (count offers)))
       (let [offer (first (filter #(= "nodeA" (:hostname %))
@@ -129,3 +130,28 @@
 (deftest determine-cook-expected-state
   ; TODO
   )
+
+(deftest test-autoscale!
+  (let [job-uuid-1 (str (UUID/randomUUID))
+        job-uuid-2 (str (UUID/randomUUID))
+        job-uuid-3 (str (UUID/randomUUID))
+        ^V1Pod outstanding-synthetic-pod-1 (tu/pod-helper "podA" "nodeA")
+        _ (-> outstanding-synthetic-pod-1
+              .getMetadata
+              (.setLabels {api/cook-synthetic-pod-job-uuid-label job-uuid-1}))
+        pool-name "test-pool"
+        compute-cluster (tu/make-kubernetes-compute-cluster {nil outstanding-synthetic-pod-1} #{pool-name})
+        make-task-request-fn (fn [job-uuid]
+                               {:job {:job/resource [{:resource/type :cpus, :resource/amount 0.1}
+                                                     {:resource/type :mem, :resource/amount 32}]
+                                      :job/uuid job-uuid}})
+        task-requests [(make-task-request-fn job-uuid-1)
+                       (make-task-request-fn job-uuid-2)
+                       (make-task-request-fn job-uuid-3)]
+        launched-pods-atom (atom [])]
+    (with-redefs [api/launch-pod (fn [_ cook-expected-state-dict _]
+                                   (swap! launched-pods-atom conj cook-expected-state-dict))]
+      (cc/autoscale! compute-cluster pool-name task-requests))
+    (is (= 2 (count @launched-pods-atom)))
+    (is (= job-uuid-2 (-> @launched-pods-atom (nth 0) :launch-pod :pod controller/synthetic-pod->job-uuid)))
+    (is (= job-uuid-3 (-> @launched-pods-atom (nth 1) :launch-pod :pod controller/synthetic-pod->job-uuid)))))
