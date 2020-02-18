@@ -470,16 +470,8 @@ def get_caller():
         startFrame = startFrame.f_back
     return ""
 
-def minimal_job(**kwargs):
-    job = {
-        'command': 'echo Default Test Command',
-        'cpus': get_default_cpus(),
-        'max_retries': 1,
-        'mem': int(os.getenv('COOK_DEFAULT_JOB_MEM_MB', 32)),
-        'name': (DEFAULT_JOB_NAME_PREFIX + get_caller()),
-        'priority': 1,
-        'uuid': str(make_temporal_uuid())
-    }
+def add_container_to_job_if_needed(job):
+    """Add a container to a job if it needs a docker container"""
     image = docker_image()
     if image:
         work_dir = docker_working_directory()
@@ -495,6 +487,18 @@ def minimal_job(**kwargs):
                 'parameters': docker_parameters
             }
         }
+
+def minimal_job(**kwargs):
+    job = {
+        'command': 'echo Default Test Command',
+        'cpus': get_default_cpus(),
+        'max_retries': 1,
+        'mem': int(os.getenv('COOK_DEFAULT_JOB_MEM_MB', 32)),
+        'name': (DEFAULT_JOB_NAME_PREFIX + get_caller()),
+        'priority': 1,
+        'uuid': str(make_temporal_uuid())
+    }
+    add_container_to_job_if_needed(job)
 
     label = job_label()
     if label:

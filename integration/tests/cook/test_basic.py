@@ -2389,6 +2389,7 @@ class CookTest(util.CookTest):
                             'mem': 16,
                             'name' : None,
                             'max-retries': 1}
+        util.add_container_to_job_if_needed(job_with_no_name)
         job_uuid, resp = util.submit_job(self.cook_url, **job_with_no_name)
         self.assertEqual(resp.status_code, 201, msg=resp.content)
         scheduler_default_job_name = 'cookjob'
