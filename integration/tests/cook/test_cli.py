@@ -1126,12 +1126,16 @@ def dummy_ls_entries(_, __, ___):
                 self.assertEqual(1, entry2['size'])
 
     def __wait_for_progress_message(self, uuids):
-        return util.wait_until(lambda: cli.show_jobs(uuids, self.cook_url)[1][0]['instances'][0],
-                               lambda i: 'progress' in i and 'progress_message' in i)
+        return util.wait_until(
+            lambda: next(i for i in cli.show_jobs(uuids, self.cook_url)[1][0]['instances'] 
+                         if 'progress' in i and 'progress_message' in i),
+            lambda i: True)
 
     def __wait_for_exit_code(self, uuids):
-        return util.wait_until(lambda: cli.show_jobs(uuids, self.cook_url)[1][0]['instances'][0],
-                               lambda i: 'exit_code' in i)
+        return util.wait_until(
+            lambda: next(i for i in cli.show_jobs(uuids, self.cook_url)[1][0]['instances'] 
+                         if 'exit_code' in i),
+            lambda i: True)
 
     def __wait_for_executor_completion_message(self, uuids):
         def query():
