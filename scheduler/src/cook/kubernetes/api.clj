@@ -290,7 +290,6 @@
           node-name (some-> node .getMetadata .getName)
           pods-on-node (num-pods-on-node node-name pods)
           labels-on-node (or (some-> node .getMetadata .getLabels) {})
-          label-names-on-node (into #{} (keys labels-on-node))
           matching-node-blocklist-labels (filter #(contains? labels-on-node %) node-blocklist-labels)
           matching-node-blocklist-keyvals (map (fn [key] [key (get labels-on-node key)]) matching-node-blocklist-labels)]
       (cond  (seq other-taints) (do
