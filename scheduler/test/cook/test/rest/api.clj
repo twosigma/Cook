@@ -39,7 +39,8 @@
                                         create-dummy-job-with-instances
                                         create-pool
                                         flush-caches!
-                                        restore-fresh-database!] :as testutil]
+                                        restore-fresh-database!
+                                        setup] :as testutil]
             [datomic.api :as d :refer [q db]]
             [mesomatic.scheduler :as msched]
             [schema.core :as s])
@@ -1283,6 +1284,7 @@
    :user "user"})
 
 (deftest test-create-jobs!
+  (setup)
   (cook.test.testutil/flush-caches!)
 
   (let [expected-job-map

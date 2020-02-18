@@ -408,7 +408,13 @@ class CookTest(util.CookTest):
             self.assertEqual(resp.content, str.encode(f"submitted jobs {job_uuid}"))
             job = util.load_job(self.cook_url, job_uuid)
             util.wait_for_job(self.cook_url, job_uuid, 'completed')
-            util.wait_for_instance(self.cook_url, job_uuid, status='success')
+            settings_dict = util.settings(self.cook_url)
+            # This test provides a non-writeable workdir, so we're adding this temporary change until we separate
+            # the sandbox and workdir.
+            if 'kubernetes' in settings_dict and 'custom-shell' in settings_dict['kubernetes']:
+                util.wait_for_instance(self.cook_url, job_uuid)
+            else:
+                util.wait_for_instance(self.cook_url, job_uuid, status='success')
         finally:
             util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
 
@@ -679,10 +685,9 @@ class CookTest(util.CookTest):
 
         items = list(range(1, 100, 4)) + list(range(99, 40, -4)) + list(range(40, 81, 2))
         command = ''.join([f'{progress_string(a)} && ' for a in items]) + 'echo "Done" && sleep 10 && exit 0'
-        job_uuid, resp = util.submit_job(self.cook_url, command=command,
-                                         executor=job_executor_type, max_runtime=60000)
+        job_uuid, resp = util.submit_job(self.cook_url, command=command, executor=job_executor_type)
         self.assertEqual(201, resp.status_code, msg=resp.content)
-        time.sleep(10) # since the job sleeps for 10 seconds, it won't be done for at least 10 seconds
+        time.sleep(10)  # since the job sleeps for 10 seconds, it won't be done for at least 10 seconds
         util.wait_for_job(self.cook_url, job_uuid, 'completed')
         instance = util.wait_for_instance_with_progress(self.cook_url, job_uuid, 80)
         message = json.dumps(instance, sort_keys=True)
@@ -2551,9 +2556,10 @@ class CookTest(util.CookTest):
         self.assertFalse(job_uuids[1] in error, resp.content)
 
     def test_set_retries_to_attempts_conflict(self):
-        uuid, resp = util.submit_job(self.cook_url, command='sleep 30', max_retries=5, disable_mea_culpa_retries=True)
-        util.wait_until(lambda: util.load_job(self.cook_url, uuid),
-                        lambda j: (len(j['instances']) >= 1) and any([i['status'] == 'running' for i in j['instances']]))
+        sleep_command = f'sleep {util.DEFAULT_TEST_TIMEOUT_SECS}'
+        uuid, resp = util.submit_job(self.cook_url, command=sleep_command,
+                                     max_retries=5, disable_mea_culpa_retries=True)
+        util.wait_for_running_instance(self.cook_url, uuid)
         util.kill_jobs(self.cook_url, [uuid])
 
         def instances_complete(job):

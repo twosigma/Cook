@@ -33,7 +33,8 @@
             [metrics.meters :as meters]
             [plumbing.core :as pc]
             [metrics.counters :as counters])
-  (:import (java.net URLEncoder)))
+  (:import (java.net URLEncoder)
+           (org.apache.mesos Protos$TaskStatus$Reason)))
 
 (meters/defmeter [cook-mesos scheduler mesos-error])
 (meters/defmeter [cook-mesos scheduler handle-framework-message-rate])
@@ -54,7 +55,7 @@
 (defn handle-status-update
   "Handles a status update from mesos. When a task/job is in an inconsistent state it may kill the task. It also writes the
   status back to datomic."
-  [conn compute-cluster sync-agent-sandboxes-fn pool->fenzo {:keys [state] :as status}]
+  [conn compute-cluster sync-agent-sandboxes-fn pool->fenzo {:keys [reason state] :as status}]
   (let [task-id (-> status :task-id :value)
         instance (d/entity (d/db conn) [:instance/task-id task-id])
         prior-job-state (:job/state (:job/_instance instance))
@@ -69,13 +70,23 @@
                          :task-starting}
                        state)) ; killing an unknown task causes a TASK_LOST message. Break the cycle! Only kill non-terminal tasks
       (do
-
-        (log/warn "Attempting to kill task" task-id
-                  "as instance" instance "with" prior-job-state "and" prior-instance-status
-                  "should've been put down already")
+        (log/info "In compute cluster" (cc/compute-cluster-name compute-cluster)
+                  ", attempting to kill task" task-id "should've been put down already"
+                  {:instance instance
+                   :pool pool-name
+                   :prior-instance-status prior-instance-status
+                   :prior-job-state prior-job-state
+                   :state state})
         (meters/mark! (meters/meter (sched/metric-title "tasks-killed-in-status-update" pool-name)))
         (cc/safe-kill-task compute-cluster task-id))
-      (sched/write-status-to-datomic conn pool->fenzo status))
+      ; Mesomatic doesn't have a mapping for REASON_TASK_KILLED_DURING_LAUNCH
+      ; (http://mesos.apache.org/documentation/latest/task-state-reasons/#for-state-task_killed),
+      ; so we're rolling our own mapping for it here. There is an open issue with Mesomatic:
+      ; https://github.com/clojusc/mesomatic/issues/53
+      (let [status' (cond-> status
+                      (= reason Protos$TaskStatus$Reason/REASON_TASK_KILLED_DURING_LAUNCH)
+                      (assoc :reason :reason-killed-during-launch))]
+        (sched/write-status-to-datomic conn pool->fenzo status')))
     (conditionally-sync-sandbox conn task-id (:state status) sync-agent-sandboxes-fn)))
 
 (defn create-mesos-scheduler
