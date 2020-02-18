@@ -385,8 +385,30 @@ class CookTest(util.CookTest):
                            'host-path': '/var/lib/mno',
                            'container-path': '/var/lib/pqr'}, volumes)
             util.wait_for_job(self.cook_url, job_uuid, 'completed')
-            # TODO: Uncomment this assertion when it's passing in our internal environments
-            #util.wait_for_instance(self.cook_url, job_uuid, status='success')
+        finally:
+            util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
+
+    @unittest.skipUnless(util.docker_tests_enabled(),
+                         'Requires setting the COOK_TEST_DOCKER_IMAGE environment variable')
+    def test_workdir_volume_overlap(self):
+        docker_image = util.docker_image()
+        self.assertIsNotNone(docker_image)
+        container = {'type': 'docker',
+                     'docker': {'image': docker_image,
+                                'network': 'HOST',
+                                'force-pull-image': False,
+                                'parameters': [{'key': 'env', 'value': 'FOO=bar'},
+                                               {'key': 'workdir', 'value': '/var/lib/pqr'}]},
+                     'volumes': [{'mode': 'RW',
+                                  'host-path': '/var/lib/mno',
+                                  'container-path': '/var/lib/pqr'}]}
+        job_uuid, resp = util.submit_job(self.cook_url, container=container)
+        try:
+            self.assertEqual(resp.status_code, 201, msg=resp.content)
+            self.assertEqual(resp.content, str.encode(f"submitted jobs {job_uuid}"))
+            job = util.load_job(self.cook_url, job_uuid)
+            util.wait_for_job(self.cook_url, job_uuid, 'completed')
+            util.wait_for_instance(self.cook_url, job_uuid, status='success')
         finally:
             util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
 
@@ -591,7 +613,7 @@ class CookTest(util.CookTest):
     def test_configurable_progress_update_submit(self):
         job_executor_type = util.get_job_executor_type()
         command = 'echo "message: 25 Twenty-five percent" > progress_file.txt; sleep 1; exit 0'
-        job_uuid, resp = util.submit_job(self.cook_url, command=command, executor=job_executor_type, max_runtime=60000,
+        job_uuid, resp = util.submit_job(self.cook_url, command=command, executor=job_executor_type,
                                          progress_output_file='progress_file.txt',
                                          progress_regex_string='message: (\\d*) (.*)')
         self.assertEqual(201, resp.status_code, msg=resp.content)
@@ -758,19 +780,6 @@ class CookTest(util.CookTest):
             actual_running_time_ms = instance['end_time'] - instance['start_time']
             self.assertGreater(actual_running_time_ms, max_runtime_ms, job_details)
             self.assertGreater(job_sleep_ms, actual_running_time_ms, job_details)
-
-            # verify additional fields set when the cook executor is used
-            if instance['executor'] == 'cook':
-                instance = util.wait_for_output_url(self.cook_url, job_uuid)
-                message = json.dumps(instance, sort_keys=True)
-                self.assertIsNotNone(instance['output_url'], message)
-                self.assertIsNotNone(instance['sandbox_directory'], message)
-
-                instance = util.wait_for_exit_code(self.cook_url, job_uuid)
-                message = json.dumps(instance, sort_keys=True)
-                self.assertNotEqual(0, instance['exit_code'], message)
-            else:
-                self.logger.info(f'Exit code not checked because cook executor was not used for {instance}')
         finally:
             util.kill_jobs(self.cook_url, [job_uuid])
 
@@ -914,26 +923,6 @@ class CookTest(util.CookTest):
         job_uuid, resp = util.submit_job(self.cook_url)
         self.assertEqual(resp.status_code, 201)
         return util.get_user(self.cook_url, job_uuid)
-
-    def test_list_jobs_by_state(self):
-        # schedule a bunch of jobs in hopes of getting jobs into different statuses
-        job_specs = [util.minimal_job(command=f"sleep {i}") for i in range(1, 20)]
-        try:
-            _, resp = util.submit_jobs(self.cook_url, job_specs)
-            self.assertEqual(resp.status_code, 201)
-
-            # let some jobs get scheduled
-            time.sleep(10)
-            user = self.determine_user()
-
-            for state in ['waiting', 'running', 'completed']:
-                resp = util.list_jobs(self.cook_url, user=user, state=state)
-                self.assertEqual(200, resp.status_code, msg=resp.content)
-                jobs = resp.json()
-                for job in jobs:
-                    self.assertEqual(state, job['status'])
-        finally:
-            util.kill_jobs(self.cook_url, job_specs)
 
     def test_list_jobs_by_time(self):
         # schedule two jobs with different submit times
@@ -1454,7 +1443,8 @@ class CookTest(util.CookTest):
     @pytest.mark.xfail
     # The test timeout needs to be a little more than 2 times the timeout
     # interval to allow at least two runs of the straggler handler
-    @pytest.mark.timeout((2 * util.timeout_interval_minutes() * 60) + 60)
+    @pytest.mark.timeout(max((2 * util.timeout_interval_minutes() * 60) + 60,
+                             util.DEFAULT_TEST_TIMEOUT_SECS))
     def test_straggler_handling(self):
         straggler_handling = {
             'type': 'quantile-deviation',
@@ -1605,6 +1595,9 @@ class CookTest(util.CookTest):
 
     @unittest.skipIf(util.using_kubernetes(), 'Ports are not yet supported on kubernetes')
     def test_ports(self):
+        settings_dict = util.settings(self.cook_url)
+        if settings_dict['task-constraints']['max-ports'] < 5:
+            self.skipTest("Test requires at least 5 ports")
         job_uuid, resp = util.submit_job(self.cook_url, ports=1)
         instance = util.wait_for_instance(self.cook_url, job_uuid)
         self.assertEqual(1, len(instance['ports']))
@@ -1855,6 +1848,9 @@ class CookTest(util.CookTest):
     @unittest.skipUnless(util.has_docker_service() and not util.using_kubernetes(),
                          "Requires `docker inspect`. On kubernetes, need to add support and write a separate test.")
     def test_docker_port_mapping(self):
+        settings_dict = util.settings(self.cook_url)
+        if settings_dict['task-constraints']['max-ports'] < 2:
+            self.skipTest("Test requires at least 2 ports")
         job_uuid, resp = util.submit_job(self.cook_url,
                                          command='python -m http.server 8080',
                                          ports=2,
@@ -2381,12 +2377,12 @@ class CookTest(util.CookTest):
             util.kill_jobs(self.cook_url, job_uuids)
 
     def test_submit_with_no_name(self):
-        # We need to manually set the 'uuid' to avoid having the
-        # job name automatically set by the submit_job function
+        # The job submission code special-cases name=None and removes it before submitting.
         job_with_no_name = {'uuid': str(util.make_temporal_uuid()),
                             'command': 'ls',
                             'cpus': 0.1,
                             'mem': 16,
+                            'name' : None,
                             'max-retries': 1}
         job_uuid, resp = util.submit_job(self.cook_url, **job_with_no_name)
         self.assertEqual(resp.status_code, 201, msg=resp.content)
@@ -2555,9 +2551,10 @@ class CookTest(util.CookTest):
         self.assertFalse(job_uuids[1] in error, resp.content)
 
     def test_set_retries_to_attempts_conflict(self):
-        uuid, resp = util.submit_job(self.cook_url, command='sleep 30', max_retries=5, disable_mea_culpa_retries=True)
-        util.wait_until(lambda: util.load_job(self.cook_url, uuid),
-                        lambda j: (len(j['instances']) >= 1) and any([i['status'] == 'running' for i in j['instances']]))
+        sleep_command = f'sleep {util.DEFAULT_TEST_TIMEOUT_SECS}'
+        uuid, resp = util.submit_job(self.cook_url, command=sleep_command,
+                                     max_retries=5, disable_mea_culpa_retries=True)
+        util.wait_for_running_instance(self.cook_url, uuid)
         util.kill_jobs(self.cook_url, [uuid])
 
         def instances_complete(job):

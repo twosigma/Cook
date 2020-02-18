@@ -783,7 +783,7 @@
         true
         (catch ApiException e
           (let [code (.getCode e)
-                bad-pod-spec? (contains? #{404 422} code)]
+                bad-pod-spec? (contains? #{400 404 422} code)]
             (log/info e "Error submitting pod with name" pod-name "in namespace" namespace
                       ", code:" code ", response body:" (.getResponseBody e))
             (not bad-pod-spec?)))))

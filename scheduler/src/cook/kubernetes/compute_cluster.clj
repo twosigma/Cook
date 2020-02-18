@@ -271,8 +271,15 @@
     ; so we launch within a future so that our caller can continue initializing other clusters.
     (future
       (try
-        ; Initialize the pod watch path.
         (log/info "Initializing Kubernetes compute cluster" name)
+
+        ; We need to reset! the pool->fenzo atom before initializing the
+        ; watches, because otherwise, we will start to see and handle events
+        ; for pods, but we won't be able to update the corresponding Fenzo
+        ; instance (e.g. unassigning a completed task from its host)
+        (reset! pool->fenzo-atom pool->fenzo)
+
+        ; Initialize the pod watch path.
         (let [conn cook.datomic/conn
               cook-pod-callback (make-cook-pod-watch-callback this)]
           ; We set cook expected state first because initialize-pod-watch sets (and invokes callbacks on and reacts to) the
@@ -286,8 +293,6 @@
 
         ; Initialize the node watch path.
         (api/initialize-node-watch api-client name current-nodes-atom)
-
-        (reset! pool->fenzo-atom pool->fenzo)
         (catch Throwable e
           (log/error e "Failed to bring up compute cluster" name)
           (throw e))))

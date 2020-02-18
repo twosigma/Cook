@@ -69,10 +69,13 @@
                          :task-starting}
                        state)) ; killing an unknown task causes a TASK_LOST message. Break the cycle! Only kill non-terminal tasks
       (do
-
-        (log/warn "Attempting to kill task" task-id
-                  "as instance" instance "with" prior-job-state "and" prior-instance-status
-                  "should've been put down already")
+        (log/info "In compute cluster" (cc/compute-cluster-name compute-cluster)
+                  ", attempting to kill task" task-id "should've been put down already"
+                  {:instance instance
+                   :pool pool-name
+                   :prior-instance-status prior-instance-status
+                   :prior-job-state prior-job-state
+                   :state state})
         (meters/mark! (meters/meter (sched/metric-title "tasks-killed-in-status-update" pool-name)))
         (cc/safe-kill-task compute-cluster task-id))
       (sched/write-status-to-datomic conn pool->fenzo status))

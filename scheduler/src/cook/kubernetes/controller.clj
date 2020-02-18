@@ -196,14 +196,17 @@
         (let [pod-status (.getStatus pod)
               ^V1ContainerStatus job-container-status (get-job-container-status pod-status)
               ; We leak mesos terminology here ('task') because of backward compatibility.
-              task-state (if (= (:state synthesized-state) :pod/succeeded)
+              succeeded? (= (:state synthesized-state) :pod/succeeded)
+              task-state (if succeeded?
                            :task-finished
                            :task-failed)
+              reason (or reason 
+                         (when succeeded? :reason-normal-exit)
+                         (container-status->failure-reason compute-cluster pod-name
+                                                           pod-status job-container-status))
               status {:task-id {:value pod-name}
                       :state task-state
-                      :reason (or reason
-                                  (container-status->failure-reason compute-cluster pod-name
-                                                                    pod-status job-container-status))}
+                      :reason reason}
               exit-code (some-> job-container-status .getState .getTerminated .getExitCode)]
           {:status status :exit-code exit-code})
         ; We didn't have a pod, so we have to generate a status, without it.

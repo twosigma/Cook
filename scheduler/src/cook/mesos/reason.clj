@@ -26,11 +26,11 @@
   (:reason/string (reason-code->reason-entity db reason-code)))
 
 (defn mesos-reason->cook-reason-entity-id
-  [db mesos-reason]
+  [db task-id mesos-reason]
   (if-let [reason-entity-id (:db/id (d/entity db [:reason/mesos-reason mesos-reason]))]
     reason-entity-id
     (do
-      (log/warn "Unknown mesos reason: " mesos-reason)
+      (log/warn "Unknown mesos reason:" mesos-reason "for task" task-id)
       (:db/id (d/entity db [:reason/name :mesos-unknown])))))
 
 (defn instance-entity->reason-entity

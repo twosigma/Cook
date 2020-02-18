@@ -1196,6 +1196,12 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
 
 (def reason-entities
   [{:db/id (d/tempid :db.part/user)
+    :reason/code 1000
+    :reason/string "Normal exit"
+    :reason/name :normal-exit
+    :reason/mea-culpa? false
+    :reason/mesos-reason :reason-normal-exit}
+   {:db/id (d/tempid :db.part/user)
     :reason/code 1002
     :reason/string "Preempted by rebalancer"
     :reason/mea-culpa? true
