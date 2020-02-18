@@ -1479,10 +1479,12 @@
                   (is (= (assoc (expected-job-map job)
                            :container (assoc-in docker-container
                                                 [:docker :parameters]
-                                                [{:key "tee" :value "tie"}
-                                                 {:key "fee" :value "fie"}
-                                                 {:key "user" :value "1234:2345"}]))
-                         (dissoc (api/fetch-job-map (db conn) uuid) :submit_time)))))
+                                                (frequencies [{:key "tee" :value "tie"}
+                                                              {:key "fee" :value "fie"}
+                                                              {:key "user" :value "1234:2345"}])))
+                         (-> (api/fetch-job-map (db conn) uuid)
+                             (dissoc :submit_time)
+                             (update-in [:container :docker :parameters] frequencies))))))
 
               (testing "user parameter absent"
                 (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
@@ -1494,10 +1496,12 @@
                   (is (= (assoc (expected-job-map job)
                            :container (assoc-in docker-container
                                                 [:docker :parameters]
-                                                [{:key "tee" :value "tie"}
-                                                 {:key "fee" :value "fie"}
-                                                 {:key "user" :value "1234:2345"}]))
-                         (dissoc (api/fetch-job-map (db conn) uuid) :submit_time))))))))))
+                                                (frequencies [{:key "tee" :value "tie"}
+                                                              {:key "fee" :value "fie"}
+                                                              {:key "user" :value "1234:2345"}])))
+                         (-> (api/fetch-job-map (db conn) uuid)
+                             (dissoc :submit_time)
+                             (update-in [:container :docker :parameters] frequencies)))))))))))
 
     (testing "returns unsupported for multiple compute clusters"
       (with-redefs [config/compute-clusters (constantly [{:factory-fn 'cook.mesos.mesos-compute-cluster/factory-fn
