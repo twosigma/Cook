@@ -21,7 +21,19 @@
 
 
 (def cook-pod-label "twosigma.com/cook-scheduler-job")
+(def cook-synthetic-pod-job-uuid-label "twosigma.com/cook-scheduler-synthetic-pod-job-uuid")
 (def cook-workdir-volume-name "cook-workdir-volume")
+
+; DeletionCandidateTaint is a soft taint that k8s uses to mark unneeded
+; nodes as preferably unschedulable. This taint is added as soon as the
+; autoscaler detects that nodes are under-utilized and all pods could be
+; scheduled even with fewer nodes in the node pool. This taint is
+; subsequently "cleaned" if the node stops being unneeded. We need to
+; tolerate this taint so that we can use nodes even if the autoscaler
+; finds them to be temporarily unneeded. Note that there is a "harder"
+; taint, ToBeDeletedByClusterAutoscaler, which is added right before a
+; node is deleted, which we don't tolerate.
+(def k8s-deletion-candidate-taint "DeletionCandidateOfClusterAutoscaler")
 
 (def ^ExecutorService kubernetes-executor (Executors/newCachedThreadPool))
 
@@ -271,7 +283,10 @@
   (if (nil? node)
     false
     (let [taints-on-node (or (some-> node .getSpec .getTaints) [])
-          other-taints (remove #(= "cook-pool" (.getKey %)) taints-on-node)
+          other-taints (remove #(contains?
+                                  #{"cook-pool" k8s-deletion-candidate-taint}
+                                  (.getKey %))
+                               taints-on-node)
           node-name (some-> node .getMetadata .getName)
           pods-on-node (num-pods-on-node node-name pods)
           labels-on-node (or (some-> node .getMetadata .getLabels) {})
@@ -414,6 +429,12 @@
     (.setEffect toleration "NoSchedule")
     toleration))
 
+(def toleration-for-deletion-candidate-of-autoscaler
+  (doto (V1Toleration.)
+    (.setKey k8s-deletion-candidate-taint)
+    (.setOperator "Exists")
+    (.setEffect "PreferNoSchedule")))
+
 (defn param-env-vars
   [params]
   (->> params
@@ -484,7 +505,7 @@
 
 (defn ^V1Pod task-metadata->pod
   "Given a task-request and other data generate the kubernetes V1Pod to launch that task."
-  [namespace compute-cluster-name {:keys [task-id command container task-request hostname]}]
+  [namespace compute-cluster-name {:keys [task-id command container task-request hostname pod-labels]}]
   (let [{:keys [scalar-requests job]} task-request
         ;; NOTE: The scheduler's adjust-job-resources-for-pool-fn may modify :resources,
         ;; whereas :scalar-requests always contains the unmodified job resource values.
@@ -502,7 +523,7 @@
                      env))
                  (:environment command))
         resources (V1ResourceRequirements.)
-        labels {cook-pod-label compute-cluster-name}
+        labels (assoc pod-labels cook-pod-label compute-cluster-name)
         pool-name (some-> job :job/pool :pool/name)
         security-context (make-security-context parameters (:user command))
         workdir (get-workdir parameters)
@@ -593,6 +614,13 @@
 
     (.setNodeName pod-spec hostname)
     (.setRestartPolicy pod-spec "Never")
+    
+    (.addTolerationsItem pod-spec toleration-for-deletion-candidate-of-autoscaler)
+    ; TODO:
+    ; This will need to change to allow for setting the toleration
+    ; for the default pool when the pool was not specified by the
+    ; user. For the time being, this isn't a problem only if / when
+    ; the default pool is not being fed offers from Kubernetes.
     (when pool-name
       (.addTolerationsItem pod-spec (toleration-for-pool pool-name)))
     (.setVolumes pod-spec (filterv some? (conj volumes init-container-workdir-volume sidecar-workdir-volume)))

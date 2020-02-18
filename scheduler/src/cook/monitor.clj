@@ -78,7 +78,7 @@
              (recur users starved-stats)))
          starved-stats)))))
 
-(defn- set-counter!
+(defn set-counter!
   "Sets the value of the counter to the new value.
    A data race is possible if two threads invoke this function concurrently."
   [counter value]
