@@ -37,18 +37,28 @@
 (defn compute-num-waiting-synthetic-pods
   "Given a compute cluster and a collection of pods, returns the number of
   waiting synthetic pods in the cluster, or 0 if the cluster is not autoscaling"
-  [compute-cluster pods pool-name]
+  [compute-cluster pods pool-name grace-period-seconds]
   (if (cc/autoscaling? compute-cluster pool-name)
     (let [synthetic-pods (filter controller/synthetic-pod->job-uuid pods)
-          waiting-synthetic-pods (filter (fn waiting?
+          waiting-synthetic-pods (filter (fn waiting-and-recent?
                                            [^V1Pod pod]
-                                           (or (-> pod
-                                                   .getStatus
-                                                   nil?)
-                                               (-> pod
-                                                   api/pod->synthesized-pod-state
-                                                   :state
-                                                   (= :pod/waiting))))
+                                           (and
+                                             (or (-> pod
+                                                     .getStatus
+                                                     nil?)
+                                                 (-> pod
+                                                     api/pod->synthesized-pod-state
+                                                     :state
+                                                     (= :pod/waiting)))
+                                             ; We don't want to wait indefinitely because
+                                             ; synthetic pods didn't get scheduled. So, we
+                                             ; only count a synthetic pod as "recent" if it
+                                             ; was created in the last grace-period-seconds.
+                                             (-> pod
+                                                 .getMetadata
+                                                 .getCreationTimestamp
+                                                 (time/plus (time/seconds grace-period-seconds))
+                                                 (time/after? (time/now)))))
                                          synthetic-pods)
           waiting-synthetic-pods-in-pool (filter (fn matching-cook-pool-toleration?
                                                    [^V1Pod pod]
@@ -287,7 +297,9 @@
 
   (pending-offers [this pool-name]
     (let [pods (add-starting-pods this @all-pods-atom)
-          num-waiting-synthetic-pods (compute-num-waiting-synthetic-pods this pods pool-name)
+          synthetic-pod-grace-period-seconds (-> synthetic-pods-config :grace-period-seconds (or 180))
+          num-waiting-synthetic-pods (compute-num-waiting-synthetic-pods this pods pool-name
+                                                                         synthetic-pod-grace-period-seconds)
           nodes @current-nodes-atom]
       (log/info "In" name "compute cluster, got asked for pending offers for pool" pool-name
                 {:nodes (count nodes)
