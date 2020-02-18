@@ -82,7 +82,7 @@
   (let [progress-aggregator-chan (async/chan (async/sliding-buffer pending-threshold))
         sequence-cache-store (-> {}
                                  (cache/lru-cache-factory :threshold sequence-cache-threshold)
-                                 (cache/ttl-cache-factory :ttl (* 2 publish-interval-ms))
+                                 (cache/ttl-cache-factory :ttl (* 10 publish-interval-ms))
                                  atom)
         progress-aggregator-fn (fn progress-aggregator-fn [instance-id->progress-state data]
                                  (progress-aggregator pending-threshold sequence-cache-store instance-id->progress-state data))
