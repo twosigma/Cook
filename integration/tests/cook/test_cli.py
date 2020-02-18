@@ -1350,7 +1350,8 @@ def dummy_ls_entries(_, __, ___):
     def test_submit_with_command_prefix(self):
         # Specifying command prefix
         cp, uuids = cli.submit('"exit ${FOO:-1}"', self.cook_url, submit_flags=f'--command-prefix "FOO=0; " '
-                                                                               f'--name {self.current_name()}')
+                                                                               f'--name {self.current_name()} '
+                                                                               f'--max-retries 5')
         self.assertEqual(0, cp.returncode, cp.stderr)
         cp = cli.wait(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
@@ -1376,7 +1377,7 @@ def dummy_ls_entries(_, __, ___):
         with cli.temp_config_file(config) as path:
             flags = '--config %s' % path
             cp, uuids = cli.submit('"exit ${FOO:-1}"', self.cook_url, flags=flags,
-                                   submit_flags=f'--name {self.current_name()}')
+                                   submit_flags=f'--name {self.current_name()} --max-retries 5')
             self.assertEqual(0, cp.returncode, cp.stderr)
             cp = cli.wait(uuids, self.cook_url)
             self.assertEqual(0, cp.returncode, cp.stderr)
