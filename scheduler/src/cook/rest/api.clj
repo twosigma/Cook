@@ -986,11 +986,11 @@
   "Gets a URL to query the sandbox directory of the task.
    Users will need to add the file path & offset to their query.
    Refer to the 'Using the output_url' section in docs/scheduler-rest-api.adoc for further details.
-   Delegates to the compute cluster implimentation."
+   Delegates to the compute cluster implementation."
   [instance-entity]
   (if-let [sandbox-url (:instance/sandbox-url instance-entity)]
     sandbox-url
-    (let [compute-cluster (task/task-ent->ComputeCluster instance-entity)]
+    (when-let [compute-cluster (task/task-ent->ComputeCluster instance-entity)]
       (cc/retrieve-sandbox-url-path compute-cluster instance-entity))))
 
 (defn compute-cluster-entity->map
