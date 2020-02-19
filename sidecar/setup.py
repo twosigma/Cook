@@ -5,9 +5,9 @@ from setuptools import setup
 from cook.sidecar import version
 
 requirements = [
-    'Flask==1.1.0',
-    'gunicorn==19.9.0',
-    'requests==2.20.0',
+    'flask~=1.1.0',
+    'gunicorn~=19.9.0',
+    'requests~=2.22.0',
 ]
 
 test_requirements = [
@@ -18,7 +18,7 @@ setup(
     version=version.VERSION,
     description="Two Sigma's Cook Sidecar",
     long_description="The Cook Sidecar provides sandbox file access and progress reporting.",
-    packages=['cook'],
+    packages=['cook.sidecar'],
     entry_points={'console_scripts': ['cook-sidecar = cook.sidecar.__main__:main']},
     install_requires=requirements,
     tests_require=test_requirements
