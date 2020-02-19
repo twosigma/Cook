@@ -1450,7 +1450,8 @@ def node_pool(nodename):
 
 def max_kubernetes_node_cpus():
     nodes = get_kubernetes_nodes()
-    return max([float(n['status']['capacity']['cpu'])
+    k8s_node_overhead_cpus = 1
+    return max([float(n['status']['capacity']['cpu']) - k8s_node_overhead_cpus
                 for n in nodes])
 
 
