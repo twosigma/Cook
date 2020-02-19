@@ -26,9 +26,9 @@
         do-process (fn [cook-expected-state k8s-actual-state & {:keys [create-namespaced-pod-fn]
                                                                 :or {create-namespaced-pod-fn (constantly true)}}]
                      (reset! reason nil)
-                     (with-redefs [controller/delete-pod (fn [_ cook-expected-state-dict _]
+                     (with-redefs [controller/delete-pod (fn [_ _ cook-expected-state-dict _]
                                                            cook-expected-state-dict)
-                                   controller/kill-pod (fn [_ cook-expected-state-dict _]
+                                   controller/kill-pod (fn [_ _ cook-expected-state-dict _]
                                                          cook-expected-state-dict)
                                    controller/handle-pod-killed (fn [_ _]
                                                                   {:cook-expected-state :cook-expected-state/completed})
@@ -97,7 +97,7 @@
         extract-cook-expected-state (fn []
                                       (:cook-expected-state (get @cook-expected-state-map pod-name {})))
         count-kill-pod (atom 0)]
-    (with-redefs [controller/kill-pod  (fn [_ cook-expected-state-dict _] (swap! count-kill-pod inc) cook-expected-state-dict)
+    (with-redefs [controller/kill-pod  (fn [_ _ cook-expected-state-dict _] (swap! count-kill-pod inc) cook-expected-state-dict)
                   controller/launch-pod (fn [_ cook-expected-state-dict _] cook-expected-state-dict)
                   controller/handle-pod-completed (fn [_ _ _] {:cook-expected-state :cook-expected-state/completed})
                   controller/handle-pod-killed (fn [_ _]
@@ -139,7 +139,7 @@
                          name)
                        (:cook-expected-state (get @cook-expected-state-map name {}))))
         count-delete-pod (atom 0)]
-    (with-redefs [controller/delete-pod  (fn [_ cook-expected-state-dict _] (swap! count-delete-pod inc) cook-expected-state-dict)
+    (with-redefs [controller/delete-pod  (fn [_ _ cook-expected-state-dict _] (swap! count-delete-pod inc) cook-expected-state-dict)
                   controller/handle-pod-completed (fn [_ _ _] {:cook-expected-state :cook-expected-state/completed})
                   controller/write-status-to-datomic (fn [_] :illegal_return_value_should_be_unused)]
 

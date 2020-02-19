@@ -2,9 +2,12 @@
   (:require [clojure.set :as set]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
+            [cook.kubernetes.metrics :as metrics]
             [datomic.api :as d]
             [cook.config :as config]
             [cook.tools :as util]
+            [metrics.meters :as meters]
+            [metrics.timers :as timers]
             [plumbing.core :as pc])
   (:import
     (com.google.gson JsonSyntaxException)
@@ -104,30 +107,31 @@
 
 (defn get-all-pods-in-kubernetes
   "Get all pods in kubernetes."
-  [api-client]
-  (let [api (CoreV1Api. api-client)
-        current-pods (.listPodForAllNamespaces api
-                                               nil ; continue
-                                               nil ; fieldSelector
-                                               nil ; includeUninitialized
-                                               nil ; labelSelector
-                                               nil ; limit
-                                               nil ; pretty
-                                               nil ; resourceVersion
-                                               nil ; timeoutSeconds
-                                               nil ; watch
-                                               )
-        namespaced-pod-name->pod (pc/map-from-vals get-pod-namespaced-key
-                                                   (.getItems current-pods))]
-    [current-pods namespaced-pod-name->pod]))
+  [api-client compute-cluster-name]
+  (timers/time! (metrics/timer "get-all-pods" compute-cluster-name)
+    (let [api (CoreV1Api. api-client)
+          current-pods (.listPodForAllNamespaces api
+                                                 nil ; continue
+                                                 nil ; fieldSelector
+                                                 nil ; includeUninitialized
+                                                 nil ; labelSelector
+                                                 nil ; limit
+                                                 nil ; pretty
+                                                 nil ; resourceVersion
+                                                 nil ; timeoutSeconds
+                                                 nil ; watch
+                                                 )
+          namespaced-pod-name->pod (pc/map-from-vals get-pod-namespaced-key
+                                                     (.getItems current-pods))]
+      [current-pods namespaced-pod-name->pod])))
 
 (defn try-forever-get-all-pods-in-kubernetes
   "Try forever to get all pods in kubernetes. Used when starting a cluster up."
-  [compute-cluster-name api-client]
+  [api-client compute-cluster-name]
   (loop []
     (let [{:keys [reconnect-delay-ms]} (config/kubernetes)
           out (try
-                (get-all-pods-in-kubernetes api-client)
+                (get-all-pods-in-kubernetes api-client compute-cluster-name)
                 (catch Throwable e
                   (log/error e "Error during cluster startup getting all pods for" compute-cluster-name
                              "and sleeping" reconnect-delay-ms "milliseconds before reconnect")
@@ -141,7 +145,7 @@
 (defn ^Callable initialize-pod-watch-helper
   "Help creating pod watch. Returns a new watch Callable"
   [^ApiClient api-client compute-cluster-name all-pods-atom cook-pod-callback]
-  (let [[current-pods namespaced-pod-name->pod] (get-all-pods-in-kubernetes api-client)
+  (let [[current-pods namespaced-pod-name->pod] (get-all-pods-in-kubernetes api-client compute-cluster-name)
         ; 2 callbacks;
         callbacks
         [(make-atom-updater all-pods-atom) ; Update the set of all pods.
@@ -200,17 +204,19 @@
   "Help creating node watch. Returns a new watch Callable"
   [^ApiClient api-client compute-cluster-name current-nodes-atom]
   (let [api (CoreV1Api. api-client)
-        current-nodes (.listNode api
-                                 nil ; includeUninitialized
-                                 nil ; pretty
-                                 nil ; continue
-                                 nil ; fieldSelector
-                                 nil ; labelSelector
-                                 nil ; limit
-                                 nil ; resourceVersion
-                                 nil ; timeoutSeconds
-                                 nil ; watch
-                                 )
+        current-nodes
+        (timers/time! (metrics/timer "get-all-nodes" compute-cluster-name)
+          (.listNode api
+                     nil ; includeUninitialized
+                     nil ; pretty
+                     nil ; continue
+                     nil ; fieldSelector
+                     nil ; labelSelector
+                     nil ; limit
+                     nil ; resourceVersion
+                     nil ; timeoutSeconds
+                     nil ; watch
+                     ))
         node-name->node (pc/map-from-vals (fn [^V1Node node]
                                             (-> node .getMetadata .getName))
                                           (.getItems current-nodes))]
@@ -761,41 +767,43 @@
 
 (defn delete-pod
   "Kill this kubernetes pod. This is the same as deleting it."
-  [^ApiClient api-client ^V1Pod pod]
+  [^ApiClient api-client compute-cluster-name ^V1Pod pod]
   (let [api (CoreV1Api. api-client)
         ^V1DeleteOptions deleteOptions (-> (V1DeleteOptionsBuilder.) (.withPropagationPolicy "Background") .build)
         pod-name (-> pod .getMetadata .getName)
         pod-namespace (-> pod .getMetadata .getNamespace)]
     ; TODO: This likes to noisily throw NotFound multiple times as we delete away from kubernetes.
     ; I suspect our predicate of k8s-actual-state-equivalent needs tweaking.
-    (try
-      (.deleteNamespacedPod
-        api
-        pod-name
-        pod-namespace
-        deleteOptions
-        nil ; pretty
-        nil ; dryRun
-        nil ; gracePeriodSeconds
-        nil ; oprphanDependents
-        nil ; propagationPolicy
-        )
-      (catch JsonSyntaxException e
-        ; Silently gobble this exception.
-        ;
-        ; The java API can throw a a JsonSyntaxException parsing the kubernetes reply!
-        ; https://github.com/kubernetes-client/java/issues/252
-        ; https://github.com/kubernetes-client/java/issues/86
-        ;
-        ; They actually advise catching the exception and moving on!
-        ;
-        (log/info "Caught the https://github.com/kubernetes-client/java/issues/252 exception deleting" pod-name))
-      (catch ApiException e
-        (let [code (.getCode e)
-              already-deleted? (contains? #{404} code)]
-          (if already-deleted?
-            (log/info e "Pod" pod-name "was already deleted")
-            (throw e)))))))
+    (timers/time! (metrics/timer "delete-pod" compute-cluster-name)
+      (try
+        (.deleteNamespacedPod
+          api
+          pod-name
+          pod-namespace
+          deleteOptions
+          nil                                               ; pretty
+          nil                                               ; dryRun
+          nil                                               ; gracePeriodSeconds
+          nil                                               ; oprphanDependents
+          nil                                               ; propagationPolicy
+          )
+        (catch JsonSyntaxException e
+          ; Silently gobble this exception.
+          ;
+          ; The java API can throw a a JsonSyntaxException parsing the kubernetes reply!
+          ; https://github.com/kubernetes-client/java/issues/252
+          ; https://github.com/kubernetes-client/java/issues/86
+          ;
+          ; They actually advise catching the exception and moving on!
+          ;
+          (log/info "In" compute-cluster-name "compute cluster, caught the https://github.com/kubernetes-client/java/issues/252 exception deleting" pod-name))
+        (catch ApiException e
+          (meters/mark! (metrics/meter "delete-pod-errors" compute-cluster-name))
+          (let [code (.getCode e)
+                already-deleted? (contains? #{404} code)]
+            (if already-deleted?
+              (log/info e "In" compute-cluster-name "compute cluster, pod" pod-name "was already deleted")
+              (throw e))))))))
 
 (defn create-namespaced-pod
   "Delegates to the k8s API .createNamespacedPod function"
@@ -810,7 +818,7 @@
   conflict error because we've attempted to re-submit a pod that the watch has not
   yet notified us exists). The function returns false if we should consider the
   launch operation failed."
-  [api-client {:keys [launch-pod]} pod-name]
+  [api-client compute-cluster-name {:keys [launch-pod]} pod-name]
   (if launch-pod
     (let [{:keys [pod]} launch-pod
           pod-name-from-pod (-> pod .getMetadata .getName)
@@ -819,15 +827,19 @@
       (assert (= pod-name-from-pod pod-name)
               (str "Pod name from pod (" pod-name-from-pod ") "
                    "does not match pod name argument (" pod-name ")"))
-      (log/info "Launching pod with name" pod-name "in namespace" namespace ":" (Yaml/dump pod))
+      (log/info "In" compute-cluster-name "compute cluster, launching pod with name" pod-name "in namespace" namespace ":" (Yaml/dump pod))
       (try
-        (create-namespaced-pod api namespace pod)
+        (timers/time! (metrics/timer "launch-pod" compute-cluster-name)
+          (create-namespaced-pod api namespace pod))
         true
         (catch ApiException e
           (let [code (.getCode e)
                 bad-pod-spec? (contains? #{400 404 422} code)]
-            (log/info e "Error submitting pod with name" pod-name "in namespace" namespace
+            (log/info e "In" compute-cluster-name "compute cluster, error submitting pod with name" pod-name "in namespace" namespace
                       ", code:" code ", response body:" (.getResponseBody e))
+            (if bad-pod-spec?
+              (meters/mark! (metrics/meter "launch-pod-bad-spec-errors" compute-cluster-name))
+              (meters/mark! (metrics/meter "launch-pod-good-spec-errors" compute-cluster-name)))
             (not bad-pod-spec?)))))
     (do
       ; Because of the complicated nature of task-metadata-seq, we can't easily run the pod

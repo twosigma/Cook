@@ -39,7 +39,7 @@
                                               tu/make-task-request
                                               tu/make-task-assignment-result)))
         launched-pod-atom (atom nil)]
-    (with-redefs [api/launch-pod (fn [_ {:keys [launch-pod]} _]
+    (with-redefs [api/launch-pod (fn [_ _ {:keys [launch-pod]} _]
                                    (reset! launched-pod-atom launch-pod))
                   api/make-security-context (constantly (V1PodSecurityContext.))]
       (testing "static namespace"
@@ -148,7 +148,7 @@
                        (make-task-request-fn job-uuid-2)
                        (make-task-request-fn job-uuid-3)]
         launched-pods-atom (atom [])]
-    (with-redefs [api/launch-pod (fn [_ cook-expected-state-dict _]
+    (with-redefs [api/launch-pod (fn [_ _ cook-expected-state-dict _]
                                    (swap! launched-pods-atom conj cook-expected-state-dict))]
       (cc/autoscale! compute-cluster pool-name task-requests))
     (is (= 2 (count @launched-pods-atom)))
