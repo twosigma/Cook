@@ -137,7 +137,7 @@
     nil))
 
 (defn compute-cluster-name->ComputeCluster
-  "From the name of a compute cluster, return the object. Throws if not found. Does not return nil."
+  "From the name of a compute cluster, return the object. May return nil if not found."
   [compute-cluster-name]
   (let [result (get @cluster-name->compute-cluster-atom compute-cluster-name)]
     (when-not result
