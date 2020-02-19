@@ -34,6 +34,7 @@
             [cook.plugins.file :as file-plugin]
             [cook.plugins.submission :as submission-plugin]
             [cook.rate-limit :as rate-limit]
+            [cook.task :as task]
             [cook.test.testutil :refer [create-dummy-instance
                                         create-dummy-job
                                         create-dummy-job-with-instances
@@ -1615,7 +1616,9 @@
 
 (deftest test-retrieve-sandbox-url-path
   (let [agent-hostname "www.mesos-agent-com"]
-    (with-redefs [cc/retrieve-sandbox-url-path (fn [_ {:keys [instance/hostname instance/sandbox-directory instance/task-id]}]
+    ; We have a special gate that the compute cluster isn't nil, so have this return something not nil.
+    (with-redefs [task/task-ent->ComputeCluster (constantly "JustHasToBeNonNil-ComputeCluster")
+                  cc/retrieve-sandbox-url-path (fn [_ {:keys [instance/hostname instance/sandbox-directory instance/task-id]}]
                                                  (when (and hostname sandbox-directory)
                                                    (str "http://" hostname ":5051" "/" task-id "/files/read.json?path=" sandbox-directory)))]
       (testing "retrieve-sandbox-url-path"
