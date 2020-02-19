@@ -34,7 +34,7 @@ import gunicorn.app.base
 import gunicorn.arbiter
 from flask import Flask, jsonify, request, send_file
 
-import cook.sidecar import util
+from cook.sidecar import util
 from cook.sidecar.version import VERSION
 
 app = Flask(__name__)

@@ -22,6 +22,7 @@
 
 import logging
 import os
+import sys
 
 def init_logging():
     log_level = os.environ.get('EXECUTOR_LOG_LEVEL', 'INFO')

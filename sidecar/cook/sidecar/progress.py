@@ -31,7 +31,7 @@ import sys
 
 import cook.sidecar.config as csc
 import cook.sidecar.tracker as cst
-import cook.sidecar import util
+from cook.sidecar import util
 from cook.sidecar.version import VERSION
 
 
