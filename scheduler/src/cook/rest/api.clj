@@ -990,8 +990,9 @@
   [instance-entity]
   (if-let [sandbox-url (:instance/sandbox-url instance-entity)]
     sandbox-url
-    (when-let [compute-cluster (task/task-ent->ComputeCluster instance-entity)]
-      (cc/retrieve-sandbox-url-path compute-cluster instance-entity))))
+    (if-let [compute-cluster (task/task-ent->ComputeCluster instance-entity)]
+      (cc/retrieve-sandbox-url-path compute-cluster instance-entity)
+      (log/error "Unable to get sandbox URL for" instance-entity "whose compute cluster resolves to nil"))))
 
 (defn compute-cluster-entity->map
   "Attached to the the instance object when we send it in API responses"
