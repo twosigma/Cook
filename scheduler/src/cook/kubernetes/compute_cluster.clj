@@ -57,6 +57,7 @@
                                              (-> pod
                                                  .getMetadata
                                                  .getCreationTimestamp
+                                                 (or (time/now))
                                                  (time/plus (time/seconds grace-period-seconds))
                                                  (time/after? (time/now)))))
                                          synthetic-pods)

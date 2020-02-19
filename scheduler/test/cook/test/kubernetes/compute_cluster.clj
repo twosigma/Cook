@@ -1,5 +1,6 @@
 (ns cook.test.kubernetes.compute-cluster
-  (:require [clojure.core.cache :as cache]
+  (:require [clj-time.core :as t]
+            [clojure.core.cache :as cache]
             [clojure.test :refer :all]
             [cook.compute-cluster :as cc]
             [cook.kubernetes.api :as api]
@@ -135,11 +136,8 @@
   (let [job-uuid-1 (str (UUID/randomUUID))
         job-uuid-2 (str (UUID/randomUUID))
         job-uuid-3 (str (UUID/randomUUID))
-        ^V1Pod outstanding-synthetic-pod-1 (tu/pod-helper "podA" "nodeA")
-        _ (-> outstanding-synthetic-pod-1
-              .getMetadata
-              (.setLabels {api/cook-synthetic-pod-job-uuid-label job-uuid-1}))
         pool-name "test-pool"
+        ^V1Pod outstanding-synthetic-pod-1 (tu/synthetic-pod-helper job-uuid-1 pool-name nil)
         compute-cluster (tu/make-kubernetes-compute-cluster {nil outstanding-synthetic-pod-1} #{pool-name})
         make-task-request-fn (fn [job-uuid]
                                {:job {:job/resource [{:resource/type :cpus, :resource/amount 0.1}
@@ -155,3 +153,27 @@
     (is (= 2 (count @launched-pods-atom)))
     (is (= job-uuid-2 (-> @launched-pods-atom (nth 0) :launch-pod :pod controller/synthetic-pod->job-uuid)))
     (is (= job-uuid-3 (-> @launched-pods-atom (nth 1) :launch-pod :pod controller/synthetic-pod->job-uuid)))))
+
+(deftest test-compute-num-waiting-synthetic-pods
+  (let [pool-name "test-pool"
+        job-uuid (str (UUID/randomUUID))
+        compute-cluster (tu/make-kubernetes-compute-cluster {} #{pool-name})
+        grace-period-seconds 180]
+
+    (testing "handles nil creation timestamp gracefully"
+      (is (= 1 (kcc/compute-num-waiting-synthetic-pods compute-cluster
+                                                       [(tu/synthetic-pod-helper job-uuid pool-name nil)]
+                                                       pool-name
+                                                       grace-period-seconds))))
+
+    (testing "ancient pod doesn't count as 'waiting'"
+      (is (= 0 (kcc/compute-num-waiting-synthetic-pods compute-cluster
+                                                       [(tu/synthetic-pod-helper job-uuid pool-name (t/epoch))]
+                                                       pool-name
+                                                       grace-period-seconds))))
+
+    (testing "recent pod does count as 'waiting'"
+      (is (= 1 (kcc/compute-num-waiting-synthetic-pods compute-cluster
+                                                       [(tu/synthetic-pod-helper job-uuid pool-name (t/now))]
+                                                       pool-name
+                                                       grace-period-seconds))))))
