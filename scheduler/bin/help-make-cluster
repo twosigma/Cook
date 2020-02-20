@@ -36,12 +36,26 @@ $gcloud container clusters get-credentials "$CLUSTERNAME" --zone "$ZONE"
 
 # Make some node-pools --- this takes a while, but it helps guarantee that we have nodes with the appropriate cook-pool taints.
 echo "---- Making extra k8s-alpha and k8s-gamma nodepools for cook pools (please wait 5-10 minutes)"
-$gcloud container node-pools create cook-pool-k8s-gamma --zone "$ZONE" --cluster="$CLUSTERNAME" --disk-size=20gb --machine-type=g1-small \
+$gcloud container node-pools create cook-pool-k8s-gamma \
+       --zone "$ZONE" \
+       --cluster="$CLUSTERNAME" \
+       --disk-size=20gb \
+       --machine-type=g1-small \
        --node-taints=cook-pool=k8s-gamma:NoSchedule \
-       --enable-autoscaling --min-nodes=3 --max-nodes=6
-$gcloud container node-pools create cook-pool-k8s-alpha --zone "$ZONE" --cluster="$CLUSTERNAME" --disk-size=20gb --machine-type=g1-small \
+       --enable-autoscaling \
+       --min-nodes=3 \
+       --max-nodes=6 \
+       --node-labels=cook_pool=k8s-gamma
+$gcloud container node-pools create cook-pool-k8s-alpha \
+       --zone "$ZONE" \
+       --cluster="$CLUSTERNAME" \
+       --disk-size=20gb \
+       --machine-type=g1-small \
        --node-taints=cook-pool=k8s-alpha:NoSchedule \
-       --enable-autoscaling --min-nodes=2 --max-nodes=4
+       --enable-autoscaling \
+       --min-nodes=2 \
+       --max-nodes=4 \
+       --node-labels=cook_pool=k8s-alpha
 
 echo "---- Setting up cook namespace in kubernetes"
 KUBECONFIG=${COOK_KUBECONFIG} kubectl create -f docs/make-kubernetes-namespace.json

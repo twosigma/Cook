@@ -68,7 +68,8 @@
     (-> k8s-actual-state-dict
         (update-in [:synthesized-state :state] #(or % :missing))
         (dissoc :pod)
-        (assoc :pod-status (some-> pod .getStatus)))
+        (assoc :pod-status (some-> pod .getStatus))
+        (assoc :node-name (some-> pod .getSpec .getNodeName)))
     (catch Throwable t
       (log/error t "Error preparing k8s actual state for logging:" k8s-actual-state-dict)
       k8s-actual-state-dict)))

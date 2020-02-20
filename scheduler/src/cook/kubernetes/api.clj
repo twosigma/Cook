@@ -12,10 +12,12 @@
     (io.kubernetes.client ApiClient ApiException)
     (io.kubernetes.client.apis CoreV1Api)
     (io.kubernetes.client.custom Quantity Quantity$Format IntOrString)
-    (io.kubernetes.client.models V1Pod V1Container V1Node V1Pod V1ResourceRequirements V1EnvVar
-                                 V1ObjectMeta V1PodSpec V1PodStatus V1ContainerState V1DeleteOptionsBuilder
-                                 V1DeleteOptions V1HostPathVolumeSource V1VolumeMount V1VolumeBuilder V1Taint
-                                 V1Toleration V1PodSecurityContext V1EmptyDirVolumeSource V1EnvVarBuilder V1ContainerPort V1Probe V1HTTPGetAction V1Volume)
+    (io.kubernetes.client.models V1Affinity V1Container V1ContainerPort V1ContainerState V1DeleteOptions
+                                 V1DeleteOptionsBuilder V1EmptyDirVolumeSource V1EnvVar V1EnvVarBuilder
+                                 V1HostPathVolumeSource V1HTTPGetAction V1Node V1NodeAffinity V1NodeSelector
+                                 V1NodeSelectorRequirement V1NodeSelectorTerm V1ObjectMeta V1Pod
+                                 V1PodSecurityContext V1PodSpec V1PodStatus V1Probe V1ResourceRequirements
+                                 V1Toleration V1VolumeBuilder V1Volume V1VolumeMount)
     (io.kubernetes.client.util Watch Yaml)
     (java.util.concurrent Executors ExecutorService)))
 
@@ -429,6 +431,25 @@
     (.setEffect toleration "NoSchedule")
     toleration))
 
+(defn affinity-for-pool
+  "For the given Cook pool name, create and return a node affinity
+  (https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#node-affinity)
+  for nodes with the matching cook_pool label."
+  [pool-name]
+  (let [^V1Affinity affinity (V1Affinity.)
+        ^V1NodeAffinity node-affinity (V1NodeAffinity.)
+        ^V1NodeSelector node-selector (V1NodeSelector.)
+        ^V1NodeSelectorTerm node-selector-term (V1NodeSelectorTerm.)
+        ^V1NodeSelectorRequirement node-selector-requirement (V1NodeSelectorRequirement.)]
+    (.setKey node-selector-requirement "cook_pool")
+    (.setOperator node-selector-requirement "In")
+    (.addValuesItem node-selector-requirement pool-name)
+    (.addMatchExpressionsItem node-selector-term node-selector-requirement)
+    (.addNodeSelectorTermsItem node-selector node-selector-term)
+    (.requiredDuringSchedulingIgnoredDuringExecution node-affinity node-selector)
+    (.setNodeAffinity affinity node-affinity)
+    affinity))
+
 (def toleration-for-deletion-candidate-of-autoscaler
   (doto (V1Toleration.)
     (.setKey k8s-deletion-candidate-taint)
@@ -622,7 +643,12 @@
     ; user. For the time being, this isn't a problem only if / when
     ; the default pool is not being fed offers from Kubernetes.
     (when pool-name
-      (.addTolerationsItem pod-spec (toleration-for-pool pool-name)))
+      (.addTolerationsItem pod-spec (toleration-for-pool pool-name))
+      ; Add a node affinity for nodes labeled with the Cook pool
+      ; we're launching in. This is technically only needed for
+      ; synthetic pods (which don't have node name set), but it
+      ; doesn't hurt to add it for all pods we submit.
+      (.setAffinity pod-spec (affinity-for-pool pool-name)))
     (.setVolumes pod-spec (filterv some? (conj volumes init-container-workdir-volume sidecar-workdir-volume)))
     (.setSecurityContext pod-spec security-context)
 
