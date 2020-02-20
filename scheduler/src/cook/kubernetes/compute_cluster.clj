@@ -70,12 +70,12 @@
                                                                   (= (.getValue toleration) pool-name)))
                                                            tolerations)))
                                                  waiting-synthetic-pods)]
-      ; TODO(DPO): Change this to debug
       (log/info "In" (cc/compute-cluster-name compute-cluster)
                 "compute cluster, computed number of waiting synthetic pods"
                 {:grace-period-seconds grace-period-seconds
+                 :num-waiting-synthetic-pods-in-pool (count waiting-synthetic-pods-in-pool)
                  :pool pool-name
-                 :waiting-synthetic-pods-in-pool waiting-synthetic-pods-in-pool})
+                 :waiting-synthetic-pods-in-pool (map api/V1Pod->name waiting-synthetic-pods-in-pool)})
       (count waiting-synthetic-pods-in-pool))
     0))
 
