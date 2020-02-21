@@ -633,7 +633,14 @@
         (.setVolumeMounts container [(workdir-volume-mount-fn true) (sidecar-workdir-volume-mount-fn false)])
         (.addContainersItem pod-spec container)))
 
-    (.setNodeName pod-spec hostname)
+    (when hostname
+      ; Why not just set the node name?
+      ; The reason is that setting the node name prevents pod preemption
+      ; (https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/)
+      ; from happening. We want this pod to preempt lower priority pods
+      ; (e.g. synthetic pods).
+      (.setNodeSelector pod-spec {"kubernetes.io/hostname" hostname}))
+
     (.setRestartPolicy pod-spec "Never")
     
     (.addTolerationsItem pod-spec toleration-for-deletion-candidate-of-autoscaler)
