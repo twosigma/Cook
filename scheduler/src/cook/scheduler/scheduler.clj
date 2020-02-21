@@ -857,7 +857,7 @@
                      :num-failures (count failures)
                      :num-matches (count matches)
                      :num-offers (count offers)
-                     :pool->num-pending-jobs (pc/map-vals count pool-name)})
+                     :pool->num-pending-jobs (pc/map-vals count pool-name->pending-jobs-atom)})
 
           (fenzo/record-placement-failures! conn failures)
 
