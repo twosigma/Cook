@@ -200,7 +200,7 @@
               task-state (if succeeded?
                            :task-finished
                            :task-failed)
-              reason (or reason 
+              reason (or reason
                          (when succeeded? :reason-normal-exit)
                          (container-status->failure-reason compute-cluster pod-name
                                                            pod-status job-container-status))

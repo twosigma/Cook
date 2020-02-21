@@ -206,12 +206,12 @@
         ; We already have task entities for everything running, in datomic.
         ; Now figure out what pods kubernetes has that aren't in that set, and then load those task entities too.
         extra-tasks-id->task (->> (set/difference all-tasks-ids-in-pods cc-running-tasks-ids)
-                             (map (fn [task-id] [task-id (cook.tools/retrieve-instance db task-id)]))
+                                  (map (fn [task-id] [task-id (cook.tools/retrieve-instance db task-id)]))
                                   ; TODO: this filter shouldn't be here. We should be pre-filtering pods
                                   ; to be cook pods. Then remove this filter as we should kill off anything
                                   ; unknown.
-                             (filter (fn [[_ task-ent]] (some? task-ent)))
-                             (into {}))
+                                  (filter (fn [[_ task-ent]] (some? task-ent)))
+                                  (into {}))
         all-task-id->task (merge extra-tasks-id->task running-task-id->task)]
     (log/info "Initialized tasks on startup:"
               (count all-tasks-ids-in-pods) "tasks in pods and"

@@ -66,9 +66,9 @@
                                                                       (task-assignment-result-helper "testuser"))]
           (cc/launch-tasks compute-cluster [] [task-metadata])
           (is (= "testuser" (-> @launched-pod-atom
-                            :pod
-                            .getMetadata
-                            .getNamespace))))))))
+                                :pod
+                                .getMetadata
+                                .getNamespace))))))))
 
 (deftest test-generate-offers
   (tu/setup)
