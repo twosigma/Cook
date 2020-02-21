@@ -851,6 +851,14 @@
               first-considerable-job-resources (-> considerable-jobs first tools/job-ent->resources)
               matched-considerable-jobs-head? (contains? matched-job-uuids (-> considerable-jobs first :job/uuid))]
 
+          (log/info "In" pool-name "pool, handling resource offers"
+                    {:matched-considerable-jobs-head? matched-considerable-jobs-head?
+                     :num-considerable num-considerable
+                     :num-failures (count failures)
+                     :num-matches (count matches)
+                     :num-offers (count offers)
+                     :pool->num-pending-jobs (pc/map-vals count pool-name)})
+
           (fenzo/record-placement-failures! conn failures)
 
           (reset! offer-stash offers-scheduled)
