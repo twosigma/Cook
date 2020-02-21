@@ -857,22 +857,26 @@
           (reset! front-of-job-queue-mem-atom (or (:mem first-considerable-job-resources) 0))
           (reset! front-of-job-queue-cpus-atom (or (:cpus first-considerable-job-resources) 0))
 
-          (trigger-autoscaling! failures pool-name compute-clusters)
-
-          (cond
-            ;; Possible innocuous reasons for no matches: no offers, or no pending jobs.
-            ;; Even beyond that, if Fenzo fails to match ANYTHING, "penalizing" it in the form of giving
-            ;; it fewer jobs to look at is unlikely to improve the situation.
-            ;; "Penalization" should only be employed when Fenzo does successfully match,
-            ;; but the matches don't align with Cook's priorities.
-            (empty? matches) true
-            :else
-            (do
-              (swap! pool-name->pending-jobs-atom remove-matched-jobs-from-pending-jobs matched-job-uuids pool-name)
-              (log/debug "In" pool-name "pool, updated pool-name->pending-jobs-atom:" @pool-name->pending-jobs-atom)
-              (launch-matched-tasks! matches conn db fenzo mesos-run-as-user pool-name)
-              (update-host-reservations! rebalancer-reservation-atom matched-job-uuids)
-              matched-considerable-jobs-head?)))
+          (let [matched-head-or-no-matches?
+                ;; Possible innocuous reasons for no matches: no offers, or no pending jobs.
+                ;; Even beyond that, if Fenzo fails to match ANYTHING, "penalizing" it in the form of giving
+                ;; it fewer jobs to look at is unlikely to improve the situation.
+                ;; "Penalization" should only be employed when Fenzo does successfully match,
+                ;; but the matches don't align with Cook's priorities.
+                (if (empty? matches)
+                  true
+                  (do
+                    (swap! pool-name->pending-jobs-atom
+                           remove-matched-jobs-from-pending-jobs
+                           matched-job-uuids pool-name)
+                    (log/debug "In" pool-name
+                               "pool, updated pool-name->pending-jobs-atom:"
+                               @pool-name->pending-jobs-atom)
+                    (launch-matched-tasks! matches conn db fenzo mesos-run-as-user pool-name)
+                    (update-host-reservations! rebalancer-reservation-atom matched-job-uuids)
+                    matched-considerable-jobs-head?))]
+            (trigger-autoscaling! failures pool-name compute-clusters)
+            matched-head-or-no-matches?))
         (catch Throwable t
           (meters/mark! handle-resource-offer!-errors)
           (log/error t "In" pool-name "pool, error in match:" (ex-data t))
