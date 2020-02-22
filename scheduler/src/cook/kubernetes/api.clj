@@ -261,7 +261,7 @@
   (let [taints-on-node (or (some-> node .getSpec .getTaints) [])
         cook-pool-taint (filter #(= "cook-pool" (.getKey %)) taints-on-node)]
     (if (= 1 (count cook-pool-taint))
-          (-> cook-pool-taint first .getValue)
+      (-> cook-pool-taint first .getValue)
       "no-pool")))
 
 (defn pod->node-name
@@ -323,9 +323,9 @@
                                                        (let [containers (-> pod .getSpec .getContainers)
                                                              container-requests (map (fn [^V1Container c]
                                                                                        (-> c
-                                                                                         .getResources
-                                                                                         .getRequests
-                                                                                         convert-resource-map))
+                                                                                           .getResources
+                                                                                           .getRequests
+                                                                                           convert-resource-map))
                                                                                      containers)]
                                                          (apply merge-with + container-requests))))
                                                 (apply merge-with +)))
@@ -381,19 +381,19 @@
         host-path->name (pc/map-from-keys (fn [_] (str "syn-" (d/squuid)))
                                           (map :host-path filtered-cook-volumes))
         name->volume (into {} (map (fn [{:keys [host-path]}]
-                       (let [host-path-source (V1HostPathVolumeSource.)
-                             volume-name (host-path->name host-path)]
-                         ; host path
-                         (.setPath host-path-source host-path)
-                         (.setType host-path-source "DirectoryOrCreate")
+                                     (let [host-path-source (V1HostPathVolumeSource.)
+                                           volume-name (host-path->name host-path)]
+                                       ; host path
+                                       (.setPath host-path-source host-path)
+                                       (.setType host-path-source "DirectoryOrCreate")
 
-                         ; volume
-                         [volume-name
-                          (-> (V1VolumeBuilder.)
-                             (.withName volume-name)
-                             (.withHostPath host-path-source)
-                             (.build))])))
-                     filtered-cook-volumes)
+                                       ; volume
+                                       [volume-name
+                                        (-> (V1VolumeBuilder.)
+                                            (.withName volume-name)
+                                            (.withHostPath host-path-source)
+                                            (.build))])))
+                           filtered-cook-volumes)
         volumes (vals name->volume)
         container-path->volume-mounts (into {} (map (fn [{:keys [container-path host-path mode]
                                                           :or {mode "RO"}}]
@@ -614,7 +614,7 @@
 
     (.setNodeName pod-spec hostname)
     (.setRestartPolicy pod-spec "Never")
-    
+
     (.addTolerationsItem pod-spec toleration-for-deletion-candidate-of-autoscaler)
     ; TODO:
     ; This will need to change to allow for setting the toleration
