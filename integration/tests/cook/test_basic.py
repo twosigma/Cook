@@ -608,7 +608,7 @@ class CookTest(util.CookTest):
         command = f'{line}; sleep 1; exit 0'
         job_uuid, resp = util.submit_job(self.cook_url, command=command,
                                          env={progress_file_env: 'progress.txt'},
-                                         executor=job_executor_type, max_runtime=60000)
+                                         executor=job_executor_type, max_retries=5)
         self.assertEqual(201, resp.status_code, msg=resp.content)
         instance = util.wait_for_instance_with_progress(self.cook_url, job_uuid, 25)
         message = json.dumps(instance, sort_keys=True)
@@ -619,7 +619,8 @@ class CookTest(util.CookTest):
     def test_configurable_progress_update_submit(self):
         job_executor_type = util.get_job_executor_type()
         command = 'echo "message: 25 Twenty-five percent" > progress_file.txt; sleep 1; exit 0'
-        job_uuid, resp = util.submit_job(self.cook_url, command=command, executor=job_executor_type,
+        job_uuid, resp = util.submit_job(self.cook_url, command=command,
+                                         executor=job_executor_type, max_retries=5,
                                          progress_output_file='progress_file.txt',
                                          progress_regex_string='message: (\\d*) (.*)')
         self.assertEqual(201, resp.status_code, msg=resp.content)
@@ -666,8 +667,7 @@ class CookTest(util.CookTest):
         command = f'echo "{line_1}" && sleep 2 && echo "{line_2}" && sleep 2 && ' \
                   f'echo "{line_3}" && sleep 2 && echo "{line_4}" && sleep 2 && ' \
                   f'echo "{line_5}" && sleep 2 && echo "Done" && exit 0'
-        job_uuid, resp = util.submit_job(self.cook_url, command=command, executor=job_executor_type,
-                                         max_runtime=60000, max_retries=5)
+        job_uuid, resp = util.submit_job(self.cook_url, command=command, executor=job_executor_type, max_retries=5)
         self.assertEqual(201, resp.status_code, msg=resp.content)
         time.sleep(10) # since the job sleeps for 10 seconds, it won't be done for at least 10 seconds
         util.wait_for_job(self.cook_url, job_uuid, 'completed')
@@ -685,7 +685,7 @@ class CookTest(util.CookTest):
 
         items = list(range(1, 100, 4)) + list(range(99, 40, -4)) + list(range(40, 81, 2))
         command = ''.join([f'{progress_string(a)} && ' for a in items]) + 'echo "Done" && sleep 10 && exit 0'
-        job_uuid, resp = util.submit_job(self.cook_url, command=command, executor=job_executor_type)
+        job_uuid, resp = util.submit_job(self.cook_url, command=command, executor=job_executor_type, max_retries=5)
         self.assertEqual(201, resp.status_code, msg=resp.content)
         time.sleep(10)  # since the job sleeps for 10 seconds, it won't be done for at least 10 seconds
         util.wait_for_job(self.cook_url, job_uuid, 'completed')
