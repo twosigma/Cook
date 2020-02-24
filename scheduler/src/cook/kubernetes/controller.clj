@@ -97,18 +97,17 @@
                                      @(:pool->fenzo-atom compute-cluster)
                                      mesos-status))
 
-(defn synthetic-pod->job-uuid
-  "If the given pod is a synthetic pod for autoscaling, returns the job uuid
-  that the pod corresponds to (stored in a pod label). Otherwise, returns nil."
-  [^V1Pod pod]
-  (some-> pod .getMetadata .getLabels (.get api/cook-synthetic-pod-job-uuid-label)))
+(defn synthetic-pod?
+  "Given a pod name, returns true if it has the synthetic pod prefix"
+  [pod-name]
+  (str/starts-with? pod-name api/cook-synthetic-pod-name-prefix))
 
 (defn handle-pod-submission-failed
   "Marks the corresponding job instance as failed in the database and
   returns the `completed` cook expected state"
-  [{:keys [name] :as compute-cluster} pod-name ^V1Pod pod]
+  [{:keys [name] :as compute-cluster} pod-name]
   (log/info "In compute cluster" name ", pod" pod-name "submission failed")
-  (when-not (synthetic-pod->job-uuid pod)
+  (when-not (synthetic-pod? pod-name)
     (let [instance-id pod-name
           status {:reason :reason-task-invalid
                   :state :task-failed
@@ -132,8 +131,7 @@
   [{:keys [api-client] :as compute-cluster} cook-expected-state-dict pod-name]
   (if (api/launch-pod api-client cook-expected-state-dict pod-name)
     cook-expected-state-dict
-    (handle-pod-submission-failed compute-cluster pod-name
-                                  (-> cook-expected-state-dict :launch-pod :pod))))
+    (handle-pod-submission-failed compute-cluster pod-name)))
 
 (defn update-or-delete!
   "Given a map atom, key, and value, if the value is not nil, set the key to the value in the map.
@@ -225,8 +223,8 @@
 
    Looks at the pod status, updates datomic (with success, failure, and possibly mea culpa),
    and return a new cook expected state of :cook-expected-state/completed."
-  [compute-cluster pod-name {:keys [pod] :as k8s-actual-state} & {:keys [reason]}]
-  (when-not (synthetic-pod->job-uuid pod)
+  [compute-cluster pod-name k8s-actual-state & {:keys [reason]}]
+  (when-not (synthetic-pod? pod-name)
     (let [{:keys [status exit-code]} (calculate-pod-status compute-cluster pod-name k8s-actual-state :reason reason)]
       (write-status-to-datomic compute-cluster status)
       (when exit-code
@@ -238,9 +236,9 @@
 
 (defn handle-pod-started
   "A pod has started. So now we need to update the status in datomic."
-  [compute-cluster {:keys [pod]}]
-  (when-not (synthetic-pod->job-uuid pod)
-    (let [instance-id (-> pod .getMetadata .getName)
+  [compute-cluster pod-name]
+  (when-not (synthetic-pod? pod-name)
+    (let [instance-id pod-name
           ; We leak mesos terminology here ('task') because of backward compatibility.
           status {:task-id {:value instance-id}
                   :state :task-running
@@ -255,8 +253,8 @@
 
 (defn record-sandbox-url
   "Record the sandbox file server URL in datomic."
-  [{:keys [pod]}]
-  (when-not (synthetic-pod->job-uuid pod)
+  [pod-name {:keys [pod]}]
+  (when-not (synthetic-pod? pod-name)
     (let [task-id (-> pod .getMetadata .getName)
           pod-ip (-> pod .getStatus .getPodIP)
           {:keys [default-workdir pod-ip->hostname-fn sidecar]} (config/kubernetes)
@@ -276,19 +274,15 @@
 (defn handle-pod-killed
   "A pod was killed. So now we need to update the status in datomic and store the exit code."
   [compute-cluster pod-name]
-  ; Why not guard against synthetic pods here, as in handle-pod-started and
-  ; handle-pod-completed? We don't have the pod object, only the pod name, so we can't check
-  ; the labels of the killed pod. In practice, this doesn't matter; this path will never get
-  ; called for a synthetic pod, because synthetic pods never end up with a Cook expected
-  ; state of `killed` (they are not exposed to the outside world).
-  (let [instance-id pod-name
-        ; We leak mesos terminology here ('task') because of backward compatibility.
-        status {:task-id {:value instance-id}
-                :state :task-failed
-                :reason :reason-command-executor-failed}]
-    (write-status-to-datomic compute-cluster status)
-    (sandbox/aggregate-exit-code (:exit-code-syncer-state compute-cluster) instance-id 143)
-    {:cook-expected-state :cook-expected-state/completed}))
+  (when-not (synthetic-pod? pod-name)
+    (let [instance-id pod-name
+          ; We leak mesos terminology here ('task') because of backward compatibility.
+          status {:task-id {:value instance-id}
+                  :state :task-failed
+                  :reason :reason-command-executor-failed}]
+      (write-status-to-datomic compute-cluster status)
+      (sandbox/aggregate-exit-code (:exit-code-syncer-state compute-cluster) instance-id 143)))
+  {:cook-expected-state :cook-expected-state/completed})
 
 (defn handle-pod-completed-and-kill-pod-in-weird-state
   "Writes the completed state to datomic and deletes the pod in kubernetes.
@@ -462,11 +456,15 @@
 
                                       :cook-expected-state/starting
                                       (case pod-synthesized-state-modified
-                                        :missing (launch-pod compute-cluster
-                                                             cook-expected-state-dict pod-name)
+                                        :missing (if (:pod-deleted? synthesized-state)
+                                                   (do
+                                                     (log/info "In compute cluster" name ", pod" pod-name
+                                                               "was deleted while it was expected starting")
+                                                     (handle-pod-killed compute-cluster pod-name))
+                                                   (launch-pod compute-cluster cook-expected-state-dict pod-name))
                                         ; TODO: May need to mark mea culpa retry
                                         :pod/failed (handle-pod-completed compute-cluster pod-name k8s-actual-state-dict) ; Finished or failed fast.
-                                        :pod/running (handle-pod-started compute-cluster k8s-actual-state-dict)
+                                        :pod/running (handle-pod-started compute-cluster pod-name)
                                         :pod/succeeded (handle-pod-completed compute-cluster pod-name k8s-actual-state-dict) ; Finished fast.
                                         ; TODO: Should mark mea culpa retry
                                         :pod/unknown (handle-pod-completed-and-kill-pod-in-weird-state
@@ -518,7 +516,7 @@
         (let [new-file-server-state (:sandbox-file-server-container-state new-state)
               old-file-server-state (:sandbox-file-server-container-state old-state)]
           (when (and (= new-file-server-state :running) (not= old-file-server-state :running))
-            (record-sandbox-url new-state)))
+            (record-sandbox-url pod-name new-state)))
         (when-not (k8s-actual-state-equivalent? old-state new-state)
           (try
             (process compute-cluster pod-name)

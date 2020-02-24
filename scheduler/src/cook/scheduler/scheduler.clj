@@ -527,7 +527,8 @@
    Returns {:matches (list of tasks that got matched to the offer)
             :failures (list of unmatched tasks, and why they weren't matched)}"
   [db ^TaskScheduler fenzo considerable offers rebalancer-reservation-atom pool-name]
-  (log/info "In" pool-name "pool, matching" (count offers) "offers to" (count considerable) "jobs with fenzo")
+  (log/info "In" pool-name "pool, matching" (count offers) "offers to"
+            (count considerable) "considerable jobs with fenzo")
   (log/debug "In" pool-name "pool, tasks to scheduleOnce" considerable)
   (dl/update-cost-staleness-metric considerable)
   (let [t (System/currentTimeMillis)
@@ -853,7 +854,8 @@
 
           (log/info "In" pool-name "pool, handling resource offers"
                     {:matched-considerable-jobs-head? matched-considerable-jobs-head?
-                     :num-considerable num-considerable
+                     :num-considerable-jobs (count considerable-jobs)
+                     :num-considerable-setting num-considerable
                      :num-failures (count failures)
                      :num-matches (count matches)
                      :num-offers (count offers)

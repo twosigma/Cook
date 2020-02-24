@@ -25,6 +25,9 @@
 (def cook-pod-label "twosigma.com/cook-scheduler-job")
 (def cook-synthetic-pod-job-uuid-label "twosigma.com/cook-scheduler-synthetic-pod-job-uuid")
 (def cook-workdir-volume-name "cook-workdir-volume")
+(def cook-job-pod-priority-class "cook-workload")
+(def cook-synthetic-pod-priority-class "synthetic-pod")
+(def cook-synthetic-pod-name-prefix "synthetic")
 
 ; DeletionCandidateTaint is a soft taint that k8s uses to mark unneeded
 ; nodes as preferably unschedulable. This taint is added as soon as the
@@ -515,7 +518,9 @@
 
 (defn ^V1Pod task-metadata->pod
   "Given a task-request and other data generate the kubernetes V1Pod to launch that task."
-  [namespace compute-cluster-name {:keys [task-id command container task-request hostname pod-labels]}]
+  [namespace compute-cluster-name
+   {:keys [task-id command container task-request hostname pod-labels pod-priority-class]
+    :or {pod-priority-class cook-job-pod-priority-class}}]
   (let [{:keys [scalar-requests job]} task-request
         ;; NOTE: The scheduler's adjust-job-resources-for-pool-fn may modify :resources,
         ;; whereas :scalar-requests always contains the unmodified job resource values.
@@ -647,6 +652,7 @@
       (add-node-selector pod-spec "cook_pool" pool-name))
     (.setVolumes pod-spec (filterv some? (conj volumes init-container-workdir-volume sidecar-workdir-volume)))
     (.setSecurityContext pod-spec security-context)
+    (.setPriorityClassName pod-spec pod-priority-class)
 
     ; pod
     (.setMetadata pod metadata)
@@ -687,7 +693,9 @@
         ; If a pod has been ordered deleted, treat it as if it was gone, It's being async removed.
         ; Note that we distinguish between this explicit :missing, and not being there at all when processing
         ; (:cook-expected-state/killed, :missing) in cook.kubernetes.controller/process
-        {:state :missing :reason "Pod was explicitly deleted"}
+        {:state :missing
+         :reason "Pod was explicitly deleted"
+         :pod-deleted? true}
         ; If pod isn't being async removed, then look at the containers inside it.
         (if job-status
           (let [^V1ContainerState state (.getState job-status)]

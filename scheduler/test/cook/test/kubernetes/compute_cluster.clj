@@ -153,27 +153,3 @@
     (is (= 2 (count @launched-pods-atom)))
     (is (= job-uuid-2 (-> @launched-pods-atom (nth 0) :launch-pod :pod controller/synthetic-pod->job-uuid)))
     (is (= job-uuid-3 (-> @launched-pods-atom (nth 1) :launch-pod :pod controller/synthetic-pod->job-uuid)))))
-
-(deftest test-compute-num-waiting-synthetic-pods
-  (let [pool-name "test-pool"
-        job-uuid (str (UUID/randomUUID))
-        compute-cluster (tu/make-kubernetes-compute-cluster {} #{pool-name})
-        grace-period-seconds 180]
-
-    (testing "handles nil creation timestamp gracefully"
-      (is (= 1 (kcc/compute-num-waiting-synthetic-pods compute-cluster
-                                                       [(tu/synthetic-pod-helper job-uuid pool-name nil)]
-                                                       pool-name
-                                                       grace-period-seconds))))
-
-    (testing "ancient pod doesn't count as 'waiting'"
-      (is (= 0 (kcc/compute-num-waiting-synthetic-pods compute-cluster
-                                                       [(tu/synthetic-pod-helper job-uuid pool-name (t/epoch))]
-                                                       pool-name
-                                                       grace-period-seconds))))
-
-    (testing "recent pod does count as 'waiting'"
-      (is (= 1 (kcc/compute-num-waiting-synthetic-pods compute-cluster
-                                                       [(tu/synthetic-pod-helper job-uuid pool-name (t/now))]
-                                                       pool-name
-                                                       grace-period-seconds))))))
