@@ -5,8 +5,8 @@
             [cook.test.testutil :as tu]
             [datomic.api :as d])
   (:import (io.kubernetes.client.models V1Container V1ContainerState V1ContainerStateWaiting V1ContainerStatus
-                                        V1EnvVar V1Node V1NodeSelectorRequirement V1NodeSpec V1ObjectMeta V1Pod
-                                        V1PodStatus V1Taint V1Volume V1VolumeMount)))
+                                        V1EnvVar V1Node V1NodeSpec V1ObjectMeta V1Pod V1PodSpec V1PodStatus V1Taint
+                                        V1Volume V1VolumeMount)))
 
 (deftest test-get-consumption
   (testing "correctly computes consumption for a single pod"
@@ -76,7 +76,7 @@
         (is (= "my-task" (-> pod .getMetadata .getName)))
         (is (= "cook" (-> pod .getMetadata .getNamespace)))
         (is (= "Never" (-> pod .getSpec .getRestartPolicy)))
-        (is (= "kubehost" (-> pod .getSpec .getNodeName)))
+        (is (= "kubehost" (-> pod .getSpec .getNodeSelector (get "kubernetes.io/hostname"))))
         (is (= 1 (count (-> pod .getSpec .getContainers))))
         (is (= {api/cook-pod-label "testing-cluster"} (-> pod .getMetadata .getLabels)))
         (is (< 0 (-> pod .getSpec .getSecurityContext .getRunAsGroup)))
@@ -132,7 +132,7 @@
       (is (= 100 (-> pod .getSpec .getSecurityContext .getRunAsUser)))
       (is (= 10 (-> pod .getSpec .getSecurityContext .getRunAsGroup)))))
 
-  (testing "node affinity"
+  (testing "node selector for pool"
     (let [pool-name "test-pool"
           task-metadata {:container {:docker {:parameters [{:key "user"
                                                             :value "100:10"}]}}
@@ -140,19 +140,23 @@
                                         :scalar-requests {"mem" 512
                                                           "cpus" 1.0}}}
           ^V1Pod pod (api/task-metadata->pod nil nil task-metadata)
-          ^V1NodeSelectorRequirement node-selector-requirement (-> pod
-                                                                   .getSpec
-                                                                   .getAffinity
-                                                                   .getNodeAffinity
-                                                                   .getRequiredDuringSchedulingIgnoredDuringExecution
-                                                                   .getNodeSelectorTerms
-                                                                   first
-                                                                   .getMatchExpressions
-                                                                   first)]
-      (is (= "cook_pool" (.getKey node-selector-requirement)))
-      (is (= "In" (.getOperator node-selector-requirement)))
-      (is (= 1 (-> node-selector-requirement .getValues count)))
-      (is (= pool-name (-> node-selector-requirement .getValues first))))))
+          ^V1PodSpec pod-spec (.getSpec pod)
+          node-selector (.getNodeSelector pod-spec)]
+      (is (contains? node-selector "cook_pool"))
+      (is (= pool-name (get node-selector "cook_pool")))))
+
+  (testing "node selector for hostname"
+    (let [hostname "test-host"
+          task-metadata {:container {:docker {:parameters [{:key "user"
+                                                            :value "100:10"}]}}
+                         :hostname hostname
+                         :task-request {:scalar-requests {"mem" 512
+                                                          "cpus" 1.0}}}
+          ^V1Pod pod (api/task-metadata->pod nil nil task-metadata)
+          ^V1PodSpec pod-spec (.getSpec pod)
+          node-selector (.getNodeSelector pod-spec)]
+      (is (contains? node-selector "kubernetes.io/hostname"))
+      (is (= hostname (get node-selector "kubernetes.io/hostname"))))))
 
 (deftest test-make-volumes
   (testing "defaults for minimal volume"

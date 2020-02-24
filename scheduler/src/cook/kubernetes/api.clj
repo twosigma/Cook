@@ -431,25 +431,6 @@
     (.setEffect toleration "NoSchedule")
     toleration))
 
-(defn affinity-for-pool
-  "For the given Cook pool name, create and return a node affinity
-  (https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#node-affinity)
-  for nodes with the matching cook_pool label."
-  [pool-name]
-  (let [^V1Affinity affinity (V1Affinity.)
-        ^V1NodeAffinity node-affinity (V1NodeAffinity.)
-        ^V1NodeSelector node-selector (V1NodeSelector.)
-        ^V1NodeSelectorTerm node-selector-term (V1NodeSelectorTerm.)
-        ^V1NodeSelectorRequirement node-selector-requirement (V1NodeSelectorRequirement.)]
-    (.setKey node-selector-requirement "cook_pool")
-    (.setOperator node-selector-requirement "In")
-    (.addValuesItem node-selector-requirement pool-name)
-    (.addMatchExpressionsItem node-selector-term node-selector-requirement)
-    (.addNodeSelectorTermsItem node-selector node-selector-term)
-    (.requiredDuringSchedulingIgnoredDuringExecution node-affinity node-selector)
-    (.setNodeAffinity affinity node-affinity)
-    affinity))
-
 (def toleration-for-deletion-candidate-of-autoscaler
   (doto (V1Toleration.)
     (.setKey k8s-deletion-candidate-taint)
@@ -523,6 +504,14 @@
       (withName key)
       (withValue value)
       (build)))
+
+(defn- add-node-selector
+  "Adds a node selector with the given key and val to the given pod spec"
+  [^V1PodSpec pod-spec key val]
+  (.setNodeSelector pod-spec (-> pod-spec
+                                 .getNodeSelector
+                                 (or {})
+                                 (assoc key val))))
 
 (defn ^V1Pod task-metadata->pod
   "Given a task-request and other data generate the kubernetes V1Pod to launch that task."
@@ -639,7 +628,7 @@
       ; (https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/)
       ; from happening. We want this pod to preempt lower priority pods
       ; (e.g. synthetic pods).
-      (.setNodeSelector pod-spec {"kubernetes.io/hostname" hostname}))
+      (add-node-selector pod-spec "kubernetes.io/hostname" hostname))
 
     (.setRestartPolicy pod-spec "Never")
     
@@ -651,11 +640,11 @@
     ; the default pool is not being fed offers from Kubernetes.
     (when pool-name
       (.addTolerationsItem pod-spec (toleration-for-pool pool-name))
-      ; Add a node affinity for nodes labeled with the Cook pool
+      ; Add a node selector for nodes labeled with the Cook pool
       ; we're launching in. This is technically only needed for
-      ; synthetic pods (which don't have node name set), but it
+      ; synthetic pods (which don't specify a node name), but it
       ; doesn't hurt to add it for all pods we submit.
-      (.setAffinity pod-spec (affinity-for-pool pool-name)))
+      (add-node-selector pod-spec "cook_pool" pool-name))
     (.setVolumes pod-spec (filterv some? (conj volumes init-container-workdir-volume sidecar-workdir-volume)))
     (.setSecurityContext pod-spec security-context)
 
