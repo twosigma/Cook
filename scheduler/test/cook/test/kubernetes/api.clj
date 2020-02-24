@@ -76,7 +76,7 @@
         (is (= "my-task" (-> pod .getMetadata .getName)))
         (is (= "cook" (-> pod .getMetadata .getNamespace)))
         (is (= "Never" (-> pod .getSpec .getRestartPolicy)))
-        (is (= "kubehost" (-> pod .getSpec .getNodeSelector (get "kubernetes.io/hostname"))))
+        (is (= "kubehost" (-> pod .getSpec .getNodeSelector (get api/k8s-hostname-label))))
         (is (= 1 (count (-> pod .getSpec .getContainers))))
         (is (= {api/cook-pod-label "testing-cluster"} (-> pod .getMetadata .getLabels)))
         (is (< 0 (-> pod .getSpec .getSecurityContext .getRunAsGroup)))
@@ -155,8 +155,8 @@
           ^V1Pod pod (api/task-metadata->pod nil nil task-metadata)
           ^V1PodSpec pod-spec (.getSpec pod)
           node-selector (.getNodeSelector pod-spec)]
-      (is (contains? node-selector "kubernetes.io/hostname"))
-      (is (= hostname (get node-selector "kubernetes.io/hostname"))))))
+      (is (contains? node-selector api/k8s-hostname-label))
+      (is (= hostname (get node-selector api/k8s-hostname-label))))))
 
 (deftest test-make-volumes
   (testing "defaults for minimal volume"

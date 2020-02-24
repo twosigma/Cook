@@ -28,6 +28,7 @@
 (def cook-job-pod-priority-class "cook-workload")
 (def cook-synthetic-pod-priority-class "synthetic-pod")
 (def cook-synthetic-pod-name-prefix "synthetic")
+(def k8s-hostname-label "kubernetes.io/hostname")
 
 ; DeletionCandidateTaint is a soft taint that k8s uses to mark unneeded
 ; nodes as preferably unschedulable. This taint is added as soon as the
@@ -272,7 +273,8 @@
 (defn pod->node-name
   "Given a pod, returns the node name on the pod spec"
   [^V1Pod pod]
-  (-> pod .getSpec .getNodeName))
+  (or (some-> pod .getSpec .getNodeName)
+      (some-> pod .getSpec .getNodeSelector (get k8s-hostname-label))))
 
 (defn num-pods-on-node
   "Returns the number of pods assigned to the given node"
@@ -633,7 +635,7 @@
       ; (https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/)
       ; from happening. We want this pod to preempt lower priority pods
       ; (e.g. synthetic pods).
-      (add-node-selector pod-spec "kubernetes.io/hostname" hostname))
+      (add-node-selector pod-spec k8s-hostname-label hostname))
 
     (.setRestartPolicy pod-spec "Never")
     

@@ -88,8 +88,8 @@
           job-ent-1 (d/entity db j1)
           job-ent-2 (d/entity db j2)
           task-1 (tu/make-task-metadata job-ent-1 db compute-cluster)
-          _ (cc/launch-tasks compute-cluster nil [task-1
-                                                  (tu/make-task-metadata job-ent-2 db compute-cluster)])
+          task-2 (tu/make-task-metadata job-ent-2 db compute-cluster)
+          _ (cc/launch-tasks compute-cluster nil [task-1 task-2])
           task-1-id (-> task-1 :task-request :task-id)
           pod-name->pod {{:namespace "cook" :name "podA"} (tu/pod-helper "podA" "nodeA"
                                                                          {:cpus 0.25 :mem 250.0}
@@ -100,7 +100,8 @@
                                                                          {:cpus 1.0 :mem 1100.0})
                          {:namespace "cook" :name task-1-id} (tu/pod-helper task-1-id "my.fake.host"
                                                                             {:cpus 0.1 :mem 10.0})}
-          all-offers (kcc/generate-offers compute-cluster node-name->node (kcc/add-starting-pods compute-cluster pod-name->pod))
+          all-offers (kcc/generate-offers compute-cluster node-name->node
+                                          (kcc/add-starting-pods compute-cluster pod-name->pod))
           offers (get all-offers "no-pool")]
       (is (= 4 (count offers)))
       (let [offer (first (filter #(= "nodeA" (:hostname %))
@@ -151,5 +152,5 @@
                                    (swap! launched-pods-atom conj cook-expected-state-dict))]
       (cc/autoscale! compute-cluster pool-name task-requests))
     (is (= 2 (count @launched-pods-atom)))
-    (is (= job-uuid-2 (-> @launched-pods-atom (nth 0) :launch-pod :pod controller/synthetic-pod->job-uuid)))
-    (is (= job-uuid-3 (-> @launched-pods-atom (nth 1) :launch-pod :pod controller/synthetic-pod->job-uuid)))))
+    (is (= job-uuid-2 (-> @launched-pods-atom (nth 0) :launch-pod :pod kcc/synthetic-pod->job-uuid)))
+    (is (= job-uuid-3 (-> @launched-pods-atom (nth 1) :launch-pod :pod kcc/synthetic-pod->job-uuid)))))
