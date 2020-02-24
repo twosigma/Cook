@@ -1737,6 +1737,7 @@ def dummy_ls_entries(_, __, ___):
         else:
             self.assertEqual(0, cp.returncode, cp.stderr)
 
+    @pytest.mark.xfail
     def test_cat_basic(self):
         cp, uuids = cli.submit('bash -c "for i in {1..10}; do echo $i >> foo; done"', self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
