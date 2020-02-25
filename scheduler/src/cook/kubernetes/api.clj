@@ -521,8 +521,9 @@
 (defn ^V1Pod task-metadata->pod
   "Given a task-request and other data generate the kubernetes V1Pod to launch that task."
   [namespace compute-cluster-name
-   {:keys [task-id command container task-request hostname pod-labels pod-priority-class]
-    :or {pod-priority-class cook-job-pod-priority-class}}]
+   {:keys [task-id command container task-request hostname pod-labels pod-priority-class pod-supports-sidecar?]
+    :or {pod-priority-class cook-job-pod-priority-class
+         pod-supports-sidecar? true}}]
   (let [{:keys [scalar-requests job]} task-request
         ;; NOTE: The scheduler's adjust-job-resources-for-pool-fn may modify :resources,
         ;; whereas :scalar-requests always contains the unmodified job resource values.
@@ -546,11 +547,12 @@
         workdir (get-workdir parameters)
         {:keys [volumes volume-mounts workdir-volume-mount-fn]} (make-volumes volumes workdir)
         {:keys [custom-shell init-container sidecar]} (config/kubernetes)
+        add-sidecar? (and sidecar pod-supports-sidecar?)
         init-container-workdir "/mnt/init-container"
         init-container-workdir-volume (when init-container (make-empty-volume "cook-init-container-workdir-volume"))
         init-container-workdir-volume-mount-fn (partial make-volume-mount init-container-workdir-volume init-container-workdir)
         sidecar-workdir "/mnt/sidecar"
-        sidecar-workdir-volume (when sidecar (make-empty-volume "cook-sidecar-workdir-volume"))
+        sidecar-workdir-volume (when add-sidecar? (make-empty-volume "cook-sidecar-workdir-volume"))
         sidecar-workdir-volume-mount-fn (partial make-volume-mount sidecar-workdir-volume sidecar-workdir)
         workdir-env-vars [(make-env "HOME" workdir)
                           (make-env "MESOS_SANDBOX" workdir)
@@ -599,35 +601,36 @@
         (.addInitContainersItem pod-spec container)))
 
     ; sandbox file server container
-    (when-let [{:keys [command image port resource-requirements]} sidecar]
-      (let [{:keys [cpu-request cpu-limit memory-request memory-limit]} resource-requirements
-            container (V1Container.)
-            resources (V1ResourceRequirements.)
-            readiness-probe (V1Probe.)
-            http-get-action (V1HTTPGetAction.)]
-        ; container
-        (.setName container cook-container-name-for-file-server)
-        (.setImage container image)
-        (.setCommand container (conj command (str port)))
-        (.setWorkingDir container sidecar-workdir)
-        (.setPorts container [(.containerPort (V1ContainerPort.) (int port))])
+    (when add-sidecar?
+      (when-let [{:keys [command image port resource-requirements]} sidecar]
+        (let [{:keys [cpu-request cpu-limit memory-request memory-limit]} resource-requirements
+              container (V1Container.)
+              resources (V1ResourceRequirements.)
+              readiness-probe (V1Probe.)
+              http-get-action (V1HTTPGetAction.)]
+          ; container
+          (.setName container cook-container-name-for-file-server)
+          (.setImage container image)
+          (.setCommand container (conj command (str port)))
+          (.setWorkingDir container sidecar-workdir)
+          (.setPorts container [(.containerPort (V1ContainerPort.) (int port))])
 
-        (.setEnv container [(make-env "COOK_WORKDIR" workdir)])
+          (.setEnv container [(make-env "COOK_WORKDIR" workdir)])
 
-        (.setPort http-get-action (IntOrString. port))
-        (.setPath http-get-action "readiness-probe")
-        (.setHttpGet readiness-probe http-get-action)
-        (.setReadinessProbe container readiness-probe)
+          (.setPort http-get-action (IntOrString. port))
+          (.setPath http-get-action "readiness-probe")
+          (.setHttpGet readiness-probe http-get-action)
+          (.setReadinessProbe container readiness-probe)
 
-        ; resources
-        (.putRequestsItem resources "cpu" (double->quantity cpu-request))
-        (.putLimitsItem resources "cpu" (double->quantity cpu-limit))
-        (.putRequestsItem resources "memory" (double->quantity (* memory-multiplier memory-request)))
-        (.putLimitsItem resources "memory" (double->quantity (* memory-multiplier memory-limit)))
-        (.setResources container resources)
+          ; resources
+          (.putRequestsItem resources "cpu" (double->quantity cpu-request))
+          (.putLimitsItem resources "cpu" (double->quantity cpu-limit))
+          (.putRequestsItem resources "memory" (double->quantity (* memory-multiplier memory-request)))
+          (.putLimitsItem resources "memory" (double->quantity (* memory-multiplier memory-limit)))
+          (.setResources container resources)
 
-        (.setVolumeMounts container [(workdir-volume-mount-fn true) (sidecar-workdir-volume-mount-fn false)])
-        (.addContainersItem pod-spec container)))
+          (.setVolumeMounts container [(workdir-volume-mount-fn true) (sidecar-workdir-volume-mount-fn false)])
+          (.addContainersItem pod-spec container))))
 
     (when hostname
       ; Why not just set the node name?

@@ -308,29 +308,37 @@
                                             (some #(= (str uuid) (synthetic-pod->job-uuid %))
                                                   outstanding-synthetic-pods))
                                           task-requests)
-                task-metadata-seq (->>
-                                    new-task-requests
-                                    (map (fn [{{:keys [job/uuid] :as job} :job}]
-                                           {:task-id (str api/cook-synthetic-pod-name-prefix "-"
-                                                          pool-name "-"
-                                                          uuid)
-                                            :command {:user user :value command}
-                                            :container {:docker {:image image}}
-                                            :task-request {:scalar-requests (walk/stringify-keys
-                                                                              (tools/job-ent->resources job))
-                                                           :job {:job/pool {:pool/name synthetic-task-pool-name}}}
-                                            ; We need to label the synthetic pods so that we
-                                            ; can opt them out of some of the normal plumbing,
-                                            ; like mapping status back to a job instance
-                                            :pod-labels {api/cook-synthetic-pod-job-uuid-label (str uuid)}
-                                            ; We need to give synthetic pods a lower priority than
-                                            ; actual job pods so that the job pods can preempt them
-                                            ; (https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/);
-                                            ; if we don't do this, we run the risk of job pods
-                                            ; encountering failures when they lose scheduling races
-                                            ; against pending synthetic pods
-                                            :pod-priority-class api/cook-synthetic-pod-priority-class}))
-                                    (take (- max-pods-outstanding num-synthetic-pods)))]
+                sidecar-resource-requirements (-> (config/kubernetes) :sidecar :resource-requirements)
+                task-metadata-seq
+                (->> new-task-requests
+                     (map (fn [{{:keys [job/uuid] :as job} :job}]
+                            {:task-id (str api/cook-synthetic-pod-name-prefix "-" pool-name "-" uuid)
+                             :command {:user user :value command}
+                             :container {:docker {:image image}}
+                             :task-request {:scalar-requests
+                                            (cond->> (walk/stringify-keys (tools/job-ent->resources job))
+                                              ; We need to account for any sidecar resource requirements that the
+                                              ; job we're launching this synthetic pod for will need to use.
+                                              sidecar-resource-requirements
+                                              (merge-with +
+                                                          {"cpus" (:cpu-request sidecar-resource-requirements)
+                                                           "mem" (:memory-request sidecar-resource-requirements)}))
+                                            :job {:job/pool {:pool/name synthetic-task-pool-name}}}
+                             ; We need to label the synthetic pods so that we
+                             ; can opt them out of some of the normal plumbing,
+                             ; like mapping status back to a job instance
+                             :pod-labels {api/cook-synthetic-pod-job-uuid-label (str uuid)}
+                             ; We need to give synthetic pods a lower priority than
+                             ; actual job pods so that the job pods can preempt them
+                             ; (https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/);
+                             ; if we don't do this, we run the risk of job pods
+                             ; encountering failures when they lose scheduling races
+                             ; against pending synthetic pods
+                             :pod-priority-class api/cook-synthetic-pod-priority-class
+                             ; We don't want to add in the sidecar, because we don't need it
+                             ; for synthetic pods and all it will do is slow things down.
+                             :pod-supports-sidecar? false}))
+                     (take (- max-pods-outstanding num-synthetic-pods)))]
             (log/info "In" name "compute cluster, launching" (count task-metadata-seq) "synthetic pod(s) for"
                       (count new-task-requests) "new un-matched task(s) in" synthetic-task-pool-name "pool"
                       "(there were" (count task-requests) "total un-matched task(s), new and old)")
