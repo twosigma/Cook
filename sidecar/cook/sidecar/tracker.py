@@ -143,7 +143,8 @@ class ProgressWatcher(object):
     The retrieve_progress_states generates all progress messages iteratively.
     """
 
-    def __init__(self, output_name, location_tag, sequence_counter, max_bytes_read_per_line, progress_regex_string):
+    def __init__(self, output_name, location_tag, sequence_counter,
+                 max_bytes_read_per_line, progress_regex_string, stop_event):
         """The ProgressWatcher constructor.
 
         Parameters
@@ -160,6 +161,11 @@ class ProgressWatcher(object):
         self.progress_regex_string = progress_regex_string
         self.progress_regex_pattern = re.compile(progress_regex_string.encode())
         self.progress = None
+        self.stop_event = stop_event
+
+    def stopped(self):
+        """Check if this progress tracker has been stopped."""
+        return self.stop_event.is_set()
 
     def current_progress(self):
         """Returns the current progress dictionary."""
@@ -190,6 +196,8 @@ class ProgressWatcher(object):
                 logging.debug(f'Awaiting creation of file {self.target_file} [tag={self.location_tag}]')
 
             while not os.path.isfile(self.target_file):
+                if self.stopped():
+                    return
                 time.sleep(sleep_param)
 
             if not os.path.isfile(self.target_file):
@@ -201,11 +209,22 @@ class ProgressWatcher(object):
             fragment_index = 0
             line_index = 0
 
+            post_stop_bytes_to_read = 2000000  # read max of 2 MB after stop signal comes in
+
             with open(self.target_file, 'rb') as target_file_obj:
                 while True:
                     line = target_file_obj.readline(self.max_bytes_read_per_line)
+
+                    if self.stopped():
+                        # exit generator once input or post_stop_bytes_to_read is exhausted
+                        if not line or post_stop_bytes_to_read <= 0:
+                            return
+                        # limit how much data to process after stop signal received
+                        else:
+                            post_stop_bytes_to_read -= len(line)
+
+                    # no new data available, sleep before trying again
                     if not line:
-                        # no new line available, sleep before trying again
                         time.sleep(sleep_param)
                         continue
 
@@ -270,7 +289,6 @@ class ProgressWatcher(object):
         -------
         An incrementally generated list of progress states.
         """
-        last_unprocessed_report = None
         if self.progress_regex_string:
             sleep_time_ms = 50
             for line in self.tail(sleep_time_ms):
@@ -281,9 +299,6 @@ class ProgressWatcher(object):
                             yield self.progress
                 except Exception:
                     logging.exception(f'Skipping progress line due to error: {line}')
-        if last_unprocessed_report is not None:
-            if self.__update_progress(last_unprocessed_report):
-                yield self.progress
 
 
 class ProgressTracker(object):
@@ -305,10 +320,11 @@ class ProgressTracker(object):
         location_tag: string
             A tag to identify the target location."""
         self.location_tag = location_tag
-        self.watcher = ProgressWatcher(location, location_tag, counter, config.max_bytes_read_per_line, config.progress_regex_string)
+        self.stop_event = Event()
+        self.watcher = ProgressWatcher(location, location_tag, counter, config.max_bytes_read_per_line,
+                                       config.progress_regex_string, self.stop_event)
         self.updater = progress_updater
         self.tracker_thread = Thread(target=self.track_progress, args=(), daemon=True)
-        self.stop_event = Event()
 
     def start(self):
         """Launches a thread that starts monitoring the progress location for progress messages."""
@@ -320,22 +336,18 @@ class ProgressTracker(object):
         logging.info(f'Stop signal received on progress monitoring thread [tag={self.location_tag}]')
         self.stop_event.set()
 
-    def stopped(self):
-        """Check if this progress tracker has been stopped."""
-        return self.stop_event.is_set()
-
     def wait(self):
         """Wait for this progress tracker to complete."""
-        while self.tracker_thread.is_alive() and not self.stopped():
+        while self.tracker_thread.is_alive():
             self.tracker_thread.join(0.01)
+        self.force_send_progress_update()
         logging.info(f'Completed progress monitoring from [tag={self.location_tag}]')
 
     def track_progress(self):
         """Retrieves and sends progress updates using send_progress_update_fn."""
         try:
             for current_progress in self.watcher.retrieve_progress_states():
-                if not self.stopped():
-                    self.updater.send_progress_update(current_progress)
+                self.updater.send_progress_update(current_progress)
         except Exception:
             logging.exception(f'Exception while tracking progress [tag={self.location_tag}]')
 

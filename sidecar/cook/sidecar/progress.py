@@ -82,19 +82,28 @@ def start_progress_trackers():
         logging.info(f'Progress will be tracked from {len(progress_locations)} locations')
         progress_trackers = [launch_progress_tracker(file, name) for file, name in progress_locations.items()]
 
+        def set_terminate_handler(handler):
+            signal.signal(signal.SIGINT, handler)
+            signal.signal(signal.SIGTERM, handler)
+
+        def exit_on_interrupt(interrupt_code, _):
+            sys.exit(f'Progress Reporter killed with code {interrupt_code}')
+
         def handle_interrupt(interrupt_code, _):
             logging.info(f'Progress Reporter interrupted with code {interrupt_code}')
+            # allow a second signal to kill the process immediately (no blocking)
+            set_terminate_handler(exit_on_interrupt)
             # force send the latest progress state if available, and stop the tracker
             for progress_tracker in progress_trackers:
-                progress_tracker.force_send_progress_update()
                 progress_tracker.stop()
+            for progress_tracker in progress_trackers:
+                progress_tracker.wait()
 
         def dump_traceback(signal, frame):
             faulthandler.dump_traceback()
 
-        signal.signal(signal.SIGINT, handle_interrupt)
-        signal.signal(signal.SIGTERM, handle_interrupt)
         signal.signal(signal.SIGUSR1, dump_traceback)
+        set_terminate_handler(handle_interrupt)
 
         return progress_trackers
 
