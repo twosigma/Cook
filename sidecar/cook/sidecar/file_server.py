@@ -42,7 +42,7 @@ sandbox_directory = None
 max_read_length = int(os.environ.get('COOK_FILE_SERVER_MAX_READ_LENGTH', '25000000'))
 
 
-def start_file_server(args):
+def start_file_server(started_event, args):
     try:
         logging.info(f'Starting cook.sidecar {VERSION} file server')
         port, workers = (args + [None] * 2)[0:2]
@@ -53,7 +53,7 @@ def start_file_server(args):
         if not cook_workdir:
             logging.error('COOK_WORKDIR environment variable must be set')
             sys.exit(1)
-        FileServerApplication(cook_workdir, {
+        FileServerApplication(cook_workdir, started_event, {
             'bind': f'0.0.0.0:{port}',
             'workers': 4 if workers is None else workers,
         }).run()
@@ -65,7 +65,8 @@ def start_file_server(args):
 
 
 class FileServerArbiter(gunicorn.arbiter.Arbiter):
-    def __init__(self, app):
+    def __init__(self, app, started_event):
+        self.started_event = started_event
         self.user_signal_handlers = {}
         for sig in range(1, signal.NSIG):
             user_handler = signal.getsignal(sig)
@@ -73,6 +74,11 @@ class FileServerArbiter(gunicorn.arbiter.Arbiter):
                 logging.info(f'Saving user handler for signal {sig}')
                 self.user_signal_handlers[sig] = user_handler
         super().__init__(app)
+
+    def start(self):
+        super().start()
+        logging.info(f'Sidecar file server is ready')
+        self.started_event.set()
 
     def signal(self, sig, frame):
         user_handler = self.user_signal_handlers.get(sig)
@@ -85,9 +91,10 @@ class FileServerArbiter(gunicorn.arbiter.Arbiter):
 
 class FileServerApplication(gunicorn.app.base.BaseApplication):
 
-    def __init__(self, cook_workdir, options=None):
+    def __init__(self, cook_workdir, started_event, options=None):
         self.options = options or {}
         self.application = app
+        self.started_event = started_event
         global sandbox_directory
         sandbox_directory = cook_workdir
         super(FileServerApplication, self).__init__()
@@ -102,7 +109,7 @@ class FileServerApplication(gunicorn.app.base.BaseApplication):
 
     def run(self):
         try:
-            FileServerArbiter(self).run()
+            FileServerArbiter(self, self.started_event).run()
         except RuntimeError as e:
             logging.exception('Error while running cook.sidecar file server')
 

@@ -34,3 +34,4 @@ target
 test-log
 *.orig
 venv
+dist

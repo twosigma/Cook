@@ -71,7 +71,7 @@ def start_progress_trackers():
 
         def launch_progress_tracker(progress_location, location_tag):
             progress_file_path = os.path.abspath(progress_location)
-            logging.info('Location {progress_location} (absolute path={progress_file_path}) tagged as [tag={location_tag}]')
+            logging.info(f'Location {progress_location} (absolute path={progress_file_path}) tagged as [tag={location_tag}]')
             progress_tracker = cst.ProgressTracker(config, sequence_counter, progress_updater, progress_location, location_tag)
             progress_tracker.start()
             return progress_tracker

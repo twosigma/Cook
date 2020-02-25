@@ -18,9 +18,13 @@ Usage:
 
 The `COOK_WORKDIR` environment variable must be set. Only files with `COOK_WORKDIR` as the root will be served.
 
-```cook-sidecar PORT [NUM_WORKERS]```
+```
+cook-sidecar PORT [NUM_WORKERS]
+```
 
 `NUM_WORKERS` defaults to `4`.
+
+Run `cook-sidecar --help` for full usage documentation.
 
 Examples:
 
