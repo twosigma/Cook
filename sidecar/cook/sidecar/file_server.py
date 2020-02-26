@@ -65,8 +65,17 @@ def start_file_server(started_event, args):
 
 
 class FileServerArbiter(gunicorn.arbiter.Arbiter):
+    '''
+    Custom Gunicorn Arbiter object,
+    with overridden logic for re-installing existing signal handlers,
+    and an event to indicate when the server is up and running.
+    '''
+
     def __init__(self, app, started_event):
         self.started_event = started_event
+        # Since gunicorn installs its own signal handler routine for basically all signals,
+        # we need to save any existing signal handlers that we want preserved and then
+        # inject them back into gunicorn's hanlder (injected via the `signal` method below).
         self.user_signal_handlers = {}
         for sig in range(1, signal.NSIG):
             user_handler = signal.getsignal(sig)
@@ -77,15 +86,24 @@ class FileServerArbiter(gunicorn.arbiter.Arbiter):
 
     def start(self):
         super().start()
+        # Gunicorn invokes the `when_ready` hook at the end of the Arbiter's `start` method.
+        # https://docs.gunicorn.org/en/stable/settings.html#when-ready
+        # However, since we already needed a custom Arbiter for signal handling logic,
+        # providing that custom hook was much more complex than signaling
+        # here that the file server has started than additionally providing a custom Config object.
         logging.info(f'Sidecar file server is ready')
         self.started_event.set()
 
     def signal(self, sig, frame):
+        '''Generic signal handler for all signals, installed by gunicorn.'''
+        # Invoke the user's handler for the signal (if present).
+        # See comment in `__init__` above for more details.
         user_handler = self.user_signal_handlers.get(sig)
         if user_handler is not None:
             logging.info(f'Entering user handler for signal {sig}')
             user_handler(sig, frame)
             logging.info(f'Exiting user handler for signal {sig}')
+        # Enter gunicorn's handler for the signal.
         super().signal(sig, frame)
 
 

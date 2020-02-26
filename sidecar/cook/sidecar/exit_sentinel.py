@@ -31,8 +31,8 @@ import time
 def watch_for_file(sentinel_file_path, started_event):
     def daemon_routine():
         # wait for other components to finish starting
-        while not started_event.is_set():
-            time.sleep(0.1)
+        logging.info(f'Waiting for all components to start...')
+        started_event.wait()
         # wait for sentinel file to appear
         logging.info(f'Watching for sentinel file: {sentinel_file_path}')
         while not os.path.exists(sentinel_file_path):
