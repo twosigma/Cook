@@ -521,9 +521,11 @@
 (defn ^V1Pod task-metadata->pod
   "Given a task-request and other data generate the kubernetes V1Pod to launch that task."
   [namespace compute-cluster-name
-   {:keys [task-id command container task-request hostname pod-labels pod-priority-class pod-supports-sidecar?]
+   {:keys [task-id command container task-request hostname pod-labels
+           pod-priority-class pod-supports-cook-init? pod-supports-cook-sidecar?]
     :or {pod-priority-class cook-job-pod-priority-class
-         pod-supports-sidecar? true}}]
+         pod-supports-cook-init? true
+         pod-supports-cook-sidecar? true}}]
   (let [{:keys [scalar-requests job]} task-request
         ;; NOTE: The scheduler's adjust-job-resources-for-pool-fn may modify :resources,
         ;; whereas :scalar-requests always contains the unmodified job resource values.
@@ -547,12 +549,16 @@
         workdir (get-workdir parameters)
         {:keys [volumes volume-mounts workdir-volume-mount-fn]} (make-volumes volumes workdir)
         {:keys [custom-shell init-container sidecar]} (config/kubernetes)
-        add-sidecar? (and sidecar pod-supports-sidecar?)
+        use-cook-init? (and init-container pod-supports-cook-init?)
+        use-cook-sidecar? (and sidecar pod-supports-cook-sidecar?)
         init-container-workdir "/mnt/init-container"
-        init-container-workdir-volume (when init-container (make-empty-volume "cook-init-container-workdir-volume"))
-        init-container-workdir-volume-mount-fn (partial make-volume-mount init-container-workdir-volume init-container-workdir)
+        init-container-workdir-volume (when use-cook-init?
+                                        (make-empty-volume "cook-init-container-workdir-volume"))
+        init-container-workdir-volume-mount-fn (partial make-volume-mount
+                                                        init-container-workdir-volume
+                                                        init-container-workdir)
         sidecar-workdir "/mnt/sidecar"
-        sidecar-workdir-volume (when add-sidecar? (make-empty-volume "cook-sidecar-workdir-volume"))
+        sidecar-workdir-volume (when use-cook-sidecar? (make-empty-volume "cook-sidecar-workdir-volume"))
         sidecar-workdir-volume-mount-fn (partial make-volume-mount sidecar-workdir-volume sidecar-workdir)
         workdir-env-vars [(make-env "HOME" workdir)
                           (make-env "MESOS_SANDBOX" workdir)
@@ -565,7 +571,7 @@
 
     ; container
     (.setName container cook-container-name-for-job)
-    (.setCommand container (conj (or custom-shell ["/bin/sh" "-c"]) (:value command)))
+    (.setCommand container (conj (or (when use-cook-init? custom-shell) ["/bin/sh" "-c"]) (:value command)))
     (.setEnv container (-> []
                            (into env)
                            (into (param-env-vars parameters))
@@ -589,19 +595,20 @@
     (.addContainersItem pod-spec container)
 
     ; init container
-    (when-let [{:keys [command image]} init-container]
-      (let [container (V1Container.)]
-        ; container
-        (.setName container cook-init-container-name)
-        (.setImage container image)
-        (.setCommand container command)
-        (.setWorkingDir container init-container-workdir)
+    (when use-cook-init?
+      (when-let [{:keys [command image]} init-container]
+        (let [container (V1Container.)]
+          ; container
+          (.setName container cook-init-container-name)
+          (.setImage container image)
+          (.setCommand container command)
+          (.setWorkingDir container init-container-workdir)
 
-        (.setVolumeMounts container [(init-container-workdir-volume-mount-fn false)])
-        (.addInitContainersItem pod-spec container)))
+          (.setVolumeMounts container [(init-container-workdir-volume-mount-fn false)])
+          (.addInitContainersItem pod-spec container))))
 
     ; sandbox file server container
-    (when add-sidecar?
+    (when use-cook-sidecar?
       (when-let [{:keys [command image port resource-requirements]} sidecar]
         (let [{:keys [cpu-request cpu-limit memory-request memory-limit]} resource-requirements
               container (V1Container.)

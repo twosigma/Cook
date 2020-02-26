@@ -335,9 +335,10 @@
                              ; encountering failures when they lose scheduling races
                              ; against pending synthetic pods
                              :pod-priority-class api/cook-synthetic-pod-priority-class
-                             ; We don't want to add in the sidecar, because we don't need it
-                             ; for synthetic pods and all it will do is slow things down.
-                             :pod-supports-sidecar? false}))
+                             ; We don't want to add in the cook-init cruft or the cook sidecar, because we
+                             ; don't need them for synthetic pods and all they will do is slow things down.
+                             :pod-supports-cook-init? false
+                             :pod-supports-cook-sidecar? false}))
                      (take (- max-pods-outstanding num-synthetic-pods)))]
             (log/info "In" name "compute cluster, launching" (count task-metadata-seq) "synthetic pod(s) for"
                       (count new-task-requests) "new un-matched task(s) in" synthetic-task-pool-name "pool"
