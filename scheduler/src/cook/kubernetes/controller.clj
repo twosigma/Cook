@@ -69,7 +69,7 @@
         (update-in [:synthesized-state :state] #(or % :missing))
         (dissoc :pod)
         (assoc :pod-status (some-> pod .getStatus))
-        (assoc :node-name (some-> pod .getSpec .getNodeName)))
+        (assoc :node-name (api/pod->node-name pod)))
     (catch Throwable t
       (log/error t "Error preparing k8s actual state for logging:" k8s-actual-state-dict)
       k8s-actual-state-dict)))

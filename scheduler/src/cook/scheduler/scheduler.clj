@@ -885,6 +885,9 @@
                     (launch-matched-tasks! matches conn db fenzo mesos-run-as-user pool-name)
                     (update-host-reservations! rebalancer-reservation-atom matched-job-uuids)
                     matched-considerable-jobs-head?))]
+            ;; This call needs to happen *after* launch-matched-tasks!
+            ;; in order to avoid autoscaling tasks taking up available
+            ;; capacity that was already matched for real Cook tasks.
             (trigger-autoscaling! failures pool-name compute-clusters)
             matched-head-or-no-matches?))
         (catch Throwable t
