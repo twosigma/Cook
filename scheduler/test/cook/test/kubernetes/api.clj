@@ -95,7 +95,7 @@
           (is (= ["/bin/sh" "-c" "foo && bar"] (.getCommand container)))
           (is (= "alpine:latest" (.getImage container)))
           (is (not (nil? container)))
-          (is (= 4 (count (.getEnv container))))
+          (is (= 5 (count (.getEnv container))))
           (is (= "/mnt/sandbox" (.getWorkingDir container)))
           (let [cook-workdir-mount (->> container
                                         .getVolumeMounts

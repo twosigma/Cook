@@ -19,6 +19,7 @@
             [clojure.tools.logging :as log]
             [cook.compute-cluster :as cc]
             [cook.config :as config]
+            [cook.task :as task]
             [cook.tools :as util]
             [mesomatic.types :as mtypes]
             [plumbing.core :refer (map-vals)])
@@ -61,21 +62,6 @@
        (:command (config/executor-config))
        (or (= :executor/cook (:job/executor job-ent))
            (cook-executor-candidate? job-ent))))
-
-(defn build-executor-environment
-  "Build the environment for the cook executor."
-  [job-ent]
-  (let [{:keys [default-progress-regex-string environment log-level max-message-length progress-sample-interval-ms]}
-        (config/executor-config)
-        progress-output-file (:job/progress-output-file job-ent)]
-    (cond-> (assoc environment
-              "EXECUTOR_LOG_LEVEL" log-level
-              "EXECUTOR_MAX_MESSAGE_LENGTH" max-message-length
-              "PROGRESS_REGEX_STRING" (:job/progress-regex-string job-ent default-progress-regex-string)
-              "PROGRESS_SAMPLE_INTERVAL_MS" progress-sample-interval-ms)
-            progress-output-file
-            (assoc "EXECUTOR_PROGRESS_OUTPUT_FILE_ENV" "EXECUTOR_PROGRESS_OUTPUT_FILE_NAME"
-                   "EXECUTOR_PROGRESS_OUTPUT_FILE_NAME" progress-output-file))))
 
 (defn merge-container-defaults
   "Takes a job container specification and applies any defaults from the config.
@@ -146,7 +132,7 @@
                             (:cpus resources) (assoc "COOK_JOB_CPUS" (-> resources :cpus str))
                             (:gpus resources) (assoc "COOK_JOB_GPUS" (-> resources :gpus str))
                             (:mem resources) (assoc "COOK_JOB_MEM_MB" (-> resources :mem str))
-                            cook-executor? (merge (build-executor-environment job-ent)))
+                            cook-executor? (merge (task/build-executor-environment job-ent)))
         labels (util/job-ent->label job-ent)
         command {:environment environment
                  :uris (cond-> (:uris resources [])

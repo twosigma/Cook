@@ -1271,11 +1271,8 @@ def retrieve_progress_file_env(cook_url):
     """Retrieves the environment variable used by the cook executor to lookup the progress file."""
     cook_settings = settings(cook_url)
     default_env_value = 'EXECUTOR_PROGRESS_OUTPUT_FILE'
-    if using_kubernetes():
-        return default_env_value
-    else:
-        env_value = get_in(cook_settings, 'executor', 'environment', 'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV')
-        return env_value or default_env_value
+    env_value = get_in(cook_settings, 'executor', 'environment', 'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV')
+    return env_value or default_env_value
 
 
 def get_instance_stats(cook_url, **kwargs):
@@ -1362,9 +1359,11 @@ def is_cook_executor_in_use():
 @functools.lru_cache()
 def is_job_progress_supported():
     """Returns true if the current job execution environment supports progress reporting"""
-    # Mesos supports progress reporting only with Cook Executor,
-    # but our progress reporter sidecar is always enabled on Kubernetes.
-    return is_cook_executor_in_use() or using_kubernetes()
+    # Mesos supports progress reporting only with Cook Executor.
+    # Our progress reporter sidecar is always enabled on Kubernetes,
+    # but we only enable the tests if the executor config is also present
+    # (otherwise some tests fail due to missing environment variables, etc).
+    return is_cook_executor_in_use() or (using_kubernetes() and _cook_executor_config())
 
 
 @functools.lru_cache()

@@ -5,6 +5,7 @@
             [cook.kubernetes.metrics :as metrics]
             [datomic.api :as d]
             [cook.config :as config]
+            [cook.task :as task]
             [cook.tools :as util]
             [metrics.meters :as meters]
             [metrics.timers :as timers]
@@ -49,11 +50,6 @@
 ; Cook, Fenzo, and Mesos use MB for memory. Convert bytes from k8s to MB when passing to fenzo, and MB back to bytes
 ; when submitting to k8s.
 (def memory-multiplier (* 1000 1000))
-
-(defn sidecar-env-filter
-  "Predicate for filtering user environment variables to include in the sidecar container."
-  [^V1EnvVar env-var]
-  (->> env-var .getName (re-find #"^(?:EXECUTOR|PROGRESS)_")))
 
 (defn is-cook-scheduler-pod
   "Is this a cook pod? Uses some-> so is null-safe."
@@ -453,17 +449,13 @@
     (.setOperator "Exists")
     (.setEffect "PreferNoSchedule")))
 
-(defn param-env-vars
+(defn build-params-env
+  "Make environment vars map from docker parameters"
   [params]
-  (->> params
-       (filter (fn [{:keys [key]}]
-                 (= key "env")))
-       (map (fn [{:keys [value]}]
-              (let [[env-var-name env-var-value] (str/split value #"=")
-                    env (V1EnvVar.)]
-                (.setName env (str env-var-name))
-                (.setValue env (str env-var-value))
-                env)))))
+  (pc/for-map [{:keys [key value]} params
+               :when (= "env" key)
+               :let [[var-key var-val] (str/split value #"=")]]
+    var-key var-val))
 
 (defn make-security-context
   [params user]
@@ -490,12 +482,22 @@
       (:value workdir-param)
       (:default-workdir (config/kubernetes)))))
 
-(defn filter-env-vars
-  [env-vars]
-  (let [{:keys [disallowed-var-names]} (config/kubernetes)]
-    (filterv (fn [^V1EnvVar var]
-               (not (contains? disallowed-var-names (.getName var))))
-             env-vars)))
+(defn- make-env
+  "Make a kubernetes environment variable"
+  [var-name var-value]
+  (doto (V1EnvVar.)
+      (.setName (str var-name))
+      (.setValue (str var-value))))
+
+(defn make-filtered-env-vars
+  "Create a Kubernetes API compatible var list from an environment vars map,
+   with variables filtered based on disallowed-var-names in the Kubernetes config."
+  [env]
+  (let [{:keys [disallowed-var-names]} (config/kubernetes)
+        disallowed-var? #(contains? disallowed-var-names (key %))]
+    (->> env
+         (remove disallowed-var?)
+         (mapv #(apply make-env %)))))
 
 (defn- add-as-decimals
   "Takes two doubles and adds them as decimals to avoid floating point error. Kubernetes will not be able to launch a
@@ -512,20 +514,11 @@
       :mem (add-as-decimals mem memory-request))
     resources))
 
-(defn- make-env
-  "Make a kubernetes environment variable"
-  [key value]
-  (.. (V1EnvVarBuilder.)
-      (withName key)
-      (withValue value)
-      (build)))
-
 (defn- add-node-selector
   "Adds a node selector with the given key and val to the given pod spec"
   [^V1PodSpec pod-spec key val]
   (.setNodeSelector pod-spec (-> pod-spec
                                  .getNodeSelector
-                                 (or {})
                                  (assoc key val))))
 
 (defn ^V1Pod task-metadata->pod
@@ -543,16 +536,11 @@
         {:keys [docker volumes]} container
         {:keys [image parameters]} docker
         {:keys [job/progress-output-file job/progress-regex-string]} job
+        {:keys [environment]} command
         pod (V1Pod.)
         pod-spec (V1PodSpec.)
         metadata (V1ObjectMeta.)
         container (V1Container.)
-        env (map (fn [[k v]]
-                   (let [env (V1EnvVar.)]
-                     (.setName env (str k))
-                     (.setValue env (str v))
-                     env))
-                 (:environment command))
         resources (V1ResourceRequirements.)
         labels (assoc pod-labels cook-pod-label compute-cluster-name)
         pool-name (some-> job :job/pool :pool/name)
@@ -571,15 +559,19 @@
         sidecar-workdir "/mnt/sidecar"
         sidecar-workdir-volume (when use-cook-sidecar? (make-empty-volume "cook-sidecar-workdir-volume"))
         sidecar-workdir-volume-mount-fn (partial make-volume-mount sidecar-workdir-volume sidecar-workdir)
-        workdir-env-vars [(make-env "HOME" workdir)
-                          (make-env "MESOS_SANDBOX" workdir)
-                          (make-env "SIDECAR_WORKDIR" sidecar-workdir)]
-        progress-env-vars (concat
-                            (when progress-regex-string
-                              [(make-env "PROGRESS_REGEX_STRING" progress-regex-string)])
-                            (when progress-output-file
-                              [(make-env "EXECUTOR_PROGRESS_OUTPUT_FILE_ENV" "EXECUTOR_PROGRESS_OUTPUT_FILE_NAME")
-                               (make-env "EXECUTOR_PROGRESS_OUTPUT_FILE_NAME" progress-output-file)]))]
+        workdir-env {"HOME" workdir
+                     "MESOS_SANDBOX" workdir
+                     "SIDECAR_WORKDIR" sidecar-workdir}
+        params-env (build-params-env parameters)
+        progress-env (task/build-executor-environment job)
+        main-env-base (merge environment params-env progress-env workdir-env)
+        progress-file-var (get main-env-base task/progress-meta-env-name task/default-progress-env-name)
+        progress-file-path (get main-env-base progress-file-var)
+        main-env (cond-> main-env-base
+                   ;; Add a default progress file path to the environment when missing
+                   (not progress-file-path)
+                   (assoc progress-file-var (str task-id ".progress")))
+        main-env-vars (make-filtered-env-vars main-env)]
 
     ; metadata
     (.setName metadata (str task-id))
@@ -589,9 +581,7 @@
     ; container
     (.setName container cook-container-name-for-job)
     (.setCommand container (conj (or (when use-cook-init? custom-shell) ["/bin/sh" "-c"]) (:value command)))
-    (.setEnv container (filter-env-vars
-                         ;; NOTE: there may be additional env vars hard-coded in the docker container
-                         (concat env (param-env-vars parameters) workdir-env-vars progress-env-vars)))
+    (.setEnv container main-env-vars)
     (.setImage container image)
 
     (.putRequestsItem resources "memory" (double->quantity (* memory-multiplier mem)))
@@ -637,14 +627,9 @@
           (.setWorkingDir container sidecar-workdir)
           (.setPorts container [(.containerPort (V1ContainerPort.) (int port))])
 
-          (.setEnv container (into
-                               ;; NOTE: there may be additional env vars hard-coded in the docker container
-                               (filterv sidecar-env-filter env)
-                               (list*
-                                 (make-env "COOK_INSTANCE_UUID" task-id)
-                                 (make-env "COOK_SCHEDULER_REST_URL" (config/scheduler-rest-url))
-                                 (make-env "COOK_WORKDIR" workdir)
-                                 progress-env-vars)))
+          (.setEnv container (conj main-env-vars
+                                   (make-env "COOK_SCHEDULER_REST_URL" (config/scheduler-rest-url))
+                                   (make-env "COOK_WORKDIR" workdir)))
 
           (.setPort http-get-action (-> port int IntOrString.))
           (.setPath http-get-action "readiness-probe")
