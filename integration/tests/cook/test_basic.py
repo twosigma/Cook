@@ -1701,7 +1701,9 @@ class CookTest(util.CookTest):
                 # cook killed the job during setup, so the executor had an error
                 reasons.EXECUTOR_UNREGISTERED,
                 # we've seen this happen in the wild
-                reasons.UNKNOWN_MESOS_REASON
+                reasons.UNKNOWN_MESOS_REASON,
+                # task was killed before delivery to the executor
+                reasons.REASON_TASK_KILLED_DURING_LAUNCH
             ]
             self.assertTrue(any(i['reason_code'] in valid_reasons for i in jobs[1]['instances']), slow_job_details)
         finally:
