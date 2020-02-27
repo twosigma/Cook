@@ -1,5 +1,6 @@
 # Named constants for failure reason codes from cook or mesos.
 # See scheduler/src/cook/mesos/schema.clj for the reason code names.
+REASON_TASK_KILLED_DURING_LAUNCH = 1004
 MAX_RUNTIME_EXCEEDED = 2003
 EXECUTOR_UNREGISTERED = 6002
 UNKNOWN_MESOS_REASON = 99001
