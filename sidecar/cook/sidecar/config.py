@@ -76,7 +76,7 @@ def initialize_config(environment):
 
     sandbox_directory = environment.get('COOK_WORKDIR', '')
 
-    default_progress_output_key = 'EXECUTOR_PROGRESS_OUTPUT_FILE_NAME'
+    default_progress_output_key = 'EXECUTOR_PROGRESS_OUTPUT_FILE'
     progress_output_env_key = 'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV'
     progress_output_env_variable = environment.get(progress_output_env_key, default_progress_output_key)
     logging.info(f'Progress location environment variable is {progress_output_env_variable}')
