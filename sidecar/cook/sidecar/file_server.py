@@ -45,7 +45,7 @@ max_read_length = int(os.environ.get('COOK_FILE_SERVER_MAX_READ_LENGTH', '250000
 def start_file_server(started_event, args):
     try:
         logging.info(f'Starting cook.sidecar {VERSION} file server')
-        port, workers = (args + [None] * 2)[0:2]
+        port, workers, threads = (args + [None] * 3)[0:3]
         if port is None:
             logging.error('Must provide file server port')
             sys.exit(1)
@@ -55,6 +55,7 @@ def start_file_server(started_event, args):
             sys.exit(1)
         FileServerApplication(cook_workdir, started_event, {
             'bind': f'0.0.0.0:{port}',
+            'threads': 2 if threads is None else threads,
             'workers': 4 if workers is None else workers,
         }).run()
         return 0

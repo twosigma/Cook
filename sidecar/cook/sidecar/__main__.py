@@ -34,11 +34,12 @@ def main(args=None):
     util.init_logging()
 
     parser = argparse.ArgumentParser(description='Cook Sidecar')
-    parser.add_argument('--no-file-server', action='store_true', help='Disable sandbox file server')
-    parser.add_argument('--no-progress-reporter', action='store_true', help='Disable progress reporter')
-    parser.add_argument('--exit-sentinel-file-path', help='File path which signals this process to exit when it appears')
-    parser.add_argument('file_server_args', metavar='FILE_SERVER_ARGS', nargs=argparse.REMAINDER,
-                        help='Arguments for file server: PORT [NUM_WORKERS]')
+    parser.add_argument('--exit-sentinel-file-path', metavar='PATH', help='file path which signals this process to exit when it appears')
+    parser.add_argument('--file-server-port', type=int, metavar='PORT', help='file server port number')
+    parser.add_argument('--file-server-threads', type=int, default=2, metavar='THREADS', help='file server threads-per-worker count')
+    parser.add_argument('--file-server-workers', type=int, default=2, metavar='WORKERS', help='file server worker process count')
+    parser.add_argument('--no-file-server', action='store_true', help='disable sandbox file server')
+    parser.add_argument('--no-progress-reporter', action='store_true', help='disable progress reporter')
     parser.add_argument('--version', action='version', version=f'Cook Sidecar {VERSION}')
     options = parser.parse_args(args or sys.argv[1:])
     logging.info(f'OPTIONS = {options}')
@@ -58,7 +59,8 @@ def main(args=None):
 
     # Start Flask file server (blocking)
     if not options.no_file_server:
-        exit_code = file_server.start_file_server(all_started_event, options.file_server_args)
+        file_server_args = [options.file_server_port, options.file_server_workers, options.file_server_threads]
+        exit_code = file_server.start_file_server(all_started_event, file_server_args)
     # Wait for progress reporter threads (blocking)
     elif not options.no_progress_reporter:
         all_started_event.set()

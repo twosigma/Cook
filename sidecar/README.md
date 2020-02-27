@@ -19,16 +19,13 @@ Usage:
 The `COOK_WORKDIR` environment variable must be set. Only files with `COOK_WORKDIR` as the root will be served.
 
 ```
-cook-sidecar PORT [NUM_WORKERS]
+cook-sidecar --file-server-port PORT
 ```
-
-`NUM_WORKERS` defaults to `4`.
 
 Run `cook-sidecar --help` for full usage documentation.
 
 Examples:
 
 ```bash
-$ cook-sidecar 8000
-$ cook-sidecar 8000 4
+$ cook-sidecar --file-server-port 8000
 ```
