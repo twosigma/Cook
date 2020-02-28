@@ -1454,7 +1454,10 @@ def node_pool(nodename):
 
 def max_kubernetes_node_cpus():
     nodes = get_kubernetes_nodes()
-    return max([float(n['status']['capacity']['cpu'])
+    # We need to account for per-node overhead
+    # (capacity not usable by our Cook pods)
+    k8s_node_overhead_cpus = int(os.getenv("COOK_TEST_K8S_NODE_OVERHEAD_CPUS", 0))
+    return max([float(n['status']['capacity']['cpu']) - k8s_node_overhead_cpus
                 for n in nodes])
 
 

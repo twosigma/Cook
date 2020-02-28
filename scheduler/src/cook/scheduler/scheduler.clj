@@ -527,7 +527,8 @@
    Returns {:matches (list of tasks that got matched to the offer)
             :failures (list of unmatched tasks, and why they weren't matched)}"
   [db ^TaskScheduler fenzo considerable offers rebalancer-reservation-atom pool-name]
-  (log/info "In" pool-name "pool, matching" (count offers) "offers to" (count considerable) "jobs with fenzo")
+  (log/info "In" pool-name "pool, matching" (count offers) "offers to"
+            (count considerable) "considerable jobs with fenzo")
   (log/debug "In" pool-name "pool, tasks to scheduleOnce" considerable)
   (dl/update-cost-staleness-metric considerable)
   (let [t (System/currentTimeMillis)
@@ -851,28 +852,44 @@
               first-considerable-job-resources (-> considerable-jobs first tools/job-ent->resources)
               matched-considerable-jobs-head? (contains? matched-job-uuids (-> considerable-jobs first :job/uuid))]
 
+          (log/info "In" pool-name "pool, handling resource offers"
+                    {:matched-considerable-jobs-head? matched-considerable-jobs-head?
+                     :num-considerable-jobs (count considerable-jobs)
+                     :num-considerable-setting num-considerable
+                     :num-failures (count failures)
+                     :num-matches (count matches)
+                     :num-offers (count offers)
+                     :num-pending-jobs (count pending-jobs)})
+
           (fenzo/record-placement-failures! conn failures)
 
           (reset! offer-stash offers-scheduled)
           (reset! front-of-job-queue-mem-atom (or (:mem first-considerable-job-resources) 0))
           (reset! front-of-job-queue-cpus-atom (or (:cpus first-considerable-job-resources) 0))
 
-          (trigger-autoscaling! failures pool-name compute-clusters)
-
-          (cond
-            ;; Possible innocuous reasons for no matches: no offers, or no pending jobs.
-            ;; Even beyond that, if Fenzo fails to match ANYTHING, "penalizing" it in the form of giving
-            ;; it fewer jobs to look at is unlikely to improve the situation.
-            ;; "Penalization" should only be employed when Fenzo does successfully match,
-            ;; but the matches don't align with Cook's priorities.
-            (empty? matches) true
-            :else
-            (do
-              (swap! pool-name->pending-jobs-atom remove-matched-jobs-from-pending-jobs matched-job-uuids pool-name)
-              (log/debug "In" pool-name "pool, updated pool-name->pending-jobs-atom:" @pool-name->pending-jobs-atom)
-              (launch-matched-tasks! matches conn db fenzo mesos-run-as-user pool-name)
-              (update-host-reservations! rebalancer-reservation-atom matched-job-uuids)
-              matched-considerable-jobs-head?)))
+          (let [matched-head-or-no-matches?
+                ;; Possible innocuous reasons for no matches: no offers, or no pending jobs.
+                ;; Even beyond that, if Fenzo fails to match ANYTHING, "penalizing" it in the form of giving
+                ;; it fewer jobs to look at is unlikely to improve the situation.
+                ;; "Penalization" should only be employed when Fenzo does successfully match,
+                ;; but the matches don't align with Cook's priorities.
+                (if (empty? matches)
+                  true
+                  (do
+                    (swap! pool-name->pending-jobs-atom
+                           remove-matched-jobs-from-pending-jobs
+                           matched-job-uuids pool-name)
+                    (log/debug "In" pool-name
+                               "pool, updated pool-name->pending-jobs-atom:"
+                               @pool-name->pending-jobs-atom)
+                    (launch-matched-tasks! matches conn db fenzo mesos-run-as-user pool-name)
+                    (update-host-reservations! rebalancer-reservation-atom matched-job-uuids)
+                    matched-considerable-jobs-head?))]
+            ;; This call needs to happen *after* launch-matched-tasks!
+            ;; in order to avoid autoscaling tasks taking up available
+            ;; capacity that was already matched for real Cook tasks.
+            (trigger-autoscaling! failures pool-name compute-clusters)
+            matched-head-or-no-matches?))
         (catch Throwable t
           (meters/mark! handle-resource-offer!-errors)
           (log/error t "In" pool-name "pool, error in match:" (ex-data t))

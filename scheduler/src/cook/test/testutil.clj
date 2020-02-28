@@ -496,6 +496,18 @@
     (.setSpec pod spec)
     pod))
 
+(defn synthetic-pod-helper
+  "Makes a synthetic pod for unit tests"
+  [job-uuid pool-name creation-timestamp]
+  (let [^V1Pod outstanding-synthetic-pod (pod-helper "podA" "nodeA")
+        ^V1ObjectMeta pod-metadata (.getMetadata outstanding-synthetic-pod)]
+    (.setLabels pod-metadata {kapi/cook-synthetic-pod-job-uuid-label job-uuid})
+    (.setCreationTimestamp pod-metadata creation-timestamp)
+    (-> outstanding-synthetic-pod
+        .getSpec
+        (.addTolerationsItem (kapi/toleration-for-pool pool-name)))
+    outstanding-synthetic-pod))
+
 (defn node-helper [node-name cpus mem pool]
   "Make a fake node for kubernetes unit tests"
   (let [node (V1Node.)

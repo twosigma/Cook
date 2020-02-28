@@ -34,44 +34,6 @@
                  "compute cluster, unable to get node from node name" node-name)
       false)))
 
-(defn compute-num-waiting-synthetic-pods
-  "Given a compute cluster and a collection of pods, returns the number of
-  waiting synthetic pods in the cluster, or 0 if the cluster is not autoscaling"
-  [compute-cluster pods pool-name grace-period-seconds]
-  (if (cc/autoscaling? compute-cluster pool-name)
-    (let [synthetic-pods (filter controller/synthetic-pod->job-uuid pods)
-          waiting-synthetic-pods (filter (fn waiting-and-recent?
-                                           [^V1Pod pod]
-                                           (and
-                                             (or (-> pod
-                                                     .getStatus
-                                                     nil?)
-                                                 (-> pod
-                                                     api/pod->synthesized-pod-state
-                                                     :state
-                                                     (= :pod/waiting)))
-                                             ; We don't want to wait indefinitely because
-                                             ; synthetic pods didn't get scheduled. So, we
-                                             ; only count a synthetic pod as "recent" if it
-                                             ; was created in the last grace-period-seconds.
-                                             (-> pod
-                                                 .getMetadata
-                                                 .getCreationTimestamp
-                                                 (time/plus (time/seconds grace-period-seconds))
-                                                 (time/after? (time/now)))))
-                                         synthetic-pods)
-          waiting-synthetic-pods-in-pool (filter (fn matching-cook-pool-toleration?
-                                                   [^V1Pod pod]
-                                                   (let [pod-spec (.getSpec pod)
-                                                         tolerations (.getTolerations pod-spec)]
-                                                     (some (fn [^V1Toleration toleration]
-                                                             (and (= (.getKey toleration) "cook-pool")
-                                                                  (= (.getValue toleration) pool-name)))
-                                                           tolerations)))
-                                                 waiting-synthetic-pods)]
-      (count waiting-synthetic-pods-in-pool))
-    0))
-
 (defn total-resource
   "Given a map from node-name->resource-keyword->amount and a resource-keyword,
   returns the total amount of that resource for all nodes."
@@ -240,6 +202,12 @@
   (let [starting-pods (controller/starting-namespaced-pod-name->pod compute-cluster)]
     (-> pods (merge starting-pods) vals)))
 
+(defn synthetic-pod->job-uuid
+  "If the given pod is a synthetic pod for autoscaling, returns the job uuid
+  that the pod corresponds to (stored in a pod label). Otherwise, returns nil."
+  [^V1Pod pod]
+  (some-> pod .getMetadata .getLabels (.get api/cook-synthetic-pod-job-uuid-label)))
+
 (defrecord KubernetesComputeCluster [^ApiClient api-client name entity-id match-trigger-chan exit-code-syncer-state
                                      all-pods-atom current-nodes-atom cook-expected-state-map k8s-actual-state-map
                                      pool->fenzo-atom namespace-config scan-frequency-seconds-config max-pods-per-node
@@ -302,31 +270,19 @@
 
   (pending-offers [this pool-name]
     (let [pods (add-starting-pods this @all-pods-atom)
-          synthetic-pod-grace-period-seconds (-> synthetic-pods-config :grace-period-seconds (or 180))
-          num-waiting-synthetic-pods (compute-num-waiting-synthetic-pods this pods pool-name
-                                                                         synthetic-pod-grace-period-seconds)
-          nodes @current-nodes-atom]
-      (log/info "In" name "compute cluster, got asked for pending offers for pool" pool-name
-                {:nodes (count nodes)
-                 :synthetic-pods num-waiting-synthetic-pods
-                 :total-pods (count pods)})
-      (if (pos? num-waiting-synthetic-pods)
-        (do
-          ; If there are waiting synthetic pods for the given pool in the cluster, we should let
-          ; them get scheduled before we generate offers. Otherwise, we will be racing against the
-          ; k8s scheduler scheduling those synthetic pods, and we will often lose, resulting in
-          ; Failed instances for no good reason.
-          (log/info "In" name "compute cluster, skipping offer generation for pool" pool-name
-                    "because there are" num-waiting-synthetic-pods
-                    "waiting synthetic pod(s) in that pool")
-          [])
-        (let [offers-all-pools (generate-offers this nodes pods)
-              ; TODO: We are generating offers for every pool here, and filtering out only offers for this one pool.
-              ; TODO: We should be smarter here and generate once, then reuse for each pool, instead of generating for each pool each time and only keeping one
-              offers-this-pool (get offers-all-pools pool-name)]
-          (log/info "In" name "compute cluster, generated" (count offers-this-pool) "offers for pool" pool-name
-                    (into [] (map #(into {} (select-keys % [:hostname :resources])) offers-this-pool)))
-          offers-this-pool))))
+          nodes @current-nodes-atom
+          offers-all-pools (generate-offers this nodes pods)
+          ; TODO: We are generating offers for every pool here, and filtering out only offers for this one pool.
+          ; TODO: We should be smarter here and generate once, then reuse for each pool, instead of generating for each pool each time and only keeping one
+          offers-this-pool (get offers-all-pools pool-name)
+          offers-this-pool-for-logging (into []
+                                             (map #(into {} (select-keys % [:hostname :resources]))
+                                                  offers-this-pool))]
+      (log/info "In" name "compute cluster, generated" (count offers-this-pool) "offers for pool" pool-name
+                {:num-total-nodes-in-compute-cluster (count nodes)
+                 :num-total-pods-in-compute-cluster (count pods)
+                 :offers-this-pool offers-this-pool-for-logging})
+      offers-this-pool))
 
   (restore-offers [this pool-name offers])
 
@@ -339,7 +295,7 @@
               (str "In " name " compute cluster, request to autoscale despite invalid / missing config"))
       (let [outstanding-synthetic-pods (->> @all-pods-atom
                                             (add-starting-pods this)
-                                            (filter controller/synthetic-pod->job-uuid))
+                                            (filter synthetic-pod->job-uuid))
             num-synthetic-pods (count outstanding-synthetic-pods)
             {:keys [image user command max-pods-outstanding] :or {command "exit 0"}} synthetic-pods-config]
         (log/info "In" name "compute cluster, there are" num-synthetic-pods
@@ -349,23 +305,41 @@
           (let [using-pools? (config/default-pool)
                 synthetic-task-pool-name (when using-pools? pool-name)
                 new-task-requests (remove (fn [{{:keys [job/uuid]} :job}]
-                                            (some #(= (str uuid) (controller/synthetic-pod->job-uuid %))
+                                            (some #(= (str uuid) (synthetic-pod->job-uuid %))
                                                   outstanding-synthetic-pods))
                                           task-requests)
-                task-metadata-seq (->>
-                                    new-task-requests
-                                    (map (fn [{{:keys [job/uuid] :as job} :job}]
-                                           {:task-id (str "synthetic-" pool-name "-" (d/squuid))
-                                            :command {:user user :value command}
-                                            :container {:docker {:image image}}
-                                            :task-request {:scalar-requests (walk/stringify-keys
-                                                                              (tools/job-ent->resources job))
-                                                           :job {:job/pool {:pool/name synthetic-task-pool-name}}}
-                                            ; We need to label the synthetic pods so that we
-                                            ; can opt them out of some of the normal plumbing,
-                                            ; like mapping status back to a job instance
-                                            :pod-labels {api/cook-synthetic-pod-job-uuid-label (str uuid)}}))
-                                    (take (- max-pods-outstanding num-synthetic-pods)))]
+                sidecar-resource-requirements (-> (config/kubernetes) :sidecar :resource-requirements)
+                task-metadata-seq
+                (->> new-task-requests
+                     (map (fn [{{:keys [job/uuid] :as job} :job}]
+                            {:task-id (str api/cook-synthetic-pod-name-prefix "-" pool-name "-" uuid)
+                             :command {:user user :value command}
+                             :container {:docker {:image image}}
+                             :task-request {:scalar-requests
+                                            (cond->> (walk/stringify-keys (tools/job-ent->resources job))
+                                              ; We need to account for any sidecar resource requirements that the
+                                              ; job we're launching this synthetic pod for will need to use.
+                                              sidecar-resource-requirements
+                                              (merge-with +
+                                                          {"cpus" (:cpu-request sidecar-resource-requirements)
+                                                           "mem" (:memory-request sidecar-resource-requirements)}))
+                                            :job {:job/pool {:pool/name synthetic-task-pool-name}}}
+                             ; We need to label the synthetic pods so that we
+                             ; can opt them out of some of the normal plumbing,
+                             ; like mapping status back to a job instance
+                             :pod-labels {api/cook-synthetic-pod-job-uuid-label (str uuid)}
+                             ; We need to give synthetic pods a lower priority than
+                             ; actual job pods so that the job pods can preempt them
+                             ; (https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/);
+                             ; if we don't do this, we run the risk of job pods
+                             ; encountering failures when they lose scheduling races
+                             ; against pending synthetic pods
+                             :pod-priority-class api/cook-synthetic-pod-priority-class
+                             ; We don't want to add in the cook-init cruft or the cook sidecar, because we
+                             ; don't need them for synthetic pods and all they will do is slow things down.
+                             :pod-supports-cook-init? false
+                             :pod-supports-cook-sidecar? false}))
+                     (take (- max-pods-outstanding num-synthetic-pods)))]
             (log/info "In" name "compute cluster, launching" (count task-metadata-seq) "synthetic pod(s) for"
                       (count new-task-requests) "new un-matched task(s) in" synthetic-task-pool-name "pool"
                       "(there were" (count task-requests) "total un-matched task(s), new and old)")

@@ -12,10 +12,12 @@
     (io.kubernetes.client ApiClient ApiException)
     (io.kubernetes.client.apis CoreV1Api)
     (io.kubernetes.client.custom Quantity Quantity$Format IntOrString)
-    (io.kubernetes.client.models V1Pod V1Container V1Node V1Pod V1ResourceRequirements V1EnvVar
-                                 V1ObjectMeta V1PodSpec V1PodStatus V1ContainerState V1DeleteOptionsBuilder
-                                 V1DeleteOptions V1HostPathVolumeSource V1VolumeMount V1VolumeBuilder V1Taint
-                                 V1Toleration V1PodSecurityContext V1EmptyDirVolumeSource V1EnvVarBuilder V1ContainerPort V1Probe V1HTTPGetAction V1Volume)
+    (io.kubernetes.client.models V1Affinity V1Container V1ContainerPort V1ContainerState V1DeleteOptions
+                                 V1DeleteOptionsBuilder V1EmptyDirVolumeSource V1EnvVar V1EnvVarBuilder
+                                 V1HostPathVolumeSource V1HTTPGetAction V1Node V1NodeAffinity V1NodeSelector
+                                 V1NodeSelectorRequirement V1NodeSelectorTerm V1ObjectMeta V1Pod
+                                 V1PodSecurityContext V1PodSpec V1PodStatus V1Probe V1ResourceRequirements
+                                 V1Toleration V1VolumeBuilder V1Volume V1VolumeMount)
     (io.kubernetes.client.util Watch Yaml)
     (java.util.concurrent Executors ExecutorService)))
 
@@ -23,6 +25,10 @@
 (def cook-pod-label "twosigma.com/cook-scheduler-job")
 (def cook-synthetic-pod-job-uuid-label "twosigma.com/cook-scheduler-synthetic-pod-job-uuid")
 (def cook-workdir-volume-name "cook-workdir-volume")
+(def cook-job-pod-priority-class "cook-workload")
+(def cook-synthetic-pod-priority-class "synthetic-pod")
+(def cook-synthetic-pod-name-prefix "synthetic")
+(def k8s-hostname-label "kubernetes.io/hostname")
 
 ; DeletionCandidateTaint is a soft taint that k8s uses to mark unneeded
 ; nodes as preferably unschedulable. This taint is added as soon as the
@@ -267,7 +273,8 @@
 (defn pod->node-name
   "Given a pod, returns the node name on the pod spec"
   [^V1Pod pod]
-  (-> pod .getSpec .getNodeName))
+  (or (some-> pod .getSpec .getNodeName)
+      (some-> pod .getSpec .getNodeSelector (get k8s-hostname-label))))
 
 (defn num-pods-on-node
   "Returns the number of pods assigned to the given node"
@@ -503,9 +510,22 @@
       (withValue value)
       (build)))
 
+(defn- add-node-selector
+  "Adds a node selector with the given key and val to the given pod spec"
+  [^V1PodSpec pod-spec key val]
+  (.setNodeSelector pod-spec (-> pod-spec
+                                 .getNodeSelector
+                                 (or {})
+                                 (assoc key val))))
+
 (defn ^V1Pod task-metadata->pod
   "Given a task-request and other data generate the kubernetes V1Pod to launch that task."
-  [namespace compute-cluster-name {:keys [task-id command container task-request hostname pod-labels]}]
+  [namespace compute-cluster-name
+   {:keys [task-id command container task-request hostname pod-labels
+           pod-priority-class pod-supports-cook-init? pod-supports-cook-sidecar?]
+    :or {pod-priority-class cook-job-pod-priority-class
+         pod-supports-cook-init? true
+         pod-supports-cook-sidecar? true}}]
   (let [{:keys [scalar-requests job]} task-request
         ;; NOTE: The scheduler's adjust-job-resources-for-pool-fn may modify :resources,
         ;; whereas :scalar-requests always contains the unmodified job resource values.
@@ -529,11 +549,16 @@
         workdir (get-workdir parameters)
         {:keys [volumes volume-mounts workdir-volume-mount-fn]} (make-volumes volumes workdir)
         {:keys [custom-shell init-container sidecar]} (config/kubernetes)
+        use-cook-init? (and init-container pod-supports-cook-init?)
+        use-cook-sidecar? (and sidecar pod-supports-cook-sidecar?)
         init-container-workdir "/mnt/init-container"
-        init-container-workdir-volume (when init-container (make-empty-volume "cook-init-container-workdir-volume"))
-        init-container-workdir-volume-mount-fn (partial make-volume-mount init-container-workdir-volume init-container-workdir)
+        init-container-workdir-volume (when use-cook-init?
+                                        (make-empty-volume "cook-init-container-workdir-volume"))
+        init-container-workdir-volume-mount-fn (partial make-volume-mount
+                                                        init-container-workdir-volume
+                                                        init-container-workdir)
         sidecar-workdir "/mnt/sidecar"
-        sidecar-workdir-volume (when sidecar (make-empty-volume "cook-sidecar-workdir-volume"))
+        sidecar-workdir-volume (when use-cook-sidecar? (make-empty-volume "cook-sidecar-workdir-volume"))
         sidecar-workdir-volume-mount-fn (partial make-volume-mount sidecar-workdir-volume sidecar-workdir)
         workdir-env-vars [(make-env "HOME" workdir)
                           (make-env "MESOS_SANDBOX" workdir)
@@ -546,7 +571,7 @@
 
     ; container
     (.setName container cook-container-name-for-job)
-    (.setCommand container (conj (or custom-shell ["/bin/sh" "-c"]) (:value command)))
+    (.setCommand container (conj (or (when use-cook-init? custom-shell) ["/bin/sh" "-c"]) (:value command)))
     (.setEnv container (-> []
                            (into env)
                            (into (param-env-vars parameters))
@@ -570,49 +595,58 @@
     (.addContainersItem pod-spec container)
 
     ; init container
-    (when-let [{:keys [command image]} init-container]
-      (let [container (V1Container.)]
-        ; container
-        (.setName container cook-init-container-name)
-        (.setImage container image)
-        (.setCommand container command)
-        (.setWorkingDir container init-container-workdir)
+    (when use-cook-init?
+      (when-let [{:keys [command image]} init-container]
+        (let [container (V1Container.)]
+          ; container
+          (.setName container cook-init-container-name)
+          (.setImage container image)
+          (.setCommand container command)
+          (.setWorkingDir container init-container-workdir)
 
-        (.setVolumeMounts container [(init-container-workdir-volume-mount-fn false)])
-        (.addInitContainersItem pod-spec container)))
+          (.setVolumeMounts container [(init-container-workdir-volume-mount-fn false)])
+          (.addInitContainersItem pod-spec container))))
 
     ; sandbox file server container
-    (when-let [{:keys [command image port resource-requirements]} sidecar]
-      (let [{:keys [cpu-request cpu-limit memory-request memory-limit]} resource-requirements
-            container (V1Container.)
-            resources (V1ResourceRequirements.)
-            readiness-probe (V1Probe.)
-            http-get-action (V1HTTPGetAction.)]
-        ; container
-        (.setName container cook-container-name-for-file-server)
-        (.setImage container image)
-        (.setCommand container (conj command (str port)))
-        (.setWorkingDir container sidecar-workdir)
-        (.setPorts container [(.containerPort (V1ContainerPort.) (int port))])
+    (when use-cook-sidecar?
+      (when-let [{:keys [command image port resource-requirements]} sidecar]
+        (let [{:keys [cpu-request cpu-limit memory-request memory-limit]} resource-requirements
+              container (V1Container.)
+              resources (V1ResourceRequirements.)
+              readiness-probe (V1Probe.)
+              http-get-action (V1HTTPGetAction.)]
+          ; container
+          (.setName container cook-container-name-for-file-server)
+          (.setImage container image)
+          (.setCommand container (conj command (str port)))
+          (.setWorkingDir container sidecar-workdir)
+          (.setPorts container [(.containerPort (V1ContainerPort.) (int port))])
 
-        (.setEnv container [(make-env "COOK_WORKDIR" workdir)])
+          (.setEnv container [(make-env "COOK_WORKDIR" workdir)])
 
-        (.setPort http-get-action (IntOrString. port))
-        (.setPath http-get-action "readiness-probe")
-        (.setHttpGet readiness-probe http-get-action)
-        (.setReadinessProbe container readiness-probe)
+          (.setPort http-get-action (IntOrString. port))
+          (.setPath http-get-action "readiness-probe")
+          (.setHttpGet readiness-probe http-get-action)
+          (.setReadinessProbe container readiness-probe)
 
-        ; resources
-        (.putRequestsItem resources "cpu" (double->quantity cpu-request))
-        (.putLimitsItem resources "cpu" (double->quantity cpu-limit))
-        (.putRequestsItem resources "memory" (double->quantity (* memory-multiplier memory-request)))
-        (.putLimitsItem resources "memory" (double->quantity (* memory-multiplier memory-limit)))
-        (.setResources container resources)
+          ; resources
+          (.putRequestsItem resources "cpu" (double->quantity cpu-request))
+          (.putLimitsItem resources "cpu" (double->quantity cpu-limit))
+          (.putRequestsItem resources "memory" (double->quantity (* memory-multiplier memory-request)))
+          (.putLimitsItem resources "memory" (double->quantity (* memory-multiplier memory-limit)))
+          (.setResources container resources)
 
-        (.setVolumeMounts container [(workdir-volume-mount-fn true) (sidecar-workdir-volume-mount-fn false)])
-        (.addContainersItem pod-spec container)))
+          (.setVolumeMounts container [(workdir-volume-mount-fn true) (sidecar-workdir-volume-mount-fn false)])
+          (.addContainersItem pod-spec container))))
 
-    (.setNodeName pod-spec hostname)
+    (when hostname
+      ; Why not just set the node name?
+      ; The reason is that setting the node name prevents pod preemption
+      ; (https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/)
+      ; from happening. We want this pod to preempt lower priority pods
+      ; (e.g. synthetic pods).
+      (add-node-selector pod-spec k8s-hostname-label hostname))
+
     (.setRestartPolicy pod-spec "Never")
 
     (.addTolerationsItem pod-spec toleration-for-deletion-candidate-of-autoscaler)
@@ -622,9 +656,15 @@
     ; user. For the time being, this isn't a problem only if / when
     ; the default pool is not being fed offers from Kubernetes.
     (when pool-name
-      (.addTolerationsItem pod-spec (toleration-for-pool pool-name)))
+      (.addTolerationsItem pod-spec (toleration-for-pool pool-name))
+      ; Add a node selector for nodes labeled with the Cook pool
+      ; we're launching in. This is technically only needed for
+      ; synthetic pods (which don't specify a node name), but it
+      ; doesn't hurt to add it for all pods we submit.
+      (add-node-selector pod-spec "cook_pool" pool-name))
     (.setVolumes pod-spec (filterv some? (conj volumes init-container-workdir-volume sidecar-workdir-volume)))
     (.setSecurityContext pod-spec security-context)
+    (.setPriorityClassName pod-spec pod-priority-class)
 
     ; pod
     (.setMetadata pod metadata)
@@ -665,7 +705,9 @@
         ; If a pod has been ordered deleted, treat it as if it was gone, It's being async removed.
         ; Note that we distinguish between this explicit :missing, and not being there at all when processing
         ; (:cook-expected-state/killed, :missing) in cook.kubernetes.controller/process
-        {:state :missing :reason "Pod was explicitly deleted"}
+        {:state :missing
+         :reason "Pod was explicitly deleted"
+         :pod-deleted? true}
         ; If pod isn't being async removed, then look at the containers inside it.
         (if job-status
           (let [^V1ContainerState state (.getState job-status)]
