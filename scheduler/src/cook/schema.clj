@@ -1325,7 +1325,7 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :reason/code 4003
     :reason/string "Container launch failed"
     :reason/name :mesos-container-launch-failed
-    :reason/mea-culpa? false
+    :reason/mea-culpa? true
     :reason/mesos-reason :reason-container-launch-failed}
    {:db/id (d/tempid :db.part/user)
     :reason/code 4004
