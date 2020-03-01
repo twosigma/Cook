@@ -1188,7 +1188,8 @@ def dummy_ls_entries(_, __, ___):
                                self.cook_url,
                                submit_flags=f'--executor {executor} '
                                             f'--env {progress_file_env}=progress.txt '
-                                            f'--name {self.current_name()}')
+                                            f'--name {self.current_name()} '
+                                            f'--max-retries 5')
         self.assertEqual(0, cp.returncode, cp.stderr)
         util.wait_for_instance(self.cook_url, uuids[0])
         cp, jobs = cli.show_jobs(uuids, self.cook_url)
