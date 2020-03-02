@@ -362,7 +362,7 @@
       (dissoc (s/optional-key :group))
       (dissoc (s/optional-key :status))
       (merge {:framework-id (s/maybe s/Str)
-              :retries-remaining NonNegInt
+              :retries-remaining s/Int
               :status s/Str
               :state s/Str
               :submit-time (s/maybe PosInt)
