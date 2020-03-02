@@ -10,11 +10,13 @@
             [cook.config :as config]
             [cook.kubernetes.api :as api]
             [cook.kubernetes.controller :as controller]
+            [cook.kubernetes.metrics :as metrics]
             [cook.monitor :as monitor]
             [cook.pool]
             [cook.tools :as tools]
             [datomic.api :as d]
-            [metrics.counters :as counters]
+            [metrics.meters :as meters]
+            [metrics.timers :as timers]
             [plumbing.core :as pc])
   (:import (com.google.auth.oauth2 GoogleCredentials)
            (io.kubernetes.client ApiClient)
@@ -40,14 +42,6 @@
   [node-name->resource-map resource-keyword]
   (->> node-name->resource-map vals (map resource-keyword) (reduce +)))
 
-(defn counter
-  "Given a metric name and a compute cluster name, returns a counter metric."
-  [metric-name compute-cluster-name]
-  (counters/counter ["cook"
-                     "k8s-compute-cluster"
-                     metric-name
-                     (str "compute-cluster-" compute-cluster-name)]))
-
 (defn generate-offers
   "Given a compute cluster and maps with node capacity and existing pods, return a map from pool to offers."
   [compute-cluster node-name->node pods]
@@ -59,13 +53,13 @@
                                                              (node-name->capacity node-name)
                                                              (node-name->consumed node-name)))
                                                (keys node-name->capacity))]
-    (monitor/set-counter! (counter "capacity-cpus" compute-cluster-name)
+    (monitor/set-counter! (metrics/counter "capacity-cpus" compute-cluster-name)
                           (total-resource node-name->capacity :cpus))
-    (monitor/set-counter! (counter "capacity-mem" compute-cluster-name)
+    (monitor/set-counter! (metrics/counter "capacity-mem" compute-cluster-name)
                           (total-resource node-name->capacity :mem))
-    (monitor/set-counter! (counter "consumption-cpus" compute-cluster-name)
+    (monitor/set-counter! (metrics/counter "consumption-cpus" compute-cluster-name)
                           (total-resource node-name->consumed :cpus))
-    (monitor/set-counter! (counter "consumption-mem" compute-cluster-name)
+    (monitor/set-counter! (metrics/counter "consumption-mem" compute-cluster-name)
                           (total-resource node-name->consumed :mem))
     (log/info "In" compute-cluster-name "compute cluster, capacity:" node-name->capacity)
     (log/info "In" compute-cluster-name "compute cluster, consumption:" node-name->consumed)
@@ -156,7 +150,7 @@
   all running tasks entities (via (->> (cook.tools/get-running-task-ents)."
   [conn api-client compute-cluster-name running-tasks-ents]
   (let [db (d/db conn)
-        [_ pod-name->pod] (api/try-forever-get-all-pods-in-kubernetes compute-cluster-name api-client)
+        [_ pod-name->pod] (api/try-forever-get-all-pods-in-kubernetes api-client compute-cluster-name)
         all-tasks-ids-in-pods (into #{} (keys pod-name->pod))
         _ (log/debug "All tasks in pods (for initializing cook expected state): " all-tasks-ids-in-pods)
         running-tasks-in-cc-ents (filter
@@ -215,15 +209,26 @@
   cc/ComputeCluster
   (launch-tasks [this offers task-metadata-seq]
     (doseq [task-metadata task-metadata-seq]
-      (let [pod-namespace (get-namespace-from-task-metadata namespace-config task-metadata)]
+      ; Has the workload of launching tasks changed or has the cost of doing them changed?
+      ; Note we can't use timer/time! because it wraps the body in a Callable, which rebinds 'this' to another 'this'
+      ; causing breakage.
+      ; In addition, it captures controller/update-cook-expected-state and prevents with-redefs on
+      ; update-cook-expected-state from working correctly in unit tests.
+      (let [timer-context (timers/start (metrics/timer "compute-cluster-launch-tasks" name))
+            pod-namespace (get-namespace-from-task-metadata namespace-config task-metadata)]
         (controller/update-cook-expected-state
           this
           (:task-id task-metadata)
           {:cook-expected-state :cook-expected-state/starting
-           :launch-pod {:pod (api/task-metadata->pod pod-namespace name task-metadata)}}))))
+           :launch-pod {:pod (api/task-metadata->pod pod-namespace name task-metadata)}})
+        (.stop timer-context))))
 
   (kill-task [this task-id]
-    (controller/update-cook-expected-state this task-id {:cook-expected-state :cook-expected-state/killed}))
+    ; Note we can't use timer/time! because it wraps the body in a Callable, which rebinds 'this' to another 'this'
+    ; causing breakage.
+    (let [timer-context (timers/start (metrics/timer "compute-cluster-kill-tasks" name))]
+      (controller/update-cook-expected-state this task-id {:cook-expected-state :cook-expected-state/killed})
+      (.stop timer-context)))
 
   (decline-offers [this offer-ids]
     (log/debug "Rejecting offer ids" offer-ids))
@@ -340,6 +345,7 @@
                              :pod-supports-cook-init? false
                              :pod-supports-cook-sidecar? false}))
                      (take (- max-pods-outstanding num-synthetic-pods)))]
+            (meters/mark! (metrics/meter "synthetic-pod-submit-rate" name) (count task-metadata-seq))
             (log/info "In" name "compute cluster, launching" (count task-metadata-seq) "synthetic pod(s) for"
                       (count new-task-requests) "new un-matched task(s) in" synthetic-task-pool-name "pool"
                       "(there were" (count task-requests) "total un-matched task(s), new and old)")
