@@ -579,7 +579,7 @@ class MultiUserCookTest(util.CookTest):
         job_uuids = []
         try:
             for _ in range(num_jobs):
-                job_uuid, resp = util.submit_job(self.cook_url, command='sleep 300', name=name, max_retries=2)
+                job_uuid, resp = util.submit_job(self.cook_url, command='sleep 300', name=name, max_retries=5)
                 self.assertEqual(resp.status_code, 201, msg=resp.content)
                 job_uuids.append(job_uuid)
 
