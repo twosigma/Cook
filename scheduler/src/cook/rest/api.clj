@@ -362,7 +362,7 @@
       (dissoc (s/optional-key :group))
       (dissoc (s/optional-key :status))
       (merge {:framework-id (s/maybe s/Str)
-              :retries-remaining NonNegInt
+              :retries-remaining s/Int
               :status s/Str
               :state s/Str
               :submit-time (s/maybe PosInt)
@@ -1121,10 +1121,13 @@
                         (.getTime (:job/submit-time job)))
           datasets (when (seq (:job/datasets job))
                      (dl/get-dataset-maps job))
+          attempts-consumed (util/job-ent->attempts-consumed db job)
+          retries-remaining (- (:job/max-retries job) attempts-consumed)
+          disable-mea-culpa-retries (:job/disable-mea-culpa-retries job false)
           job-map {:command (:job/command job)
                    :constraints constraints
                    :cpus (:cpus resources)
-                   :disable_mea_culpa_retries (:job/disable-mea-culpa-retries job false)
+                   :disable_mea_culpa_retries disable-mea-culpa-retries
                    :env (util/job-ent->env job)
                    ; TODO(pschorf): Remove field
                    :framework_id (guess-framework-id)
@@ -1137,13 +1140,22 @@
                    :name (:job/name job "cookjob")
                    :ports (:job/ports job 0)
                    :priority (:job/priority job util/default-job-priority)
-                   :retries_remaining (- (:job/max-retries job) (util/job-ent->attempts-consumed db job))
+                   :retries_remaining retries-remaining
                    :state state
                    :status (name (:job/state job))
                    :submit_time submit-time
                    :uris (:uris resources)
                    :user (:job/user job)
                    :uuid (:job/uuid job)}]
+      (when (neg? retries-remaining)
+        ; TODO:
+        ; There's a bug in the retries remaining logic that
+        ; causes this number to sometimes be negative
+        (log/warn "Job" (:job/uuid job) "has negative retries remaining"
+                  {:attempts-consumed attempts-consumed
+                   :disable-mea-culpa-retries disable-mea-culpa-retries
+                   :max-retries (:job/max-retries job)
+                   :retries-remaining retries-remaining}))
       (cond-> job-map
               groups (assoc :groups (map #(str (:group/uuid %)) groups))
               application (assoc :application (util/remove-datomic-namespacing application))
