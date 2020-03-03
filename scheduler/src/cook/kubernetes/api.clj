@@ -486,8 +486,8 @@
   "Make a kubernetes environment variable"
   [var-name var-value]
   (doto (V1EnvVar.)
-      (.setName (str var-name))
-      (.setValue (str var-value))))
+    (.setName (str var-name))
+    (.setValue (str var-value))))
 
 (defn make-filtered-env-vars
   "Create a Kubernetes API compatible var list from an environment vars map,
@@ -568,7 +568,8 @@
         progress-file-var (get main-env-base task/progress-meta-env-name task/default-progress-env-name)
         progress-file-path (get main-env-base progress-file-var)
         main-env (cond-> main-env-base
-                   ;; Add a default progress file path to the environment when missing
+                   ;; Add a default progress file path to the environment when missing,
+                   ;; preserving compatibility with Meosos + Cook Executor.
                    (not progress-file-path)
                    (assoc progress-file-var (str task-id ".progress")))
         main-env-vars (make-filtered-env-vars main-env)]

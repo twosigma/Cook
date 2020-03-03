@@ -49,7 +49,9 @@
               :disallowed-var-names #{"BADVAR"}
               :init-container {:command ["/bin/sh" "-c" "echo sample init container running"]
                                :image "byrnedo/alpine-curl:latest"}
-              :sidecar {:command ["cook-sidecar" "--file-server-port"]
+              :sidecar {;; Note that Cook automatically appends the :port given below 
+                        ;; as the last argument in this :command vector.
+                        :command ["cook-sidecar" "--file-server-port"]
                         :image "twosigma/cook-sidecar:latest"
                         :port 23906
                         :resource-requirements {:cpu-request 0.1

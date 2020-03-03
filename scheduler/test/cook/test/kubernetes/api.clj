@@ -90,12 +90,14 @@
           (is (not (nil? cook-workdir-volume)))
           (is (not (nil? (.getEmptyDir cook-workdir-volume)))))
 
-        (let [^V1Container container (-> pod .getSpec .getContainers first)]
+        (let [^V1Container container (-> pod .getSpec .getContainers first)
+              container-env (.getEnv container)]
           (is (= "required-cook-job-container" (.getName container)))
           (is (= ["/bin/sh" "-c" "foo && bar"] (.getCommand container)))
           (is (= "alpine:latest" (.getImage container)))
           (is (not (nil? container)))
-          (is (= 5 (count (.getEnv container))))
+          (is (= ["EXECUTOR_PROGRESS_OUTPUT_FILE" "FOO" "HOME" "MESOS_SANDBOX" "SIDECAR_WORKDIR"]
+                 (->> container-env (map #(.getName %)) sort)))
           (is (= "/mnt/sandbox" (.getWorkingDir container)))
           (let [cook-workdir-mount (->> container
                                         .getVolumeMounts
