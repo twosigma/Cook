@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.39.0] - 2020-03-03
+### Added
+- Mapping for Mesos reason `REASON_TASK_KILLED_DURING_LAUNCH`, from @dposada
+- Experimental support for synthetic k8s pods to trigger the cluster autoscaler, from @dposada
+- Metrics to k8s code, from @scrosby
+### Changed
+- Made "Container launch failed" mea culpa, from @dposada
+### Fixed
+- NPE in sandbox calculation when compute cluster is not found, from @scrosby
+
 ## [1.38.4] - 2020-02-13
 ### Changed
 - Integration test improvements, from @dposada and @scrosby
