@@ -1325,8 +1325,11 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :reason/code 4003
     :reason/string "Container launch failed"
     :reason/name :mesos-container-launch-failed
-    :reason/mea-culpa? false
-    :reason/mesos-reason :reason-container-launch-failed}
+    :reason/mea-culpa? true
+    :reason/mesos-reason :reason-container-launch-failed
+    ;; Unless configured otherwise, start counting more
+    ;; than 10 failures against the job's retry limit
+    :reason/failure-limit 10}
    {:db/id (d/tempid :db.part/user)
     :reason/code 4004
     :reason/string "Container update failed"
