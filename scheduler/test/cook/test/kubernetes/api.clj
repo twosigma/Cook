@@ -144,8 +144,8 @@
           ^V1Pod pod (api/task-metadata->pod nil nil task-metadata)
           ^V1PodSpec pod-spec (.getSpec pod)
           node-selector (.getNodeSelector pod-spec)]
-      (is (contains? node-selector "cook_pool"))
-      (is (= pool-name (get node-selector "cook_pool")))))
+      (is (contains? node-selector api/cook-pool-label))
+      (is (= pool-name (get node-selector api/cook-pool-label)))))
 
   (testing "node selector for hostname"
     (let [hostname "test-host"
