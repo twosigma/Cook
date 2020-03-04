@@ -783,7 +783,7 @@
   compute-cluster->task-request map. That is the API any future
   improvements need to stick to."
   [task-requests compute-clusters]
-  (group-by (fn [{:keys [job]}]
+  (group-by (fn [job]
               (nth compute-clusters
                    (-> job :job/uuid hash (mod (count compute-clusters)))))
             task-requests))
@@ -794,7 +794,7 @@
   - There is at least one compute cluster configured to do autoscaling"
   [failures pool-name compute-clusters]
   (try
-    (let [task-requests (map #(.. (first %) (getRequest)) failures)
+    (let [task-requests failures
           num-task-requests (count task-requests)
           autoscaling-compute-clusters (filter #(cc/autoscaling? % pool-name) compute-clusters)
           num-autoscaling-compute-clusters (count autoscaling-compute-clusters)]
@@ -879,7 +879,7 @@
             ;; This call needs to happen *after* launch-matched-tasks!
             ;; in order to avoid autoscaling tasks taking up available
             ;; capacity that was already matched for real Cook tasks.
-            (trigger-autoscaling! failures pool-name compute-clusters)
+            (trigger-autoscaling! (get @pool-name->pending-jobs-atom pool-name) pool-name compute-clusters)
             matched-head-or-no-matches?))
         (catch Throwable t
           (meters/mark! handle-resource-offer!-errors)
