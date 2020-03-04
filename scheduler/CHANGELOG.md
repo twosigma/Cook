@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.39.1] - 2020-03-03
+### Fixed
+- Removed expensive log from `handle-resource-offers!`, from @dposada
+
 ## [1.39.0] - 2020-03-03
 ### Added
 - Mapping for Mesos reason `REASON_TASK_KILLED_DURING_LAUNCH`, from @dposada
