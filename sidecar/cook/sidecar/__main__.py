@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 #
-#  Copyright (c) 2019 Two Sigma Open Source, LLC
+#  Copyright (c) 2020 Two Sigma Open Source, LLC
 #
 #  Permission is hereby granted, free of charge, to any person obtaining a copy
 #  of this software and associated documentation files (the "Software"), to
@@ -21,36 +21,53 @@
 #  IN THE SOFTWARE.
 #
 
+import argparse
 import logging
-import os
 import sys
+import threading
 
-from cook.sidecar.file_server import FileServerApplication
+from cook.sidecar import exit_sentinel, file_server, progress, util
 from cook.sidecar.version import VERSION
 
 
 def main(args=None):
-    if args is None:
-        args = sys.argv[1:]
-    try:
-        logging.info(f'Starting cook.file_server {VERSION}')
-        port, workers = (args + [None] * 2)[0:2]
-        if port is None:
-            logging.error('Must provide port')
-            sys.exit(1)
-        cook_workdir = os.getenv('COOK_WORKDIR')
-        if not cook_workdir:
-            logging.error('COOK_WORKDIR environment variable must be set')
-            sys.exit(1)
-        FileServerApplication(cook_workdir, {
-            'bind': f'0.0.0.0:{port}',
-            'workers': 4 if workers is None else workers,
-        }).run()
+    util.init_logging()
 
-    except Exception as e:
-        logging.exception('exception when running with %s' % args)
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description='Cook Sidecar')
+    parser.add_argument('--exit-sentinel-file-path', metavar='PATH', help='file path which signals this process to exit when it appears')
+    parser.add_argument('--file-server-port', type=int, metavar='PORT', help='file server port number')
+    parser.add_argument('--file-server-threads', type=int, default=2, metavar='THREADS', help='file server threads-per-worker count')
+    parser.add_argument('--file-server-workers', type=int, default=2, metavar='WORKERS', help='file server worker process count')
+    parser.add_argument('--no-file-server', action='store_true', help='disable sandbox file server')
+    parser.add_argument('--no-progress-reporter', action='store_true', help='disable progress reporter')
+    parser.add_argument('--version', action='version', version=f'Cook Sidecar {VERSION}')
+    options = parser.parse_args(args or sys.argv[1:])
+    logging.info(f'OPTIONS = {options}')
 
+    logging.info(f'Starting cook.sidecar {VERSION}')
+
+    all_started_event = threading.Event()
+    exit_code = 0
+
+    # Start progress reporter workers (non-blocking)
+    if not options.no_progress_reporter:
+        progress_trackers = progress.start_progress_trackers()
+
+    # Start exit sentinel file watcher thread
+    if options.exit_sentinel_file_path:
+        exit_sentinel.watch_for_file(options.exit_sentinel_file_path, all_started_event)
+
+    # Start Flask file server (blocking)
+    if not options.no_file_server:
+        file_server_args = [options.file_server_port, options.file_server_workers, options.file_server_threads]
+        exit_code = file_server.start_file_server(all_started_event, file_server_args)
+    # Wait for progress reporter threads (blocking)
+    elif not options.no_progress_reporter:
+        all_started_event.set()
+        progress.await_progress_trackers(progress_trackers)
+
+    # Propagate file server's exit code
+    sys.exit(exit_code)
 
 if __name__ == '__main__':
     main()

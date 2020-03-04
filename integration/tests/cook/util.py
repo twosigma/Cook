@@ -561,6 +561,15 @@ def submit_jobs(cook_url, job_specs, clones=1, pool=None, headers=None, log_requ
         job_specs = [job_specs] * clones
     caller = get_caller()
 
+    def io_redirect(spec):
+        if using_kubernetes() and using_kubernetes_default_shell():
+            # Capture stdout and stderr as files in the sandbox directory
+            # (i.e., mimick the default mesos behavior on k8s).
+            # Assuming custom shell commands handle this logic internally.
+            spec['command'] = f'( {spec["command"]} ) >stdout 2>stderr'
+            logging.debug(f'Rewrote job {spec["uuid"]} command to capture stdout and stderr.')
+        return spec
+
     def full_spec(spec):
         if 'name' not in spec:
             spec['name'] = DEFAULT_JOB_NAME_PREFIX + caller
@@ -569,9 +578,9 @@ def submit_jobs(cook_url, job_specs, clones=1, pool=None, headers=None, log_requ
         else:
             if "name" in spec and spec["name"] is None:
                 del spec["name"]
-            return spec
+            return dict(**spec)
 
-    jobs = [full_spec(j) for j in job_specs]
+    jobs = [io_redirect(full_spec(j)) for j in job_specs]
     request_body = {'jobs': jobs}
     default_pool = default_submit_pool()
     if pool == POOL_UNSPECIFIED:
@@ -1262,11 +1271,8 @@ def retrieve_progress_file_env(cook_url):
     """Retrieves the environment variable used by the cook executor to lookup the progress file."""
     cook_settings = settings(cook_url)
     default_env_value = 'EXECUTOR_PROGRESS_OUTPUT_FILE'
-    if using_kubernetes():
-        return default_env_value
-    else:
-        env_value = get_in(cook_settings, 'executor', 'environment', 'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV')
-        return env_value or default_env_value
+    env_value = get_in(cook_settings, 'executor', 'environment', 'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV')
+    return env_value or default_env_value
 
 
 def get_instance_stats(cook_url, **kwargs):
@@ -1353,10 +1359,22 @@ def is_cook_executor_in_use():
 @functools.lru_cache()
 def is_job_progress_supported():
     """Returns true if the current job execution environment supports progress reporting"""
-    # Mesos supports progress reporting only with Cook Executor,
-    # but our progress reporter sidecar is always enabled on Kubernetes.
-    # TODO: Update predicate below once progress sidecar is enabled in k8s (#1404)
-    return is_cook_executor_in_use() # or using_kubernetes()
+    # Mesos supports progress reporting only with Cook Executor.
+    # Our progress reporter sidecar is always enabled on Kubernetes,
+    # but we only enable the tests if the executor config is also present
+    # (otherwise some tests fail due to missing environment variables, etc).
+    return is_cook_executor_in_use() or (using_kubernetes() and _cook_executor_config())
+
+
+@functools.lru_cache()
+def using_kubernetes_default_shell():
+    """Returns true if Kuberentes scheduler is configured with our default command.
+       Not that this predicate *does not* check whether the Kubernetes scheduler is in use."""
+    cook_url = retrieve_cook_url()
+    cook_settings = settings(cook_url)
+    k8s_custom_shell = get_in(cook_settings, 'kubernetes', 'custom-shell')
+    default_shell = ['/bin/sh', '-c']
+    return k8s_custom_shell == default_shell
 
 
 def slave_cpus(mesos_url, hostname):
