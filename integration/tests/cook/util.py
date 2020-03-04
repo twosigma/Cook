@@ -976,7 +976,10 @@ def list_jobs(cook_url, **kwargs):
     if 'end_ms' in kwargs:
         kwargs['end-ms'] = kwargs.pop('end_ms')
     query_params = urlencode(kwargs)
-    resp = session.get('%s/list?%s' % (cook_url, query_params))
+    list_url = f'{cook_url}/list?{query_params}'
+    resp = session.get(list_url)
+    assert 200 <= resp.status_code <= 400, \
+        f'Request to {list_url} failed unexpectedly after {resp.elapsed.total_seconds()}s:\n{resp.content}'
     return resp
 
 
