@@ -430,7 +430,7 @@
     (when (some? verifying-ssl)
       (.setVerifyingSsl api-client verifying-ssl))
     ; Loading ssl-cert-path must be last SSL operation we do in setting up API Client. API bug.
-    ; See explanation in comments in https://github.com/kubernetes-client/java/pull/200 and issue #199
+    ; See explanation in comments in https://github.com/kubernetes-client/java/pull/200
     (when (some? ssl-cert-path)
       (.setSslCaCert api-client
                      (FileInputStream. (File. ssl-cert-path))))
