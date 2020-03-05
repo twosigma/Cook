@@ -141,9 +141,9 @@
         ^V1Pod outstanding-synthetic-pod-1 (tu/synthetic-pod-helper job-uuid-1 pool-name nil)
         compute-cluster (tu/make-kubernetes-compute-cluster {nil outstanding-synthetic-pod-1} #{pool-name})
         make-task-request-fn (fn [job-uuid]
-                               {:job {:job/resource [{:resource/type :cpus, :resource/amount 0.1}
-                                                     {:resource/type :mem, :resource/amount 32}]
-                                      :job/uuid job-uuid}})
+                               {:job/resource [{:resource/type :cpus, :resource/amount 0.1}
+                                               {:resource/type :mem, :resource/amount 32}]
+                                :job/uuid job-uuid})
         task-requests [(make-task-request-fn job-uuid-1)
                        (make-task-request-fn job-uuid-2)
                        (make-task-request-fn job-uuid-3)]
