@@ -346,15 +346,14 @@
                              :pod-supports-cook-sidecar? false}))
                      (take (- max-pods-outstanding num-synthetic-pods)))]
             (meters/mark! (metrics/meter "synthetic-pod-submit-rate" name) (count task-metadata-seq))
-            (log/info "In" name "compute cluster, launching" (count task-metadata-seq) "synthetic pod(s) for"
-                      (count new-jobs) "new pending job(s) in" synthetic-task-pool-name "pool"
-                      "(there were" (count jobs) "total pending job(s), new and old)")
+            (log/info "In" name "compute cluster, launching" (count task-metadata-seq)
+                      "synthetic pod(s) in" synthetic-task-pool-name "pool")
             (cc/launch-tasks this
                              nil ; offers (not used by KubernetesComputeCluster)
                              task-metadata-seq))))
       (catch Throwable e
-        (log/error e "In" name "compute cluster, encountered error launching synthetic pod(s) for"
-                   (count jobs) "pending job(s) in" pool-name "pool"))))
+        (log/error e "In" name "compute cluster, encountered error launching synthetic pod(s) in"
+                   pool-name "pool"))))
 
   (use-cook-executor? [_] false)
 

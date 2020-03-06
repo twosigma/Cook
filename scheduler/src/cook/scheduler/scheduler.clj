@@ -793,30 +793,22 @@
   - There is at least one pending job
   - There is at least one compute cluster configured to do autoscaling"
   [pending-jobs pool-name compute-clusters]
-  (try
-    (let [num-pending-jobs (count pending-jobs)
-          autoscaling-compute-clusters (filter #(cc/autoscaling? % pool-name) compute-clusters)
-          num-autoscaling-compute-clusters (count autoscaling-compute-clusters)]
-      (when (and (pos? num-autoscaling-compute-clusters) (pos? num-pending-jobs))
-        (let [compute-cluster->jobs (distribute-jobs-to-compute-clusters
-                                      pending-jobs autoscaling-compute-clusters)]
-          (log/info "In" pool-name "pool, autoscaling for" num-pending-jobs
-                    "pending job(s), distributed to compute clusters as follows:"
-                    (->> compute-cluster->jobs
-                         (pc/map-keys cc/compute-cluster-name)
-                         (pc/map-vals count)))
-          (doseq [[compute-cluster jobs-for-cluster] compute-cluster->jobs]
-            (histograms/update! (histograms/histogram
-                                  (metric-title "autoscale!-jobs"
-                                                pool-name
-                                                compute-cluster))
-                                (count jobs-for-cluster))
-            (timers/time!
-              (timers/timer (metric-title "autoscale!-duration" pool-name compute-cluster))
-              (cc/autoscale! compute-cluster pool-name jobs-for-cluster)))
-          (log/info "In" pool-name "pool, done autoscaling"))))
-    (catch Throwable e
-      (log/error e "In" pool-name "pool, encountered error while triggering autoscaling"))))
+  (timers/time!
+    (timers/timer (metric-title "trigger-autoscaling!-duration" pool-name))
+    (try
+      (let [autoscaling-compute-clusters (filter #(cc/autoscaling? % pool-name) compute-clusters)
+            num-autoscaling-compute-clusters (count autoscaling-compute-clusters)]
+        (when (and (pos? num-autoscaling-compute-clusters) (seq pending-jobs))
+          (let [compute-cluster->jobs (distribute-jobs-to-compute-clusters
+                                        pending-jobs autoscaling-compute-clusters)]
+            (log/info "In" pool-name "pool, starting autoscaling")
+            (doseq [[compute-cluster jobs-for-cluster] compute-cluster->jobs]
+              (timers/time!
+                (timers/timer (metric-title "autoscale!-duration" pool-name compute-cluster))
+                (cc/autoscale! compute-cluster pool-name jobs-for-cluster)))
+            (log/info "In" pool-name "pool, done autoscaling"))))
+      (catch Throwable e
+        (log/error e "In" pool-name "pool, encountered error while triggering autoscaling")))))
 
 (defn handle-resource-offers!
   "Gets a list of offers from mesos. Decides what to do with them all--they should all
