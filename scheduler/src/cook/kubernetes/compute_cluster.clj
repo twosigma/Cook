@@ -294,7 +294,7 @@
   (autoscaling? [_ pool-name]
     (-> synthetic-pods-config :pools (contains? pool-name)))
 
-  (autoscale! [this pool-name task-requests]
+  (autoscale! [this pool-name jobs]
     (try
       (assert (cc/autoscaling? this pool-name)
               (str "In " name " compute cluster, request to autoscale despite invalid / missing config"))
@@ -309,13 +309,13 @@
           (log/info "In" name "compute cluster, cannot launch more synthetic pods")
           (let [using-pools? (config/default-pool)
                 synthetic-task-pool-name (when using-pools? pool-name)
-                new-task-requests (remove (fn [{:keys [job/uuid]}]
-                                            (some #(= (str uuid) (synthetic-pod->job-uuid %))
-                                                  outstanding-synthetic-pods))
-                                          task-requests)
+                new-jobs (remove (fn [{:keys [job/uuid]}]
+                                   (some #(= (str uuid) (synthetic-pod->job-uuid %))
+                                         outstanding-synthetic-pods))
+                                 jobs)
                 sidecar-resource-requirements (-> (config/kubernetes) :sidecar :resource-requirements)
                 task-metadata-seq
-                (->> new-task-requests
+                (->> new-jobs
                      (map (fn [{:keys [job/uuid] :as job}]
                             {:task-id (str api/cook-synthetic-pod-name-prefix "-" pool-name "-" uuid)
                              :command {:user user :value command}
@@ -347,14 +347,14 @@
                      (take (- max-pods-outstanding num-synthetic-pods)))]
             (meters/mark! (metrics/meter "synthetic-pod-submit-rate" name) (count task-metadata-seq))
             (log/info "In" name "compute cluster, launching" (count task-metadata-seq) "synthetic pod(s) for"
-                      (count new-task-requests) "new un-matched task(s) in" synthetic-task-pool-name "pool"
-                      "(there were" (count task-requests) "total un-matched task(s), new and old)")
+                      (count new-jobs) "new pending job(s) in" synthetic-task-pool-name "pool"
+                      "(there were" (count jobs) "total pending job(s), new and old)")
             (cc/launch-tasks this
                              nil ; offers (not used by KubernetesComputeCluster)
                              task-metadata-seq))))
       (catch Throwable e
         (log/error e "In" name "compute cluster, encountered error launching synthetic pod(s) for"
-                   (count task-requests) "un-matched task(s) in" pool-name "pool"))))
+                   (count jobs) "pending job(s) in" pool-name "pool"))))
 
   (use-cook-executor? [_] false)
 
