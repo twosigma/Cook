@@ -5,8 +5,8 @@
             [cook.test.testutil :as tu]
             [datomic.api :as d])
   (:import (io.kubernetes.client.models V1Container V1ContainerState V1ContainerStateWaiting V1ContainerStatus
-                                        V1EnvVar V1Node V1NodeSpec V1ObjectMeta V1Pod V1PodSpec V1PodStatus V1Taint
-                                        V1Volume V1VolumeMount)))
+                                        V1EnvVar V1Node V1NodeSpec V1ObjectMeta V1Pod V1PodCondition V1PodSpec
+                                        V1PodStatus V1Taint V1Volume V1VolumeMount)))
 
 (deftest test-get-consumption
   (testing "correctly computes consumption for a single pod"
@@ -230,8 +230,11 @@
 
   (testing "no container status -> waiting"
     (let [pod (V1Pod.)
-          pod-status (V1PodStatus.)]
+          pod-status (V1PodStatus.)
+          pod-metadata (V1ObjectMeta.)]
       (.setStatus pod pod-status)
+      (.setName pod-metadata "test-pod")
+      (.setMetadata pod pod-metadata)
       (is (= {:state :pod/waiting
               :reason "Pending"}
              (api/pod->synthesized-pod-state pod)))))
@@ -248,7 +251,6 @@
       (.setName container-status "required-cook-job-container")
       (.setContainerStatuses pod-status [container-status])
       (.setStatus pod pod-status)
-
       (is (= {:state :pod/waiting
               :reason "waiting"}
              (api/pod->synthesized-pod-state pod)))))
@@ -261,6 +263,22 @@
       (.setStatus pod pod-status)
       (is (= {:state :pod/failed
               :reason "SomeSillyReason"}
+             (api/pod->synthesized-pod-state pod)))))
+
+  (testing "unschedulable pod"
+    (let [pod (V1Pod.)
+          pod-status (V1PodStatus.)
+          pod-metadata (V1ObjectMeta.)
+          pod-condition (V1PodCondition.)]
+      (.setType pod-condition "PodScheduled")
+      (.setStatus pod-condition "False")
+      (.setReason pod-condition "Unschedulable")
+      (.addConditionsItem pod-status pod-condition)
+      (.setStatus pod pod-status)
+      (.setName pod-metadata "test-pod")
+      (.setMetadata pod pod-metadata)
+      (is (= {:state :pod/failed
+              :reason "Unschedulable"}
              (api/pod->synthesized-pod-state pod))))))
 
 (deftest test-node-schedulable

@@ -19,7 +19,7 @@
     (io.kubernetes.client.models V1Affinity V1Container V1ContainerPort V1ContainerState V1DeleteOptions
                                  V1DeleteOptionsBuilder V1EmptyDirVolumeSource V1EnvVar V1EnvVarBuilder
                                  V1HostPathVolumeSource V1HTTPGetAction V1Node V1NodeAffinity V1NodeSelector
-                                 V1NodeSelectorRequirement V1NodeSelectorTerm V1ObjectMeta V1Pod
+                                 V1NodeSelectorRequirement V1NodeSelectorTerm V1ObjectMeta V1Pod V1PodCondition
                                  V1PodSecurityContext V1PodSpec V1PodStatus V1Probe V1ResourceRequirements
                                  V1Toleration V1VolumeBuilder V1Volume V1VolumeMount)
     (io.kubernetes.client.util Watch Yaml)
@@ -685,6 +685,23 @@
   [^V1Pod pod]
   (-> pod .getMetadata .getName))
 
+(defn synthetic-pod?
+  "Given a pod name, returns true if it has the synthetic pod prefix"
+  [pod-name]
+  (str/starts-with? pod-name cook-synthetic-pod-name-prefix))
+
+(defn pod-unschedulable?
+  "Returns true if the given pod name is not a synthetic
+  pod and the given pod status has a PodScheduled
+  condition with status False and reason Unschedulable"
+  [pod-name ^V1PodStatus pod-status]
+  (and (some->> pod-name synthetic-pod? not)
+       (some->> pod-status .getConditions
+                (some (fn pod-condition-unschedulable?
+                        [^V1PodCondition condition]
+                        (and (= (.getType condition) "PodScheduled")
+                             (= (.getStatus condition) "False")
+                             (= (.getReason condition) "Unschedulable")))))))
 
 (defn pod->synthesized-pod-state
   "From a V1Pod object, determine the state of the pod, waiting running, succeeded, failed or unknown.
@@ -738,18 +755,29 @@
               :default
               {:state :pod/unknown
                :reason "Unknown"}))
-          (let [phase (.getPhase pod-status)]
+          (cond
             ; https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/#pod-phase
-            (case phase
-              ; Failed means:
-              ; All Containers in the Pod have terminated, and at least
-              ; one Container has terminated in failure. That is, the
-              ; Container either exited with non-zero status or was
-              ; terminated by the system.
-              "Failed" {:state :pod/failed
-                        :reason (.getReason pod-status)}
-              {:state :pod/waiting
-               :reason "Pending"})))))))
+            ; Failed means:
+            ; All Containers in the Pod have terminated, and at least
+            ; one Container has terminated in failure. That is, the
+            ; Container either exited with non-zero status or was
+            ; terminated by the system.
+            (= (.getPhase pod-status) "Failed") {:state :pod/failed
+                                                 :reason (.getReason pod-status)}
+
+            ; If the pod is unschedulable, then we should consider it failed. Note that
+            ; pod-unschedulable? will never return true for synthetic pods, because
+            ; they will be unschedulable by design, in order to trigger the cluster
+            ; autoscaler to scale up. For non-synthetic pods, however, this state
+            ; likely means something changed about the node we matched to. For example,
+            ; if the ToBeDeletedByClusterAutoscaler taint gets added between when we
+            ; saw available capacity on a node and when we submitted the pod to that
+            ; node, then the pod will never get scheduled.
+            (pod-unschedulable? (V1Pod->name pod) pod-status) {:state :pod/failed
+                                                               :reason "Unschedulable"}
+
+            :else {:state :pod/waiting
+                   :reason "Pending"}))))))
 
 (defn pod->sandbox-file-server-container-state
   "From a V1Pod object, determine the state of the sandbox file server container, running, not running, or unknown.

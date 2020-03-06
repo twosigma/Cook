@@ -5,7 +5,7 @@
             [cook.kubernetes.controller :as controller]
             [cook.test.testutil :as tu])
   (:import (io.kubernetes.client ApiException)
-           (io.kubernetes.client.models V1ObjectMeta V1Pod V1PodStatus)))
+           (io.kubernetes.client.models V1ObjectMeta V1Pod V1PodCondition V1PodStatus)))
 
 
 (deftest test-k8s-actual-state-equivalent?
@@ -23,7 +23,8 @@
 (deftest test-process
   (let [name "TestPodName"
         reason (atom nil)
-        do-process (fn [cook-expected-state k8s-actual-state & {:keys [create-namespaced-pod-fn]
+        do-process (fn [cook-expected-state k8s-actual-state & {:keys [create-namespaced-pod-fn
+                                                                       ^V1PodCondition pod-condition]
                                                                 :or {create-namespaced-pod-fn (constantly true)}}]
                      (reset! reason nil)
                      (with-redefs [controller/delete-pod (fn [_ _ cook-expected-state-dict _]
@@ -36,7 +37,9 @@
                                                                         (reset! reason (:reason status)))
                                    api/create-namespaced-pod create-namespaced-pod-fn]
                        (let [pod (tu/pod-helper name "hostA" {:cpus 1.0 :mem 100.0})
-                             _ (.setStatus pod (V1PodStatus.))
+                             pod-status (V1PodStatus.)
+                             _ (when pod-condition (.addConditionsItem pod-status pod-condition))
+                             _ (.setStatus pod pod-status)
                              cook-expected-state-map
                              (atom {name {:cook-expected-state cook-expected-state
                                           :launch-pod {:pod pod}}})]
@@ -74,7 +77,12 @@
     (is (nil? (do-process :cook-expected-state/starting :missing :create-namespaced-pod-fn
                           (fn [_ _ _] (throw (ApiException. nil nil 422 nil nil))))))
     (is (= :cook-expected-state/completed (do-process :cook-expected-state/starting :pod/succeeded)))
-    (is (= :cook-expected-state/completed (do-process :cook-expected-state/starting :pod/failed)))
+    (is (= :cook-expected-state/completed (do-process :cook-expected-state/starting :pod/failed
+                                                      :pod-condition (doto (V1PodCondition.)
+                                                                       (.setType "PodScheduled")
+                                                                       (.setStatus "False")
+                                                                       (.setReason "Unschedulable")))))
+    (is (= :reason-scheduling-failed-on-host @reason))
     (is (= :cook-expected-state/running (do-process :cook-expected-state/starting :pod/running)))
     (is (= :reason-running @reason))
     (is (= :cook-expected-state/completed (do-process :cook-expected-state/starting :pod/unknown)))
