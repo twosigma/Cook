@@ -418,7 +418,7 @@
     - If google-credentials is specified, loads the credentials from the file at google-credentials and generates
       a bearer token for authenticating with kubernetes
     - bearer-token-refresh-seconds: interval to refresh the bearer token"
-  [^String config-file base-path ^String google-credentials bearer-token-refresh-seconds verifying-ssl]
+  [^String config-file base-path ^String google-credentials bearer-token-refresh-seconds verifying-ssl ^String ssl-cert-path]
   (let [api-client (if (some? config-file)
                      (Config/fromConfig config-file)
                      (ApiClient.))]
@@ -428,6 +428,11 @@
       (.setBasePath api-client base-path))
     (when (some? verifying-ssl)
       (.setVerifyingSsl api-client verifying-ssl))
+    ; Loading ssl-cert-path must be last SSL operation we do in setting up API Client. API bug.
+    ; See explanation in comments in https://github.com/kubernetes-client/java/pull/200
+    (when (some? ssl-cert-path)
+      (.setSslCaCert api-client
+                     (FileInputStream. (File. ssl-cert-path))))
     (when google-credentials
       (with-open [file-stream (FileInputStream. (File. google-credentials))]
         (let [credentials (GoogleCredentials/fromStream file-stream)
@@ -462,6 +467,7 @@
            base-path
            google-credentials
            verifying-ssl
+           ca-cert-path
            bearer-token-refresh-seconds
            namespace
            scan-frequency-seconds
@@ -479,7 +485,7 @@
   (guard-invalid-synthetic-pods-config compute-cluster-name synthetic-pods)
   (let [conn cook.datomic/conn
         cluster-entity-id (get-or-create-cluster-entity-id conn compute-cluster-name)
-        api-client (make-api-client config-file base-path google-credentials bearer-token-refresh-seconds verifying-ssl)
+        api-client (make-api-client config-file base-path google-credentials bearer-token-refresh-seconds verifying-ssl ca-cert-path)
         compute-cluster (->KubernetesComputeCluster api-client compute-cluster-name cluster-entity-id
                                                     (:match-trigger-chan trigger-chans)
                                                     exit-code-syncer-state (atom {}) (atom {})
