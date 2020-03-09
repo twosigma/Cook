@@ -776,48 +776,39 @@
                                        {:job-uuid->reserved-host (apply dissoc job-uuid->reserved-host matched-job-uuids)
                                         :launched-job-uuids (into matched-job-uuids launched-job-uuids)})))
 
-(defn distribute-task-requests-to-compute-clusters
-  "Given a collection of un-matched task requests and a collection of
-  compute clusters, distributes the task requests amongst the compute
+(defn distribute-jobs-to-compute-clusters
+  "Given a collection of pending jobs and a collection of
+  compute clusters, distributes the jobs amongst the compute
   clusters, using a hash of the pending job's uuid. Returns a
   compute-cluster->task-request map. That is the API any future
   improvements need to stick to."
-  [task-requests compute-clusters]
-  (group-by (fn [{:keys [job]}]
+  [pending-jobs compute-clusters]
+  (group-by (fn [job]
               (nth compute-clusters
                    (-> job :job/uuid hash (mod (count compute-clusters)))))
-            task-requests))
+            pending-jobs))
 
 (defn trigger-autoscaling!
-  "Autoscales the given pool to satisfy the given match failures (i.e. pending jobs), if:
-  - There is at least one failure
+  "Autoscales the given pool to satisfy the given pending jobs, if:
+  - There is at least one pending job
   - There is at least one compute cluster configured to do autoscaling"
-  [failures pool-name compute-clusters]
-  (try
-    (let [task-requests (map #(.. (first %) (getRequest)) failures)
-          num-task-requests (count task-requests)
-          autoscaling-compute-clusters (filter #(cc/autoscaling? % pool-name) compute-clusters)
-          num-autoscaling-compute-clusters (count autoscaling-compute-clusters)]
-      (when (and (pos? num-autoscaling-compute-clusters) (pos? num-task-requests))
-        (let [compute-cluster->task-requests (distribute-task-requests-to-compute-clusters
-                                               task-requests autoscaling-compute-clusters)]
-          (log/info "In" pool-name "pool, autoscaling for" num-task-requests
-                    "un-matched task(s), distributed to compute clusters as follows:"
-                    (->> compute-cluster->task-requests
-                         (pc/map-keys cc/compute-cluster-name)
-                         (pc/map-vals count)))
-          (doseq [[compute-cluster requests-for-cluster] compute-cluster->task-requests]
-            (histograms/update! (histograms/histogram
-                                  (metric-title "autoscale!-tasks"
-                                                pool-name
-                                                compute-cluster))
-                                (count requests-for-cluster))
-            (timers/time!
-              (timers/timer (metric-title "autoscale!-duration" pool-name compute-cluster))
-              (cc/autoscale! compute-cluster pool-name requests-for-cluster)))
-          (log/info "In" pool-name "pool, done autoscaling"))))
-    (catch Throwable e
-      (log/error e "In" pool-name "pool, encountered error while triggering autoscaling"))))
+  [pending-jobs pool-name compute-clusters]
+  (timers/time!
+    (timers/timer (metric-title "trigger-autoscaling!-duration" pool-name))
+    (try
+      (let [autoscaling-compute-clusters (filter #(cc/autoscaling? % pool-name) compute-clusters)
+            num-autoscaling-compute-clusters (count autoscaling-compute-clusters)]
+        (when (and (pos? num-autoscaling-compute-clusters) (seq pending-jobs))
+          (let [compute-cluster->jobs (distribute-jobs-to-compute-clusters
+                                        pending-jobs autoscaling-compute-clusters)]
+            (log/info "In" pool-name "pool, starting autoscaling")
+            (doseq [[compute-cluster jobs-for-cluster] compute-cluster->jobs]
+              (timers/time!
+                (timers/timer (metric-title "autoscale!-duration" pool-name compute-cluster))
+                (cc/autoscale! compute-cluster pool-name jobs-for-cluster)))
+            (log/info "In" pool-name "pool, done autoscaling"))))
+      (catch Throwable e
+        (log/error e "In" pool-name "pool, encountered error while triggering autoscaling")))))
 
 (defn handle-resource-offers!
   "Gets a list of offers from mesos. Decides what to do with them all--they should all
@@ -879,7 +870,7 @@
             ;; This call needs to happen *after* launch-matched-tasks!
             ;; in order to avoid autoscaling tasks taking up available
             ;; capacity that was already matched for real Cook tasks.
-            (trigger-autoscaling! failures pool-name compute-clusters)
+            (trigger-autoscaling! (get @pool-name->pending-jobs-atom pool-name) pool-name compute-clusters)
             matched-head-or-no-matches?))
         (catch Throwable t
           (meters/mark! handle-resource-offer!-errors)

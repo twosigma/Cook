@@ -1989,23 +1989,16 @@
                                                                 :task-requests task-requests}))
                           (compute-cluster-name [_] "test-compute-cluster"))
         conn (restore-fresh-database! "datomic:mem://test-trigger-autoscaling")
-        make-task-request-fn (fn []
-                               (let [job-id (create-dummy-job conn)
-                                     job (->> job-id (d/entity (d/db conn)) util/job-ent->map)
-                                     task-request (sched/make-task-request (d/db conn) job nil)]
-                                 task-request))
-        make-match-failure-fn (fn [task-request]
-                                (let [failure (fu/assignment-failure :mem)
-                                      assignment-result (SimpleAssignmentResult. [failure] nil task-request)]
-                                  [assignment-result]))
-        task-request-1 (make-task-request-fn)
-        task-request-2 (make-task-request-fn)
-        task-request-3 (make-task-request-fn)
-        failures [(make-match-failure-fn task-request-1)
-                  (make-match-failure-fn task-request-2)
-                  (make-match-failure-fn task-request-3)]]
-    (sched/trigger-autoscaling! failures "test-pool" [compute-cluster])
+        make-job-fn (fn []
+                      (let [job-id (create-dummy-job conn)
+                            job (->> job-id (d/entity (d/db conn)) util/job-ent->map)]
+                        job))
+        job-1 (make-job-fn)
+        job-2 (make-job-fn)
+        job-3 (make-job-fn)
+        jobs [job-1 job-2 job-3]]
+    (sched/trigger-autoscaling! jobs "test-pool" [compute-cluster])
     (is (= 1 (count @autoscale!-invocations)))
     (is (= compute-cluster (-> @autoscale!-invocations first :compute-cluster)))
     (is (= "test-pool" (-> @autoscale!-invocations first :pool-name)))
-    (is (= [task-request-1 task-request-2 task-request-3] (-> @autoscale!-invocations first :task-requests)))))
+    (is (= [job-1 job-2 job-3] (-> @autoscale!-invocations first :task-requests)))))
