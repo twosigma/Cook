@@ -219,7 +219,7 @@
       ; causing breakage.
       ; In addition, it captures controller/update-cook-expected-state and prevents with-redefs on
       ; update-cook-expected-state from working correctly in unit tests.
-      (let [timer-context (timers/start (metrics/timer "compute-cluster-launch-tasks" name))
+      (let [timer-context (timers/start (metrics/timer "cc-launch-tasks" name))
             pod-namespace (get-namespace-from-task-metadata namespace-config task-metadata)
             pod-name (:task-id task-metadata)
             ^V1Pod pod (api/task-metadata->pod pod-namespace name task-metadata)
@@ -237,7 +237,7 @@
   (kill-task [this task-id]
     ; Note we can't use timer/time! because it wraps the body in a Callable, which rebinds 'this' to another 'this'
     ; causing breakage.
-    (let [timer-context (timers/start (metrics/timer "compute-cluster-kill-tasks" name))]
+    (let [timer-context (timers/start (metrics/timer "cc-kill-tasks" name))]
       (controller/update-cook-expected-state this task-id {:cook-expected-state :cook-expected-state/killed})
       (.stop timer-context)))
 

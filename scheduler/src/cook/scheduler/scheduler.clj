@@ -804,7 +804,7 @@
             (log/info "In" pool-name "pool, starting autoscaling")
             (doseq [[compute-cluster jobs-for-cluster] compute-cluster->jobs]
               (timers/time!
-                (timers/timer (metric-title "autoscale!-duration" pool-name compute-cluster))
+                (timers/timer (metric-title "autoscale-duration" pool-name compute-cluster))
                 (cc/autoscale! compute-cluster pool-name jobs-for-cluster)))
             (log/info "In" pool-name "pool, done autoscaling"))))
       (catch Throwable e
