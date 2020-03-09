@@ -147,13 +147,13 @@
             pool-name "test-pool"
             ^V1Pod outstanding-synthetic-pod-1 (tu/synthetic-pod-helper job-uuid-1 pool-name nil)
             compute-cluster (tu/make-kubernetes-compute-cluster {nil outstanding-synthetic-pod-1} #{pool-name} "user")
-            task-requests [(make-job-fn job-uuid-1 nil)
-                           (make-job-fn job-uuid-2 nil)
-                           (make-job-fn job-uuid-3 nil)]
+            pending-jobs [(make-job-fn job-uuid-1 nil)
+                          (make-job-fn job-uuid-2 nil)
+                          (make-job-fn job-uuid-3 nil)]
             launched-pods-atom (atom [])]
         (with-redefs [api/launch-pod (fn [_ _ cook-expected-state-dict _]
                                        (swap! launched-pods-atom conj cook-expected-state-dict))]
-          (cc/autoscale! compute-cluster pool-name task-requests))
+          (cc/autoscale! compute-cluster pool-name pending-jobs))
         (is (= 2 (count @launched-pods-atom)))
         (is (= job-uuid-2 (-> @launched-pods-atom (nth 0) :launch-pod :pod kcc/synthetic-pod->job-uuid)))
         (is (= job-uuid-3 (-> @launched-pods-atom (nth 1) :launch-pod :pod kcc/synthetic-pod->job-uuid)))))
@@ -163,12 +163,12 @@
             job-uuid-2 (str (UUID/randomUUID))
             pool-name "test-pool"
             compute-cluster (tu/make-kubernetes-compute-cluster {} #{pool-name} nil)
-            task-requests [(make-job-fn job-uuid-1 "user-1")
-                           (make-job-fn job-uuid-2 "user-2")]
+            pending-jobs [(make-job-fn job-uuid-1 "user-1")
+                          (make-job-fn job-uuid-2 "user-2")]
             launched-pods-atom (atom [])]
         (with-redefs [api/launch-pod (fn [_ _ cook-expected-state-dict _]
                                        (swap! launched-pods-atom conj cook-expected-state-dict))]
-          (cc/autoscale! compute-cluster pool-name task-requests))
+          (cc/autoscale! compute-cluster pool-name pending-jobs))
         (is (= 2 (count @launched-pods-atom)))
         (is (= "user-1" (-> @launched-pods-atom (nth 0) :launch-pod :pod .getMetadata .getNamespace)))
         (is (= "user-2" (-> @launched-pods-atom (nth 1) :launch-pod :pod .getMetadata .getNamespace)))))))
