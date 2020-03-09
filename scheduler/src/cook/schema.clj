@@ -1224,6 +1224,13 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :reason/name :running
     :reason/mea-culpa? false
     :reason/mesos-reason :reason-running}
+   {:db/id (d/tempid :db.part/user)
+    :reason/code 1006
+    :reason/string "Scheduling failed on host"
+    :reason/name :scheduling-failed-on-host
+    :reason/mea-culpa? true
+    :reason/mesos-reason :reason-scheduling-failed-on-host
+    :reason/failure-limit 3}
 
    {:db/id (d/tempid :db.part/user)
     :reason/code 2000
