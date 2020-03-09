@@ -294,7 +294,7 @@
   (autoscaling? [_ pool-name]
     (-> synthetic-pods-config :pools (contains? pool-name)))
 
-  (autoscale! [this pool-name task-requests]
+  (autoscale! [this pool-name jobs]
     (try
       (assert (cc/autoscaling? this pool-name)
               (str "In " name " compute cluster, request to autoscale despite invalid / missing config"))
@@ -309,15 +309,15 @@
           (log/info "In" name "compute cluster, cannot launch more synthetic pods")
           (let [using-pools? (config/default-pool)
                 synthetic-task-pool-name (when using-pools? pool-name)
-                new-task-requests (remove (fn [{{:keys [job/uuid]} :job}]
-                                            (some #(= (str uuid) (synthetic-pod->job-uuid %))
-                                                  outstanding-synthetic-pods))
-                                          task-requests)
+                new-jobs (remove (fn [{:keys [job/uuid]}]
+                                   (some #(= (str uuid) (synthetic-pod->job-uuid %))
+                                         outstanding-synthetic-pods))
+                                 jobs)
                 sidecar-resource-requirements (-> (config/kubernetes) :sidecar :resource-requirements)
                 user-from-synthetic-pods-config user
                 task-metadata-seq
-                (->> new-task-requests
-                     (map (fn [{{:keys [job/user job/uuid] :as job} :job}]
+                (->> new-jobs
+                     (map (fn [{:keys [job/user job/uuid] :as job}]
                             {:task-id (str api/cook-synthetic-pod-name-prefix "-" pool-name "-" uuid)
                              :command {:user (or user-from-synthetic-pods-config user)
                                        :value command}
@@ -348,15 +348,14 @@
                              :pod-supports-cook-sidecar? false}))
                      (take (- max-pods-outstanding num-synthetic-pods)))]
             (meters/mark! (metrics/meter "synthetic-pod-submit-rate" name) (count task-metadata-seq))
-            (log/info "In" name "compute cluster, launching" (count task-metadata-seq) "synthetic pod(s) for"
-                      (count new-task-requests) "new un-matched task(s) in" synthetic-task-pool-name "pool"
-                      "(there were" (count task-requests) "total un-matched task(s), new and old)")
+            (log/info "In" name "compute cluster, launching" (count task-metadata-seq)
+                      "synthetic pod(s) in" synthetic-task-pool-name "pool")
             (cc/launch-tasks this
                              nil ; offers (not used by KubernetesComputeCluster)
                              task-metadata-seq))))
       (catch Throwable e
-        (log/error e "In" name "compute cluster, encountered error launching synthetic pod(s) for"
-                   (count task-requests) "un-matched task(s) in" pool-name "pool"))))
+        (log/error e "In" name "compute cluster, encountered error launching synthetic pod(s) in"
+                   pool-name "pool"))))
 
   (use-cook-executor? [_] false)
 
@@ -421,7 +420,7 @@
     - If google-credentials is specified, loads the credentials from the file at google-credentials and generates
       a bearer token for authenticating with kubernetes
     - bearer-token-refresh-seconds: interval to refresh the bearer token"
-  [^String config-file base-path ^String google-credentials bearer-token-refresh-seconds verifying-ssl]
+  [^String config-file base-path ^String google-credentials bearer-token-refresh-seconds verifying-ssl ^String ssl-cert-path]
   (let [api-client (if (some? config-file)
                      (Config/fromConfig config-file)
                      (ApiClient.))]
@@ -431,6 +430,11 @@
       (.setBasePath api-client base-path))
     (when (some? verifying-ssl)
       (.setVerifyingSsl api-client verifying-ssl))
+    ; Loading ssl-cert-path must be last SSL operation we do in setting up API Client. API bug.
+    ; See explanation in comments in https://github.com/kubernetes-client/java/pull/200
+    (when (some? ssl-cert-path)
+      (.setSslCaCert api-client
+                     (FileInputStream. (File. ssl-cert-path))))
     (when google-credentials
       (with-open [file-stream (FileInputStream. (File. google-credentials))]
         (let [credentials (GoogleCredentials/fromStream file-stream)
@@ -464,6 +468,7 @@
            base-path
            google-credentials
            verifying-ssl
+           ca-cert-path
            bearer-token-refresh-seconds
            namespace
            scan-frequency-seconds
@@ -481,7 +486,7 @@
   (guard-invalid-synthetic-pods-config compute-cluster-name synthetic-pods)
   (let [conn cook.datomic/conn
         cluster-entity-id (get-or-create-cluster-entity-id conn compute-cluster-name)
-        api-client (make-api-client config-file base-path google-credentials bearer-token-refresh-seconds verifying-ssl)
+        api-client (make-api-client config-file base-path google-credentials bearer-token-refresh-seconds verifying-ssl ca-cert-path)
         compute-cluster (->KubernetesComputeCluster api-client compute-cluster-name cluster-entity-id
                                                     (:match-trigger-chan trigger-chans)
                                                     exit-code-syncer-state (atom {}) (atom {})

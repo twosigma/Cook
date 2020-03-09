@@ -115,17 +115,12 @@
                                      @(:pool->fenzo-atom compute-cluster)
                                      mesos-status))
 
-(defn synthetic-pod?
-  "Given a pod name, returns true if it has the synthetic pod prefix"
-  [pod-name]
-  (str/starts-with? pod-name api/cook-synthetic-pod-name-prefix))
-
 (defn handle-pod-submission-failed
   "Marks the corresponding job instance as failed in the database and
   returns the `completed` cook expected state"
   [{:keys [name] :as compute-cluster} pod-name]
   (log/info "In compute cluster" name ", pod" pod-name "submission failed")
-  (when-not (synthetic-pod? pod-name)
+  (when-not (api/synthetic-pod? pod-name)
     (let [instance-id pod-name
           status {:reason :reason-task-invalid
                   :state :task-failed
@@ -180,6 +175,11 @@
       (do
         (log/info "In compute cluster" name ", encountered OutOfcpu pod status reason for" instance-id)
         :reason-invalid-offers)
+
+      (api/pod-unschedulable? instance-id pod-status)
+      (do
+        (log/info "In compute cluster" name ", encountered unschedulable pod" instance-id)
+        :reason-scheduling-failed-on-host)
 
       :default
       (do
@@ -246,7 +246,7 @@
    Looks at the pod status, updates datomic (with success, failure, and possibly mea culpa),
    and return a new cook expected state of :cook-expected-state/completed."
   [compute-cluster pod-name k8s-actual-state & {:keys [reason]}]
-  (when-not (synthetic-pod? pod-name)
+  (when-not (api/synthetic-pod? pod-name)
     (let [{:keys [status exit-code]} (calculate-pod-status compute-cluster pod-name k8s-actual-state :reason reason)]
       (write-status-to-datomic compute-cluster status)
       (when exit-code
@@ -259,7 +259,7 @@
 (defn handle-pod-started
   "A pod has started. So now we need to update the status in datomic."
   [compute-cluster {:keys [running-metric-timer]} pod-name]
-  (when-not (synthetic-pod? pod-name)
+  (when-not (api/synthetic-pod? pod-name)
     (let [instance-id pod-name
           ; We leak mesos terminology here ('task') because of backward compatibility.
           status {:task-id {:value instance-id}
@@ -279,7 +279,7 @@
 (defn record-sandbox-url
   "Record the sandbox file server URL in datomic."
   [pod-name {:keys [pod]}]
-  (when-not (synthetic-pod? pod-name)
+  (when-not (api/synthetic-pod? pod-name)
     (let [task-id (-> pod .getMetadata .getName)
           pod-ip (-> pod .getStatus .getPodIP)
           {:keys [default-workdir pod-ip->hostname-fn sidecar]} (config/kubernetes)
@@ -299,7 +299,7 @@
 (defn handle-pod-killed
   "A pod was killed. So now we need to update the status in datomic and store the exit code."
   [compute-cluster pod-name]
-  (when-not (synthetic-pod? pod-name)
+  (when-not (api/synthetic-pod? pod-name)
     (let [instance-id pod-name
           ; We leak mesos terminology here ('task') because of backward compatibility.
           status {:task-id {:value instance-id}
