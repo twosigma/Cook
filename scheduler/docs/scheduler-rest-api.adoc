@@ -83,6 +83,7 @@ The request body is list of job maps with each entry containing a map of the fol
 |`env` | JSON map | A map of environment variables to be provided to the job.
 |`constraints` | list | list of constraints in form [attribute, operator, pattern]
 |`disable_mea_culpa_retries` | boolean | Flag to disable mea culpa retries. If true, mea culpa retries will count against the job's retry count.
+|`checkpoint` | JSON map | optional configuration to enable checkpointing.
 |====
 
 .URI JSON Schema (see http://mesos.apache.org/documentation/latest/fetcher/[the Mesos docs] for details)

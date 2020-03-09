@@ -871,7 +871,7 @@
   [db user task-constraints gpu-enabled? new-group-uuids
    {:keys [cpus mem gpus uuid command priority max-retries max-runtime expected-runtime name
            uris ports env labels container group application disable-mea-culpa-retries
-           constraints executor progress-output-file progress-regex-string datasets]
+           constraints executor progress-output-file progress-regex-string datasets checkpoint]
     :or {group nil
          disable-mea-culpa-retries false}
     :as job}
@@ -910,7 +910,8 @@
                  (when progress-output-file {:progress-output-file progress-output-file})
                  (when progress-regex-string {:progress-regex-string progress-regex-string})
                  (when application {:application application})
-                 (when datasets {:datasets (munge-datasets datasets)}))
+                 (when datasets {:datasets (munge-datasets datasets)})
+                 (when checkpoint {:checkpoint checkpoint}))
         params (get-in munged [:container :docker :parameters])]
     (s/validate Job munged)
     (when (and (:gpus munged) (not gpu-enabled?))
