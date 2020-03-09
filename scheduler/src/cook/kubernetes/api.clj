@@ -22,7 +22,7 @@
                                  V1NodeSelectorRequirement V1NodeSelectorTerm V1ObjectMeta V1Pod V1PodCondition
                                  V1PodSecurityContext V1PodSpec V1PodStatus V1Probe V1ResourceRequirements
                                  V1Toleration V1VolumeBuilder V1Volume V1VolumeMount)
-    (io.kubernetes.client.util Watch Yaml)
+    (io.kubernetes.client.util Watch)
     (java.util.concurrent Executors ExecutorService)))
 
 
