@@ -28,6 +28,7 @@
 
 (def cook-pod-label "twosigma.com/cook-scheduler-job")
 (def cook-synthetic-pod-job-uuid-label "twosigma.com/cook-scheduler-synthetic-pod-job-uuid")
+(def cook-pool-label "cook-pool")
 (def cook-workdir-volume-name "cook-workdir-volume")
 (def cook-job-pod-priority-class "cook-workload")
 (def cook-synthetic-pod-priority-class "synthetic-pod")
@@ -669,7 +670,7 @@
       ; we're launching in. This is technically only needed for
       ; synthetic pods (which don't specify a node name), but it
       ; doesn't hurt to add it for all pods we submit.
-      (add-node-selector pod-spec "cook_pool" pool-name))
+      (add-node-selector pod-spec cook-pool-label pool-name))
     (.setVolumes pod-spec (filterv some? (conj volumes init-container-workdir-volume sidecar-workdir-volume)))
     (.setSecurityContext pod-spec security-context)
     (.setPriorityClassName pod-spec pod-priority-class)

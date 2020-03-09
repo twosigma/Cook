@@ -56,7 +56,7 @@ $gcloud container node-pools create cook-pool-k8s-gamma \
        --enable-autoscaling \
        --min-nodes=3 \
        --max-nodes=6 \
-       --node-labels=cook_pool=k8s-gamma
+       --node-labels=cook-pool=k8s-gamma
 $gcloud container node-pools create cook-pool-k8s-alpha \
        --zone "$ZONE" \
        --cluster="$CLUSTERNAME" \
@@ -66,7 +66,7 @@ $gcloud container node-pools create cook-pool-k8s-alpha \
        --enable-autoscaling \
        --min-nodes=2 \
        --max-nodes=4 \
-       --node-labels=cook_pool=k8s-alpha
+       --node-labels=cook-pool=k8s-alpha
 
 echo "---- Setting up cook namespace in kubernetes"
 KUBECONFIG=${COOK_KUBECONFIG} kubectl create -f docs/make-kubernetes-namespace.json
