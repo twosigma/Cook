@@ -586,6 +586,10 @@
     (.setEnv container main-env-vars)
     (.setImage container image)
 
+    ; allocate a TTY to support tools that need to read from stdin
+    (.setTty container true)
+    (.setStdin container true)
+
     (.putRequestsItem resources "memory" (double->quantity (* memory-multiplier mem)))
     (.putLimitsItem resources "memory" (double->quantity (* memory-multiplier mem)))
     (.putRequestsItem resources "cpu" (double->quantity cpus))
