@@ -561,6 +561,7 @@
         sidecar-workdir-volume (when use-cook-sidecar? (make-empty-volume "cook-sidecar-workdir-volume"))
         sidecar-workdir-volume-mount-fn (partial make-volume-mount sidecar-workdir-volume sidecar-workdir)
         workdir-env {"HOME" workdir
+                     "MESOS_DIRECTORY" workdir
                      "MESOS_SANDBOX" workdir
                      "SIDECAR_WORKDIR" sidecar-workdir}
         params-env (build-params-env parameters)
