@@ -630,7 +630,10 @@
           (.setPorts container [(.containerPort (V1ContainerPort.) (int port))])
 
           (.setEnv container (conj main-env-vars
+                                   (make-env "COOK_SANDBOX" workdir)
                                    (make-env "COOK_SCHEDULER_REST_URL" (config/scheduler-rest-url))
+                                   ;; DEPRECATED - sidecar should use COOK_SANDBOX instead.
+                                   ;; Will remove this environment variable in a future release.
                                    (make-env "COOK_WORKDIR" workdir)))
 
           (.setPort http-get-action (-> port int IntOrString.))
