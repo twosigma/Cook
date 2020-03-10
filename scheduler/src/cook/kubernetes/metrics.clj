@@ -6,8 +6,7 @@
 (defn calculate-name
   "Given a metric name and compute cluster name, come up with the metric path to use."
   [metric-name compute-cluster-name]
-  ["cook"
-   "k8s-compute-cluster"
+  ["cook-k8s"
    metric-name
    (str "compute-cluster-" compute-cluster-name)])
 
