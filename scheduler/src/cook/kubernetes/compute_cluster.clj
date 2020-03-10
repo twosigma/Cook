@@ -325,11 +325,13 @@
                                          outstanding-synthetic-pods))
                                  jobs)
                 sidecar-resource-requirements (-> (config/kubernetes) :sidecar :resource-requirements)
+                user-from-synthetic-pods-config user
                 task-metadata-seq
                 (->> new-jobs
-                     (map (fn [{:keys [job/uuid] :as job}]
+                     (map (fn [{:keys [job/user job/uuid] :as job}]
                             {:task-id (str api/cook-synthetic-pod-name-prefix "-" pool-name "-" uuid)
-                             :command {:user user :value command}
+                             :command {:user (or user-from-synthetic-pods-config user)
+                                       :value command}
                              :container {:docker {:image image}}
                              :task-request {:scalar-requests
                                             (cond->> (walk/stringify-keys (tools/job-ent->resources job))
@@ -465,7 +467,6 @@
   (when synthetic-pods-config
     (when-not (and
                 (-> synthetic-pods-config :image count pos?)
-                (-> synthetic-pods-config :user count pos?)
                 (-> synthetic-pods-config :max-pods-outstanding pos?)
                 (-> synthetic-pods-config :pools set?)
                 (-> synthetic-pods-config :pools count pos?))
