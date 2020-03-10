@@ -94,14 +94,19 @@
 (defn scan-tasks
   "Scan all taskids. Note: May block or be slow due to rate limits."
   [{:keys [name] :as kcc}]
-  (log/info "In compute cluster" name ", starting taskid scan")
+  (log/info "In" name "compute cluster, starting taskid scan")
   ; TODO Add in rate limits; only visit non-running/running task so fast.
   ; TODO Add in maximum-visit frequency. Only visit a task once every XX seconds.
   (let [taskids (taskids-to-scan kcc)]
-    (log/info "In compute cluster" name ", doing taskid scan. Visiting" (count taskids) "taskids")
+    (log/info "In" name "compute cluster, doing taskid scan. Visiting" (count taskids) "taskids")
     (doseq [^String taskid taskids]
-      (log/info "In compute cluster" name ", doing scan of " taskid)
-      (controller/scan-process kcc taskid))))
+      (try
+        (log/info "In" name "compute cluster, doing scan of" taskid)
+        (controller/scan-process kcc taskid)
+        (catch Exception e
+          (log/error e "In" name
+                     "compute cluster, encountered exception scanning task"
+                     taskid))))))
 
 (defn regular-scanner
   "Trigger a channel that scans all taskids (shortly) after this function is invoked and on a regular interval."
@@ -207,7 +212,7 @@
                                      pool->fenzo-atom namespace-config scan-frequency-seconds-config max-pods-per-node
                                      synthetic-pods-config node-blocklist-labels]
   cc/ComputeCluster
-  (launch-tasks [this offers task-metadata-seq]
+  (launch-tasks [this _ task-metadata-seq]
     (doseq [task-metadata task-metadata-seq]
       ; Has the workload of launching tasks changed or has the cost of doing them changed?
       ; Note we can't use timer/time! because it wraps the body in a Callable, which rebinds 'this' to another 'this'
@@ -215,13 +220,19 @@
       ; In addition, it captures controller/update-cook-expected-state and prevents with-redefs on
       ; update-cook-expected-state from working correctly in unit tests.
       (let [timer-context (timers/start (metrics/timer "compute-cluster-launch-tasks" name))
-            pod-namespace (get-namespace-from-task-metadata namespace-config task-metadata)]
-        (controller/update-cook-expected-state
-          this
-          (:task-id task-metadata)
-          {:cook-expected-state :cook-expected-state/starting
-           :launch-pod {:pod (api/task-metadata->pod pod-namespace name task-metadata)}})
-        (.stop timer-context))))
+            pod-namespace (get-namespace-from-task-metadata namespace-config task-metadata)
+            pod-name (:task-id task-metadata)
+            ^V1Pod pod (api/task-metadata->pod pod-namespace name task-metadata)
+            new-cook-expected-state-dict {:cook-expected-state :cook-expected-state/starting
+                                          :launch-pod {:pod pod}}]
+        (try
+          (controller/update-cook-expected-state this pod-name new-cook-expected-state-dict)
+          (.stop timer-context)
+          (catch Exception e
+            (log/error e "In" name "compute cluster, encountered exception launching task"
+                       {:pod-name pod-name
+                        :pod-namespace pod-namespace
+                        :task-metadata task-metadata}))))))
 
   (kill-task [this task-id]
     ; Note we can't use timer/time! because it wraps the body in a Callable, which rebinds 'this' to another 'this'
