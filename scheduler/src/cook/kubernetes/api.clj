@@ -13,7 +13,7 @@
   (:import
     (com.google.gson JsonSyntaxException)
     (com.twosigma.cook.kubernetes WatchHelper)
-    (io.kubernetes.client ApiClient ApiException)
+    (io.kubernetes.client ApiClient ApiException JSON)
     (io.kubernetes.client.apis CoreV1Api)
     (io.kubernetes.client.custom Quantity Quantity$Format IntOrString)
     (io.kubernetes.client.models V1Affinity V1Container V1ContainerPort V1ContainerState V1DeleteOptions
@@ -22,7 +22,7 @@
                                  V1NodeSelectorRequirement V1NodeSelectorTerm V1ObjectMeta V1Pod V1PodCondition
                                  V1PodSecurityContext V1PodSpec V1PodStatus V1Probe V1ResourceRequirements
                                  V1Toleration V1VolumeBuilder V1Volume V1VolumeMount)
-    (io.kubernetes.client.util Watch Yaml)
+    (io.kubernetes.client.util Watch)
     (java.util.concurrent Executors ExecutorService)))
 
 
@@ -586,6 +586,10 @@
     (.setEnv container main-env-vars)
     (.setImage container image)
 
+    ; allocate a TTY to support tools that need to read from stdin
+    (.setTty container true)
+    (.setStdin container true)
+
     (.putRequestsItem resources "memory" (double->quantity (* memory-multiplier mem)))
     (.putLimitsItem resources "memory" (double->quantity (* memory-multiplier mem)))
     (.putRequestsItem resources "cpu" (double->quantity cpus))
@@ -844,45 +848,46 @@
   [api namespace pod]
   (.createNamespacedPod api namespace pod nil nil nil))
 
-(defn launch-pod
-  "Attempts to submit the given pod to k8s. If pod submission fails, we inspect the
-  response code to determine whether or not this is a bad pod spec (e.g. the
-  namespace doesn't exist on the cluster or there is an invalid environment
-  variable name), or whether the failure is something less offensive (like a 409
-  conflict error because we've attempted to re-submit a pod that the watch has not
-  yet notified us exists). The function returns false if we should consider the
-  launch operation failed."
-  [api-client compute-cluster-name {:keys [launch-pod]} pod-name]
-  (if launch-pod
-    (let [{:keys [pod]} launch-pod
-          pod-name-from-pod (-> pod .getMetadata .getName)
-          namespace (-> pod .getMetadata .getNamespace)
-          api (CoreV1Api. api-client)]
-      (assert (= pod-name-from-pod pod-name)
-              (str "Pod name from pod (" pod-name-from-pod ") "
-                   "does not match pod name argument (" pod-name ")"))
-      (log/info "In" compute-cluster-name "compute cluster, launching pod with name" pod-name "in namespace" namespace ":" (Yaml/dump pod))
-      (try
-        (timers/time! (metrics/timer "launch-pod" compute-cluster-name)
-          (create-namespaced-pod api namespace pod))
-        true
-        (catch ApiException e
-          (let [code (.getCode e)
-                bad-pod-spec? (contains? #{400 404 422} code)]
-            (log/info e "In" compute-cluster-name "compute cluster, error submitting pod with name" pod-name "in namespace" namespace
-                      ", code:" code ", response body:" (.getResponseBody e))
-            (if bad-pod-spec?
-              (meters/mark! (metrics/meter "launch-pod-bad-spec-errors" compute-cluster-name))
-              (meters/mark! (metrics/meter "launch-pod-good-spec-errors" compute-cluster-name)))
-            (not bad-pod-spec?)))))
-    (do
-      ; Because of the complicated nature of task-metadata-seq, we can't easily run the pod
-      ; creation code for launching a pod on a server restart. Thus, if we create an instance,
-      ; store into datomic, but then the Cook Scheduler exits --- before k8s creates a pod (either
-      ; the message isn't sent, or there's a k8s problem) --- we will be unable to create a new
-      ; pod and we can't retry this at the kubernetes level.
-      (log/info "Unable to launch pod because we do not reconstruct the pod on startup:" pod-name)
-      false)))
+(let [json (JSON.)]
+  (defn launch-pod
+    "Attempts to submit the given pod to k8s. If pod submission fails, we inspect the
+    response code to determine whether or not this is a bad pod spec (e.g. the
+    namespace doesn't exist on the cluster or there is an invalid environment
+    variable name), or whether the failure is something less offensive (like a 409
+    conflict error because we've attempted to re-submit a pod that the watch has not
+    yet notified us exists). The function returns false if we should consider the
+    launch operation failed."
+    [api-client compute-cluster-name {:keys [launch-pod]} pod-name]
+    (if launch-pod
+      (let [{:keys [pod]} launch-pod
+            pod-name-from-pod (-> pod .getMetadata .getName)
+            namespace (-> pod .getMetadata .getNamespace)
+            api (CoreV1Api. api-client)]
+        (assert (= pod-name-from-pod pod-name)
+                (str "Pod name from pod (" pod-name-from-pod ") "
+                     "does not match pod name argument (" pod-name ")"))
+        (log/info "In" compute-cluster-name "compute cluster, launching pod with name" pod-name "in namespace" namespace ":" (.serialize json pod))
+        (try
+          (timers/time! (metrics/timer "launch-pod" compute-cluster-name)
+                        (create-namespaced-pod api namespace pod))
+          true
+          (catch ApiException e
+            (let [code (.getCode e)
+                  bad-pod-spec? (contains? #{400 404 422} code)]
+              (log/info e "In" compute-cluster-name "compute cluster, error submitting pod with name" pod-name "in namespace" namespace
+                        ", code:" code ", response body:" (.getResponseBody e))
+              (if bad-pod-spec?
+                (meters/mark! (metrics/meter "launch-pod-bad-spec-errors" compute-cluster-name))
+                (meters/mark! (metrics/meter "launch-pod-good-spec-errors" compute-cluster-name)))
+              (not bad-pod-spec?)))))
+      (do
+        ; Because of the complicated nature of task-metadata-seq, we can't easily run the pod
+        ; creation code for launching a pod on a server restart. Thus, if we create an instance,
+        ; store into datomic, but then the Cook Scheduler exits --- before k8s creates a pod (either
+        ; the message isn't sent, or there's a k8s problem) --- we will be unable to create a new
+        ; pod and we can't retry this at the kubernetes level.
+        (log/info "Unable to launch pod because we do not reconstruct the pod on startup:" pod-name)
+        false))))
 
 
 ;; TODO: Need the 'stuck pod scanner' to detect stuck states and move them into killed.
