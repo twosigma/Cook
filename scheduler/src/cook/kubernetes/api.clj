@@ -29,7 +29,7 @@
 (def cook-pod-label "twosigma.com/cook-scheduler-job")
 (def cook-synthetic-pod-job-uuid-label "twosigma.com/cook-scheduler-synthetic-pod-job-uuid")
 (def cook-pool-label "cook-pool")
-(def cook-workdir-volume-name "cook-workdir-volume")
+(def cook-sandbox-volume-name "cook-sandbox-volume")
 (def cook-job-pod-priority-class "cook-workload")
 (def cook-synthetic-pod-priority-class "synthetic-pod")
 (def cook-synthetic-pod-name-prefix "synthetic")
@@ -382,57 +382,33 @@
 
 (defn make-volumes
   "Converts a list of cook volumes to kubernetes volumes and volume mounts."
-  [cook-volumes workdir]
+  [cook-volumes sandbox-dir]
   (let [{:keys [disallowed-container-paths]} (config/kubernetes)
-        workdir-volume (make-empty-volume cook-workdir-volume-name)
-        workdir-volume-mount-fn (partial make-volume-mount workdir-volume workdir)
-        filtered-cook-volumes (filter (fn [{:keys [host-path container-path]}]
-                                        (let [path (or container-path host-path)]
-                                          (if disallowed-container-paths
-                                            (not (contains? disallowed-container-paths
-                                                            path))
-                                            true)))
-                                      cook-volumes)
-        host-path->name (pc/map-from-keys (fn [_] (str "syn-" (d/squuid)))
-                                          (map :host-path filtered-cook-volumes))
-        name->volume (into {} (map (fn [{:keys [host-path]}]
-                                     (let [host-path-source (V1HostPathVolumeSource.)
-                                           volume-name (host-path->name host-path)]
-                                       ; host path
-                                       (.setPath host-path-source host-path)
-                                       (.setType host-path-source "DirectoryOrCreate")
-
-                                       ; volume
-                                       [volume-name
-                                        (-> (V1VolumeBuilder.)
-                                            (.withName volume-name)
-                                            (.withHostPath host-path-source)
-                                            (.build))])))
-                           filtered-cook-volumes)
-        volumes (vals name->volume)
-        container-path->volume-mounts (into {} (map (fn [{:keys [container-path host-path mode]
-                                                          :or {mode "RO"}}]
-                                                      (let [container-path (or container-path host-path)
-                                                            volume-mount (V1VolumeMount.)
-                                                            read-only (not (= mode "RW"))]
-                                                        (.setName volume-mount (host-path->name host-path))
-                                                        (.setMountPath volume-mount container-path)
-                                                        (.setReadOnly volume-mount read-only)
-                                                        [container-path volume-mount])))
-                                            filtered-cook-volumes)
-        volume-mounts (vals container-path->volume-mounts)
-        ; Workdir volume can overlap the main docker volumes.
-        ; So we either need to map the the apropriate volume or make a new one.
-        already-have-workdir-volume (container-path->volume-mounts workdir)
-        workdir-volume (if already-have-workdir-volume
-                         (-> workdir container-path->volume-mounts .getName name->volume)
-                         (make-empty-volume "cook-workdir-volume"))
-        workdir-volume-mount-fn (partial make-volume-mount workdir-volume workdir)]
-    {:volumes (if already-have-workdir-volume volumes
-                                              (conj volumes workdir-volume))
-     :volume-mounts (if already-have-workdir-volume volume-mounts
-                                                    (conj volume-mounts (workdir-volume-mount-fn false)))
-     :workdir-volume-mount-fn workdir-volume-mount-fn}))
+        allowed-cook-volumes (remove (fn [{:keys [container-path host-path mode]}]
+                                       (contains? disallowed-container-paths
+                                                  ;; container-path defaults to host-path when omitted
+                                                  (or container-path host-path)))
+                                     cook-volumes)
+        host-paths (->> allowed-cook-volumes (map :host-path) distinct)
+        volumes (vec (for [host-path host-paths]
+                       (doto (V1Volume.)
+                         (.setName (str "syn-" (d/squuid)))
+                         (.setHostPath (doto (V1HostPathVolumeSource.)
+                                         (.setPath host-path)
+                                         (.setType "DirectoryOrCreate"))))))
+        host-path->volume (zipmap host-paths volumes)
+        volume-mounts (vec (for [{:keys [container-path host-path mode]} allowed-cook-volumes]
+                             (make-volume-mount
+                               (host-path->volume host-path)
+                               ;; container-path defaults to host-path when omitted
+                               (or container-path host-path)
+                               (not= "RW" mode))))
+        sandbox-volume (make-empty-volume cook-sandbox-volume-name)
+        sandbox-volume-mount-fn #(make-volume-mount sandbox-volume sandbox-dir %)
+        sandbox-volume-mount (sandbox-volume-mount-fn false)]
+    {:sandbox-volume-mount-fn sandbox-volume-mount-fn
+     :volumes (conj volumes sandbox-volume)
+     :volume-mounts (conj volume-mounts sandbox-volume-mount)}))
 
 (defn toleration-for-pool
   "For a given cook pool name, create the right V1Toleration so that Cook will ignore that cook-pool taint."
@@ -475,13 +451,13 @@
     security-context))
 
 (defn get-workdir
-  [params]
+  [params default-workdir]
   (let [workdir-param (->> params
                            (filter (fn [{:keys [key]}] (= key "workdir")))
                            first)]
     (if workdir-param
       (:value workdir-param)
-      (:default-workdir (config/kubernetes)))))
+      default-workdir)))
 
 (defn- make-env
   "Make a kubernetes environment variable"
@@ -546,8 +522,9 @@
         labels (assoc pod-labels cook-pod-label compute-cluster-name)
         pool-name (some-> job :job/pool :pool/name)
         security-context (make-security-context parameters (:user command))
-        workdir (get-workdir parameters)
-        {:keys [volumes volume-mounts workdir-volume-mount-fn]} (make-volumes volumes workdir)
+        sandbox-dir (:default-workdir (config/kubernetes))
+        workdir (get-workdir parameters sandbox-dir)
+        {:keys [volumes volume-mounts sandbox-volume-mount-fn]} (make-volumes volumes sandbox-dir)
         {:keys [custom-shell init-container sidecar]} (config/kubernetes)
         use-cook-init? (and init-container pod-supports-cook-init?)
         use-cook-sidecar? (and sidecar pod-supports-cook-sidecar?)
@@ -560,12 +537,13 @@
         sidecar-workdir "/mnt/sidecar"
         sidecar-workdir-volume (when use-cook-sidecar? (make-empty-volume "cook-sidecar-workdir-volume"))
         sidecar-workdir-volume-mount-fn (partial make-volume-mount sidecar-workdir-volume sidecar-workdir)
-        workdir-env {"HOME" workdir
-                     "MESOS_SANDBOX" workdir
+        sandbox-env {"COOK_SANDBOX" sandbox-dir
+                     "HOME" sandbox-dir
+                     "MESOS_SANDBOX" sandbox-dir
                      "SIDECAR_WORKDIR" sidecar-workdir}
         params-env (build-params-env parameters)
         progress-env (task/build-executor-environment job)
-        main-env-base (merge environment params-env progress-env workdir-env)
+        main-env-base (merge environment params-env progress-env sandbox-env)
         progress-file-var (get main-env-base task/progress-meta-env-name task/default-progress-env-name)
         progress-file-path (get main-env-base progress-file-var)
         main-env (cond-> main-env-base
@@ -634,11 +612,10 @@
           (.setPorts container [(.containerPort (V1ContainerPort.) (int port))])
 
           (.setEnv container (conj main-env-vars
-                                   (make-env "COOK_SANDBOX" workdir)
                                    (make-env "COOK_SCHEDULER_REST_URL" (config/scheduler-rest-url))
                                    ;; DEPRECATED - sidecar should use COOK_SANDBOX instead.
                                    ;; Will remove this environment variable in a future release.
-                                   (make-env "COOK_WORKDIR" workdir)))
+                                   (make-env "COOK_WORKDIR" sandbox-dir)))
 
           (.setPort http-get-action (-> port int IntOrString.))
           (.setPath http-get-action "readiness-probe")
@@ -652,7 +629,7 @@
           (.putLimitsItem resources "memory" (double->quantity (* memory-multiplier memory-limit)))
           (.setResources container resources)
 
-          (.setVolumeMounts container [(workdir-volume-mount-fn true) (sidecar-workdir-volume-mount-fn false)])
+          (.setVolumeMounts container [(sandbox-volume-mount-fn true) (sidecar-workdir-volume-mount-fn false)])
           (.addContainersItem pod-spec container))))
 
     (when hostname
