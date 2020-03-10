@@ -412,6 +412,8 @@
 
      :api-only? (fnk [[:config {api-only? false}]]
                   api-only?)
+     :default-container-for-pool (fnk [[:config {default-container-for-pool {}}]]
+                                   default-container-for-pool)
      :estimated-completion-constraint (fnk [[:config {estimated-completion-constraint nil}]]
                                         (merge {:agent-start-grace-period-mins 10}
                                                estimated-completion-constraint))

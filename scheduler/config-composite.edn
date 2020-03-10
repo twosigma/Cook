@@ -62,6 +62,19 @@
  :nrepl {:enabled? true
          :port #config/env-int "COOK_NREPL_PORT"}
  :pools {:default "mesos-gamma"}
+ :default-container-for-pool
+ {"k8s-alpha" {:type "docker"
+               :docker {
+                        :image "python:3.5.9-stretch",
+                        :network "HOST"
+                        :force-pull-image false
+                        :parameters []}}
+  "k8s-gamma" {:type "docker"
+               :docker {
+                        :image "python:3.5.9-stretch",
+                        :network "HOST"
+                        :force-pull-image false
+                        :parameters []}}}
  :port #config/env-int "COOK_PORT"
  :ssl {:port #config/env-int "COOK_SSL_PORT"
        :keystore-path #config/env "COOK_KEYSTORE_PATH"

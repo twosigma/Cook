@@ -730,7 +730,13 @@
                                                                 (str/lower-case operator))
                                   :constraint/pattern pattern}]))
                             constraints)
-        container (if (nil? container) [] (build-container user db-id container))
+        guessed-pool (or (:pool/name pool) (config/default-pool))
+        default-container-for-pool (get-in config/config [:settings :default-container-for-pool guessed-pool])
+        container (if (nil? container)
+                    (if (and guessed-pool default-container-for-pool)
+                      (build-container user db-id default-container-for-pool)
+                      [])
+                    (build-container user db-id container))
         executor (str->executor-enum executor)
         ;; These are optionally set datoms w/ default values
         maybe-datoms (reduce into

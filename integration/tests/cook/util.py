@@ -444,9 +444,32 @@ def scheduler_info(cook_url):
     assert resp.status_code == 200, response_info
     return resp.json()
 
+@functools.lru_cache()
+def docker_image_for_default_pool():
+    """What is the docker image for the default pool."""
+    cook_url = retrieve_cook_url()
+    settings_dict = settings(cook_url)
+    default_pool_name = default_submit_pool() or default_pool(cook_url)
+    if 'default-container-for-pool' not in settings_dict:
+        return None
+    if default_pool_name not in settings_dict['default-container-for-pool']:
+        return None
+    default_container = settings_dict['default-container-for-pool'][default_pool_name]
+    if default_container["type"] == "docker":
+        return default_container["docker"]["image"]
+    return None
 
-def docker_image():
+
+def docker_image_explicit():
+    """Was a docker image set explicitly via an environmental variable? Used to gate tests that depend on default image."""
     return os.getenv('COOK_TEST_DOCKER_IMAGE')
+
+@functools.lru_cache()
+def docker_image():
+    env_image = docker_image_explicit()
+    if env_image is not None:
+        return env_image
+    return docker_image_for_default_pool()
 
 
 def missing_docker_image():
@@ -491,7 +514,7 @@ def get_caller():
 def add_container_to_job_if_needed(job):
     """Add a container to a job if it needs a docker container"""
     image = docker_image()
-    if image:
+    if image and 'container' not in job:
         work_dir = docker_working_directory()
         docker_parameters = []
         if work_dir:
@@ -580,6 +603,8 @@ def submit_jobs(cook_url, job_specs, clones=1, pool=None, headers=None, log_requ
     caller = get_caller()
 
     def full_spec(spec):
+        if "container" in spec and spec["container"] is None:
+            del spec["container"]
         if 'name' not in spec:
             spec['name'] = DEFAULT_JOB_NAME_PREFIX + caller
         if 'uuid' not in spec:
@@ -1555,6 +1580,7 @@ class CookTest(unittest.TestCase):
         return test_id.split('.')[-1]
 
 
+@functools.lru_cache()
 def docker_tests_enabled():
     return docker_image() is not None
 
@@ -1564,7 +1590,6 @@ def is_preemption_enabled():
     """Returns true if task preemption is enabled on the cluster"""
     max_preemption = rebalancer_settings().get('max-preemption')
     return max_preemption is not None
-
 
 @functools.lru_cache()
 def rebalancer_settings():
