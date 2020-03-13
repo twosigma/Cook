@@ -266,22 +266,37 @@
               :reason "SomeSillyReason"}
              (api/pod->synthesized-pod-state pod)))))
 
-  (testing "unschedulable pod"
-    (let [pod (V1Pod.)
-          pod-status (V1PodStatus.)
-          pod-metadata (V1ObjectMeta.)
-          pod-condition (V1PodCondition.)]
-      (.setType pod-condition "PodScheduled")
-      (.setStatus pod-condition "False")
-      (.setReason pod-condition "Unschedulable")
-      (.setLastTransitionTime pod-condition (t/epoch))
-      (.addConditionsItem pod-status pod-condition)
-      (.setStatus pod pod-status)
-      (.setName pod-metadata "test-pod")
-      (.setMetadata pod pod-metadata)
-      (is (= {:state :pod/failed
-              :reason "Unschedulable"}
-             (api/pod->synthesized-pod-state pod))))))
+  (let [make-unschedulable-pod-fn
+        (fn [pod-condition-last-transition-time]
+          (let [pod (V1Pod.)
+                pod-status (V1PodStatus.)
+                pod-metadata (V1ObjectMeta.)
+                pod-condition (V1PodCondition.)]
+            (.setType pod-condition "PodScheduled")
+            (.setStatus pod-condition "False")
+            (.setReason pod-condition "Unschedulable")
+            (.setLastTransitionTime pod-condition pod-condition-last-transition-time)
+            (.addConditionsItem pod-status pod-condition)
+            (.setStatus pod pod-status)
+            (.setName pod-metadata "test-pod")
+            (.setMetadata pod pod-metadata)
+            pod))]
+
+    (testing "unschedulable pod"
+      (let [pod (make-unschedulable-pod-fn (t/epoch))]
+        (with-redefs [config/kubernetes
+                      (constantly {:pod-condition-unschedulable-seconds 60})]
+          (is (= {:state :pod/failed
+                  :reason "Unschedulable"}
+                 (api/pod->synthesized-pod-state pod))))))
+
+    (testing "briefly unschedulable pod"
+      (let [pod (make-unschedulable-pod-fn (t/now))]
+        (with-redefs [config/kubernetes
+                      (constantly {:pod-condition-unschedulable-seconds 60})]
+          (is (= {:state :pod/waiting
+                  :reason "Pending"}
+                 (api/pod->synthesized-pod-state pod))))))))
 
 (deftest test-node-schedulable
   ;; TODO: Need the 'stuck pod scanner' to detect stuck states and move them into killed.
