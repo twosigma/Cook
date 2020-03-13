@@ -497,7 +497,8 @@ class MultiUserCookTest(util.CookTest):
     def test_user_total_usage(self):
         user = self.user_factory.new_user()
         with user:
-            job_spec = {'cpus': 0.11, 'mem': 123, 'command': 'sleep 600'}
+            sleep_command = f'sleep {util.DEFAULT_TEST_TIMEOUT_SECS}'
+            job_spec = {'cpus': 0.11, 'mem': 123, 'command': sleep_command}
             pools, _ = util.active_pools(self.cook_url)
             job_uuids = []
             try:
