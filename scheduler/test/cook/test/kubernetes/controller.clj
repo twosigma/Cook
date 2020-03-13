@@ -1,5 +1,6 @@
 (ns cook.test.kubernetes.controller
-  (:require [clojure.test :refer :all]
+  (:require [clj-time.core :as t]
+            [clojure.test :refer :all]
             [cook.compute-cluster :as cc]
             [cook.kubernetes.api :as api]
             [cook.kubernetes.controller :as controller]
@@ -81,7 +82,8 @@
                                                       :pod-condition (doto (V1PodCondition.)
                                                                        (.setType "PodScheduled")
                                                                        (.setStatus "False")
-                                                                       (.setReason "Unschedulable")))))
+                                                                       (.setReason "Unschedulable")
+                                                                       (.setLastTransitionTime (t/epoch))))))
     (is (= :reason-scheduling-failed-on-host @reason))
     (is (= :cook-expected-state/running (do-process :cook-expected-state/starting :pod/running)))
     (is (= :reason-running @reason))

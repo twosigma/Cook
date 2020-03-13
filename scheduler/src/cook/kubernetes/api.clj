@@ -1,5 +1,6 @@
 (ns cook.kubernetes.api
-  (:require [clojure.set :as set]
+  (:require [clj-time.core :as t]
+            [clojure.set :as set]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
             [cook.kubernetes.metrics :as metrics]
@@ -703,13 +704,19 @@
   pod and the given pod status has a PodScheduled
   condition with status False and reason Unschedulable"
   [pod-name ^V1PodStatus pod-status]
-  (and (some->> pod-name synthetic-pod? not)
-       (some->> pod-status .getConditions
-                (some (fn pod-condition-unschedulable?
-                        [^V1PodCondition condition]
-                        (and (= (.getType condition) "PodScheduled")
-                             (= (.getStatus condition) "False")
-                             (= (.getReason condition) "Unschedulable")))))))
+  (let [{:keys [pod-condition-unschedulable-seconds]} (config/kubernetes)]
+    (and (some->> pod-name synthetic-pod? not)
+         (some->> pod-status .getConditions
+                  (some
+                    (fn pod-condition-unschedulable?
+                      [^V1PodCondition condition]
+                      (and (-> condition .getType (= "PodScheduled"))
+                           (-> condition .getStatus (= "False"))
+                           (-> condition .getReason (= "Unschedulable"))
+                           (-> condition
+                               .getLastTransitionTime
+                               (t/plus (t/seconds pod-condition-unschedulable-seconds))
+                               (t/before? (t/now))))))))))
 
 (defn pod->synthesized-pod-state
   "From a V1Pod object, determine the state of the pod, waiting running, succeeded, failed or unknown.

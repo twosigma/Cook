@@ -1,5 +1,6 @@
 (ns cook.test.kubernetes.api
-  (:require [clojure.test :refer :all]
+  (:require [clj-time.core :as t]
+            [clojure.test :refer :all]
             [cook.config :as config]
             [cook.kubernetes.api :as api]
             [cook.test.testutil :as tu]
@@ -273,6 +274,7 @@
       (.setType pod-condition "PodScheduled")
       (.setStatus pod-condition "False")
       (.setReason pod-condition "Unschedulable")
+      (.setLastTransitionTime pod-condition (t/epoch))
       (.addConditionsItem pod-status pod-condition)
       (.setStatus pod pod-status)
       (.setName pod-metadata "test-pod")
