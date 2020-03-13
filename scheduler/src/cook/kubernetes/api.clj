@@ -655,6 +655,8 @@
           (.setVolumeMounts container [(workdir-volume-mount-fn true) (sidecar-workdir-volume-mount-fn false)])
           (.addContainersItem pod-spec container))))
 
+    ; We're either using the hostname (in the case of users' job pods)
+    ; or pod-hostnames-to-avoid (in the case of synthetic pods), but not both.
     (if hostname
       ; Why not just set the node name?
       ; The reason is that setting the node name prevents pod preemption
@@ -665,6 +667,7 @@
       (when (seq pod-hostnames-to-avoid)
         ; Use node "anti"-affinity to disallow scheduling
         ; on hostnames we're being told to avoid
+        ; (https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#node-affinity)
         (let [affinity (V1Affinity.)
               node-affinity (V1NodeAffinity.)
               node-selector (V1NodeSelector.)
