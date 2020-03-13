@@ -525,7 +525,7 @@
 (defn ^V1Pod task-metadata->pod
   "Given a task-request and other data generate the kubernetes V1Pod to launch that task."
   [namespace compute-cluster-name
-   {:keys [task-id command container task-request hostname pod-labels
+   {:keys [task-id command container task-request hostname pod-labels pod-hostnames-to-avoid
            pod-priority-class pod-supports-cook-init? pod-supports-cook-sidecar?]
     :or {pod-priority-class cook-job-pod-priority-class
          pod-supports-cook-init? true
@@ -655,13 +655,29 @@
           (.setVolumeMounts container [(workdir-volume-mount-fn true) (sidecar-workdir-volume-mount-fn false)])
           (.addContainersItem pod-spec container))))
 
-    (when hostname
+    (if hostname
       ; Why not just set the node name?
       ; The reason is that setting the node name prevents pod preemption
       ; (https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/)
       ; from happening. We want this pod to preempt lower priority pods
       ; (e.g. synthetic pods).
-      (add-node-selector pod-spec k8s-hostname-label hostname))
+      (add-node-selector pod-spec k8s-hostname-label hostname)
+      (when (seq pod-hostnames-to-avoid)
+        ; Use node "anti"-affinity to disallow scheduling
+        ; on hostnames we're being told to avoid
+        (let [affinity (V1Affinity.)
+              node-affinity (V1NodeAffinity.)
+              node-selector (V1NodeSelector.)
+              node-selector-term (V1NodeSelectorTerm.)
+              node-selector-requirement (V1NodeSelectorRequirement.)]
+          (.setKey node-selector-requirement k8s-hostname-label)
+          (.setOperator node-selector-requirement "NotIn")
+          (run! #(.addValuesItem node-selector-requirement %) pod-hostnames-to-avoid)
+          (.addMatchExpressionsItem node-selector-term node-selector-requirement)
+          (.addNodeSelectorTermsItem node-selector node-selector-term)
+          (.setRequiredDuringSchedulingIgnoredDuringExecution node-affinity node-selector)
+          (.setNodeAffinity affinity node-affinity)
+          (.setAffinity pod-spec affinity))))
 
     (.setRestartPolicy pod-spec "Never")
 
