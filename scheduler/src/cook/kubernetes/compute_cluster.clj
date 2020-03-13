@@ -13,6 +13,7 @@
             [cook.kubernetes.metrics :as metrics]
             [cook.monitor :as monitor]
             [cook.pool]
+            [cook.scheduler.constraints :as constraints]
             [cook.tools :as tools]
             [datomic.api :as d]
             [metrics.meters :as meters]
@@ -329,19 +330,15 @@
                 task-metadata-seq
                 (->> new-jobs
                      (map (fn [{:keys [job/user job/uuid] :as job}]
-                            {:task-id (str api/cook-synthetic-pod-name-prefix "-" pool-name "-" uuid)
-                             :command {:user (or user-from-synthetic-pods-config user)
+                            {:command {:user (or user-from-synthetic-pods-config user)
                                        :value command}
                              :container {:docker {:image image}}
-                             :task-request {:scalar-requests
-                                            (cond->> (walk/stringify-keys (tools/job-ent->resources job))
-                                              ; We need to account for any sidecar resource requirements that the
-                                              ; job we're launching this synthetic pod for will need to use.
-                                              sidecar-resource-requirements
-                                              (merge-with +
-                                                          {"cpus" (:cpu-request sidecar-resource-requirements)
-                                                           "mem" (:memory-request sidecar-resource-requirements)}))
-                                            :job {:job/pool {:pool/name synthetic-task-pool-name}}}
+                             ; Cook has a "novel host constraint", which disallows a job from
+                             ; running on the same host twice. So, we need to avoid running a
+                             ; synthetic pod on any of the hosts that the real job won't be able
+                             ; to run on. Otherwise, the synthetic pod won't trigger the cluster
+                             ; autoscaler.
+                             :pod-hostnames-to-avoid (constraints/job->previous-hosts-to-avoid job)
                              ; We need to label the synthetic pods so that we
                              ; can opt them out of some of the normal plumbing,
                              ; like mapping status back to a job instance
@@ -356,7 +353,17 @@
                              ; We don't want to add in the cook-init cruft or the cook sidecar, because we
                              ; don't need them for synthetic pods and all they will do is slow things down.
                              :pod-supports-cook-init? false
-                             :pod-supports-cook-sidecar? false}))
+                             :pod-supports-cook-sidecar? false
+                             :task-id (str api/cook-synthetic-pod-name-prefix "-" pool-name "-" uuid)
+                             :task-request {:scalar-requests
+                                            (cond->> (walk/stringify-keys (tools/job-ent->resources job))
+                                                     ; We need to account for any sidecar resource requirements that the
+                                                     ; job we're launching this synthetic pod for will need to use.
+                                                     sidecar-resource-requirements
+                                                     (merge-with +
+                                                                 {"cpus" (:cpu-request sidecar-resource-requirements)
+                                                                  "mem" (:memory-request sidecar-resource-requirements)}))
+                                            :job {:job/pool {:pool/name synthetic-task-pool-name}}}}))
                      (take (- max-pods-outstanding num-synthetic-pods)))]
             (meters/mark! (metrics/meter "synthetic-pod-submit-rate" name) (count task-metadata-seq))
             (log/info "In" name "compute cluster, launching" (count task-metadata-seq)

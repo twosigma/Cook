@@ -12,7 +12,7 @@
             [cook.tools :as util]
             [datomic.api :as d])
   (:import (com.netflix.fenzo SimpleAssignmentResult)
-           (io.kubernetes.client.models V1Pod V1PodSecurityContext)
+           (io.kubernetes.client.models V1NodeSelectorRequirement V1Pod V1PodSecurityContext)
            (java.util UUID)))
 
 (deftest test-get-or-create-cluster-entity-id
@@ -171,4 +171,34 @@
           (cc/autoscale! compute-cluster pool-name pending-jobs))
         (is (= 2 (count @launched-pods-atom)))
         (is (= "user-1" (-> @launched-pods-atom (nth 0) :launch-pod :pod .getMetadata .getNamespace)))
-        (is (= "user-2" (-> @launched-pods-atom (nth 1) :launch-pod :pod .getMetadata .getNamespace)))))))
+        (is (= "user-2" (-> @launched-pods-atom (nth 1) :launch-pod :pod .getMetadata .getNamespace)))))
+
+    (testing "synthetic pods avoid job's previous hosts"
+      (let [job-uuid-1 (str (UUID/randomUUID))
+            pool-name "test-pool"
+            compute-cluster (tu/make-kubernetes-compute-cluster {} #{pool-name} nil)
+            pending-jobs [(-> (make-job-fn job-uuid-1 "user-1")
+                              (assoc :job/instance
+                                     [{:instance/hostname "test-host-1"}
+                                      {:instance/hostname "test-host-2"}]))]
+            launched-pods-atom (atom [])]
+        (with-redefs [api/launch-pod (fn [_ _ cook-expected-state-dict _]
+                                       (swap! launched-pods-atom conj cook-expected-state-dict))]
+          (cc/autoscale! compute-cluster pool-name pending-jobs))
+        (is (= 1 (count @launched-pods-atom)))
+        (let [^V1NodeSelectorRequirement node-selector-requirement
+              (-> @launched-pods-atom
+                  (nth 0)
+                  :launch-pod
+                  :pod
+                  .getSpec
+                  .getAffinity
+                  .getNodeAffinity
+                  .getRequiredDuringSchedulingIgnoredDuringExecution
+                  .getNodeSelectorTerms
+                  first
+                  .getMatchExpressions
+                  first)]
+          (is (= api/k8s-hostname-label (.getKey node-selector-requirement)))
+          (is (= "NotIn" (.getOperator node-selector-requirement)))
+          (is (= ["test-host-1" "test-host-2"] (.getValues node-selector-requirement))))))))
