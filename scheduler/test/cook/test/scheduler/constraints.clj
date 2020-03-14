@@ -350,11 +350,12 @@
 
 (deftest test-job->previous-hosts-to-avoid
   (testing "uniqueness"
-    (is (= (set ["host-1" "host-2" "host-3"])
-           (set (constraints/job->previous-hosts-to-avoid
-                  {:job/instance [{:instance/hostname "host-3"}
-                                  {:instance/hostname "host-2"}
-                                  {:instance/hostname "host-1"}
-                                  {:instance/hostname "host-3"}
-                                  {:instance/hostname "host-2"}
-                                  {:instance/hostname "host-1"}]}))))))
+    (let [hostnames (constraints/job->previous-hosts-to-avoid
+                      {:job/instance [{:instance/hostname "host-3"}
+                                      {:instance/hostname "host-2"}
+                                      {:instance/hostname "host-1"}
+                                      {:instance/hostname "host-3"}
+                                      {:instance/hostname "host-2"}
+                                      {:instance/hostname "host-1"}]})]
+      (is (= 3 (count hostnames)))
+      (is (= (set ["host-1" "host-2" "host-3"]) (set hostnames))))))
