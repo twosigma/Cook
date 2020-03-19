@@ -83,13 +83,13 @@
         (is (< 0 (-> pod .getSpec .getSecurityContext .getRunAsGroup)))
         (is (< 0 (-> pod .getSpec .getSecurityContext .getRunAsUser)))
 
-        (let [cook-workdir-volume (->> pod
+        (let [cook-sandbox-volume (->> pod
                                        .getSpec
                                        .getVolumes
-                                       (filter (fn [^V1Volume v] (= "cook-workdir-volume" (.getName v))))
+                                       (filter (fn [^V1Volume v] (= "cook-sandbox-volume" (.getName v))))
                                        first)]
-          (is (not (nil? cook-workdir-volume)))
-          (is (not (nil? (.getEmptyDir cook-workdir-volume)))))
+          (is (not (nil? cook-sandbox-volume)))
+          (is (not (nil? (.getEmptyDir cook-sandbox-volume)))))
 
         (let [^V1Container container (-> pod .getSpec .getContainers first)
               container-env (.getEnv container)]
@@ -97,14 +97,14 @@
           (is (= ["/bin/sh" "-c" "foo && bar"] (.getCommand container)))
           (is (= "alpine:latest" (.getImage container)))
           (is (not (nil? container)))
-          (is (= ["EXECUTOR_PROGRESS_OUTPUT_FILE" "FOO" "HOME" "MESOS_SANDBOX" "SIDECAR_WORKDIR"]
+          (is (= ["COOK_SANDBOX" "EXECUTOR_PROGRESS_OUTPUT_FILE" "FOO" "HOME" "MESOS_SANDBOX" "SIDECAR_WORKDIR"]
                  (->> container-env (map #(.getName %)) sort)))
           (is (= "/mnt/sandbox" (.getWorkingDir container)))
-          (let [cook-workdir-mount (->> container
+          (let [cook-sandbox-mount (->> container
                                         .getVolumeMounts
-                                        (filter (fn [^V1VolumeMount m] (= "cook-workdir-volume" (.getName m))))
+                                        (filter (fn [^V1VolumeMount m] (= "cook-sandbox-volume" (.getName m))))
                                         first)]
-            (is (= "/mnt/sandbox" (.getMountPath cook-workdir-mount))))
+            (is (= "/mnt/sandbox" (.getMountPath cook-sandbox-mount))))
 
           (assert-env-var-value container "FOO" "BAR")
           (assert-env-var-value container "HOME" (.getWorkingDir container))
@@ -161,45 +161,62 @@
       (is (contains? node-selector api/k8s-hostname-label))
       (is (= hostname (get node-selector api/k8s-hostname-label))))))
 
+(defn- k8s-volume->clj [^V1Volume volume]
+  {:name (.getName volume)
+   :src (or (some-> volume .getHostPath .getPath)
+            (when (.getEmptyDir volume)
+              :empty-dir))})
+
+(defn- k8s-mount->clj [^V1VolumeMount mount]
+  {:name (.getName mount)
+   :mount-path (.getMountPath mount)
+   :read-only? (.isReadOnly mount)})
+
+(defn- dummy-uuid-generator []
+  (let [n (atom 0)]
+    #(str "uuid-" (swap! n inc))))
+
+(def sandbox-path "/mnt/sandbox")
+
+(def expected-sandbox-volume
+  {:name api/cook-sandbox-volume-name
+   :src :empty-dir})
+
+(def expected-sandbox-mount
+  {:name api/cook-sandbox-volume-name
+   :mount-path sandbox-path
+   :read-only? false})
+
 (deftest test-make-volumes
-  (testing "defaults for minimal volume"
-    (let [host-path "/tmp/$_*/foo"
-          {:keys [volumes volume-mounts]} (api/make-volumes [{:host-path host-path}] host-path)]
-      (is (= 1 (count volumes)))
-      (is (= 1 (count volume-mounts)))
-      (let [volume (first volumes)
-            volume-mount (first volume-mounts)]
-        (is (= (.getName volume)
-               (.getName volume-mount)))
-        ; validation regex for k8s names
-        (is (re-matches #"[a-z0-9]([-a-z0-9]*[a-z0-9])?" (.getName volume)))
-        (is (= host-path (-> volume .getHostPath .getPath)))
-        (is (.isReadOnly volume-mount))
-        (is (= host-path (.getMountPath volume-mount))))))
+  (testing "empty cook volumes"
+    (let [{:keys [volumes volume-mounts]} (api/make-volumes [] sandbox-path)
+          volumes (map k8s-volume->clj volumes)
+          volume-mounts (map k8s-mount->clj volume-mounts)]
+      (is (= volumes [expected-sandbox-volume]))
+      (is (= volume-mounts [expected-sandbox-mount]))))
 
-  (testing "validate with separate workdir"
+  (testing "valid generated volume names"
     (let [host-path "/tmp/main/foo"
-          {:keys [volumes volume-mounts]} (api/make-volumes [{:host-path host-path}] "/mnt/sandbox")]
-      (is (= 2 (count volumes)))
-      (is (= 2 (count volume-mounts)))
-
+          {:keys [volumes volume-mounts]} (api/make-volumes [{:host-path host-path}] sandbox-path)]
       (let [volume (first volumes)
             volume-mount (first volume-mounts)]
         (is (= (.getName volume)
                (.getName volume-mount)))
         ; validation regex for k8s names
-        (is (= "cook-workdir-volume" (.getName volume)))
-        (is (not (.isReadOnly volume-mount)))
-        (is (= "/mnt/sandbox" (.getMountPath volume-mount))))
-      (let [volume (second volumes)
-            volume-mount (second volume-mounts)]
-        (is (= (.getName volume)
-               (.getName volume-mount)))
-        ; validation regex for k8s names
-        (is (re-matches #"[a-z0-9]([-a-z0-9]*[a-z0-9])?" (.getName volume)))
-        (is (= host-path (-> volume .getHostPath .getPath)))
-        (is (.isReadOnly volume-mount))
-        (is (= host-path (.getMountPath volume-mount))))))
+        (is (re-matches #"[a-z0-9]([-a-z0-9]*[a-z0-9])?" (.getName volume))))))
+
+  (testing "validate minimal cook volume spec defaults"
+    (with-redefs [d/squuid (dummy-uuid-generator)]
+      (let [host-path "/tmp/main/foo"
+            {:keys [volumes volume-mounts]} (api/make-volumes [{:host-path host-path}] sandbox-path)
+          volumes (map k8s-volume->clj volumes)
+          volume-mounts (map k8s-mount->clj volume-mounts)]
+        (is (= volumes
+               [{:name "syn-uuid-1" :src host-path}
+                expected-sandbox-volume]))
+        (is (= volume-mounts
+               [{:name "syn-uuid-1" :mount-path host-path :read-only? true}
+                expected-sandbox-mount])))))
 
   (testing "correct values for fully specified volume"
     (let [host-path "/tmp/foo"
