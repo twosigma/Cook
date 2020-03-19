@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.40.0] - 2020-03-19
+### Added
+- Progress reporting for k8s jobs, from @DaoWen
+- SSL verification between Cook and k8s, from @scrosby
+- Fast fail for unschedulable k8s pods, from @dposada
+- Support for k8s synthetic pod namespace to be user's namesmapce, from @dposada
+- k8s synthetic pod anti-affinity to previous hosts, from @dposada 
+### Changed
+- Made autoscaling (for k8s) based on pending jobs instead of match failures, from @dposada
+- Renamed k8s metrics to be consistent with prior metric naming, from @scrosby
+- Separated k8s job pods' workdir and sandbox, from @DaoWen
+
 ## [1.39.1] - 2020-03-03
 ### Fixed
 - Removed expensive log from `handle-resource-offers!`, from @dposada
