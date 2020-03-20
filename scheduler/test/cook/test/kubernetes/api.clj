@@ -177,6 +177,7 @@
     #(str "uuid-" (swap! n inc))))
 
 (def sandbox-path "/mnt/sandbox")
+(def legacy-sandbox-path "/mnt/mesos/sandbox")
 
 (def expected-sandbox-volume
   {:name api/cook-sandbox-volume-name
@@ -186,6 +187,10 @@
   {:name api/cook-sandbox-volume-name
    :mount-path sandbox-path
    :read-only? false})
+(def expected-legacy-sandbox-mount
+  {:name api/cook-sandbox-volume-name
+   :mount-path legacy-sandbox-path
+   :read-only? false})
 
 (deftest test-make-volumes
   (testing "empty cook volumes"
@@ -193,7 +198,7 @@
           volumes (map k8s-volume->clj volumes)
           volume-mounts (map k8s-mount->clj volume-mounts)]
       (is (= volumes [expected-sandbox-volume]))
-      (is (= volume-mounts [expected-sandbox-mount]))))
+      (is (= volume-mounts [expected-sandbox-mount expected-legacy-sandbox-mount]))))
 
   (testing "valid generated volume names"
     (let [host-path "/tmp/main/foo"
@@ -216,7 +221,7 @@
                 expected-sandbox-volume]))
         (is (= volume-mounts
                [{:name "syn-uuid-1" :mount-path host-path :read-only? true}
-                expected-sandbox-mount])))))
+                expected-sandbox-mount expected-legacy-sandbox-mount])))))
 
   (testing "correct values for fully specified volume"
     (let [host-path "/tmp/foo"
@@ -236,10 +241,10 @@
     (with-redefs [config/kubernetes (constantly {:disallowed-container-paths #{"/tmp/foo"}})]
       (let [{:keys [volumes volume-mounts]} (api/make-volumes [{:host-path "/tmp/foo"}] "/tmp/unused")]
         (is (= 1 (count volumes)))
-        (is (= 1 (count volume-mounts))))
+        (is (= 2 (count volume-mounts))))
       (let [{:keys [volumes volume-mounts]} (api/make-volumes [{:container-path "/tmp/foo"}] "/tmp/unused")]
         (is (= 1 (count volumes)))
-        (is (= 1 (count volume-mounts)))))))
+        (is (= 2 (count volume-mounts)))))))
 
 
 (deftest test-pod->synthesized-pod-state
