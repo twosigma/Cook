@@ -406,10 +406,12 @@
                                (not= "RW" mode))))
         sandbox-volume (make-empty-volume cook-sandbox-volume-name)
         sandbox-volume-mount-fn #(make-volume-mount sandbox-volume sandbox-dir %)
-        sandbox-volume-mount (sandbox-volume-mount-fn false)]
+        sandbox-volume-mount (sandbox-volume-mount-fn false)
+        ; mesos-sandbox-volume-mount added for Mesos backward compatibility
+        mesos-sandbox-volume-mount (make-volume-mount sandbox-volume "/mnt/mesos/sandbox" false)]
     {:sandbox-volume-mount-fn sandbox-volume-mount-fn
      :volumes (conj volumes sandbox-volume)
-     :volume-mounts (conj volume-mounts sandbox-volume-mount)}))
+     :volume-mounts (conj volume-mounts sandbox-volume-mount mesos-sandbox-volume-mount)}))
 
 (defn toleration-for-pool
   "For a given cook pool name, create the right V1Toleration so that Cook will ignore that cook-pool taint."
