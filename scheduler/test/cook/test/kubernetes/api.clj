@@ -73,7 +73,7 @@
                                           :scalar-requests {"mem" 512
                                                             "cpus" 1.0}}
                            :hostname "kubehost"}
-            pod (api/task-metadata->pod "cook" "testing-cluster" task-metadata)]
+            pod (api/task-metadata->pod "cook" "testing-cluster" [] task-metadata)]
         (is (= "my-task" (-> pod .getMetadata .getName)))
         (is (= "cook" (-> pod .getMetadata .getNamespace)))
         (is (= "Never" (-> pod .getSpec .getRestartPolicy)))
@@ -131,7 +131,7 @@
                                         :scalar-requests {"mem" 512
                                                           "cpus" 1.0}}
                          :hostname "kubehost"}
-          pod (api/task-metadata->pod "cook" "test-cluster" task-metadata)]
+          pod (api/task-metadata->pod "cook" "test-cluster" [] task-metadata)]
       (is (= 100 (-> pod .getSpec .getSecurityContext .getRunAsUser)))
       (is (= 10 (-> pod .getSpec .getSecurityContext .getRunAsGroup)))))
 
@@ -142,7 +142,7 @@
                          :task-request {:job {:job/pool {:pool/name pool-name}}
                                         :scalar-requests {"mem" 512
                                                           "cpus" 1.0}}}
-          ^V1Pod pod (api/task-metadata->pod nil nil task-metadata)
+          ^V1Pod pod (api/task-metadata->pod nil nil [] task-metadata)
           ^V1PodSpec pod-spec (.getSpec pod)
           node-selector (.getNodeSelector pod-spec)]
       (is (contains? node-selector api/cook-pool-label))
@@ -155,7 +155,7 @@
                          :hostname hostname
                          :task-request {:scalar-requests {"mem" 512
                                                           "cpus" 1.0}}}
-          ^V1Pod pod (api/task-metadata->pod nil nil task-metadata)
+          ^V1Pod pod (api/task-metadata->pod nil nil [] task-metadata)
           ^V1PodSpec pod-spec (.getSpec pod)
           node-selector (.getNodeSelector pod-spec)]
       (is (contains? node-selector api/k8s-hostname-label))

@@ -537,7 +537,7 @@
   node))
 
 (defn make-kubernetes-compute-cluster
-  [namespaced-pod-name->pod pool-names synthetic-pods-user]
+  [namespaced-pod-name->pod pool-names synthetic-pods-user node-blocklist-labels]
   (let [synthetic-pods-config {:image "image"
                                :user synthetic-pods-user
                                :max-pods-outstanding 4
@@ -556,5 +556,5 @@
                                     nil ; scan-frequency-seconds-config
                                     nil ; max-pods-per-node
                                     synthetic-pods-config ; synthetic-pods-config
-                                    nil ; node-blocklist-labels
+                                    node-blocklist-labels ; node-blocklist-labels
                                     )))
