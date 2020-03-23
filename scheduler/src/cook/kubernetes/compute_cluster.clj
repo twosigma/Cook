@@ -223,7 +223,7 @@
       (let [timer-context (timers/start (metrics/timer "cc-launch-tasks" name))
             pod-namespace (get-namespace-from-task-metadata namespace-config task-metadata)
             pod-name (:task-id task-metadata)
-            ^V1Pod pod (api/task-metadata->pod pod-namespace name task-metadata)
+            ^V1Pod pod (api/task-metadata->pod pod-namespace name node-blocklist-labels task-metadata)
             new-cook-expected-state-dict {:cook-expected-state :cook-expected-state/starting
                                           :launch-pod {:pod pod}}]
         (try
