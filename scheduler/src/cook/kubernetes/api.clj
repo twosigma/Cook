@@ -644,33 +644,36 @@
       ; from happening. We want this pod to preempt lower priority pods
       ; (e.g. synthetic pods).
       (add-node-selector pod-spec k8s-hostname-label hostname)
-      (when (seq pod-hostnames-to-avoid)
-        ; Use node "anti"-affinity to disallow scheduling
+      (when (or (seq pod-hostnames-to-avoid)
+                (seq compute-cluster-node-blocklist-labels))
+        ; Use node "anti"-affinity to disallow scheduling on nodes with particular labels
         ; (https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#node-affinity)
         (let [affinity (V1Affinity.)
               node-affinity (V1NodeAffinity.)
-              node-selector (V1NodeSelector.)
-              node-selector-term-k8s-hostname-label (V1NodeSelectorTerm.)
-              node-selector-requirement-k8s-hostname-label (V1NodeSelectorRequirement.)]
+              node-selector (V1NodeSelector.)]
 
-          ; Disallow scheduling on hostnames we're being told to avoid
-          (.setKey node-selector-requirement-k8s-hostname-label k8s-hostname-label)
-          (.setOperator node-selector-requirement-k8s-hostname-label "NotIn")
-          (run! #(.addValuesItem node-selector-requirement-k8s-hostname-label %) pod-hostnames-to-avoid)
-          (.addMatchExpressionsItem node-selector-term-k8s-hostname-label node-selector-requirement-k8s-hostname-label)
-          (.addNodeSelectorTermsItem node-selector node-selector-term-k8s-hostname-label)
+          ; Disallow scheduling on hostnames we're being told to avoid (if any)
+          (when (seq pod-hostnames-to-avoid)
+            (let [node-selector-term-k8s-hostname-label (V1NodeSelectorTerm.)
+                  node-selector-requirement-k8s-hostname-label (V1NodeSelectorRequirement.)]
+              (.setKey node-selector-requirement-k8s-hostname-label k8s-hostname-label)
+              (.setOperator node-selector-requirement-k8s-hostname-label "NotIn")
+              (run! #(.addValuesItem node-selector-requirement-k8s-hostname-label %) pod-hostnames-to-avoid)
+              (.addMatchExpressionsItem node-selector-term-k8s-hostname-label node-selector-requirement-k8s-hostname-label)
+              (.addNodeSelectorTermsItem node-selector node-selector-term-k8s-hostname-label)))
 
-          ; Disallow scheduling on nodes with blocklist labels
-          (run!
-            (fn add-node-selector-term-for-blocklist-label
-              [node-blocklist-label]
-              (let [node-selector-term-blocklist-label (V1NodeSelectorTerm.)
-                    node-selector-requirement-blocklist-label (V1NodeSelectorRequirement.)]
-                (.setKey node-selector-requirement-blocklist-label node-blocklist-label)
-                (.setOperator node-selector-requirement-blocklist-label "DoesNotExist")
-                (.addMatchExpressionsItem node-selector-term-blocklist-label node-selector-requirement-blocklist-label)
-                (.addNodeSelectorTermsItem node-selector node-selector-term-blocklist-label)))
-            compute-cluster-node-blocklist-labels)
+          ; Disallow scheduling on nodes with blocklist labels (if any)
+          (when (seq compute-cluster-node-blocklist-labels)
+            (run!
+              (fn add-node-selector-term-for-blocklist-label
+                [node-blocklist-label]
+                (let [node-selector-term-blocklist-label (V1NodeSelectorTerm.)
+                      node-selector-requirement-blocklist-label (V1NodeSelectorRequirement.)]
+                  (.setKey node-selector-requirement-blocklist-label node-blocklist-label)
+                  (.setOperator node-selector-requirement-blocklist-label "DoesNotExist")
+                  (.addMatchExpressionsItem node-selector-term-blocklist-label node-selector-requirement-blocklist-label)
+                  (.addNodeSelectorTermsItem node-selector node-selector-term-blocklist-label)))
+              compute-cluster-node-blocklist-labels))
 
           (.setRequiredDuringSchedulingIgnoredDuringExecution node-affinity node-selector)
           (.setNodeAffinity affinity node-affinity)
