@@ -243,7 +243,7 @@ def __get_latest_instance(job):
     raise CookRetriableException(f'Job {job["uuid"]} currently has no instances.')
 
 
-def query_unique_and_run(clusters, entity_ref, command_fn, wait=False, resolve_sandbox_directory=True):
+def query_unique_and_run(clusters, entity_ref, command_fn, wait=False):
     """Calls query_unique and then calls the given command_fn on the resulting job instance"""
 
     def query_unique_and_run():
@@ -251,14 +251,12 @@ def query_unique_and_run(clusters, entity_ref, command_fn, wait=False, resolve_s
         if query_result['type'] == Types.JOB:
             job = query_result['data']
             instance = __get_latest_instance(job)
-            directory = mesos.retrieve_instance_sandbox_directory(instance, job) if resolve_sandbox_directory \
-                else partial(mesos.retrieve_instance_sandbox_directory, instance=instance, job=job)
-            command_fn(instance, directory, query_result['cluster'])
+            directory_fn = partial(mesos.retrieve_instance_sandbox_directory, instance=instance, job=job)
+            command_fn(instance, directory_fn, query_result['cluster'])
         elif query_result['type'] == Types.INSTANCE:
             instance, job = query_result['data']
-            directory = mesos.retrieve_instance_sandbox_directory(instance, job) if resolve_sandbox_directory \
-                else partial(mesos.retrieve_instance_sandbox_directory, instance=instance, job=job)
-            command_fn(instance, directory, query_result['cluster'])
+            directory_fn = partial(mesos.retrieve_instance_sandbox_directory, instance=instance, job=job)
+            command_fn(instance, directory_fn, query_result['cluster'])
         else:
             # This should not happen, because query_unique should
             # only return a map with type "job" or type "instance"
