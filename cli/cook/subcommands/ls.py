@@ -162,7 +162,7 @@ def ls_for_instance(instance, sandbox_dir_fn, cluster, path, long_format, as_jso
                                       c['compute-cluster-name'] == compute_cluster_name)
         kubectl_ls_for_instance_fn(instance["task_id"], compute_cluster_config, path, long_format, as_json)
     else:
-        ls_for_instance_from_mesos(instance, sandbox_dir_fn(), cluster, path, long_format, as_json)
+        ls_for_instance_from_mesos(instance, sandbox_dir_fn(), path, long_format, as_json)
 
 
 def ls(clusters, args, _):
