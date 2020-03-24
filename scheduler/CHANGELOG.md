@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.40.2] - 2020-03-24
+### Fixed
+- Added node anti-affinity for blocklist labels to synthetic pods, from @dposada
+
 ## [1.40.1] - 2020-03-22
 ### Added
 - Mesos sandbox mount to k8s pods (backward compatibility for jobs that assume they're running on Mesos), from @nsinkov
@@ -13,7 +17,7 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/) and this p
 - Progress reporting for k8s jobs, from @DaoWen
 - SSL verification between Cook and k8s, from @scrosby
 - Fast fail for unschedulable k8s pods, from @dposada
-- Support for k8s synthetic pod namespace to be user's namesmapce, from @dposada
+- Support for k8s synthetic pod namespace to be user's namespace, from @dposada
 - k8s synthetic pod anti-affinity to previous hosts, from @dposada 
 ### Changed
 - Made autoscaling (for k8s) based on pending jobs instead of match failures, from @dposada
