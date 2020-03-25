@@ -49,6 +49,6 @@ def ssh(clusters, args, _):
 
 def register(add_parser, _):
     """Adds this sub-command's parser and returns the action function"""
-    parser = add_parser('ssh', help='ssh to Mesos agent by job or instance uuid')
+    parser = add_parser('ssh', help='ssh to Mesos agent or container by job or instance uuid')
     parser.add_argument('uuid', nargs=1)
     return ssh
