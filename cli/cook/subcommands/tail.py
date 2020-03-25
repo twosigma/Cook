@@ -2,9 +2,9 @@ import os
 import time
 from functools import partial
 
-from cook import http, plugins
+from cook import plugins
 from cook.mesos import read_file
-from cook.querying import query_unique_and_run, parse_entity_refs
+from cook.querying import get_compute_cluster_config, query_unique_and_run, parse_entity_refs
 from cook.util import check_positive, guard_no_cluster
 
 CHUNK_SIZE = 4096
@@ -136,9 +136,7 @@ def tail_for_instance(instance, sandbox_dir_fn, cluster, path, num_lines_to_prin
     compute_cluster_name = compute_cluster["name"]
     if compute_cluster_type == "kubernetes":
         kubectl_tail_instance_file_fn = plugins.get_fn('kubectl-tail-instance-file', kubectl_tail_instance_file)
-        cook_cluster_settings = http.get(cluster, 'settings', params={}).json()
-        compute_cluster_config = next(c for c in (s['config'] for s in cook_cluster_settings['compute-clusters']) if
-                                      c['compute-cluster-name'] == compute_cluster_name)
+        compute_cluster_config = get_compute_cluster_config(cluster, compute_cluster_name)
         kubectl_tail_instance_file_fn(instance["task_id"], compute_cluster_config, path, num_lines_to_print, follow)
     else:
         tail_using_read_file(instance, sandbox_dir_fn(), path, num_lines_to_print, follow, follow_sleep_seconds)

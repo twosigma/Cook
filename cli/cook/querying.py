@@ -420,3 +420,13 @@ def query_with_stdin_support(clusters, entity_refs, pred_jobs=None, pred_instanc
 
     query_result = query(clusters_of_interest, entity_refs, pred_jobs, pred_instances, pred_groups, timeout, interval)
     return query_result, clusters_of_interest
+
+def get_compute_cluster_config(cluster, compute_cluster_name):
+    """
+    :param cluster: cook scheduler cluster
+    :param compute_cluster_name: compute cluster
+    :return: config of the compute cluster
+    """
+    cook_cluster_settings = http.get(cluster, 'settings', params={}).json()
+    return next(c for c in (s['config'] for s in cook_cluster_settings['compute-clusters']) if
+                c['compute-cluster-name'] == compute_cluster_name)

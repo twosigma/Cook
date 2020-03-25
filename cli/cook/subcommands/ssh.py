@@ -1,8 +1,8 @@
 import logging
 import os
 
-from cook import http, plugins, terminal
-from cook.querying import query_unique_and_run, parse_entity_refs
+from cook import plugins, terminal
+from cook.querying import get_compute_cluster_config, query_unique_and_run, parse_entity_refs
 from cook.util import print_info, guard_no_cluster
 
 
@@ -25,9 +25,7 @@ def ssh_to_instance(instance, sandbox_dir_fn, cluster):
     compute_cluster_name = compute_cluster["name"]
     if compute_cluster_type == "kubernetes":
         kubectl_exec_to_instance_fn = plugins.get_fn('kubectl-exec-to-instance', kubectl_exec_to_instance)
-        cook_cluster_settings = http.get(cluster, 'settings', params={}).json()
-        compute_cluster_config = next(c for c in (s['config'] for s in cook_cluster_settings['compute-clusters']) if
-                                      c['compute-cluster-name'] == compute_cluster_name)
+        compute_cluster_config = get_compute_cluster_config(cluster, compute_cluster_name)
         kubectl_exec_to_instance_fn(instance["task_id"], compute_cluster_config)
     else:
         sandbox_dir = sandbox_dir_fn()

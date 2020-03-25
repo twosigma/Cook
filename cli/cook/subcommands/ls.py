@@ -9,7 +9,7 @@ from functools import partial
 from tabulate import tabulate
 
 from cook import http, mesos, terminal, plugins
-from cook.querying import query_unique_and_run, parse_entity_refs
+from cook.querying import get_compute_cluster_config, query_unique_and_run, parse_entity_refs
 from cook.util import guard_no_cluster
 
 
@@ -157,9 +157,7 @@ def ls_for_instance(instance, sandbox_dir_fn, cluster, path, long_format, as_jso
     compute_cluster_name = compute_cluster["name"]
     if compute_cluster_type == "kubernetes":
         kubectl_ls_for_instance_fn = plugins.get_fn('kubectl-ls-for-instance', kubectl_ls_for_instance)
-        cook_cluster_settings = http.get(cluster, 'settings', params={}).json()
-        compute_cluster_config = next(c for c in (s['config'] for s in cook_cluster_settings['compute-clusters']) if
-                                      c['compute-cluster-name'] == compute_cluster_name)
+        compute_cluster_config = get_compute_cluster_config(cluster, compute_cluster_name)
         kubectl_ls_for_instance_fn(instance["task_id"], compute_cluster_config, path, long_format, as_json)
     else:
         ls_for_instance_from_mesos(instance, sandbox_dir_fn(), path, long_format, as_json)

@@ -4,9 +4,9 @@ import os
 import sys
 from functools import partial
 
-from cook import http, plugins
+from cook import plugins
 from cook.mesos import download_file
-from cook.querying import parse_entity_refs, query_unique_and_run, parse_entity_ref
+from cook.querying import get_compute_cluster_config, parse_entity_refs, query_unique_and_run, parse_entity_ref
 from cook.util import guard_no_cluster
 
 def cat_using_download_file(instance, sandbox_dir, path):
@@ -37,9 +37,7 @@ def cat_for_instance(instance, sandbox_dir_fn, cluster, path):
     compute_cluster_name = compute_cluster["name"]
     if compute_cluster_type == "kubernetes":
         kubectl_cat_instance_file_fn = plugins.get_fn('kubectl-cat-for-instance', kubectl_cat_instance_file)
-        cook_cluster_settings = http.get(cluster, 'settings', params={}).json()
-        compute_cluster_config = next(c for c in (s['config'] for s in cook_cluster_settings['compute-clusters']) if
-                                      c['compute-cluster-name'] == compute_cluster_name)
+        compute_cluster_config = get_compute_cluster_config(cluster, compute_cluster_name)
         kubectl_cat_instance_file_fn(instance["task_id"], compute_cluster_config, path)
     else:
         cat_using_download_file(instance, sandbox_dir_fn(), path)
