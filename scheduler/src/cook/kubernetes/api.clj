@@ -36,6 +36,15 @@
 (def cook-synthetic-pod-name-prefix "synthetic")
 (def k8s-hostname-label "kubernetes.io/hostname")
 
+(def default-shell
+  "Default shell command used by our k8s scheduler to wrap and launch a job command
+   when no custom shell is provided in the kubernetes compute cluster config."
+  ["/bin/sh" "-c"
+   (str "exec 1>$COOK_SANDBOX/stdout; "
+        "exec 2>$COOK_SANDBOX/stderr; "
+        "exec /bin/sh -c \"$1\"")
+   "--"])
+
 ; DeletionCandidateTaint is a soft taint that k8s uses to mark unneeded
 ; nodes as preferably unschedulable. This taint is added as soon as the
 ; autoscaler detects that nodes are under-utilized and all pods could be
@@ -563,7 +572,9 @@
 
     ; container
     (.setName container cook-container-name-for-job)
-    (.setCommand container (conj (or (when use-cook-init? custom-shell) ["/bin/sh" "-c"]) (:value command)))
+    (.setCommand container
+                 (conj (or (when use-cook-init? custom-shell) default-shell)
+                       (:value command)))
     (.setEnv container main-env-vars)
     (.setImage container image)
 

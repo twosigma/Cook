@@ -94,7 +94,7 @@
         (let [^V1Container container (-> pod .getSpec .getContainers first)
               container-env (.getEnv container)]
           (is (= "required-cook-job-container" (.getName container)))
-          (is (= ["/bin/sh" "-c" "foo && bar"] (.getCommand container)))
+          (is (= (conj api/default-shell "foo && bar") (.getCommand container)))
           (is (= "alpine:latest" (.getImage container)))
           (is (not (nil? container)))
           (is (= ["COOK_SANDBOX" "EXECUTOR_PROGRESS_OUTPUT_FILE" "FOO" "HOME" "MESOS_SANDBOX" "SIDECAR_WORKDIR"]
