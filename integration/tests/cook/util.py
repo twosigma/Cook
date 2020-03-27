@@ -561,15 +561,6 @@ def submit_jobs(cook_url, job_specs, clones=1, pool=None, headers=None, log_requ
         job_specs = [job_specs] * clones
     caller = get_caller()
 
-    def io_redirect(spec):
-        if using_kubernetes() and using_kubernetes_default_shell():
-            # Capture stdout and stderr as files in the sandbox directory
-            # (i.e., mimick the default mesos behavior on k8s).
-            # Assuming custom shell commands handle this logic internally.
-            spec['command'] = f'( {spec["command"]} ) >stdout 2>stderr'
-            logging.debug(f'Rewrote job {spec["uuid"]} command to capture stdout and stderr.')
-        return spec
-
     def full_spec(spec):
         if 'name' not in spec:
             spec['name'] = DEFAULT_JOB_NAME_PREFIX + caller
@@ -580,7 +571,7 @@ def submit_jobs(cook_url, job_specs, clones=1, pool=None, headers=None, log_requ
                 del spec["name"]
             return dict(**spec)
 
-    jobs = [io_redirect(full_spec(j)) for j in job_specs]
+    jobs = [full_spec(j) for j in job_specs]
     request_body = {'jobs': jobs}
     default_pool = default_submit_pool()
     if pool == POOL_UNSPECIFIED:
