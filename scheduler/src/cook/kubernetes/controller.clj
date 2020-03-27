@@ -181,6 +181,11 @@
         (log/info "In compute cluster" name ", encountered unschedulable pod" instance-id)
         :reason-scheduling-failed-on-host)
 
+      (api/pod-containers-not-initialized? pod-status)
+      (do
+        (log/info "In compute cluster" name ", encountered containers not initialized in pod" instance-id)
+        :reason-container-initialization-timed-out)
+
       :default
       (do
         (log/warn "In compute cluster" name ", unable to determine failure reason for" instance-id

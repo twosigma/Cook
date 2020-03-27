@@ -12,6 +12,8 @@
 02001: REASON_CONTAINER_LIMITATION_DISK
 02002: REASON_CONTAINER_LIMITATION_MEMORY
 02003: Max runtime exceeded
+02004: Task was a straggler
+02005: Container initialization timed out
 
 03xxx: Cook Error
 03000: REASON_RECONCILIATION

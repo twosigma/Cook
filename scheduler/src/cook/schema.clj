@@ -1260,6 +1260,12 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :reason/string "Task was a straggler"
     :reason/name :straggler
     :reason/mea-culpa? false}
+   {:db/id (d/tempid :db.part/user)
+    :reason/code 2005
+    :reason/string "Container initialization timed out"
+    :reason/name :container-initialization-timed-out
+    :reason/mea-culpa? false
+    :reason/mesos-reason :reason-container-initialization-timed-out}
 
    {:db/id (d/tempid :db.part/user)
     :reason/code 3000
