@@ -515,8 +515,8 @@
 
 (defn- checkpoint->volume-mounts
   "Get custom volume mounts needed for checkpointing"
-  [{:keys [volume-mounts]}]
-  (map (fn [{:keys []}] (make-volume-mount xxx))))
+  [{:keys [volume-mounts]} shared-volume]
+  (map (fn [{:keys [path sub-path]}] (make-volume-mount shared-volume path sub-path true)) volume-mounts))
 
 (defn ^V1Pod task-metadata->pod
   "Given a task-request and other data generate the kubernetes V1Pod to launch that task."
@@ -561,7 +561,7 @@
         scratch-space "/mnt/scratch-space"
         scratch-space-volume (make-empty-volume "cook-scratch-space-volume")
         scratch-space-volume-mount-fn (partial make-volume-mount scratch-space-volume scratch-space)
-        checkpoint-volume-mounts (checkpoint->volume-mounts checkpoint)
+        checkpoint-volume-mounts (checkpoint->volume-mounts checkpoint scratch-space-volume)
         sandbox-env {"COOK_SANDBOX" sandbox-dir
                      "HOME" sandbox-dir
                      "MESOS_SANDBOX" sandbox-dir
