@@ -515,8 +515,9 @@
 
 (defn- checkpoint->volume-mounts
   "Get custom volume mounts needed for checkpointing"
-  [{:keys [volume-mounts]} shared-volume]
-  (map (fn [{:keys [path sub-path]}] (make-volume-mount shared-volume path sub-path true)) volume-mounts))
+  [{:keys [enable volume-mounts]} shared-volume]
+  (when enable
+    (map (fn [{:keys [path sub-path]}] (make-volume-mount shared-volume path sub-path true)) volume-mounts)))
 
 (defn ^V1Pod task-metadata->pod
   "Given a task-request and other data generate the kubernetes V1Pod to launch that task."
