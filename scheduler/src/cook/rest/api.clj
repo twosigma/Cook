@@ -167,6 +167,11 @@
    (s/optional-key :mesos) MesosInfo
    (s/optional-key :volumes) [Volume]})
 
+(def Checkpoint
+  "Schema for a configuration to enable checkpointing"
+  {:type s/Str
+   :enable s/Bool})
+
 (def Uri
   "Schema for a Mesos fetch URI, which has many options"
   {:value s/Str
@@ -310,6 +315,7 @@
    (s/optional-key :env) {NonEmptyString s/Str}
    (s/optional-key :labels) {NonEmptyString s/Str}
    (s/optional-key :constraints) [Constraint]
+   (s/optional-key :checkpoint) Checkpoint
    (s/optional-key :container) Container
    (s/optional-key :executor) (s/enum "cook" "mesos")
    (s/optional-key :progress-output-file) NonEmptyString
@@ -617,6 +623,14 @@
     "mesos" (build-mesos-container user id container)
     {}))
 
+(defn- build-checkpoint
+  "Helper for submit-jobs, deal with checkpoint config."
+  [db-id {:keys [enable]}]
+  (let [env-var-id (d/tempid :db.part/user)]
+    [[:db/add db-id :job/checkpoint env-var-id]
+     {:db/id env-var-id
+      :checkpoint/enable enable}]))
+
 (defn- str->executor-enum
   "Converts an executor string to the corresponding executor option enum.
    Throws an IllegalArgumentException if the string is non-nil and not supported."
@@ -653,7 +667,7 @@
   [pool commit-latch-id db job :- Job]
   (let [{:keys [uuid command max-retries max-runtime expected-runtime priority cpus mem gpus
                 user name ports uris env labels container group application disable-mea-culpa-retries
-                constraints executor progress-output-file progress-regex-string datasets]
+                constraints executor progress-output-file progress-regex-string datasets checkpoint]
          :or {group nil
               disable-mea-culpa-retries false}} job
         db-id (d/tempid :db.part/user)
@@ -699,6 +713,7 @@
                                                                 (str/lower-case operator))
                                   :constraint/pattern pattern}]))
                             constraints)
+        checkpoint (if (nil? checkpoint) [] (build-checkpoint db-id checkpoint))
         container (if (nil? container) [] (build-container user db-id container))
         executor (str->executor-enum executor)
         ;; These are optionally set datoms w/ default values
@@ -760,6 +775,7 @@
         (into uris)
         (into env)
         (into constraints)
+        (into checkpoint)
         (into labels)
         (into container)
         (into maybe-datoms)
@@ -1110,6 +1126,7 @@
           progress-regex-string (:job/progress-regex-string job)
           pool (:job/pool job)
           container (:job/container job)
+          checkpoint (:job/checkpoint job)
           state (util/job-ent->state job)
           constraints (->> job
                            :job/constraint
@@ -1166,6 +1183,7 @@
               progress-regex-string (assoc :progress-regex-string progress-regex-string)
               pool (assoc :pool (:pool/name pool))
               container (assoc :container (container->response-map container))
+              checkpoint (assoc :checkpoint (util/job-ent->checkpoint job))
               datasets (assoc :datasets datasets)))))
 
 (defn fetch-job-map

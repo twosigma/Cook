@@ -383,12 +383,15 @@
 
 (defn- make-volume-mount
   "Make a kubernetes volume mount"
-  [^V1Volume volume path read-only]
-  (when volume
-    (doto (V1VolumeMount.)
-      (.setName (.getName volume))
-      (.setMountPath path)
-      (.setReadOnly read-only))))
+  ([^V1Volume volume path read-only]
+   (make-volume-mount volume path nil read-only))
+  ([^V1Volume volume path sub-path read-only]
+   (when volume
+     (doto (V1VolumeMount.)
+       (.setName (.getName volume))
+       (.setMountPath path)
+       (.setReadOnly read-only)
+       (cond-> sub-path (.setSubPath sub-path))))))
 
 (defn make-volumes
   "Converts a list of cook volumes to kubernetes volumes and volume mounts."
@@ -510,6 +513,11 @@
                                  .getNodeSelector
                                  (assoc key val))))
 
+(defn- checkpoint->volume-mounts
+  "Get custom volume mounts needed for checkpointing"
+  [{:keys [volume-mounts]}]
+  (map (fn [{:keys []}] (make-volume-mount xxx))))
+
 (defn ^V1Pod task-metadata->pod
   "Given a task-request and other data generate the kubernetes V1Pod to launch that task."
   [namespace compute-cluster-name compute-cluster-node-blocklist-labels
@@ -524,7 +532,7 @@
         {:strs [mem cpus]} scalar-requests
         {:keys [docker volumes]} container
         {:keys [image parameters]} docker
-        {:keys [job/progress-output-file job/progress-regex-string]} job
+        {:keys [job/progress-output-file job/progress-regex-string job/checkpoint]} job
         {:keys [environment]} command
         pod (V1Pod.)
         pod-spec (V1PodSpec.)
@@ -537,7 +545,8 @@
         sandbox-dir (:default-workdir (config/kubernetes))
         workdir (get-workdir parameters sandbox-dir)
         {:keys [volumes volume-mounts sandbox-volume-mount-fn]} (make-volumes volumes sandbox-dir)
-        {:keys [custom-shell init-container sidecar]} (config/kubernetes)
+        {:keys [custom-shell init-container sidecar default-checkpoint-config]} (config/kubernetes)
+        checkpoint (merge default-checkpoint-config (util/job-ent->checkpoint job))
         use-cook-init? (and init-container pod-supports-cook-init?)
         use-cook-sidecar? (and sidecar pod-supports-cook-sidecar?)
         init-container-workdir "/mnt/init-container"
@@ -552,13 +561,15 @@
         scratch-space "/mnt/scratch-space"
         scratch-space-volume (make-empty-volume "cook-scratch-space-volume")
         scratch-space-volume-mount-fn (partial make-volume-mount scratch-space-volume scratch-space)
+        checkpoint-volume-mounts (checkpoint->volume-mounts checkpoint)
         sandbox-env {"COOK_SANDBOX" sandbox-dir
                      "HOME" sandbox-dir
                      "MESOS_SANDBOX" sandbox-dir
                      "SIDECAR_WORKDIR" sidecar-workdir}
         params-env (build-params-env parameters)
         progress-env (task/build-executor-environment job)
-        main-env-base (merge environment params-env progress-env sandbox-env)
+        checkpoint-env {"COOK_CHECKPOINT_ENABLE" (if (:enable checkpoint) "true" "false")}
+        main-env-base (merge environment params-env progress-env sandbox-env checkpoint-env)
         progress-file-var (get main-env-base task/progress-meta-env-name task/default-progress-env-name)
         progress-file-path (get main-env-base progress-file-var)
         main-env (cond-> main-env-base
@@ -592,7 +603,7 @@
     ; "Guaranteed" QoS which requires limits for both memory and cpu.
     (.putLimitsItem resources "cpu" (double->quantity cpus))
     (.setResources container resources)
-    (.setVolumeMounts container (filterv some? (conj volume-mounts
+    (.setVolumeMounts container (filterv some? (conj (concat volume-mounts checkpoint-volume-mounts)
                                                      (init-container-workdir-volume-mount-fn true)
                                                      (scratch-space-volume-mount-fn false)
                                                      (sidecar-workdir-volume-mount-fn true))))

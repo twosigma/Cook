@@ -1295,7 +1295,7 @@
           ; will have to dissoc it.
           [{:keys [mem max-retries max-runtime expected-runtime name gpus
                    command ports priority uuid user cpus application
-                   disable-mea-culpa-retries executor datasets]
+                   disable-mea-culpa-retries executor datasets checkpoint]
             :or {disable-mea-culpa-retries false}}]
           (cond-> {;; Fields we will fill in from the provided args:
                    :command command
@@ -1324,6 +1324,7 @@
             application (assoc :application application)
             expected-runtime (assoc :expected-runtime expected-runtime)
             executor (assoc :executor executor)
+            checkpoint (assoc :checkpoint checkpoint)
             datasets (assoc :datasets datasets)))]
     (with-redefs [dl/job-uuid->dataset-maps-cache (util/new-cache)
                   config/compute-clusters (constantly [{:factory-fn 'cook.mesos.mesos-compute-cluster/factory-fn
@@ -1387,6 +1388,15 @@
           (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
                 application {:name "foo-app", :version "0.1.0"}
                 {:keys [uuid] :as job} (assoc (minimal-job) :application application)]
+            (is (= {::api/results (str "submitted jobs " uuid)}
+                   (testutil/create-jobs! conn {::api/jobs [job]})))
+            (is (= (expected-job-map job)
+                   (dissoc (api/fetch-job-map (db conn) uuid) :submit_time)))))
+
+        (testing "should work when the job specifies checkpointing options"
+          (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
+                checkpoint {:enable true}
+                {:keys [uuid] :as job} (assoc (minimal-job) :checkpoint checkpoint)]
             (is (= {::api/results (str "submitted jobs " uuid)}
                    (testutil/create-jobs! conn {::api/jobs [job]})))
             (is (= (expected-job-map job)
