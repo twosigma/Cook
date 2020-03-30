@@ -603,15 +603,15 @@ def submit_jobs(cook_url, job_specs, clones=1, pool=None, headers=None, log_requ
     caller = get_caller()
 
     def full_spec(spec):
-        if "container" in spec and spec["container"] is None:
-            del spec["container"]
+        if 'container' in spec and spec['container'] is None:
+            del spec['container']
         if 'name' not in spec:
             spec['name'] = DEFAULT_JOB_NAME_PREFIX + caller
         if 'uuid' not in spec:
             return minimal_job(**spec)
         else:
-            if "name" in spec and spec["name"] is None:
-                del spec["name"]
+            if 'name' in spec and spec['name'] is None:
+                del spec['name']
             return dict(**spec)
 
     jobs = [full_spec(j) for j in job_specs]
