@@ -169,8 +169,7 @@
 
 (def Checkpoint
   "Schema for a configuration to enable checkpointing"
-  {:type s/Str
-   :enable s/Bool})
+  {:enable s/Bool})
 
 (def Uri
   "Schema for a Mesos fetch URI, which has many options"
