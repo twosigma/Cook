@@ -224,7 +224,7 @@
                   .getNodeAffinity
                   .getRequiredDuringSchedulingIgnoredDuringExecution
                   .getNodeSelectorTerms)]
-          (is (= 2 (count node-selector-terms)))
+          (is (= 1 (count node-selector-terms)))
           (let [node-selector-requirement
                 (->> node-selector-terms
                      (filter #(-> % .getMatchExpressions first .getKey (= "unhealthy-node")))
