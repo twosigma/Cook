@@ -18,7 +18,7 @@ requirements = [
 
 test_requirements = [
     'freezegun',
-    'nose',
+    'pytest',
     'requests-mock'
 ]
 

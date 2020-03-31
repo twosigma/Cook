@@ -5,7 +5,7 @@ from urllib.parse import urljoin
 
 import requests
 
-import cook
+import cook.version
 from cook.util import print_error
 
 session = None
