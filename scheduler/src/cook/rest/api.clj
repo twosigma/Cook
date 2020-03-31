@@ -625,9 +625,9 @@
 (defn- build-checkpoint
   "Helper for submit-jobs, deal with checkpoint config."
   [db-id {:keys [enable]}]
-  (let [env-var-id (d/tempid :db.part/user)]
-    [[:db/add db-id :job/checkpoint env-var-id]
-     {:db/id env-var-id
+  (let [checkpoint-id (d/tempid :db.part/user)]
+    [[:db/add db-id :job/checkpoint checkpoint-id]
+     {:db/id checkpoint-id
       :checkpoint/enable enable}]))
 
 (defn- str->executor-enum
