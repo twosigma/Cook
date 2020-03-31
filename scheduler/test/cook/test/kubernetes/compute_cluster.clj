@@ -224,20 +224,20 @@
                   .getNodeAffinity
                   .getRequiredDuringSchedulingIgnoredDuringExecution
                   .getNodeSelectorTerms)]
-          (is (= 2 (count node-selector-terms)))
+          (is (= 1 (count node-selector-terms)))
           (let [node-selector-requirement
                 (->> node-selector-terms
-                     (filter #(-> % .getMatchExpressions first .getKey (= "unhealthy-node")))
                      first
                      .getMatchExpressions
+                     (filter #(-> % .getKey (= "unhealthy-node")))
                      first)]
             (is (= "unhealthy-node" (.getKey node-selector-requirement)))
             (is (= "DoesNotExist" (.getOperator node-selector-requirement))))
           (let [node-selector-requirement
                 (->> node-selector-terms
-                     (filter #(-> % .getMatchExpressions first .getKey (= "unready-node")))
                      first
                      .getMatchExpressions
+                     (filter #(-> % .getKey (= "unready-node")))
                      first)]
             (is (= "unready-node" (.getKey node-selector-requirement)))
             (is (= "DoesNotExist" (.getOperator node-selector-requirement)))))))))
