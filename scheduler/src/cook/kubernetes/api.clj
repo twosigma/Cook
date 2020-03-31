@@ -549,6 +549,9 @@
         sidecar-workdir "/mnt/sidecar"
         sidecar-workdir-volume (when use-cook-sidecar? (make-empty-volume "cook-sidecar-workdir-volume"))
         sidecar-workdir-volume-mount-fn (partial make-volume-mount sidecar-workdir-volume sidecar-workdir)
+        scratch-space "/mnt/scratch-space"
+        scratch-space-volume (make-empty-volume "cook-scratch-space-volume")
+        scratch-space-volume-mount-fn (partial make-volume-mount scratch-space-volume scratch-space)
         sandbox-env {"COOK_SANDBOX" sandbox-dir
                      "HOME" sandbox-dir
                      "MESOS_SANDBOX" sandbox-dir
@@ -591,6 +594,7 @@
     (.setResources container resources)
     (.setVolumeMounts container (filterv some? (conj volume-mounts
                                                      (init-container-workdir-volume-mount-fn true)
+                                                     (scratch-space-volume-mount-fn false)
                                                      (sidecar-workdir-volume-mount-fn true))))
     (.setWorkingDir container workdir)
 
@@ -607,7 +611,8 @@
           (.setCommand container command)
           (.setWorkingDir container init-container-workdir)
 
-          (.setVolumeMounts container [(init-container-workdir-volume-mount-fn false)])
+          (.setVolumeMounts container [(init-container-workdir-volume-mount-fn false)
+                                       (scratch-space-volume-mount-fn false)])
           (.addInitContainersItem pod-spec container))))
 
     ; sandbox file server container
@@ -705,7 +710,10 @@
       ; synthetic pods (which don't specify a node name), but it
       ; doesn't hurt to add it for all pods we submit.
       (add-node-selector pod-spec cook-pool-label pool-name))
-    (.setVolumes pod-spec (filterv some? (conj volumes init-container-workdir-volume sidecar-workdir-volume)))
+    (.setVolumes pod-spec (filterv some? (conj volumes
+                                               init-container-workdir-volume
+                                               scratch-space-volume
+                                               sidecar-workdir-volume)))
     (.setSecurityContext pod-spec security-context)
     (.setPriorityClassName pod-spec pod-priority-class)
 
