@@ -19,7 +19,7 @@ requirements = [
 test_requirements = [
     'freezegun',
     'pytest',
-    'requests-mock'
+    'requests-mock',
 ]
 
 setup(

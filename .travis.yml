@@ -30,10 +30,13 @@ matrix:
   fast_finish: true
 
   include:
-    - name: 'Cook Scheduler and JobClient unit tests'
-      before_script: cd scheduler && ./travis/setup.sh
+    - name: 'Cook Scheduler, CLI, and JobClient unit tests'
+      before_script:
+        - ./cli/travis/setup.sh
+        - cd scheduler && ./travis/setup.sh
       script:
         - pushd ../jobclient && mvn test
+        - popd && pushd ../cli && python -m pytest
         - popd && lein with-profile +test test :all-but-benchmark
 
     - name: 'Cook Scheduler integration tests with Cook Executor and Docker'
