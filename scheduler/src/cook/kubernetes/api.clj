@@ -569,7 +569,8 @@
                      "SIDECAR_WORKDIR" sidecar-workdir}
         params-env (build-params-env parameters)
         progress-env (task/build-executor-environment job)
-        checkpoint-env {"COOK_CHECKPOINT_ENABLE" (if (:enable checkpoint) "true" "false")}
+        checkpoint-env {"COOK_CHECKPOINT_ENABLE" (if (:enable checkpoint) "true" "false")
+                        "COOK_CHECKPOINT_PERIOD_SEC" (or (str (:period-sec checkpoint)) "")}
         main-env-base (merge environment params-env progress-env sandbox-env checkpoint-env)
         progress-file-var (get main-env-base task/progress-meta-env-name task/default-progress-env-name)
         progress-file-path (get main-env-base progress-file-var)

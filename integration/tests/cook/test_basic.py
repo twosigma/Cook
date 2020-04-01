@@ -3011,12 +3011,13 @@ class CookTest(util.CookTest):
         docker_image = util.docker_image()
         container = {'type': 'docker',
                      'docker': {'image': docker_image}}
-        command_disabled = 'bash -c \'if [[ "${COOK_CHECKPOINT_ENABLE}" == "true" ]]; then exit 1; else exit 0; fi\''
+        command_disabled = 'bash -c \'if [[ "${COOK_CHECKPOINT_ENABLE:-zzz}" == "zzz" ]] && [[ "${COOK_CHECKPOINT_PERIOD_SEC:-zzz}" == "zzz" ]]; then exit 0; else exit 1; fi\''
         job_uuid_disabled, resp_disabled = util.submit_job(self.cook_url, command=command_disabled, container=container)
         self.assertEqual(201, resp_disabled.status_code)
-        command_enabled = 'bash -c \'if [[ "${COOK_CHECKPOINT_ENABLE}" == "true" ]]; then exit 0; else exit 1; fi\''
+        command_enabled = 'bash -c \'if [[ "${COOK_CHECKPOINT_ENABLE}" == "true" ]] && [[ "${COOK_CHECKPOINT_PERIOD_SEC}" == "555" ]]; then exit 0; else exit 1; fi\''
         job_uuid_enabled, resp_enabled = util.submit_job(self.cook_url, command=command_enabled, container=container,
-                                                         checkpoint={"enable": True})
+                                                         checkpoint={"enable": True,
+                                                                     "period-sec": 555})
         self.assertEqual(201, resp_enabled.status_code)
         try:
             util.wait_for_instance(self.cook_url, job_uuid_disabled, status='success')

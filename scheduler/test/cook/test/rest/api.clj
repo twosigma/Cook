@@ -1395,7 +1395,8 @@
 
         (testing "should work when the job specifies checkpointing options"
           (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
-                checkpoint {:enable true}
+                checkpoint {:enable true
+                            :period-sec 777}
                 {:keys [uuid] :as job} (assoc (minimal-job) :checkpoint checkpoint)]
             (is (= {::api/results (str "submitted jobs " uuid)}
                    (testutil/create-jobs! conn {::api/jobs [job]})))
