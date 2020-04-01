@@ -748,19 +748,29 @@
   "Returns true if the given pod status has an Initialized condition with status
   False and reason ContainersNotInitialized, and the last transition was more than
   pod-condition-containers-not-initialized-seconds seconds ago"
-  [^V1PodStatus pod-status]
-  (let [{:keys [pod-condition-containers-not-initialized-seconds]} (config/kubernetes)]
-    (some->> pod-status .getConditions
-             (some
-               (fn pod-condition-containers-not-initialized?
-                 [^V1PodCondition condition]
-                 (and (-> condition .getType (= "Initialized"))
-                      (-> condition .getStatus (= "False"))
-                      (-> condition .getReason (= "ContainersNotInitialized"))
-                      (-> condition
-                          .getLastTransitionTime
-                          (t/plus (t/seconds pod-condition-containers-not-initialized-seconds))
-                          (t/before? (t/now)))))))))
+  [pod-name ^V1PodStatus pod-status]
+  (let [{:keys [pod-condition-containers-not-initialized-seconds]} (config/kubernetes)
+        ^V1PodCondition pod-condition
+        (some->> pod-status .getConditions
+                 (some
+                   (fn pod-condition-containers-not-initialized?
+                     [^V1PodCondition condition]
+                     (and (-> condition .getType (= "Initialized"))
+                          (-> condition .getStatus (= "False"))
+                          (-> condition .getReason (= "ContainersNotInitialized"))))))]
+    (when pod-condition
+      (let [last-transition-time-plus-threshold-seconds
+            (-> pod-condition
+                .getLastTransitionTime
+                (t/plus (t/seconds pod-condition-containers-not-initialized-seconds)))
+            now (t/now)
+            threshold-passed? (t/before? last-transition-time-plus-threshold-seconds now)]
+        (log/info "Pod" pod-name "has containers that are not initialized"
+                  {:last-transition-time-plus-threshold-seconds last-transition-time-plus-threshold-seconds
+                   :now now
+                   :pod-condition pod-condition
+                   :threshold-passed? threshold-passed?})
+        threshold-passed?))))
 
 (defn pod->synthesized-pod-state
   "From a V1Pod object, determine the state of the pod, waiting running, succeeded, failed or unknown.
@@ -797,7 +807,7 @@
           (let [^V1ContainerState state (.getState job-status)]
             (cond
               (.getWaiting state)
-              (if (pod-containers-not-initialized? pod-status)
+              (if (pod-containers-not-initialized? (V1Pod->name pod) pod-status)
                 ; If the containers are not getting initialized,
                 ; then we should consider the pod failed. This
                 ; state can occur, for example, when volume

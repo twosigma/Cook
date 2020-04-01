@@ -265,6 +265,7 @@
   (testing "waiting"
     (let [pod (V1Pod.)
           pod-status (V1PodStatus.)
+          pod-metadata (V1ObjectMeta.)
           container-status (V1ContainerStatus.)
           container-state (V1ContainerState.)
           waiting (V1ContainerStateWaiting.)]
@@ -274,6 +275,7 @@
       (.setName container-status "required-cook-job-container")
       (.setContainerStatuses pod-status [container-status])
       (.setStatus pod pod-status)
+      (.setMetadata pod pod-metadata)
       (is (= {:state :pod/waiting
               :reason "waiting"}
              (api/pod->synthesized-pod-state pod)))))
