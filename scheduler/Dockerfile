@@ -1,7 +1,10 @@
 FROM mesosphere/mesos:1.3.0
 
 
-RUN apt-get -y update && apt-get -y install software-properties-common && \ 
+# Removing docker.list because docker APT repo has been deleted:
+# https://www.docker.com/blog/changes-dockerproject-org-apt-yum-repositories/
+RUN rm /etc/apt/sources.list.d/docker.list && \
+    apt-get -y update && apt-get -y install software-properties-common && \
     add-apt-repository ppa:openjdk-r/ppa && apt-get -y update && \
     apt-get --no-install-recommends -y install \
     curl \
