@@ -284,8 +284,11 @@
           pod-ip (-> pod .getStatus .getPodIP)
           {:keys [default-workdir pod-ip->hostname-fn sidecar]} (config/kubernetes)
           sandbox-fileserver-port (:port sidecar)
+          sandbox-health-check-endpoint (:health-check-endpoint sidecar)
           sandbox-url (try
-                        (when (and sandbox-fileserver-port (not (str/blank? pod-ip)))
+                        (when (and sandbox-fileserver-port
+                                   sandbox-health-check-endpoint
+                                   (not (str/blank? pod-ip)))
                           (str "http://"
                                ((get-pod-ip->hostname-fn pod-ip->hostname-fn) pod-ip)
                                ":" sandbox-fileserver-port

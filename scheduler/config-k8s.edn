@@ -52,6 +52,7 @@
               :sidecar {;; Note that Cook automatically appends the :port given below 
                         ;; as the last argument in this :command vector.
                         :command ["cook-sidecar" "--file-server-port"]
+                        :health-check-endpoint "/readiness-probe"
                         :image "twosigma/cook-sidecar:latest"
                         :port 23906
                         :resource-requirements {:cpu-request 0.1
