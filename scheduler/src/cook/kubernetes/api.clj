@@ -617,12 +617,10 @@
 
     ; sandbox file server container
     (when use-cook-sidecar?
-      (when-let [{:keys [command image port resource-requirements]} sidecar]
+      (when-let [{:keys [command health-check-endpoint image port resource-requirements]} sidecar]
         (let [{:keys [cpu-request cpu-limit memory-request memory-limit]} resource-requirements
               container (V1Container.)
-              resources (V1ResourceRequirements.)
-              readiness-probe (V1Probe.)
-              http-get-action (V1HTTPGetAction.)]
+              resources (V1ResourceRequirements.)]
           ; container
           (.setName container cook-container-name-for-file-server)
           (.setImage container image)
@@ -636,10 +634,14 @@
                                    ;; Will remove this environment variable in a future release.
                                    (make-env "COOK_WORKDIR" sandbox-dir)))
 
-          (.setPort http-get-action (-> port int IntOrString.))
-          (.setPath http-get-action "readiness-probe")
-          (.setHttpGet readiness-probe http-get-action)
-          (.setReadinessProbe container readiness-probe)
+          ; optionally enable http-based readiness probe
+          (when health-check-endpoint
+            (let [http-get-action (doto (V1HTTPGetAction.)
+                                    (.setPort (-> port int IntOrString.))
+                                    (.setPath health-check-endpoint))
+                  readiness-probe (doto (V1Probe.)
+                                    (.setHttpGet http-get-action))]
+            (.setReadinessProbe container readiness-probe)))
 
           ; resources
           (.putRequestsItem resources "cpu" (double->quantity cpu-request))
