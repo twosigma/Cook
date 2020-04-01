@@ -108,7 +108,6 @@
           (log/warn "Handling watch update"
                     {:item item
                      :key key
-                     :prev-item prev-item
                      :watch-update-type (.-type watch-response)})
           (callback key prev-item item)
           (catch Exception e
@@ -757,13 +756,15 @@
   [pod-name ^V1PodStatus pod-status]
   (let [{:keys [pod-condition-containers-not-initialized-seconds]} (config/kubernetes)
         ^V1PodCondition pod-condition
-        (some->> pod-status .getConditions
-                 (some
+        (some->> pod-status
+                 .getConditions
+                 (filter
                    (fn pod-condition-containers-not-initialized?
                      [^V1PodCondition condition]
                      (and (-> condition .getType (= "Initialized"))
                           (-> condition .getStatus (= "False"))
-                          (-> condition .getReason (= "ContainersNotInitialized"))))))]
+                          (-> condition .getReason (= "ContainersNotInitialized")))))
+                 first)]
     (when pod-condition
       (let [last-transition-time-plus-threshold-seconds
             (-> pod-condition
