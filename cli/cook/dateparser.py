@@ -2,11 +2,11 @@ import datetime
 import logging
 
 PATTERN_TO_TIMEDELTA_FN = (
-    ('^(\d+) sec(?:ond)?s? ago$', lambda x: datetime.timedelta(seconds=x)),
-    ('^(\d+) min(?:ute)?s? ago$', lambda x: datetime.timedelta(minutes=x)),
-    ('^(\d+) hours? ago$', lambda x: datetime.timedelta(hours=x)),
-    ('^(\d+) days? ago$', lambda x: datetime.timedelta(days=x)),
-    ('^(\d+) weeks? ago$', lambda x: datetime.timedelta(weeks=x))
+    (r'^(\d+) sec(?:ond)?s? ago$', lambda x: datetime.timedelta(seconds=x)),
+    (r'^(\d+) min(?:ute)?s? ago$', lambda x: datetime.timedelta(minutes=x)),
+    (r'^(\d+) hours? ago$', lambda x: datetime.timedelta(hours=x)),
+    (r'^(\d+) days? ago$', lambda x: datetime.timedelta(days=x)),
+    (r'^(\d+) weeks? ago$', lambda x: datetime.timedelta(weeks=x))
 )
 
 
