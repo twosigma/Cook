@@ -557,7 +557,7 @@
             (let [new-file-server-state (:sandbox-file-server-container-state new-state)
                   old-file-server-state (:sandbox-file-server-container-state old-state)]
               (when (and (= new-file-server-state :running) (not= old-file-server-state :running))
-            (record-sandbox-url pod-name new-state)))
+                (record-sandbox-url pod-name new-state)))
             (when-not (k8s-actual-state-equivalent? old-state new-state)
               (try
                 (process compute-cluster pod-name)
