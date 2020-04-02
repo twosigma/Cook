@@ -170,7 +170,7 @@
 (def Checkpoint
   "Schema for a configuration to enable checkpointing"
   {:enable s/Bool
-   :period-sec s/Int})
+   (s/optional-key :period-sec) s/Int})
 
 (def Uri
   "Schema for a Mesos fetch URI, which has many options"
@@ -628,9 +628,10 @@
   [db-id {:keys [enable period-sec]}]
   (let [checkpoint-id (d/tempid :db.part/user)]
     [[:db/add db-id :job/checkpoint checkpoint-id]
-     {:db/id checkpoint-id
-      :checkpoint/enable enable
-      :checkpoint/period-sec period-sec}]))
+     (cond-> {:db/id checkpoint-id
+              :checkpoint/enable enable}
+       period-sec
+       (assoc :checkpoint/period-sec period-sec))]))
 
 (defn- str->executor-enum
   "Converts an executor string to the corresponding executor option enum.

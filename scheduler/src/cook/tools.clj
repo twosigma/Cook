@@ -225,8 +225,9 @@
   "Take a job entity and return the configuration to enable checkpointing"
   [{:keys [job/checkpoint]}]
   (let [{:keys [checkpoint/enable checkpoint/period-sec]} checkpoint]
-    {:enable enable
-     :period-sec period-sec}))
+    (cond-> {:enable enable}
+      period-sec
+      (assoc :period-sec period-sec))))
 
 (defn job-ent->label
   "Take a job entity and return the label map"
