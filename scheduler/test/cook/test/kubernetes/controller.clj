@@ -2,6 +2,7 @@
   (:require [clj-time.core :as t]
             [clojure.test :refer :all]
             [cook.compute-cluster :as cc]
+            [cook.config :as config]
             [cook.kubernetes.api :as api]
             [cook.kubernetes.controller :as controller]
             [cook.test.testutil :as tu])
@@ -36,7 +37,8 @@
                                                                   {:cook-expected-state :cook-expected-state/completed})
                                    controller/write-status-to-datomic (fn [_ status]
                                                                         (reset! reason (:reason status)))
-                                   api/create-namespaced-pod create-namespaced-pod-fn]
+                                   api/create-namespaced-pod create-namespaced-pod-fn
+                                   cc/compute-cluster-name (constantly "compute-cluster-name")]
                        (let [pod (tu/pod-helper name "hostA" {:cpus 1.0 :mem 100.0})
                              pod-status (V1PodStatus.)
                              _ (when pod-condition (.addConditionsItem pod-status pod-condition))
@@ -78,12 +80,13 @@
     (is (nil? (do-process :cook-expected-state/starting :missing :create-namespaced-pod-fn
                           (fn [_ _ _] (throw (ApiException. nil nil 422 nil nil))))))
     (is (= :cook-expected-state/completed (do-process :cook-expected-state/starting :pod/succeeded)))
-    (is (= :cook-expected-state/completed (do-process :cook-expected-state/starting :pod/failed
-                                                      :pod-condition (doto (V1PodCondition.)
-                                                                       (.setType "PodScheduled")
-                                                                       (.setStatus "False")
-                                                                       (.setReason "Unschedulable")
-                                                                       (.setLastTransitionTime (t/epoch))))))
+    (with-redefs [config/kubernetes (constantly {:pod-condition-unschedulable-seconds 60})]
+      (is (= :cook-expected-state/completed (do-process :cook-expected-state/starting :pod/failed
+                                                        :pod-condition (doto (V1PodCondition.)
+                                                                         (.setType "PodScheduled")
+                                                                         (.setStatus "False")
+                                                                         (.setReason "Unschedulable")
+                                                                         (.setLastTransitionTime (t/epoch)))))))
     (is (= :reason-scheduling-failed-on-host @reason))
     (is (= :cook-expected-state/running (do-process :cook-expected-state/starting :pod/running)))
     (is (= :reason-running @reason))

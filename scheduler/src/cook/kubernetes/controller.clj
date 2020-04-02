@@ -540,29 +540,36 @@
           (log/info "In compute cluster" name ", processing pod" pod-name "after cook-expected-state-change")
           (recur new-cook-expected-state-dict k8s-actual-state-dict))))))
 
+(defn synthesize-state-and-process-pod-if-changed
+  "Synthesizes the k8s-actual-state for the given
+  pod and calls process if the state changed."
+  [{:keys [k8s-actual-state-map name] :as compute-cluster} ^V1Pod pod]
+  (timers/time!
+    (metrics/timer "process-lock" name)
+    (let [pod-name (api/V1Pod->name pod)]
+      (locking (calculate-lock pod-name)
+        (let [new-state {:pod pod
+                         :synthesized-state (api/pod->synthesized-pod-state pod)
+                         :sandbox-file-server-container-state (api/pod->sandbox-file-server-container-state pod)}
+              old-state (get @k8s-actual-state-map pod-name)]
+          ; We always store the updated state, but only reprocess it if it is genuinely different.
+          (swap! k8s-actual-state-map assoc pod-name new-state)
+          (let [new-file-server-state (:sandbox-file-server-container-state new-state)
+                old-file-server-state (:sandbox-file-server-container-state old-state)]
+            (when (and (= new-file-server-state :running) (not= old-file-server-state :running))
+              (record-sandbox-url pod-name new-state)))
+          (when-not (k8s-actual-state-equivalent? old-state new-state)
+            (try
+              (process compute-cluster pod-name)
+              (catch Exception e
+                (log/error e "In compute-cluster" name ", error while processing pod" pod-name)))))))))
+
 (defn pod-update
-  "Update the k8s actual state for a pod. Include some business logic to e.g., not change a state to the same value more than once.
-  Invoked by callbacks from kubernetes."
-  [{:keys [k8s-actual-state-map name] :as compute-cluster} ^V1Pod new-pod]
-  (let [pod-name (api/V1Pod->name new-pod)]
-    (timers/time! (metrics/timer "pod-update" name)
-      (timers/time! (metrics/timer "process-lock" name)
-        (locking (calculate-lock pod-name)
-          (let [new-state {:pod new-pod
-                           :synthesized-state (api/pod->synthesized-pod-state new-pod)
-                           :sandbox-file-server-container-state (api/pod->sandbox-file-server-container-state new-pod)}
-                old-state (get @k8s-actual-state-map pod-name)]
-            ; We always store the updated state, but only reprocess it if it is genuinely different.
-            (swap! k8s-actual-state-map assoc pod-name new-state)
-            (let [new-file-server-state (:sandbox-file-server-container-state new-state)
-                  old-file-server-state (:sandbox-file-server-container-state old-state)]
-              (when (and (= new-file-server-state :running) (not= old-file-server-state :running))
-                (record-sandbox-url pod-name new-state)))
-            (when-not (k8s-actual-state-equivalent? old-state new-state)
-              (try
-                (process compute-cluster pod-name)
-                (catch Exception e
-                  (log/error e (str "In compute-cluster " name ", error while processing pod-update for " pod-name)))))))))))
+  "Handles a pod update from the pod watch."
+  [{:keys [name] :as compute-cluster} ^V1Pod new-pod]
+  (timers/time!
+    (metrics/timer "pod-update" name)
+    (synthesize-state-and-process-pod-if-changed compute-cluster new-pod)))
 
 (defn pod-deleted
   "Indicate that kubernetes does not have the pod. Invoked by callbacks from kubernetes."
@@ -606,9 +613,10 @@
        (into {})))
 
 (defn scan-process
-  "Special verison of process run during scanning. It grabs the lock before processing the pod."
-  [{:keys [name] :as compute-cluster} pod-name]
-  (timers/time! (metrics/timer "scan-process" name)
-    (timers/time! (metrics/timer "process-lock" name)
-      (locking (calculate-lock pod-name)
-        (process compute-cluster pod-name)))))
+  "Given a pod-name, looks up the pod and delegates
+  to synthesize-state-and-process-pod-if-changed."
+  [{:keys [k8s-actual-state-map name] :as compute-cluster} pod-name]
+  (timers/time!
+    (metrics/timer "scan-process" name)
+    (let [{:keys [pod]} (get @k8s-actual-state-map pod-name)]
+      (synthesize-state-and-process-pod-if-changed compute-cluster pod))))

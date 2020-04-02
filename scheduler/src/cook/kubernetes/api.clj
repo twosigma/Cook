@@ -104,11 +104,6 @@
 
       (doseq [callback callbacks]
         (try
-          ; TODO(DPO): Delete this log
-          (log/warn "Handling watch update"
-                    {:item item
-                     :key key
-                     :watch-update-type (.-type watch-response)})
           (callback key prev-item item)
           (catch Exception e
             (log/error e "Error while processing callback")))))))
