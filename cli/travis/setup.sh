@@ -11,6 +11,6 @@ else
 fi
 
 # Parse dependencies from setup.py
-dependencies="$(sed -nE "s/^\s+'([-_a-z]+)',$/\1/p" < setup.py)"
+dependencies="$(sed -nE "s/^\\s+'([^']+)',\$/\\1/p" < setup.py)"
 
 pip install $pip_flags $dependencies
