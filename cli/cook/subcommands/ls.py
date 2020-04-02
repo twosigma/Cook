@@ -8,7 +8,7 @@ from functools import partial
 
 from tabulate import tabulate
 
-from cook import http, mesos, terminal, plugins
+from cook import http, mesos, terminal
 from cook.querying import get_compute_cluster_config, query_unique_and_run, parse_entity_refs
 from cook.util import guard_no_cluster
 
@@ -90,109 +90,112 @@ def retrieve_entries_from_mesos(instance, sandbox_dir, path):
 
     return entries
 
-def ls_for_instance_from_mesos(instance, sandbox_dir, path, long_format, as_json):
-    retrieve_fn = plugins.get_fn('retrieve-job-instance-files', retrieve_entries_from_mesos)
-    entries = retrieve_fn(instance, sandbox_dir, path)
-    if as_json:
-        print(json.dumps(entries))
-    else:
-        if len(entries) > 0:
-            if long_format:
-                rows = [directory_entry_to_row(e) for e in entries]
-                table = tabulate(rows, tablefmt='plain')
-                print(table)
-            else:
-                print('\n'.join(terminal.wrap('  '.join([format_path(e) for e in entries]))))
+class Listing:
+    def retrieve_job_instance_files(self, instance, sandbox_dir, path):
+        """Plugin interface: Retrieves the contents of the sandbox path for the given instance"""
+        return retrieve_entries_from_mesos(instance, sandbox_dir, path)
+
+    def ls_for_instance_from_mesos(self, instance, sandbox_dir, path, long_format, as_json):
+        entries = self.retrieve_job_instance_files(instance, sandbox_dir, path)
+        if as_json:
+            print(json.dumps(entries))
         else:
-            logging.info('the directory is empty')
+            if len(entries) > 0:
+                if long_format:
+                    rows = [directory_entry_to_row(e) for e in entries]
+                    table = tabulate(rows, tablefmt='plain')
+                    print(table)
+                else:
+                    print('\n'.join(terminal.wrap('  '.join([format_path(e) for e in entries]))))
+            else:
+                logging.info('the directory is empty')
 
-def kubectl_ls_for_instance(instance_uuid, _, path, long_format, as_json):
-    if as_json:
-        working_dir = subprocess.run(['kubectl',
-                                      'exec',
-                                      '-c', os.getenv('COOK_CONTAINER_NAME_FOR_JOB', 'required-cook-job-container'),
-                                      '-it', instance_uuid,
-                                      '--', 'pwd'],
-                                     stdout=subprocess.PIPE).stdout.decode('utf-8').rstrip()
-        args = ['kubectl',
-                'exec',
-                '-c', os.getenv('COOK_CONTAINER_NAME_FOR_JOB', 'required-cook-job-container'),
-                '-it', instance_uuid,
-                '--', 'ls', '-l', '--time-style=+%s']
-        if path:
-            args.append(path)
-        listing_lines = subprocess.run(args, stdout=subprocess.PIPE).stdout.decode('utf-8').splitlines()
-        entries = [{"mode": mode,
-                    "nlink": int(nlink),
-                    "uid": uid,
-                    "gid": gid,
-                    "size": int(size),
-                    "mtime": int(mtime),
-                    "path": f'{working_dir}/{path}'}
-                   for mode, nlink, uid, gid, size, mtime, path
-                   in [re.split('\ +', line, 6) for line
-                       in listing_lines if not line.startswith("ls: cannot access") and not line.startswith("total")]]
-        if len(entries) == 0 and len([line for line in listing_lines if line.endswith("No such file or directory")]) == 1:
-            raise Exception(f"Cannot access '{path}' (no such file or directory).")
-        print(json.dumps(entries))
-    else:
-        args = ['kubectl', 'kubectl',
-                'exec',
-                '-c', os.getenv('COOK_CONTAINER_NAME_FOR_JOB', 'required-cook-job-container'),
-                '-it', instance_uuid,
-                '--', 'ls']
-        if long_format:
-            args.append("-l")
-        if path:
-            args.append(path)
-        os.execlp(*args)
+    def kubectl_ls_for_instance(self, instance_uuid, _, path, long_format, as_json):
+        if as_json:
+            working_dir = subprocess.run(['kubectl',
+                                          'exec',
+                                          '-c', os.getenv('COOK_CONTAINER_NAME_FOR_JOB', 'required-cook-job-container'),
+                                          '-it', instance_uuid,
+                                          '--', 'pwd'],
+                                         stdout=subprocess.PIPE).stdout.decode('utf-8').rstrip()
+            args = ['kubectl',
+                    'exec',
+                    '-c', os.getenv('COOK_CONTAINER_NAME_FOR_JOB', 'required-cook-job-container'),
+                    '-it', instance_uuid,
+                    '--', 'ls', '-l', '--time-style=+%s']
+            if path:
+                args.append(path)
+            listing_lines = subprocess.run(args, stdout=subprocess.PIPE).stdout.decode('utf-8').splitlines()
+            entries = [{"mode": mode,
+                        "nlink": int(nlink),
+                        "uid": uid,
+                        "gid": gid,
+                        "size": int(size),
+                        "mtime": int(mtime),
+                        "path": f'{working_dir}/{path}'}
+                       for mode, nlink, uid, gid, size, mtime, path
+                       in [re.split('\ +', line, 6) for line
+                           in listing_lines if not line.startswith("ls: cannot access") and not line.startswith("total")]]
+            if len(entries) == 0 and len([line for line in listing_lines if line.endswith("No such file or directory")]) == 1:
+                raise Exception(f"Cannot access '{path}' (no such file or directory).")
+            print(json.dumps(entries))
+        else:
+            args = ['kubectl', 'kubectl',
+                    'exec',
+                    '-c', os.getenv('COOK_CONTAINER_NAME_FOR_JOB', 'required-cook-job-container'),
+                    '-it', instance_uuid,
+                    '--', 'ls']
+            if long_format:
+                args.append("-l")
+            if path:
+                args.append(path)
+            os.execlp(*args)
 
-def ls_for_instance(instance, sandbox_dir_fn, cluster, path, long_format, as_json):
-    """
-    Lists contents of the Mesos sandbox path for the given instance.
-    When using Kubernetes, calls the exec command of the kubectl cli.
-    """
-    compute_cluster = instance["compute-cluster"]
-    compute_cluster_type = compute_cluster["type"]
-    compute_cluster_name = compute_cluster["name"]
-    if compute_cluster_type == "kubernetes":
-        kubectl_ls_for_instance_fn = plugins.get_fn('kubectl-ls-for-instance', kubectl_ls_for_instance)
-        compute_cluster_config = get_compute_cluster_config(cluster, compute_cluster_name)
-        kubectl_ls_for_instance_fn(instance["task_id"], compute_cluster_config, path, long_format, as_json)
-    else:
-        ls_for_instance_from_mesos(instance, sandbox_dir_fn(), path, long_format, as_json)
-
-
-def ls(clusters, args, _):
-    """Lists contents of the corresponding Mesos sandbox path by job or instance uuid."""
-    guard_no_cluster(clusters)
-    entity_refs, clusters_of_interest = parse_entity_refs(clusters, args.get('uuid'))
-    path = args.get('path')
-    long_format = args.get('long_format')
-    as_json = args.get('json')
-    literal = args.get('literal')
-
-    if len(entity_refs) > 1:
-        # argparse should prevent this, but we'll be defensive anyway
-        raise Exception(f'You can only provide a single uuid.')
-
-    if path and not literal and any(c in path for c in '*?[]{}'):
-        message = 'It looks like you are trying to glob, but ls does not support globbing. ' \
-                  f'You can use the {terminal.bold("ssh")} command instead:\n' \
-                  '\n' \
-                  f'  cs ssh {entity_refs[0]}\n' \
-                  '\n' \
-                  f'Or, if you want the literal path {terminal.bold(path)}, add {terminal.bold("--literal")}:\n' \
-                  '\n' \
-                  f'  cs ls {terminal.bold("--literal")} {entity_refs[0]} {path}'
-        print(message)
-        return 1
-
-    command_fn = partial(ls_for_instance, path=path, long_format=long_format, as_json=as_json)
-    query_unique_and_run(clusters_of_interest, entity_refs[0], command_fn)
+    def ls_for_instance(self, instance, sandbox_dir_fn, cluster, path, long_format, as_json):
+        """
+        Lists contents of the Mesos sandbox path for the given instance.
+        When using Kubernetes, calls the exec command of the kubectl cli.
+        """
+        compute_cluster = instance["compute-cluster"]
+        compute_cluster_type = compute_cluster["type"]
+        compute_cluster_name = compute_cluster["name"]
+        if compute_cluster_type == "kubernetes":
+            compute_cluster_config = get_compute_cluster_config(cluster, compute_cluster_name)
+            self.kubectl_ls_for_instance(instance["task_id"], compute_cluster_config, path, long_format, as_json)
+        else:
+            self.ls_for_instance_from_mesos(instance, sandbox_dir_fn(), path, long_format, as_json)
 
 
-def register(add_parser, _):
+    def ls(self, clusters, args, _):
+        """Lists contents of the corresponding Mesos sandbox path by job or instance uuid."""
+        guard_no_cluster(clusters)
+        entity_refs, clusters_of_interest = parse_entity_refs(clusters, args.get('uuid'))
+        path = args.get('path')
+        long_format = args.get('long_format')
+        as_json = args.get('json')
+        literal = args.get('literal')
+
+        if len(entity_refs) > 1:
+            # argparse should prevent this, but we'll be defensive anyway
+            raise Exception(f'You can only provide a single uuid.')
+
+        if path and not literal and any(c in path for c in '*?[]{}'):
+            message = 'It looks like you are trying to glob, but ls does not support globbing. ' \
+                      f'You can use the {terminal.bold("ssh")} command instead:\n' \
+                      '\n' \
+                      f'  cs ssh {entity_refs[0]}\n' \
+                      '\n' \
+                      f'Or, if you want the literal path {terminal.bold(path)}, add {terminal.bold("--literal")}:\n' \
+                      '\n' \
+                      f'  cs ls {terminal.bold("--literal")} {entity_refs[0]} {path}'
+            print(message)
+            return 1
+
+        command_fn = partial(self.ls_for_instance, path=path, long_format=long_format, as_json=as_json)
+        query_unique_and_run(clusters_of_interest, entity_refs[0], command_fn)
+
+
+def register(add_parser, _, dependency_overrides):
     """Adds this sub-command's parser and returns the action function"""
     parser = add_parser('ls', help='list contents of sandbox by job or instance uuid')
     group = parser.add_mutually_exclusive_group()
@@ -201,4 +204,5 @@ def register(add_parser, _):
     parser.add_argument('--literal', help='treat globbing characters literally', dest='literal', action='store_true')
     parser.add_argument('uuid', nargs=1)
     parser.add_argument('path', nargs='?')
-    return ls
+    factory = dependency_overrides.get('ls', Listing)
+    return factory().ls

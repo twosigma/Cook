@@ -171,7 +171,7 @@ def show(clusters, args, _):
         return 1
 
 
-def register(add_parser, _):
+def register(add_parser, _, __):
     """Adds this sub-command's parser and returns the action function"""
     show_parser = add_parser('show', help='show jobs / instances / groups by uuid')
     show_parser.add_argument('uuid', nargs='*')

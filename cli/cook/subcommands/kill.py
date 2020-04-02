@@ -118,7 +118,7 @@ def kill(clusters, args, _):
     return kill_entities(query_result, clusters_of_interest)
 
 
-def register(add_parser, _):
+def register(add_parser, _, __):
     """Adds this sub-command's parser and returns the action function"""
     parser = add_parser('kill', help='kill jobs / instances / groups by uuid')
     parser.add_argument('uuid', nargs='*')

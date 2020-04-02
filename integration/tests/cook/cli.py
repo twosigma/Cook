@@ -190,6 +190,26 @@ def deep_merge(a, b):
     return merged
 
 
+class temp_command_env:
+    """
+    A context manager used to generate and subsequently delete a temporary
+    command override (via env) for the CLI. Takes a python source file path.
+    """
+
+    def __init__(self, main_src_path):
+        self.original_command = os.getenv('COOK_CLI_COMMAND')
+        self.new_command = f'python3 {main_src_path}'
+
+    def __enter__(self):
+        os.environ['COOK_CLI_COMMAND'] = self.new_command
+
+    def __exit__(self, _, __, ___):
+        if self.original_command is None:
+            del os.environ['COOK_CLI_COMMAND']
+        else:
+            os.environ['COOK_CLI_COMMAND'] = self.original_command
+
+
 class temp_config_file:
     """
     A context manager used to generate and subsequently delete a temporary 

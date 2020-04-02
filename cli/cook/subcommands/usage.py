@@ -265,7 +265,7 @@ def usage(clusters, args, _):
     return 0
 
 
-def register(add_parser, add_defaults):
+def register(add_parser, add_defaults, _):
     """Adds this sub-command's parser and returns the action function"""
     parser = add_parser('usage', help='show breakdown of usage by application and group')
     parser.add_argument('--user', '-u', help='show usage for a user')

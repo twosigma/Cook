@@ -4,57 +4,59 @@ import os
 import sys
 from functools import partial
 
-from cook import plugins
 from cook.mesos import download_file
 from cook.querying import get_compute_cluster_config, parse_entity_refs, query_unique_and_run, parse_entity_ref
 from cook.util import guard_no_cluster
 
-def cat_using_download_file(instance, sandbox_dir, path):
-    retrieve_fn = plugins.get_fn('download-job-instance-file', download_file)
-    download = retrieve_fn(instance, sandbox_dir, path)
-    try:
-        for data in download(chunk_size=4096):
-            if data:
-                sys.stdout.buffer.write(data)
-    except BrokenPipeError as bpe:
-        sys.stderr.close()
-        logging.exception(bpe)
+class Cat:
+    def download_mesos_file(self, instance, sandbox_dir, path):
+        return download_file(instance, sandbox_dir, path)
 
-def kubectl_cat_instance_file(instance_uuid, _, path):
-    os.execlp('kubectl', 'kubectl',
-              'exec',
-              '-c', os.getenv('COOK_CONTAINER_NAME_FOR_JOB', 'required-cook-job-container'),
-              '-it', instance_uuid,
-              '--', 'cat', path)
+    def cat_using_download_file(self, instance, sandbox_dir, path):
+        download = self.download_mesos_file(instance, sandbox_dir, path)
+        try:
+            for data in download(chunk_size=4096):
+                if data:
+                    sys.stdout.buffer.write(data)
+        except BrokenPipeError as bpe:
+            sys.stderr.close()
+            logging.exception(bpe)
 
-def cat_for_instance(instance, sandbox_dir_fn, cluster, path):
-    """
-    Outputs the contents of the Mesos sandbox path for the given instance.
-    When using Kubernetes, calls the exec command of the kubectl cli.
-    """
-    compute_cluster = instance["compute-cluster"]
-    compute_cluster_type = compute_cluster["type"]
-    compute_cluster_name = compute_cluster["name"]
-    if compute_cluster_type == "kubernetes":
-        kubectl_cat_instance_file_fn = plugins.get_fn('kubectl-cat-for-instance', kubectl_cat_instance_file)
-        compute_cluster_config = get_compute_cluster_config(cluster, compute_cluster_name)
-        kubectl_cat_instance_file_fn(instance["task_id"], compute_cluster_config, path)
-    else:
-        cat_using_download_file(instance, sandbox_dir_fn(), path)
+    def kubectl_cat_instance_file(self, instance_uuid, _, path):
+        os.execlp('kubectl', 'kubectl',
+                  'exec',
+                  '-c', os.getenv('COOK_CONTAINER_NAME_FOR_JOB', 'required-cook-job-container'),
+                  '-it', instance_uuid,
+                  '--', 'cat', path)
+
+    def cat_for_instance(self, instance, sandbox_dir_fn, cluster, path):
+        """
+        Outputs the contents of the Mesos sandbox path for the given instance.
+        When using Kubernetes, calls the exec command of the kubectl cli.
+        """
+        compute_cluster = instance["compute-cluster"]
+        compute_cluster_type = compute_cluster["type"]
+        compute_cluster_name = compute_cluster["name"]
+        if compute_cluster_type == "kubernetes":
+            compute_cluster_config = get_compute_cluster_config(cluster, compute_cluster_name)
+            self.kubectl_cat_instance_file(instance["task_id"], compute_cluster_config, path)
+        else:
+            self.cat_using_download_file(instance, sandbox_dir_fn(), path)
 
 
-def cat(clusters, args, _):
-    """Outputs the contents of the corresponding Mesos sandbox path by job or instance uuid."""
-    guard_no_cluster(clusters)
-    entity_refs, clusters_of_interest = parse_entity_refs(clusters, args.get('target-entity'))
-    paths = args.get('path')
 
-    # argparse should prevent these, but we'll be defensive anyway
-    assert len(entity_refs) == 1, 'Only a single UUID or URL is supported.'
-    assert len(paths) == 1, 'Only a single path is supported.'
+    def cat(self, clusters, args, _):
+        """Outputs the contents of the corresponding Mesos sandbox path by job or instance uuid."""
+        guard_no_cluster(clusters)
+        entity_refs, clusters_of_interest = parse_entity_refs(clusters, args.get('target-entity'))
+        paths = args.get('path')
 
-    command_fn = partial(cat_for_instance, path=paths[0])
-    query_unique_and_run(clusters_of_interest, entity_refs[0], command_fn)
+        # argparse should prevent these, but we'll be defensive anyway
+        assert len(entity_refs) == 1, 'Only a single UUID or URL is supported.'
+        assert len(paths) == 1, 'Only a single path is supported.'
+
+        command_fn = partial(self.cat_for_instance, path=paths[0])
+        query_unique_and_run(clusters_of_interest, entity_refs[0], command_fn)
 
 
 def valid_entity_ref(s):
@@ -74,7 +76,7 @@ def valid_path(s):
         raise argparse.ArgumentTypeError('path cannot be empty')
 
 
-def register(add_parser, _):
+def register(add_parser, _, dependency_overrides):
     """Adds this sub-command's parser and returns the action function"""
     parser = add_parser('cat', help='output files by job or instance uuid')
     parser.add_argument('target-entity', nargs=1,
@@ -84,4 +86,5 @@ def register(add_parser, _):
     parser.add_argument('path', nargs=1,
                         help='Relative to the sandbox directory on the Mesos agent where the instance runs.',
                         type=valid_path)
-    return cat
+    factory = dependency_overrides.get('cat', Cat)
+    return factory().cat

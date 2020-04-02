@@ -44,7 +44,7 @@ def wait(clusters, args, _):
         return 1
 
 
-def register(add_parser, add_defaults):
+def register(add_parser, add_defaults, _):
     """Adds this sub-command's parser and returns the action function"""
     default_timeout = None
     default_timeout_text = 'wait indefinitely'

@@ -180,7 +180,7 @@ def jobs(clusters, args, _):
     return 0
 
 
-def register(add_parser, add_defaults):
+def register(add_parser, add_defaults, _):
     """Adds this sub-command's parser and returns the action function"""
     parser = add_parser('jobs', help='list jobs by state / user / time / name')
     parser.add_argument('--waiting', '-w', help='include waiting jobs', dest='states',

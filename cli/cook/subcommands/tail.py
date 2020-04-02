@@ -2,7 +2,6 @@ import os
 import time
 from functools import partial
 
-from cook import plugins
 from cook.mesos import read_file
 from cook.querying import get_compute_cluster_config, query_unique_and_run, parse_entity_refs
 from cook.util import check_positive, guard_no_cluster
@@ -105,63 +104,65 @@ def tail_follow(file_size, read_fn, follow_sleep_seconds):
 
         time.sleep(follow_sleep_seconds)
 
-def tail_using_read_file(instance, sandbox_dir, path, num_lines_to_print, follow, follow_sleep_seconds):
-    retrieve_fn = plugins.get_fn('read-job-instance-file', read_file)
-    read = partial(retrieve_fn, instance=instance, sandbox_dir=sandbox_dir, path=path)
-    file_size = read()['offset']
-    tail_backwards(file_size, read, num_lines_to_print)
-    if follow:
-        tail_follow(file_size, read, follow_sleep_seconds)
+class Tail:
+    def read_file_mesos(self, instance, sandbox_dir, path, offset=None, length=None):
+        return read_file(instance, sandbox_dir, path, offset, length)
 
-def kubectl_tail_instance_file(instance_uuid, _, path, num_lines_to_print, follow):
-    args = ['kubectl', 'kubectl',
-            'exec',
-            '-c', os.getenv('COOK_CONTAINER_NAME_FOR_JOB', 'required-cook-job-container'),
-            '-it', instance_uuid,
-            '--', 'tail', '-n', str(num_lines_to_print)]
-    if follow:
-        args.append("-f")
-    args.append(path)
-    os.execlp(*args)
+    def tail_using_read_file(self, instance, sandbox_dir, path, num_lines_to_print, follow, follow_sleep_seconds):
+        read = partial(self.read_file_mesos, instance=instance, sandbox_dir=sandbox_dir, path=path)
+        file_size = read()['offset']
+        tail_backwards(file_size, read, num_lines_to_print)
+        if follow:
+            tail_follow(file_size, read, follow_sleep_seconds)
 
-
-def tail_for_instance(instance, sandbox_dir_fn, cluster, path, num_lines_to_print, follow, follow_sleep_seconds):
-    """
-    Tails the contents of the Mesos sandbox path for the given instance. If follow is truthy, it will
-    try and read more data from the file until the user terminates. This assumes files will not shrink.
-    When using Kubernetes, calls the exec command of the kubectl cli.
-    """
-    compute_cluster = instance["compute-cluster"]
-    compute_cluster_type = compute_cluster["type"]
-    compute_cluster_name = compute_cluster["name"]
-    if compute_cluster_type == "kubernetes":
-        kubectl_tail_instance_file_fn = plugins.get_fn('kubectl-tail-instance-file', kubectl_tail_instance_file)
-        compute_cluster_config = get_compute_cluster_config(cluster, compute_cluster_name)
-        kubectl_tail_instance_file_fn(instance["task_id"], compute_cluster_config, path, num_lines_to_print, follow)
-    else:
-        tail_using_read_file(instance, sandbox_dir_fn(), path, num_lines_to_print, follow, follow_sleep_seconds)
+    def kubectl_tail_instance_file(self, instance_uuid, _, path, num_lines_to_print, follow):
+        args = ['kubectl', 'kubectl',
+                'exec',
+                '-c', os.getenv('COOK_CONTAINER_NAME_FOR_JOB', 'required-cook-job-container'),
+                '-it', instance_uuid,
+                '--', 'tail', '-n', str(num_lines_to_print)]
+        if follow:
+            args.append("-f")
+        args.append(path)
+        os.execlp(*args)
 
 
-def tail(clusters, args, _):
-    """Tails the contents of the corresponding Mesos sandbox path by job or instance uuid."""
-    guard_no_cluster(clusters)
-    entity_refs, clusters_of_interest = parse_entity_refs(clusters, args.get('uuid'))
-    path = args.get('path')
-    lines = args.get('lines')
-    follow = args.get('follow')
-    sleep_interval = args.get('sleep-interval')
-    wait = args.get('wait')
-
-    if len(entity_refs) > 1:
-        # argparse should prevent this, but we'll be defensive anyway
-        raise Exception(f'You can only provide a single uuid.')
-
-    command_fn = partial(tail_for_instance, path=path, num_lines_to_print=lines,
-                         follow=follow, follow_sleep_seconds=sleep_interval)
-    query_unique_and_run(clusters_of_interest, entity_refs[0], command_fn, wait)
+    def tail_for_instance(self, instance, sandbox_dir_fn, cluster, path, num_lines_to_print, follow, follow_sleep_seconds):
+        """
+        Tails the contents of the Mesos sandbox path for the given instance. If follow is truthy, it will
+        try and read more data from the file until the user terminates. This assumes files will not shrink.
+        When using Kubernetes, calls the exec command of the kubectl cli.
+        """
+        compute_cluster = instance["compute-cluster"]
+        compute_cluster_type = compute_cluster["type"]
+        compute_cluster_name = compute_cluster["name"]
+        if compute_cluster_type == "kubernetes":
+            compute_cluster_config = get_compute_cluster_config(cluster, compute_cluster_name)
+            self.kubectl_tail_instance_file(instance["task_id"], compute_cluster_config, path, num_lines_to_print, follow)
+        else:
+            self.tail_using_read_file(instance, sandbox_dir_fn(), path, num_lines_to_print, follow, follow_sleep_seconds)
 
 
-def register(add_parser, add_defaults):
+    def tail(self, clusters, args, _):
+        """Tails the contents of the corresponding Mesos sandbox path by job or instance uuid."""
+        guard_no_cluster(clusters)
+        entity_refs, clusters_of_interest = parse_entity_refs(clusters, args.get('uuid'))
+        path = args.get('path')
+        lines = args.get('lines')
+        follow = args.get('follow')
+        sleep_interval = args.get('sleep-interval')
+        wait = args.get('wait')
+
+        if len(entity_refs) > 1:
+            # argparse should prevent this, but we'll be defensive anyway
+            raise Exception(f'You can only provide a single uuid.')
+
+        command_fn = partial(self.tail_for_instance, path=path, num_lines_to_print=lines,
+                             follow=follow, follow_sleep_seconds=sleep_interval)
+        query_unique_and_run(clusters_of_interest, entity_refs[0], command_fn, wait)
+
+
+def register(add_parser, add_defaults, dependency_overrides):
     """Adds this sub-command's parser and returns the action function"""
     parser = add_parser('tail', help='output last part of files by job or instance uuid')
     parser.add_argument('--lines', '-n', help=f'output the last NUM lines (default {DEFAULT_NUM_LINES})',
@@ -180,4 +181,5 @@ def register(add_parser, add_defaults):
                           'sleep-interval': DEFAULT_FOLLOW_SLEEP_SECS,
                           'path': DEFAULT_PATH})
 
-    return tail
+    factory = dependency_overrides.get('tail', Tail)
+    return factory().tail

@@ -252,7 +252,7 @@ def valid_priority(value):
         raise argparse.ArgumentTypeError(f'Job priority must be between 0 and 16,000,000 (inclusive)')
     return integer
 
-def register(add_parser, add_defaults):
+def register(add_parser, add_defaults, _):
     """Adds this sub-command's parser and returns the action function"""
     submit_parser = add_parser('submit', help='create job for command')
     submit_parser.add_argument('--uuid', '-u', help='uuid of job', type=valid_uuid)

@@ -108,7 +108,7 @@ def config(_, args, config_path):
         return set_config_value(config_map, keys, value, config_path)
 
 
-def register(add_parser, _):
+def register(add_parser, _, __):
     """Adds this sub-command's parser and returns the action function"""
     parser = add_parser('config', help='get and set configuration options')
     parser.add_argument('--get', help='get the value for a given key; returns error code 1 if the key was not found',
