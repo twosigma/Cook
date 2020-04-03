@@ -3019,7 +3019,7 @@ class CookTest(util.CookTest):
             job_uuid_enabled, resp_enabled = util.submit_job(self.cook_url, command=command_enabled, container=container,
                                                              checkpoint={"mode": "auto",
                                                                          "periodic-options": {"period-sec": 555},
-                                                                         "options": {"preserve-paths": ["p1", "p2"]}})
+                                                                         "options": {"preserve-paths": ["p2", "p1"]}})
             self.assertEqual(201, resp_enabled.status_code)
             util.wait_for_instance(self.cook_url, job_uuid_disabled, status='success')
             util.wait_for_instance(self.cook_url, job_uuid_enabled, status='success')

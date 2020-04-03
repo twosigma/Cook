@@ -530,7 +530,8 @@
        (let [{:keys [preserve-paths]} options]
          (cond-> m
            preserve-paths
-           (#(reduce-kv (fn [map index path] (assoc map (str "COOK_CHECKPOINT_PRESERVE_PATH_" index) path)) % preserve-paths))))))
+           (#(reduce-kv (fn [map index path] (assoc map (str "COOK_CHECKPOINT_PRESERVE_PATH_" index) path))
+                        % (vec (sort preserve-paths))))))))
     periodic-options
     ((fn [m]
        (let [{:keys [period-sec]} periodic-options]

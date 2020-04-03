@@ -169,7 +169,7 @@
 
 (def CheckpointOptions
   "Schema for checkpointing options"
-  {:preserve-paths [s/Str]})
+  {:preserve-paths #{s/Str}})
 
 (def PeriodicCheckpointOptions
   "Schema for periodic checkpointing options"
@@ -940,7 +940,9 @@
                  (when progress-regex-string {:progress-regex-string progress-regex-string})
                  (when application {:application application})
                  (when datasets {:datasets (munge-datasets datasets)})
-                 (when checkpoint {:checkpoint checkpoint}))
+                 (when checkpoint {:checkpoint (if (-> checkpoint :options :preserve-paths)
+                                                 (update-in checkpoint [:options :preserve-paths] set)
+                                                 checkpoint)}))
         params (get-in munged [:container :docker :parameters])]
     (s/validate Job munged)
     (when (and (:gpus munged) (not gpu-enabled?))
