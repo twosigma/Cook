@@ -564,11 +564,11 @@
 (defn pod-update
   "Handles a pod update from the pod watch."
   [{:keys [name] :as compute-cluster} ^V1Pod new-pod]
-  (timers/time!
-    (metrics/timer "pod-update" name)
+  (let [pod-name (api/V1Pod->name new-pod)]
     (timers/time!
-      (metrics/timer "process-lock" name)
-      (let [pod-name (api/V1Pod->name new-pod)]
+      (metrics/timer "pod-update" name)
+      (timers/time!
+        (metrics/timer "process-lock" name)
         (locking (calculate-lock pod-name)
           (synthesize-state-and-process-pod-if-changed compute-cluster new-pod))))))
 
