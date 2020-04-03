@@ -515,9 +515,28 @@
 
 (defn- checkpoint->volume-mounts
   "Get custom volume mounts needed for checkpointing"
-  [{:keys [enable volume-mounts]} checkpointing-tools-volume]
-  (when enable
+  [{:keys [mode volume-mounts]} checkpointing-tools-volume]
+  (when mode
     (map (fn [{:keys [path sub-path]}] (make-volume-mount checkpointing-tools-volume path sub-path true)) volume-mounts)))
+
+(defn checkpoint->env
+  "Get environment variables needed for checkpointing"
+  [{:keys [mode options periodic-options]}]
+  (cond-> {}
+    mode
+    (assoc "COOK_CHECKPOINT_MODE" mode)
+    options
+    ((fn [m]
+       (let [{:keys [preserve-paths]} options]
+         (cond-> m
+           preserve-paths
+           (#(reduce-kv (fn [map index path] (assoc map (str "COOK_CHECKPOINT_PRESERVE_PATH_" index) path)) % preserve-paths))))))
+    periodic-options
+    ((fn [m]
+       (let [{:keys [period-sec]} periodic-options]
+         (cond-> m
+           period-sec
+           (assoc "COOK_CHECKPOINT_PERIOD_SEC" (str period-sec))))))))
 
 (defn ^V1Pod task-metadata->pod
   "Given a task-request and other data generate the kubernetes V1Pod to launch that task."
@@ -547,7 +566,7 @@
         workdir (get-workdir parameters sandbox-dir)
         {:keys [volumes volume-mounts sandbox-volume-mount-fn]} (make-volumes volumes sandbox-dir)
         {:keys [custom-shell init-container sidecar default-checkpoint-config]} (config/kubernetes)
-        checkpoint (merge default-checkpoint-config (util/job-ent->checkpoint job))
+        checkpoint (when checkpoint (merge default-checkpoint-config (util/job-ent->checkpoint job)))
         use-cook-init? (and init-container pod-supports-cook-init?)
         use-cook-sidecar? (and sidecar pod-supports-cook-sidecar?)
         init-container-workdir "/mnt/init-container"
@@ -569,8 +588,7 @@
                      "SIDECAR_WORKDIR" sidecar-workdir}
         params-env (build-params-env parameters)
         progress-env (task/build-executor-environment job)
-        checkpoint-env {"COOK_CHECKPOINT_ENABLE" (if (:enable checkpoint) "true" "false")
-                        "COOK_CHECKPOINT_PERIOD_SEC" (or (str (:period-sec checkpoint)) "")}
+        checkpoint-env (checkpoint->env checkpoint)
         main-env-base (merge environment params-env progress-env sandbox-env checkpoint-env)
         progress-file-var (get main-env-base task/progress-meta-env-name task/default-progress-env-name)
         progress-file-path (get main-env-base progress-file-var)

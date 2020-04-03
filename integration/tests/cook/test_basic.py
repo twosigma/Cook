@@ -3012,13 +3012,14 @@ class CookTest(util.CookTest):
         container = {'type': 'docker',
                      'docker': {'image': docker_image}}
         try:
-            command_disabled = 'bash -c \'if [[ "${COOK_CHECKPOINT_ENABLE:-false}" == "false" ]] && [[ "${COOK_CHECKPOINT_PERIOD_SEC:-zzz}" == "zzz" ]]; then exit 0; else exit 1; fi\''
+            command_disabled = 'bash -c \'if [[ "${COOK_CHECKPOINT_MODE:-none}" == "none" ]] && [[ "${COOK_CHECKPOINT_PERIOD_SEC:-zzz}" == "zzz" ]]; then exit 0; else exit 1; fi\''
             job_uuid_disabled, resp_disabled = util.submit_job(self.cook_url, command=command_disabled, container=container)
             self.assertEqual(201, resp_disabled.status_code)
-            command_enabled = 'bash -c \'if [[ "${COOK_CHECKPOINT_ENABLE}" == "true" ]] && [[ "${COOK_CHECKPOINT_PERIOD_SEC}" == "555" ]]; then exit 0; else exit 1; fi\''
+            command_enabled = 'bash -c \'if [[ "${COOK_CHECKPOINT_MODE}" == "auto" ]] && [[ "${COOK_CHECKPOINT_PERIOD_SEC}" == "555" ]] && [[ "${COOK_CHECKPOINT_PRESERVE_PATH_0}" == "p1" ]] && [[ "${COOK_CHECKPOINT_PRESERVE_PATH_1}" == "p2" ]]; then exit 0; else exit 1; fi\''
             job_uuid_enabled, resp_enabled = util.submit_job(self.cook_url, command=command_enabled, container=container,
-                                                             checkpoint={"enable": True,
-                                                                         "period-sec": 555})
+                                                             checkpoint={"mode": "auto",
+                                                                         "periodic-options": {"period-sec": 555},
+                                                                         "options": {"preserve-paths": ["p1", "p2"]}})
             self.assertEqual(201, resp_enabled.status_code)
             util.wait_for_instance(self.cook_url, job_uuid_disabled, status='success')
             util.wait_for_instance(self.cook_url, job_uuid_enabled, status='success')

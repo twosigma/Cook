@@ -1395,7 +1395,7 @@
 
         (testing "should work when the job specifies checkpointing options"
           (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
-                checkpoint {:enable true}
+                checkpoint {:mode "auto"}
                 {:keys [uuid] :as job} (assoc (minimal-job) :checkpoint checkpoint)]
             (is (= {::api/results (str "submitted jobs " uuid)}
                    (testutil/create-jobs! conn {::api/jobs [job]})))
@@ -1404,8 +1404,9 @@
 
         (testing "should work when the job specifies checkpointing options 2"
           (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
-                checkpoint {:enable true
-                            :period-sec 777}
+                checkpoint {:mode "periodic"
+                            :options {:preserve-paths #{"p1" "p2"}}
+                            :periodic-options {:period-sec 777}}
                 {:keys [uuid] :as job} (assoc (minimal-job) :checkpoint checkpoint)]
             (is (= {::api/results (str "submitted jobs " uuid)}
                    (testutil/create-jobs! conn {::api/jobs [job]})))
@@ -1560,7 +1561,21 @@
       (testing "should allow an optional expected-runtime field"
         (is (s/validate api/Job (assoc min-job :expected-runtime 2 :max-runtime 3)))
         (is (s/validate api/Job (assoc min-job :expected-runtime 2 :max-runtime 2)))
-        (is (thrown? Exception (s/validate api/Job (assoc min-job :expected-runtime 3 :max-runtime 2))))))))
+        (is (thrown? Exception (s/validate api/Job (assoc min-job :expected-runtime 3 :max-runtime 2)))))
+
+      (testing "should allow an optional checkpoint field"
+        (is (s/validate api/Job (assoc min-job :checkpoint {:mode "periodic"
+                                                            :options {:preserve-paths ["p1" "p2"]}})))
+        (is (s/validate api/Job (assoc min-job :checkpoint {:mode "auto"
+                                                            :periodic-options {:period-sec 777}})))
+        (is (thrown? Exception (s/validate api/Job (assoc min-job :checkpoint {:mode "zzz"}))))
+        (is (thrown? Exception (s/validate api/Job (assoc min-job :checkpoint {:options {:preserve-paths ["p1" "p2"]}
+                                                                               :periodic-options {:period-sec 777}}))))
+        (is (thrown? Exception (s/validate api/Job (assoc min-job :checkpoint {:mode "periodic"
+                                                                               :periodic-options {:period-sec "777"}}))))
+        (is (thrown? Exception (s/validate api/Job (assoc min-job :checkpoint {:mode "periodic"
+                                                                               :options {:preserve-paths "p1"}
+                                                                               }))))))))
 
 (deftest test-destroy-jobs
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")

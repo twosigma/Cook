@@ -496,13 +496,33 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :db/ident :constraint.operator/equals}
    ;; Checkpoint attributes
    {:db/id (d/tempid :db.part/db)
-    :db/ident :checkpoint/enable
-    :db/valueType :db.type/boolean
+    :db/ident :checkpoint/mode
+    :db/valueType :db.type/string
+    :db/isComponent true
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}
    {:db/id (d/tempid :db.part/db)
-    :db/ident :checkpoint/period-sec
+    :db/ident :checkpoint/options
+    :db/valueType :db.type/ref
+    :db/isComponent true
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :checkpoint/periodic-options
+    :db/valueType :db.type/ref
+    :db/isComponent true
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :checkpoint-options/preserve-paths
+    :db/valueType :db.type/string
+    :db/isComponent true
+    :db/cardinality :db.cardinality/many
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :checkpoint-periodic-options/period-sec
     :db/valueType :db.type/long
+    :db/isComponent true
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}
    ;; Application attributes

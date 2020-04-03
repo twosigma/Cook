@@ -167,10 +167,19 @@
    (s/optional-key :mesos) MesosInfo
    (s/optional-key :volumes) [Volume]})
 
+(def CheckpointOptions
+  "Schema for checkpointing options"
+  {:preserve-paths [s/Str]})
+
+(def PeriodicCheckpointOptions
+  "Schema for periodic checkpointing options"
+  {:period-sec s/Int})
+
 (def Checkpoint
   "Schema for a configuration to enable checkpointing"
-  {:enable s/Bool
-   (s/optional-key :period-sec) s/Int})
+  {:mode (s/enum "auto" "periodic" "preemptible")
+   (s/optional-key :options) CheckpointOptions
+   (s/optional-key :periodic-options) PeriodicCheckpointOptions})
 
 (def Uri
   "Schema for a Mesos fetch URI, which has many options"
@@ -625,13 +634,16 @@
 
 (defn- build-checkpoint
   "Helper for submit-jobs, deal with checkpoint config."
-  [db-id {:keys [enable period-sec]}]
-  (let [checkpoint-id (d/tempid :db.part/user)]
-    [[:db/add db-id :job/checkpoint checkpoint-id]
-     (cond-> {:db/id checkpoint-id
-              :checkpoint/enable enable}
-       period-sec
-       (assoc :checkpoint/period-sec period-sec))]))
+  [{:keys [mode options periodic-options]}]
+  (cond-> {:checkpoint/mode mode}
+    options
+    (assoc :checkpoint/options
+           (let [{:keys [preserve-paths]} options]
+             {:checkpoint-options/preserve-paths preserve-paths}))
+    periodic-options
+    (assoc :checkpoint/periodic-options
+           (let [{:keys [period-sec]} periodic-options]
+             {:checkpoint-periodic-options/period-sec period-sec}))))
 
 (defn- str->executor-enum
   "Converts an executor string to the corresponding executor option enum.
@@ -715,7 +727,6 @@
                                                                 (str/lower-case operator))
                                   :constraint/pattern pattern}]))
                             constraints)
-        checkpoint (if (nil? checkpoint) [] (build-checkpoint db-id checkpoint))
         container (if (nil? container) [] (build-container user db-id container))
         executor (str->executor-enum executor)
         ;; These are optionally set datoms w/ default values
@@ -769,6 +780,7 @@
                     progress-output-file (assoc :job/progress-output-file progress-output-file)
                     progress-regex-string (assoc :job/progress-regex-string progress-regex-string)
                     pool (assoc :job/pool (:db/id pool))
+                    checkpoint (assoc :job/checkpoint (build-checkpoint checkpoint))
                     (seq datasets) (assoc :job/datasets datasets))
         txn (plugins/adjust-job adjustment/plugin txn db)]
 
@@ -777,7 +789,6 @@
         (into uris)
         (into env)
         (into constraints)
-        (into checkpoint)
         (into labels)
         (into container)
         (into maybe-datoms)
