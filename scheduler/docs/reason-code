@@ -6,12 +6,14 @@
 01004: REASON_TASK_KILLED_DURING_LAUNCH
 01005: Running
 01006: Scheduling failed on host
+01007: Container initialization timed out
 
 02xxx: Job Misconfiguration
 02000: REASON_CONTAINER_LIMITATION
 02001: REASON_CONTAINER_LIMITATION_DISK
 02002: REASON_CONTAINER_LIMITATION_MEMORY
 02003: Max runtime exceeded
+02004: Task was a straggler
 
 03xxx: Cook Error
 03000: REASON_RECONCILIATION

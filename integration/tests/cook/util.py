@@ -435,6 +435,10 @@ def docker_image():
     return os.getenv('COOK_TEST_DOCKER_IMAGE')
 
 
+def missing_docker_image():
+    return os.getenv('COOK_TEST_MISSING_DOCKER_IMAGE')
+
+
 def docker_working_directory():
     return os.getenv('COOK_TEST_DOCKER_WORKING_DIRECTORY')
 

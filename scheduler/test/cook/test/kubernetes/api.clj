@@ -265,6 +265,7 @@
   (testing "waiting"
     (let [pod (V1Pod.)
           pod-status (V1PodStatus.)
+          pod-metadata (V1ObjectMeta.)
           container-status (V1ContainerStatus.)
           container-state (V1ContainerState.)
           waiting (V1ContainerStateWaiting.)]
@@ -274,6 +275,7 @@
       (.setName container-status "required-cook-job-container")
       (.setContainerStatuses pod-status [container-status])
       (.setStatus pod pod-status)
+      (.setMetadata pod pod-metadata)
       (is (= {:state :pod/waiting
               :reason "waiting"}
              (api/pod->synthesized-pod-state pod)))))
@@ -288,21 +290,27 @@
               :reason "SomeSillyReason"}
              (api/pod->synthesized-pod-state pod)))))
 
-  (let [make-unschedulable-pod-fn
-        (fn [pod-condition-last-transition-time]
+  (let [make-pod-with-condition-fn
+        (fn [pod-condition-type pod-condition-status
+             pod-condition-reason pod-condition-last-transition-time]
           (let [pod (V1Pod.)
                 pod-status (V1PodStatus.)
                 pod-metadata (V1ObjectMeta.)
                 pod-condition (V1PodCondition.)]
-            (.setType pod-condition "PodScheduled")
-            (.setStatus pod-condition "False")
-            (.setReason pod-condition "Unschedulable")
+            (.setType pod-condition pod-condition-type)
+            (.setStatus pod-condition pod-condition-status)
+            (.setReason pod-condition pod-condition-reason)
             (.setLastTransitionTime pod-condition pod-condition-last-transition-time)
             (.addConditionsItem pod-status pod-condition)
             (.setStatus pod pod-status)
             (.setName pod-metadata "test-pod")
             (.setMetadata pod pod-metadata)
-            pod))]
+            pod))
+
+        make-unschedulable-pod-fn
+        (fn [pod-condition-last-transition-time]
+          (make-pod-with-condition-fn "PodScheduled" "False" "Unschedulable"
+                                      pod-condition-last-transition-time))]
 
     (testing "unschedulable pod"
       (let [pod (make-unschedulable-pod-fn (t/epoch))]
@@ -318,6 +326,23 @@
                       (constantly {:pod-condition-unschedulable-seconds 60})]
           (is (= {:state :pod/waiting
                   :reason "Pending"}
+                 (api/pod->synthesized-pod-state pod))))))
+
+    (testing "containers not initialized"
+      (let [pod (make-pod-with-condition-fn "Initialized" "False" "ContainersNotInitialized" (t/epoch))
+            container-status (V1ContainerStatus.)
+            container-state (V1ContainerState.)
+            waiting (V1ContainerStateWaiting.)
+            pod-status (.getStatus pod)]
+        (.setReason waiting "waiting")
+        (.setWaiting container-state waiting)
+        (.setState container-status container-state)
+        (.setName container-status "required-cook-job-container")
+        (.setContainerStatuses pod-status [container-status])
+        (with-redefs [config/kubernetes
+                      (constantly {:pod-condition-containers-not-initialized-seconds 60})]
+          (is (= {:state :pod/failed
+                  :reason "ContainersNotInitialized"}
                  (api/pod->synthesized-pod-state pod))))))))
 
 (deftest test-node-schedulable

@@ -3096,3 +3096,21 @@ class CookTest(util.CookTest):
         self.assertEqual('success', job['state'], job)
         self.assertLessEqual(1, len(job['instances']))
         self.assertIn('success', [i['status'] for i in job['instances']], job)
+
+    @unittest.skipUnless(util.missing_docker_image() is not None,
+                         'Requires setting the COOK_TEST_MISSING_DOCKER_IMAGE environment variable')
+    def test_container_initialization_timed_out(self):
+        container = {'type': 'docker',
+                     'docker': {'image': util.missing_docker_image(),
+                                'network': 'HOST',
+                                'force-pull-image': False}}
+        job_uuid, resp = util.submit_job(self.cook_url, container=container, max_retries=5)
+        try:
+            self.assertEqual(resp.status_code, 201, msg=resp.content)
+            util.wait_until(lambda: util.load_job(self.cook_url, job_uuid),
+                            lambda job: any(
+                                [i['status'] == 'failed' and
+                                 i['reason_code'] == reasons.CONTAINER_INITIALIZATION_TIMED_OUT
+                                 for i in job['instances']]))
+        finally:
+            util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
