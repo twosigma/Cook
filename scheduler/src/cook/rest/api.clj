@@ -177,7 +177,10 @@
 
 (def Checkpoint
   "Schema for a configuration to enable checkpointing"
-  {:mode (s/enum "auto" "periodic" "preemptible")
+  ; auto - checkpointing code will select the best method
+  ; periodic - periodically create a checkpoint
+  ; preemption - checkpoint is created on preemption before the VM is stopped
+  {:mode (s/enum "auto" "periodic" "preemption")
    (s/optional-key :options) CheckpointOptions
    (s/optional-key :periodic-options) PeriodicCheckpointOptions})
 
