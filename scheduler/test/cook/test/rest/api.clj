@@ -1565,7 +1565,7 @@
 
       (testing "should allow an optional checkpoint field"
         (is (s/validate api/Job (assoc min-job :checkpoint {:mode "periodic"
-                                                            :options {:preserve-paths ["p1" "p2"]}})))
+                                                            :options {:preserve-paths #{"p1" "p2"}}})))
         (is (s/validate api/Job (assoc min-job :checkpoint {:mode "auto"
                                                             :periodic-options {:period-sec 777}})))
         (is (thrown? Exception (s/validate api/Job (assoc min-job :checkpoint {:mode "zzz"}))))
