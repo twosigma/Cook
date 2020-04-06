@@ -198,8 +198,9 @@ class temp_config_file:
 
     def __init__(self, config):
         session_module = os.getenv('COOK_SESSION_MODULE')
+        adapters_module = os.getenv('COOK_ADAPTERS_MODULE', session_module)
         if session_module:
-            self.config = {'http': {'modules': {'session-module': session_module, 'adapters-module': session_module}}}
+            self.config = {'http': {'modules': {'session-module': session_module, 'adapters-module': adapters_module}}}
             self.config.update(config)
         else:
             self.config = config
