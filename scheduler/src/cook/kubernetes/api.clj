@@ -662,8 +662,7 @@
       ; from happening. We want this pod to preempt lower priority pods
       ; (e.g. synthetic pods).
       (add-node-selector pod-spec k8s-hostname-label hostname)
-      (when (or (seq pod-hostnames-to-avoid)
-                (seq compute-cluster-node-blocklist-labels))
+      (when (seq pod-hostnames-to-avoid)
         ; Use node "anti"-affinity to disallow scheduling on nodes with particular labels
         ; (https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#node-affinity)
         (let [affinity (V1Affinity.)
@@ -680,15 +679,15 @@
               (.addMatchExpressionsItem node-selector-term node-selector-requirement-k8s-hostname-label)))
 
           ; Disallow scheduling on nodes with blocklist labels (if any)
-          (when (seq compute-cluster-node-blocklist-labels)
-            (run!
-              (fn add-node-selector-term-for-blocklist-label
-                [node-blocklist-label]
-                (let [node-selector-requirement-blocklist-label (V1NodeSelectorRequirement.)]
-                  (.setKey node-selector-requirement-blocklist-label node-blocklist-label)
-                  (.setOperator node-selector-requirement-blocklist-label "DoesNotExist")
-                  (.addMatchExpressionsItem node-selector-term node-selector-requirement-blocklist-label)))
-              compute-cluster-node-blocklist-labels))
+          ;(when (seq compute-cluster-node-blocklist-labels)
+          ;  (run!
+          ;    (fn add-node-selector-term-for-blocklist-label
+          ;      [node-blocklist-label]
+          ;      (let [node-selector-requirement-blocklist-label (V1NodeSelectorRequirement.)]
+          ;        (.setKey node-selector-requirement-blocklist-label node-blocklist-label)
+          ;        (.setOperator node-selector-requirement-blocklist-label "DoesNotExist")
+          ;        (.addMatchExpressionsItem node-selector-term node-selector-requirement-blocklist-label)))
+          ;    compute-cluster-node-blocklist-labels))
 
           (.addNodeSelectorTermsItem node-selector node-selector-term)
           (.setRequiredDuringSchedulingIgnoredDuringExecution node-affinity node-selector)
