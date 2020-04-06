@@ -680,7 +680,7 @@
               (.addMatchExpressionsItem node-selector-term node-selector-requirement-k8s-hostname-label)))
 
           ; Disallow scheduling on nodes with blocklist labels (if any)
-          (when (seq compute-cluster-node-blocklist-labels)
+          '(when (seq compute-cluster-node-blocklist-labels)
             (run!
               (fn add-node-selector-term-for-blocklist-label
                 [node-blocklist-label]
