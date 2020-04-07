@@ -6,8 +6,8 @@
             [cook.test.testutil :as tu]
             [datomic.api :as d])
   (:import (io.kubernetes.client.models V1Container V1ContainerState V1ContainerStateWaiting V1ContainerStatus
-                                        V1EnvVar V1Node V1NodeSpec V1ObjectMeta V1Pod V1PodCondition V1PodSpec
-                                        V1PodStatus V1Taint V1Volume V1VolumeMount)))
+                                        V1EnvVar V1ListMeta V1Node V1NodeSpec V1ObjectMeta V1Pod V1PodCondition
+                                        V1PodList V1PodSpec V1PodStatus V1Taint V1Volume V1VolumeMount)))
 
 (deftest test-get-consumption
   (testing "correctly computes consumption for a single pod"
@@ -390,3 +390,20 @@
         (.setSpec node spec)
         (is (not (api/node-schedulable? node 30 nil ["blocklist-1"])))))))
 
+(deftest test-initialize-pod-watch-helper
+  (testing "only processes each pod once"
+    (let [pod-list-metadata (V1ListMeta.)
+          pod-list (doto (V1PodList.) (.setMetadata pod-list-metadata))
+          namespaced-pod-names-visited (atom [])
+          callback-fn (fn [namespaced-pod-name _ _]
+                        (swap! namespaced-pod-names-visited conj namespaced-pod-name))
+          compute-cluster-name "test-compute-cluster"
+          pod-metadata (doto (V1ObjectMeta.) (.setLabels {api/cook-pod-label compute-cluster-name}))
+          pod (doto (V1Pod.) (.setMetadata pod-metadata))
+          namespaced-pod-name {:namespace "foo" :name "bar"}
+          all-pods-atom (atom {namespaced-pod-name pod})]
+      (with-redefs [api/get-all-pods-in-kubernetes (constantly [pod-list {namespaced-pod-name pod}])
+                    api/create-pod-watch (constantly nil)]
+        (api/initialize-pod-watch-helper nil compute-cluster-name all-pods-atom callback-fn))
+      (is (= 1 (count @namespaced-pod-names-visited)))
+      (is (= [namespaced-pod-name] @namespaced-pod-names-visited)))))

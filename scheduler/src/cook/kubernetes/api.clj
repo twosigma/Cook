@@ -153,6 +153,11 @@
         out
         (recur)))))
 
+(defn create-pod-watch
+  "Wrapper for WatchHelper/createPodWatch"
+  [^ApiClient api-client resource-version]
+  (WatchHelper/createPodWatch api-client resource-version))
+
 (declare initialize-pod-watch)
 (defn ^Callable initialize-pod-watch-helper
   "Help creating pod watch. Returns a new watch Callable"
@@ -167,7 +172,7 @@
     ; We want to process all changes through the callback process.
     ; So compute the delta between the old and new and process those via the callbacks.
     ; Note as a side effect, the callbacks mutate all-pods-atom
-    (doseq [task (set/union (keys namespaced-pod-name->pod) (keys old-all-pods))]
+    (doseq [task (set/union (set (keys namespaced-pod-name->pod)) (set (keys old-all-pods)))]
       (log/info "In" compute-cluster-name "compute cluster, pod watch doing (startup) callback for" task)
       (doseq [callback callbacks]
         (try
@@ -176,9 +181,9 @@
             (log/error e "In" compute-cluster-name
                        "compute cluster, pod watch error while processing callback for" task)))))
 
-    (let [watch (WatchHelper/createPodWatch api-client (-> current-pods
-                                                           .getMetadata
-                                                           .getResourceVersion))]
+    (let [watch (create-pod-watch api-client (-> current-pods
+                                                 .getMetadata
+                                                 .getResourceVersion))]
       (fn []
         (try
           (log/info "In" compute-cluster-name "compute cluster, handling pod watch updates")
