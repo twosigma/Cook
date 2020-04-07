@@ -167,6 +167,23 @@
    (s/optional-key :mesos) MesosInfo
    (s/optional-key :volumes) [Volume]})
 
+(def CheckpointOptions
+  "Schema for checkpointing options"
+  {:preserve-paths #{s/Str}})
+
+(def PeriodicCheckpointOptions
+  "Schema for periodic checkpointing options"
+  {:period-sec s/Int})
+
+(def Checkpoint
+  "Schema for a configuration to enable checkpointing"
+  ; auto - checkpointing code will select the best method
+  ; periodic - periodically create a checkpoint
+  ; preemption - checkpoint is created on preemption before the VM is stopped
+  {:mode (s/enum "auto" "periodic" "preemption")
+   (s/optional-key :options) CheckpointOptions
+   (s/optional-key :periodic-options) PeriodicCheckpointOptions})
+
 (def Uri
   "Schema for a Mesos fetch URI, which has many options"
   {:value s/Str
@@ -310,6 +327,7 @@
    (s/optional-key :env) {NonEmptyString s/Str}
    (s/optional-key :labels) {NonEmptyString s/Str}
    (s/optional-key :constraints) [Constraint]
+   (s/optional-key :checkpoint) Checkpoint
    (s/optional-key :container) Container
    (s/optional-key :executor) (s/enum "cook" "mesos")
    (s/optional-key :progress-output-file) NonEmptyString
@@ -617,6 +635,19 @@
     "mesos" (build-mesos-container user id container)
     {}))
 
+(defn- build-checkpoint
+  "Helper for submit-jobs, deal with checkpoint config."
+  [{:keys [mode options periodic-options]}]
+  (cond-> {:checkpoint/mode mode}
+    options
+    (assoc :checkpoint/options
+           (let [{:keys [preserve-paths]} options]
+             {:checkpoint-options/preserve-paths preserve-paths}))
+    periodic-options
+    (assoc :checkpoint/periodic-options
+           (let [{:keys [period-sec]} periodic-options]
+             {:checkpoint-periodic-options/period-sec period-sec}))))
+
 (defn- str->executor-enum
   "Converts an executor string to the corresponding executor option enum.
    Throws an IllegalArgumentException if the string is non-nil and not supported."
@@ -653,7 +684,7 @@
   [pool commit-latch-id db job :- Job]
   (let [{:keys [uuid command max-retries max-runtime expected-runtime priority cpus mem gpus
                 user name ports uris env labels container group application disable-mea-culpa-retries
-                constraints executor progress-output-file progress-regex-string datasets]
+                constraints executor progress-output-file progress-regex-string datasets checkpoint]
          :or {group nil
               disable-mea-culpa-retries false}} job
         db-id (d/tempid :db.part/user)
@@ -752,6 +783,7 @@
                     progress-output-file (assoc :job/progress-output-file progress-output-file)
                     progress-regex-string (assoc :job/progress-regex-string progress-regex-string)
                     pool (assoc :job/pool (:db/id pool))
+                    checkpoint (assoc :job/checkpoint (build-checkpoint checkpoint))
                     (seq datasets) (assoc :job/datasets datasets))
         txn (plugins/adjust-job adjustment/plugin txn db)]
 
@@ -871,7 +903,7 @@
   [db user task-constraints gpu-enabled? new-group-uuids
    {:keys [cpus mem gpus uuid command priority max-retries max-runtime expected-runtime name
            uris ports env labels container group application disable-mea-culpa-retries
-           constraints executor progress-output-file progress-regex-string datasets]
+           constraints executor progress-output-file progress-regex-string datasets checkpoint]
     :or {group nil
          disable-mea-culpa-retries false}
     :as job}
@@ -910,7 +942,10 @@
                  (when progress-output-file {:progress-output-file progress-output-file})
                  (when progress-regex-string {:progress-regex-string progress-regex-string})
                  (when application {:application application})
-                 (when datasets {:datasets (munge-datasets datasets)}))
+                 (when datasets {:datasets (munge-datasets datasets)})
+                 (when checkpoint {:checkpoint (if (-> checkpoint :options :preserve-paths)
+                                                 (update-in checkpoint [:options :preserve-paths] set)
+                                                 checkpoint)}))
         params (get-in munged [:container :docker :parameters])]
     (s/validate Job munged)
     (when (and (:gpus munged) (not gpu-enabled?))
@@ -1109,6 +1144,7 @@
           progress-regex-string (:job/progress-regex-string job)
           pool (:job/pool job)
           container (:job/container job)
+          checkpoint (:job/checkpoint job)
           state (util/job-ent->state job)
           constraints (->> job
                            :job/constraint
@@ -1165,6 +1201,7 @@
               progress-regex-string (assoc :progress-regex-string progress-regex-string)
               pool (assoc :pool (:pool/name pool))
               container (assoc :container (container->response-map container))
+              checkpoint (assoc :checkpoint (util/job-ent->checkpoint job))
               datasets (assoc :datasets datasets)))))
 
 (defn fetch-job-map
