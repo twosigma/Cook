@@ -546,9 +546,8 @@
 (defn synthesize-state-and-process-pod-if-changed
   "Synthesizes the k8s-actual-state for the given
   pod and calls process if the state changed."
-  [{:keys [k8s-actual-state-map name] :as compute-cluster} ^V1Pod pod]
-  (let [pod-name (api/V1Pod->name pod)
-        new-state {:pod pod
+  [{:keys [k8s-actual-state-map name] :as compute-cluster} pod-name ^V1Pod pod]
+  (let [new-state {:pod pod
                    :synthesized-state (api/pod->synthesized-pod-state pod)
                    :sandbox-file-server-container-state (api/pod->sandbox-file-server-container-state pod)}
         old-state (get @k8s-actual-state-map pod-name)]
@@ -573,7 +572,7 @@
       (timers/time!
         (metrics/timer "process-lock" name)
         (locking (calculate-lock pod-name)
-          (synthesize-state-and-process-pod-if-changed compute-cluster new-pod))))))
+          (synthesize-state-and-process-pod-if-changed compute-cluster pod-name new-pod))))))
 
 (defn pod-deleted
   "Indicate that kubernetes does not have the pod. Invoked by callbacks from kubernetes."
@@ -626,4 +625,4 @@
       (metrics/timer "process-lock" name)
       (locking (calculate-lock pod-name)
         (let [{:keys [pod]} (get @k8s-actual-state-map pod-name)]
-          (synthesize-state-and-process-pod-if-changed compute-cluster pod))))))
+          (synthesize-state-and-process-pod-if-changed compute-cluster pod-name pod))))))

@@ -211,3 +211,18 @@
                     controller/write-status-to-datomic (fn [_ status] (reset! reason (:reason status)))]
         (controller/handle-pod-completed nil "podB" {:pod pod :synthesized-state {:state :pod/failed}})
         (is (= :reason-task-unknown @reason))))))
+
+(deftest test-synthesize-state-and-process-pod-if-changed
+  (testing "gracefully handles nil pod"
+    (let [compute-cluster {:k8s-actual-state-map (atom {})
+                           :cook-expected-state-map (atom {})}
+          pod-name "test-pod"
+          pod nil]
+      (controller/synthesize-state-and-process-pod-if-changed compute-cluster pod-name pod))))
+
+(deftest test-scan-process
+  (testing "gracefully handles nil pod"
+    (let [compute-cluster {:k8s-actual-state-map (atom {})
+                           :cook-expected-state-map (atom {})}
+          pod-name "test-pod"]
+      (controller/scan-process compute-cluster pod-name))))
