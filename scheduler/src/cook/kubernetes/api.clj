@@ -640,14 +640,23 @@
 
     ; init container
     (when use-cook-init?
-      (when-let [{:keys [command image]} init-container]
-        (let [container (V1Container.)]
+      (when-let [{:keys [command image resource-requirements]} init-container]
+        (let [{:keys [cpu-request cpu-limit memory-request memory-limit]} resource-requirements
+              container (V1Container.)
+              resources (V1ResourceRequirements.)]
           ; container
           (.setName container cook-init-container-name)
           (.setImage container image)
           (.setCommand container command)
           (.setWorkingDir container init-container-workdir)
-
+          (.setEnv container main-env-vars)
+          (when resource-requirements
+            ; resources
+            (.putRequestsItem resources "cpu" (double->quantity cpu-request))
+            (.putLimitsItem resources "cpu" (double->quantity cpu-limit))
+            (.putRequestsItem resources "memory" (double->quantity (* memory-multiplier memory-request)))
+            (.putLimitsItem resources "memory" (double->quantity (* memory-multiplier memory-limit)))
+            (.setResources container resources))
           (.setVolumeMounts container [(init-container-workdir-volume-mount-fn false)
                                        (scratch-space-volume-mount-fn false)])
           (.addInitContainersItem pod-spec container))))
