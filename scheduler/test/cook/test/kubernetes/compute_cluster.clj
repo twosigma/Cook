@@ -202,42 +202,4 @@
                   first)]
           (is (= api/k8s-hostname-label (.getKey node-selector-requirement)))
           (is (= "NotIn" (.getOperator node-selector-requirement)))
-          (is (= ["test-host-1" "test-host-2"] (.getValues node-selector-requirement))))))
-
-    (testing "synthetic pods avoid node blocklist labels"
-      (let [job-uuid-1 (str (UUID/randomUUID))
-            pool-name "test-pool"
-            compute-cluster (tu/make-kubernetes-compute-cluster {} #{pool-name} nil ["unhealthy-node" "unready-node"])
-            pending-jobs [(make-job-fn job-uuid-1 "user-1")]
-            launched-pods-atom (atom [])]
-        (with-redefs [api/launch-pod (fn [_ _ cook-expected-state-dict _]
-                                       (swap! launched-pods-atom conj cook-expected-state-dict))]
-          (cc/autoscale! compute-cluster pool-name pending-jobs))
-        (is (= 1 (count @launched-pods-atom)))
-        (let [node-selector-terms
-              (-> @launched-pods-atom
-                  (nth 0)
-                  :launch-pod
-                  :pod
-                  .getSpec
-                  .getAffinity
-                  .getNodeAffinity
-                  .getRequiredDuringSchedulingIgnoredDuringExecution
-                  .getNodeSelectorTerms)]
-          (is (= 1 (count node-selector-terms)))
-          (let [node-selector-requirement
-                (->> node-selector-terms
-                     first
-                     .getMatchExpressions
-                     (filter #(-> % .getKey (= "unhealthy-node")))
-                     first)]
-            (is (= "unhealthy-node" (.getKey node-selector-requirement)))
-            (is (= "DoesNotExist" (.getOperator node-selector-requirement))))
-          (let [node-selector-requirement
-                (->> node-selector-terms
-                     first
-                     .getMatchExpressions
-                     (filter #(-> % .getKey (= "unready-node")))
-                     first)]
-            (is (= "unready-node" (.getKey node-selector-requirement)))
-            (is (= "DoesNotExist" (.getOperator node-selector-requirement)))))))))
+          (is (= ["test-host-1" "test-host-2"] (.getValues node-selector-requirement))))))))

@@ -671,23 +671,11 @@
               node-selector-term (V1NodeSelectorTerm.)]
 
           ; Disallow scheduling on hostnames we're being told to avoid (if any)
-          (when (seq pod-hostnames-to-avoid)
-            (let [node-selector-requirement-k8s-hostname-label (V1NodeSelectorRequirement.)]
-              (.setKey node-selector-requirement-k8s-hostname-label k8s-hostname-label)
-              (.setOperator node-selector-requirement-k8s-hostname-label "NotIn")
-              (run! #(.addValuesItem node-selector-requirement-k8s-hostname-label %) pod-hostnames-to-avoid)
-              (.addMatchExpressionsItem node-selector-term node-selector-requirement-k8s-hostname-label)))
-
-          ; Disallow scheduling on nodes with blocklist labels (if any)
-          ;(when (seq compute-cluster-node-blocklist-labels)
-          ;  (run!
-          ;    (fn add-node-selector-term-for-blocklist-label
-          ;      [node-blocklist-label]
-          ;      (let [node-selector-requirement-blocklist-label (V1NodeSelectorRequirement.)]
-          ;        (.setKey node-selector-requirement-blocklist-label node-blocklist-label)
-          ;        (.setOperator node-selector-requirement-blocklist-label "DoesNotExist")
-          ;        (.addMatchExpressionsItem node-selector-term node-selector-requirement-blocklist-label)))
-          ;    compute-cluster-node-blocklist-labels))
+          (let [node-selector-requirement-k8s-hostname-label (V1NodeSelectorRequirement.)]
+            (.setKey node-selector-requirement-k8s-hostname-label k8s-hostname-label)
+            (.setOperator node-selector-requirement-k8s-hostname-label "NotIn")
+            (run! #(.addValuesItem node-selector-requirement-k8s-hostname-label %) pod-hostnames-to-avoid)
+            (.addMatchExpressionsItem node-selector-term node-selector-requirement-k8s-hostname-label))
 
           (.addNodeSelectorTermsItem node-selector node-selector-term)
           (.setRequiredDuringSchedulingIgnoredDuringExecution node-affinity node-selector)
