@@ -1,26 +1,60 @@
 (ns cook.kubernetes.api
-  (:require [clojure.set :as set]
+  (:require [clj-time.core :as t]
+            [clojure.set :as set]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
+            [cook.kubernetes.metrics :as metrics]
             [datomic.api :as d]
             [cook.config :as config]
+            [cook.task :as task]
             [cook.tools :as util]
+            [metrics.meters :as meters]
+            [metrics.timers :as timers]
             [plumbing.core :as pc])
   (:import
     (com.google.gson JsonSyntaxException)
     (com.twosigma.cook.kubernetes WatchHelper)
-    (io.kubernetes.client ApiClient ApiException)
+    (io.kubernetes.client ApiClient ApiException JSON)
     (io.kubernetes.client.apis CoreV1Api)
     (io.kubernetes.client.custom Quantity Quantity$Format IntOrString)
-    (io.kubernetes.client.models V1Pod V1Container V1Node V1Pod V1ResourceRequirements V1EnvVar
-                                 V1ObjectMeta V1PodSpec V1PodStatus V1ContainerState V1DeleteOptionsBuilder
-                                 V1DeleteOptions V1HostPathVolumeSource V1VolumeMount V1VolumeBuilder V1Taint
-                                 V1Toleration V1PodSecurityContext V1EmptyDirVolumeSource V1EnvVarBuilder V1ContainerPort V1Probe V1HTTPGetAction V1Volume)
-    (io.kubernetes.client.util Watch Yaml)
+    (io.kubernetes.client.models V1Affinity V1Container V1ContainerPort V1ContainerState V1DeleteOptions
+                                 V1DeleteOptionsBuilder V1EmptyDirVolumeSource V1EnvVar V1EnvVarBuilder
+                                 V1HostPathVolumeSource V1HTTPGetAction V1Node V1NodeAffinity V1NodeSelector
+                                 V1NodeSelectorRequirement V1NodeSelectorTerm V1ObjectMeta V1Pod V1PodCondition
+                                 V1PodSecurityContext V1PodSpec V1PodStatus V1Probe V1ResourceRequirements
+                                 V1Toleration V1VolumeBuilder V1Volume V1VolumeMount)
+    (io.kubernetes.client.util Watch)
     (java.util.concurrent Executors ExecutorService)))
 
 
 (def cook-pod-label "twosigma.com/cook-scheduler-job")
+(def cook-synthetic-pod-job-uuid-label "twosigma.com/cook-scheduler-synthetic-pod-job-uuid")
+(def cook-pool-label "cook-pool")
+(def cook-sandbox-volume-name "cook-sandbox-volume")
+(def cook-job-pod-priority-class "cook-workload")
+(def cook-synthetic-pod-priority-class "synthetic-pod")
+(def cook-synthetic-pod-name-prefix "synthetic")
+(def k8s-hostname-label "kubernetes.io/hostname")
+
+(def default-shell
+  "Default shell command used by our k8s scheduler to wrap and launch a job command
+   when no custom shell is provided in the kubernetes compute cluster config."
+  ["/bin/sh" "-c"
+   (str "exec 1>$COOK_SANDBOX/stdout; "
+        "exec 2>$COOK_SANDBOX/stderr; "
+        "exec /bin/sh -c \"$1\"")
+   "--"])
+
+; DeletionCandidateTaint is a soft taint that k8s uses to mark unneeded
+; nodes as preferably unschedulable. This taint is added as soon as the
+; autoscaler detects that nodes are under-utilized and all pods could be
+; scheduled even with fewer nodes in the node pool. This taint is
+; subsequently "cleaned" if the node stops being unneeded. We need to
+; tolerate this taint so that we can use nodes even if the autoscaler
+; finds them to be temporarily unneeded. Note that there is a "harder"
+; taint, ToBeDeletedByClusterAutoscaler, which is added right before a
+; node is deleted, which we don't tolerate.
+(def k8s-deletion-candidate-taint "DeletionCandidateOfClusterAutoscaler")
 
 (def ^ExecutorService kubernetes-executor (Executors/newCachedThreadPool))
 
@@ -85,88 +119,154 @@
 
 (defn get-all-pods-in-kubernetes
   "Get all pods in kubernetes."
-  [api-client]
-  (let [api (CoreV1Api. api-client)
-        current-pods (.listPodForAllNamespaces api
-                                               nil ; continue
-                                               nil ; fieldSelector
-                                               nil ; includeUninitialized
-                                               nil ; labelSelector
-                                               nil ; limit
-                                               nil ; pretty
-                                               nil ; resourceVersion
-                                               nil ; timeoutSeconds
-                                               nil ; watch
-                                               )
-        namespaced-pod-name->pod (pc/map-from-vals get-pod-namespaced-key
-                                                   (.getItems current-pods))]
-    [current-pods namespaced-pod-name->pod]))
+  [api-client compute-cluster-name]
+  (timers/time! (metrics/timer "get-all-pods" compute-cluster-name)
+    (let [api (CoreV1Api. api-client)
+          current-pods (.listPodForAllNamespaces api
+                                                 nil ; continue
+                                                 nil ; fieldSelector
+                                                 nil ; includeUninitialized
+                                                 nil ; labelSelector
+                                                 nil ; limit
+                                                 nil ; pretty
+                                                 nil ; resourceVersion
+                                                 nil ; timeoutSeconds
+                                                 nil ; watch
+                                                 )
+          namespaced-pod-name->pod (pc/map-from-vals get-pod-namespaced-key
+                                                     (.getItems current-pods))]
+      [current-pods namespaced-pod-name->pod])))
 
-(defn initialize-pod-watch
-  "Initialize the pod watch. This fills all-pods-atom with data and invokes the callback on pod changes."
+(defn try-forever-get-all-pods-in-kubernetes
+  "Try forever to get all pods in kubernetes. Used when starting a cluster up."
+  [api-client compute-cluster-name]
+  (loop []
+    (let [{:keys [reconnect-delay-ms]} (config/kubernetes)
+          out (try
+                (get-all-pods-in-kubernetes api-client compute-cluster-name)
+                (catch Throwable e
+                  (log/error e "Error during cluster startup getting all pods for" compute-cluster-name
+                             "and sleeping" reconnect-delay-ms "milliseconds before reconnect")
+                  (Thread/sleep reconnect-delay-ms)
+                  nil))]
+      (if out
+        out
+        (recur)))))
+
+(defn create-pod-watch
+  "Wrapper for WatchHelper/createPodWatch"
+  [^ApiClient api-client resource-version]
+  (WatchHelper/createPodWatch api-client resource-version))
+
+(declare initialize-pod-watch)
+(defn ^Callable initialize-pod-watch-helper
+  "Help creating pod watch. Returns a new watch Callable"
   [^ApiClient api-client compute-cluster-name all-pods-atom cook-pod-callback]
-  (let [[current-pods namespaced-pod-name->pod] (get-all-pods-in-kubernetes api-client)
+  (let [[current-pods namespaced-pod-name->pod] (get-all-pods-in-kubernetes api-client compute-cluster-name)
         ; 2 callbacks;
         callbacks
         [(make-atom-updater all-pods-atom) ; Update the set of all pods.
          (partial cook-pod-callback-wrap cook-pod-callback compute-cluster-name)] ; Invoke the cook-pod-callback if its a cook pod.
         old-all-pods @all-pods-atom]
-    (log/info "Processing pods for compute cluster" compute-cluster-name ":" (keys namespaced-pod-name->pod))
+    (log/info "In" compute-cluster-name "compute cluster, pod watch processing pods:" (keys namespaced-pod-name->pod))
     ; We want to process all changes through the callback process.
     ; So compute the delta between the old and new and process those via the callbacks.
     ; Note as a side effect, the callbacks mutate all-pods-atom
-    (doseq [task (set/union (keys namespaced-pod-name->pod) (keys old-all-pods))]
+    (doseq [task (set/union (set (keys namespaced-pod-name->pod)) (set (keys old-all-pods)))]
+      (log/info "In" compute-cluster-name "compute cluster, pod watch doing (startup) callback for" task)
       (doseq [callback callbacks]
         (try
-          (log/info "In" compute-cluster-name "compute cluster, doing (startup) callback for" task)
           (callback task (get old-all-pods task) (get namespaced-pod-name->pod task))
           (catch Exception e
-            (log/error e "Error while processing callback for" task)))))
+            (log/error e "In" compute-cluster-name
+                       "compute cluster, pod watch error while processing callback for" task)))))
 
-    (let [watch (WatchHelper/createPodWatch api-client (-> current-pods
-                                                           .getMetadata
-                                                           .getResourceVersion))]
-      (.submit kubernetes-executor ^Callable
+    (let [watch (create-pod-watch api-client (-> current-pods
+                                                 .getMetadata
+                                                 .getResourceVersion))]
       (fn []
         (try
+          (log/info "In" compute-cluster-name "compute cluster, handling pod watch updates")
           (handle-watch-updates all-pods-atom watch get-pod-namespaced-key
                                 callbacks)
           (catch Exception e
-            (log/error e "Error during watch"))
+            (let [cause (.getCause e)]
+              (if (and cause (instance? java.net.SocketTimeoutException cause))
+                (log/info e "In" compute-cluster-name "compute cluster, pod watch timed out")
+                (log/error e "In" compute-cluster-name "compute cluster, error during pod watch"))))
           (finally
             (.close watch)
-            (initialize-pod-watch api-client compute-cluster-name all-pods-atom cook-pod-callback))))))))
+            (initialize-pod-watch api-client compute-cluster-name all-pods-atom cook-pod-callback)))))))
 
-(defn initialize-node-watch
-  "Initialize the node watch. This fills current-nodes-atom with data and invokes the callback on pod changes."
-  [^ApiClient api-client current-nodes-atom]
+(defn initialize-pod-watch
+  "Initialize the pod watch. This fills all-pods-atom with data and invokes the callback on pod changes."
+  [^ApiClient api-client compute-cluster-name all-pods-atom cook-pod-callback]
+  (log/info "In" compute-cluster-name "compute cluster, initializing pod watch")
+  ; We'll iterate trying to connect to k8s until the initialize-pod-watch-helper returns a watch function.
+  (let [{:keys [reconnect-delay-ms]} (config/kubernetes)
+        tmpfn (fn []
+                (try
+                  (log/info "In" compute-cluster-name "compute cluster, initializing pod watch helper")
+                  (initialize-pod-watch-helper api-client compute-cluster-name all-pods-atom cook-pod-callback)
+                  (catch Exception e
+                    (log/error e "Error during pod watch initial setup of looking at pods for" compute-cluster-name
+                               "and sleeping" reconnect-delay-ms "milliseconds before reconnect")
+                    (Thread/sleep reconnect-delay-ms)
+                    nil)))
+        ^Callable first-success (->> tmpfn repeatedly (some identity))]
+    (.submit kubernetes-executor ^Callable first-success)))
+
+(declare initialize-node-watch)
+(defn initialize-node-watch-helper
+  "Help creating node watch. Returns a new watch Callable"
+  [^ApiClient api-client compute-cluster-name current-nodes-atom]
   (let [api (CoreV1Api. api-client)
-        current-nodes (.listNode api
-                                 nil ; includeUninitialized
-                                 nil ; pretty
-                                 nil ; continue
-                                 nil ; fieldSelector
-                                 nil ; labelSelector
-                                 nil ; limit
-                                 nil ; resourceVersion
-                                 nil ; timeoutSeconds
-                                 nil ; watch
-                                 )
+        current-nodes
+        (timers/time! (metrics/timer "get-all-nodes" compute-cluster-name)
+          (.listNode api
+                     nil ; includeUninitialized
+                     nil ; pretty
+                     nil ; continue
+                     nil ; fieldSelector
+                     nil ; labelSelector
+                     nil ; limit
+                     nil ; resourceVersion
+                     nil ; timeoutSeconds
+                     nil ; watch
+                     ))
         node-name->node (pc/map-from-vals (fn [^V1Node node]
                                             (-> node .getMetadata .getName))
                                           (.getItems current-nodes))]
     (reset! current-nodes-atom node-name->node)
     (let [watch (WatchHelper/createNodeWatch api-client (-> current-nodes .getMetadata .getResourceVersion))]
-      (.submit kubernetes-executor ^Callable
       (fn []
         (try
+          (log/info "In" compute-cluster-name "compute cluster, handling node watch updates")
           (handle-watch-updates current-nodes-atom watch (fn [n] (-> n .getMetadata .getName))
                                 [(make-atom-updater current-nodes-atom)]) ; Update the set of all nodes.
           (catch Exception e
-            (log/warn e "Error during node watch"))
+            (log/warn e "Error during node watch for compute cluster" compute-cluster-name))
           (finally
             (.close watch)
-            (initialize-node-watch api-client current-nodes-atom))))))))
+            (initialize-node-watch api-client compute-cluster-name current-nodes-atom)))))))
+
+(defn initialize-node-watch
+  "Initialize the node watch. This fills current-nodes-atom with data and invokes the callback on pod changes."
+  [^ApiClient api-client compute-cluster-name current-nodes-atom]
+  (log/info "In" compute-cluster-name "compute cluster, initializing node watch")
+  ; We'll iterate trying to connect to k8s until the initialize-node-watch-helper returns a watch function.
+  (let [{:keys [reconnect-delay-ms]} (config/kubernetes)
+        tmpfn (fn []
+                (try
+                  (log/info "In" compute-cluster-name "compute cluster, initializing node watch helper")
+                  (initialize-node-watch-helper api-client compute-cluster-name current-nodes-atom)
+                  (catch Exception e
+                    (log/error e "Error during node watch initial setup of looking at nodes for" compute-cluster-name
+                               "and sleeping" reconnect-delay-ms "milliseconds before reconnect")
+                    (Thread/sleep reconnect-delay-ms)
+                    nil)))
+        ^Callable first-success (->> tmpfn repeatedly (some identity))]
+    (.submit kubernetes-executor ^Callable first-success)))
 
 (defn to-double
   "Map a quantity to a double, whether integer, double, or float."
@@ -190,13 +290,14 @@
   (let [taints-on-node (or (some-> node .getSpec .getTaints) [])
         cook-pool-taint (filter #(= "cook-pool" (.getKey %)) taints-on-node)]
     (if (= 1 (count cook-pool-taint))
-          (-> cook-pool-taint first .getValue)
+      (-> cook-pool-taint first .getValue)
       "no-pool")))
 
 (defn pod->node-name
   "Given a pod, returns the node name on the pod spec"
   [^V1Pod pod]
-  (-> pod .getSpec .getNodeName))
+  (or (some-> pod .getSpec .getNodeName)
+      (some-> pod .getSpec .getNodeSelector (get k8s-hostname-label))))
 
 (defn num-pods-on-node
   "Returns the number of pods assigned to the given node"
@@ -205,22 +306,32 @@
     (-> node-name->pods (get node-name []) count)))
 
 (defn node-schedulable?
-  "Can we schedule on a node. For now, yes, unless there are other taints on it. TODO: Incorporate other node-health measures here."
-  [^V1Node node pod-count-capacity pods]
+  "Can we schedule on a node. For now, yes, unless there are other taints on it or it contains any label in the
+  node-blocklist-labels list.
+  TODO: Incorporate other node-health measures here."
+  [^V1Node node pod-count-capacity pods node-blocklist-labels]
   (if (nil? node)
     false
     (let [taints-on-node (or (some-> node .getSpec .getTaints) [])
-          other-taints (remove #(= "cook-pool" (.getKey %)) taints-on-node)
-          schedulable (zero? (count other-taints))
+          other-taints (remove #(contains?
+                                  #{"cook-pool" k8s-deletion-candidate-taint}
+                                  (.getKey %))
+                               taints-on-node)
           node-name (some-> node .getMetadata .getName)
           pods-on-node (num-pods-on-node node-name pods)
-          below-pod-count-capacity (< pods-on-node pod-count-capacity)]
-      (when-not schedulable
-        (log/info "Filtering out" node-name "because it has taints" other-taints))
-      (when-not below-pod-count-capacity
-        (log/info "Filtering out" node-name "because it is at or above its pod count capacity of"
-                  pod-count-capacity "(" pods-on-node ")"))
-      (and schedulable below-pod-count-capacity))))
+          labels-on-node (or (some-> node .getMetadata .getLabels) {})
+          matching-node-blocklist-keyvals (select-keys labels-on-node node-blocklist-labels)]
+      (cond  (seq other-taints) (do
+                                  (log/info "Filtering out" node-name "because it has taints" other-taints)
+                                  false)
+             (>= pods-on-node pod-count-capacity) (do
+                                                    (log/info "Filtering out" node-name "because it is at or above its pod count capacity of"
+                                                              pod-count-capacity "(" pods-on-node ")")
+                                                    false)
+             (seq matching-node-blocklist-keyvals) (do
+                                                    (log/info "Filtering out" node-name "because it has node blocklist labels" matching-node-blocklist-keyvals)
+                                                    false)
+             :else true))))
 
 (defn get-capacity
   "Given a map from node-name to node, generate a map from node-name->resource-type-><capacity>"
@@ -242,9 +353,9 @@
                                                        (let [containers (-> pod .getSpec .getContainers)
                                                              container-requests (map (fn [^V1Container c]
                                                                                        (-> c
-                                                                                         .getResources
-                                                                                         .getRequests
-                                                                                         convert-resource-map))
+                                                                                           .getResources
+                                                                                           .getRequests
+                                                                                           convert-resource-map))
                                                                                      containers)]
                                                          (apply merge-with + container-requests))))
                                                 (apply merge-with +)))
@@ -256,7 +367,7 @@
   "required-cook-job-container")
 ; see pod->synthesized-pod-state comment for container naming conventions
 (def cook-container-name-for-file-server
-  "aux-cook-sandbox-file-server-container")
+  "aux-cook-sidecar-container")
 ; see pod->synthesized-pod-state comment for container naming conventions
 (def cook-init-container-name
   "aux-cook-init-container")
@@ -267,43 +378,57 @@
   (Quantity. (BigDecimal/valueOf value)
              Quantity$Format/DECIMAL_SI))
 
+(defn- make-empty-volume
+  "Make a kubernetes volume"
+  [name]
+  (.. (V1VolumeBuilder.)
+      (withName name)
+      (withEmptyDir (V1EmptyDirVolumeSource.))
+      (build)))
+
+(defn- make-volume-mount
+  "Make a kubernetes volume mount"
+  ([^V1Volume volume path read-only]
+   (make-volume-mount volume path nil read-only))
+  ([^V1Volume volume path sub-path read-only]
+   (when volume
+     (doto (V1VolumeMount.)
+       (.setName (.getName volume))
+       (.setMountPath path)
+       (.setReadOnly read-only)
+       (cond-> sub-path (.setSubPath sub-path))))))
+
 (defn make-volumes
   "Converts a list of cook volumes to kubernetes volumes and volume mounts."
-  [cook-volumes]
+  [cook-volumes sandbox-dir]
   (let [{:keys [disallowed-container-paths]} (config/kubernetes)
-        filtered-cook-volumes (filter (fn [{:keys [host-path container-path]}]
-                                        (let [path (or container-path host-path)]
-                                          (if disallowed-container-paths
-                                            (not (contains? disallowed-container-paths
-                                                            path))
-                                            true)))
-                                      cook-volumes)
-        host-path->name (pc/map-from-keys (fn [_] (str "syn-" (d/squuid)))
-                                          (map :host-path filtered-cook-volumes))
-        volumes (map (fn [{:keys [host-path]}]
-                       (let [host-path-source (V1HostPathVolumeSource.)]
-                         ; host path
-                         (.setPath host-path-source host-path)
-                         (.setType host-path-source "DirectoryOrCreate")
-
-                         ; volume
-                         (-> (V1VolumeBuilder.)
-                             (.withName (host-path->name host-path))
-                             (.withHostPath host-path-source)
-                             (.build))))
-                     filtered-cook-volumes)
-        volume-mounts (map (fn [{:keys [container-path host-path mode]
-                                 :or {mode "RO"}}]
-                             (let [container-path (or container-path host-path)
-                                   volume-mount (V1VolumeMount.)
-                                   read-only (not (= mode "RW"))]
-                               (.setName volume-mount (host-path->name host-path))
-                               (.setMountPath volume-mount container-path)
-                               (.setReadOnly volume-mount read-only)
-                               volume-mount))
-                           filtered-cook-volumes)]
-    {:volumes volumes
-     :volume-mounts volume-mounts}))
+        allowed-cook-volumes (remove (fn [{:keys [container-path host-path mode]}]
+                                       (contains? disallowed-container-paths
+                                                  ;; container-path defaults to host-path when omitted
+                                                  (or container-path host-path)))
+                                     cook-volumes)
+        host-paths (->> allowed-cook-volumes (map :host-path) distinct)
+        volumes (vec (for [host-path host-paths]
+                       (doto (V1Volume.)
+                         (.setName (str "syn-" (d/squuid)))
+                         (.setHostPath (doto (V1HostPathVolumeSource.)
+                                         (.setPath host-path)
+                                         (.setType "DirectoryOrCreate"))))))
+        host-path->volume (zipmap host-paths volumes)
+        volume-mounts (vec (for [{:keys [container-path host-path mode]} allowed-cook-volumes]
+                             (make-volume-mount
+                               (host-path->volume host-path)
+                               ;; container-path defaults to host-path when omitted
+                               (or container-path host-path)
+                               (not= "RW" mode))))
+        sandbox-volume (make-empty-volume cook-sandbox-volume-name)
+        sandbox-volume-mount-fn #(make-volume-mount sandbox-volume sandbox-dir %)
+        sandbox-volume-mount (sandbox-volume-mount-fn false)
+        ; mesos-sandbox-volume-mount added for Mesos backward compatibility
+        mesos-sandbox-volume-mount (make-volume-mount sandbox-volume "/mnt/mesos/sandbox" false)]
+    {:sandbox-volume-mount-fn sandbox-volume-mount-fn
+     :volumes (conj volumes sandbox-volume)
+     :volume-mounts (conj volume-mounts sandbox-volume-mount mesos-sandbox-volume-mount)}))
 
 (defn toleration-for-pool
   "For a given cook pool name, create the right V1Toleration so that Cook will ignore that cook-pool taint."
@@ -315,17 +440,19 @@
     (.setEffect toleration "NoSchedule")
     toleration))
 
-(defn param-env-vars
+(def toleration-for-deletion-candidate-of-autoscaler
+  (doto (V1Toleration.)
+    (.setKey k8s-deletion-candidate-taint)
+    (.setOperator "Exists")
+    (.setEffect "PreferNoSchedule")))
+
+(defn build-params-env
+  "Make environment vars map from docker parameters"
   [params]
-  (->> params
-       (filter (fn [{:keys [key]}]
-                 (= key "env")))
-       (map (fn [{:keys [value]}]
-              (let [[env-var-name env-var-value] (str/split value #"=")
-                    env (V1EnvVar.)]
-                (.setName env (str env-var-name))
-                (.setValue env (str env-var-value))
-                env)))))
+  (pc/for-map [{:keys [key value]} params
+               :when (= "env" key)
+               :let [[var-key var-val] (str/split value #"=")]]
+    var-key var-val))
 
 (defn make-security-context
   [params user]
@@ -344,21 +471,30 @@
     security-context))
 
 (defn get-workdir
-  [params]
+  [params default-workdir]
   (let [workdir-param (->> params
                            (filter (fn [{:keys [key]}] (= key "workdir")))
                            first)]
     (if workdir-param
       (:value workdir-param)
-      (:default-workdir (config/kubernetes)))))
+      default-workdir)))
 
-(defn filter-env-vars
-  [env-vars]
-  (let [{:keys [disallowed-var-names]} (config/kubernetes)]
-    (->> env-vars
-         (filter (fn [^V1EnvVar var]
-                   (not (contains? disallowed-var-names (.getName var)))))
-         (into []))))
+(defn- make-env
+  "Make a kubernetes environment variable"
+  [var-name var-value]
+  (doto (V1EnvVar.)
+    (.setName (str var-name))
+    (.setValue (str var-value))))
+
+(defn make-filtered-env-vars
+  "Create a Kubernetes API compatible var list from an environment vars map,
+   with variables filtered based on disallowed-var-names in the Kubernetes config."
+  [env]
+  (let [{:keys [disallowed-var-names]} (config/kubernetes)
+        disallowed-var? #(contains? disallowed-var-names (key %))]
+    (->> env
+         (remove disallowed-var?)
+         (mapv #(apply make-env %)))))
 
 (defn- add-as-decimals
   "Takes two doubles and adds them as decimals to avoid floating point error. Kubernetes will not be able to launch a
@@ -369,72 +505,105 @@
 (defn adjust-job-resources
   "Given the required resources for a job, add to them the resources for any sidecars that will be launched with the job."
   [{:keys [cpus mem] :as resources}]
-  (if-let [{:keys [cpu-request memory-request]} (-> (config/kubernetes) :sandbox-fileserver :resource-requirements)]
+  (if-let [{:keys [cpu-request memory-request]} (-> (config/kubernetes) :sidecar :resource-requirements)]
     (assoc resources
       :cpus (add-as-decimals cpus cpu-request)
       :mem (add-as-decimals mem memory-request))
     resources))
 
-(defn- make-volume
-  "Make a kubernetes volume"
-  [name]
-  (.. (V1VolumeBuilder.)
-      (withName name)
-      (withEmptyDir (V1EmptyDirVolumeSource.))
-      (build)))
+(defn- add-node-selector
+  "Adds a node selector with the given key and val to the given pod spec"
+  [^V1PodSpec pod-spec key val]
+  (.setNodeSelector pod-spec (-> pod-spec
+                                 .getNodeSelector
+                                 (assoc key val))))
 
-(defn- make-volume-mount
-  "Make a kubernetes volume mount"
-  [^V1Volume volume path read-only]
-  (when volume
-    (doto (V1VolumeMount.)
-      (.setName (.getName volume))
-      (.setMountPath path)
-      (.setReadOnly read-only))))
+(defn- checkpoint->volume-mounts
+  "Get custom volume mounts needed for checkpointing"
+  [{:keys [mode volume-mounts]} checkpointing-tools-volume]
+  (when mode
+    (map (fn [{:keys [path sub-path]}] (make-volume-mount checkpointing-tools-volume path sub-path true)) volume-mounts)))
 
-(defn- make-env
-  "Make a kubernetes environment variable"
-  [key value]
-  (.. (V1EnvVarBuilder.)
-      (withName key)
-      (withValue value)
-      (build)))
+(defn checkpoint->env
+  "Get environment variables needed for checkpointing"
+  [{:keys [mode options periodic-options]}]
+  (cond-> {}
+    mode
+    (assoc "COOK_CHECKPOINT_MODE" mode)
+    options
+    ((fn [m]
+       (let [{:keys [preserve-paths]} options]
+         (cond-> m
+           preserve-paths
+           (#(reduce-kv (fn [map index path] (assoc map (str "COOK_CHECKPOINT_PRESERVE_PATH_" index) path))
+                        % (vec (sort preserve-paths))))))))
+    periodic-options
+    ((fn [m]
+       (let [{:keys [period-sec]} periodic-options]
+         (cond-> m
+           period-sec
+           (assoc "COOK_CHECKPOINT_PERIOD_SEC" (str period-sec))))))))
 
 (defn ^V1Pod task-metadata->pod
   "Given a task-request and other data generate the kubernetes V1Pod to launch that task."
-  [namespace compute-cluster-name {:keys [task-id command container task-request hostname]}]
-  (let [{:keys [resources job]} task-request
-        {:keys [mem cpus]} resources
+  [namespace compute-cluster-name compute-cluster-node-blocklist-labels
+   {:keys [task-id command container task-request hostname pod-labels pod-hostnames-to-avoid
+           pod-priority-class pod-supports-cook-init? pod-supports-cook-sidecar?]
+    :or {pod-priority-class cook-job-pod-priority-class
+         pod-supports-cook-init? true
+         pod-supports-cook-sidecar? true}}]
+  (let [{:keys [scalar-requests job]} task-request
+        ;; NOTE: The scheduler's adjust-job-resources-for-pool-fn may modify :resources,
+        ;; whereas :scalar-requests always contains the unmodified job resource values.
+        {:strs [mem cpus]} scalar-requests
         {:keys [docker volumes]} container
         {:keys [image parameters]} docker
+        {:keys [job/progress-output-file job/progress-regex-string job/checkpoint]} job
+        {:keys [environment]} command
         pod (V1Pod.)
         pod-spec (V1PodSpec.)
         metadata (V1ObjectMeta.)
         container (V1Container.)
-        env (map (fn [[k v]]
-                   (let [env (V1EnvVar.)]
-                     (.setName env (str k))
-                     (.setValue env (str v))
-                     env))
-                 (:environment command))
         resources (V1ResourceRequirements.)
-        labels {cook-pod-label compute-cluster-name}
+        labels (assoc pod-labels cook-pod-label compute-cluster-name)
         pool-name (some-> job :job/pool :pool/name)
-        {:keys [volumes volume-mounts]} (make-volumes volumes)
         security-context (make-security-context parameters (:user command))
-        workdir (get-workdir parameters)
-        workdir-volume (make-volume "cook-workdir-volume")
-        workdir-volume-mount-fn (partial make-volume-mount workdir-volume workdir)
-        {:keys [custom-shell init-container sandbox-fileserver]} (config/kubernetes)
+        sandbox-dir (:default-workdir (config/kubernetes))
+        workdir (get-workdir parameters sandbox-dir)
+        {:keys [volumes volume-mounts sandbox-volume-mount-fn]} (make-volumes volumes sandbox-dir)
+        {:keys [custom-shell init-container sidecar default-checkpoint-config]} (config/kubernetes)
+        checkpoint (when checkpoint (merge default-checkpoint-config (util/job-ent->checkpoint job)))
+        use-cook-init? (and init-container pod-supports-cook-init?)
+        use-cook-sidecar? (and sidecar pod-supports-cook-sidecar?)
         init-container-workdir "/mnt/init-container"
-        init-container-workdir-volume (when init-container (make-volume "cook-init-container-workdir-volume"))
-        init-container-workdir-volume-mount-fn (partial make-volume-mount init-container-workdir-volume init-container-workdir)
-        fileserver-workdir "/mnt/fileserver"
-        fileserver-workdir-volume (when sandbox-fileserver (make-volume "cook-fileserver-workdir-volume"))
-        fileserver-workdir-volume-mount-fn (partial make-volume-mount fileserver-workdir-volume fileserver-workdir)
-        workdir-env-vars [(make-env "HOME" workdir)
-                          (make-env "MESOS_SANDBOX" workdir)
-                          (make-env "FILESERVER_WORKDIR" fileserver-workdir)]]
+        init-container-workdir-volume (when use-cook-init?
+                                        (make-empty-volume "cook-init-container-workdir-volume"))
+        init-container-workdir-volume-mount-fn (partial make-volume-mount
+                                                        init-container-workdir-volume
+                                                        init-container-workdir)
+        sidecar-workdir "/mnt/sidecar"
+        sidecar-workdir-volume (when use-cook-sidecar? (make-empty-volume "cook-sidecar-workdir-volume"))
+        sidecar-workdir-volume-mount-fn (partial make-volume-mount sidecar-workdir-volume sidecar-workdir)
+        scratch-space "/mnt/scratch-space"
+        scratch-space-volume (make-empty-volume "cook-scratch-space-volume")
+        scratch-space-volume-mount-fn (partial make-volume-mount scratch-space-volume scratch-space)
+        checkpoint-volume-mounts (checkpoint->volume-mounts checkpoint init-container-workdir-volume)
+        sandbox-env {"COOK_SANDBOX" sandbox-dir
+                     "HOME" sandbox-dir
+                     "MESOS_SANDBOX" sandbox-dir
+                     "SIDECAR_WORKDIR" sidecar-workdir}
+        params-env (build-params-env parameters)
+        progress-env (task/build-executor-environment job)
+        checkpoint-env (checkpoint->env checkpoint)
+        main-env-base (merge environment params-env progress-env sandbox-env checkpoint-env)
+        progress-file-var (get main-env-base task/progress-meta-env-name task/default-progress-env-name)
+        progress-file-path (get main-env-base progress-file-var)
+        main-env (cond-> main-env-base
+                   ;; Add a default progress file path to the environment when missing,
+                   ;; preserving compatibility with Meosos + Cook Executor.
+                   (not progress-file-path)
+                   (assoc progress-file-var (str task-id ".progress")))
+        main-env-vars (make-filtered-env-vars main-env)]
 
     ; metadata
     (.setName metadata (str task-id))
@@ -443,13 +612,15 @@
 
     ; container
     (.setName container cook-container-name-for-job)
-    (.setCommand container (conj (or custom-shell ["/bin/sh" "-c"]) (:value command)))
-    (.setEnv container (-> []
-                           (into env)
-                           (into (param-env-vars parameters))
-                           (into workdir-env-vars)
-                           filter-env-vars))
+    (.setCommand container
+                 (conj (or (when use-cook-init? custom-shell) default-shell)
+                       (:value command)))
+    (.setEnv container main-env-vars)
     (.setImage container image)
+
+    ; allocate a TTY to support tools that need to read from stdin
+    (.setTty container true)
+    (.setStdin container true)
 
     (.putRequestsItem resources "memory" (double->quantity (* memory-multiplier mem)))
     (.putLimitsItem resources "memory" (double->quantity (* memory-multiplier mem)))
@@ -458,64 +629,130 @@
     ; "Guaranteed" QoS which requires limits for both memory and cpu.
     (.putLimitsItem resources "cpu" (double->quantity cpus))
     (.setResources container resources)
-    (.setVolumeMounts container (filterv some? (conj volume-mounts
-                                                     (workdir-volume-mount-fn false)
+    (.setVolumeMounts container (filterv some? (conj (concat volume-mounts checkpoint-volume-mounts)
                                                      (init-container-workdir-volume-mount-fn true)
-                                                     (fileserver-workdir-volume-mount-fn true))))
+                                                     (scratch-space-volume-mount-fn false)
+                                                     (sidecar-workdir-volume-mount-fn true))))
     (.setWorkingDir container workdir)
 
     ; pod-spec
     (.addContainersItem pod-spec container)
 
     ; init container
-    (when-let [{:keys [command image]} init-container]
-      (let [container (V1Container.)]
-        ; container
-        (.setName container cook-init-container-name)
-        (.setImage container image)
-        (.setCommand container command)
-        (.setWorkingDir container init-container-workdir)
+    (when use-cook-init?
+      (when-let [{:keys [command image]} init-container]
+        (let [container (V1Container.)]
+          ; container
+          (.setName container cook-init-container-name)
+          (.setImage container image)
+          (.setCommand container command)
+          (.setWorkingDir container init-container-workdir)
 
-        (.setVolumeMounts container [(init-container-workdir-volume-mount-fn false)])
-        (.addInitContainersItem pod-spec container)))
+          (.setVolumeMounts container [(init-container-workdir-volume-mount-fn false)
+                                       (scratch-space-volume-mount-fn false)])
+          (.addInitContainersItem pod-spec container))))
 
     ; sandbox file server container
-    (when-let [{:keys [command image port resource-requirements]} sandbox-fileserver]
-      (let [{:keys [cpu-request cpu-limit memory-request memory-limit]} resource-requirements
-            container (V1Container.)
-            resources (V1ResourceRequirements.)
-            readiness-probe (V1Probe.)
-            http-get-action (V1HTTPGetAction.)]
-        ; container
-        (.setName container cook-container-name-for-file-server)
-        (.setImage container image)
-        (.setCommand container (conj command (str port)))
-        (.setWorkingDir container fileserver-workdir)
-        (.setPorts container [(.containerPort (V1ContainerPort.) (int port))])
+    (when use-cook-sidecar?
+      (when-let [{:keys [command health-check-endpoint image port resource-requirements]} sidecar]
+        (let [{:keys [cpu-request cpu-limit memory-request memory-limit]} resource-requirements
+              container (V1Container.)
+              resources (V1ResourceRequirements.)]
+          ; container
+          (.setName container cook-container-name-for-file-server)
+          (.setImage container image)
+          (.setCommand container (conj command (str port)))
+          (.setWorkingDir container sidecar-workdir)
+          (.setPorts container [(.containerPort (V1ContainerPort.) (int port))])
 
-        (.setEnv container [(make-env "COOK_WORKDIR" workdir)])
+          (.setEnv container (conj main-env-vars
+                                   (make-env "COOK_SCHEDULER_REST_URL" (config/scheduler-rest-url))
+                                   ;; DEPRECATED - sidecar should use COOK_SANDBOX instead.
+                                   ;; Will remove this environment variable in a future release.
+                                   (make-env "COOK_WORKDIR" sandbox-dir)))
 
-        (.setPort http-get-action (IntOrString. port))
-        (.setPath http-get-action "readiness-probe")
-        (.setHttpGet readiness-probe http-get-action)
-        (.setReadinessProbe container readiness-probe)
+          ; optionally enable http-based readiness probe
+          (when health-check-endpoint
+            (let [http-get-action (doto (V1HTTPGetAction.)
+                                    (.setPort (-> port int IntOrString.))
+                                    (.setPath health-check-endpoint))
+                  readiness-probe (doto (V1Probe.)
+                                    (.setHttpGet http-get-action))]
+            (.setReadinessProbe container readiness-probe)))
 
-        ; resources
-        (.putRequestsItem resources "cpu" (double->quantity cpu-request))
-        (.putLimitsItem resources "cpu" (double->quantity cpu-limit))
-        (.putRequestsItem resources "memory" (double->quantity (* memory-multiplier memory-request)))
-        (.putLimitsItem resources "memory" (double->quantity (* memory-multiplier memory-limit)))
-        (.setResources container resources)
+          ; resources
+          (.putRequestsItem resources "cpu" (double->quantity cpu-request))
+          (.putLimitsItem resources "cpu" (double->quantity cpu-limit))
+          (.putRequestsItem resources "memory" (double->quantity (* memory-multiplier memory-request)))
+          (.putLimitsItem resources "memory" (double->quantity (* memory-multiplier memory-limit)))
+          (.setResources container resources)
 
-        (.setVolumeMounts container [(workdir-volume-mount-fn true) (fileserver-workdir-volume-mount-fn false)])
-        (.addContainersItem pod-spec container)))
+          (.setVolumeMounts container [(sandbox-volume-mount-fn true) (sidecar-workdir-volume-mount-fn false)])
+          (.addContainersItem pod-spec container))))
 
-    (.setNodeName pod-spec hostname)
+    ; We're either using the hostname (in the case of users' job pods)
+    ; or pod-hostnames-to-avoid (in the case of synthetic pods), but not both.
+    (if hostname
+      ; Why not just set the node name?
+      ; The reason is that setting the node name prevents pod preemption
+      ; (https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/)
+      ; from happening. We want this pod to preempt lower priority pods
+      ; (e.g. synthetic pods).
+      (add-node-selector pod-spec k8s-hostname-label hostname)
+      (when (or (seq pod-hostnames-to-avoid)
+                (seq compute-cluster-node-blocklist-labels))
+        ; Use node "anti"-affinity to disallow scheduling on nodes with particular labels
+        ; (https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#node-affinity)
+        (let [affinity (V1Affinity.)
+              node-affinity (V1NodeAffinity.)
+              node-selector (V1NodeSelector.)
+              node-selector-term (V1NodeSelectorTerm.)]
+
+          ; Disallow scheduling on hostnames we're being told to avoid (if any)
+          (when (seq pod-hostnames-to-avoid)
+            (let [node-selector-requirement-k8s-hostname-label (V1NodeSelectorRequirement.)]
+              (.setKey node-selector-requirement-k8s-hostname-label k8s-hostname-label)
+              (.setOperator node-selector-requirement-k8s-hostname-label "NotIn")
+              (run! #(.addValuesItem node-selector-requirement-k8s-hostname-label %) pod-hostnames-to-avoid)
+              (.addMatchExpressionsItem node-selector-term node-selector-requirement-k8s-hostname-label)))
+
+          ; Disallow scheduling on nodes with blocklist labels (if any)
+          (when (seq compute-cluster-node-blocklist-labels)
+            (run!
+              (fn add-node-selector-term-for-blocklist-label
+                [node-blocklist-label]
+                (let [node-selector-requirement-blocklist-label (V1NodeSelectorRequirement.)]
+                  (.setKey node-selector-requirement-blocklist-label node-blocklist-label)
+                  (.setOperator node-selector-requirement-blocklist-label "DoesNotExist")
+                  (.addMatchExpressionsItem node-selector-term node-selector-requirement-blocklist-label)))
+              compute-cluster-node-blocklist-labels))
+
+          (.addNodeSelectorTermsItem node-selector node-selector-term)
+          (.setRequiredDuringSchedulingIgnoredDuringExecution node-affinity node-selector)
+          (.setNodeAffinity affinity node-affinity)
+          (.setAffinity pod-spec affinity))))
+
     (.setRestartPolicy pod-spec "Never")
+
+    (.addTolerationsItem pod-spec toleration-for-deletion-candidate-of-autoscaler)
+    ; TODO:
+    ; This will need to change to allow for setting the toleration
+    ; for the default pool when the pool was not specified by the
+    ; user. For the time being, this isn't a problem only if / when
+    ; the default pool is not being fed offers from Kubernetes.
     (when pool-name
-      (.addTolerationsItem pod-spec (toleration-for-pool pool-name)))
-    (.setVolumes pod-spec (filterv some? (conj volumes workdir-volume init-container-workdir-volume fileserver-workdir-volume)))
+      (.addTolerationsItem pod-spec (toleration-for-pool pool-name))
+      ; Add a node selector for nodes labeled with the Cook pool
+      ; we're launching in. This is technically only needed for
+      ; synthetic pods (which don't specify a node name), but it
+      ; doesn't hurt to add it for all pods we submit.
+      (add-node-selector pod-spec cook-pool-label pool-name))
+    (.setVolumes pod-spec (filterv some? (conj volumes
+                                               init-container-workdir-volume
+                                               scratch-space-volume
+                                               sidecar-workdir-volume)))
     (.setSecurityContext pod-spec security-context)
+    (.setPriorityClassName pod-spec pod-priority-class)
 
     ; pod
     (.setMetadata pod metadata)
@@ -528,6 +765,59 @@
   [^V1Pod pod]
   (-> pod .getMetadata .getName))
 
+(defn synthetic-pod?
+  "Given a pod name, returns true if it has the synthetic pod prefix"
+  [pod-name]
+  (str/starts-with? pod-name cook-synthetic-pod-name-prefix))
+
+(defn pod-unschedulable?
+  "Returns true if the given pod name is not a synthetic
+  pod and the given pod status has a PodScheduled
+  condition with status False and reason Unschedulable"
+  [pod-name ^V1PodStatus pod-status]
+  (let [{:keys [pod-condition-unschedulable-seconds]} (config/kubernetes)]
+    (and (some->> pod-name synthetic-pod? not)
+         (some->> pod-status .getConditions
+                  (some
+                    (fn pod-condition-unschedulable?
+                      [^V1PodCondition condition]
+                      (and (-> condition .getType (= "PodScheduled"))
+                           (-> condition .getStatus (= "False"))
+                           (-> condition .getReason (= "Unschedulable"))
+                           (-> condition
+                               .getLastTransitionTime
+                               (t/plus (t/seconds pod-condition-unschedulable-seconds))
+                               (t/before? (t/now))))))))))
+
+(defn pod-containers-not-initialized?
+  "Returns true if the given pod status has an Initialized condition with status
+  False and reason ContainersNotInitialized, and the last transition was more than
+  pod-condition-containers-not-initialized-seconds seconds ago"
+  [pod-name ^V1PodStatus pod-status]
+  (let [{:keys [pod-condition-containers-not-initialized-seconds]} (config/kubernetes)
+        ^V1PodCondition pod-condition
+        (some->> pod-status
+                 .getConditions
+                 (filter
+                   (fn pod-condition-containers-not-initialized?
+                     [^V1PodCondition condition]
+                     (and (-> condition .getType (= "Initialized"))
+                          (-> condition .getStatus (= "False"))
+                          (-> condition .getReason (= "ContainersNotInitialized")))))
+                 first)]
+    (when pod-condition
+      (let [last-transition-time-plus-threshold-seconds
+            (-> pod-condition
+                .getLastTransitionTime
+                (t/plus (t/seconds pod-condition-containers-not-initialized-seconds)))
+            now (t/now)
+            threshold-passed? (t/before? last-transition-time-plus-threshold-seconds now)]
+        (log/info "Pod" pod-name "has containers that are not initialized"
+                  {:last-transition-time-plus-threshold-seconds last-transition-time-plus-threshold-seconds
+                   :now now
+                   :pod-condition pod-condition
+                   :threshold-passed? threshold-passed?})
+        threshold-passed?))))
 
 (defn pod->synthesized-pod-state
   "From a V1Pod object, determine the state of the pod, waiting running, succeeded, failed or unknown.
@@ -550,16 +840,29 @@
           ; * A job may have additional containers with the name aux-*
           job-status (first (filter (fn [c] (= cook-container-name-for-job (.getName c)))
                                     container-statuses))]
+      ; TODO: When we add logic here that supports detecting pods that have a i-am-being-preempted label, we need to modify
+      ; the controller to set the failure reason to unknown for pods in  :running,:missing.
       (if (some-> pod .getMetadata .getDeletionTimestamp)
         ; If a pod has been ordered deleted, treat it as if it was gone, It's being async removed.
-        {:state :missing :reason "Pod was explicitly deleted"}
+        ; Note that we distinguish between this explicit :missing, and not being there at all when processing
+        ; (:cook-expected-state/killed, :missing) in cook.kubernetes.controller/process
+        {:state :missing
+         :reason "Pod was explicitly deleted"
+         :pod-deleted? true}
         ; If pod isn't being async removed, then look at the containers inside it.
         (if job-status
           (let [^V1ContainerState state (.getState job-status)]
             (cond
               (.getWaiting state)
-              {:state :pod/waiting
-               :reason (-> state .getWaiting .getReason)}
+              (if (pod-containers-not-initialized? (V1Pod->name pod) pod-status)
+                ; If the containers are not getting initialized,
+                ; then we should consider the pod failed. This
+                ; state can occur, for example, when volume
+                ; mounts fail.
+                {:state :pod/failed
+                 :reason "ContainersNotInitialized"}
+                {:state :pod/waiting
+                 :reason (-> state .getWaiting .getReason)})
               (.getRunning state)
               {:state :pod/running
                :reason "Running"}
@@ -575,18 +878,29 @@
               :default
               {:state :pod/unknown
                :reason "Unknown"}))
-          (let [phase (.getPhase pod-status)]
+          (cond
             ; https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/#pod-phase
-            (case phase
-              ; Failed means:
-              ; All Containers in the Pod have terminated, and at least
-              ; one Container has terminated in failure. That is, the
-              ; Container either exited with non-zero status or was
-              ; terminated by the system.
-              "Failed" {:state :pod/failed
-                        :reason (.getReason pod-status)}
-              {:state :pod/waiting
-               :reason "Pending"})))))))
+            ; Failed means:
+            ; All Containers in the Pod have terminated, and at least
+            ; one Container has terminated in failure. That is, the
+            ; Container either exited with non-zero status or was
+            ; terminated by the system.
+            (= (.getPhase pod-status) "Failed") {:state :pod/failed
+                                                 :reason (.getReason pod-status)}
+
+            ; If the pod is unschedulable, then we should consider it failed. Note that
+            ; pod-unschedulable? will never return true for synthetic pods, because
+            ; they will be unschedulable by design, in order to trigger the cluster
+            ; autoscaler to scale up. For non-synthetic pods, however, this state
+            ; likely means something changed about the node we matched to. For example,
+            ; if the ToBeDeletedByClusterAutoscaler taint gets added between when we
+            ; saw available capacity on a node and when we submitted the pod to that
+            ; node, then the pod will never get scheduled.
+            (pod-unschedulable? (V1Pod->name pod) pod-status) {:state :pod/failed
+                                                               :reason "Unschedulable"}
+
+            :else {:state :pod/waiting
+                   :reason "Pending"}))))))
 
 (defn pod->sandbox-file-server-container-state
   "From a V1Pod object, determine the state of the sandbox file server container, running, not running, or unknown.
@@ -606,62 +920,89 @@
 
 (defn delete-pod
   "Kill this kubernetes pod. This is the same as deleting it."
-  [^ApiClient api-client ^V1Pod pod]
+  [^ApiClient api-client compute-cluster-name ^V1Pod pod]
   (let [api (CoreV1Api. api-client)
-        ^V1DeleteOptions deleteOptions (-> (V1DeleteOptionsBuilder.) (.withPropagationPolicy "Background") .build)]
+        ^V1DeleteOptions deleteOptions (-> (V1DeleteOptionsBuilder.) (.withPropagationPolicy "Background") .build)
+        pod-name (-> pod .getMetadata .getName)
+        pod-namespace (-> pod .getMetadata .getNamespace)]
     ; TODO: This likes to noisily throw NotFound multiple times as we delete away from kubernetes.
     ; I suspect our predicate of k8s-actual-state-equivalent needs tweaking.
-    (try
-      (.deleteNamespacedPod
-        api
-        (-> pod .getMetadata .getName)
-        (-> pod .getMetadata .getNamespace)
-        deleteOptions
-        nil ; pretty
-        nil ; dryRun
-        nil ; gracePeriodSeconds
-        nil ; oprphanDependents
-        nil ; propagationPolicy
-        )
-      (catch JsonSyntaxException e
-        (log/info "Caught the https://github.com/kubernetes-client/java/issues/252 exception.")
-        ; Silently gobble this exception.
-        ;
-        ; The java API can throw a a JsonSyntaxException parsing the kubernetes reply!
-        ; https://github.com/kubernetes-client/java/issues/252
-        ; https://github.com/kubernetes-client/java/issues/86
-        ;
-        ; They actually advise catching the exception and moving on!
-        ;
-        ))))
-
-(defn launch-pod
-  "Given a V1Pod, launch it."
-  [api-client {:keys [launch-pod] :as cook-expected-state-dict}]
-  ;; TODO: make namespace configurable
-  (if launch-pod
-    (let [{:keys [pod]} launch-pod
-          pod-name (-> pod .getMetadata .getName)
-          namespace (-> pod .getMetadata .getNamespace)
-          ;; TODO: IF there's an error, log it and move on. We'll try again later.
-          api (CoreV1Api. api-client)]
-      (log/info "Launching pod with name" pod-name "in namespace" namespace ":" (Yaml/dump pod))
+    (timers/time! (metrics/timer "delete-pod" compute-cluster-name)
       (try
-        (-> api
-            (.createNamespacedPod namespace pod nil nil nil))
+        (.deleteNamespacedPod
+          api
+          pod-name
+          pod-namespace
+          deleteOptions
+          nil                                               ; pretty
+          nil                                               ; dryRun
+          nil                                               ; gracePeriodSeconds
+          nil                                               ; oprphanDependents
+          nil                                               ; propagationPolicy
+          )
+        (catch JsonSyntaxException e
+          ; Silently gobble this exception.
+          ;
+          ; The java API can throw a a JsonSyntaxException parsing the kubernetes reply!
+          ; https://github.com/kubernetes-client/java/issues/252
+          ; https://github.com/kubernetes-client/java/issues/86
+          ;
+          ; They actually advise catching the exception and moving on!
+          ;
+          (log/info "In" compute-cluster-name "compute cluster, caught the https://github.com/kubernetes-client/java/issues/252 exception deleting" pod-name))
         (catch ApiException e
-          (log/error e "Error submitting pod with name" pod-name "in namespace" namespace ":" (.getResponseBody e)))))
-    ; Because of the complicated nature of task-metadata-seq, we can't easily run the V1Pod creation code for a
-    ; launching pod on a server restart. Thus, if we create an instance, store into datomic, but then the cook scheduler
-    ; fails --- before kubernetes creates a pod (either the message isn't sent, or there's a kubernetes problem) ---
-    ; we will be unable to create a new V1Pod and we can't retry this at the kubernetes level.
-    ;
-    ; Eventually, the stuck pod detector will recognize the stuck pod, kill the instance, and a cook-level retry will make
-    ; a new instance.
-    ;
-    ; Because the issue is relatively rare and auto-recoverable, we're going to punt on the task-metadata-seq refactor need
-    ; to handle this situation better.
-    (log/warn "Unimplemented Operation to launch a pod because we do not reconstruct the V1Pod on startup.")))
+          (meters/mark! (metrics/meter "delete-pod-errors" compute-cluster-name))
+          (let [code (.getCode e)
+                already-deleted? (contains? #{404} code)]
+            (if already-deleted?
+              (log/info e "In" compute-cluster-name "compute cluster, pod" pod-name "was already deleted")
+              (throw e))))))))
+
+(defn create-namespaced-pod
+  "Delegates to the k8s API .createNamespacedPod function"
+  [api namespace pod]
+  (.createNamespacedPod api namespace pod nil nil nil))
+
+(let [json (JSON.)]
+  (defn launch-pod
+    "Attempts to submit the given pod to k8s. If pod submission fails, we inspect the
+    response code to determine whether or not this is a bad pod spec (e.g. the
+    namespace doesn't exist on the cluster or there is an invalid environment
+    variable name), or whether the failure is something less offensive (like a 409
+    conflict error because we've attempted to re-submit a pod that the watch has not
+    yet notified us exists). The function returns false if we should consider the
+    launch operation failed."
+    [api-client compute-cluster-name {:keys [launch-pod]} pod-name]
+    (if launch-pod
+      (let [{:keys [pod]} launch-pod
+            pod-name-from-pod (-> pod .getMetadata .getName)
+            namespace (-> pod .getMetadata .getNamespace)
+            api (CoreV1Api. api-client)]
+        (assert (= pod-name-from-pod pod-name)
+                (str "Pod name from pod (" pod-name-from-pod ") "
+                     "does not match pod name argument (" pod-name ")"))
+        (log/info "In" compute-cluster-name "compute cluster, launching pod with name" pod-name "in namespace" namespace ":" (.serialize json pod))
+        (try
+          (timers/time! (metrics/timer "launch-pod" compute-cluster-name)
+                        (create-namespaced-pod api namespace pod))
+          true
+          (catch ApiException e
+            (let [code (.getCode e)
+                  bad-pod-spec? (contains? #{400 404 422} code)]
+              (log/info e "In" compute-cluster-name "compute cluster, error submitting pod with name" pod-name "in namespace" namespace
+                        ", code:" code ", response body:" (.getResponseBody e))
+              (if bad-pod-spec?
+                (meters/mark! (metrics/meter "launch-pod-bad-spec-errors" compute-cluster-name))
+                (meters/mark! (metrics/meter "launch-pod-good-spec-errors" compute-cluster-name)))
+              (not bad-pod-spec?)))))
+      (do
+        ; Because of the complicated nature of task-metadata-seq, we can't easily run the pod
+        ; creation code for launching a pod on a server restart. Thus, if we create an instance,
+        ; store into datomic, but then the Cook Scheduler exits --- before k8s creates a pod (either
+        ; the message isn't sent, or there's a k8s problem) --- we will be unable to create a new
+        ; pod and we can't retry this at the kubernetes level.
+        (log/info "Unable to launch pod because we do not reconstruct the pod on startup:" pod-name)
+        false))))
 
 
 ;; TODO: Need the 'stuck pod scanner' to detect stuck states and move them into killed.

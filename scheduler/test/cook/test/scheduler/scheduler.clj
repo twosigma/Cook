@@ -36,8 +36,10 @@
             [cook.plugins.completion :as completion]
             [cook.plugins.definitions :as pd]
             [cook.plugins.launch :as launch-plugin]
+            [cook.progress :as progress]
             [cook.quota :as quota]
             [cook.rate-limit :as rate-limit]
+            [cook.test.scheduler.fenzo-utils :as fu]
             [cook.test.testutil :as testutil :refer [restore-fresh-database! create-dummy-group create-dummy-job
                                                      create-dummy-instance init-agent-attributes-cache poll-until wait-for
                                                      create-dummy-job-with-instances create-pool setup]]
@@ -50,6 +52,7 @@
            (com.netflix.fenzo SimpleAssignmentResult TaskAssignmentResult
                               TaskRequest TaskScheduler VMTaskFitnessCalculator)
            (com.netflix.fenzo.plugins BinPackingFitnessCalculators)
+           (cook.compute_cluster ComputeCluster)
            (java.util UUID)
            (java.util.concurrent CountDownLatch TimeUnit)
            (org.mockito Mockito)))
@@ -1092,8 +1095,9 @@
                            [?i :instance/task-id ?task-id]]
                          (db conn) instance-id field)))
             (handle-progress-message-factory [progress-aggregator-promise]
-              (fn handle-progress-message [progress-message-map]
-                (deliver progress-aggregator-promise progress-message-map)))]
+              (fn handle-progress-message [db task-id progress-message-map]
+                (with-redefs [async/put! (fn [_ data] (deliver progress-aggregator-promise data))]
+                  (progress/handle-progress-message! db task-id nil progress-message-map))))]
 
       (testing "missing task-id in message"
         (let [task-id (str (UUID/randomUUID))]
@@ -1594,7 +1598,8 @@
                                             mesos-run-as-user nil
                                             result (sched/handle-resource-offers!
                                                      conn fenzo pool-name->pending-jobs-atom mesos-run-as-user
-                                                     user->usage user->quota num-considerable offers rebalancer-reservation-atom pool)]
+                                                     user->usage user->quota num-considerable offers
+                                                     rebalancer-reservation-atom pool nil)]
                                         (async/>!! offers-chan :end-marker)
                                         result))]
     (with-redefs [cook.config/executor-config (constantly executor)]
@@ -1855,7 +1860,8 @@
                                               mesos-run-as-user nil
                                               result (sched/handle-resource-offers!
                                                        conn fenzo pool-name->pending-jobs-atom mesos-run-as-user
-                                                       user->usage user->quota num-considerable offers rebalancer-reservation-atom :normal)]
+                                                       user->usage user->quota num-considerable offers
+                                                       rebalancer-reservation-atom :normal nil)]
                                           result))]
       (testing "enough offers for all normal jobs"
         (let [num-considerable 10
@@ -1971,3 +1977,28 @@
       (is (= 15 (count (sched/limit-over-quota-jobs task-ents {:mem Double/MAX_VALUE
                                                                :cpus Double/MAX_VALUE
                                                                :count 5})))))))
+
+(deftest test-trigger-autoscaling!
+  (setup)
+  (let [autoscale!-invocations (atom [])
+        compute-cluster (reify ComputeCluster
+                          (autoscaling? [_ _] true)
+                          (autoscale! [compute-cluster pool-name task-requests]
+                            (swap! autoscale!-invocations conj {:compute-cluster compute-cluster
+                                                                :pool-name pool-name
+                                                                :task-requests task-requests}))
+                          (compute-cluster-name [_] "test-compute-cluster"))
+        conn (restore-fresh-database! "datomic:mem://test-trigger-autoscaling")
+        make-job-fn (fn []
+                      (let [job-id (create-dummy-job conn)
+                            job (->> job-id (d/entity (d/db conn)) util/job-ent->map)]
+                        job))
+        job-1 (make-job-fn)
+        job-2 (make-job-fn)
+        job-3 (make-job-fn)
+        jobs [job-1 job-2 job-3]]
+    (sched/trigger-autoscaling! jobs "test-pool" [compute-cluster])
+    (is (= 1 (count @autoscale!-invocations)))
+    (is (= compute-cluster (-> @autoscale!-invocations first :compute-cluster)))
+    (is (= "test-pool" (-> @autoscale!-invocations first :pool-name)))
+    (is (= [job-1 job-2 job-3] (-> @autoscale!-invocations first :task-requests)))))

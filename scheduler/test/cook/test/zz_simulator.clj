@@ -21,6 +21,7 @@
             [cook.datomic :as datomic]
             [cook.mesos :as c]
             [cook.mesos.mesos-mock :as mm]
+            [cook.progress :as progress]
             [cook.scheduler.share :as share]
             [cook.tools :as util]
             [cook.plugins.completion :as completion]
@@ -87,7 +88,8 @@
 
 (defmacro with-cook-scheduler
   [conn make-mesos-driver-fn scheduler-config & body]
-  `(let [[zookeeper-server# curator-framework#] (setup-test-curator-framework)
+  `(let [conn# ~conn
+         [zookeeper-server# curator-framework#] (setup-test-curator-framework)
          mesos-mult# (or (:mesos-datomic-mult ~scheduler-config)
                          (async/mult (async/chan)))
          pool-name->pending-jobs-atom# (or (:pool-name->pending-jobs-atom ~scheduler-config)
@@ -128,6 +130,9 @@
                                {})
          trigger-chans# (or (:trigger-chans ~scheduler-config)
                             (c/make-trigger-chans rebalancer-config# progress-config# optimizer-config# task-constraints#))
+         progress-update-chans# (or (:progress-update-chans ~scheduler-config)
+                                    (progress/make-progress-update-channels
+                                      (:progress-updater-trigger-chan trigger-chans#) progress-config# conn#))
          mesos-heartbeat-chan# (async/chan 1024)
          create-compute-cluster# (fn [compute-cluster-name# framework-id# db-id# driver-atom#]
                                    (mcc/->MesosComputeCluster compute-cluster-name#
@@ -137,6 +142,7 @@
                                                               sandbox-syncer-state#
                                                               exit-code-syncer-state#
                                                               mesos-heartbeat-chan#
+                                                              progress-update-chans#
                                                               trigger-chans#
                                                               {}
                                                               {"no-pool" (async/chan 100)}
@@ -148,8 +154,8 @@
                      ; registration responses matches the configured cook scheduler passes simulator
                      ; and mesos-mock unit tests. (cook.scheduler, lines 1428 create-mesos-scheduler)
                      mcc/make-mesos-driver ~make-mesos-driver-fn
-                     datomic/conn ~conn]
-         (testutil/fake-test-compute-cluster-with-driver ~conn
+                     datomic/conn conn#]
+         (testutil/fake-test-compute-cluster-with-driver conn#
                                                          testutil/fake-test-compute-cluster-name
                                                          nil ; no dummy driver - simulator is going to call initialize
                                                          create-compute-cluster#
@@ -158,7 +164,7 @@
            {:curator-framework curator-framework#
             :fenzo-config fenzo-config#
             :mea-culpa-failure-limit mea-culpa-failure-limit#
-            :mesos-datomic-conn ~conn
+            :mesos-datomic-conn conn#
             :mesos-datomic-mult mesos-mult#
             :mesos-heartbeat-chan mesos-heartbeat-chan#
             :leadership-atom leadership-atom#

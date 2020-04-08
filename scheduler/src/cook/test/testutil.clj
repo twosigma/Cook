@@ -24,6 +24,7 @@
             [clojure.tools.logging :as log]
             [cook.compute-cluster :as cc]
             [cook.kubernetes.api :as kapi]
+            [cook.kubernetes.compute-cluster :as kcc]
             [cook.mesos.mesos-compute-cluster :as mcc]
             [cook.plugins.definitions :refer (JobSubmissionValidator JobLaunchFilter)]
             [cook.rest.impersonation :refer (create-impersonation-middleware)]
@@ -49,6 +50,7 @@
   (let [sandbox-syncer-state nil
         exit-code-syncer-state nil
         mesos-heartbeat-chan nil
+        progress-update-chans nil
         trigger-chans nil]
     (mcc/->MesosComputeCluster compute-cluster-name
                                framework-id
@@ -57,6 +59,7 @@
                                sandbox-syncer-state
                                exit-code-syncer-state
                                mesos-heartbeat-chan
+                               progress-update-chans
                                trigger-chans
                                {}
                                {"no-pool" (async/chan 100)}
@@ -129,7 +132,8 @@
                                                :mesos-gpu-enabled false
                                                :task-constraints {:cpus 12 :memory-gb 100 :retry-limit 200}}
                                               (Object.)
-                                              (atom true))]
+                                              (atom true)
+                                              {:progress-aggregator-chan (async/chan)})]
                         (fn [request]
                           (with-redefs [cook.config/batch-timeout-seconds-config (constantly (t/seconds 30))
                                         rate-limit/job-submission-rate-limiter rate-limit/AllowAllRateLimiter]
@@ -492,6 +496,18 @@
     (.setSpec pod spec)
     pod))
 
+(defn synthetic-pod-helper
+  "Makes a synthetic pod for unit tests"
+  [job-uuid pool-name creation-timestamp]
+  (let [^V1Pod outstanding-synthetic-pod (pod-helper "podA" "nodeA")
+        ^V1ObjectMeta pod-metadata (.getMetadata outstanding-synthetic-pod)]
+    (.setLabels pod-metadata {kapi/cook-synthetic-pod-job-uuid-label job-uuid})
+    (.setCreationTimestamp pod-metadata creation-timestamp)
+    (-> outstanding-synthetic-pod
+        .getSpec
+        (.addTolerationsItem (kapi/toleration-for-pool pool-name)))
+    outstanding-synthetic-pod))
+
 (defn node-helper [node-name cpus mem pool]
   "Make a fake node for kubernetes unit tests"
   (let [node (V1Node.)
@@ -519,3 +535,26 @@
     (.setName metadata node-name)
     (.setMetadata node metadata)
   node))
+
+(defn make-kubernetes-compute-cluster
+  [namespaced-pod-name->pod pool-names synthetic-pods-user node-blocklist-labels]
+  (let [synthetic-pods-config {:image "image"
+                               :user synthetic-pods-user
+                               :max-pods-outstanding 4
+                               :pools pool-names}]
+    (kcc/->KubernetesComputeCluster nil ; api-client
+                                    "kubecompute" ; name
+                                    nil ; entity-id
+                                    nil ; match-trigger-chan
+                                    nil ; exit-code-syncer-state
+                                    (atom namespaced-pod-name->pod) ; all-pods-atom
+                                    (atom {}) ; current-nodes-atom
+                                    (atom {}) ; cook-expected-state-map
+                                    (atom {}) ; k8s-actual-state-map
+                                    (atom nil) ; pool->fenzo-atom
+                                    {:kind :per-user} ; namespace-config
+                                    nil ; scan-frequency-seconds-config
+                                    nil ; max-pods-per-node
+                                    synthetic-pods-config ; synthetic-pods-config
+                                    node-blocklist-labels ; node-blocklist-labels
+                                    )))

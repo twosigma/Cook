@@ -16,6 +16,7 @@
 (ns cook.task
   (:require
     [cook.compute-cluster :as cc]
+    [cook.config :as config]
     [datomic.api :as d]))
 
 (defn task-entity-id->task-id
@@ -46,3 +47,35 @@
   (some-> task-ent
           task-entity->compute-cluster-name
           cc/compute-cluster-name->ComputeCluster))
+
+(def progress-meta-env-name
+  "Meta environment variable name for declaring the environment variable
+   that stores the path of the progress output file."
+  "EXECUTOR_PROGRESS_OUTPUT_FILE_ENV")
+
+(def progress-meta-env-value
+  "Default name of the the environment variable stores the path of the progress output file,
+   used as the default value for the meta-env-var described above."
+  "EXECUTOR_PROGRESS_OUTPUT_FILE_NAME")
+
+(def default-progress-env-name
+  "Default name of the the environment variable stores the path of the progress output file,
+   only used when the meta-env-var is not set. Must correspond to the default file name in the executor."
+  "EXECUTOR_PROGRESS_OUTPUT_FILE")
+
+(defn build-executor-environment
+  "Build the environment for the job's executor and/or progress monitor."
+  [job-ent]
+  (let [{:keys [default-progress-regex-string environment log-level max-message-length
+                progress-sample-interval-ms] :as executor-config} (config/executor-config)
+        progress-output-file (:job/progress-output-file job-ent)]
+    (cond-> environment
+      (seq executor-config)
+      (assoc
+        "EXECUTOR_LOG_LEVEL" log-level
+        "EXECUTOR_MAX_MESSAGE_LENGTH" max-message-length
+        "PROGRESS_REGEX_STRING" (:job/progress-regex-string job-ent default-progress-regex-string)
+        "PROGRESS_SAMPLE_INTERVAL_MS" progress-sample-interval-ms)
+      progress-output-file
+      (assoc progress-meta-env-name progress-meta-env-value
+             progress-meta-env-value progress-output-file))))

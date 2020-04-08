@@ -62,6 +62,7 @@ class MultiUserCookTest(util.CookTest):
             with user1:
                 util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
 
+    @unittest.skipIf(util.using_kubernetes(), 'This test is not yet supported on kubernetes')
     def test_multi_user_usage(self):
         users = self.user_factory.new_users(4)
         job_resources = {'cpus': 0.1, 'mem': 123}
@@ -71,6 +72,7 @@ class MultiUserCookTest(util.CookTest):
             # Start jobs for several users
             for i, user in enumerate(users):
                 with user:
+                    util.kill_running_and_waiting_jobs(self.cook_url, user.name)
                     for j in range(i):
                         job_uuid, resp = util.submit_job(self.cook_url, command='sleep 480',
                                                          max_retries=2, **job_resources)
@@ -491,10 +493,12 @@ class MultiUserCookTest(util.CookTest):
             self.trigger_preemption(pool=pool['name'])
 
     @unittest.skipUnless(util.are_pools_enabled(), "Requires pools")
+    @unittest.skipIf(util.using_kubernetes(), 'This test is not yet supported on kubernetes')
     def test_user_total_usage(self):
         user = self.user_factory.new_user()
         with user:
-            job_spec = {'cpus': 0.11, 'mem': 123, 'command': 'sleep 600'}
+            sleep_command = f'sleep {util.DEFAULT_TEST_TIMEOUT_SECS}'
+            job_spec = {'cpus': 0.11, 'mem': 123, 'command': sleep_command}
             pools, _ = util.active_pools(self.cook_url)
             job_uuids = []
             try:
@@ -576,7 +580,7 @@ class MultiUserCookTest(util.CookTest):
         job_uuids = []
         try:
             for _ in range(num_jobs):
-                job_uuid, resp = util.submit_job(self.cook_url, command='sleep 300', name=name, max_retries=2)
+                job_uuid, resp = util.submit_job(self.cook_url, command='sleep 300; exit 1', name=name, max_retries=5)
                 self.assertEqual(resp.status_code, 201, msg=resp.content)
                 job_uuids.append(job_uuid)
 
@@ -669,11 +673,14 @@ class MultiUserCookTest(util.CookTest):
 
     def test_instance_stats_success(self):
         name = str(util.make_temporal_uuid())
-        job_uuid_1, resp = util.submit_job(self.cook_url, command='exit 0', name=name, cpus=0.10, mem=32)
+        job_uuid_1, resp = util.submit_job(self.cook_url, command='exit 0', name=name,
+                                           cpus=0.10, mem=32, max_retries=5)
         self.assertEqual(resp.status_code, 201, msg=resp.content)
-        job_uuid_2, resp = util.submit_job(self.cook_url, command='sleep 1', name=name, cpus=0.11, mem=33)
+        job_uuid_2, resp = util.submit_job(self.cook_url, command='sleep 1', name=name,
+                                           cpus=0.11, mem=33, max_retries=5)
         self.assertEqual(resp.status_code, 201, msg=resp.content)
-        job_uuid_3, resp = util.submit_job(self.cook_url, command='sleep 2', name=name, cpus=0.12, mem=34)
+        job_uuid_3, resp = util.submit_job(self.cook_url, command='sleep 2', name=name,
+                                           cpus=0.12, mem=34, max_retries=5)
         self.assertEqual(resp.status_code, 201, msg=resp.content)
         job_uuids = [job_uuid_1, job_uuid_2, job_uuid_3]
         try:
@@ -732,11 +739,11 @@ class MultiUserCookTest(util.CookTest):
     def test_instance_stats_supports_epoch_time_params(self):
         name = str(util.make_temporal_uuid())
         sleep_command = f'sleep {util.DEFAULT_TEST_TIMEOUT_SECS}'
-        job_uuid_1, resp = util.submit_job(self.cook_url, command=sleep_command, name=name, max_retries=2)
+        job_uuid_1, resp = util.submit_job(self.cook_url, command=sleep_command, name=name, max_retries=5)
         self.assertEqual(resp.status_code, 201, msg=resp.content)
-        job_uuid_2, resp = util.submit_job(self.cook_url, command=sleep_command, name=name, max_retries=2)
+        job_uuid_2, resp = util.submit_job(self.cook_url, command=sleep_command, name=name, max_retries=5)
         self.assertEqual(resp.status_code, 201, msg=resp.content)
-        job_uuid_3, resp = util.submit_job(self.cook_url, command=sleep_command, name=name, max_retries=2)
+        job_uuid_3, resp = util.submit_job(self.cook_url, command=sleep_command, name=name, max_retries=5)
         self.assertEqual(resp.status_code, 201, msg=resp.content)
         job_uuids = [job_uuid_1, job_uuid_2, job_uuid_3]
         try:

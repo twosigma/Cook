@@ -131,10 +131,6 @@
       (throw (IllegalArgumentException.
                (str config-string " is not a VMTaskFitnessCalculator"))))))
 
-(defn- resolve-optional-function
-  [function-symbol default-function]
-  (if function-symbol (util/lazy-load-var function-symbol) default-function))
-
 (def config-settings
   "Parses the settings out of a config file"
   (graph/eager-compile
@@ -269,6 +265,17 @@
                           datomic-uri)
      :hostname (fnk [[:config {hostname (.getCanonicalHostName (InetAddress/getLocalHost))}]]
                  hostname)
+     :cluster-dns-name (fnk [[:config {cluster-dns-name nil}]]
+                         cluster-dns-name)
+     :scheduler-rest-url (fnk [cluster-dns-name hostname server-https-port server-port]
+                           (let [[scheme port] (if server-https-port
+                                                 ["https" server-https-port]
+                                                 ["http" server-port])
+                                 host (or cluster-dns-name
+                                          (do (log/warn "Missing cluster-dns-name in config."
+                                                        "REST callbacks will use the master's hostname.")
+                                              hostname))]
+                             (str scheme "://" host ":" port)))
      :leader-reports-unhealthy (fnk [[:config {mesos nil}]]
                                  (when mesos
                                    (or (:leader-reports-unhealthy mesos) false)))
@@ -401,8 +408,7 @@
                 (:job-resource-adjustment pools)
                 (update :job-resource-adjustment
                         #(-> %
-                           (update :pool-regex re-pattern)
-                           (update :adjust-job-resources-fn resolve-optional-function identity)))))
+                           (update :pool-regex re-pattern)))))
 
      :api-only? (fnk [[:config {api-only? false}]]
                   api-only?)
@@ -438,8 +444,11 @@
                                   :default-pool "no-pool"}
                                  pool-selection)})))
      :kubernetes (fnk [[:config {kubernetes {}}]]
-                   (merge {:default-workdir "/mnt/sandbox"}
-                          (update kubernetes :pod-ip->hostname-fn resolve-optional-function identity)))}))
+                   (merge {:default-workdir "/mnt/sandbox"
+                           :pod-condition-containers-not-initialized-seconds 120
+                           :pod-condition-unschedulable-seconds 60
+                           :reconnect-delay-ms 60000}
+                          kubernetes))}))
 
 (defn read-config
   "Given a config file path, reads the config and returns the map"
@@ -474,7 +483,7 @@
       (log/info "Configured logging")
       (log/info "Cook" @util/version "( commit" @util/commit ")")
       (let [settings {:settings (config-settings literal-config)}]
-        (log/info "Interpreted settings")
+        (log/info "Interpreted settings:" settings)
         settings))
     (catch Throwable t
       (log/error t "Failed to initialize settings")
@@ -555,6 +564,12 @@
 (defn kubernetes
   []
   (get-in config [:settings :kubernetes]))
+
+(defn scheduler-rest-url
+  "Get the URL for REST calls back to the Cook Scheduler API.
+   Used by Kubernetes pod sidecar to send messages back to Cook."
+  []
+  (get-in config [:settings :scheduler-rest-url]))
 
 (defn task-constraints
   []

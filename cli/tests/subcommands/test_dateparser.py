@@ -2,15 +2,15 @@ import datetime
 import logging
 import unittest
 
+import pytest
 import pytz
 from dateutil.tz import tzlocal, tz
 from freezegun import freeze_time
-from nose.plugins.attrib import attr
 
 from cook import dateparser
 
 
-@attr(cli=True)
+@pytest.mark.cli
 class CookCliTest(unittest.TestCase):
     _multiprocess_can_split_ = True
 

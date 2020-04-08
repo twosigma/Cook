@@ -33,7 +33,8 @@
             [metrics.meters :as meters]
             [plumbing.core :as pc]
             [metrics.counters :as counters])
-  (:import (java.net URLEncoder)))
+  (:import (java.net URLEncoder)
+           (org.apache.mesos Protos$TaskStatus$Reason)))
 
 (meters/defmeter [cook-mesos scheduler mesos-error])
 (meters/defmeter [cook-mesos scheduler handle-framework-message-rate])
@@ -54,7 +55,7 @@
 (defn handle-status-update
   "Handles a status update from mesos. When a task/job is in an inconsistent state it may kill the task. It also writes the
   status back to datomic."
-  [conn compute-cluster sync-agent-sandboxes-fn pool->fenzo {:keys [state] :as status}]
+  [conn compute-cluster sync-agent-sandboxes-fn pool->fenzo {:keys [reason state] :as status}]
   (let [task-id (-> status :task-id :value)
         instance (d/entity (d/db conn) [:instance/task-id task-id])
         prior-job-state (:job/state (:job/_instance instance))
@@ -69,13 +70,23 @@
                          :task-starting}
                        state)) ; killing an unknown task causes a TASK_LOST message. Break the cycle! Only kill non-terminal tasks
       (do
-
-        (log/warn "Attempting to kill task" task-id
-                  "as instance" instance "with" prior-job-state "and" prior-instance-status
-                  "should've been put down already")
+        (log/info "In compute cluster" (cc/compute-cluster-name compute-cluster)
+                  ", attempting to kill task" task-id "should've been put down already"
+                  {:instance instance
+                   :pool pool-name
+                   :prior-instance-status prior-instance-status
+                   :prior-job-state prior-job-state
+                   :state state})
         (meters/mark! (meters/meter (sched/metric-title "tasks-killed-in-status-update" pool-name)))
         (cc/safe-kill-task compute-cluster task-id))
-      (sched/write-status-to-datomic conn pool->fenzo status))
+      ; Mesomatic doesn't have a mapping for REASON_TASK_KILLED_DURING_LAUNCH
+      ; (http://mesos.apache.org/documentation/latest/task-state-reasons/#for-state-task_killed),
+      ; so we're rolling our own mapping for it here. There is an open issue with Mesomatic:
+      ; https://github.com/clojusc/mesomatic/issues/53
+      (let [status' (cond-> status
+                      (= reason Protos$TaskStatus$Reason/REASON_TASK_KILLED_DURING_LAUNCH)
+                      (assoc :reason :reason-killed-during-launch))]
+        (sched/write-status-to-datomic conn pool->fenzo status')))
     (conditionally-sync-sandbox conn task-id (:state status) sync-agent-sandboxes-fn)))
 
 (defn create-mesos-scheduler
@@ -216,7 +227,7 @@
 
 (defrecord MesosComputeCluster [compute-cluster-name framework-id db-id driver-atom
                                 sandbox-syncer-state exit-code-syncer-state mesos-heartbeat-chan
-                                trigger-chans mesos-config pool->offers-chan container-defaults]
+                                progress-update-chans trigger-chans mesos-config pool->offers-chan container-defaults]
   cc/ComputeCluster
   (compute-cluster-name [this]
     compute-cluster-name)
@@ -238,15 +249,12 @@
 
   (initialize-cluster [this pool->fenzo _]
     (log/info "Initializing Mesos compute cluster" compute-cluster-name)
-    (let [settings (:settings config/config)
-          progress-config (:progress settings)
-          conn cook.datomic/conn
-          {:keys [match-trigger-chan progress-updater-trigger-chan]} trigger-chans
-          {:keys [batch-size]} progress-config
-          {:keys [progress-state-chan]} (progress/progress-update-transactor progress-updater-trigger-chan batch-size conn)
-          progress-aggregator-chan (progress/progress-update-aggregator progress-config progress-state-chan)
-          handle-progress-message (fn handle-progress-message-curried [progress-message-map]
-                                    (progress/handle-progress-message! progress-aggregator-chan progress-message-map))
+    (let [conn cook.datomic/conn
+          {:keys [match-trigger-chan]} trigger-chans
+          {:keys [progress-aggregator-chan]} progress-update-chans
+          handle-progress-message (fn handle-progress-message-curried [db task-id progress-message-map]
+                                    (progress/handle-progress-message!
+                                      db task-id progress-aggregator-chan progress-message-map))
           handle-exit-code (fn handle-exit-code [task-id exit-code]
                              (sandbox/aggregate-exit-code exit-code-syncer-state task-id exit-code))
           scheduler (create-mesos-scheduler (:gpu-enabled? mesos-config)
@@ -286,6 +294,10 @@
   (restore-offers [this pool-name offers]
     (async/go
       (async/>! (pool->offers-chan pool-name) offers)))
+
+  (autoscaling? [_ _] false)
+
+  (autoscale! [_ _ _])
 
   (use-cook-executor? [_] true)
 
@@ -364,6 +376,7 @@
            mesos-agent-query-cache
            mesos-heartbeat-chan
            sandbox-syncer-config
+           progress-update-chans
            trigger-chans]}]
   (try
     (let [conn cook.datomic/conn
@@ -395,6 +408,7 @@
                                                        sandbox-syncer-state
                                                        exit-code-syncer-state
                                                        mesos-heartbeat-chan
+                                                       progress-update-chans
                                                        trigger-chans
                                                        mesos-config
                                                        pool->offer-chan

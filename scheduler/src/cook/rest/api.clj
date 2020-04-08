@@ -44,6 +44,7 @@
             [cook.plugins.definitions :as plugins]
             [cook.plugins.file :as file-plugin]
             [cook.plugins.submission :as submission-plugin]
+            [cook.progress :as progress]
             [cook.rate-limit :as rate-limit]
             [cook.task :as task]
             [cook.util :refer [ZeroInt PosNum NonNegNum PosInt NonNegInt PosDouble UserName NonEmptyString]]
@@ -67,6 +68,7 @@
            (java.net ServerSocket)
            (java.util Date UUID)
            javax.servlet.ServletResponse
+           (org.apache.curator.framework.recipes.leader LeaderSelector)
            org.apache.curator.test.TestingServer
            (org.joda.time DateTime Minutes)
            schema.core.OptionalKey))
@@ -164,6 +166,23 @@
    (s/optional-key :docker) DockerInfo
    (s/optional-key :mesos) MesosInfo
    (s/optional-key :volumes) [Volume]})
+
+(def CheckpointOptions
+  "Schema for checkpointing options"
+  {:preserve-paths #{s/Str}})
+
+(def PeriodicCheckpointOptions
+  "Schema for periodic checkpointing options"
+  {:period-sec s/Int})
+
+(def Checkpoint
+  "Schema for a configuration to enable checkpointing"
+  ; auto - checkpointing code will select the best method
+  ; periodic - periodically create a checkpoint
+  ; preemption - checkpoint is created on preemption before the VM is stopped
+  {:mode (s/enum "auto" "periodic" "preemption")
+   (s/optional-key :options) CheckpointOptions
+   (s/optional-key :periodic-options) PeriodicCheckpointOptions})
 
 (def Uri
   "Schema for a Mesos fetch URI, which has many options"
@@ -308,6 +327,7 @@
    (s/optional-key :env) {NonEmptyString s/Str}
    (s/optional-key :labels) {NonEmptyString s/Str}
    (s/optional-key :constraints) [Constraint]
+   (s/optional-key :checkpoint) Checkpoint
    (s/optional-key :container) Container
    (s/optional-key :executor) (s/enum "cook" "mesos")
    (s/optional-key :progress-output-file) NonEmptyString
@@ -360,7 +380,7 @@
       (dissoc (s/optional-key :group))
       (dissoc (s/optional-key :status))
       (merge {:framework-id (s/maybe s/Str)
-              :retries-remaining NonNegInt
+              :retries-remaining s/Int
               :status s/Str
               :state s/Str
               :submit-time (s/maybe PosInt)
@@ -506,6 +526,14 @@
   (assoc JobSubmission
     (s/optional-key :pool) s/Str))
 
+(def JobInstanceProgressRequest
+  "Schema for a POST request to the /progress/:uuid endpoint."
+  (s/both
+    (s/pred (some-fn :progress-message :progress-percent) 'message-or-percent-required)
+    {:progress-sequence s/Int
+     (s/optional-key :progress-message) s/Str
+     (s/optional-key :progress-percent) s/Int}))
+
 (defn- mk-container-params
   "Helper for build-container.  Transforms parameters into the datomic schema."
   [cid params]
@@ -607,6 +635,19 @@
     "mesos" (build-mesos-container user id container)
     {}))
 
+(defn- build-checkpoint
+  "Helper for submit-jobs, deal with checkpoint config."
+  [{:keys [mode options periodic-options]}]
+  (cond-> {:checkpoint/mode mode}
+    options
+    (assoc :checkpoint/options
+           (let [{:keys [preserve-paths]} options]
+             {:checkpoint-options/preserve-paths preserve-paths}))
+    periodic-options
+    (assoc :checkpoint/periodic-options
+           (let [{:keys [period-sec]} periodic-options]
+             {:checkpoint-periodic-options/period-sec period-sec}))))
+
 (defn- str->executor-enum
   "Converts an executor string to the corresponding executor option enum.
    Throws an IllegalArgumentException if the string is non-nil and not supported."
@@ -643,7 +684,7 @@
   [pool commit-latch-id db job :- Job]
   (let [{:keys [uuid command max-retries max-runtime expected-runtime priority cpus mem gpus
                 user name ports uris env labels container group application disable-mea-culpa-retries
-                constraints executor progress-output-file progress-regex-string datasets]
+                constraints executor progress-output-file progress-regex-string datasets checkpoint]
          :or {group nil
               disable-mea-culpa-retries false}} job
         db-id (d/tempid :db.part/user)
@@ -742,6 +783,7 @@
                     progress-output-file (assoc :job/progress-output-file progress-output-file)
                     progress-regex-string (assoc :job/progress-regex-string progress-regex-string)
                     pool (assoc :job/pool (:db/id pool))
+                    checkpoint (assoc :job/checkpoint (build-checkpoint checkpoint))
                     (seq datasets) (assoc :job/datasets datasets))
         txn (plugins/adjust-job adjustment/plugin txn db)]
 
@@ -861,7 +903,7 @@
   [db user task-constraints gpu-enabled? new-group-uuids
    {:keys [cpus mem gpus uuid command priority max-retries max-runtime expected-runtime name
            uris ports env labels container group application disable-mea-culpa-retries
-           constraints executor progress-output-file progress-regex-string datasets]
+           constraints executor progress-output-file progress-regex-string datasets checkpoint]
     :or {group nil
          disable-mea-culpa-retries false}
     :as job}
@@ -900,7 +942,10 @@
                  (when progress-output-file {:progress-output-file progress-output-file})
                  (when progress-regex-string {:progress-regex-string progress-regex-string})
                  (when application {:application application})
-                 (when datasets {:datasets (munge-datasets datasets)}))
+                 (when datasets {:datasets (munge-datasets datasets)})
+                 (when checkpoint {:checkpoint (if (-> checkpoint :options :preserve-paths)
+                                                 (update-in checkpoint [:options :preserve-paths] set)
+                                                 checkpoint)}))
         params (get-in munged [:container :docker :parameters])]
     (s/validate Job munged)
     (when (and (:gpus munged) (not gpu-enabled?))
@@ -976,12 +1021,13 @@
   "Gets a URL to query the sandbox directory of the task.
    Users will need to add the file path & offset to their query.
    Refer to the 'Using the output_url' section in docs/scheduler-rest-api.adoc for further details.
-   Delegates to the compute cluster implimentation."
+   Delegates to the compute cluster implementation."
   [instance-entity]
   (if-let [sandbox-url (:instance/sandbox-url instance-entity)]
     sandbox-url
-    (let [compute-cluster (task/task-ent->ComputeCluster instance-entity)]
-      (cc/retrieve-sandbox-url-path compute-cluster instance-entity))))
+    (if-let [compute-cluster (task/task-ent->ComputeCluster instance-entity)]
+      (cc/retrieve-sandbox-url-path compute-cluster instance-entity)
+      (log/error "Unable to get sandbox URL for" instance-entity "whose compute cluster resolves to nil"))))
 
 (defn compute-cluster-entity->map
   "Attached to the the instance object when we send it in API responses"
@@ -1098,6 +1144,7 @@
           progress-regex-string (:job/progress-regex-string job)
           pool (:job/pool job)
           container (:job/container job)
+          checkpoint (:job/checkpoint job)
           state (util/job-ent->state job)
           constraints (->> job
                            :job/constraint
@@ -1110,10 +1157,13 @@
                         (.getTime (:job/submit-time job)))
           datasets (when (seq (:job/datasets job))
                      (dl/get-dataset-maps job))
+          attempts-consumed (util/job-ent->attempts-consumed db job)
+          retries-remaining (- (:job/max-retries job) attempts-consumed)
+          disable-mea-culpa-retries (:job/disable-mea-culpa-retries job false)
           job-map {:command (:job/command job)
                    :constraints constraints
                    :cpus (:cpus resources)
-                   :disable_mea_culpa_retries (:job/disable-mea-culpa-retries job false)
+                   :disable_mea_culpa_retries disable-mea-culpa-retries
                    :env (util/job-ent->env job)
                    ; TODO(pschorf): Remove field
                    :framework_id (guess-framework-id)
@@ -1126,13 +1176,22 @@
                    :name (:job/name job "cookjob")
                    :ports (:job/ports job 0)
                    :priority (:job/priority job util/default-job-priority)
-                   :retries_remaining (- (:job/max-retries job) (util/job-ent->attempts-consumed db job))
+                   :retries_remaining retries-remaining
                    :state state
                    :status (name (:job/state job))
                    :submit_time submit-time
                    :uris (:uris resources)
                    :user (:job/user job)
                    :uuid (:job/uuid job)}]
+      (when (neg? retries-remaining)
+        ; TODO:
+        ; There's a bug in the retries remaining logic that
+        ; causes this number to sometimes be negative
+        (log/warn "Job" (:job/uuid job) "has negative retries remaining"
+                  {:attempts-consumed attempts-consumed
+                   :disable-mea-culpa-retries disable-mea-culpa-retries
+                   :max-retries (:job/max-retries job)
+                   :retries-remaining retries-remaining}))
       (cond-> job-map
               groups (assoc :groups (map #(str (:group/uuid %)) groups))
               application (assoc :application (util/remove-datomic-namespacing application))
@@ -1142,6 +1201,7 @@
               progress-regex-string (assoc :progress-regex-string progress-regex-string)
               pool (assoc :pool (:pool/name pool))
               container (assoc :container (container->response-map container))
+              checkpoint (assoc :checkpoint (util/job-ent->checkpoint job))
               datasets (assoc :datasets datasets)))))
 
 (defn fetch-job-map
@@ -1420,9 +1480,22 @@
 
 (def leader-hostname-regex #"^([^#]*)#([0-9]*)#([a-z]*)#.*")
 
-(defn leader-url
+(defn leader-selector->leader-id
+  "Get the current leader node's id from a leader-selector object.
+   Throws if there is currently no leader available."
+  [^LeaderSelector leader-selector]
+  (let [leader (.getLeader leader-selector)]
+    ;; NOTE: .getLeader returns a dummy object when no leader is available,
+    ;; but the dummy object always returns false for the .isLeader predicate.
+    (when-not (.isLeader leader)
+      (throw (IllegalStateException. "Leader is temporarily unavailable.")))
+    (.getId leader)))
+
+(defn leader-selector->leader-url
+  "Get the URL for the current Cook leader node.
+   This is useful for building redirects."
   [leader-selector]
-  (let [leader-id (-> leader-selector .getLeader .getId)
+  (let [leader-id (leader-selector->leader-id leader-selector)
         leader-match (re-matcher leader-hostname-regex leader-id)]
     (if (.matches leader-match)
       (let [leader-hostname (.group leader-match 1)
@@ -1444,7 +1517,7 @@
                      :commit @cook.util/commit
                      :start-time start-up-time
                      :version @cook.util/version
-                     :leader-url (leader-url leader-selector)})})))
+                     :leader-url (leader-selector->leader-url leader-selector)})})))
 
 ;;; On GET; use repeated job argument
 (defn read-jobs-handler-deprecated
@@ -1638,6 +1711,48 @@
   (let [handle-ok (->> (partial render-instances-for-response conn)
                        (comp first))]
     (base-read-instances-handler conn is-authorized-fn {:handle-ok handle-ok})))
+
+(defn update-instance-progress-handler
+  [conn is-authorized-fn leadership-atom leader-selector progress-aggregator-chan]
+  (base-cook-handler
+    {:allowed-methods [:post]
+     :initialize-context (fn [ctx]
+                           ;; injecting ::instances into ctx for later handlers
+                           {::instances [(get-in ctx [:request :params :uuid])]})
+     :service-available? (fn [ctx]
+                           (if @leadership-atom
+                             [true {}]
+                             (try
+                               ;; recording target leader-url for redirect
+                               [true {::leader-url (leader-selector->leader-url leader-selector)}]
+                               ;; handle leader-not-found errors by responding 503
+                               (catch IllegalStateException e
+                                 [false {::message (.getMessage e)}]))))
+     :handle-service-not-available (fn [ctx] {:message (::message ctx)})
+     :allowed? (partial instance-request-allowed? conn is-authorized-fn)
+     :exists? (constantly false)  ;; triggers path for moved-temporarily?
+     :existed? instance-request-exists?
+     :can-post-to-missing? (constantly false)
+     :moved-temporarily? (fn [ctx]
+                           ;; only the leader handles progress updates
+                           ;; the client is expected to cache the redirect location
+                           (if-let [leader-url (::leader-url ctx)]
+                             (let [request-path (get-in ctx [:request :uri])]
+                               [true {:location (str leader-url request-path)}])
+                             [false {}]))
+     :handle-moved-temporarily (fn [ctx] {:location (:location ctx)
+                                          :message "redirecting to master"})
+     :can-post-to-gone? (constantly true)
+     :post! (fn [ctx]
+              (let [progress-message-map (get-in ctx [:request :body-params])
+                    task-id (-> ctx ::instances first)]
+                (progress/handle-progress-message!
+                  (d/db conn) task-id progress-aggregator-chan progress-message-map)))
+     :post-enacted? (constantly false)  ;; triggers http 202 "accepted" response
+     :handle-accepted (fn [ctx]
+                        (let [instance (-> ctx ::instances first)
+                              job (-> ctx ::jobs first)]
+                          {:instance instance :job job :message "progress update accepted"}))}))
 
 ;;; On DELETE; use repeated job argument
 (defn destroy-jobs-handler
@@ -1972,7 +2087,7 @@
     :moved-temporarily? (fn [_]
                           (if @leadership-atom
                             [false {}]
-                            [true {:location (str (leader-url leader-selector) "/queue")}]))
+                            [true {:location (str (leader-selector->leader-url leader-selector) "/queue")}]))
     :handle-forbidden (fn [ctx]
                         (log/info (get-in ctx [:request :authorization/user]) " is not authorized to access queue")
                         (render-error ctx))
@@ -2283,7 +2398,7 @@
      ;; :new? decides whether to respond with Created (true) or OK (false).
      :new? (comp seq ::jobs)
      :respond-with-entity? (constantly true)
-     ;; :handle-ok and :handle-accepted both return the number of jobs to be retried,
+     ;; :handle-ok and :handle-created both return the number of jobs to be retried,
      ;; but :handle-ok is only triggered when there are no failed jobs to retry.
      :handle-created (partial display-retries conn)
      :handle-ok (constantly 0)}))
@@ -2821,7 +2936,7 @@
      :handle-ok (fn [{:keys [costs]}]
                   costs)}))
 
-(defn- streaming-json-encoder
+(defn streaming-json-encoder
   "Takes as input the response body which can be converted into JSON,
   and returns a function which takes a ServletResponse and writes the JSON
   encoded response data. This is suitable for use with jet's server API."
@@ -2859,6 +2974,7 @@
         body-matchers (merged-matchers
                         {;; can't use form->kebab-case because env and label
                          ;; accept arbitrary kvs
+                         JobInstanceProgressRequest (partial pc/map-keys ->kebab-case)
                          JobRequestMap (partial pc/map-keys ->kebab-case)
                          Group (partial pc/map-keys ->kebab-case)
                          HostPlacement (fn [hp]
@@ -2890,12 +3006,12 @@
       in-str)))
 
 (defn- logging-exception-handler
-  "Wraps `base-handler` with an additional `log/error` call which logs the request and exception"
+  "Wraps `base-handler` with an additional `log/info` call which logs the request and exception"
   [base-handler]
   (fn logging-exception-handler [ex data req]
-    (log/error ex "Error when processing request"
-               (-> (dissoc req ::c-mw/options :body :ctrl :request-time :servlet-request :ssl-client-cert)
-                   (update-in [:headers] (fn [headers] (pc/map-vals (fn [value] (truncate value 80)) headers)))))
+    (log/info ex "Error when processing request"
+              (-> (dissoc req ::c-mw/options :body :ctrl :request-time :servlet-request :ssl-client-cert)
+                  (update-in [:headers] (fn [headers] (pc/map-vals (fn [value] (truncate value 80)) headers)))))
     (base-handler ex data req)))
 
 ;;
@@ -2907,7 +3023,8 @@
     gpu-enabled? :mesos-gpu-enabled
     :as settings}
    leader-selector
-   leadership-atom]
+   leadership-atom
+   {:keys [progress-aggregator-chan]}]
   (->
     (routes
       (c-api/api
@@ -3148,7 +3265,26 @@
              :responses {200 {:schema PoolsResponse
                               :description "The pools were returned."}}
              :get {:summary "Returns the pools."
-                   :handler (pools-handler)}})))
+                   :handler (pools-handler)}}))
+
+        (c-api/undocumented
+          ;; internal api endpoints (don't include in swagger)
+          (c-api/context
+            "/progress/:uuid" [uuid]
+            :path-params [uuid :- s/Uuid]
+            (c-api/resource
+              ;; NOTE: The authentication for this endpoint is disabled via cook.components/conditional-auth-bypass
+              {:post {:summary "Update the progress of a Job Instance"
+                      :parameters {:body-params JobInstanceProgressRequest}
+                      :responses {202 {:description "The progress update was accepted."}
+                                  307 {:description "Redirecting request to leader node."}
+                                  400 {:description "Invalid request format."}
+                                  404 {:description "The supplied UUID doesn't correspond to a valid job instance."}
+                                  503 {:description "The leader node is temporarily unavailable."}}
+                      :handler (let [;; TODO: add lightweight auth -- https://github.com/twosigma/Cook/issues/1367
+                                     mock-auth-fn (constantly true)]
+                                 (update-instance-progress-handler
+                                   conn mock-auth-fn leadership-atom leader-selector progress-aggregator-chan))}}))))
 
       ; Data locality debug endpoints
       (c-api/context

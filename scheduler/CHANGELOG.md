@@ -4,6 +4,77 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.40.2] - 2020-03-24
+### Fixed
+- Added node anti-affinity for blocklist labels to synthetic pods, from @dposada
+
+## [1.40.1] - 2020-03-22
+### Added
+- Mesos sandbox mount to k8s pods (backward compatibility for jobs that assume they're running on Mesos), from @nsinkov
+
+## [1.40.0] - 2020-03-19
+### Added
+- Progress reporting for k8s jobs, from @DaoWen
+- SSL verification between Cook and k8s, from @scrosby
+- Fast fail for unschedulable k8s pods, from @dposada
+- Support for k8s synthetic pod namespace to be user's namespace, from @dposada
+- k8s synthetic pod anti-affinity to previous hosts, from @dposada 
+### Changed
+- Made autoscaling (for k8s) based on pending jobs instead of match failures, from @dposada
+- Renamed k8s metrics to be consistent with prior metric naming, from @scrosby
+- Separated k8s job pods' workdir and sandbox, from @DaoWen
+
+## [1.39.1] - 2020-03-03
+### Fixed
+- Removed expensive log from `handle-resource-offers!`, from @dposada
+
+## [1.39.0] - 2020-03-03
+### Added
+- Mapping for Mesos reason `REASON_TASK_KILLED_DURING_LAUNCH`, from @dposada
+- Experimental support for synthetic k8s pods to trigger the cluster autoscaler, from @dposada
+- Metrics to k8s code, from @scrosby
+### Changed
+- Made "Container launch failed" mea culpa, from @dposada
+### Fixed
+- NPE in sandbox calculation when compute cluster is not found, from @scrosby
+
+## [1.38.4] - 2020-02-13
+### Changed
+- Integration test improvements, from @dposada and @scrosby
+
+## [1.38.3] - 2020-02-13
+### Added
+- Support to blacklist nodes in k8s that have certain labels, from @scrosby
+### Fixed
+- Bug in reading default pool from config when using k8s sidecar, from @nsinkov
+- Bug in job progress aggregation, from @DaoWen
+- Handling of node preemption, from @dposada and @scrosby
+- Handling of k8s startup connection errors, from @scrosby
+- Handling of bad request response from k8s, from @scrosby 
+- Handling when a running pod goes completely missing, from @scrosby
+
+## [1.38.2] - 2020-01-31
+### Added
+- REST endpoint for posting job progress updates, from @DaoWen
+### Fixed
+- Bug in k8s state machine for completed instances, from @scrosby
+- Bug in k8s pod resource requests, from @DaoWen
+- Handling of pod submission failures, from @dposada
+- Race where Cook can kill a task then later launch it, from @scrosby
+
+## [1.38.1] - 2020-01-26
+### Changed
+- Improved logging for k8s compute clusters, from @dposada
+
+## [1.38.0] - 2020-01-24
+### Added
+- Logs fileserver for k8s jobs, from @nsinkov
+- Missing state pairs in the k8s controller, from @scrosby
+### Fixed
+- Default the user parameter in docker, from @shamsimam
+- Improve k8s node and pod watches so that they retry forever, from @scrosby
+- Correct misnumbered 403 error codes for Swagger, from @DaoWen
+
 ## [1.37.0] - 2020-01-15
 ### Added
 - Support for moving a portion of a user's jobs to a different pool, from @dposada

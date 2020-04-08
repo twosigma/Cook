@@ -7,6 +7,7 @@ import os
 import os.path
 import re
 import subprocess
+import sys
 import threading
 import time
 import unittest
@@ -44,6 +45,13 @@ EPHEMERAL_HOSTS_SKIP_REASON = 'If the cluster under test has ephemeral hosts, th
                               'the process responsible for launching hosts to launch hosts that ' \
                               'never get used'
 
+# We need a way for tests to explicitly specify
+# that they don't want to specify a pool for a
+# particular job submission
+POOL_UNSPECIFIED = 'COOK_TEST_POOL_UNSPECIFIED'
+
+# The default name prefix for default jobs
+DEFAULT_JOB_NAME_PREFIX = "default_job-"
 
 def continuous_integration():
     """Returns true if the CONTINUOUS_INTEGRATION environment variable is set, as done by Travis-CI."""
@@ -427,12 +435,16 @@ def docker_image():
     return os.getenv('COOK_TEST_DOCKER_IMAGE')
 
 
+def missing_docker_image():
+    return os.getenv('COOK_TEST_MISSING_DOCKER_IMAGE')
+
+
 def docker_working_directory():
     return os.getenv('COOK_TEST_DOCKER_WORKING_DIRECTORY')
 
 
 def get_default_cpus():
-    return float(os.getenv('COOK_DEFAULT_JOB_CPUS', 0.5))
+    return float(os.getenv('COOK_DEFAULT_JOB_CPUS', 0.05))
 
 
 def make_temporal_uuid():
@@ -450,17 +462,20 @@ def make_temporal_uuid():
 def job_label():
     return os.getenv('COOK_TEST_JOB_LABEL')
 
+def get_caller():
+    """Get the name of the function that called the caller of this function."""
+    startFrame = sys._getframe(2)
+    while startFrame is not None:
+        name = startFrame.f_code.co_name
+        if name == '<listcomp>':
+            pass
+        else:
+            return startFrame.f_code.co_name
+        startFrame = startFrame.f_back
+    return ""
 
-def minimal_job(**kwargs):
-    job = {
-        'command': 'echo Default Test Command',
-        'cpus': get_default_cpus(),
-        'max_retries': 1,
-        'mem': int(os.getenv('COOK_DEFAULT_JOB_MEM_MB', 256)),
-        'name': 'default_test_job',
-        'priority': 1,
-        'uuid': str(make_temporal_uuid())
-    }
+def add_container_to_job_if_needed(job):
+    """Add a container to a job if it needs a docker container"""
     image = docker_image()
     if image:
         work_dir = docker_working_directory()
@@ -477,6 +492,18 @@ def minimal_job(**kwargs):
             }
         }
 
+def minimal_job(**kwargs):
+    job = {
+        'command': 'echo Default Test Command',
+        'cpus': get_default_cpus(),
+        'max_retries': 1,
+        'mem': int(os.getenv('COOK_DEFAULT_JOB_MEM_MB', 32)),
+        'name': (DEFAULT_JOB_NAME_PREFIX + get_caller()),
+        'priority': 1,
+        'uuid': str(make_temporal_uuid())
+    }
+    add_container_to_job_if_needed(job)
+
     label = job_label()
     if label:
         label_parts = label.split('=')
@@ -489,6 +516,9 @@ def minimal_job(**kwargs):
         job['labels'][label_parts[0]] = label_parts[1]
 
     job.update(kwargs)
+    if "name" in kwargs and kwargs["name"] is None:
+        del job["name"]
+
     no_container_volume = os.getenv('COOK_NO_CONTAINER_VOLUME') is not None
     if (not no_container_volume
             and is_cook_executor_in_use()
@@ -533,17 +563,24 @@ def submit_jobs(cook_url, job_specs, clones=1, pool=None, headers=None, log_requ
         headers = {}
     if isinstance(job_specs, dict):
         job_specs = [job_specs] * clones
+    caller = get_caller()
 
     def full_spec(spec):
+        if 'name' not in spec:
+            spec['name'] = DEFAULT_JOB_NAME_PREFIX + caller
         if 'uuid' not in spec:
             return minimal_job(**spec)
         else:
-            return spec
+            if "name" in spec and spec["name"] is None:
+                del spec["name"]
+            return dict(**spec)
 
     jobs = [full_spec(j) for j in job_specs]
     request_body = {'jobs': jobs}
     default_pool = default_submit_pool()
-    if pool:
+    if pool == POOL_UNSPECIFIED:
+        logger.info('Submitting with no explicit pool (via POOL_UNSPECIFIED)')
+    elif pool:
         logger.info(f'Submitting explicitly to the {pool} pool')
         request_body['pool'] = pool
     elif 'x-cook-pool' in headers:
@@ -608,6 +645,8 @@ def submit_job(cook_url, pool=None, headers=None, **kwargs):
     """Create and submit a single job"""
     if headers is None:
         headers = {}
+    if 'name' not in kwargs:
+        kwargs['name'] = DEFAULT_JOB_NAME_PREFIX + get_caller()
     uuids, resp = submit_jobs(cook_url, job_specs=[kwargs], pool=pool, headers=headers)
     return uuids[0], resp
 
@@ -842,18 +881,13 @@ def wait_for_exit_code(cook_url, job_id, max_wait_ms=DEFAULT_TIMEOUT_MS):
     return job['instance-with-exit-code']
 
 
-def wait_for_sandbox_directory(cook_url, job_id, status=None):
+def wait_for_output_url(cook_url, job_id, status=None):
     """
-    Wait for the given job's sandbox_directory field to appear.
+    Wait for the given job's output_url field to appear.
     Returns an up-to-date job description object on success,
     and raises an exception if the max_wait_ms wait time is exceeded.
     """
     job_id = unpack_uuid(job_id)
-
-    cook_settings = settings(cook_url)
-    cache_ttl_ms = cook_settings['agent-query-cache']['ttl-ms']
-    sync_interval_ms = cook_settings['sandbox-syncer']['sync-interval-ms']
-    max_wait_ms = min(4 * max(cache_ttl_ms, sync_interval_ms), 4 * 60 * 1000)
 
     def query():
         response = query_jobs(cook_url, True, uuid=[job_id])
@@ -864,18 +898,18 @@ def wait_for_sandbox_directory(cook_url, job_id, status=None):
             logger.info(f"Job {job_id} has no instances.")
         else:
             for inst in job['instances']:
-                if 'sandbox_directory' not in inst:
-                    logger.info(f"Job {job_id} instance {inst['task_id']} has no sandbox directory.")
+                if 'output_url' not in inst:
+                    logger.info(f"Job {job_id} instance {inst['task_id']} has no output url.")
                 elif status is not None and inst['status'] != status:
                     logger.info(f"Job {job_id} instance {inst['task_id']} has status {inst['status']}")
                 else:
                     logger.info(
-                        f"Job {job_id} instance {inst['task_id']} has sandbox directory {inst['sandbox_directory']}.")
+                        f"Job {job_id} instance {inst['task_id']} has output url {inst['output_url']}.")
                     return True
 
-    job = wait_until(query, predicate, max_wait_ms=max_wait_ms, wait_interval_ms=250)
+    job = wait_until(query, predicate)
     for inst in job['instances']:
-        if 'sandbox_directory' in inst and (status is None or inst['status'] == status):
+        if 'output_url' in inst and (status is None or inst['status'] == status):
             return inst
 
 
@@ -939,30 +973,6 @@ def get_mesos_slaves(mesos_url):
     return session.get('%s/slaves' % mesos_url).json()
 
 
-def wait_for_output_url(cook_url, job_uuid):
-    """
-    Wait for the output_url for the given job to be populated,
-    retrying every 5 seconds for a maximum of 2 minutes.
-    The retries are necessary because currently the Mesos
-    agent sandbox directories are cached in Cook.
-    """
-
-    def query():
-        return load_job(cook_url, job_uuid, assert_response=False)
-
-    def predicate(job):
-        for instance in job['instances']:
-            if 'output_url' in instance:
-                return True
-            else:
-                logger.info(f"Job {job['uuid']} instance {instance['task_id']} had no output_url")
-
-    job = wait_until(query, predicate)
-    for instance in job['instances']:
-        if 'output_url' in instance:
-            return instance
-
-
 def list_jobs(cook_url, **kwargs):
     """Makes a request to the /list endpoint using the provided kwargs as the query params"""
     if 'start_ms' in kwargs:
@@ -970,7 +980,10 @@ def list_jobs(cook_url, **kwargs):
     if 'end_ms' in kwargs:
         kwargs['end-ms'] = kwargs.pop('end_ms')
     query_params = urlencode(kwargs)
-    resp = session.get('%s/list?%s' % (cook_url, query_params))
+    list_url = f'{cook_url}/list?{query_params}'
+    resp = session.get(list_url)
+    assert 200 <= resp.status_code <= 400, \
+        f'Request to {list_url} failed unexpectedly after {resp.elapsed.total_seconds()}s:\n{resp.content}'
     return resp
 
 
@@ -1034,30 +1047,37 @@ def wait_for_instance(cook_url, job_uuid, max_wait_ms=DEFAULT_TIMEOUT_MS, wait_i
     return instance
 
 
-def sleep_for_publish_interval(cook_url):
-    # allow enough time for progress and sandbox updates to be submitted
+def get_publish_interval_ms(cook_url):
+    """Get the progress publisher's interval (in milliseconds)"""
     cook_settings = settings(cook_url)
-    progress_publish_interval_ms = get_in(cook_settings, 'progress', 'publish-interval-ms')
+    return get_in(cook_settings, 'progress', 'publish-interval-ms')
+
+
+def sleep_for_publish_interval(cook_url):
+    progress_publish_interval_ms = get_publish_interval_ms(cook_url)
     wait_publish_interval_ms = min(3 * progress_publish_interval_ms, 20000)
     time.sleep(wait_publish_interval_ms / 1000.0)
 
 
 def progress_line(cook_url, percent, message, write_to_file=False):
-    """Simple text replacement of regex string using expected patterns of (\d+), (?: )? and (.*)."""
+    """Simple text replacement of regex string using the default progress patterns."""
     cook_settings = settings(cook_url)
     regex_string = get_in(cook_settings, 'executor', 'default-progress-regex-string')
+    percent_pattern = r'([0-9]*\.?[0-9]+)'
+    message_pattern = r'($|\s+.*)'
 
     if not regex_string:
-        regex_string = 'progress:\s+([0-9]*\.?[0-9]+)($|\s+.*)'
-    if '([0-9]*\.?[0-9]+)' not in regex_string:
-        raise Exception(f'([0-9]*\.?[0-9]+) not present in {regex_string} regex string')
-    if '($|\s+.*)' not in regex_string:
-        raise Exception(f'($|\s+.*) not present in {regex_string} regex string')
+        regex_string = f'progress:\\s+{percent_pattern}{message_pattern}'
+
+    assert percent_pattern in regex_string
+    assert message_pattern in regex_string
+
     progress_string = (regex_string
-                       .replace('([0-9]*\.?[0-9]+)', str(percent))
-                       .replace('($|\s+.*)', str(f' {message}'))
-                       .replace('\s+', ' ')
+                       .replace(percent_pattern, f'{percent}')
+                       .replace(message_pattern, f' {message}')
+                       .replace('\\s+', ' ')
                        .replace('\\', ''))
+
     if write_to_file:
         progress_env = retrieve_progress_file_env(cook_url)
         return f'echo "{progress_string}" >> ${{{progress_env}}}'
@@ -1245,8 +1265,9 @@ def reset_limit(cook_url, limit_type, user, reason='testing', pool=None, headers
 def retrieve_progress_file_env(cook_url):
     """Retrieves the environment variable used by the cook executor to lookup the progress file."""
     cook_settings = settings(cook_url)
-    default_value = 'EXECUTOR_PROGRESS_OUTPUT_FILE'
-    return get_in(cook_settings, 'executor', 'environment', 'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV') or default_value
+    default_env_value = 'EXECUTOR_PROGRESS_OUTPUT_FILE'
+    env_value = get_in(cook_settings, 'executor', 'environment', 'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV')
+    return env_value or default_env_value
 
 
 def get_instance_stats(cook_url, **kwargs):
@@ -1328,6 +1349,27 @@ def is_cook_executor_in_use():
     else:
         logger.info('Using mesos executor (cook executor is not configured)')
         return False
+
+
+@functools.lru_cache()
+def is_job_progress_supported():
+    """Returns true if the current job execution environment supports progress reporting"""
+    # Mesos supports progress reporting only with Cook Executor.
+    # Our progress reporter sidecar is always enabled on Kubernetes,
+    # but we only enable the tests if the executor config is also present
+    # (otherwise some tests fail due to missing environment variables, etc).
+    return is_cook_executor_in_use() or (using_kubernetes() and _cook_executor_config())
+
+
+@functools.lru_cache()
+def using_kubernetes_default_shell():
+    """Returns true if Kuberentes scheduler is configured with our default command.
+       Not that this predicate *does not* check whether the Kubernetes scheduler is in use."""
+    cook_url = retrieve_cook_url()
+    cook_settings = settings(cook_url)
+    k8s_custom_shell = get_in(cook_settings, 'kubernetes', 'custom-shell')
+    default_shell = ['/bin/sh', '-c']
+    return k8s_custom_shell == default_shell
 
 
 def slave_cpus(mesos_url, hostname):
@@ -1428,7 +1470,10 @@ def node_pool(nodename):
 
 def max_kubernetes_node_cpus():
     nodes = get_kubernetes_nodes()
-    return max([float(n['status']['capacity']['cpu'])
+    # We need to account for per-node overhead
+    # (capacity not usable by our Cook pods)
+    k8s_node_overhead_cpus = int(os.getenv("COOK_TEST_K8S_NODE_OVERHEAD_CPUS", 0))
+    return max([float(n['status']['capacity']['cpu']) - k8s_node_overhead_cpus
                 for n in nodes])
 
 
@@ -1699,7 +1744,7 @@ def supports_exit_code():
 
 def kill_running_and_waiting_jobs(cook_url, user):
     one_hour_in_millis = 60 * 60 * 1000
-    start = current_milli_time() - (4 * one_hour_in_millis)
+    start = current_milli_time() - (72 * one_hour_in_millis)
     end = current_milli_time() + one_hour_in_millis
     running = jobs(cook_url, user=user, state=['running', 'waiting'], start=start, end=end).json()
     logger.info(f'Currently running/waiting jobs: {json.dumps(running, indent=2)}')
@@ -1732,11 +1777,38 @@ def rebalancer_interval_seconds():
     return interval_seconds
 
 
+def send_progress_update(cook_url, instance, assert_response=True, allow_redirects=True,
+                         sequence=None, percent=None, message=None):
+    """Submit a job instance progress update via the rest api"""
+    payload = {}
+    if sequence is not None:
+        payload['progress_sequence'] = sequence
+    if percent is not None:
+        payload['progress_percent'] = percent
+    if message is not None:
+        payload['progress_message'] = message
+    # NOTE: using `requests` rather than `session` here because this endpoint should not require authentication
+    response = requests.post(f'{cook_url}/progress/{instance}', allow_redirects=allow_redirects, json=payload)
+    if assert_response:
+        response_info = {'code': response.status_code, 'msg': response.content}
+        assert response.status_code == 202, response_info
+        response_json = response.json()
+        assert response_json['instance'] == instance, response_info
+        assert response_json['message'] == 'progress update accepted', response_info
+    return response
+
+
 def job_progress_is_present(job, progress):
     present = any(i['progress'] == progress for i in job['instances'])
     if not present:
         logger.info(f'Job does not yet have progress {progress}: {json.dumps(job, indent=2)}')
     return present
+
+
+def wait_for_instance_with_progress(cook_url, job_uuid, progress_percent):
+    job = wait_until(lambda: load_job(cook_url, job_uuid),
+                     lambda j: job_progress_is_present(j, progress_percent))
+    return next(i for i in job['instances'] if i['progress'] == progress_percent)
 
 
 def make_failed_job(cook_url, **kwargs):
@@ -1765,3 +1837,9 @@ def make_failed_job(cook_url, **kwargs):
         return job
 
     return wait_until(__make_failed_job, lambda _: True)
+
+
+@functools.lru_cache()
+def kubernetes_settings():
+    cook_url = retrieve_cook_url()
+    return settings(cook_url)['kubernetes']

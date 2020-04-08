@@ -34,12 +34,14 @@
             [cook.plugins.file :as file-plugin]
             [cook.plugins.submission :as submission-plugin]
             [cook.rate-limit :as rate-limit]
+            [cook.task :as task]
             [cook.test.testutil :refer [create-dummy-instance
                                         create-dummy-job
                                         create-dummy-job-with-instances
                                         create-pool
                                         flush-caches!
-                                        restore-fresh-database!] :as testutil]
+                                        restore-fresh-database!
+                                        setup] :as testutil]
             [datomic.api :as d :refer [q db]]
             [mesomatic.scheduler :as msched]
             [schema.core :as s])
@@ -90,13 +92,14 @@
 (defn basic-handler
   [conn & {:keys [cpus memory-gb gpus-enabled retry-limit is-authorized-fn]
            :or {cpus 12, memory-gb 100, gpus-enabled false, retry-limit 200, is-authorized-fn authorized-fn}}]
-  (fn [request]
+  (fn [request & {:keys [leader?] :or {leader? true}}]
     (let [handler (api/main-handler conn (fn [] [])
                                     {:is-authorized-fn is-authorized-fn
                                      :mesos-gpu-enabled gpus-enabled
                                      :task-constraints {:cpus cpus :memory-gb memory-gb :retry-limit retry-limit}}
                                     (Object.)
-                                    (atom true))]
+                                    (atom leader?)
+                                    {:progress-aggregator-chan (async/chan)})]
       (with-redefs [api/retrieve-sandbox-url-path (fn [{:keys [instance/hostname instance/task-id]}]
                                                     (str "http://" hostname "/" task-id))
                     rate-limit/job-submission-rate-limiter rate-limit/AllowAllRateLimiter]
@@ -632,6 +635,63 @@
         (is (= "No content." (:body cancel-resp)))
         (is followup-instance-cancelled?)))))
 
+(deftest progress-update-api
+  (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
+        is-authorized-fn (constantly false)
+        h (basic-handler conn :is-authorized-fn is-authorized-fn)
+        [job [inst]] (create-dummy-job-with-instances conn
+                                                      :retry-count 1
+                                                      :user "nick"
+                                                      :job-state :job.state/running
+                                                      :instances [{:instance-status :instance.status/running}])
+        job-uuid (:job/uuid (d/entity (d/db conn) job))
+        task-id (str (:instance/task-id (d/entity (d/db conn) inst)))
+        target-endpoint (str "/progress/" task-id)
+        update-req-attrs {:scheme :http
+                          :uri target-endpoint
+                          :request-method :post
+                          :body-params {:progress-sequence 0
+                                        :progress-message "starting..."
+                                        :progress-percent 0}}
+        no-such-task-id (str (UUID/randomUUID))
+        no-such-task-endpoint (str "/progress/" no-such-task-id)
+        bad-update-req-attrs (assoc update-req-attrs :uri no-such-task-endpoint)
+        sample-leader-id "cook-scheduler.example#12321#http#dada4195-0b69-48a9-b288-8bbcd4ce5a88"
+        sample-leader-base-url "http://cook-scheduler.example:12321"]
+
+    (with-redefs [api/leader-selector->leader-url (constantly sample-leader-base-url)]
+      (testing "Invalid progress update posted to non-leader results in 4XX"
+        (let [update-resp (h bad-update-req-attrs :leader? false)]
+          (is (= (:status update-resp) 404))))
+
+      (testing "Invalid progress update posted to leader results in 4XX"
+        (let [update-resp (h bad-update-req-attrs :leader? true)]
+          (is (= (:status update-resp) 404)))))
+
+    (testing "Valid progress update posted when leader is unknown results in 503"
+      (let [error-msg "leader is currently unknown"]
+        (with-redefs [api/leader-selector->leader-id (fn [_] (throw (IllegalStateException. error-msg)))
+                      api/streaming-json-encoder identity]
+          (let [update-resp (h update-req-attrs :leader? false)
+                redirect-location (str sample-leader-base-url target-endpoint)]
+            (is (= (:status update-resp) 503))
+            (is (= (:body update-resp) {:message error-msg}))))))
+
+    (testing "Valid progress update posted to non-leader results in redirect"
+      (with-redefs [api/leader-selector->leader-id (constantly sample-leader-id)
+                    api/streaming-json-encoder identity]
+        (let [update-resp (h update-req-attrs :leader? false)
+              redirect-location (str sample-leader-base-url target-endpoint)]
+          (is (= (:status update-resp) 307))
+          (is (= (:location update-resp) redirect-location))
+          (is (= (:body update-resp) {:location redirect-location, :message "redirecting to master"})))))
+
+    (testing "Valid progress update posted to leader results 202 Accepted"
+      (with-redefs [api/streaming-json-encoder identity]
+        (let [update-resp (h update-req-attrs :leader? true)
+              redirect-location (str sample-leader-base-url target-endpoint)]
+          (is (= (:status update-resp) 202))
+          (is (= (:body update-resp) {:instance task-id :job job-uuid :message "progress update accepted"})))))))
 
 (deftest quota-api
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
@@ -1225,6 +1285,7 @@
    :user "user"})
 
 (deftest test-create-jobs!
+  (setup)
   (cook.test.testutil/flush-caches!)
 
   (let [expected-job-map
@@ -1234,7 +1295,7 @@
           ; will have to dissoc it.
           [{:keys [mem max-retries max-runtime expected-runtime name gpus
                    command ports priority uuid user cpus application
-                   disable-mea-culpa-retries executor datasets]
+                   disable-mea-culpa-retries executor datasets checkpoint]
             :or {disable-mea-culpa-retries false}}]
           (cond-> {;; Fields we will fill in from the provided args:
                    :command command
@@ -1263,6 +1324,7 @@
             application (assoc :application application)
             expected-runtime (assoc :expected-runtime expected-runtime)
             executor (assoc :executor executor)
+            checkpoint (assoc :checkpoint checkpoint)
             datasets (assoc :datasets datasets)))]
     (with-redefs [dl/job-uuid->dataset-maps-cache (util/new-cache)
                   config/compute-clusters (constantly [{:factory-fn 'cook.mesos.mesos-compute-cluster/factory-fn
@@ -1326,6 +1388,26 @@
           (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
                 application {:name "foo-app", :version "0.1.0"}
                 {:keys [uuid] :as job} (assoc (minimal-job) :application application)]
+            (is (= {::api/results (str "submitted jobs " uuid)}
+                   (testutil/create-jobs! conn {::api/jobs [job]})))
+            (is (= (expected-job-map job)
+                   (dissoc (api/fetch-job-map (db conn) uuid) :submit_time)))))
+
+        (testing "should work when the job specifies checkpointing options"
+          (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
+                checkpoint {:mode "auto"}
+                {:keys [uuid] :as job} (assoc (minimal-job) :checkpoint checkpoint)]
+            (is (= {::api/results (str "submitted jobs " uuid)}
+                   (testutil/create-jobs! conn {::api/jobs [job]})))
+            (is (= (expected-job-map job)
+                   (dissoc (api/fetch-job-map (db conn) uuid) :submit_time)))))
+
+        (testing "should work when the job specifies checkpointing options 2"
+          (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
+                checkpoint {:mode "periodic"
+                            :options {:preserve-paths #{"p1" "p2"}}
+                            :periodic-options {:period-sec 777}}
+                {:keys [uuid] :as job} (assoc (minimal-job) :checkpoint checkpoint)]
             (is (= {::api/results (str "submitted jobs " uuid)}
                    (testutil/create-jobs! conn {::api/jobs [job]})))
             (is (= (expected-job-map job)
@@ -1419,10 +1501,12 @@
                   (is (= (assoc (expected-job-map job)
                            :container (assoc-in docker-container
                                                 [:docker :parameters]
-                                                [{:key "user" :value "1234:2345"}
-                                                 {:key "tee" :value "tie"}
-                                                 {:key "fee" :value "fie"}]))
-                         (dissoc (api/fetch-job-map (db conn) uuid) :submit_time)))))
+                                                (frequencies [{:key "tee" :value "tie"}
+                                                              {:key "fee" :value "fie"}
+                                                              {:key "user" :value "1234:2345"}])))
+                         (-> (api/fetch-job-map (db conn) uuid)
+                             (dissoc :submit_time)
+                             (update-in [:container :docker :parameters] frequencies))))))
 
               (testing "user parameter absent"
                 (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
@@ -1434,10 +1518,12 @@
                   (is (= (assoc (expected-job-map job)
                            :container (assoc-in docker-container
                                                 [:docker :parameters]
-                                                [{:key "user" :value "1234:2345"}
-                                                 {:key "tee" :value "tie"}
-                                                 {:key "fee" :value "fie"}]))
-                         (dissoc (api/fetch-job-map (db conn) uuid) :submit_time))))))))))
+                                                (frequencies [{:key "tee" :value "tie"}
+                                                              {:key "fee" :value "fie"}
+                                                              {:key "user" :value "1234:2345"}])))
+                         (-> (api/fetch-job-map (db conn) uuid)
+                             (dissoc :submit_time)
+                             (update-in [:container :docker :parameters] frequencies)))))))))))
 
     (testing "returns unsupported for multiple compute clusters"
       (with-redefs [config/compute-clusters (constantly [{:factory-fn 'cook.mesos.mesos-compute-cluster/factory-fn
@@ -1475,7 +1561,21 @@
       (testing "should allow an optional expected-runtime field"
         (is (s/validate api/Job (assoc min-job :expected-runtime 2 :max-runtime 3)))
         (is (s/validate api/Job (assoc min-job :expected-runtime 2 :max-runtime 2)))
-        (is (thrown? Exception (s/validate api/Job (assoc min-job :expected-runtime 3 :max-runtime 2))))))))
+        (is (thrown? Exception (s/validate api/Job (assoc min-job :expected-runtime 3 :max-runtime 2)))))
+
+      (testing "should allow an optional checkpoint field"
+        (is (s/validate api/Job (assoc min-job :checkpoint {:mode "periodic"
+                                                            :options {:preserve-paths #{"p1" "p2"}}})))
+        (is (s/validate api/Job (assoc min-job :checkpoint {:mode "auto"
+                                                            :periodic-options {:period-sec 777}})))
+        (is (thrown? Exception (s/validate api/Job (assoc min-job :checkpoint {:mode "zzz"}))))
+        (is (thrown? Exception (s/validate api/Job (assoc min-job :checkpoint {:options {:preserve-paths ["p1" "p2"]}
+                                                                               :periodic-options {:period-sec 777}}))))
+        (is (thrown? Exception (s/validate api/Job (assoc min-job :checkpoint {:mode "periodic"
+                                                                               :periodic-options {:period-sec "777"}}))))
+        (is (thrown? Exception (s/validate api/Job (assoc min-job :checkpoint {:mode "periodic"
+                                                                               :options {:preserve-paths "p1"}
+                                                                               }))))))))
 
 (deftest test-destroy-jobs
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
@@ -1555,7 +1655,9 @@
 
 (deftest test-retrieve-sandbox-url-path
   (let [agent-hostname "www.mesos-agent-com"]
-    (with-redefs [cc/retrieve-sandbox-url-path (fn [_ {:keys [instance/hostname instance/sandbox-directory instance/task-id]}]
+    ; We have a special gate that the compute cluster isn't nil, so have this return something not nil.
+    (with-redefs [task/task-ent->ComputeCluster (constantly "JustHasToBeNonNil-ComputeCluster")
+                  cc/retrieve-sandbox-url-path (fn [_ {:keys [instance/hostname instance/sandbox-directory instance/task-id]}]
                                                  (when (and hostname sandbox-directory)
                                                    (str "http://" hostname ":5051" "/" task-id "/files/read.json?path=" sandbox-directory)))]
       (testing "retrieve-sandbox-url-path"

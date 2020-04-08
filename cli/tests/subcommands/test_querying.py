@@ -2,14 +2,14 @@ import logging
 import unittest
 import uuid
 
+import pytest
 import requests_mock
 from cook import http
-from nose.plugins.attrib import attr
 
-from cook.subcommands.show import query_cluster, make_job_request
+from cook.querying import query_cluster, make_job_request
 
 
-@attr(cli=True)
+@pytest.mark.cli
 class CookCliTest(unittest.TestCase):
     _multiprocess_can_split_ = True
 

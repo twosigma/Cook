@@ -8,7 +8,7 @@ requirements = [
     'arrow',
     'blessed',
     'humanfriendly',
-    'python-dateutil',
+    'python-dateutil>=2.8.1',
     'pytz',
     'requests',
     'tabulate',
@@ -18,8 +18,8 @@ requirements = [
 
 test_requirements = [
     'freezegun',
-    'nose',
-    'requests-mock'
+    'pytest',
+    'requests-mock',
 ]
 
 setup(

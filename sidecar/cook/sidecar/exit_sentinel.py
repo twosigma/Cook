@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 #
-#  Copyright (c) 2019 Two Sigma Open Source, LLC
+#  Copyright (c) 2020 Two Sigma Open Source, LLC
 #
 #  Permission is hereby granted, free of charge, to any person obtaining a copy
 #  of this software and associated documentation files (the "Software"), to
@@ -20,37 +20,24 @@
 #  FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 #  IN THE SOFTWARE.
 #
+"""Cook sidecar exit sentinel file watcher thread logic."""
 
 import logging
 import os
-import sys
+import signal
+import threading
+import time
 
-from cook.file_server import FileServerApplication
-from cook.version import VERSION
-
-
-def main(args=None):
-    if args is None:
-        args = sys.argv[1:]
-    try:
-        logging.info(f'Starting cook.file_server {VERSION}')
-        port, workers = (args + [None] * 2)[0:2]
-        if port is None:
-            logging.error('Must provide port')
-            sys.exit(1)
-        cook_workdir = os.getenv('COOK_WORKDIR')
-        if not cook_workdir:
-            logging.error('COOK_WORKDIR environment variable must be set')
-            sys.exit(1)
-        FileServerApplication(cook_workdir, {
-            'bind': f'0.0.0.0:{port}',
-            'workers': 4 if workers is None else workers,
-        }).run()
-
-    except Exception as e:
-        logging.exception('exception when running with %s' % args)
-        sys.exit(1)
-
-
-if __name__ == '__main__':
-    main()
+def watch_for_file(sentinel_file_path, started_event):
+    def daemon_routine():
+        # wait for other components to finish starting
+        logging.info(f'Waiting for all components to start...')
+        started_event.wait()
+        # wait for sentinel file to appear
+        logging.info(f'Watching for sentinel file: {sentinel_file_path}')
+        while not os.path.exists(sentinel_file_path):
+            time.sleep(0.1)
+        # trigger this process's termination handler
+        logging.info(f'Sidecar termination triggered by sentinel file: {sentinel_file_path}')
+        os.kill(os.getpid(), signal.SIGTERM)
+    threading.Thread(target=daemon_routine, args=(), daemon=True).start()

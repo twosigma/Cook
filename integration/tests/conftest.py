@@ -35,6 +35,7 @@ if 'TEST_METRICS_URL' in os.environ:
             index = f'cook-tests-{now.strftime("%Y%m%d")}'
             request_node = request.node
             xfail_mark = request_node._evalxfail._mark
+            expected_to_fail = xfail_mark is not None and xfail_mark.name == 'xfail'
             test_namespace = '.'.join(request_node._nodeid.split('::')[:-1]).replace('/', '.').replace('.py', '')
             test_name = request_node.name
             setup = request_node.rep_setup
@@ -45,7 +46,17 @@ if 'TEST_METRICS_URL' in os.environ:
                 elif setup.passed and call.passed:
                     result = 'passed'
                 elif call.skipped:
-                    result = 'skipped'
+                    # Unfortunately, tests marked as xfail that fail
+                    # have a call outcome of 'skipped'. So, we have to
+                    # workaround this by checking the _skipped_by_mark
+                    # attribute here to see if it was actually skipped.
+                    if request_node._skipped_by_mark:
+                        result = 'skipped'
+                    elif expected_to_fail:
+                        result = 'failed'
+                    else:
+                        logging.warning('Unable to determine test result for call skipped')
+                        result = 'unknown'
                 else:
                     logging.warning('Unable to determine test result')
                     result = 'unknown'
@@ -68,10 +79,11 @@ if 'TEST_METRICS_URL' in os.environ:
                 'build-id': os.getenv('TEST_METRICS_BUILD_ID', None),
                 'result': result,
                 'runtime-milliseconds': (end - start) * 1000,
-                'expected-to-fail': xfail_mark is not None and xfail_mark.name == 'xfail'
+                'expected-to-fail': expected_to_fail
             }
-            logging.info(f'Updating test metrics: {json.dumps(metrics, indent=2)}')
-            resp = util.session.post(f'{elastic_search_url}/{index}/test-result', json=metrics)
+            timeout = os.getenv('TEST_METRICS_POST_TIMEOUT_SECONDS', 10)
+            logging.info(f'Updating test metrics (timeout = {timeout} seconds): {json.dumps(metrics, indent=2)}')
+            resp = util.session.post(f'{elastic_search_url}/{index}/test-result', json=metrics, timeout=timeout)
             logging.info(f'Response from updating test metrics: {resp.text}')
         except:
             logging.exception('Encountered exception while recording test metrics')
