@@ -552,10 +552,12 @@
     :or {pod-priority-class cook-job-pod-priority-class
          pod-supports-cook-init? true
          pod-supports-cook-sidecar? true}}]
-  (let [{:keys [scalar-requests job]} task-request
+  (let [{:keys [scalar-requests job resources]} task-request
         ;; NOTE: The scheduler's adjust-job-resources-for-pool-fn may modify :resources,
         ;; whereas :scalar-requests always contains the unmodified job resource values.
         {:strs [mem cpus]} scalar-requests
+        ;; resources for the whole pod
+        {pod-mem :mem pod-cpus :cpus} resources
         {:keys [docker volumes]} container
         {:keys [image parameters]} docker
         {:keys [job/progress-output-file job/progress-regex-string job/checkpoint]} job
@@ -641,13 +643,19 @@
     ; init container
     (when use-cook-init?
       (when-let [{:keys [command image]} init-container]
-        (let [container (V1Container.)]
+        (let [container (V1Container.)
+              resources (V1ResourceRequirements.)]
           ; container
           (.setName container cook-init-container-name)
           (.setImage container image)
           (.setCommand container command)
           (.setWorkingDir container init-container-workdir)
-
+          ; resources
+          (.putRequestsItem resources "cpu" (double->quantity pod-cpus))
+          (.putLimitsItem resources "cpu" (double->quantity pod-cpus))
+          (.putRequestsItem resources "memory" (double->quantity (* memory-multiplier pod-mem)))
+          (.putLimitsItem resources "memory" (double->quantity (* memory-multiplier pod-mem)))
+          (.setResources container resources)
           (.setVolumeMounts container [(init-container-workdir-volume-mount-fn false)
                                        (scratch-space-volume-mount-fn false)])
           (.addInitContainersItem pod-spec container))))
