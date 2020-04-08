@@ -17,7 +17,7 @@ ZONE=$2
 CLUSTERNAME=$3
 COOK_KUBECONFIG=$4
 
-VERSION=1.15.9-gke.9
+VERSION=1.15.9-gke.22
 
 gcloud="gcloud --project $PROJECT"
 
@@ -30,7 +30,7 @@ echo "---- Building kubernetes cluster for project=$PROJECT zone=$ZONE clusterna
 echo "---- Creating new cluster (please wait 5 minutes)"
 time $gcloud container clusters create "$CLUSTERNAME" --zone "$ZONE" --disk-size=20gb --machine-type=g1-small --preemptible  \
      --no-enable-autoupgrade --no-enable-basic-auth --no-issue-client-certificate --no-enable-ip-alias --metadata disable-legacy-endpoints=true \
-     --labels longevity=temporary --enable-autoscaling --min-nodes=3 --max-nodes=6
+     --labels longevity=temporary --enable-autoscaling --min-nodes=0 --max-nodes=6
 
 echo "---- Setting up gcloud credentials"
 # Add credentials to the kubeconfig used by cook.
@@ -54,9 +54,9 @@ $gcloud container node-pools create cook-pool-k8s-gamma \
        --machine-type=g1-small \
        --node-taints=cook-pool=k8s-gamma:NoSchedule \
        --enable-autoscaling \
-       --min-nodes=3 \
+       --min-nodes=0 \
        --max-nodes=6 \
-       --node-labels=cook-pool=k8s-gamma
+       --node-labels=cook-pool=k8s-gamma,test-label=true
 $gcloud container node-pools create cook-pool-k8s-alpha \
        --zone "$ZONE" \
        --cluster="$CLUSTERNAME" \
@@ -64,9 +64,9 @@ $gcloud container node-pools create cook-pool-k8s-alpha \
        --machine-type=g1-small \
        --node-taints=cook-pool=k8s-alpha:NoSchedule \
        --enable-autoscaling \
-       --min-nodes=2 \
-       --max-nodes=4 \
-       --node-labels=cook-pool=k8s-alpha
+       --min-nodes=0 \
+       --max-nodes=6 \
+       --node-labels=cook-pool=k8s-alpha,test-label=true
 
 echo "---- Setting up cook namespace in kubernetes"
 KUBECONFIG=${COOK_KUBECONFIG} kubectl create -f docs/make-kubernetes-namespace.json
