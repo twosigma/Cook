@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.40.3] - 2020-04-10
+### Added
+- Main container environment variables to init container in k8s, from @nsinkov
+- Writable scratch space separate from the k8s sandbox, from @nsinkov
+- Experimental API and schema support for checkpointing in k8s, from @nsinkov
+- Fast fail for k8s pods with un-initialized containers, from @dposada
+### Fixed
+- Made k8s sidecar readiness probe optional, from @DaoWen
+- Made k8s pod watch initialization process each pod only once, from @dposada
+- Removed node anti-affinity for blocklist labels from k8s synthetic pods, from @dposada
+
 ## [1.40.2] - 2020-03-24
 ### Fixed
 - Added node anti-affinity for blocklist labels to synthetic pods, from @dposada
