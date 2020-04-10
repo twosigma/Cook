@@ -647,7 +647,7 @@
           (.setImage container image)
           (.setCommand container command)
           (.setWorkingDir container init-container-workdir)
-
+          (.setEnv container main-env-vars)
           (.setVolumeMounts container [(init-container-workdir-volume-mount-fn false)
                                        (scratch-space-volume-mount-fn false)])
           (.addInitContainersItem pod-spec container))))
