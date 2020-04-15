@@ -587,7 +587,7 @@
         scratch-space "/mnt/scratch-space"
         scratch-space-volume (make-empty-volume "cook-scratch-space-volume")
         scratch-space-volume-mount-fn (partial make-volume-mount scratch-space-volume scratch-space)
-        checkpoint-volume-mounts (checkpoint->volume-mounts checkpoint init-container-workdir-volume)
+        checkpoint-volume-mounts (checkpoint->volume-mounts checkpoint scratch-space-volume)
         sandbox-env {"COOK_SANDBOX" sandbox-dir
                      "HOME" sandbox-dir
                      "MESOS_SANDBOX" sandbox-dir
