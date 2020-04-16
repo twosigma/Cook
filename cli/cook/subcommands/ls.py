@@ -155,7 +155,7 @@ def ls_for_instance(instance, sandbox_dir_fn, cluster, path, long_format, as_jso
     compute_cluster = instance["compute-cluster"]
     compute_cluster_type = compute_cluster["type"]
     compute_cluster_name = compute_cluster["name"]
-    if compute_cluster_type == "kubernetes":
+    if compute_cluster_type == "kubernetes" and ("end_time" not in instance or instance["end_time"] is None):
         kubectl_ls_for_instance_fn = plugins.get_fn('kubectl-ls-for-instance', kubectl_ls_for_instance)
         compute_cluster_config = get_compute_cluster_config(cluster, compute_cluster_name)
         kubectl_ls_for_instance_fn(instance["task_id"], compute_cluster_config, path, long_format, as_json)

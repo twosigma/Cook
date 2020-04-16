@@ -134,7 +134,7 @@ def tail_for_instance(instance, sandbox_dir_fn, cluster, path, num_lines_to_prin
     compute_cluster = instance["compute-cluster"]
     compute_cluster_type = compute_cluster["type"]
     compute_cluster_name = compute_cluster["name"]
-    if compute_cluster_type == "kubernetes":
+    if compute_cluster_type == "kubernetes" and ("end_time" not in instance or instance["end_time"] is None):
         kubectl_tail_instance_file_fn = plugins.get_fn('kubectl-tail-instance-file', kubectl_tail_instance_file)
         compute_cluster_config = get_compute_cluster_config(cluster, compute_cluster_name)
         kubectl_tail_instance_file_fn(instance["task_id"], compute_cluster_config, path, num_lines_to_print, follow)
