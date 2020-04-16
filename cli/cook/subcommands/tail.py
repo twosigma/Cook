@@ -125,7 +125,7 @@ def kubectl_tail_instance_file(instance_uuid, _, path, num_lines_to_print, follo
     os.execlp(*args)
 
 
-def tail_for_instance(_, instance, sandbox_dir_fn, cluster, path, num_lines_to_print, follow, follow_sleep_seconds):
+def tail_for_instance(job, instance, sandbox_dir_fn, cluster, path, num_lines_to_print, follow, follow_sleep_seconds):
     """
     Tails the contents of the Mesos sandbox path for the given instance. If follow is truthy, it will
     try and read more data from the file until the user terminates. This assumes files will not shrink.
@@ -137,7 +137,7 @@ def tail_for_instance(_, instance, sandbox_dir_fn, cluster, path, num_lines_to_p
     if compute_cluster_type == "kubernetes":
         kubectl_tail_instance_file_fn = plugins.get_fn('kubectl-tail-instance-file', kubectl_tail_instance_file)
         compute_cluster_config = get_compute_cluster_config(cluster, compute_cluster_name)
-        kubectl_tail_instance_file_fn(instance["task_id"], compute_cluster_config, path, num_lines_to_print, follow)
+        kubectl_tail_instance_file_fn(job["user"], instance["task_id"], compute_cluster_config, path, num_lines_to_print, follow)
     else:
         tail_using_read_file(instance, sandbox_dir_fn(), path, num_lines_to_print, follow, follow_sleep_seconds)
 
