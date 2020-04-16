@@ -27,7 +27,7 @@ def kubectl_cat_instance_file(instance_uuid, _, path):
               '-it', instance_uuid,
               '--', 'cat', path)
 
-def cat_for_instance(instance, sandbox_dir_fn, cluster, path):
+def cat_for_instance(_, instance, sandbox_dir_fn, cluster, path):
     """
     Outputs the contents of the Mesos sandbox path for the given instance.
     When using Kubernetes, calls the exec command of the kubectl cli.

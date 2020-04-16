@@ -14,7 +14,7 @@ def kubectl_exec_to_instance(instance_uuid, _):
               '--', '/bin/sh', '-c', 'cd $HOME; exec /bin/sh')
 
 
-def ssh_to_instance(instance, sandbox_dir_fn, cluster):
+def ssh_to_instance(job, instance, sandbox_dir_fn, cluster):
     """
     When using Mesos, attempts to ssh (using os.execlp) to the Mesos agent corresponding to the given instance.
     When using Kubernetes, calls the exec command of the kubectl cli.
@@ -26,7 +26,7 @@ def ssh_to_instance(instance, sandbox_dir_fn, cluster):
     if compute_cluster_type == "kubernetes":
         kubectl_exec_to_instance_fn = plugins.get_fn('kubectl-exec-to-instance', kubectl_exec_to_instance)
         compute_cluster_config = get_compute_cluster_config(cluster, compute_cluster_name)
-        kubectl_exec_to_instance_fn(instance["task_id"], compute_cluster_config)
+        kubectl_exec_to_instance_fn(job, instance["task_id"], compute_cluster_config)
     else:
         sandbox_dir = sandbox_dir_fn()
         command = os.environ.get('CS_SSH', 'ssh')

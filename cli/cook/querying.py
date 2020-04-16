@@ -252,11 +252,11 @@ def query_unique_and_run(clusters, entity_ref, command_fn, wait=False):
             job = query_result['data']
             instance = __get_latest_instance(job)
             directory_fn = partial(mesos.retrieve_instance_sandbox_directory, instance=instance, job=job)
-            command_fn(instance, directory_fn, query_result['cluster'])
+            command_fn(job, instance, directory_fn, query_result['cluster'])
         elif query_result['type'] == Types.INSTANCE:
             instance, job = query_result['data']
             directory_fn = partial(mesos.retrieve_instance_sandbox_directory, instance=instance, job=job)
-            command_fn(instance, directory_fn, query_result['cluster'])
+            command_fn(job, instance, directory_fn, query_result['cluster'])
         else:
             # This should not happen, because query_unique should
             # only return a map with type "job" or type "instance"

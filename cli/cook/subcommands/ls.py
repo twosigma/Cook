@@ -147,7 +147,7 @@ def kubectl_ls_for_instance(instance_uuid, _, path, long_format, as_json):
             args.append(path)
         os.execlp(*args)
 
-def ls_for_instance(instance, sandbox_dir_fn, cluster, path, long_format, as_json):
+def ls_for_instance(_, instance, sandbox_dir_fn, cluster, path, long_format, as_json):
     """
     Lists contents of the Mesos sandbox path for the given instance.
     When using Kubernetes, calls the exec command of the kubectl cli.
