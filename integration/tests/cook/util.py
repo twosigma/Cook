@@ -289,6 +289,11 @@ def multi_cluster_tests_enabled():
     return os.getenv('COOK_MULTI_CLUSTER') is not None
 
 
+def cli_main_module_name():
+    """"Returns the name of the module containing the main() method for the cli."""
+    return os.getenv('COOK_CLI_MAIN_MODULE', 'cook.__main__')
+
+
 @functools.lru_cache()
 def _cook_auth_scheme():
     """Get the authentication scheme name from the cook scheduler info endpoint"""
