@@ -459,17 +459,16 @@
       (.setSslCaCert api-client
                      (FileInputStream. (File. ssl-cert-path))))
     (when google-credentials
-      (with-open [file-stream (FileInputStream. (File. google-credentials))]
-        (let [credentials (GoogleCredentials/fromStream file-stream)
-              scoped-credentials (.createScoped credentials ["https://www.googleapis.com/auth/cloud-platform"
-                                                             "https://www.googleapis.com/auth/userinfo.email"])
-              bearer-token (get-bearer-token scoped-credentials)]
-          (.scheduleAtFixedRate bearer-token-executor
-                                (make-bearer-token-refresh-task api-client scoped-credentials)
-                                bearer-token-refresh-seconds
-                                bearer-token-refresh-seconds
-                                TimeUnit/SECONDS)
-          (.setApiKey api-client bearer-token))))
+      (let [credentials (GoogleCredentials/getApplicationDefault)
+            scoped-credentials (.createScoped credentials ["https://www.googleapis.com/auth/cloud-platform"
+                                                           "https://www.googleapis.com/auth/userinfo.email"])
+            bearer-token (get-bearer-token scoped-credentials)]
+        (.scheduleAtFixedRate bearer-token-executor
+                              (make-bearer-token-refresh-task api-client scoped-credentials)
+                              bearer-token-refresh-seconds
+                              bearer-token-refresh-seconds
+                              TimeUnit/SECONDS)
+        (.setApiKey api-client bearer-token)))
 
     api-client))
 
