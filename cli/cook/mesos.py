@@ -63,8 +63,9 @@ def retrieve_instance_sandbox_directory(instance, job):
     return directories[0]
 
 
-def read_file(instance, sandbox_dir, path, offset=None, length=None):
+def read_file(instance, sandbox_dir_fn, path, offset=None, length=None):
     """Calls the Mesos agent files/read API for the given path, offset, and length"""
+    sandbox_dir = sandbox_dir_fn()
     logging.info(f'reading file from sandbox {sandbox_dir} with path {path} at offset {offset} and length {length}')
     agent_url = instance_to_agent_url(instance)
     params = {'path': os.path.join(sandbox_dir, path)}
@@ -84,8 +85,9 @@ def read_file(instance, sandbox_dir, path, offset=None, length=None):
     return resp.json()
 
 
-def download_file(instance, sandbox_dir, path):
+def download_file(instance, sandbox_dir_fn, path):
     """Calls the Mesos agent files/download API for the given path"""
+    sandbox_dir = sandbox_dir_fn()
     logging.info(f'downloading file from sandbox {sandbox_dir} with path {path}')
     agent_url = instance_to_agent_url(instance)
     params = {'path': os.path.join(sandbox_dir, path)}

@@ -9,9 +9,9 @@ from cook.mesos import download_file
 from cook.querying import get_compute_cluster_config, parse_entity_refs, query_unique_and_run, parse_entity_ref
 from cook.util import guard_no_cluster
 
-def cat_using_download_file(instance, sandbox_dir, path):
+def cat_using_download_file(instance, sandbox_dir_fn, path):
     retrieve_fn = plugins.get_fn('download-job-instance-file', download_file)
-    download = retrieve_fn(instance, sandbox_dir, path)
+    download = retrieve_fn(instance, sandbox_dir_fn, path)
     try:
         for data in download(chunk_size=4096):
             if data:
@@ -40,7 +40,7 @@ def cat_for_instance(instance, sandbox_dir_fn, cluster, path):
         compute_cluster_config = get_compute_cluster_config(cluster, compute_cluster_name)
         kubectl_cat_instance_file_fn(instance["task_id"], compute_cluster_config, path)
     else:
-        cat_using_download_file(instance, sandbox_dir_fn(), path)
+        cat_using_download_file(instance, sandbox_dir_fn, path)
 
 
 def cat(clusters, args, _):
