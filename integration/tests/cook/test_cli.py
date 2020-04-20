@@ -74,6 +74,43 @@ class CookCliTest(util.CookTest):
         self.assertEqual(defaults['max-retries'], job['max_retries'])
         self.assertEqual(defaults['max-runtime'], job['max_runtime'])
 
+    def test_http_factory_plugins(self):
+        # Wrapper-injected plugins for request session and adapter implementations
+        with tempfile.NamedTemporaryFile(suffix='.py', delete=True) as temp:
+            plugin_code = f"""
+import requests
+import requests.adapters
+from {util.cli_main_module_name()} import main as super_main
+
+def custom_adapter(*args, **kwargs):
+    print('Created custom adapter')
+    return requests.adapters.HTTPAdapter(*args, **kwargs)
+
+def custom_session(*args, **kwargs):
+    print('Created custom session')
+    return requests.Session(*args, **kwargs)
+
+def main():
+    plugins = {{
+        'http-adapter-factory': custom_adapter,
+        'http-session-factory': custom_session,
+    }}
+    super_main(args=None, plugins=plugins)
+
+if __name__ == '__main__':
+    main()
+"""
+            temp.write(plugin_code.encode())
+            temp.flush()
+
+            with cli.temp_command_env(temp.name):
+                flags = '--verbose'
+                cp = cli.config_get('http.retries')
+                self.assertEqual(0, cp.returncode, cp.stderr)
+                output_text = cli.decode(cp.stdout)
+                self.assertIn('Created custom adapter', output_text)
+                self.assertIn('Created custom session', output_text)
+
     def test_submit_accepts_command_from_stdin(self):
         cp, uuids = cli.submit(cook_url=self.cook_url, stdin=cli.encode('ls'))
         self.assertEqual(0, cp.returncode, cp.stderr)
@@ -893,27 +930,26 @@ class CookCliTest(util.CookTest):
     def test_tail_with_plugin(self):
         # User defined plugin to print dummy content from a file
         with tempfile.NamedTemporaryFile(suffix='.py', delete=True) as temp:
-            plugin_code = """
+            plugin_code = f"""
+from {util.cli_main_module_name()} import main as super_main
+
 def dummy_tail_text(instance, sandbox_dir, path, offset=None, length=None):
     if offset is None:
-        return {'data': '', 'offset': 12}
+        return {{'data': '', 'offset': 12}}
     else:
-        return {'data': 'Hello\\nworld!', 'offset': 0}
+        return {{'data': 'Hello\\nworld!', 'offset': 0}}
+
+def main():
+    super_main(args=None, plugins={{'read-job-instance-file': dummy_tail_text}})
+
+if __name__ == '__main__':
+    main()
 """
             temp.write(plugin_code.encode())
             temp.flush()
-            config = {
-                "plugins": {
-                    "read-job-instance-file": {
-                        "module-name": "does_not_matter",
-                        "path": temp.name,
-                        "function-name": "dummy_tail_text"
-                    }
-                }
-            }
 
-            with cli.temp_config_file(config) as path:
-                flags = f'--config {path} --verbose'
+            with cli.temp_command_env(temp.name):
+                flags = '--verbose'
                 cp, uuids = cli.submit('touch file.txt', self.cook_url)
                 self.assertEqual(0, cp.returncode, cp.stderr)
                 instance_uuid = util.wait_for_instance(self.cook_url, uuids[0])['task_id']
@@ -1096,23 +1132,25 @@ def dummy_tail_text(instance, sandbox_dir, path, offset=None, length=None):
             path1 = str(util.make_temporal_uuid())
             path2 = str(util.make_temporal_uuid())
             plugin_code = f"""
+from {util.cli_main_module_name()} import main as super_main
+
 def dummy_ls_entries(_, __, ___):
     return [
         {{'path': '{path1}', 'nlink': 1, 'mode': '-rw-r--r--', 'size': 0}},
         {{'path': '{path2}', 'nlink': 2, 'mode': 'drwxr-xr-x', 'size': 1}}
-    ]"""
+    ]
+
+def main():
+    super_main(args=None, plugins={{'retrieve-job-instance-files': dummy_ls_entries}})
+
+if __name__ == '__main__':
+    main()
+"""
             temp.write(plugin_code.encode())
             temp.flush()
-            config = {
-                "plugins": {
-                    "retrieve-job-instance-files": {
-                        "module-name": "does_not_matter",
-                        "path": temp.name,
-                        "function-name": "dummy_ls_entries"
-                    }
-                }}
-            with cli.temp_config_file(config) as path:
-                flags = f'--config {path} --verbose'
+
+            with cli.temp_command_env(temp.name):
+                flags = '--verbose'
                 cp, entries = cli.ls(uuids[0], self.cook_url, flags=flags)
                 self.assertEqual(0, cp.returncode, cp.stderr)
                 self.assertEqual(2, len(entries))
@@ -1870,30 +1908,28 @@ def dummy_ls_entries(_, __, ___):
 
     @pytest.mark.xfail
     def test_cat_with_plugin(self):
-        # User defined plugin to print dummy file content from a file
         with tempfile.NamedTemporaryFile(suffix='.py', delete=True) as temp:
-            plugin_code = """
+            plugin_code = f"""
+from {util.cli_main_module_name()} import main as super_main
+
 def dummy_cat_text(_, __, ___):
     def gen(chunk_size):
         yield b"Hello"
         yield b" "
         yield b"world!"
     return gen
+
+def main():
+    super_main(args=None, plugins={{'download-job-instance-file': dummy_cat_text}})
+
+if __name__ == '__main__':
+    main()
 """
             temp.write(plugin_code.encode())
             temp.flush()
-            config = {
-                "plugins": {
-                    "download-job-instance-file": {
-                        "module-name": "does_not_matter",
-                        "path": temp.name,
-                        "function-name": "dummy_cat_text"
-                    }
-                }
-            }
 
-            with cli.temp_config_file(config) as path:
-                flags = f'--config {path} --verbose'
+            with cli.temp_command_env(temp.name):
+                flags = '--verbose'
                 cp, uuids = cli.submit('touch file.txt', self.cook_url)
                 self.assertEqual(0, cp.returncode, cp.stderr)
                 instance_uuid = util.wait_for_instance(self.cook_url, uuids[0])['task_id']
