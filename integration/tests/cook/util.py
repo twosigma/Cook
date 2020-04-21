@@ -174,30 +174,33 @@ class _KerberosUserAuth:
     """
 
     def __init__(self, username, expire_after_seconds=60):
-        self.auth_header = None
-        self.auth_time = datetime.fromtimestamp(0)
+        self.auth_cache = {}
         self.expiration_period = timedelta(seconds=expire_after_seconds)
         self.username = username
 
-    def refresh_auth_header(self):
+    def auth_for_url(self, url):
         """
-        Get a Kerberos authentication ticket for the given user.
-        Depends on COOK_KERBEROS_TEST_AUTH_CMD being set in the environment.
+        Return a valid auth header for the given url,
+        reusing cached header values when possible.
         """
-        subcommand = (_kerberos_auth_cmd
-                      .replace('{{COOK_USER}}', self.username)
-                      .replace('{{COOK_SCHEDULER_URL}}', retrieve_cook_url()))
-        self.auth_header = subprocess.check_output(subcommand, shell=True).rstrip()
-        self.auth_time = datetime.now()
+        parsed_url = urlparse(url)
+        target_host_url = f'{parsed_url.scheme}://{parsed_url.netloc}'
+        auth = self.auth_cache.get(target_host_url)
+        if auth is None or datetime.now() - auth['time'] > self.expiration_period:
+            subcommand = (_kerberos_auth_cmd
+                          .replace('{{COOK_USER}}', self.username)
+                          .replace('{{COOK_SCHEDULER_URL}}', target_host_url))
+            header = subprocess.check_output(subcommand, shell=True).rstrip()
+            auth = { 'header': header, 'time': datetime.now() }
+            self.auth_cache[target_host_url] = auth
+        return auth['header']
 
     def __call__(self, request):
         """
         Implements requests auth object interface,
         taking in, updating, and returning a single request object.
         """
-        if datetime.now() - self.auth_time > self.expiration_period:
-            self.refresh_auth_header()
-        request.headers['Authorization'] = self.auth_header
+        request.headers['Authorization'] = self.auth_for_url(request.url)
         return request
 
 
