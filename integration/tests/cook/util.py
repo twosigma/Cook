@@ -12,7 +12,7 @@ import threading
 import time
 import unittest
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from urllib.parse import urlencode, urlparse
 
 import numpy
@@ -82,9 +82,9 @@ def _test_user_ids():
     e.g., 10 per worker, then this function returns range(0, 10) for worker 0,
     or range(20, 30) for worker 2.
     """
-    pytest_worker = os.getenv('PYTEST_XDIST_WORKER')
+    pytest_worker = os.getenv('PYTEST_XDIST_WORKER', 'gw0')
     max_test_users = int(os.getenv('COOK_MAX_TEST_USERS', 0))
-    if pytest_worker and max_test_users:
+    if max_test_users:
         pytest_worker_id = int(pytest_worker[2:])  # e.g., "gw4" -> 4
         test_user_min_id = max_test_users * pytest_worker_id
         test_user_max_id = test_user_min_id + max_test_users
@@ -167,6 +167,40 @@ class _BasicAuthUser(_AuthenticatedUser):
         self.previous_auth = None
 
 
+class _KerberosUserAuth:
+    """
+    requests session auth implementation for _KerberosUser
+    https://2.python-requests.org/en/v2.8.1/user/advanced/#custom-authentication
+    """
+
+    def __init__(self, username, expire_after_seconds=60):
+        self.auth_header = None
+        self.auth_time = datetime.fromtimestamp(0)
+        self.expiration_period = timedelta(seconds=expire_after_seconds)
+        self.username = username
+
+    def refresh_auth_header(self):
+        """
+        Get a Kerberos authentication ticket for the given user.
+        Depends on COOK_KERBEROS_TEST_AUTH_CMD being set in the environment.
+        """
+        subcommand = (_kerberos_auth_cmd
+                      .replace('{{COOK_USER}}', self.username)
+                      .replace('{{COOK_SCHEDULER_URL}}', retrieve_cook_url()))
+        self.auth_header = subprocess.check_output(subcommand, shell=True).rstrip()
+        self.auth_time = datetime.now()
+
+    def __call__(self, request):
+        """
+        Implements requests auth object interface,
+        taking in, updating, and returning a single request object.
+        """
+        if datetime.now() - self.auth_time > self.expiration_period:
+            self.refresh_auth_header()
+        request.headers['Authorization'] = self.auth_header
+        return request
+
+
 class _KerberosUser(_AuthenticatedUser):
     """
     Object representing a Cook user with Kerberos credentials.
@@ -174,51 +208,23 @@ class _KerberosUser(_AuthenticatedUser):
 
     def __init__(self, name, impersonatee=None):
         super().__init__(name, impersonatee)
-        self.auth = None
-        self.previous_token = None
-        self.stop_event = None
-
-    def _generate_kerberos_ticket_for_user(self, username):
-        """
-        Get a Kerberos authentication ticket for the given user.
-        Depends on COOK_KERBEROS_TEST_AUTH_CMD being set in the environment.
-        """
-        subcommand = (_kerberos_auth_cmd
-                      .replace('{{COOK_USER}}', username)
-                      .replace('{{COOK_SCHEDULER_URL}}', retrieve_cook_url()))
-        return subprocess.check_output(subcommand, shell=True).rstrip()
-
-    def _reset_auth_header(self, stop):
-        global session
-        if not stop.is_set():
-            logger.info(f'Refreshing kerberos tickets for {self.name}')
-            session.headers['Authorization'] = self._generate_kerberos_ticket_for_user(self.name)
-            threading.Timer(60.0, lambda: self._reset_auth_header(stop)).start()
-        else:
-            logger.info(f'Stopping kerberos ticket refresh for {self.name}')
+        self.auth = _KerberosUserAuth(name)
+        self.previous_auth = None
 
     def __enter__(self):
         global session
         logger.info(f"Setting kerberos user {self.name}")
         super().__enter__()
-        assert self.previous_token is None
-        assert self.stop_event is None
-        self.previous_token = session.headers.get('Authorization')
-        self.stop_event = threading.Event()
-        self._reset_auth_header(self.stop_event)
+        assert self.previous_auth is None
+        self.previous_auth = session.auth
+        session.auth = self.auth
 
     def __exit__(self, ex_type, ex_val, ex_trace):
         global session
         super().__exit__(ex_type, ex_val, ex_trace)
-        if self.stop_event is not None:
-            self.stop_event.set()
-            self.stop_event = None
-        if self.previous_token is None:
-            del session.headers['Authorization']
-        else:
-            session.headers['Authorization'] = self.previous_token
-            self.previous_token = None
         logger.info(f"Resetting kerberos auth back from {self.name}")
+        session.auth = self.previous_auth
+        self.previous_auth = None
 
 
 class UserFactory(object):
