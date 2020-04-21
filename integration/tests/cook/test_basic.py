@@ -98,6 +98,7 @@ class CookTest(util.CookTest):
 
     @pytest.mark.travis_skip
     @unittest.skipIf(util.using_kubernetes(), 'We do not currently support output_url in k8s')
+    @pytest.mark.xfail # output url api is flaky, even on Mesos
     def test_output_url(self):
         job_executor_type = util.get_job_executor_type()
         job_uuid, resp = util.submit_job(self.cook_url,
