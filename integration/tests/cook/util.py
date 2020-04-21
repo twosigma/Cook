@@ -1210,6 +1210,9 @@ def user_current_usage(cook_url, headers=None, **kwargs):
 
 def query_queue(cook_url, allow_redirects=True, **kwargs):
     """Get current jobs via the queue endpoint (admin-only)"""
+    # We handle redirects manually here because /queue can redirect to a new hostname
+    # (when redirecting to master node), and requests strips and does not re-apply
+    # auth when redirects cross domains.
     response = session.get(f'{cook_url}/queue', allow_redirects=False, **kwargs)
     if allow_redirects and response.is_redirect:
         for _ in range(10):
