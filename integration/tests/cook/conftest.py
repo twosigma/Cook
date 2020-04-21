@@ -33,7 +33,7 @@ def _ssh_check(user):
     Check if the current user can ssh as a test user.
     This is necessary to obtain Kerberos auth headers for multi-user tests.
     """
-    hostname = socket.gethostname()
+    hostname = os.getenv('COOK_SWITCH_USER_SSH_HOST', socket.gethostname())
     logging.info(f'Checking ssh as {user} to {hostname}')
     ssh_ok = (0 == subprocess.call(f'ssh {user}@{hostname} echo SSH', shell=True))
     assert ssh_ok, f'Unable to ssh as {user} to {hostname}'
