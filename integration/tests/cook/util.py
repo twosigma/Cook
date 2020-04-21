@@ -1208,9 +1208,17 @@ def user_current_usage(cook_url, headers=None, **kwargs):
     return session.get('%s/usage' % cook_url, params=kwargs, headers=headers)
 
 
-def query_queue(cook_url, **kwargs):
+def query_queue(cook_url, allow_redirects=True, **kwargs):
     """Get current jobs via the queue endpoint (admin-only)"""
-    return session.get(f'{cook_url}/queue', **kwargs)
+    response = session.get(f'{cook_url}/queue', allow_redirects=False, **kwargs)
+    if allow_redirects and response.is_redirect:
+        for _ in range(10):
+            response = session.get(response.headers['Location'], allow_redirects=False, **kwargs)
+            if not response.is_redirect:
+                break
+        else:
+            assert not response.is_redirect, response.headers
+    return response
 
 
 def get_limit(cook_url, limit_type, user, pool=None, headers=None):
