@@ -105,9 +105,9 @@ def tail_follow(file_size, read_fn, follow_sleep_seconds):
 
         time.sleep(follow_sleep_seconds)
 
-def tail_using_read_file(instance, sandbox_dir, path, num_lines_to_print, follow, follow_sleep_seconds):
+def tail_using_read_file(instance, sandbox_dir_fn, path, num_lines_to_print, follow, follow_sleep_seconds):
     retrieve_fn = plugins.get_fn('read-job-instance-file', read_file)
-    read = partial(retrieve_fn, instance=instance, sandbox_dir=sandbox_dir, path=path)
+    read = partial(retrieve_fn, instance=instance, sandbox_dir_fn=sandbox_dir_fn, path=path)
     file_size = read()['offset']
     tail_backwards(file_size, read, num_lines_to_print)
     if follow:
@@ -134,12 +134,12 @@ def tail_for_instance(instance, sandbox_dir_fn, cluster, path, num_lines_to_prin
     compute_cluster = instance["compute-cluster"]
     compute_cluster_type = compute_cluster["type"]
     compute_cluster_name = compute_cluster["name"]
-    if compute_cluster_type == "kubernetes":
+    if compute_cluster_type == "kubernetes" and ("end_time" not in instance or instance["end_time"] is None):
         kubectl_tail_instance_file_fn = plugins.get_fn('kubectl-tail-instance-file', kubectl_tail_instance_file)
         compute_cluster_config = get_compute_cluster_config(cluster, compute_cluster_name)
         kubectl_tail_instance_file_fn(instance["task_id"], compute_cluster_config, path, num_lines_to_print, follow)
     else:
-        tail_using_read_file(instance, sandbox_dir_fn(), path, num_lines_to_print, follow, follow_sleep_seconds)
+        tail_using_read_file(instance, sandbox_dir_fn, path, num_lines_to_print, follow, follow_sleep_seconds)
 
 
 def tail(clusters, args, _):
