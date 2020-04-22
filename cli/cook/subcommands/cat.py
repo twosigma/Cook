@@ -27,7 +27,7 @@ def kubectl_cat_instance_file(instance_uuid, _, path):
               '-it', instance_uuid,
               '--', 'cat', path)
 
-def cat_for_instance(instance, sandbox_dir_fn, cluster, path):
+def cat_for_instance(job, instance, sandbox_dir_fn, cluster, path):
     """
     Outputs the contents of the Mesos sandbox path for the given instance.
     When using Kubernetes, calls the exec command of the kubectl cli.
@@ -38,7 +38,7 @@ def cat_for_instance(instance, sandbox_dir_fn, cluster, path):
     if compute_cluster_type == "kubernetes" and ("end_time" not in instance or instance["end_time"] is None):
         kubectl_cat_instance_file_fn = plugins.get_fn('kubectl-cat-for-instance', kubectl_cat_instance_file)
         compute_cluster_config = get_compute_cluster_config(cluster, compute_cluster_name)
-        kubectl_cat_instance_file_fn(instance["task_id"], compute_cluster_config, path)
+        kubectl_cat_instance_file_fn(job["user"], instance["task_id"], compute_cluster_config, path)
     else:
         cat_using_download_file(instance, sandbox_dir_fn, path)
 
