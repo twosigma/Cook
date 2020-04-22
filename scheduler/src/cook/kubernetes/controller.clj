@@ -426,38 +426,40 @@
                                         :cook-expected-state/killed
                                         (case pod-synthesized-state-modified
                                           :missing
-                                          ; There's a race where we can launch then kill, when the kill arrives after
-                                          ; the launch, but before the watch updates k8s-actual-state.
-                                          ; (k8s-actual-state isn't the actual state, because of this watch lag)
-                                          ; When that happens, we will have an actual state of :missing.
-                                          ; If we did nothing, we'd log this as a weird state, then when the watch
-                                          ; shows up, we'd see (:missing, :starting) and log that as a weird state too.
-                                          ;
-                                          ; So, a better approach. If we detect a (:killed, :missing), then we opportunistically
-                                          ; try to kill the pod. This is why update-cook-expected-state saves :launch-pod,
-                                          ; so its available here.
-                                          (if-let [pod (some-> cook-expected-state-dict :launch-pod :pod)]
-                                            (do
-                                              (log/info "In compute cluster" name ", opportunistically killing" pod-name
-                                                        "because of potential race where kill arrives before the watch responds to the launch")
-                                              (kill-pod api-client name :ignored pod)
-                                              ; This is needed to make sure if we take the opportunistic kill, we make
-                                              ; sure to write the status to datomic. Recall we're in kubernetes state missing.
-                                              (handle-pod-killed compute-cluster pod-name))
-                                            (do
-                                              ; We treat a deleting pod in kubernetes the same as a missing pod when coming up with a synthesized state.
-                                              ; That's good for (almost) all parts of the system. However,
-                                              ; If it is legitimately missing, then something weird is going on. If it is
-                                              ; deleting, that's an expected state. So, let's be selective with our logging.
-                                              (if (= (:state synthesized-state) :missing)
-                                                (log/info "In compute cluster" name ", pod" pod-name
-                                                          "was killed with cook expected state"
-                                                          (prepare-cook-expected-state-dict-for-logging cook-expected-state-dict)
-                                                          "and k8s actual state"
-                                                          (prepare-k8s-actual-state-dict-for-logging k8s-actual-state-dict))
-                                                (log-weird-state compute-cluster pod-name
-                                                                 cook-expected-state-dict k8s-actual-state-dict))
-                                              (handle-pod-killed compute-cluster pod-name)))
+                                          (if (:pod-deleted? synthesized-state)
+                                            (handle-pod-completed compute-cluster pod-name k8s-actual-state-dict :reason :reason-killed-by-user)
+                                            ; There's a race where we can launch then kill, when the kill arrives after
+                                            ; the launch, but before the watch updates k8s-actual-state.
+                                            ; (k8s-actual-state isn't the actual state, because of this watch lag)
+                                            ; When that happens, we will have an actual state of :missing.
+                                            ; If we did nothing, we'd log this as a weird state, then when the watch
+                                            ; shows up, we'd see (:missing, :starting) and log that as a weird state too.
+                                            ;
+                                            ; So, a better approach. If we detect a (:killed, :missing), then we opportunistically
+                                            ; try to kill the pod. This is why update-cook-expected-state saves :launch-pod,
+                                            ; so its available here.
+                                            (if-let [pod (some-> cook-expected-state-dict :launch-pod :pod)]
+                                              (do
+                                                (log/info "In compute cluster" name ", opportunistically killing" pod-name
+                                                          "because of potential race where kill arrives before the watch responds to the launch")
+                                                (kill-pod api-client name :ignored pod)
+                                                ; This is needed to make sure if we take the opportunistic kill, we make
+                                                ; sure to write the status to datomic. Recall we're in kubernetes state missing.
+                                                (handle-pod-killed compute-cluster pod-name))
+                                              (do
+                                                ; We treat a deleting pod in kubernetes the same as a missing pod when coming up with a synthesized state.
+                                                ; That's good for (almost) all parts of the system. However,
+                                                ; If it is legitimately missing, then something weird is going on. If it is
+                                                ; deleting, that's an expected state. So, let's be selective with our logging.
+                                                (if (= (:state synthesized-state) :missing)
+                                                  (log/info "In compute cluster" name ", pod" pod-name
+                                                            "was killed with cook expected state"
+                                                            (prepare-cook-expected-state-dict-for-logging cook-expected-state-dict)
+                                                            "and k8s actual state"
+                                                            (prepare-k8s-actual-state-dict-for-logging k8s-actual-state-dict))
+                                                  (log-weird-state compute-cluster pod-name
+                                                                   cook-expected-state-dict k8s-actual-state-dict))
+                                                (handle-pod-killed compute-cluster pod-name))))
                                           :pod/failed (handle-pod-completed compute-cluster pod-name k8s-actual-state-dict)
                                           :pod/running (kill-pod api-client name cook-expected-state-dict pod)
                                           ; There was a race and it completed normally before being it was killed.
