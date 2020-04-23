@@ -48,7 +48,7 @@ def register(add_parser, add_defaults):
     """Adds this sub-command's parser and returns the action function"""
     default_timeout = None
     default_timeout_text = 'wait indefinitely'
-    default_interval = 5
+    default_interval = 15
     wait_parser = add_parser('wait', help='wait for jobs / instances / groups to complete by uuid')
     wait_parser.add_argument('uuid', nargs='*')
     wait_parser.add_argument('--timeout', '-t',
