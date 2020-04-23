@@ -7,7 +7,8 @@
             [datomic.api :as d])
   (:import (io.kubernetes.client.models V1Container V1ContainerState V1ContainerStateWaiting V1ContainerStatus
                                         V1EnvVar V1ListMeta V1Node V1NodeSpec V1ObjectMeta V1Pod V1PodCondition
-                                        V1PodList V1PodSpec V1PodStatus V1Taint V1Volume V1VolumeMount)))
+                                        V1PodList V1PodSpec V1PodStatus V1ResourceRequirements V1Taint V1Volume
+                                        V1VolumeMount)))
 
 (deftest test-get-consumption
   (testing "correctly computes consumption for a single pod"
@@ -159,7 +160,29 @@
           ^V1PodSpec pod-spec (.getSpec pod)
           node-selector (.getNodeSelector pod-spec)]
       (is (contains? node-selector api/k8s-hostname-label))
-      (is (= hostname (get node-selector api/k8s-hostname-label))))))
+      (is (= hostname (get node-selector api/k8s-hostname-label)))))
+
+  (testing "cpu limit configurability"
+    (let [task-metadata {:container {:docker {:parameters [{:key "user"
+                                                            :value "100:10"}]}}
+                         :task-request {:scalar-requests {"mem" 512
+                                                          "cpus" 1.0}}}
+          pod->cpu-limit-fn (fn [^V1Pod pod]
+                              (let [^V1Container container (-> pod .getSpec .getContainers first)
+                                    ^V1ResourceRequirements resources (-> container .getResources)]
+                                (-> resources .getLimits (get "cpu"))))]
+
+      (with-redefs [config/kubernetes (constantly {:set-container-cpu-limit? true})]
+        (let [^V1Pod pod (api/task-metadata->pod nil nil [] task-metadata)]
+          (is (= 1.0 (-> pod pod->cpu-limit-fn .getNumber .doubleValue)))))
+
+      (with-redefs [config/kubernetes (constantly {:set-container-cpu-limit? false})]
+        (let [^V1Pod pod (api/task-metadata->pod nil nil [] task-metadata)]
+          (is (nil? (pod->cpu-limit-fn pod)))))
+
+      (with-redefs [config/kubernetes (constantly {})]
+        (let [^V1Pod pod (api/task-metadata->pod nil nil [] task-metadata)]
+          (is (nil? (pod->cpu-limit-fn pod))))))))
 
 (defn- k8s-volume->clj [^V1Volume volume]
   {:name (.getName volume)
