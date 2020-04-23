@@ -75,8 +75,9 @@ def browse_files(instance, sandbox_dir, path):
     return resp.json()
 
 
-def retrieve_entries_from_mesos(instance, sandbox_dir, path):
+def retrieve_entries_from_mesos(instance, sandbox_dir_fn, path):
     """Retrieves the contents of the Mesos sandbox path for the given instance"""
+    sandbox_dir = sandbox_dir_fn()
     entries = browse_files(instance, sandbox_dir, path)
     if len(entries) == 0 and path:
         # Mesos will return 200 with an empty list in two cases:
@@ -90,9 +91,9 @@ def retrieve_entries_from_mesos(instance, sandbox_dir, path):
 
     return entries
 
-def ls_for_instance_from_mesos(instance, sandbox_dir, path, long_format, as_json):
+def ls_for_instance_from_mesos(instance, sandbox_dir_fn, path, long_format, as_json):
     retrieve_fn = plugins.get_fn('retrieve-job-instance-files', retrieve_entries_from_mesos)
-    entries = retrieve_fn(instance, sandbox_dir, path)
+    entries = retrieve_fn(instance, sandbox_dir_fn, path)
     if as_json:
         print(json.dumps(entries))
     else:
@@ -147,7 +148,7 @@ def kubectl_ls_for_instance(instance_uuid, _, path, long_format, as_json):
             args.append(path)
         os.execlp(*args)
 
-def ls_for_instance(instance, sandbox_dir_fn, cluster, path, long_format, as_json):
+def ls_for_instance(job, instance, sandbox_dir_fn, cluster, path, long_format, as_json):
     """
     Lists contents of the Mesos sandbox path for the given instance.
     When using Kubernetes, calls the exec command of the kubectl cli.
@@ -155,12 +156,12 @@ def ls_for_instance(instance, sandbox_dir_fn, cluster, path, long_format, as_jso
     compute_cluster = instance["compute-cluster"]
     compute_cluster_type = compute_cluster["type"]
     compute_cluster_name = compute_cluster["name"]
-    if compute_cluster_type == "kubernetes":
+    if compute_cluster_type == "kubernetes" and ("end_time" not in instance or instance["end_time"] is None):
         kubectl_ls_for_instance_fn = plugins.get_fn('kubectl-ls-for-instance', kubectl_ls_for_instance)
         compute_cluster_config = get_compute_cluster_config(cluster, compute_cluster_name)
-        kubectl_ls_for_instance_fn(instance["task_id"], compute_cluster_config, path, long_format, as_json)
+        kubectl_ls_for_instance_fn(job["user"], instance["task_id"], compute_cluster_config, path, long_format, as_json)
     else:
-        ls_for_instance_from_mesos(instance, sandbox_dir_fn(), path, long_format, as_json)
+        ls_for_instance_from_mesos(instance, sandbox_dir_fn, path, long_format, as_json)
 
 
 def ls(clusters, args, _):

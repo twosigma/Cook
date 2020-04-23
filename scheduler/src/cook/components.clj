@@ -255,9 +255,9 @@
                                   (cond-> {:ring-handler (routes
                                                            (route/resources "/resource")
                                                            (-> view
-                                                               tell-jetty-about-usename
                                                                (wrap-rate-limit {:storage rate-limit-storage
                                                                                  :limit user-limit})
+                                                               tell-jetty-about-usename
                                                                impersonation-middleware
                                                                (conditional-auth-bypass authorization-middleware)
                                                                wrap-exception-logging
