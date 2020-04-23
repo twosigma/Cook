@@ -310,7 +310,8 @@
     (try
       (assert (cc/autoscaling? this pool-name)
               (str "In " name " compute cluster, request to autoscale despite invalid / missing config"))
-      (let [outstanding-synthetic-pods (->> @all-pods-atom
+      (let [timer-context-autoscale (timers/start (metrics/timer "cc-synthetic-pod-autoscale" name))
+            outstanding-synthetic-pods (->> @all-pods-atom
                                             (add-starting-pods this)
                                             (filter synthetic-pod->job-uuid))
             num-synthetic-pods (count outstanding-synthetic-pods)
@@ -364,13 +365,17 @@
                                                                  {"cpus" (:cpu-request sidecar-resource-requirements)
                                                                   "mem" (:memory-request sidecar-resource-requirements)}))
                                             :job {:job/pool {:pool/name synthetic-task-pool-name}}}}))
-                     (take (- max-pods-outstanding num-synthetic-pods)))]
-            (meters/mark! (metrics/meter "synthetic-pod-submit-rate" name) (count task-metadata-seq))
-            (log/info "In" name "compute cluster, launching" (count task-metadata-seq)
+                     (take (- max-pods-outstanding num-synthetic-pods)))
+                num-synthetic-pods-to-launch (count task-metadata-seq)]
+            (meters/mark! (metrics/meter "cc-synthetic-pod-submit-rate" name) num-synthetic-pods-to-launch)
+            (log/info "In" name "compute cluster, launching" num-synthetic-pods-to-launch
                       "synthetic pod(s) in" synthetic-task-pool-name "pool")
-            (cc/launch-tasks this
-                             nil ; offers (not used by KubernetesComputeCluster)
-                             task-metadata-seq))))
+            (let [timer-context-launch-tasks (timers/start (metrics/timer "cc-synthetic-pod-launch-tasks" name))]
+              (cc/launch-tasks this
+                               nil ; offers (not used by KubernetesComputeCluster)
+                               task-metadata-seq)
+              (.stop timer-context-launch-tasks))))
+        (.stop timer-context-autoscale))
       (catch Throwable e
         (log/error e "In" name "compute cluster, encountered error launching synthetic pod(s) in"
                    pool-name "pool"))))
