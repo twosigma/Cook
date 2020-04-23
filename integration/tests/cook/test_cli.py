@@ -2170,7 +2170,7 @@ if __name__ == '__main__':
                 self.assertEqual(pool_name, jobs[0]['pool'])
             else:
                 self.assertEqual(1, cp.returncode, cp.stderr)
-                self.assertIn(f'{pool_name} is not accepting job submissions', cli.stdout(cp))
+                self.assertIn(f'{pool_name} is not accepting job submissions', cli.stderr(cp))
         # Try submitting to a pool that doesn't exist
         cp, uuids = cli.submit('ls', self.cook_url, submit_flags=f'--pool {util.make_temporal_uuid()}')
         self.assertEqual(1, cp.returncode, cp.stderr)
