@@ -1855,8 +1855,19 @@ class CookTest(util.CookTest):
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
         self.assertIn('success', [i['status'] for i in job['instances']])
 
-    @unittest.skipUnless(util.docker_tests_enabled(), "Requires a test docker image")
+    @unittest.skipUnless(util.docker_tests_enabled(), "Requires we're in an environment that requires docker images.")
+    @unittest.skipUnless(util.default_submit_pool() is not None, "Test requires a default test pool")
     def test_default_container_for_pool(self):
+        default_pool = util.default_submit_pool()
+        settings_dict = util.settings(self.cook_url)
+        list_of_pool_match_rules = settings_dict.get("pools", {}).get("default-container-for-pool", [])
+        if len(list_of_pool_match_rules) == 0:
+            self.skipTest("No pool match rules defined")
+        matching_containers = [ii["container"] for ii in list_of_pool_match_rules if
+                               re.match(ii["pool-regex"], default_pool)]
+        if len(matching_containers) == 0:
+            self.skipTest("No rule matches the default submit pool")
+        expected_container = matching_containers[0]
         # Special logic in util.submit_jobs.full_spec maps container=None and removes it from the submitted job spec.
         job_uuid, resp = util.submit_job(
             self.cook_url,
@@ -1865,6 +1876,7 @@ class CookTest(util.CookTest):
             max_retries=5)
         self.assertEqual(resp.status_code, 201)
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
+        self.assertEquals(job["container"]["docker"]["image"], expected_container["docker"]["image"])
         self.assertIn('success', [i['status'] for i in job['instances']])
 
     @unittest.skipUnless(util.has_docker_service() and not util.using_kubernetes(),
@@ -3120,8 +3132,6 @@ class CookTest(util.CookTest):
         self.assertEqual('failed', job['instances'][0]['status'], job)
         self.assertEqual('Invalid task', job['instances'][0]['reason_string'], job)
 
-    @unittest.skipUnless(util.docker_image_for_default_pool() and not util.docker_image(),
-                         'We need a docker image to run this test, but dont have a pool from which to learn it.')
     def test_submit_pool_unspecified(self):
         job_uuid, resp = util.submit_job(self.cook_url, pool=util.POOL_UNSPECIFIED)
         self.assertEqual(resp.status_code, 201, resp.content)

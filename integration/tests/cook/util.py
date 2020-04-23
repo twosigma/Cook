@@ -444,32 +444,9 @@ def scheduler_info(cook_url):
     assert resp.status_code == 200, response_info
     return resp.json()
 
-@functools.lru_cache()
-def docker_image_for_default_pool():
-    """What is the docker image for the default pool."""
-    cook_url = retrieve_cook_url()
-    settings_dict = settings(cook_url)
-    default_pool_name = default_submit_pool() or default_pool(cook_url)
-    if 'default-container-for-pool' not in settings_dict:
-        return None
-    if default_pool_name not in settings_dict['default-container-for-pool']:
-        return None
-    default_container = settings_dict['default-container-for-pool'][default_pool_name]
-    if default_container["type"] == "docker":
-        return default_container["docker"]["image"]
-    return None
 
-
-def docker_image_explicit():
-    """Was a docker image set explicitly via an environmental variable? Used to gate tests that depend on default image."""
-    return os.getenv('COOK_TEST_DOCKER_IMAGE')
-
-@functools.lru_cache()
 def docker_image():
-    env_image = docker_image_explicit()
-    if env_image is not None:
-        return env_image
-    return docker_image_for_default_pool()
+    return os.getenv('COOK_TEST_DOCKER_IMAGE')
 
 
 def missing_docker_image():
@@ -510,6 +487,7 @@ def get_caller():
             return startFrame.f_code.co_name
         startFrame = startFrame.f_back
     return ""
+
 
 def add_container_to_job_if_needed(job):
     """Add a container to a job if it needs a docker container"""
@@ -603,13 +581,16 @@ def submit_jobs(cook_url, job_specs, clones=1, pool=None, headers=None, log_requ
     caller = get_caller()
 
     def full_spec(spec):
-        if 'container' in spec and spec['container'] is None:
-            del spec['container']
         if 'name' not in spec:
             spec['name'] = DEFAULT_JOB_NAME_PREFIX + caller
         if 'uuid' not in spec:
-            return minimal_job(**spec)
+            spec = minimal_job(**spec)
+            if 'container' in spec and spec['container'] is None:
+                del spec['container']
+            return spec
         else:
+            if 'container' in spec and spec['container'] is None:
+                del spec['container']
             if 'name' in spec and spec['name'] is None:
                 del spec['name']
             return dict(**spec)
@@ -1590,6 +1571,7 @@ def is_preemption_enabled():
     """Returns true if task preemption is enabled on the cluster"""
     max_preemption = rebalancer_settings().get('max-preemption')
     return max_preemption is not None
+
 
 @functools.lru_cache()
 def rebalancer_settings():

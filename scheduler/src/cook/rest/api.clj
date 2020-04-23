@@ -679,7 +679,15 @@
        :dataset.partition/end (coerce-date (partition "end"))}
       :default (throw (IllegalArgumentException. (str "Unsupported partition type " partition-type))))))
 
-(s/defn make-job-txn
+(defn match-default-container-for-pool
+  "Given a pool name, determine a default container that should be run on it."
+  [default-container-for-pool effective-pool-name]
+  (->> default-container-for-pool
+       (filter (fn [{:keys [pool-regex]}] (re-find (re-pattern pool-regex) effective-pool-name)))
+       first
+       :container))
+
+  (s/defn make-job-txn
   "Creates the necessary txn data to insert a job into the database"
   [pool commit-latch-id db job :- Job]
   (let [{:keys [uuid command max-retries max-runtime expected-runtime priority cpus mem gpus
@@ -730,12 +738,13 @@
                                                                 (str/lower-case operator))
                                   :constraint/pattern pattern}]))
                             constraints)
-        guessed-pool (or (:pool/name pool) (config/default-pool))
-        default-container-for-pool (get-in config/config [:settings :default-container-for-pool guessed-pool])
+        pool-name (or (:pool/name pool) (config/default-pool))
+        default-container-for-pool (get-in config/config [:settings :pools :default-container-for-pool])
         container (if (nil? container)
-                    (if (and guessed-pool default-container-for-pool)
-                      (build-container user db-id default-container-for-pool)
-                      [])
+                    (let [guessed-container (match-default-container-for-pool default-container-for-pool pool-name)]
+                      (if (and pool-name guessed-container)
+                        (build-container user db-id guessed-container)
+                        []))
                     (build-container user db-id container))
         executor (str->executor-enum executor)
         ;; These are optionally set datoms w/ default values

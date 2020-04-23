@@ -402,18 +402,16 @@
                        (when (zero? port)
                          (throw (ex-info "You enabled nrepl but didn't configure a port. Please configure a port in your config file." {})))
                        ((util/lazy-load-var 'clojure.tools.nrepl.server/start-server) :port port)))
-
      :pools (fnk [[:config {pools nil}]]
               (cond-> pools
                 (:job-resource-adjustment pools)
                 (update :job-resource-adjustment
                         #(-> %
-                           (update :pool-regex re-pattern)))))
-
+                             (update :pool-regex re-pattern)))
+                (not (:default-container-for-pool pools))
+                (assoc :default-container-for-pool [])))
      :api-only? (fnk [[:config {api-only? false}]]
                   api-only?)
-     :default-container-for-pool (fnk [[:config {default-container-for-pool {}}]]
-                                   default-container-for-pool)
      :estimated-completion-constraint (fnk [[:config {estimated-completion-constraint nil}]]
                                         (merge {:agent-start-grace-period-mins 10}
                                                estimated-completion-constraint))
