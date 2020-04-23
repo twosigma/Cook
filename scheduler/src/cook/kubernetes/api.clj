@@ -624,8 +624,11 @@
 
     (.putRequestsItem resources "memory" (double->quantity (* memory-multiplier mem)))
     (.putLimitsItem resources "memory" (double->quantity (* memory-multiplier mem)))
-    ; We only set a request for cpu, and not a limit, in order to make this burstable
     (.putRequestsItem resources "cpu" (double->quantity cpus))
+    (when (:set-container-cpu-limit? (config/kubernetes))
+      ; Some environments may need pods to run in the "Guaranteed"
+      ; QoS, which requires limits for both memory and cpu
+      (.putLimitsItem resources "cpu" (double->quantity cpus)))
     (.setResources container resources)
     (.setVolumeMounts container (filterv some? (conj (concat volume-mounts checkpoint-volume-mounts)
                                                      (init-container-workdir-volume-mount-fn true)
