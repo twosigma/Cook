@@ -515,7 +515,7 @@
                                     result))
                                 {}
                                 (:job/resource job))
-        pool-specific-resources ((adjust-job-resources-for-pool-fn pool-name) resources)]
+        pool-specific-resources ((adjust-job-resources-for-pool-fn pool-name) job resources)]
     (->TaskRequestAdapter job pool-specific-resources task-id assigned-resources guuid->considerable-cotask-ids constraints needs-gpus? scalar-requests)))
 
 (defn match-offer-to-schedule

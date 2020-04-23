@@ -182,7 +182,8 @@
   ; preemption - checkpoint is created on preemption before the VM is stopped
   {:mode (s/enum "auto" "periodic" "preemption")
    (s/optional-key :options) CheckpointOptions
-   (s/optional-key :periodic-options) PeriodicCheckpointOptions})
+   (s/optional-key :periodic-options) PeriodicCheckpointOptions
+   (s/optional-key :memory-overhead) s/Num})
 
 (def Uri
   "Schema for a Mesos fetch URI, which has many options"
@@ -637,7 +638,7 @@
 
 (defn- build-checkpoint
   "Helper for submit-jobs, deal with checkpoint config."
-  [{:keys [mode options periodic-options]}]
+  [{:keys [mode options periodic-options memory-overhead]}]
   (cond-> {:checkpoint/mode mode}
     options
     (assoc :checkpoint/options
@@ -646,7 +647,9 @@
     periodic-options
     (assoc :checkpoint/periodic-options
            (let [{:keys [period-sec]} periodic-options]
-             {:checkpoint-periodic-options/period-sec period-sec}))))
+             {:checkpoint-periodic-options/period-sec period-sec}))
+    memory-overhead
+    (assoc :checkpoint/memory-overhead memory-overhead)))
 
 (defn- str->executor-enum
   "Converts an executor string to the corresponding executor option enum.

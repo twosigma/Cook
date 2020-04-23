@@ -503,13 +503,20 @@
   (double (+ (bigdec a) (bigdec b))))
 
 (defn adjust-job-resources
-  "Given the required resources for a job, add to them the resources for any sidecars that will be launched with the job."
-  [{:keys [cpus mem] :as resources}]
-  (if-let [{:keys [cpu-request memory-request]} (-> (config/kubernetes) :sidecar :resource-requirements)]
-    (assoc resources
-      :cpus (add-as-decimals cpus cpu-request)
-      :mem (add-as-decimals mem memory-request))
-    resources))
+  "Adjust required resources for a job, adding any additional resources. Additional resources might be needed for
+   sidecars or extra processes that will be launched with the job."
+  [job {:keys [cpus mem] :as resources}]
+  (let [adjusted-resources
+        (if-let [{:keys [cpu-request memory-request]} (-> (config/kubernetes) :sidecar :resource-requirements)]
+          (assoc resources
+            :cpus (add-as-decimals cpus cpu-request)
+            :mem (add-as-decimals mem memory-request))
+          resources)
+        adjusted-resources
+        (if-let [{:keys [memory-overhead]} (util/job-ent->checkpoint job)]
+          (update adjusted-resources :mem #(add-as-decimals % memory-overhead))
+          adjusted-resources)]
+    adjusted-resources))
 
 (defn- add-node-selector
   "Adds a node selector with the given key and val to the given pod spec"

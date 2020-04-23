@@ -224,7 +224,7 @@
 (defn job-ent->checkpoint
   "Take a job entity and return the configuration to enable checkpointing"
   [{:keys [job/checkpoint]}]
-  (let [{:keys [checkpoint/mode checkpoint/options checkpoint/periodic-options]} checkpoint]
+  (let [{:keys [checkpoint/mode checkpoint/options checkpoint/periodic-options checkpoint/memory-overhead]} checkpoint]
     (cond-> {:mode mode}
       options
       (assoc :options
@@ -233,7 +233,9 @@
       periodic-options
       (assoc :periodic-options
              (let [{:keys [checkpoint-periodic-options/period-sec]} periodic-options]
-               {:period-sec period-sec})))))
+               {:period-sec period-sec}))
+      memory-overhead
+      (assoc :memory-overhead memory-overhead))))
 
 (defn job-ent->label
   "Take a job entity and return the label map"
