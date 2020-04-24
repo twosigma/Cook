@@ -571,7 +571,8 @@
         sandbox-dir (:default-workdir (config/kubernetes))
         workdir (get-workdir parameters sandbox-dir)
         {:keys [volumes volume-mounts sandbox-volume-mount-fn]} (make-volumes volumes sandbox-dir)
-        {:keys [custom-shell init-container sidecar default-checkpoint-config]} (config/kubernetes)
+        {:keys [custom-shell default-checkpoint-config init-container set-container-cpu-limit? sidecar]}
+        (config/kubernetes)
         checkpoint (when checkpoint (merge default-checkpoint-config (util/job-ent->checkpoint job)))
         use-cook-init? (and init-container pod-supports-cook-init?)
         use-cook-sidecar? (and sidecar pod-supports-cook-sidecar?)
@@ -625,9 +626,10 @@
     (.putRequestsItem resources "memory" (double->quantity (* memory-multiplier mem)))
     (.putLimitsItem resources "memory" (double->quantity (* memory-multiplier mem)))
     (.putRequestsItem resources "cpu" (double->quantity cpus))
-    ; We would like to make this burstable, but for various reasons currently need pods to run in the
-    ; "Guaranteed" QoS which requires limits for both memory and cpu.
-    (.putLimitsItem resources "cpu" (double->quantity cpus))
+    (when set-container-cpu-limit?
+      ; Some environments may need pods to run in the "Guaranteed"
+      ; QoS, which requires limits for both memory and cpu
+      (.putLimitsItem resources "cpu" (double->quantity cpus)))
     (.setResources container resources)
     (.setVolumeMounts container (filterv some? (conj (concat volume-mounts checkpoint-volume-mounts)
                                                      (init-container-workdir-volume-mount-fn true)
