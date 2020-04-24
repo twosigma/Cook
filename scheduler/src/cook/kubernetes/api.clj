@@ -505,18 +505,19 @@
 (defn adjust-job-resources
   "Adjust required resources for a job, adding any additional resources. Additional resources might be needed for
    sidecars or extra processes that will be launched with the job."
-  [job {:keys [cpus mem] :as resources}]
-  (let [adjusted-resources
-        (if-let [{:keys [cpu-request memory-request]} (-> (config/kubernetes) :sidecar :resource-requirements)]
-          (assoc resources
-            :cpus (add-as-decimals cpus cpu-request)
-            :mem (add-as-decimals mem memory-request))
-          resources)
-        adjusted-resources
-        (if-let [{:keys [memory-overhead]} (util/job-ent->checkpoint job)]
-          (update adjusted-resources :mem #(add-as-decimals % memory-overhead))
-          adjusted-resources)]
-    adjusted-resources))
+  [{:keys [job/checkpoint] :as job} {:keys [cpus mem] :as resources}]
+  (let [{:keys [cpu-request memory-request] :as resource-requirements}
+        (-> (config/kubernetes) :sidecar :resource-requirements)
+        checkpoint-memory-overhead
+        (when checkpoint
+          (-> (config/kubernetes) :default-checkpoint-config (merge (util/job-ent->checkpoint job)) :memory-overhead))]
+    (cond-> resources
+      resource-requirements
+      (assoc
+        :cpus (add-as-decimals cpus cpu-request)
+        :mem (add-as-decimals mem memory-request))
+      checkpoint-memory-overhead
+      (update :mem #(add-as-decimals % checkpoint-memory-overhead)))))
 
 (defn- add-node-selector
   "Adds a node selector with the given key and val to the given pod spec"
@@ -581,6 +582,7 @@
         {:keys [custom-shell default-checkpoint-config init-container set-container-cpu-limit? sidecar]}
         (config/kubernetes)
         checkpoint (when checkpoint (merge default-checkpoint-config (util/job-ent->checkpoint job)))
+        checkpoint-memory-overhead (:memory-overhead checkpoint)
         use-cook-init? (and init-container pod-supports-cook-init?)
         use-cook-sidecar? (and sidecar pod-supports-cook-sidecar?)
         init-container-workdir "/mnt/init-container"
@@ -612,7 +614,8 @@
                    ;; preserving compatibility with Meosos + Cook Executor.
                    (not progress-file-path)
                    (assoc progress-file-var (str task-id ".progress")))
-        main-env-vars (make-filtered-env-vars main-env)]
+        main-env-vars (make-filtered-env-vars main-env)
+        computed-mem (if checkpoint-memory-overhead (add-as-decimals mem checkpoint-memory-overhead) mem)]
 
     ; metadata
     (.setName metadata (str task-id))
@@ -631,8 +634,8 @@
     (.setTty container true)
     (.setStdin container true)
 
-    (.putRequestsItem resources "memory" (double->quantity (* memory-multiplier mem)))
-    (.putLimitsItem resources "memory" (double->quantity (* memory-multiplier mem)))
+    (.putRequestsItem resources "memory" (double->quantity (* memory-multiplier computed-mem)))
+    (.putLimitsItem resources "memory" (double->quantity (* memory-multiplier computed-mem)))
     (.putRequestsItem resources "cpu" (double->quantity cpus))
     (when set-container-cpu-limit?
       ; Some environments may need pods to run in the "Guaranteed"
