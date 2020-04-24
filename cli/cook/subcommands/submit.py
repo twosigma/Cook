@@ -9,7 +9,7 @@ import uuid
 import requests
 
 from cook import terminal, http, metrics, version
-from cook.util import deep_merge, is_valid_uuid, read_lines, print_info, current_user, guard_no_cluster, check_positive
+from cook.util import deep_merge, is_valid_uuid, read_lines, print_info, print_error, current_user, guard_no_cluster, check_positive
 
 
 def make_temporal_uuid():
@@ -84,7 +84,7 @@ def print_submit_result(cluster, response):
                 reason = json.dumps(data)
         except json.decoder.JSONDecodeError:
             reason = '%s\n' % response.text
-        print_info(submit_failed_message(cluster_name, reason))
+        print_error(submit_failed_message(cluster_name, reason))
 
 
 def submit_federated(clusters, jobs, group, pool):
@@ -92,6 +92,7 @@ def submit_federated(clusters, jobs, group, pool):
     Attempts to submit the provided jobs to each cluster in clusters, until a cluster
     returns a "created" status code. If no cluster returns "created" status, throws.
     """
+    messages = ""
     for cluster in clusters:
         cluster_name = cluster['name']
         cluster_url = cluster['url']
@@ -118,7 +119,8 @@ def submit_federated(clusters, jobs, group, pool):
             logging.exception(ioe)
             reason = f'Cannot connect to {cluster_name} ({cluster_url})'
             message = submit_failed_message(cluster_name, reason)
-            print_info(f'{message}\n')
+            messages.append(message)
+    print_error(messages)
     raise Exception(terminal.failed('Job submission failed on all of your configured clusters.'))
 
 
