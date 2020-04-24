@@ -9,22 +9,23 @@
             [cook.util :as util]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
-            [metrics.counters :as counters]
             [metrics.timers :as timers])
   (:import (clojure.lang IAtom)
            (io.kubernetes.client.models V1Pod V1ContainerStatus V1PodStatus)
            (java.net URLEncoder)))
 
-;
-;   Wire up a store with the results.
-;
+(let [{:keys [controller-lock-num-shards]} (config/kubernetes)
+      lock-objects (repeatedly controller-lock-num-shards #(Object.))]
 
-(def lock-object (Object.))
-(defn calculate-lock
-  "Given a pod-name, return an object suitable for locking for accessing it."
-  [_]
-  ; TODO: Should do lock sharding based on hash of pod-name.
-  lock-object)
+  (log/info "Doing" controller-lock-num-shards "way lock-sharding in k8s controller")
+
+  (defn calculate-lock
+    "Given a pod-name, return an object suitable for locking for accessing it."
+    [pod-name]
+    (nth lock-objects
+         (-> pod-name
+             hash
+             (mod controller-lock-num-shards)))))
 
 (defn canonicalize-cook-expected-state
   "Canonicalize the expected states before comparing if they're equivalent"
@@ -593,7 +594,7 @@
   [{:keys [cook-expected-state-map name] :as compute-cluster} pod-name new-cook-expected-state-dict]
   (timers/time! (metrics/timer "update-cook-expected-state" name)
     (timers/time! (metrics/timer "process-lock" name)
-      (locking (calculate-lock [pod-name])
+      (locking (calculate-lock pod-name)
         (let [old-state (get @cook-expected-state-map pod-name)
               ; Save the launch pod. We may need it in order to kill it. See note under (:killed, :missing) in process, above.
               old-pod (:launch-pod old-state)
