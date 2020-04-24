@@ -32,7 +32,7 @@ def stdout(cp):
 
 
 def stderr(cp):
-    """Returns the UTF-8 decoded and stripped stdout of the given CompletedProcess"""
+    """Returns the UTF-8 decoded and stripped stderr of the given CompletedProcess"""
     return decode(cp.stderr).strip()
 
 
