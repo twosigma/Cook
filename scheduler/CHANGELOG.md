@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.40.4] - 2020-04-24
+### Added
+- Improved k8s autoscaling metrics, from @dposada
+- Allow removing cpu limit in k8s, from @dposada
+- Show rate limited users in HTTP log, from @scrosby
+- Change checkpointing volume from init container to scratch space, from @nsinkov
+
 ## [1.40.3] - 2020-04-10
 ### Added
 - Main container environment variables to init container in k8s, from @nsinkov
