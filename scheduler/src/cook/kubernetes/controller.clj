@@ -14,18 +14,31 @@
            (io.kubernetes.client.models V1Pod V1ContainerStatus V1PodStatus)
            (java.net URLEncoder)))
 
-(let [{:keys [controller-lock-num-shards]} (config/kubernetes)
-      lock-objects (repeatedly controller-lock-num-shards #(Object.))]
+(let [{:keys [controller-lock-num-shards]} (config/kubernetes)]
 
   (log/info "Doing" controller-lock-num-shards "way lock-sharding in k8s controller")
 
-  (defn calculate-lock
-    "Given a pod-name, return an object suitable for locking for accessing it."
-    [pod-name]
-    (nth lock-objects
-         (-> pod-name
-             hash
-             (mod controller-lock-num-shards)))))
+  (def ^:private lock-objects (repeatedly controller-lock-num-shards #(Object.))))
+
+(defmacro with-process-lock
+  "Evaluates body (which should contain a call to
+  process) after acquiring the pod-name-based lock"
+  [compute-cluster-name pod-name & body]
+  `(timers/time!
+     (metrics/timer "process-lock" ~compute-cluster-name)
+     (let [lock-object#
+           (nth lock-objects
+                (-> ~pod-name
+                    hash
+                    (mod (count lock-objects))))
+           timer-context#
+           (timers/start
+             (metrics/timer
+               "process-lock-acquire"
+               ~compute-cluster-name))]
+       (locking lock-object#
+         (.stop timer-context#)
+         ~@body))))
 
 (defn canonicalize-cook-expected-state
   "Canonicalize the expected states before comparing if they're equivalent"
@@ -570,38 +583,45 @@
   (let [pod-name (api/V1Pod->name new-pod)]
     (timers/time!
       (metrics/timer "pod-update" name)
-      (timers/time!
-        (metrics/timer "process-lock" name)
-        (locking (calculate-lock pod-name)
-          (synthesize-state-and-process-pod-if-changed compute-cluster pod-name new-pod))))))
+      (with-process-lock
+        name
+        pod-name
+        (synthesize-state-and-process-pod-if-changed compute-cluster pod-name new-pod)))))
 
 (defn pod-deleted
   "Indicate that kubernetes does not have the pod. Invoked by callbacks from kubernetes."
   [{:keys [k8s-actual-state-map name] :as compute-cluster} ^V1Pod pod-deleted]
   (let [pod-name (api/V1Pod->name pod-deleted)]
     (log/info "In compute cluster" name ", detected pod" pod-name "deleted")
-    (timers/time! (metrics/timer "pod-deleted" name)
-      (timers/time! (metrics/timer "process-lock" name)
-        (locking (calculate-lock pod-name)
-          (swap! k8s-actual-state-map dissoc pod-name)
-          (try
-            (process compute-cluster pod-name)
-            (catch Exception e
-              (log/error e (str "In compute-cluster " name ", error while processing pod-delete for " pod-name)))))))))
+    (timers/time!
+      (metrics/timer "pod-deleted" name)
+      (with-process-lock
+        name
+        pod-name
+        (swap! k8s-actual-state-map dissoc pod-name)
+        (try
+          (process compute-cluster pod-name)
+          (catch Exception e
+            (log/error e (str "In compute-cluster " name ", error while processing pod-delete for " pod-name))))))))
 
 (defn update-cook-expected-state
-  "Update the cook expected state. Include some business logic to e.g., not change a state to the same value more than once. Marks any state changes Also has a lattice of state. Called externally and from state machine."
+  "Update the cook expected state. Include some business logic to e.g., not
+   change a state to the same value more than once. Marks any state changes.
+   Also has a lattice of state. Called externally and from state machine."
   [{:keys [cook-expected-state-map name] :as compute-cluster} pod-name new-cook-expected-state-dict]
-  (timers/time! (metrics/timer "update-cook-expected-state" name)
-    (timers/time! (metrics/timer "process-lock" name)
-      (locking (calculate-lock pod-name)
-        (let [old-state (get @cook-expected-state-map pod-name)
-              ; Save the launch pod. We may need it in order to kill it. See note under (:killed, :missing) in process, above.
-              old-pod (:launch-pod old-state)
-              new-expected-state-dict-merged (merge {:launch-pod old-pod} new-cook-expected-state-dict)]
-          (when-not (cook-expected-state-equivalent? new-expected-state-dict-merged old-state)
-            (swap! cook-expected-state-map assoc pod-name new-expected-state-dict-merged)
-            (process compute-cluster pod-name)))))))
+  (timers/time!
+    (metrics/timer "update-cook-expected-state" name)
+    (with-process-lock
+      name
+      pod-name
+      (let [old-state (get @cook-expected-state-map pod-name)
+            ; Save the launch pod. We may need it in order to kill it.
+            ; See note under (:killed, :missing) in process, above.
+            old-pod (:launch-pod old-state)
+            new-expected-state-dict-merged (merge {:launch-pod old-pod} new-cook-expected-state-dict)]
+        (when-not (cook-expected-state-equivalent? new-expected-state-dict-merged old-state)
+          (swap! cook-expected-state-map assoc pod-name new-expected-state-dict-merged)
+          (process compute-cluster pod-name))))))
 
 (defn starting-namespaced-pod-name->pod
   "Returns a map from {:namespace pod-namespace :name pod-name}->pod for all instances that we're attempting to send to
@@ -622,8 +642,8 @@
   [{:keys [k8s-actual-state-map name] :as compute-cluster} pod-name]
   (timers/time!
     (metrics/timer "scan-process" name)
-    (timers/time!
-      (metrics/timer "process-lock" name)
-      (locking (calculate-lock pod-name)
-        (let [{:keys [pod]} (get @k8s-actual-state-map pod-name)]
-          (synthesize-state-and-process-pod-if-changed compute-cluster pod-name pod))))))
+    (with-process-lock
+      name
+      pod-name
+      (let [{:keys [pod]} (get @k8s-actual-state-map pod-name)]
+        (synthesize-state-and-process-pod-if-changed compute-cluster pod-name pod)))))
