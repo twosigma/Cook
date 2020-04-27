@@ -78,7 +78,7 @@
                                    :pool-regex "^k8s-.+"}
          :default-containers
          [{:pool-regex "k8s-.*" :container {:type "docker"
-                                            :docker {:image "python:3.5.9-stretch",
+                                            :docker {:image "python:3.6",
                                                      :network "HOST"
                                                      :force-pull-image false
                                                      :parameters []}}}]}
