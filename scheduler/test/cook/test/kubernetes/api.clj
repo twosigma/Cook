@@ -98,7 +98,13 @@
           (is (= (conj api/default-shell "foo && bar") (.getCommand container)))
           (is (= "alpine:latest" (.getImage container)))
           (is (not (nil? container)))
-          (is (= ["COOK_SANDBOX" "EXECUTOR_PROGRESS_OUTPUT_FILE" "FOO" "HOME" "MESOS_SANDBOX" "SIDECAR_WORKDIR"]
+          (is (= ["COOK_SANDBOX"
+                  "EXECUTOR_PROGRESS_OUTPUT_FILE"
+                  "FOO"
+                  "HOME"
+                  "MESOS_DIRECTORY"
+                  "MESOS_SANDBOX"
+                  "SIDECAR_WORKDIR"]
                  (->> container-env (map #(.getName %)) sort)))
           (is (= "/mnt/sandbox" (.getWorkingDir container)))
           (let [cook-sandbox-mount (->> container

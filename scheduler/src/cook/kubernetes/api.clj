@@ -591,6 +591,7 @@
         checkpoint-volume-mounts (checkpoint->volume-mounts checkpoint scratch-space-volume)
         sandbox-env {"COOK_SANDBOX" sandbox-dir
                      "HOME" sandbox-dir
+                     "MESOS_DIRECTORY" sandbox-dir
                      "MESOS_SANDBOX" sandbox-dir
                      "SIDECAR_WORKDIR" sidecar-workdir}
         params-env (build-params-env parameters)
