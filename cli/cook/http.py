@@ -1,37 +1,34 @@
-import importlib
 import json
 import logging
+import requests
+import requests.adapters
 from urllib.parse import urljoin
 
-import requests
-
-import cook
+import cook.version
 from cook.util import print_error
 
 session = None
 timeouts = None
 
 
-def configure(config):
+def configure(config, plugins):
     """Configures HTTP timeouts and retries to be used"""
     global session
     global timeouts
-    http_config = config.get('http')
+    http_config = config.get('http', {})
     modules_config = http_config.get('modules')
-    session_module_name = modules_config.get('session-module')
-    adapters_module_name = modules_config.get('adapters-module')
-    session_module = importlib.import_module(session_module_name)
-    adapters_module = importlib.import_module(adapters_module_name)
-    logging.getLogger(session_module_name).setLevel(logging.DEBUG)
-    logging.getLogger('urllib3').setLevel(logging.DEBUG)
+    adapter_factory = plugins.get('http-adapter-factory', requests.adapters.HTTPAdapter)
+    session_factory = plugins.get('http-session-factory', requests.Session)
+    logging.getLogger('urllib3').setLevel(logging.DEBUG) # logger.disable in cli.py may override
     connect_timeout = http_config.get('connect-timeout')
     read_timeout = http_config.get('read-timeout')
     timeouts = (connect_timeout, read_timeout)
     logging.debug('using http timeouts: %s', timeouts)
     retries = http_config.get('retries')
-    http_adapter = adapters_module.HTTPAdapter(max_retries=retries)
-    session = session_module.Session()
+    http_adapter = adapter_factory(max_retries=retries)
+    session = session_factory()
     session.mount('http://', http_adapter)
+    session.mount('https://', http_adapter)
     session.headers['User-Agent'] = f"cs/{cook.version.VERSION} ({session.headers['User-Agent']})"
     auth_config = http_config.get('auth', None)
     if auth_config:

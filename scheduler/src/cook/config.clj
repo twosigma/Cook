@@ -445,7 +445,10 @@
                                  pool-selection)})))
      :kubernetes (fnk [[:config {kubernetes {}}]]
                    (merge {:default-workdir "/mnt/sandbox"
-                           :reconnect-delay-ms 60000}
+                           :pod-condition-containers-not-initialized-seconds 120
+                           :pod-condition-unschedulable-seconds 60
+                           :reconnect-delay-ms 60000
+                           :set-container-cpu-limit? true}
                           kubernetes))}))
 
 (defn read-config

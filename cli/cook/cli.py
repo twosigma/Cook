@@ -2,9 +2,10 @@ import argparse
 import logging
 from urllib.parse import urlparse
 
-from cook import util, http, metrics, version, configuration, plugins
+from cook import util, http, metrics, version, configuration
 from cook.subcommands import submit, show, wait, jobs, ssh, ls, tail, kill, config, cat, usage
 from cook.util import deep_merge
+import cook.plugins
 
 parser = argparse.ArgumentParser(description='cs is the Cook Scheduler CLI')
 parser.add_argument('--cluster', '-c', help='the name of the Cook scheduler cluster to use')
@@ -57,7 +58,7 @@ def load_target_clusters(config_map, url=None, cluster=None):
     return clusters
 
 
-def run(args):
+def run(args, plugins):
     """
     Main entrypoint to the cook scheduler CLI. Loads configuration files, 
     processes global command line arguments, and calls other command line 
@@ -75,7 +76,7 @@ def run(args):
     else:
         logging.disable(logging.FATAL)
 
-    logging.debug('args: %s' % args)
+    logging.debug('args: %s', args)
 
     action = args.pop('action')
     config_path = args.pop('config')
@@ -90,8 +91,8 @@ def run(args):
             metrics.initialize(config_map)
             metrics.inc('command.%s.runs' % action)
             clusters = load_target_clusters(config_map, url, cluster)
-            http.configure(config_map)
-            plugins.configure(config_map)
+            http.configure(config_map, plugins)
+            cook.plugins.configure(plugins)
             args = {k: v for k, v in args.items() if v is not None}
             defaults = config_map.get('defaults')
             action_defaults = (defaults.get(action) if defaults else None) or {}

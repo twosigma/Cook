@@ -52,13 +52,13 @@
               :sidecar {;; Note that Cook automatically appends the :port given below 
                         ;; as the last argument in this :command vector.
                         :command ["cook-sidecar" "--file-server-port"]
+                        :health-check-endpoint "/readiness-probe"
                         :image "twosigma/cook-sidecar:latest"
                         :port 23906
                         :resource-requirements {:cpu-request 0.1
                                                 :cpu-limit 0.1
                                                 :memory-request 128.0
-                                                :memory-limit 128.0}}
-              :custom-shell ["/bin/sh" "-c"]}
+                                                :memory-limit 128.0}}}
  :log {:file #config/env "COOK_LOG_FILE"
        :levels {"datomic.db" :warn
                 "datomic.kv-cluster" :warn

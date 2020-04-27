@@ -81,6 +81,13 @@
              a job may be placed on"
     :db.install/_attribute :db.part/db}
    {:db/id (d/tempid :db.part/db)
+    :db/ident :job/checkpoint
+    :db/doc "optional configuration to enable checkpointing"
+    :db/valueType :db.type/ref
+    :db/isComponent true
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
     :db/ident :job/state
     :db/valueType :db.type/ref
     :db/cardinality :db.cardinality/one
@@ -488,6 +495,39 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :db.install/_attribute :db.part/db}
    {:db/id (d/tempid :db.part/user)
     :db/ident :constraint.operator/equals}
+   ;; Checkpoint attributes
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :checkpoint/mode
+    :db/doc "Checkpointing mode, e.g. auto, periodic, preemption"
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :checkpoint/options
+    :db/doc "Checkpointing options not specific to any checkpointing mode"
+    :db/valueType :db.type/ref
+    :db/isComponent true
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :checkpoint/periodic-options
+    :db/doc "Checkpointing options specific to the periodic checkpointing mode"
+    :db/valueType :db.type/ref
+    :db/isComponent true
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :checkpoint-options/preserve-paths
+    :db/doc "Set of paths to preserve when checkpointing"
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/many
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :checkpoint-periodic-options/period-sec
+    :db/doc "Time between checkpoints when using the periodic checkpointing mode"
+    :db/valueType :db.type/long
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
    ;; Application attributes
    {:db/id (d/tempid :db.part/db)
     :db/doc
@@ -1231,6 +1271,12 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :reason/mea-culpa? true
     :reason/mesos-reason :reason-scheduling-failed-on-host
     :reason/failure-limit 3}
+   {:db/id (d/tempid :db.part/user)
+    :reason/code 1007
+    :reason/string "Container initialization timed out"
+    :reason/name :container-initialization-timed-out
+    :reason/mea-culpa? false
+    :reason/mesos-reason :reason-container-initialization-timed-out}
 
    {:db/id (d/tempid :db.part/user)
     :reason/code 2000

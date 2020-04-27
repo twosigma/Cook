@@ -135,19 +135,19 @@ As with `show`, `usage` will list usage across all configured clusters.
 ### Plugins
 
 You can also specify custom functionality for some subcommands with your own plugin functions.
-You will need to add a `plugins` map to your `.cs.json` file. An example plugin config is shown below.
+You will need to create a new Python script to use as your custom entrypoint,
+invoking the provided `cook.__main__.main` method with your customized `plugins` dictionary:
 
-```json
-{
-  "plugins": {
-    "plugin-name": {
-      "module-name": "module_name",
-      "path": "path_to_plugin_module",
-      "function-name": "function_name"
-    }
-  }
+```python
+custom_plugins = {
+    "plugin-a-name": plugin_a_function,
+    "plugin-b-name": plugin_b_function,
+    "plugin-c-name": plugin_c_function,
 }
+cook.__main__.main(plugins=custom_plugins)
 ```
+
+See `test_ls_with_plugin` in the CLI integration tests for a concrete example.
 
 Plugins are available for the following subcommands:
 

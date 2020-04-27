@@ -13,6 +13,7 @@
             [cook.kubernetes.metrics :as metrics]
             [cook.monitor :as monitor]
             [cook.pool]
+            [cook.scheduler.constraints :as constraints]
             [cook.tools :as tools]
             [datomic.api :as d]
             [metrics.meters :as meters]
@@ -94,14 +95,19 @@
 (defn scan-tasks
   "Scan all taskids. Note: May block or be slow due to rate limits."
   [{:keys [name] :as kcc}]
-  (log/info "In compute cluster" name ", starting taskid scan")
+  (log/info "In" name "compute cluster, starting taskid scan")
   ; TODO Add in rate limits; only visit non-running/running task so fast.
   ; TODO Add in maximum-visit frequency. Only visit a task once every XX seconds.
   (let [taskids (taskids-to-scan kcc)]
-    (log/info "In compute cluster" name ", doing taskid scan. Visiting" (count taskids) "taskids")
+    (log/info "In" name "compute cluster, doing taskid scan. Visiting" (count taskids) "taskids")
     (doseq [^String taskid taskids]
-      (log/info "In compute cluster" name ", doing scan of " taskid)
-      (controller/scan-process kcc taskid))))
+      (try
+        (log/info "In" name "compute cluster, doing scan of" taskid)
+        (controller/scan-process kcc taskid)
+        (catch Exception e
+          (log/error e "In" name
+                     "compute cluster, encountered exception scanning task"
+                     taskid))))))
 
 (defn regular-scanner
   "Trigger a channel that scans all taskids (shortly) after this function is invoked and on a regular interval."
@@ -207,26 +213,32 @@
                                      pool->fenzo-atom namespace-config scan-frequency-seconds-config max-pods-per-node
                                      synthetic-pods-config node-blocklist-labels]
   cc/ComputeCluster
-  (launch-tasks [this offers task-metadata-seq]
+  (launch-tasks [this _ task-metadata-seq]
     (doseq [task-metadata task-metadata-seq]
       ; Has the workload of launching tasks changed or has the cost of doing them changed?
       ; Note we can't use timer/time! because it wraps the body in a Callable, which rebinds 'this' to another 'this'
       ; causing breakage.
       ; In addition, it captures controller/update-cook-expected-state and prevents with-redefs on
       ; update-cook-expected-state from working correctly in unit tests.
-      (let [timer-context (timers/start (metrics/timer "compute-cluster-launch-tasks" name))
-            pod-namespace (get-namespace-from-task-metadata namespace-config task-metadata)]
-        (controller/update-cook-expected-state
-          this
-          (:task-id task-metadata)
-          {:cook-expected-state :cook-expected-state/starting
-           :launch-pod {:pod (api/task-metadata->pod pod-namespace name task-metadata)}})
-        (.stop timer-context))))
+      (let [timer-context (timers/start (metrics/timer "cc-launch-tasks" name))
+            pod-namespace (get-namespace-from-task-metadata namespace-config task-metadata)
+            pod-name (:task-id task-metadata)
+            ^V1Pod pod (api/task-metadata->pod pod-namespace name node-blocklist-labels task-metadata)
+            new-cook-expected-state-dict {:cook-expected-state :cook-expected-state/starting
+                                          :launch-pod {:pod pod}}]
+        (try
+          (controller/update-cook-expected-state this pod-name new-cook-expected-state-dict)
+          (.stop timer-context)
+          (catch Exception e
+            (log/error e "In" name "compute cluster, encountered exception launching task"
+                       {:pod-name pod-name
+                        :pod-namespace pod-namespace
+                        :task-metadata task-metadata}))))))
 
   (kill-task [this task-id]
     ; Note we can't use timer/time! because it wraps the body in a Callable, which rebinds 'this' to another 'this'
     ; causing breakage.
-    (let [timer-context (timers/start (metrics/timer "compute-cluster-kill-tasks" name))]
+    (let [timer-context (timers/start (metrics/timer "cc-kill-tasks" name))]
       (controller/update-cook-expected-state this task-id {:cook-expected-state :cook-expected-state/killed})
       (.stop timer-context)))
 
@@ -298,7 +310,8 @@
     (try
       (assert (cc/autoscaling? this pool-name)
               (str "In " name " compute cluster, request to autoscale despite invalid / missing config"))
-      (let [outstanding-synthetic-pods (->> @all-pods-atom
+      (let [timer-context-autoscale (timers/start (metrics/timer "cc-synthetic-pod-autoscale" name))
+            outstanding-synthetic-pods (->> @all-pods-atom
                                             (add-starting-pods this)
                                             (filter synthetic-pod->job-uuid))
             num-synthetic-pods (count outstanding-synthetic-pods)
@@ -314,21 +327,19 @@
                                          outstanding-synthetic-pods))
                                  jobs)
                 sidecar-resource-requirements (-> (config/kubernetes) :sidecar :resource-requirements)
+                user-from-synthetic-pods-config user
                 task-metadata-seq
                 (->> new-jobs
-                     (map (fn [{:keys [job/uuid] :as job}]
-                            {:task-id (str api/cook-synthetic-pod-name-prefix "-" pool-name "-" uuid)
-                             :command {:user user :value command}
+                     (map (fn [{:keys [job/user job/uuid] :as job}]
+                            {:command {:user (or user-from-synthetic-pods-config user)
+                                       :value command}
                              :container {:docker {:image image}}
-                             :task-request {:scalar-requests
-                                            (cond->> (walk/stringify-keys (tools/job-ent->resources job))
-                                              ; We need to account for any sidecar resource requirements that the
-                                              ; job we're launching this synthetic pod for will need to use.
-                                              sidecar-resource-requirements
-                                              (merge-with +
-                                                          {"cpus" (:cpu-request sidecar-resource-requirements)
-                                                           "mem" (:memory-request sidecar-resource-requirements)}))
-                                            :job {:job/pool {:pool/name synthetic-task-pool-name}}}
+                             ; Cook has a "novel host constraint", which disallows a job from
+                             ; running on the same host twice. So, we need to avoid running a
+                             ; synthetic pod on any of the hosts that the real job won't be able
+                             ; to run on. Otherwise, the synthetic pod won't trigger the cluster
+                             ; autoscaler.
+                             :pod-hostnames-to-avoid (constraints/job->previous-hosts-to-avoid job)
                              ; We need to label the synthetic pods so that we
                              ; can opt them out of some of the normal plumbing,
                              ; like mapping status back to a job instance
@@ -343,14 +354,28 @@
                              ; We don't want to add in the cook-init cruft or the cook sidecar, because we
                              ; don't need them for synthetic pods and all they will do is slow things down.
                              :pod-supports-cook-init? false
-                             :pod-supports-cook-sidecar? false}))
-                     (take (- max-pods-outstanding num-synthetic-pods)))]
-            (meters/mark! (metrics/meter "synthetic-pod-submit-rate" name) (count task-metadata-seq))
-            (log/info "In" name "compute cluster, launching" (count task-metadata-seq)
+                             :pod-supports-cook-sidecar? false
+                             :task-id (str api/cook-synthetic-pod-name-prefix "-" pool-name "-" uuid)
+                             :task-request {:scalar-requests
+                                            (cond->> (walk/stringify-keys (tools/job-ent->resources job))
+                                                     ; We need to account for any sidecar resource requirements that the
+                                                     ; job we're launching this synthetic pod for will need to use.
+                                                     sidecar-resource-requirements
+                                                     (merge-with +
+                                                                 {"cpus" (:cpu-request sidecar-resource-requirements)
+                                                                  "mem" (:memory-request sidecar-resource-requirements)}))
+                                            :job {:job/pool {:pool/name synthetic-task-pool-name}}}}))
+                     (take (- max-pods-outstanding num-synthetic-pods)))
+                num-synthetic-pods-to-launch (count task-metadata-seq)]
+            (meters/mark! (metrics/meter "cc-synthetic-pod-submit-rate" name) num-synthetic-pods-to-launch)
+            (log/info "In" name "compute cluster, launching" num-synthetic-pods-to-launch
                       "synthetic pod(s) in" synthetic-task-pool-name "pool")
-            (cc/launch-tasks this
-                             nil ; offers (not used by KubernetesComputeCluster)
-                             task-metadata-seq))))
+            (let [timer-context-launch-tasks (timers/start (metrics/timer "cc-synthetic-pod-launch-tasks" name))]
+              (cc/launch-tasks this
+                               nil ; offers (not used by KubernetesComputeCluster)
+                               task-metadata-seq)
+              (.stop timer-context-launch-tasks))))
+        (.stop timer-context-autoscale))
       (catch Throwable e
         (log/error e "In" name "compute cluster, encountered error launching synthetic pod(s) in"
                    pool-name "pool"))))
@@ -454,7 +479,6 @@
   (when synthetic-pods-config
     (when-not (and
                 (-> synthetic-pods-config :image count pos?)
-                (-> synthetic-pods-config :user count pos?)
                 (-> synthetic-pods-config :max-pods-outstanding pos?)
                 (-> synthetic-pods-config :pools set?)
                 (-> synthetic-pods-config :pools count pos?))

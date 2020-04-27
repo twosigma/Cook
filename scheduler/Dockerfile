@@ -1,7 +1,10 @@
 FROM mesosphere/mesos:1.3.0
 
 
-RUN apt-get -y update && apt-get -y install software-properties-common && \ 
+# Removing docker.list because docker APT repo has been deleted:
+# https://www.docker.com/blog/changes-dockerproject-org-apt-yum-repositories/
+RUN rm /etc/apt/sources.list.d/docker.list && \
+    apt-get -y update && apt-get -y install software-properties-common && \
     add-apt-repository ppa:openjdk-r/ppa && apt-get -y update && \
     apt-get --no-install-recommends -y install \
     curl \
@@ -38,13 +41,13 @@ RUN unzip -uo /opt/cook/datomic/datomic-free-0.9.5394.zip
 
 # Copy the whole scheduler into the container
 COPY docker /opt/cook/docker
-COPY config* /opt/cook/
 COPY resources /opt/cook/resources
 COPY java /opt/cook/java
 COPY src /opt/cook/src
 
 RUN lein uberjar
 RUN cp "target/cook-$(lein print :version | tr -d '"').jar" datomic-free-0.9.5394/lib/cook-$(lein print :version | tr -d '"').jar
+COPY config* /opt/cook/
 
 # Run cook
 EXPOSE \

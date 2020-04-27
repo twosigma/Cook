@@ -1,12 +1,14 @@
 (ns cook.test.kubernetes.api
-  (:require [clojure.test :refer :all]
+  (:require [clj-time.core :as t]
+            [clojure.test :refer :all]
             [cook.config :as config]
             [cook.kubernetes.api :as api]
             [cook.test.testutil :as tu]
             [datomic.api :as d])
   (:import (io.kubernetes.client.models V1Container V1ContainerState V1ContainerStateWaiting V1ContainerStatus
-                                        V1EnvVar V1Node V1NodeSpec V1ObjectMeta V1Pod V1PodCondition V1PodSpec
-                                        V1PodStatus V1Taint V1Volume V1VolumeMount)))
+                                        V1EnvVar V1ListMeta V1Node V1NodeSpec V1ObjectMeta V1Pod V1PodCondition
+                                        V1PodList V1PodSpec V1PodStatus V1ResourceRequirements V1Taint V1Volume
+                                        V1VolumeMount)))
 
 (deftest test-get-consumption
   (testing "correctly computes consumption for a single pod"
@@ -72,7 +74,7 @@
                                           :scalar-requests {"mem" 512
                                                             "cpus" 1.0}}
                            :hostname "kubehost"}
-            pod (api/task-metadata->pod "cook" "testing-cluster" task-metadata)]
+            pod (api/task-metadata->pod "cook" "testing-cluster" [] task-metadata)]
         (is (= "my-task" (-> pod .getMetadata .getName)))
         (is (= "cook" (-> pod .getMetadata .getNamespace)))
         (is (= "Never" (-> pod .getSpec .getRestartPolicy)))
@@ -82,28 +84,28 @@
         (is (< 0 (-> pod .getSpec .getSecurityContext .getRunAsGroup)))
         (is (< 0 (-> pod .getSpec .getSecurityContext .getRunAsUser)))
 
-        (let [cook-workdir-volume (->> pod
+        (let [cook-sandbox-volume (->> pod
                                        .getSpec
                                        .getVolumes
-                                       (filter (fn [^V1Volume v] (= "cook-workdir-volume" (.getName v))))
+                                       (filter (fn [^V1Volume v] (= "cook-sandbox-volume" (.getName v))))
                                        first)]
-          (is (not (nil? cook-workdir-volume)))
-          (is (not (nil? (.getEmptyDir cook-workdir-volume)))))
+          (is (not (nil? cook-sandbox-volume)))
+          (is (not (nil? (.getEmptyDir cook-sandbox-volume)))))
 
         (let [^V1Container container (-> pod .getSpec .getContainers first)
               container-env (.getEnv container)]
           (is (= "required-cook-job-container" (.getName container)))
-          (is (= ["/bin/sh" "-c" "foo && bar"] (.getCommand container)))
+          (is (= (conj api/default-shell "foo && bar") (.getCommand container)))
           (is (= "alpine:latest" (.getImage container)))
           (is (not (nil? container)))
-          (is (= ["EXECUTOR_PROGRESS_OUTPUT_FILE" "FOO" "HOME" "MESOS_SANDBOX" "SIDECAR_WORKDIR"]
+          (is (= ["COOK_SANDBOX" "EXECUTOR_PROGRESS_OUTPUT_FILE" "FOO" "HOME" "MESOS_SANDBOX" "SIDECAR_WORKDIR"]
                  (->> container-env (map #(.getName %)) sort)))
           (is (= "/mnt/sandbox" (.getWorkingDir container)))
-          (let [cook-workdir-mount (->> container
+          (let [cook-sandbox-mount (->> container
                                         .getVolumeMounts
-                                        (filter (fn [^V1VolumeMount m] (= "cook-workdir-volume" (.getName m))))
+                                        (filter (fn [^V1VolumeMount m] (= "cook-sandbox-volume" (.getName m))))
                                         first)]
-            (is (= "/mnt/sandbox" (.getMountPath cook-workdir-mount))))
+            (is (= "/mnt/sandbox" (.getMountPath cook-sandbox-mount))))
 
           (assert-env-var-value container "FOO" "BAR")
           (assert-env-var-value container "HOME" (.getWorkingDir container))
@@ -130,7 +132,7 @@
                                         :scalar-requests {"mem" 512
                                                           "cpus" 1.0}}
                          :hostname "kubehost"}
-          pod (api/task-metadata->pod "cook" "test-cluster" task-metadata)]
+          pod (api/task-metadata->pod "cook" "test-cluster" [] task-metadata)]
       (is (= 100 (-> pod .getSpec .getSecurityContext .getRunAsUser)))
       (is (= 10 (-> pod .getSpec .getSecurityContext .getRunAsGroup)))))
 
@@ -141,7 +143,7 @@
                          :task-request {:job {:job/pool {:pool/name pool-name}}
                                         :scalar-requests {"mem" 512
                                                           "cpus" 1.0}}}
-          ^V1Pod pod (api/task-metadata->pod nil nil task-metadata)
+          ^V1Pod pod (api/task-metadata->pod nil nil [] task-metadata)
           ^V1PodSpec pod-spec (.getSpec pod)
           node-selector (.getNodeSelector pod-spec)]
       (is (contains? node-selector api/cook-pool-label))
@@ -154,51 +156,95 @@
                          :hostname hostname
                          :task-request {:scalar-requests {"mem" 512
                                                           "cpus" 1.0}}}
-          ^V1Pod pod (api/task-metadata->pod nil nil task-metadata)
+          ^V1Pod pod (api/task-metadata->pod nil nil [] task-metadata)
           ^V1PodSpec pod-spec (.getSpec pod)
           node-selector (.getNodeSelector pod-spec)]
       (is (contains? node-selector api/k8s-hostname-label))
-      (is (= hostname (get node-selector api/k8s-hostname-label))))))
+      (is (= hostname (get node-selector api/k8s-hostname-label)))))
+
+  (testing "cpu limit configurability"
+    (let [task-metadata {:container {:docker {:parameters [{:key "user"
+                                                            :value "100:10"}]}}
+                         :task-request {:scalar-requests {"mem" 512
+                                                          "cpus" 1.0}}}
+          pod->cpu-limit-fn (fn [^V1Pod pod]
+                              (let [^V1Container container (-> pod .getSpec .getContainers first)
+                                    ^V1ResourceRequirements resources (-> container .getResources)]
+                                (-> resources .getLimits (get "cpu"))))]
+
+      (with-redefs [config/kubernetes (constantly {:set-container-cpu-limit? true})]
+        (let [^V1Pod pod (api/task-metadata->pod nil nil [] task-metadata)]
+          (is (= 1.0 (-> pod pod->cpu-limit-fn .getNumber .doubleValue)))))
+
+      (with-redefs [config/kubernetes (constantly {:set-container-cpu-limit? false})]
+        (let [^V1Pod pod (api/task-metadata->pod nil nil [] task-metadata)]
+          (is (nil? (pod->cpu-limit-fn pod)))))
+
+      (with-redefs [config/kubernetes (constantly {})]
+        (let [^V1Pod pod (api/task-metadata->pod nil nil [] task-metadata)]
+          (is (nil? (pod->cpu-limit-fn pod))))))))
+
+(defn- k8s-volume->clj [^V1Volume volume]
+  {:name (.getName volume)
+   :src (or (some-> volume .getHostPath .getPath)
+            (when (.getEmptyDir volume)
+              :empty-dir))})
+
+(defn- k8s-mount->clj [^V1VolumeMount mount]
+  {:name (.getName mount)
+   :mount-path (.getMountPath mount)
+   :read-only? (.isReadOnly mount)})
+
+(defn- dummy-uuid-generator []
+  (let [n (atom 0)]
+    #(str "uuid-" (swap! n inc))))
+
+(def sandbox-path "/mnt/sandbox")
+(def legacy-sandbox-path "/mnt/mesos/sandbox")
+
+(def expected-sandbox-volume
+  {:name api/cook-sandbox-volume-name
+   :src :empty-dir})
+
+(def expected-sandbox-mount
+  {:name api/cook-sandbox-volume-name
+   :mount-path sandbox-path
+   :read-only? false})
+(def expected-legacy-sandbox-mount
+  {:name api/cook-sandbox-volume-name
+   :mount-path legacy-sandbox-path
+   :read-only? false})
 
 (deftest test-make-volumes
-  (testing "defaults for minimal volume"
-    (let [host-path "/tmp/$_*/foo"
-          {:keys [volumes volume-mounts]} (api/make-volumes [{:host-path host-path}] host-path)]
-      (is (= 1 (count volumes)))
-      (is (= 1 (count volume-mounts)))
-      (let [volume (first volumes)
-            volume-mount (first volume-mounts)]
-        (is (= (.getName volume)
-               (.getName volume-mount)))
-        ; validation regex for k8s names
-        (is (re-matches #"[a-z0-9]([-a-z0-9]*[a-z0-9])?" (.getName volume)))
-        (is (= host-path (-> volume .getHostPath .getPath)))
-        (is (.isReadOnly volume-mount))
-        (is (= host-path (.getMountPath volume-mount))))))
+  (testing "empty cook volumes"
+    (let [{:keys [volumes volume-mounts]} (api/make-volumes [] sandbox-path)
+          volumes (map k8s-volume->clj volumes)
+          volume-mounts (map k8s-mount->clj volume-mounts)]
+      (is (= volumes [expected-sandbox-volume]))
+      (is (= volume-mounts [expected-sandbox-mount expected-legacy-sandbox-mount]))))
 
-  (testing "validate with separate workdir"
+  (testing "valid generated volume names"
     (let [host-path "/tmp/main/foo"
-          {:keys [volumes volume-mounts]} (api/make-volumes [{:host-path host-path}] "/mnt/sandbox")]
-      (is (= 2 (count volumes)))
-      (is (= 2 (count volume-mounts)))
-
+          {:keys [volumes volume-mounts]} (api/make-volumes [{:host-path host-path}] sandbox-path)]
       (let [volume (first volumes)
             volume-mount (first volume-mounts)]
         (is (= (.getName volume)
                (.getName volume-mount)))
         ; validation regex for k8s names
-        (is (= "cook-workdir-volume" (.getName volume)))
-        (is (not (.isReadOnly volume-mount)))
-        (is (= "/mnt/sandbox" (.getMountPath volume-mount))))
-      (let [volume (second volumes)
-            volume-mount (second volume-mounts)]
-        (is (= (.getName volume)
-               (.getName volume-mount)))
-        ; validation regex for k8s names
-        (is (re-matches #"[a-z0-9]([-a-z0-9]*[a-z0-9])?" (.getName volume)))
-        (is (= host-path (-> volume .getHostPath .getPath)))
-        (is (.isReadOnly volume-mount))
-        (is (= host-path (.getMountPath volume-mount))))))
+        (is (re-matches #"[a-z0-9]([-a-z0-9]*[a-z0-9])?" (.getName volume))))))
+
+  (testing "validate minimal cook volume spec defaults"
+    (with-redefs [d/squuid (dummy-uuid-generator)]
+      (let [host-path "/tmp/main/foo"
+            {:keys [volumes volume-mounts]} (api/make-volumes [{:host-path host-path}] sandbox-path)
+          volumes (map k8s-volume->clj volumes)
+          volume-mounts (map k8s-mount->clj volume-mounts)]
+        (is (= volumes
+               [{:name "syn-uuid-1" :src host-path}
+                expected-sandbox-volume]))
+        (is (= volume-mounts
+               [{:name "syn-uuid-1" :mount-path host-path :read-only? true}
+                expected-sandbox-mount expected-legacy-sandbox-mount])))))
 
   (testing "correct values for fully specified volume"
     (let [host-path "/tmp/foo"
@@ -218,10 +264,10 @@
     (with-redefs [config/kubernetes (constantly {:disallowed-container-paths #{"/tmp/foo"}})]
       (let [{:keys [volumes volume-mounts]} (api/make-volumes [{:host-path "/tmp/foo"}] "/tmp/unused")]
         (is (= 1 (count volumes)))
-        (is (= 1 (count volume-mounts))))
+        (is (= 2 (count volume-mounts))))
       (let [{:keys [volumes volume-mounts]} (api/make-volumes [{:container-path "/tmp/foo"}] "/tmp/unused")]
         (is (= 1 (count volumes)))
-        (is (= 1 (count volume-mounts)))))))
+        (is (= 2 (count volume-mounts)))))))
 
 
 (deftest test-pod->synthesized-pod-state
@@ -242,6 +288,7 @@
   (testing "waiting"
     (let [pod (V1Pod.)
           pod-status (V1PodStatus.)
+          pod-metadata (V1ObjectMeta.)
           container-status (V1ContainerStatus.)
           container-state (V1ContainerState.)
           waiting (V1ContainerStateWaiting.)]
@@ -251,6 +298,7 @@
       (.setName container-status "required-cook-job-container")
       (.setContainerStatuses pod-status [container-status])
       (.setStatus pod pod-status)
+      (.setMetadata pod pod-metadata)
       (is (= {:state :pod/waiting
               :reason "waiting"}
              (api/pod->synthesized-pod-state pod)))))
@@ -265,21 +313,60 @@
               :reason "SomeSillyReason"}
              (api/pod->synthesized-pod-state pod)))))
 
-  (testing "unschedulable pod"
-    (let [pod (V1Pod.)
-          pod-status (V1PodStatus.)
-          pod-metadata (V1ObjectMeta.)
-          pod-condition (V1PodCondition.)]
-      (.setType pod-condition "PodScheduled")
-      (.setStatus pod-condition "False")
-      (.setReason pod-condition "Unschedulable")
-      (.addConditionsItem pod-status pod-condition)
-      (.setStatus pod pod-status)
-      (.setName pod-metadata "test-pod")
-      (.setMetadata pod pod-metadata)
-      (is (= {:state :pod/failed
-              :reason "Unschedulable"}
-             (api/pod->synthesized-pod-state pod))))))
+  (let [make-pod-with-condition-fn
+        (fn [pod-condition-type pod-condition-status
+             pod-condition-reason pod-condition-last-transition-time]
+          (let [pod (V1Pod.)
+                pod-status (V1PodStatus.)
+                pod-metadata (V1ObjectMeta.)
+                pod-condition (V1PodCondition.)]
+            (.setType pod-condition pod-condition-type)
+            (.setStatus pod-condition pod-condition-status)
+            (.setReason pod-condition pod-condition-reason)
+            (.setLastTransitionTime pod-condition pod-condition-last-transition-time)
+            (.addConditionsItem pod-status pod-condition)
+            (.setStatus pod pod-status)
+            (.setName pod-metadata "test-pod")
+            (.setMetadata pod pod-metadata)
+            pod))
+
+        make-unschedulable-pod-fn
+        (fn [pod-condition-last-transition-time]
+          (make-pod-with-condition-fn "PodScheduled" "False" "Unschedulable"
+                                      pod-condition-last-transition-time))]
+
+    (testing "unschedulable pod"
+      (let [pod (make-unschedulable-pod-fn (t/epoch))]
+        (with-redefs [config/kubernetes
+                      (constantly {:pod-condition-unschedulable-seconds 60})]
+          (is (= {:state :pod/failed
+                  :reason "Unschedulable"}
+                 (api/pod->synthesized-pod-state pod))))))
+
+    (testing "briefly unschedulable pod"
+      (let [pod (make-unschedulable-pod-fn (t/now))]
+        (with-redefs [config/kubernetes
+                      (constantly {:pod-condition-unschedulable-seconds 60})]
+          (is (= {:state :pod/waiting
+                  :reason "Pending"}
+                 (api/pod->synthesized-pod-state pod))))))
+
+    (testing "containers not initialized"
+      (let [pod (make-pod-with-condition-fn "Initialized" "False" "ContainersNotInitialized" (t/epoch))
+            container-status (V1ContainerStatus.)
+            container-state (V1ContainerState.)
+            waiting (V1ContainerStateWaiting.)
+            pod-status (.getStatus pod)]
+        (.setReason waiting "waiting")
+        (.setWaiting container-state waiting)
+        (.setState container-status container-state)
+        (.setName container-status "required-cook-job-container")
+        (.setContainerStatuses pod-status [container-status])
+        (with-redefs [config/kubernetes
+                      (constantly {:pod-condition-containers-not-initialized-seconds 60})]
+          (is (= {:state :pod/failed
+                  :reason "ContainersNotInitialized"}
+                 (api/pod->synthesized-pod-state pod))))))))
 
 (deftest test-node-schedulable
   ;; TODO: Need the 'stuck pod scanner' to detect stuck states and move them into killed.
@@ -326,3 +413,20 @@
         (.setSpec node spec)
         (is (not (api/node-schedulable? node 30 nil ["blocklist-1"])))))))
 
+(deftest test-initialize-pod-watch-helper
+  (testing "only processes each pod once"
+    (let [pod-list-metadata (V1ListMeta.)
+          pod-list (doto (V1PodList.) (.setMetadata pod-list-metadata))
+          namespaced-pod-names-visited (atom [])
+          callback-fn (fn [namespaced-pod-name _ _]
+                        (swap! namespaced-pod-names-visited conj namespaced-pod-name))
+          compute-cluster-name "test-compute-cluster"
+          pod-metadata (doto (V1ObjectMeta.) (.setLabels {api/cook-pod-label compute-cluster-name}))
+          pod (doto (V1Pod.) (.setMetadata pod-metadata))
+          namespaced-pod-name {:namespace "foo" :name "bar"}
+          all-pods-atom (atom {namespaced-pod-name pod})]
+      (with-redefs [api/get-all-pods-in-kubernetes (constantly [pod-list {namespaced-pod-name pod}])
+                    api/create-pod-watch (constantly nil)]
+        (api/initialize-pod-watch-helper nil compute-cluster-name all-pods-atom callback-fn))
+      (is (= 1 (count @namespaced-pod-names-visited)))
+      (is (= [namespaced-pod-name] @namespaced-pod-names-visited)))))

@@ -98,6 +98,7 @@ class CookTest(util.CookTest):
 
     @pytest.mark.travis_skip
     @unittest.skipIf(util.using_kubernetes(), 'We do not currently support output_url in k8s')
+    @pytest.mark.xfail # output url api is flaky, even on Mesos
     def test_output_url(self):
         job_executor_type = util.get_job_executor_type()
         job_uuid, resp = util.submit_job(self.cook_url,
@@ -407,12 +408,7 @@ class CookTest(util.CookTest):
             job = util.load_job(self.cook_url, job_uuid)
             util.wait_for_job(self.cook_url, job_uuid, 'completed')
             settings_dict = util.settings(self.cook_url)
-            # This test provides a non-writeable workdir, so we're adding this temporary change until we separate
-            # the sandbox and workdir.
-            if 'kubernetes' in settings_dict and 'custom-shell' in settings_dict['kubernetes']:
-                util.wait_for_instance(self.cook_url, job_uuid)
-            else:
-                util.wait_for_instance(self.cook_url, job_uuid, status='success')
+            util.wait_for_instance(self.cook_url, job_uuid, status='success')
         finally:
             util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
 
@@ -2866,6 +2862,23 @@ class CookTest(util.CookTest):
         finally:
             util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
 
+    @unittest.skipUnless(util.docker_tests_enabled(), 'Requires docker support')
+    def test_docker_workdir_mesos_sandbox(self):
+        image = util.docker_image()
+        container = {'type': 'docker',
+                     'docker': {'image': image,
+                                'network': 'HOST',
+                                'force-pull-image': False,
+                                'parameters': [{'key': 'workdir',
+                                                'value': '/mnt/mesos/sandbox'}]}}
+        command = 'bash -c \'touch zzz; if [[ $(pwd) == "/mnt/mesos/sandbox" ]] && [[ -f zzz ]]; then exit 0; else exit 1; fi\''
+        job_uuid, resp = util.submit_job(self.cook_url, command=command, container=container)
+        self.assertEqual(201, resp.status_code, resp.text)
+        try:
+            util.wait_for_instance(self.cook_url, job_uuid, status='success')
+        finally:
+            util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
+
     @unittest.skipUnless(util.docker_tests_enabled(), "Requires docker support.")
     def test_default_container_volumes(self):
         settings = util.settings(self.cook_url)
@@ -2994,6 +3007,26 @@ class CookTest(util.CookTest):
         finally:
             util.kill_jobs(self.cook_url, [job_uuid1, job_uuid2])
 
+    @unittest.skipUnless(util.using_kubernetes(), 'Test requires kubernetes')
+    def test_kubernetes_checkpointing(self):
+        docker_image = util.docker_image()
+        container = {'type': 'docker',
+                     'docker': {'image': docker_image}}
+        try:
+            command_disabled = 'bash -c \'if [[ "${COOK_CHECKPOINT_MODE:-none}" == "none" ]] && [[ "${COOK_CHECKPOINT_PERIOD_SEC:-zzz}" == "zzz" ]]; then exit 0; else exit 1; fi\''
+            job_uuid_disabled, resp_disabled = util.submit_job(self.cook_url, command=command_disabled, container=container)
+            self.assertEqual(201, resp_disabled.status_code)
+            command_enabled = 'bash -c \'if [[ "${COOK_CHECKPOINT_MODE}" == "auto" ]] && [[ "${COOK_CHECKPOINT_PERIOD_SEC}" == "555" ]] && [[ "${COOK_CHECKPOINT_PRESERVE_PATH_0}" == "p1" ]] && [[ "${COOK_CHECKPOINT_PRESERVE_PATH_1}" == "p2" ]]; then exit 0; else exit 1; fi\''
+            job_uuid_enabled, resp_enabled = util.submit_job(self.cook_url, command=command_enabled, container=container, cpus= 0.2, mem=256,
+                                                             checkpoint={"mode": "auto",
+                                                                         "periodic-options": {"period-sec": 555},
+                                                                         "options": {"preserve-paths": ["p2", "p1"]}})
+            self.assertEqual(201, resp_enabled.status_code)
+            util.wait_for_instance(self.cook_url, job_uuid_disabled, status='success')
+            util.wait_for_instance(self.cook_url, job_uuid_enabled, status='success')
+        finally:
+            util.kill_jobs(self.cook_url, [job_uuid_disabled, job_uuid_enabled])
+
     @unittest.skipUnless(util.docker_tests_enabled(), 'Requires docker support')
     def test_disallowed_docker_parameters(self):
         settings = util.settings(self.cook_url)
@@ -3084,3 +3117,21 @@ class CookTest(util.CookTest):
         self.assertEqual('success', job['state'], job)
         self.assertLessEqual(1, len(job['instances']))
         self.assertIn('success', [i['status'] for i in job['instances']], job)
+
+    @unittest.skipUnless(util.missing_docker_image() is not None,
+                         'Requires setting the COOK_TEST_MISSING_DOCKER_IMAGE environment variable')
+    def test_container_initialization_timed_out(self):
+        container = {'type': 'docker',
+                     'docker': {'image': util.missing_docker_image(),
+                                'network': 'HOST',
+                                'force-pull-image': False}}
+        job_uuid, resp = util.submit_job(self.cook_url, container=container, max_retries=5)
+        try:
+            self.assertEqual(resp.status_code, 201, msg=resp.content)
+            util.wait_until(lambda: util.load_job(self.cook_url, job_uuid),
+                            lambda job: any(
+                                [i['status'] == 'failed' and
+                                 i['reason_code'] == reasons.CONTAINER_INITIALIZATION_TIMED_OUT
+                                 for i in job['instances']]))
+        finally:
+            util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)

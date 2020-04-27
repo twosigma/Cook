@@ -537,9 +537,9 @@
   node))
 
 (defn make-kubernetes-compute-cluster
-  [namespaced-pod-name->pod pool-names]
+  [namespaced-pod-name->pod pool-names synthetic-pods-user node-blocklist-labels]
   (let [synthetic-pods-config {:image "image"
-                               :user "user"
+                               :user synthetic-pods-user
                                :max-pods-outstanding 4
                                :pools pool-names}]
     (kcc/->KubernetesComputeCluster nil ; api-client
@@ -552,9 +552,9 @@
                                     (atom {}) ; cook-expected-state-map
                                     (atom {}) ; k8s-actual-state-map
                                     (atom nil) ; pool->fenzo-atom
-                                    {:kind :static :namespace "cook"} ; namespace-config
+                                    {:kind :per-user} ; namespace-config
                                     nil ; scan-frequency-seconds-config
                                     nil ; max-pods-per-node
                                     synthetic-pods-config ; synthetic-pods-config
-                                    nil ; node-blocklist-labels
+                                    node-blocklist-labels ; node-blocklist-labels
                                     )))

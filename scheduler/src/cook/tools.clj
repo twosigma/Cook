@@ -221,6 +221,20 @@
           {}
           (:job/environment job-ent)))
 
+(defn job-ent->checkpoint
+  "Take a job entity and return the configuration to enable checkpointing"
+  [{:keys [job/checkpoint]}]
+  (let [{:keys [checkpoint/mode checkpoint/options checkpoint/periodic-options]} checkpoint]
+    (cond-> {:mode mode}
+      options
+      (assoc :options
+             (let [{:keys [checkpoint-options/preserve-paths]} options]
+               {:preserve-paths preserve-paths}))
+      periodic-options
+      (assoc :periodic-options
+             (let [{:keys [checkpoint-periodic-options/period-sec]} periodic-options]
+               {:period-sec period-sec})))))
+
 (defn job-ent->label
   "Take a job entity and return the label map"
   [job-ent]

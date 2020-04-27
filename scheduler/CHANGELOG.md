@@ -4,6 +4,44 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.40.4] - 2020-04-24
+### Added
+- Improved k8s autoscaling metrics, from @dposada
+- Allow removing cpu limit in k8s, from @dposada
+- Show rate limited users in HTTP log, from @scrosby
+- Change checkpointing volume from init container to scratch space, from @nsinkov
+
+## [1.40.3] - 2020-04-10
+### Added
+- Main container environment variables to init container in k8s, from @nsinkov
+- Writable scratch space separate from the k8s sandbox, from @nsinkov
+- Experimental API and schema support for checkpointing in k8s, from @nsinkov
+- Fast fail for k8s pods with un-initialized containers, from @dposada
+### Fixed
+- Made k8s sidecar readiness probe optional, from @DaoWen
+- Made k8s pod watch initialization process each pod only once, from @dposada
+- Removed node anti-affinity for blocklist labels from k8s synthetic pods, from @dposada
+
+## [1.40.2] - 2020-03-24
+### Fixed
+- Added node anti-affinity for blocklist labels to synthetic pods, from @dposada
+
+## [1.40.1] - 2020-03-22
+### Added
+- Mesos sandbox mount to k8s pods (backward compatibility for jobs that assume they're running on Mesos), from @nsinkov
+
+## [1.40.0] - 2020-03-19
+### Added
+- Progress reporting for k8s jobs, from @DaoWen
+- SSL verification between Cook and k8s, from @scrosby
+- Fast fail for unschedulable k8s pods, from @dposada
+- Support for k8s synthetic pod namespace to be user's namespace, from @dposada
+- k8s synthetic pod anti-affinity to previous hosts, from @dposada 
+### Changed
+- Made autoscaling (for k8s) based on pending jobs instead of match failures, from @dposada
+- Renamed k8s metrics to be consistent with prior metric naming, from @scrosby
+- Separated k8s job pods' workdir and sandbox, from @DaoWen
+
 ## [1.39.1] - 2020-03-03
 ### Fixed
 - Removed expensive log from `handle-resource-offers!`, from @dposada

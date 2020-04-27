@@ -89,13 +89,20 @@
     [this _ vm-attributes _]
     (job-constraint-evaluate this _ vm-attributes)))
 
+(defn job->previous-hosts-to-avoid
+  "Given a job, returns the set of hostnames the
+  job's instances have run on (except preemptions)."
+  [job]
+  (->> (:job/instance job)
+       (remove #(true? (:instance/preempted? %)))
+       (mapv :instance/hostname)
+       distinct))
+
 (defn build-novel-host-constraint
   "Constructs a novel-host-constraint.
   The constraint prevents the job from running on hosts it has already run on"
   [job]
-  (let [previous-hosts (->> (:job/instance job)
-                            (remove #(true? (:instance/preempted? %)))
-                            (mapv :instance/hostname))]
+  (let [previous-hosts (job->previous-hosts-to-avoid job)]
     (->novel-host-constraint job previous-hosts)))
 
 (defrecord gpu-host-constraint [job needs-gpus?]

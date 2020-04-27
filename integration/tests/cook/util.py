@@ -12,7 +12,7 @@ import threading
 import time
 import unittest
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from urllib.parse import urlencode, urlparse
 
 import numpy
@@ -82,9 +82,9 @@ def _test_user_ids():
     e.g., 10 per worker, then this function returns range(0, 10) for worker 0,
     or range(20, 30) for worker 2.
     """
-    pytest_worker = os.getenv('PYTEST_XDIST_WORKER')
+    pytest_worker = os.getenv('PYTEST_XDIST_WORKER', 'gw0')
     max_test_users = int(os.getenv('COOK_MAX_TEST_USERS', 0))
-    if pytest_worker and max_test_users:
+    if max_test_users:
         pytest_worker_id = int(pytest_worker[2:])  # e.g., "gw4" -> 4
         test_user_min_id = max_test_users * pytest_worker_id
         test_user_max_id = test_user_min_id + max_test_users
@@ -167,6 +167,43 @@ class _BasicAuthUser(_AuthenticatedUser):
         self.previous_auth = None
 
 
+class _KerberosUserAuth:
+    """
+    requests session auth implementation for _KerberosUser
+    https://2.python-requests.org/en/v2.8.1/user/advanced/#custom-authentication
+    """
+
+    def __init__(self, username, expire_after_seconds=60):
+        self.auth_cache = {}
+        self.expiration_period = timedelta(seconds=expire_after_seconds)
+        self.username = username
+
+    def auth_for_url(self, url):
+        """
+        Return a valid auth header for the given url,
+        reusing cached header values when possible.
+        """
+        parsed_url = urlparse(url)
+        target_host_url = f'{parsed_url.scheme}://{parsed_url.netloc}'
+        auth = self.auth_cache.get(target_host_url)
+        if auth is None or datetime.now() - auth['time'] > self.expiration_period:
+            subcommand = (_kerberos_auth_cmd
+                          .replace('{{COOK_USER}}', self.username)
+                          .replace('{{COOK_SCHEDULER_URL}}', target_host_url))
+            header = subprocess.check_output(subcommand, shell=True).rstrip()
+            auth = { 'header': header, 'time': datetime.now() }
+            self.auth_cache[target_host_url] = auth
+        return auth['header']
+
+    def __call__(self, request):
+        """
+        Implements requests auth object interface,
+        taking in, updating, and returning a single request object.
+        """
+        request.headers['Authorization'] = self.auth_for_url(request.url)
+        return request
+
+
 class _KerberosUser(_AuthenticatedUser):
     """
     Object representing a Cook user with Kerberos credentials.
@@ -174,51 +211,23 @@ class _KerberosUser(_AuthenticatedUser):
 
     def __init__(self, name, impersonatee=None):
         super().__init__(name, impersonatee)
-        self.auth = None
-        self.previous_token = None
-        self.stop_event = None
-
-    def _generate_kerberos_ticket_for_user(self, username):
-        """
-        Get a Kerberos authentication ticket for the given user.
-        Depends on COOK_KERBEROS_TEST_AUTH_CMD being set in the environment.
-        """
-        subcommand = (_kerberos_auth_cmd
-                      .replace('{{COOK_USER}}', username)
-                      .replace('{{COOK_SCHEDULER_URL}}', retrieve_cook_url()))
-        return subprocess.check_output(subcommand, shell=True).rstrip()
-
-    def _reset_auth_header(self, stop):
-        global session
-        if not stop.is_set():
-            logger.info(f'Refreshing kerberos tickets for {self.name}')
-            session.headers['Authorization'] = self._generate_kerberos_ticket_for_user(self.name)
-            threading.Timer(60.0, lambda: self._reset_auth_header(stop)).start()
-        else:
-            logger.info(f'Stopping kerberos ticket refresh for {self.name}')
+        self.auth = _KerberosUserAuth(name)
+        self.previous_auth = None
 
     def __enter__(self):
         global session
         logger.info(f"Setting kerberos user {self.name}")
         super().__enter__()
-        assert self.previous_token is None
-        assert self.stop_event is None
-        self.previous_token = session.headers.get('Authorization')
-        self.stop_event = threading.Event()
-        self._reset_auth_header(self.stop_event)
+        assert self.previous_auth is None
+        self.previous_auth = session.auth
+        session.auth = self.auth
 
     def __exit__(self, ex_type, ex_val, ex_trace):
         global session
         super().__exit__(ex_type, ex_val, ex_trace)
-        if self.stop_event is not None:
-            self.stop_event.set()
-            self.stop_event = None
-        if self.previous_token is None:
-            del session.headers['Authorization']
-        else:
-            session.headers['Authorization'] = self.previous_token
-            self.previous_token = None
         logger.info(f"Resetting kerberos auth back from {self.name}")
+        session.auth = self.previous_auth
+        self.previous_auth = None
 
 
 class UserFactory(object):
@@ -287,6 +296,11 @@ def multi_cluster_tests_enabled():
     indicating that multiple cook scheduler instances are running.
     """
     return os.getenv('COOK_MULTI_CLUSTER') is not None
+
+
+def cli_main_module_name():
+    """"Returns the name of the module containing the main() method for the cli."""
+    return os.getenv('COOK_CLI_MAIN_MODULE', 'cook.__main__')
 
 
 @functools.lru_cache()
@@ -435,6 +449,10 @@ def docker_image():
     return os.getenv('COOK_TEST_DOCKER_IMAGE')
 
 
+def missing_docker_image():
+    return os.getenv('COOK_TEST_MISSING_DOCKER_IMAGE')
+
+
 def docker_working_directory():
     return os.getenv('COOK_TEST_DOCKER_WORKING_DIRECTORY')
 
@@ -561,15 +579,6 @@ def submit_jobs(cook_url, job_specs, clones=1, pool=None, headers=None, log_requ
         job_specs = [job_specs] * clones
     caller = get_caller()
 
-    def io_redirect(spec):
-        if using_kubernetes() and using_kubernetes_default_shell():
-            # Capture stdout and stderr as files in the sandbox directory
-            # (i.e., mimick the default mesos behavior on k8s).
-            # Assuming custom shell commands handle this logic internally.
-            spec['command'] = f'( {spec["command"]} ) >stdout 2>stderr'
-            logging.debug(f'Rewrote job {spec["uuid"]} command to capture stdout and stderr.')
-        return spec
-
     def full_spec(spec):
         if 'name' not in spec:
             spec['name'] = DEFAULT_JOB_NAME_PREFIX + caller
@@ -580,7 +589,7 @@ def submit_jobs(cook_url, job_specs, clones=1, pool=None, headers=None, log_requ
                 del spec["name"]
             return dict(**spec)
 
-    jobs = [io_redirect(full_spec(j)) for j in job_specs]
+    jobs = [full_spec(j) for j in job_specs]
     request_body = {'jobs': jobs}
     default_pool = default_submit_pool()
     if pool == POOL_UNSPECIFIED:
@@ -1199,9 +1208,20 @@ def user_current_usage(cook_url, headers=None, **kwargs):
     return session.get('%s/usage' % cook_url, params=kwargs, headers=headers)
 
 
-def query_queue(cook_url, **kwargs):
+def query_queue(cook_url, allow_redirects=True, **kwargs):
     """Get current jobs via the queue endpoint (admin-only)"""
-    return session.get(f'{cook_url}/queue', **kwargs)
+    # We handle redirects manually here because /queue can redirect to a new hostname
+    # (when redirecting to master node), and requests strips and does not re-apply
+    # auth when redirects cross domains.
+    response = session.get(f'{cook_url}/queue', allow_redirects=False, **kwargs)
+    if allow_redirects and response.is_redirect:
+        for _ in range(10):
+            response = session.get(response.headers['Location'], allow_redirects=False, **kwargs)
+            if not response.is_redirect:
+                break
+        else:
+            assert not response.is_redirect, response.headers
+    return response
 
 
 def get_limit(cook_url, limit_type, user, pool=None, headers=None):

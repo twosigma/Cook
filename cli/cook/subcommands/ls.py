@@ -1,13 +1,15 @@
 import json
 import logging
 import os
+import re
+import subprocess
 from datetime import datetime
 from functools import partial
 
 from tabulate import tabulate
 
 from cook import http, mesos, terminal, plugins
-from cook.querying import query_unique_and_run, parse_entity_refs
+from cook.querying import get_compute_cluster_config, query_unique_and_run, parse_entity_refs
 from cook.util import guard_no_cluster
 
 
@@ -73,8 +75,9 @@ def browse_files(instance, sandbox_dir, path):
     return resp.json()
 
 
-def retrieve_entries_from_mesos(instance, sandbox_dir, path):
+def retrieve_entries_from_mesos(instance, sandbox_dir_fn, path):
     """Retrieves the contents of the Mesos sandbox path for the given instance"""
+    sandbox_dir = sandbox_dir_fn()
     entries = browse_files(instance, sandbox_dir, path)
     if len(entries) == 0 and path:
         # Mesos will return 200 with an empty list in two cases:
@@ -88,11 +91,9 @@ def retrieve_entries_from_mesos(instance, sandbox_dir, path):
 
     return entries
 
-
-def ls_for_instance(instance, sandbox_dir, _, path, long_format, as_json):
-    """Lists contents of the Mesos sandbox path for the given instance"""
+def ls_for_instance_from_mesos(instance, sandbox_dir_fn, path, long_format, as_json):
     retrieve_fn = plugins.get_fn('retrieve-job-instance-files', retrieve_entries_from_mesos)
-    entries = retrieve_fn(instance, sandbox_dir, path)
+    entries = retrieve_fn(instance, sandbox_dir_fn, path)
     if as_json:
         print(json.dumps(entries))
     else:
@@ -105,6 +106,62 @@ def ls_for_instance(instance, sandbox_dir, _, path, long_format, as_json):
                 print('\n'.join(terminal.wrap('  '.join([format_path(e) for e in entries]))))
         else:
             logging.info('the directory is empty')
+
+def kubectl_ls_for_instance(instance_uuid, _, path, long_format, as_json):
+    if as_json:
+        working_dir = subprocess.run(['kubectl',
+                                      'exec',
+                                      '-c', os.getenv('COOK_CONTAINER_NAME_FOR_JOB', 'required-cook-job-container'),
+                                      '-it', instance_uuid,
+                                      '--', 'pwd'],
+                                     stdout=subprocess.PIPE).stdout.decode('utf-8').rstrip()
+        args = ['kubectl',
+                'exec',
+                '-c', os.getenv('COOK_CONTAINER_NAME_FOR_JOB', 'required-cook-job-container'),
+                '-it', instance_uuid,
+                '--', 'ls', '-l', '--time-style=+%s']
+        if path:
+            args.append(path)
+        listing_lines = subprocess.run(args, stdout=subprocess.PIPE).stdout.decode('utf-8').splitlines()
+        entries = [{"mode": mode,
+                    "nlink": int(nlink),
+                    "uid": uid,
+                    "gid": gid,
+                    "size": int(size),
+                    "mtime": int(mtime),
+                    "path": f'{working_dir}/{path}'}
+                   for mode, nlink, uid, gid, size, mtime, path
+                   in [re.split('\ +', line, 6) for line
+                       in listing_lines if not line.startswith("ls: cannot access") and not line.startswith("total")]]
+        if len(entries) == 0 and len([line for line in listing_lines if line.endswith("No such file or directory")]) == 1:
+            raise Exception(f"Cannot access '{path}' (no such file or directory).")
+        print(json.dumps(entries))
+    else:
+        args = ['kubectl', 'kubectl',
+                'exec',
+                '-c', os.getenv('COOK_CONTAINER_NAME_FOR_JOB', 'required-cook-job-container'),
+                '-it', instance_uuid,
+                '--', 'ls']
+        if long_format:
+            args.append("-l")
+        if path:
+            args.append(path)
+        os.execlp(*args)
+
+def ls_for_instance(job, instance, sandbox_dir_fn, cluster, path, long_format, as_json):
+    """
+    Lists contents of the Mesos sandbox path for the given instance.
+    When using Kubernetes, calls the exec command of the kubectl cli.
+    """
+    compute_cluster = instance["compute-cluster"]
+    compute_cluster_type = compute_cluster["type"]
+    compute_cluster_name = compute_cluster["name"]
+    if compute_cluster_type == "kubernetes" and ("end_time" not in instance or instance["end_time"] is None):
+        kubectl_ls_for_instance_fn = plugins.get_fn('kubectl-ls-for-instance', kubectl_ls_for_instance)
+        compute_cluster_config = get_compute_cluster_config(cluster, compute_cluster_name)
+        kubectl_ls_for_instance_fn(job["user"], instance["task_id"], compute_cluster_config, path, long_format, as_json)
+    else:
+        ls_for_instance_from_mesos(instance, sandbox_dir_fn, path, long_format, as_json)
 
 
 def ls(clusters, args, _):
@@ -138,7 +195,7 @@ def ls(clusters, args, _):
 
 def register(add_parser, _):
     """Adds this sub-command's parser and returns the action function"""
-    parser = add_parser('ls', help='list contents of Mesos sandbox by job or instance uuid')
+    parser = add_parser('ls', help='list contents of sandbox by job or instance uuid')
     group = parser.add_mutually_exclusive_group()
     group.add_argument('-l', help='use a long listing format', dest='long_format', action='store_true')
     group.add_argument('--json', help='show the data in JSON format', dest='json', action='store_true')
