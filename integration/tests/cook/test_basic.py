@@ -1880,7 +1880,7 @@ class CookTest(util.CookTest):
             max_retries=5)
         self.assertEqual(resp.status_code, 201)
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
-        self.assertEquals(job["container"]["docker"]["image"], expected_container["docker"]["image"])
+        self.assertEqual(job["container"]["docker"]["image"], expected_container["docker"]["image"])
         self.assertIn('success', [i['status'] for i in job['instances']])
 
     @unittest.skipUnless(util.has_docker_service() and not util.using_kubernetes(),

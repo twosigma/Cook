@@ -687,7 +687,7 @@
        first
        :container))
 
-  (s/defn make-job-txn
+(s/defn make-job-txn
   "Creates the necessary txn data to insert a job into the database"
   [pool commit-latch-id db job :- Job]
   (let [{:keys [uuid command max-retries max-runtime expected-runtime priority cpus mem gpus
