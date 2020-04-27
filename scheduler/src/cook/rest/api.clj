@@ -741,10 +741,11 @@
         pool-name (or (:pool/name pool) (config/default-pool))
         default-containers (get-in config/config [:settings :pools :default-containers])
         container (if (nil? container)
-                    (let [default-container (get-default-container-for-pool default-containers pool-name)]
-                      (if (and pool-name default-container)
+                    (if pool-name
+                      (if-let [default-container (get-default-container-for-pool default-containers pool-name)]
                         (build-container user db-id default-container)
-                        []))
+                        [])
+                      [])
                     (build-container user db-id container))
         executor (str->executor-enum executor)
         ;; These are optionally set datoms w/ default values
