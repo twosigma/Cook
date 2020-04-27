@@ -2321,7 +2321,7 @@
         [{:pool-regex "^foo$" :container {:foo 1}}
          {:pool-regex ".*" :container {:bar 2}}
          {:pool-regex "^baz$" :container {:baz 3}}]]
-    (is (api/get-default-container-for-pool default-containers "foo") {:foo 1})
-    (is (api/get-default-container-for-pool default-containers "bar") {:bar 2})
-    (is (api/get-default-container-for-pool default-containers "baz") {:bar 2}))
+    (is (= (api/get-default-container-for-pool default-containers "foo") {:foo 1}))
+    (is (= (api/get-default-container-for-pool default-containers "bar") {:bar 2}))
+    (is (= (api/get-default-container-for-pool default-containers "baz") {:bar 2})))
   (is (= (api/get-default-container-for-pool [] "foo") nil)))
