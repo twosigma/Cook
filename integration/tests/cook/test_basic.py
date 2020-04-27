@@ -1868,6 +1868,10 @@ class CookTest(util.CookTest):
         if len(matching_containers) == 0:
             self.skipTest("No rule matches the default submit pool")
         expected_container = matching_containers[0]
+        # Make sure we have a different configured docker image and default image, we fail the test to make sure that we
+        # don't inadvertently skip it.
+        self.failIfEqual(expected_container["docker"]["image"],util.docker_image())
+
         # Special logic in util.submit_jobs.full_spec maps container=None and removes it from the submitted job spec.
         job_uuid, resp = util.submit_job(
             self.cook_url,
