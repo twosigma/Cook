@@ -1860,7 +1860,7 @@ class CookTest(util.CookTest):
     def test_default_container_for_pool(self):
         default_pool = util.default_submit_pool()
         settings_dict = util.settings(self.cook_url)
-        list_of_pool_match_rules = settings_dict.get("pools", {}).get("default-container-for-pool", [])
+        list_of_pool_match_rules = settings_dict.get("pools", {}).get("default-containers", [])
         if len(list_of_pool_match_rules) == 0:
             self.skipTest("No pool match rules defined")
         matching_containers = [ii["container"] for ii in list_of_pool_match_rules if

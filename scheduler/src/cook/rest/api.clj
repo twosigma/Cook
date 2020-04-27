@@ -679,10 +679,10 @@
        :dataset.partition/end (coerce-date (partition "end"))}
       :default (throw (IllegalArgumentException. (str "Unsupported partition type " partition-type))))))
 
-(defn match-default-container-for-pool
+(defn get-default-container-for-pool
   "Given a pool name, determine a default container that should be run on it."
-  [default-container-for-pool effective-pool-name]
-  (->> default-container-for-pool
+  [default-containers effective-pool-name]
+  (->> default-containers
        (filter (fn [{:keys [pool-regex]}] (re-find (re-pattern pool-regex) effective-pool-name)))
        first
        :container))
@@ -739,11 +739,11 @@
                                   :constraint/pattern pattern}]))
                             constraints)
         pool-name (or (:pool/name pool) (config/default-pool))
-        default-container-for-pool (get-in config/config [:settings :pools :default-container-for-pool])
+        default-containers (get-in config/config [:settings :pools :default-containers])
         container (if (nil? container)
-                    (let [guessed-container (match-default-container-for-pool default-container-for-pool pool-name)]
-                      (if (and pool-name guessed-container)
-                        (build-container user db-id guessed-container)
+                    (let [default-container (get-default-container-for-pool default-containers pool-name)]
+                      (if (and pool-name default-container)
+                        (build-container user db-id default-container)
                         []))
                     (build-container user db-id container))
         executor (str->executor-enum executor)

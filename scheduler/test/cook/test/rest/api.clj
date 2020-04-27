@@ -2316,12 +2316,12 @@
   (is (not (api/valid-date-str? "2018-01-01")))
   (is (not (api/valid-date-str? "20180132"))))
 
-(deftest test-match-default-container-for-pool
-  (let [default-container-for-pool
+(deftest test-match-default-containers
+  (let [default-containers
         [{:pool-regex "^foo$" :container {:foo 1}}
          {:pool-regex ".*" :container {:bar 2}}
          {:pool-regex "^baz$" :container {:baz 3}}]]
-    (is (api/match-default-container-for-pool default-container-for-pool "foo") {:foo 1})
-    (is (api/match-default-container-for-pool default-container-for-pool "bar") {:bar 2})
-    (is (api/match-default-container-for-pool default-container-for-pool "baz") {:bar 2}))
-  (is (= (api/match-default-container-for-pool [] "foo") nil)))
+    (is (api/get-default-container-for-pool default-containers "foo") {:foo 1})
+    (is (api/get-default-container-for-pool default-containers "bar") {:bar 2})
+    (is (api/get-default-container-for-pool default-containers "baz") {:bar 2}))
+  (is (= (api/get-default-container-for-pool [] "foo") nil)))

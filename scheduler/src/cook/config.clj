@@ -408,8 +408,8 @@
                 (update :job-resource-adjustment
                         #(-> %
                              (update :pool-regex re-pattern)))
-                (not (:default-container-for-pool pools))
-                (assoc :default-container-for-pool [])))
+                (not (:default-containers pools))
+                (assoc :default-containers [])))
      :api-only? (fnk [[:config {api-only? false}]]
                   api-only?)
      :estimated-completion-constraint (fnk [[:config {estimated-completion-constraint nil}]]
