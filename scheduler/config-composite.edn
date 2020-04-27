@@ -64,7 +64,7 @@
                 "datomic.kv-cluster" :warn
                 "datomic.peer" :warn
                 "cook.scheduler.data-locality" :debug
-                "cook.mesos.fenzo-utils" :debug
+                "cook.scheduler.fenzo-utils" :debug
                 "cook.scheduler.rebalancer" :debug
                 "cook.scheduler.scheduler" :debug
                 "cook.kubernetes.compute-cluster" :debug
