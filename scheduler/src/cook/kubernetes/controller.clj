@@ -14,23 +14,19 @@
            (io.kubernetes.client.models V1Pod V1ContainerStatus V1PodStatus)
            (java.net URLEncoder)))
 
-(let [{:keys [controller-lock-num-shards]} (config/kubernetes)]
-
-  (log/info "Doing" controller-lock-num-shards "way lock-sharding in k8s controller")
-
-  (def ^:private lock-objects (repeatedly controller-lock-num-shards #(Object.))))
-
 (defmacro with-process-lock
   "Evaluates body (which should contain a call to
   process) after acquiring the pod-name-based lock"
   [compute-cluster-name pod-name & body]
   `(timers/time!
      (metrics/timer "process-lock" ~compute-cluster-name)
-     (let [lock-object#
-           (nth lock-objects
+     (let [lock-objects#
+           (:controller-lock-objects (config/kubernetes))
+           lock-object#
+           (nth lock-objects#
                 (-> ~pod-name
                     hash
-                    (mod (count lock-objects))))
+                    (mod (count lock-objects#))))
            timer-context#
            (timers/start
              (metrics/timer
