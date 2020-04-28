@@ -226,3 +226,11 @@
                            :cook-expected-state-map (atom {})}
           pod-name "test-pod"]
       (controller/scan-process compute-cluster pod-name))))
+
+(deftest test-handle-pod-preemption
+  (testing "avoids datomic write for synthetic pods"
+    (with-redefs [controller/write-status-to-datomic
+                  (fn [_ _]
+                    (throw (ex-info "BAD" {})))]
+      (is (= {:cook-expected-state :cook-expected-state/completed}
+             (controller/handle-pod-preemption {} (str api/cook-synthetic-pod-name-prefix "-test-pod")))))))
