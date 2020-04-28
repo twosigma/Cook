@@ -435,6 +435,19 @@
         (catch Exception ex
           (log/error ex "Error refreshing bearer token"))))))
 
+(defn- set-credentials
+  "Set credentials for api client"
+  [api-client credentials bearer-token-refresh-seconds]
+  (let [scoped-credentials (.createScoped credentials ["https://www.googleapis.com/auth/cloud-platform"
+                                                       "https://www.googleapis.com/auth/userinfo.email"])
+        bearer-token (get-bearer-token scoped-credentials)]
+    (.scheduleAtFixedRate bearer-token-executor
+                          (make-bearer-token-refresh-task api-client scoped-credentials)
+                          bearer-token-refresh-seconds
+                          bearer-token-refresh-seconds
+                          TimeUnit/SECONDS)
+    (.setApiKey api-client bearer-token)))
+
 (defn make-api-client
   "Builds an ApiClient from the given configuration parameters:
     - If config-file is specified, initializes the api file from the file at config-file
@@ -458,19 +471,12 @@
     (when (some? ssl-cert-path)
       (.setSslCaCert api-client
                      (FileInputStream. (File. ssl-cert-path))))
-    (when google-credentials
+    (if google-credentials
       (with-open [file-stream (FileInputStream. (File. google-credentials))]
-        (let [credentials (GoogleCredentials/fromStream file-stream)
-              scoped-credentials (.createScoped credentials ["https://www.googleapis.com/auth/cloud-platform"
-                                                             "https://www.googleapis.com/auth/userinfo.email"])
-              bearer-token (get-bearer-token scoped-credentials)]
-          (.scheduleAtFixedRate bearer-token-executor
-                                (make-bearer-token-refresh-task api-client scoped-credentials)
-                                bearer-token-refresh-seconds
-                                bearer-token-refresh-seconds
-                                TimeUnit/SECONDS)
-          (.setApiKey api-client bearer-token))))
-
+        (let [credentials (GoogleCredentials/fromStream file-stream)]
+          (set-credentials api-client credentials bearer-token-refresh-seconds)))
+      (let [credentials (GoogleCredentials/getApplicationDefault)]
+        (set-credentials api-client credentials bearer-token-refresh-seconds)))
     api-client))
 
 (defn guard-invalid-synthetic-pods-config
