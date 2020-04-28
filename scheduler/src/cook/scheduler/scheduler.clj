@@ -483,10 +483,11 @@
 
 (def adjust-job-resources-for-pool-fn
   (memoize
-    (fn [pool-name]
-      (if-let [{:keys [pool-regex adjust-job-resources-fn]} (config/job-resource-adjustments)]
-        (if (re-matches pool-regex pool-name) (util/lazy-load-var adjust-job-resources-fn) identity)
-        identity))))
+    (let [noop (fn [job resources] resources)]
+      (fn [pool-name]
+        (if-let [{:keys [pool-regex adjust-job-resources-fn]} (config/job-resource-adjustments)]
+          (if (re-matches pool-regex pool-name) (util/lazy-load-var adjust-job-resources-fn) noop)
+          noop)))))
 
 (defn make-task-request
   "Helper to create a TaskRequest using TaskRequestAdapter. TaskRequestAdapter implements Fenzo's TaskRequest interface
