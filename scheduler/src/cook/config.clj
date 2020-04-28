@@ -31,6 +31,7 @@
            (com.netflix.fenzo VMTaskFitnessCalculator)
            (java.io File)
            (java.net InetAddress)
+           (java.util.concurrent.locks ReentrantLock)
            (org.apache.curator.test TestingServer)
            (org.apache.log4j DailyRollingFileAppender Logger PatternLayout)))
 
@@ -444,12 +445,29 @@
                                   :default-pool "no-pool"}
                                  pool-selection)})))
      :kubernetes (fnk [[:config {kubernetes {}}]]
-                   (merge {:default-workdir "/mnt/sandbox"
-                           :pod-condition-containers-not-initialized-seconds 120
-                           :pod-condition-unschedulable-seconds 60
-                           :reconnect-delay-ms 60000
-                           :set-container-cpu-limit? true}
-                          kubernetes))}))
+                   (let [{:keys [controller-lock-num-shards]
+                          :or {controller-lock-num-shards 32}}
+                         kubernetes
+                         _
+                         (when (not (< 0 controller-lock-num-shards 256))
+                           (throw
+                             (ex-info
+                               "Please configure :controller-lock-num-shards to > 0 and < 256 in your config file."
+                               kubernetes)))
+                         lock-objects
+                         (repeatedly
+                           controller-lock-num-shards
+                           #(ReentrantLock.))]
+                     (merge {:controller-lock-num-shards controller-lock-num-shards
+                             :controller-lock-objects (with-meta
+                                                        lock-objects
+                                                        {:json-value (str lock-objects)})
+                             :default-workdir "/mnt/sandbox"
+                             :pod-condition-containers-not-initialized-seconds 120
+                             :pod-condition-unschedulable-seconds 60
+                             :reconnect-delay-ms 60000
+                             :set-container-cpu-limit? true}
+                            kubernetes)))}))
 
 (defn read-config
   "Given a config file path, reads the config and returns the map"

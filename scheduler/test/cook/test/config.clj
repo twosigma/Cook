@@ -15,10 +15,12 @@
 ;;
 (ns cook.test.config
   (:require [clojure.test :refer :all]
-            [cook.config :refer (config default-pool env read-edn-config
+            [cook.config :refer (config config-settings default-pool env read-edn-config
                                  config-string->fitness-calculator)]
+            [cook.test.rest.api :as api]
             [cook.test.testutil :refer (setup)])
-  (:import com.netflix.fenzo.VMTaskFitnessCalculator))
+  (:import (clojure.lang ExceptionInfo)
+           com.netflix.fenzo.VMTaskFitnessCalculator))
 
 (deftest test-read-edn-config
   (is (= {} (read-edn-config "{}")))
@@ -76,3 +78,22 @@
   (testing "something other than a VMTaskFitnessCalculator"
     (is (thrown? IllegalArgumentException (config-string->fitness-calculator
                                             "System/out")))))
+
+(deftest test-config-settings
+  (testing "k8s controller lock num shards is in a sane range"
+    (let [valid-config (assoc-in (api/minimal-config)
+                                 [:config :kubernetes :controller-lock-num-shards]
+                                 1)]
+      (is (config-settings valid-config)))
+    (let [valid-config (assoc-in (api/minimal-config)
+                                 [:config :kubernetes :controller-lock-num-shards]
+                                 32)]
+      (is (config-settings valid-config)))
+    (let [bad-config (assoc-in (api/minimal-config)
+                               [:config :kubernetes :controller-lock-num-shards]
+                               0)]
+      (is (thrown? ExceptionInfo (config-settings bad-config))))
+    (let [bad-config (assoc-in (api/minimal-config)
+                               [:config :kubernetes :controller-lock-num-shards]
+                               256)]
+      (is (thrown? ExceptionInfo (config-settings bad-config))))))

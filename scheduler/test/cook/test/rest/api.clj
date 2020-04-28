@@ -1597,7 +1597,7 @@
                            :query-params {:job uuid}})]
         (is (= 403 (:status resp)))))))
 
-(defn- minimal-config
+(defn minimal-config
   "Returns a minimal configuration map"
   []
   {:config {:database {:datomic-uri "datomic:mem://cook-jobs"}
