@@ -504,7 +504,8 @@
 
 (defn adjust-job-resources
   "Adjust required resources for a job, adding any additional resources. Additional resources might be needed for
-   sidecars or extra processes that will be launched with the job."
+   sidecars or extra processes that will be launched with the job. This is called from make-task-request in the scheduler.
+   The adjusted resource value is used for bin-packing when scheduling."
   [{:keys [job/checkpoint] :as job} {:keys [cpus mem] :as resources}]
   (let [{:keys [cpu-request memory-request] :as resource-requirements}
         (-> (config/kubernetes) :sidecar :resource-requirements)
