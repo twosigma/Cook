@@ -496,7 +496,7 @@
          (remove disallowed-var?)
          (mapv #(apply make-env %)))))
 
-(defn- add-as-decimals
+(defn add-as-decimals
   "Takes two doubles and adds them as decimals to avoid floating point error. Kubernetes will not be able to launch a
    pod if the required cpu has too much precision. For example, adding 0.1 and 0.02 as doubles results in 0.12000000000000001"
   [a b]
