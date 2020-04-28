@@ -2148,7 +2148,7 @@ if __name__ == '__main__':
             self.assertEqual(0, cp.returncode, cp.stderr)
         else:
             self.assertEqual(1, cp.returncode, cp.stderr)
-            self.assertIn('GPU support is not enabled', cli.stdout(cp))
+            self.assertIn('GPU support is not enabled', cli.stderr(cp))
 
         cp, uuids = cli.submit('ls', self.cook_url, submit_flags=f'--gpus 0')
         self.assertEqual(2, cp.returncode, cp.stderr)
@@ -2170,11 +2170,11 @@ if __name__ == '__main__':
                 self.assertEqual(pool_name, jobs[0]['pool'])
             else:
                 self.assertEqual(1, cp.returncode, cp.stderr)
-                self.assertIn(f'{pool_name} is not accepting job submissions', cli.stdout(cp))
+                self.assertIn(f'{pool_name} is not accepting job submissions', cli.stderr(cp))
         # Try submitting to a pool that doesn't exist
         cp, uuids = cli.submit('ls', self.cook_url, submit_flags=f'--pool {util.make_temporal_uuid()}')
         self.assertEqual(1, cp.returncode, cp.stderr)
-        self.assertIn('is not a valid pool name', cli.stdout(cp))
+        self.assertIn('is not a valid pool name', cli.stderr(cp))
 
     def test_show_from_jupyter(self):
         notebook = {

@@ -488,10 +488,11 @@ def get_caller():
         startFrame = startFrame.f_back
     return ""
 
+
 def add_container_to_job_if_needed(job):
     """Add a container to a job if it needs a docker container"""
     image = docker_image()
-    if image:
+    if image and 'container' not in job:
         work_dir = docker_working_directory()
         docker_parameters = []
         if work_dir:
@@ -583,10 +584,15 @@ def submit_jobs(cook_url, job_specs, clones=1, pool=None, headers=None, log_requ
         if 'name' not in spec:
             spec['name'] = DEFAULT_JOB_NAME_PREFIX + caller
         if 'uuid' not in spec:
-            return minimal_job(**spec)
+            spec = minimal_job(**spec)
+            if 'container' in spec and spec['container'] is None:
+                del spec['container']
+            return spec
         else:
-            if "name" in spec and spec["name"] is None:
-                del spec["name"]
+            if 'container' in spec and spec['container'] is None:
+                del spec['container']
+            if 'name' in spec and spec['name'] is None:
+                del spec['name']
             return dict(**spec)
 
     jobs = [full_spec(j) for j in job_specs]
@@ -1555,6 +1561,7 @@ class CookTest(unittest.TestCase):
         return test_id.split('.')[-1]
 
 
+@functools.lru_cache()
 def docker_tests_enabled():
     return docker_image() is not None
 

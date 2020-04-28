@@ -147,12 +147,13 @@
   returns the `completed` cook expected state."
   [{:keys [name] :as compute-cluster} pod-name]
   (log/info "In compute cluster" name ", pod" pod-name "preemption has occurred")
-  (let [instance-id pod-name
-        status {:reason :reason-slave-removed
-                :state :task-failed
-                :task-id {:value instance-id}}]
-    (write-status-to-datomic compute-cluster status)
-    {:cook-expected-state :cook-expected-state/completed}))
+  (when-not (api/synthetic-pod? pod-name)
+    (let [instance-id pod-name
+          status {:reason :reason-slave-removed
+                  :state :task-failed
+                  :task-id {:value instance-id}}]
+      (write-status-to-datomic compute-cluster status)))
+  {:cook-expected-state :cook-expected-state/completed})
 
 (defn launch-pod
   [{:keys [api-client name] :as compute-cluster} cook-expected-state-dict pod-name]
