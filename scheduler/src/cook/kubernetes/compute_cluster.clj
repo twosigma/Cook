@@ -361,7 +361,7 @@
                                                      ; We need to account for any sidecar resource requirements that the
                                                      ; job we're launching this synthetic pod for will need to use.
                                                      sidecar-resource-requirements
-                                                     (merge-with +
+                                                     (merge-with api/add-as-decimals
                                                                  {"cpus" (:cpu-request sidecar-resource-requirements)
                                                                   "mem" (:memory-request sidecar-resource-requirements)}))
                                             :job {:job/pool {:pool/name synthetic-task-pool-name}}}}))
