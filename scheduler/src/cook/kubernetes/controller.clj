@@ -12,7 +12,8 @@
             [metrics.timers :as timers])
   (:import (clojure.lang IAtom)
            (io.kubernetes.client.models V1Pod V1ContainerStatus V1PodStatus)
-           (java.net URLEncoder)))
+           (java.net URLEncoder)
+           (java.util.concurrent.locks Lock)))
 
 (defmacro with-process-lock
   "Evaluates body (which should contain a call to
@@ -22,7 +23,7 @@
      (metrics/timer "process-lock" ~compute-cluster-name)
      (let [lock-objects#
            (:controller-lock-objects (config/kubernetes))
-           lock-object#
+           ^Lock lock-object#
            (nth lock-objects#
                 (-> ~pod-name
                     hash
@@ -32,9 +33,12 @@
              (metrics/timer
                "process-lock-acquire"
                ~compute-cluster-name))]
-       (locking lock-object#
+       (.lock lock-object#)
+       (try
          (.stop timer-context#)
-         ~@body))))
+         ~@body
+         (finally
+           (.unlock lock-object#))))))
 
 (defn canonicalize-cook-expected-state
   "Canonicalize the expected states before comparing if they're equivalent"

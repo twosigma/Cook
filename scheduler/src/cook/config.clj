@@ -31,6 +31,7 @@
            (com.netflix.fenzo VMTaskFitnessCalculator)
            (java.io File)
            (java.net InetAddress)
+           (java.util.concurrent.locks ReentrantLock)
            (org.apache.curator.test TestingServer)
            (org.apache.log4j DailyRollingFileAppender Logger PatternLayout)))
 
@@ -456,8 +457,9 @@
                          lock-objects
                          (repeatedly
                            controller-lock-num-shards
-                           #(Object.))]
-                     (merge {:controller-lock-objects (with-meta
+                           #(ReentrantLock.))]
+                     (merge {:controller-lock-num-shards controller-lock-num-shards
+                             :controller-lock-objects (with-meta
                                                         lock-objects
                                                         {:json-value (str lock-objects)})
                              :default-workdir "/mnt/sandbox"

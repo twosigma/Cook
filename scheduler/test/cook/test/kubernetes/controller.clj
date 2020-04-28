@@ -7,8 +7,13 @@
             [cook.kubernetes.controller :as controller]
             [cook.test.testutil :as tu])
   (:import (io.kubernetes.client ApiException)
-           (io.kubernetes.client.models V1ObjectMeta V1Pod V1PodCondition V1PodStatus)))
+           (io.kubernetes.client.models V1PodCondition V1PodStatus)
+           (java.util.concurrent.locks ReentrantLock)))
 
+(defn make-test-kubernetes-config
+  []
+  {:controller-lock-num-shards 1
+   :controller-lock-objects [(ReentrantLock.)]})
 
 (deftest test-k8s-actual-state-equivalent?
   (testing "different states"
@@ -116,7 +121,8 @@
                   controller/handle-pod-killed (fn [_ _]
                                                  {:cook-expected-state :cook-expected-state/completed})
                   controller/write-status-to-datomic (fn [_] :illegal_return_value_should_be_unused)
-                  controller/prepare-k8s-actual-state-dict-for-logging identity]
+                  controller/prepare-k8s-actual-state-dict-for-logging identity
+                  config/kubernetes make-test-kubernetes-config]
 
       (controller/update-cook-expected-state mock-cc pod-name {:cook-expected-state :cook-expected-state/starting
                                                                :launch-pod {:pod :the-launch-pod}})
@@ -225,4 +231,5 @@
     (let [compute-cluster {:k8s-actual-state-map (atom {})
                            :cook-expected-state-map (atom {})}
           pod-name "test-pod"]
-      (controller/scan-process compute-cluster pod-name))))
+      (with-redefs [config/kubernetes make-test-kubernetes-config]
+        (controller/scan-process compute-cluster pod-name)))))
