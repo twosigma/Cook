@@ -26,7 +26,7 @@
            (nth lock-objects#
                 (-> ~pod-name
                     hash
-                    (mod (count lock-objects#))))
+                    (mod (:controller-lock-num-shards (config/kubernetes)))))
            timer-context#
            (timers/start
              (metrics/timer

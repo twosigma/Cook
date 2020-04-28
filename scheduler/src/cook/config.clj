@@ -447,11 +447,16 @@
                    (let [{:keys [controller-lock-num-shards]
                           :or {controller-lock-num-shards 32}}
                          kubernetes
+                         _
+                         (when (not (< 0 controller-lock-num-shards 256))
+                           (throw
+                             (ex-info
+                               "Please configure :controller-lock-num-shards to > 0 and < 256 in your config file."
+                               kubernetes)))
                          lock-objects
                          (repeatedly
                            controller-lock-num-shards
                            #(Object.))]
-                     (log/info "Doing" controller-lock-num-shards "way lock-sharding in k8s")
                      (merge {:controller-lock-objects (with-meta
                                                         lock-objects
                                                         {:json-value (str lock-objects)})
