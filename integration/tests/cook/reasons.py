@@ -1,5 +1,6 @@
 # Named constants for failure reason codes from cook or mesos.
 # See scheduler/src/cook/mesos/schema.clj for the reason code names.
+REASON_KILLED_BY_USER = 1001
 REASON_TASK_KILLED_DURING_LAUNCH = 1004
 MAX_RUNTIME_EXCEEDED = 2003
 CONTAINER_INITIALIZATION_TIMED_OUT = 1007
