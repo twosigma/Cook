@@ -453,10 +453,10 @@
     - If config-file is specified, initializes the api file from the file at config-file
     - If base-path is specified, sets the cluster base path
     - If verifying-ssl is specified, sets verifying ssl
-    - If google-credentials is specified, loads the credentials from the file at google-credentials and generates
+    - If use-google-service-account? is true, gets google application default credentials and generates
       a bearer token for authenticating with kubernetes
     - bearer-token-refresh-seconds: interval to refresh the bearer token"
-  [^String config-file base-path ^String google-credentials bearer-token-refresh-seconds verifying-ssl ^String ssl-cert-path]
+  [^String config-file base-path ^String use-google-service-account? bearer-token-refresh-seconds verifying-ssl ^String ssl-cert-path]
   (let [api-client (if (some? config-file)
                      (Config/fromConfig config-file)
                      (ApiClient.))]
@@ -471,12 +471,8 @@
     (when (some? ssl-cert-path)
       (.setSslCaCert api-client
                      (FileInputStream. (File. ssl-cert-path))))
-    (if google-credentials
-      (with-open [file-stream (FileInputStream. (File. google-credentials))]
-        (let [credentials (GoogleCredentials/fromStream file-stream)]
-          (set-credentials api-client credentials bearer-token-refresh-seconds)))
-      (let [credentials (GoogleCredentials/getApplicationDefault)]
-        (set-credentials api-client credentials bearer-token-refresh-seconds)))
+    (when use-google-service-account?
+      (set-credentials api-client (GoogleCredentials/getApplicationDefault) bearer-token-refresh-seconds))
     api-client))
 
 (defn guard-invalid-synthetic-pods-config
@@ -495,7 +491,7 @@
   [{:keys [compute-cluster-name
            ^String config-file
            base-path
-           google-credentials
+           use-google-service-account?
            verifying-ssl
            ca-cert-path
            bearer-token-refresh-seconds
@@ -509,13 +505,14 @@
                     :namespace "cook"}
          scan-frequency-seconds 120
          max-pods-per-node 32
-         node-blocklist-labels (list)}}
+         node-blocklist-labels (list)
+         use-google-service-account? true}}
    {:keys [exit-code-syncer-state
            trigger-chans]}]
   (guard-invalid-synthetic-pods-config compute-cluster-name synthetic-pods)
   (let [conn cook.datomic/conn
         cluster-entity-id (get-or-create-cluster-entity-id conn compute-cluster-name)
-        api-client (make-api-client config-file base-path google-credentials bearer-token-refresh-seconds verifying-ssl ca-cert-path)
+        api-client (make-api-client config-file base-path use-google-service-account? bearer-token-refresh-seconds verifying-ssl ca-cert-path)
         compute-cluster (->KubernetesComputeCluster api-client compute-cluster-name cluster-entity-id
                                                     (:match-trigger-chan trigger-chans)
                                                     exit-code-syncer-state (atom {}) (atom {})
