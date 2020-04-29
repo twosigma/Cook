@@ -306,7 +306,7 @@
   (autoscaling? [_ pool-name]
     (-> synthetic-pods-config :pools (contains? pool-name)))
 
-  (autoscale! [this pool-name jobs]
+  (autoscale! [this pool-name jobs adjust-job-resources-for-pool-fn]
     (try
       (assert (cc/autoscaling? this pool-name)
               (str "In " name " compute cluster, request to autoscale despite invalid / missing config"))
@@ -326,7 +326,7 @@
                                    (some #(= (str uuid) (synthetic-pod->job-uuid %))
                                          outstanding-synthetic-pods))
                                  jobs)
-                sidecar-resource-requirements (-> (config/kubernetes) :sidecar :resource-requirements)
+                pool-specific-resources ((adjust-job-resources-for-pool-fn pool-name) job (tools/job-ent->resources job))
                 user-from-synthetic-pods-config user
                 task-metadata-seq
                 (->> new-jobs
@@ -356,14 +356,7 @@
                              :pod-supports-cook-init? false
                              :pod-supports-cook-sidecar? false
                              :task-id (str api/cook-synthetic-pod-name-prefix "-" pool-name "-" uuid)
-                             :task-request {:scalar-requests
-                                            (cond->> (walk/stringify-keys (tools/job-ent->resources job))
-                                                     ; We need to account for any sidecar resource requirements that the
-                                                     ; job we're launching this synthetic pod for will need to use.
-                                                     sidecar-resource-requirements
-                                                     (merge-with +
-                                                                 {"cpus" (:cpu-request sidecar-resource-requirements)
-                                                                  "mem" (:memory-request sidecar-resource-requirements)}))
+                             :task-request {:scalar-requests (walk/stringify-keys pool-specific-resources)
                                             :job {:job/pool {:pool/name synthetic-task-pool-name}}}}))
                      (take (- max-pods-outstanding num-synthetic-pods)))
                 num-synthetic-pods-to-launch (count task-metadata-seq)]

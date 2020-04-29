@@ -804,7 +804,7 @@
                                         pending-jobs autoscaling-compute-clusters)]
             (log/info "In" pool-name "pool, starting autoscaling")
             (doseq [[compute-cluster jobs-for-cluster] compute-cluster->jobs]
-              (cc/autoscale! compute-cluster pool-name jobs-for-cluster))
+              (cc/autoscale! compute-cluster pool-name jobs-for-cluster adjust-job-resources-for-pool-fn))
             (log/info "In" pool-name "pool, done autoscaling"))))
       (catch Throwable e
         (log/error e "In" pool-name "pool, encountered error while triggering autoscaling")))))
