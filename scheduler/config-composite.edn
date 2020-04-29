@@ -28,7 +28,8 @@
                                                :user #config/env "USER"
                                                :command "exit 0"
                                                :pools #{"k8s-alpha" "k8s-gamma"}}
-                              :node-blocklist-labels ["blocklist-nodes-with-this-label-key"]}}
+                              :node-blocklist-labels ["blocklist-nodes-with-this-label-key"]
+                              :use-google-service-account? false}}
                     {:factory-fn cook.kubernetes.compute-cluster/factory-fn
                      :config {:compute-cluster-name "gke-2"
                               ;; Location of the kubernetes config file. Hardcoded to the location specified by bin/make-gke-test-cluster
@@ -38,7 +39,8 @@
                                                :user #config/env "USER"
                                                :command "exit 0"
                                                :pools #{"k8s-alpha"}}
-                              :node-blocklist-labels ["blocklist-nodes-with-this-label-key-1" "blocklist-nodes-with-this-label-key-2"]}}
+                              :node-blocklist-labels ["blocklist-nodes-with-this-label-key-1" "blocklist-nodes-with-this-label-key-2"]
+                              :use-google-service-account? false}}
                     {:factory-fn cook.mesos.mesos-compute-cluster/factory-fn
                      :config {:failover-timeout-ms nil ; When we close the instance of Cook, all its tasks are killed by Mesos
                               :master #config/env "MESOS_MASTER"
