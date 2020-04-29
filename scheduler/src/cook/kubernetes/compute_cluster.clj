@@ -488,8 +488,8 @@
                       synthetic-pods-config)))))
 
 (defn factory-fn
-  [{:keys [bearer-token-refresh-seconds
-           base-path
+  [{:keys [base-path
+           bearer-token-refresh-seconds
            ca-cert-path
            compute-cluster-name
            ^String config-file
