@@ -70,7 +70,7 @@
   (autoscaling? [this pool-name]
     "Returns true if this compute cluster should autoscale the provided pool to satisfy pending jobs")
 
-  (autoscale! [this pool-name jobs]
+  (autoscale! [this pool-name jobs adjust-job-resources-for-pool-fn]
     "Autoscales the provided pool to satisfy the provided pending jobs")
 
   (use-cook-executor? [this]

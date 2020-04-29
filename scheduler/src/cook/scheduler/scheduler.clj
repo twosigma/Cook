@@ -483,10 +483,11 @@
 
 (def adjust-job-resources-for-pool-fn
   (memoize
-    (fn [pool-name]
-      (if-let [{:keys [pool-regex adjust-job-resources-fn]} (config/job-resource-adjustments)]
-        (if (re-matches pool-regex pool-name) (util/lazy-load-var adjust-job-resources-fn) identity)
-        identity))))
+    (let [noop (fn [job resources] resources)]
+      (fn [pool-name]
+        (if-let [{:keys [pool-regex adjust-job-resources-fn]} (config/job-resource-adjustments)]
+          (if (re-matches pool-regex pool-name) (util/lazy-load-var adjust-job-resources-fn) noop)
+          noop)))))
 
 (defn make-task-request
   "Helper to create a TaskRequest using TaskRequestAdapter. TaskRequestAdapter implements Fenzo's TaskRequest interface
@@ -515,7 +516,7 @@
                                     result))
                                 {}
                                 (:job/resource job))
-        pool-specific-resources ((adjust-job-resources-for-pool-fn pool-name) resources)]
+        pool-specific-resources ((adjust-job-resources-for-pool-fn pool-name) job resources)]
     (->TaskRequestAdapter job pool-specific-resources task-id assigned-resources guuid->considerable-cotask-ids constraints needs-gpus? scalar-requests)))
 
 (defn match-offer-to-schedule
@@ -803,7 +804,7 @@
                                         pending-jobs autoscaling-compute-clusters)]
             (log/info "In" pool-name "pool, starting autoscaling")
             (doseq [[compute-cluster jobs-for-cluster] compute-cluster->jobs]
-              (cc/autoscale! compute-cluster pool-name jobs-for-cluster))
+              (cc/autoscale! compute-cluster pool-name jobs-for-cluster adjust-job-resources-for-pool-fn))
             (log/info "In" pool-name "pool, done autoscaling"))))
       (catch Throwable e
         (log/error e "In" pool-name "pool, encountered error while triggering autoscaling")))))

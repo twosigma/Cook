@@ -154,7 +154,7 @@
             launched-pods-atom (atom [])]
         (with-redefs [api/launch-pod (fn [_ _ cook-expected-state-dict _]
                                        (swap! launched-pods-atom conj cook-expected-state-dict))]
-          (cc/autoscale! compute-cluster pool-name pending-jobs))
+          (cc/autoscale! compute-cluster pool-name pending-jobs sched/adjust-job-resources-for-pool-fn))
         (is (= 2 (count @launched-pods-atom)))
         (is (= job-uuid-2 (-> @launched-pods-atom (nth 0) :launch-pod :pod kcc/synthetic-pod->job-uuid)))
         (is (= job-uuid-3 (-> @launched-pods-atom (nth 1) :launch-pod :pod kcc/synthetic-pod->job-uuid)))))
@@ -169,7 +169,7 @@
             launched-pods-atom (atom [])]
         (with-redefs [api/launch-pod (fn [_ _ cook-expected-state-dict _]
                                        (swap! launched-pods-atom conj cook-expected-state-dict))]
-          (cc/autoscale! compute-cluster pool-name pending-jobs))
+          (cc/autoscale! compute-cluster pool-name pending-jobs sched/adjust-job-resources-for-pool-fn))
         (is (= 2 (count @launched-pods-atom)))
         (is (= "user-1" (-> @launched-pods-atom (nth 0) :launch-pod :pod .getMetadata .getNamespace)))
         (is (= "user-2" (-> @launched-pods-atom (nth 1) :launch-pod :pod .getMetadata .getNamespace)))))
@@ -185,7 +185,7 @@
             launched-pods-atom (atom [])]
         (with-redefs [api/launch-pod (fn [_ _ cook-expected-state-dict _]
                                        (swap! launched-pods-atom conj cook-expected-state-dict))]
-          (cc/autoscale! compute-cluster pool-name pending-jobs))
+          (cc/autoscale! compute-cluster pool-name pending-jobs sched/adjust-job-resources-for-pool-fn))
         (is (= 1 (count @launched-pods-atom)))
         (let [^V1NodeSelectorRequirement node-selector-requirement
               (-> @launched-pods-atom

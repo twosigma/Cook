@@ -306,7 +306,7 @@
   (autoscaling? [_ pool-name]
     (-> synthetic-pods-config :pools (contains? pool-name)))
 
-  (autoscale! [this pool-name jobs]
+  (autoscale! [this pool-name jobs adjust-job-resources-for-pool-fn]
     (try
       (assert (cc/autoscaling? this pool-name)
               (str "In " name " compute cluster, request to autoscale despite invalid / missing config"))
@@ -326,45 +326,39 @@
                                    (some #(= (str uuid) (synthetic-pod->job-uuid %))
                                          outstanding-synthetic-pods))
                                  jobs)
-                sidecar-resource-requirements (-> (config/kubernetes) :sidecar :resource-requirements)
                 user-from-synthetic-pods-config user
                 task-metadata-seq
                 (->> new-jobs
                      (map (fn [{:keys [job/user job/uuid] :as job}]
-                            {:command {:user (or user-from-synthetic-pods-config user)
-                                       :value command}
-                             :container {:docker {:image image}}
-                             ; Cook has a "novel host constraint", which disallows a job from
-                             ; running on the same host twice. So, we need to avoid running a
-                             ; synthetic pod on any of the hosts that the real job won't be able
-                             ; to run on. Otherwise, the synthetic pod won't trigger the cluster
-                             ; autoscaler.
-                             :pod-hostnames-to-avoid (constraints/job->previous-hosts-to-avoid job)
-                             ; We need to label the synthetic pods so that we
-                             ; can opt them out of some of the normal plumbing,
-                             ; like mapping status back to a job instance
-                             :pod-labels {api/cook-synthetic-pod-job-uuid-label (str uuid)}
-                             ; We need to give synthetic pods a lower priority than
-                             ; actual job pods so that the job pods can preempt them
-                             ; (https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/);
-                             ; if we don't do this, we run the risk of job pods
-                             ; encountering failures when they lose scheduling races
-                             ; against pending synthetic pods
-                             :pod-priority-class api/cook-synthetic-pod-priority-class
-                             ; We don't want to add in the cook-init cruft or the cook sidecar, because we
-                             ; don't need them for synthetic pods and all they will do is slow things down.
-                             :pod-supports-cook-init? false
-                             :pod-supports-cook-sidecar? false
-                             :task-id (str api/cook-synthetic-pod-name-prefix "-" pool-name "-" uuid)
-                             :task-request {:scalar-requests
-                                            (cond->> (walk/stringify-keys (tools/job-ent->resources job))
-                                                     ; We need to account for any sidecar resource requirements that the
-                                                     ; job we're launching this synthetic pod for will need to use.
-                                                     sidecar-resource-requirements
-                                                     (merge-with +
-                                                                 {"cpus" (:cpu-request sidecar-resource-requirements)
-                                                                  "mem" (:memory-request sidecar-resource-requirements)}))
-                                            :job {:job/pool {:pool/name synthetic-task-pool-name}}}}))
+                            (let [pool-specific-resources
+                                  ((adjust-job-resources-for-pool-fn pool-name) job (tools/job-ent->resources job))]
+                              {:command {:user (or user-from-synthetic-pods-config user)
+                                         :value command}
+                               :container {:docker {:image image}}
+                               ; Cook has a "novel host constraint", which disallows a job from
+                               ; running on the same host twice. So, we need to avoid running a
+                               ; synthetic pod on any of the hosts that the real job won't be able
+                               ; to run on. Otherwise, the synthetic pod won't trigger the cluster
+                               ; autoscaler.
+                               :pod-hostnames-to-avoid (constraints/job->previous-hosts-to-avoid job)
+                               ; We need to label the synthetic pods so that we
+                               ; can opt them out of some of the normal plumbing,
+                               ; like mapping status back to a job instance
+                               :pod-labels {api/cook-synthetic-pod-job-uuid-label (str uuid)}
+                               ; We need to give synthetic pods a lower priority than
+                               ; actual job pods so that the job pods can preempt them
+                               ; (https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/);
+                               ; if we don't do this, we run the risk of job pods
+                               ; encountering failures when they lose scheduling races
+                               ; against pending synthetic pods
+                               :pod-priority-class api/cook-synthetic-pod-priority-class
+                               ; We don't want to add in the cook-init cruft or the cook sidecar, because we
+                               ; don't need them for synthetic pods and all they will do is slow things down.
+                               :pod-supports-cook-init? false
+                               :pod-supports-cook-sidecar? false
+                               :task-id (str api/cook-synthetic-pod-name-prefix "-" pool-name "-" uuid)
+                               :task-request {:scalar-requests (walk/stringify-keys pool-specific-resources)
+                                              :job {:job/pool {:pool/name synthetic-task-pool-name}}}})))
                      (take (- max-pods-outstanding num-synthetic-pods)))
                 num-synthetic-pods-to-launch (count task-metadata-seq)]
             (meters/mark! (metrics/meter "cc-synthetic-pod-submit-rate" name) num-synthetic-pods-to-launch)
