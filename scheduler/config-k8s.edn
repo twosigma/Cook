@@ -64,7 +64,7 @@
                 "datomic.kv-cluster" :warn
                 "datomic.peer" :warn
                 "cook.scheduler.data-locality" :debug
-                "cook.mesos.fenzo-utils" :debug
+                "cook.scheduler.fenzo-utils" :debug
                 "cook.scheduler.rebalancer" :debug
                 "cook.scheduler.scheduler" :debug
                 "cook.kubernetes.compute-cluster" :debug
@@ -108,7 +108,8 @@
  :sandbox-syncer {:sync-interval-ms 1000}
  :scheduler {:fenzo-fitness-calculator "cook.scheduler.data-locality/make-data-local-fitness-calculator"
              :offer-incubate-ms 15000
-             :task-constraints {:cpus 10
+             :task-constraints {:command-length-limit 5000
+                                :cpus 10
                                 :memory-gb 48
                                 :retry-limit 15
                                 :timeout-hours 1
