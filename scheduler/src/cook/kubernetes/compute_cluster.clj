@@ -501,11 +501,11 @@
            synthetic-pods
            node-blocklist-labels]
     :or {bearer-token-refresh-seconds 300
+         max-pods-per-node 32
          namespace {:kind :static
                     :namespace "cook"}
-         scan-frequency-seconds 120
-         max-pods-per-node 32
          node-blocklist-labels (list)
+         scan-frequency-seconds 120
          use-google-service-account? true}}
    {:keys [exit-code-syncer-state
            trigger-chans]}]
