@@ -436,3 +436,41 @@
         (api/initialize-pod-watch-helper nil compute-cluster-name all-pods-atom callback-fn))
       (is (= 1 (count @namespaced-pod-names-visited)))
       (is (= [namespaced-pod-name] @namespaced-pod-names-visited)))))
+
+(deftest test-adjust-job-resources
+  (testing "No change"
+    (let [initial-resources {:mem 123
+                             :cpu 456}
+          job {}
+          adjusted-resources (api/adjust-job-resources job initial-resources)]
+      (is (= initial-resources adjusted-resources))))
+  (with-redefs [config/kubernetes (fn [] {:sidecar {:resource-requirements {:cpu-request 0.6
+                                                                            :memory-request 128}}})]
+    (testing "Add resources for sidecar"
+      (let [initial-resources {:mem 123
+                               :cpus 456.1}
+            expected-resources {:mem 251.0
+                                :cpus 456.7}
+            job {}
+            adjusted-resources (api/adjust-job-resources job initial-resources)]
+        (is (= expected-resources adjusted-resources)))))
+  (with-redefs [config/kubernetes (fn [] {:default-checkpoint-config {:memory-overhead 129}})]
+    (testing "Add resources for checkpointing"
+      (let [initial-resources {:mem 123
+                               :cpu 456.1}
+            expected-resources {:mem 252.0
+                                :cpu 456.1}
+            job {:job/checkpoint {}}
+            adjusted-resources (api/adjust-job-resources job initial-resources)]
+        (is (= expected-resources adjusted-resources)))))
+  (with-redefs [config/kubernetes (fn [] {:sidecar {:resource-requirements {:cpu-request 0.6
+                                                                            :memory-request 128}}
+                                          :default-checkpoint-config {:memory-overhead 129}})]
+    (testing "Add resources for sidecar and checkpointing"
+      (let [initial-resources {:mem 123
+                               :cpus 456.1}
+            expected-resources {:mem 380.0
+                                :cpus 456.7}
+            job {:job/checkpoint {}}
+            adjusted-resources (api/adjust-job-resources job initial-resources)]
+        (is (= expected-resources adjusted-resources))))))
