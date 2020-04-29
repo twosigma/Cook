@@ -528,12 +528,6 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :db/valueType :db.type/long
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}
-   {:db/id (d/tempid :db.part/db)
-    :db/ident :checkpoint/memory-overhead
-    :db/doc "Extra memory needed for checkpointing"
-    :db/valueType :db.type/double
-    :db/cardinality :db.cardinality/one
-    :db.install/_attribute :db.part/db}
    ;; Application attributes
    {:db/id (d/tempid :db.part/db)
     :db/doc
