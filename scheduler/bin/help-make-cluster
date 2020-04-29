@@ -17,7 +17,7 @@ ZONE=$2
 CLUSTERNAME=$3
 COOK_KUBECONFIG=$4
 
-VERSION=1.15.9-gke.22
+VERSION=1.15.9-gke.26
 
 gcloud="gcloud --project $PROJECT"
 
