@@ -488,18 +488,18 @@
                       synthetic-pods-config)))))
 
 (defn factory-fn
-  [{:keys [compute-cluster-name
-           ^String config-file
+  [{:keys [bearer-token-refresh-seconds
            base-path
-           use-google-service-account?
-           verifying-ssl
            ca-cert-path
-           bearer-token-refresh-seconds
-           namespace
-           scan-frequency-seconds
+           compute-cluster-name
+           ^String config-file
            max-pods-per-node
+           namespace
+           node-blocklist-labels
+           scan-frequency-seconds
            synthetic-pods
-           node-blocklist-labels]
+           use-google-service-account?
+           verifying-ssl]
     :or {bearer-token-refresh-seconds 300
          max-pods-per-node 32
          namespace {:kind :static
