@@ -21,11 +21,11 @@
             [plumbing.core :as pc])
   (:import (com.google.auth.oauth2 GoogleCredentials)
            (io.kubernetes.client ApiClient)
-           (io.kubernetes.client.models V1Node V1Pod V1Toleration)
+           (io.kubernetes.client.models V1Node V1Pod)
            (io.kubernetes.client.util Config)
            (java.io FileInputStream File)
            (java.util UUID)
-           (java.util.concurrent Executors ScheduledExecutorService TimeUnit)))
+           (java.util.concurrent ExecutorService Executors ScheduledExecutorService TimeUnit)))
 
 (defn schedulable-node-filter
   "Is a node schedulable?"
@@ -208,32 +208,41 @@
   [^V1Pod pod]
   (some-> pod .getMetadata .getLabels (.get api/cook-synthetic-pod-job-uuid-label)))
 
+(defn- launch-task!
+  "Given a compute cluster and a single task-metadata,
+  launches the task by pumping it into the k8s state machine"
+  [{:keys [name namespace-config] :as compute-cluster} task-metadata]
+  (let [timer-context (timers/start (metrics/timer "cc-launch-tasks" name))
+        pod-namespace (get-namespace-from-task-metadata namespace-config task-metadata)
+        pod-name (:task-id task-metadata)
+        ^V1Pod pod (api/task-metadata->pod pod-namespace name task-metadata)
+        new-cook-expected-state-dict {:cook-expected-state :cook-expected-state/starting
+                                      :launch-pod {:pod pod}}]
+    (try
+      (controller/update-cook-expected-state compute-cluster pod-name new-cook-expected-state-dict)
+      (.stop timer-context)
+      (catch Exception e
+        (log/error e "In" name "compute cluster, encountered exception launching task"
+                   {:pod-name pod-name
+                    :pod-namespace pod-namespace
+                    :task-metadata task-metadata})))))
+
 (defrecord KubernetesComputeCluster [^ApiClient api-client name entity-id match-trigger-chan exit-code-syncer-state
                                      all-pods-atom current-nodes-atom cook-expected-state-map k8s-actual-state-map
                                      pool->fenzo-atom namespace-config scan-frequency-seconds-config max-pods-per-node
-                                     synthetic-pods-config node-blocklist-labels]
+                                     synthetic-pods-config node-blocklist-labels
+                                     ^ExecutorService launch-task-executor-service]
   cc/ComputeCluster
   (launch-tasks [this _ task-metadata-seq]
-    (doseq [task-metadata task-metadata-seq]
-      ; Has the workload of launching tasks changed or has the cost of doing them changed?
-      ; Note we can't use timer/time! because it wraps the body in a Callable, which rebinds 'this' to another 'this'
-      ; causing breakage.
-      ; In addition, it captures controller/update-cook-expected-state and prevents with-redefs on
-      ; update-cook-expected-state from working correctly in unit tests.
-      (let [timer-context (timers/start (metrics/timer "cc-launch-tasks" name))
-            pod-namespace (get-namespace-from-task-metadata namespace-config task-metadata)
-            pod-name (:task-id task-metadata)
-            ^V1Pod pod (api/task-metadata->pod pod-namespace name node-blocklist-labels task-metadata)
-            new-cook-expected-state-dict {:cook-expected-state :cook-expected-state/starting
-                                          :launch-pod {:pod pod}}]
-        (try
-          (controller/update-cook-expected-state this pod-name new-cook-expected-state-dict)
-          (.stop timer-context)
-          (catch Exception e
-            (log/error e "In" name "compute cluster, encountered exception launching task"
-                       {:pod-name pod-name
-                        :pod-namespace pod-namespace
-                        :task-metadata task-metadata}))))))
+    (let [futures
+          (doall
+            (map (fn [task-metadata]
+                   (.submit
+                     launch-task-executor-service
+                     ^Callable (fn []
+                                 (launch-task! this task-metadata))))
+                 task-metadata-seq))]
+      (run! deref futures)))
 
   (kill-task [this task-id]
     ; Note we can't use timer/time! because it wraps the body in a Callable, which rebinds 'this' to another 'this'
@@ -492,33 +501,41 @@
                       synthetic-pods-config)))))
 
 (defn factory-fn
-  [{:keys [compute-cluster-name
-           ^String config-file
-           base-path
-           google-credentials
-           verifying-ssl
-           ca-cert-path
+  [{:keys [base-path
            bearer-token-refresh-seconds
-           namespace
-           scan-frequency-seconds
+           ca-cert-path
+           compute-cluster-name
+           ^String config-file
+           google-credentials
+           launch-task-num-threads
            max-pods-per-node
+           namespace
+           node-blocklist-labels
+           scan-frequency-seconds
            synthetic-pods
-           node-blocklist-labels]
+           verifying-ssl]
     :or {bearer-token-refresh-seconds 300
+         launch-task-num-threads 8
          namespace {:kind :static
                     :namespace "cook"}
-         scan-frequency-seconds 120
+         node-blocklist-labels (list)
          max-pods-per-node 32
-         node-blocklist-labels (list)}}
+         scan-frequency-seconds 120}}
    {:keys [exit-code-syncer-state
            trigger-chans]}]
   (guard-invalid-synthetic-pods-config compute-cluster-name synthetic-pods)
   (let [conn cook.datomic/conn
         cluster-entity-id (get-or-create-cluster-entity-id conn compute-cluster-name)
-        api-client (make-api-client config-file base-path google-credentials bearer-token-refresh-seconds verifying-ssl ca-cert-path)
-        compute-cluster (->KubernetesComputeCluster api-client compute-cluster-name cluster-entity-id
+        api-client (make-api-client config-file base-path google-credentials
+                                    bearer-token-refresh-seconds verifying-ssl ca-cert-path)
+        launch-task-executor-service (Executors/newFixedThreadPool launch-task-num-threads)
+        compute-cluster (->KubernetesComputeCluster api-client
+                                                    compute-cluster-name
+                                                    cluster-entity-id
                                                     (:match-trigger-chan trigger-chans)
-                                                    exit-code-syncer-state (atom {}) (atom {})
+                                                    exit-code-syncer-state
+                                                    (atom {})
+                                                    (atom {})
                                                     (atom {})
                                                     (atom {})
                                                     (atom nil)
@@ -526,6 +543,7 @@
                                                     scan-frequency-seconds
                                                     max-pods-per-node
                                                     synthetic-pods
-                                                    node-blocklist-labels)]
+                                                    node-blocklist-labels
+                                                    launch-task-executor-service)]
     (cc/register-compute-cluster! compute-cluster)
     compute-cluster))

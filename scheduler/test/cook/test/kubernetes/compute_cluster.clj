@@ -1,19 +1,14 @@
 (ns cook.test.kubernetes.compute-cluster
-  (:require [clj-time.core :as t]
-            [clojure.core.cache :as cache]
-            [clojure.test :refer :all]
+  (:require [clojure.test :refer :all]
             [cook.compute-cluster :as cc]
             [cook.kubernetes.api :as api]
             [cook.kubernetes.compute-cluster :as kcc]
-            [cook.kubernetes.controller :as controller]
             [cook.mesos.task :as task]
-            [cook.scheduler.scheduler :as sched]
             [cook.test.testutil :as tu]
-            [cook.tools :as util]
             [datomic.api :as d])
-  (:import (com.netflix.fenzo SimpleAssignmentResult)
-           (io.kubernetes.client.models V1NodeSelectorRequirement V1Pod V1PodSecurityContext)
-           (java.util UUID)))
+  (:import (io.kubernetes.client.models V1NodeSelectorRequirement V1Pod V1PodSecurityContext)
+           (java.util UUID)
+           (java.util.concurrent Executors)))
 
 (deftest test-get-or-create-cluster-entity-id
   (let [conn (tu/restore-fresh-database! "datomic:mem://test-get-or-create-cluster-entity-id")]
@@ -45,7 +40,8 @@
       (testing "static namespace"
         (let [compute-cluster (kcc/->KubernetesComputeCluster nil "kubecompute" nil nil nil
                                                               (atom {}) (atom {}) (atom {}) (atom {}) (atom nil)
-                                                              {:kind :static :namespace "cook"} nil nil nil nil)
+                                                              {:kind :static :namespace "cook"} nil nil nil nil
+                                                              (Executors/newSingleThreadExecutor))
               task-metadata (task/TaskAssignmentResult->task-metadata (d/db conn)
                                                                       nil
                                                                       compute-cluster
@@ -60,7 +56,8 @@
       (testing "per-user namespace"
         (let [compute-cluster (kcc/->KubernetesComputeCluster nil "kubecompute" nil nil nil
                                                               (atom {}) (atom {}) (atom {}) (atom {}) (atom nil)
-                                                              {:kind :per-user} nil nil nil nil)
+                                                              {:kind :per-user} nil nil nil nil
+                                                              (Executors/newSingleThreadExecutor))
               task-metadata (task/TaskAssignmentResult->task-metadata (d/db conn)
                                                                       nil
                                                                       compute-cluster
@@ -77,7 +74,8 @@
     (let [conn (tu/restore-fresh-database! "datomic:mem://test-generate-offers")
           compute-cluster (kcc/->KubernetesComputeCluster nil "kubecompute" nil nil nil
                                                           (atom {}) (atom {}) (atom {}) (atom {}) (atom nil)
-                                                          {:kind :static :namespace "cook"} nil 3 nil nil)
+                                                          {:kind :static :namespace "cook"} nil 3 nil nil
+                                                          (Executors/newSingleThreadExecutor))
           node-name->node {"nodeA" (tu/node-helper "nodeA" 1.0 1000.0 nil)
                            "nodeB" (tu/node-helper "nodeB" 1.0 1000.0 nil)
                            "nodeC" (tu/node-helper "nodeC" 1.0 1000.0 nil)
