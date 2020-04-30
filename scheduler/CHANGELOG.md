@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.41.0] - 2020-04-30
+### Added
+- Support for specifying the default container on a per-pool basis, from @scrosby
+- Add memory overhead accounting when checkpointing, from @nsinkov
+- Add lock-sharding to k8s controller, from @dposada
+- Add MESOS_DIRECTORY to the k8s environment, from @dposada
+### Changed
+- Launches k8s tasks in parallel, from @dposada
+- Add flag to use google service account for authentication, from @nsinkov
+- Add ability to use google metadata server for authentication, from @nsinkov
+### Fixed
+- Bring all config.edn files up to date, from @scrosby
+- Help-make-cluster script uses now unavailable gke k8s version, from @scrosby
+- Stop writing synthetic pod info to datomic, from @dposada
+
 ## [1.40.4] - 2020-04-24
 ### Added
 - Improved k8s autoscaling metrics, from @dposada
