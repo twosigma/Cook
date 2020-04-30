@@ -39,11 +39,13 @@
             [ring.middleware.params :refer (wrap-params)]
             [cook.scheduler.scheduler :as sched]
             [cook.mesos.task :as task])
-  (:import (java.util UUID)
-           (org.apache.log4j ConsoleAppender Logger PatternLayout)
+  (:import (com.netflix.fenzo SimpleAssignmentResult)
            (io.kubernetes.client.custom Quantity$Format Quantity)
-           (io.kubernetes.client.models V1Container V1ResourceRequirements V1Pod V1ObjectMeta V1PodSpec V1Node V1NodeStatus V1NodeSpec V1Taint)
-           (com.netflix.fenzo SimpleAssignmentResult)))
+           (io.kubernetes.client.models V1Container V1ResourceRequirements V1Pod V1ObjectMeta V1PodSpec V1Node
+                                        V1NodeStatus V1NodeSpec V1Taint)
+           (java.util UUID)
+           (java.util.concurrent Executors)
+           (org.apache.log4j ConsoleAppender Logger PatternLayout)))
 
 (defn create-dummy-mesos-compute-cluster
   [compute-cluster-name framework-id db-id driver-atom]
@@ -557,4 +559,5 @@
                                     nil ; max-pods-per-node
                                     synthetic-pods-config ; synthetic-pods-config
                                     node-blocklist-labels ; node-blocklist-labels
+                                    (Executors/newSingleThreadExecutor) ; launch-task-executor-service
                                     )))

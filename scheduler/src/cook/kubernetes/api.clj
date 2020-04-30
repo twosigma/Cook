@@ -555,7 +555,7 @@
 
 (defn ^V1Pod task-metadata->pod
   "Given a task-request and other data generate the kubernetes V1Pod to launch that task."
-  [namespace compute-cluster-name compute-cluster-node-blocklist-labels
+  [namespace compute-cluster-name
    {:keys [task-id command container task-request hostname pod-labels pod-hostnames-to-avoid
            pod-priority-class pod-supports-cook-init? pod-supports-cook-sidecar?]
     :or {pod-priority-class cook-job-pod-priority-class
