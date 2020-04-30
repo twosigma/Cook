@@ -6,7 +6,8 @@
             [cook.mesos.task :as task]
             [cook.test.testutil :as tu]
             [datomic.api :as d])
-  (:import (io.kubernetes.client.models V1NodeSelectorRequirement V1Pod V1PodSecurityContext)
+  (:import (clojure.lang ExceptionInfo)
+           (io.kubernetes.client.models V1NodeSelectorRequirement V1Pod V1PodSecurityContext)
            (java.util UUID)
            (java.util.concurrent Executors)))
 
@@ -201,3 +202,23 @@
           (is (= api/k8s-hostname-label (.getKey node-selector-requirement)))
           (is (= "NotIn" (.getOperator node-selector-requirement)))
           (is (= ["test-host-1" "test-host-2"] (.getValues node-selector-requirement))))))))
+
+(deftest test-factory-fn
+  (testing "guards against inappropriate number of threads"
+    (with-redefs [kcc/get-or-create-cluster-entity-id (constantly 1)
+                  cc/register-compute-cluster! (constantly nil)]
+      (is (kcc/factory-fn {:use-google-service-account? false} nil))
+      (is (kcc/factory-fn {:launch-task-num-threads 1
+                           :use-google-service-account? false}
+                          nil))
+      (is (kcc/factory-fn {:launch-task-num-threads 63
+                           :use-google-service-account? false}
+                          nil))
+      (is (thrown? ExceptionInfo
+                   (kcc/factory-fn {:launch-task-num-threads 0
+                                    :use-google-service-account? false}
+                                   nil)))
+      (is (thrown? ExceptionInfo
+                   (kcc/factory-fn {:launch-task-num-threads 64
+                                    :use-google-service-account? false}
+                                   nil))))))

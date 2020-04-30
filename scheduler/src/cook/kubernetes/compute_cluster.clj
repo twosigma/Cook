@@ -511,10 +511,16 @@
                     :namespace "cook"}
          node-blocklist-labels (list)
          scan-frequency-seconds 120
-         use-google-service-account? true}}
+         use-google-service-account? true}
+    :as compute-cluster-config}
    {:keys [exit-code-syncer-state
            trigger-chans]}]
   (guard-invalid-synthetic-pods-config compute-cluster-name synthetic-pods)
+  (when (not (< 0 launch-task-num-threads 64))
+    (throw
+      (ex-info
+        "Please configure :launch-task-num-threads to > 0 and < 64 in your config file."
+        compute-cluster-config)))
   (let [conn cook.datomic/conn
         cluster-entity-id (get-or-create-cluster-entity-id conn compute-cluster-name)
         api-client (make-api-client config-file base-path use-google-service-account? bearer-token-refresh-seconds verifying-ssl ca-cert-path)
