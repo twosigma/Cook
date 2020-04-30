@@ -297,7 +297,7 @@
 
   (autoscaling? [_ _] false)
 
-  (autoscale! [_ _ _])
+  (autoscale! [_ _ _ _])
 
   (use-cook-executor? [_] true)
 

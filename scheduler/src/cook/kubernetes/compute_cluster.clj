@@ -315,7 +315,7 @@
   (autoscaling? [_ pool-name]
     (-> synthetic-pods-config :pools (contains? pool-name)))
 
-  (autoscale! [this pool-name jobs]
+  (autoscale! [this pool-name jobs adjust-job-resources-for-pool-fn]
     (try
       (assert (cc/autoscaling? this pool-name)
               (str "In " name " compute cluster, request to autoscale despite invalid / missing config"))
@@ -335,45 +335,39 @@
                                    (some #(= (str uuid) (synthetic-pod->job-uuid %))
                                          outstanding-synthetic-pods))
                                  jobs)
-                sidecar-resource-requirements (-> (config/kubernetes) :sidecar :resource-requirements)
                 user-from-synthetic-pods-config user
                 task-metadata-seq
                 (->> new-jobs
                      (map (fn [{:keys [job/user job/uuid] :as job}]
-                            {:command {:user (or user-from-synthetic-pods-config user)
-                                       :value command}
-                             :container {:docker {:image image}}
-                             ; Cook has a "novel host constraint", which disallows a job from
-                             ; running on the same host twice. So, we need to avoid running a
-                             ; synthetic pod on any of the hosts that the real job won't be able
-                             ; to run on. Otherwise, the synthetic pod won't trigger the cluster
-                             ; autoscaler.
-                             :pod-hostnames-to-avoid (constraints/job->previous-hosts-to-avoid job)
-                             ; We need to label the synthetic pods so that we
-                             ; can opt them out of some of the normal plumbing,
-                             ; like mapping status back to a job instance
-                             :pod-labels {api/cook-synthetic-pod-job-uuid-label (str uuid)}
-                             ; We need to give synthetic pods a lower priority than
-                             ; actual job pods so that the job pods can preempt them
-                             ; (https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/);
-                             ; if we don't do this, we run the risk of job pods
-                             ; encountering failures when they lose scheduling races
-                             ; against pending synthetic pods
-                             :pod-priority-class api/cook-synthetic-pod-priority-class
-                             ; We don't want to add in the cook-init cruft or the cook sidecar, because we
-                             ; don't need them for synthetic pods and all they will do is slow things down.
-                             :pod-supports-cook-init? false
-                             :pod-supports-cook-sidecar? false
-                             :task-id (str api/cook-synthetic-pod-name-prefix "-" pool-name "-" uuid)
-                             :task-request {:scalar-requests
-                                            (cond->> (walk/stringify-keys (tools/job-ent->resources job))
-                                                     ; We need to account for any sidecar resource requirements that the
-                                                     ; job we're launching this synthetic pod for will need to use.
-                                                     sidecar-resource-requirements
-                                                     (merge-with +
-                                                                 {"cpus" (:cpu-request sidecar-resource-requirements)
-                                                                  "mem" (:memory-request sidecar-resource-requirements)}))
-                                            :job {:job/pool {:pool/name synthetic-task-pool-name}}}}))
+                            (let [pool-specific-resources
+                                  ((adjust-job-resources-for-pool-fn pool-name) job (tools/job-ent->resources job))]
+                              {:command {:user (or user-from-synthetic-pods-config user)
+                                         :value command}
+                               :container {:docker {:image image}}
+                               ; Cook has a "novel host constraint", which disallows a job from
+                               ; running on the same host twice. So, we need to avoid running a
+                               ; synthetic pod on any of the hosts that the real job won't be able
+                               ; to run on. Otherwise, the synthetic pod won't trigger the cluster
+                               ; autoscaler.
+                               :pod-hostnames-to-avoid (constraints/job->previous-hosts-to-avoid job)
+                               ; We need to label the synthetic pods so that we
+                               ; can opt them out of some of the normal plumbing,
+                               ; like mapping status back to a job instance
+                               :pod-labels {api/cook-synthetic-pod-job-uuid-label (str uuid)}
+                               ; We need to give synthetic pods a lower priority than
+                               ; actual job pods so that the job pods can preempt them
+                               ; (https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/);
+                               ; if we don't do this, we run the risk of job pods
+                               ; encountering failures when they lose scheduling races
+                               ; against pending synthetic pods
+                               :pod-priority-class api/cook-synthetic-pod-priority-class
+                               ; We don't want to add in the cook-init cruft or the cook sidecar, because we
+                               ; don't need them for synthetic pods and all they will do is slow things down.
+                               :pod-supports-cook-init? false
+                               :pod-supports-cook-sidecar? false
+                               :task-id (str api/cook-synthetic-pod-name-prefix "-" pool-name "-" uuid)
+                               :task-request {:scalar-requests (walk/stringify-keys pool-specific-resources)
+                                              :job {:job/pool {:pool/name synthetic-task-pool-name}}}})))
                      (take (- max-pods-outstanding num-synthetic-pods)))
                 num-synthetic-pods-to-launch (count task-metadata-seq)]
             (meters/mark! (metrics/meter "cc-synthetic-pod-submit-rate" name) num-synthetic-pods-to-launch)
@@ -462,10 +456,10 @@
     - If config-file is specified, initializes the api file from the file at config-file
     - If base-path is specified, sets the cluster base path
     - If verifying-ssl is specified, sets verifying ssl
-    - If google-credentials is specified, loads the credentials from the file at google-credentials and generates
+    - If use-google-service-account? is true, gets google application default credentials and generates
       a bearer token for authenticating with kubernetes
     - bearer-token-refresh-seconds: interval to refresh the bearer token"
-  [^String config-file base-path ^String google-credentials bearer-token-refresh-seconds verifying-ssl ^String ssl-cert-path]
+  [^String config-file base-path ^String use-google-service-account? bearer-token-refresh-seconds verifying-ssl ^String ssl-cert-path]
   (let [api-client (if (some? config-file)
                      (Config/fromConfig config-file)
                      (ApiClient.))]
@@ -480,12 +474,8 @@
     (when (some? ssl-cert-path)
       (.setSslCaCert api-client
                      (FileInputStream. (File. ssl-cert-path))))
-    (if google-credentials
-      (with-open [file-stream (FileInputStream. (File. google-credentials))]
-        (let [credentials (GoogleCredentials/fromStream file-stream)]
-          (set-credentials api-client credentials bearer-token-refresh-seconds)))
-      (let [credentials (GoogleCredentials/getApplicationDefault)]
-        (set-credentials api-client credentials bearer-token-refresh-seconds)))
+    (when use-google-service-account?
+      (set-credentials api-client (GoogleCredentials/getApplicationDefault) bearer-token-refresh-seconds))
     api-client))
 
 (defn guard-invalid-synthetic-pods-config
@@ -506,30 +496,30 @@
            ca-cert-path
            compute-cluster-name
            ^String config-file
-           google-credentials
            launch-task-num-threads
            max-pods-per-node
            namespace
            node-blocklist-labels
            scan-frequency-seconds
            synthetic-pods
+           use-google-service-account?
            verifying-ssl]
     :or {bearer-token-refresh-seconds 300
          launch-task-num-threads 8
+         max-pods-per-node 32
          namespace {:kind :static
                     :namespace "cook"}
          node-blocklist-labels (list)
-         max-pods-per-node 32
-         scan-frequency-seconds 120}}
+         scan-frequency-seconds 120
+         use-google-service-account? true}}
    {:keys [exit-code-syncer-state
            trigger-chans]}]
   (guard-invalid-synthetic-pods-config compute-cluster-name synthetic-pods)
   (let [conn cook.datomic/conn
         cluster-entity-id (get-or-create-cluster-entity-id conn compute-cluster-name)
-        api-client (make-api-client config-file base-path google-credentials
-                                    bearer-token-refresh-seconds verifying-ssl ca-cert-path)
+        api-client (make-api-client config-file base-path use-google-service-account? bearer-token-refresh-seconds verifying-ssl ca-cert-path)
         launch-task-executor-service (Executors/newFixedThreadPool launch-task-num-threads)
-        compute-cluster (->KubernetesComputeCluster api-client
+        compute-cluster (->KubernetesComputeCluster api-client 
                                                     compute-cluster-name
                                                     cluster-entity-id
                                                     (:match-trigger-chan trigger-chans)
