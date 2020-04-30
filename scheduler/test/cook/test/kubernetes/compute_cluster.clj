@@ -4,6 +4,7 @@
             [cook.kubernetes.api :as api]
             [cook.kubernetes.compute-cluster :as kcc]
             [cook.mesos.task :as task]
+            [cook.scheduler.scheduler :as sched]
             [cook.test.testutil :as tu]
             [datomic.api :as d])
   (:import (clojure.lang ExceptionInfo)
