@@ -1195,7 +1195,7 @@
         (doseq [task (killable-cancelled-tasks (d/db conn))]
           (log/warn "killing cancelled task " (:instance/task-id task))
           @(d/transact conn [[:db/add (:db/id task) :instance/reason
-                              [:reason/name :mesos-executor-terminated]]])
+                              [:reason/name :reason-killed-by-user]]])
           (cc/kill-task-if-possible (cook.task/task-ent->ComputeCluster task) (:instance/task-id task)))))
     {:error-handler (fn [e]
                       (log/error e "Failed to kill cancelled tasks!"))}))
