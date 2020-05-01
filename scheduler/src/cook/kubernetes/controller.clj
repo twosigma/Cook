@@ -367,8 +367,9 @@
       ; If you ignore the reloading on startup, the initial state is set at (:cook-expected-state/starting, :missing) when we first add a pod to launch.
       ; The final state is (:missing, :missing)
       ;
-      ; We use :cook-expected-state/killed to represent a user-chosen kill. If we're doing a state-machine-induced kill (because something
-      ; went wrong) it should occur by deleting the pod, so we go, e.g.,  (:running,:waiting) (an illegal state) to (:running,:missing)
+      ; We use :cook-expected-state/killed to represent a cook scheduler kill (e.g. user killed, rebalancer killed) as opposed to a state machine kill.
+      ; If we're doing a state-machine-induced kill (because something went wrong) it should occur by deleting the pod,
+      ; so we go, e.g.,  (:running,:waiting) (an illegal state) to (:running,:missing)
       ; to (:completed, :missing), to (:missing,missing) to deleted. We will put a flag in the cook expected state dictionary
       ; when we delete to indicate the provenance (e.g., induced because of a weird state)
       ;

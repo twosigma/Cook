@@ -425,6 +425,8 @@
                                                (if-let [compute-cluster (cc/compute-cluster-name->ComputeCluster compute-cluster-name)]
                                                  (do (log/info "Attempting to kill task" task-id "in" compute-cluster-name "due to job completion")
                                                      (meters/mark! tx-report-queue-tasks-killed)
+                                                     @(d/transact conn [[:db/add task-entity-id :instance/reason
+                                                                         [:reason/name :reason-killed-by-user]]])
                                                      (cc/safe-kill-task compute-cluster task-id))
                                                  (log/error "Couldn't kill task" task-id "due to no Mesos driver for compute cluster" compute-cluster-name "!")))))
                                          (catch Exception e
@@ -1193,7 +1195,7 @@
         (doseq [task (killable-cancelled-tasks (d/db conn))]
           (log/warn "killing cancelled task " (:instance/task-id task))
           @(d/transact conn [[:db/add (:db/id task) :instance/reason
-                              [:reason/name :mesos-executor-terminated]]])
+                              [:reason/name :reason-killed-by-user]]])
           (cc/kill-task-if-possible (cook.task/task-ent->ComputeCluster task) (:instance/task-id task)))))
     {:error-handler (fn [e]
                       (log/error e "Failed to kill cancelled tasks!"))}))

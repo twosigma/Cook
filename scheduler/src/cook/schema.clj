@@ -1242,6 +1242,11 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :reason/mea-culpa? false
     :reason/mesos-reason :reason-normal-exit}
    {:db/id (d/tempid :db.part/user)
+    :reason/code 1001
+    :reason/string "Killed by user"
+    :reason/mea-culpa? false
+    :reason/name :reason-killed-by-user}
+   {:db/id (d/tempid :db.part/user)
     :reason/code 1002
     :reason/string "Preempted by rebalancer"
     :reason/mea-culpa? true
