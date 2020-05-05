@@ -49,7 +49,7 @@
                                                                       compute-cluster
                                                                       (task-assignment-result-helper "testuser"))]
 
-          (cc/launch-tasks compute-cluster [] [task-metadata])
+          (cc/launch-tasks compute-cluster "test-pool" [{:task-metadata-seq [task-metadata]}])
           (is (= "cook" (-> @launched-pod-atom
                             :pod
                             .getMetadata
@@ -64,7 +64,7 @@
                                                                       nil
                                                                       compute-cluster
                                                                       (task-assignment-result-helper "testuser"))]
-          (cc/launch-tasks compute-cluster [] [task-metadata])
+          (cc/launch-tasks compute-cluster "test-pool" [{:task-metadata-seq [task-metadata]}])
           (is (= "testuser" (-> @launched-pod-atom
                                 :pod
                                 .getMetadata
@@ -89,7 +89,7 @@
           job-ent-2 (d/entity db j2)
           task-1 (tu/make-task-metadata job-ent-1 db compute-cluster)
           task-2 (tu/make-task-metadata job-ent-2 db compute-cluster)
-          _ (cc/launch-tasks compute-cluster nil [task-1 task-2])
+          _ (cc/launch-tasks compute-cluster "no-pool" [{:task-metadata-seq [task-1 task-2]}])
           task-1-id (-> task-1 :task-request :task-id)
           pod-name->pod {{:namespace "cook" :name "podA"} (tu/pod-helper "podA" "nodeA"
                                                                          {:cpus 0.25 :mem 250.0}

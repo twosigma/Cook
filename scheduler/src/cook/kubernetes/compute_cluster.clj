@@ -233,16 +233,20 @@
                                      synthetic-pods-config node-blocklist-labels
                                      ^ExecutorService launch-task-executor-service]
   cc/ComputeCluster
-  (launch-tasks [this _ task-metadata-seq]
-    (let [futures
-          (doall
-            (map (fn [task-metadata]
-                   (.submit
-                     launch-task-executor-service
-                     ^Callable (fn []
-                                 (launch-task! this task-metadata))))
-                 task-metadata-seq))]
-      (run! deref futures)))
+  (launch-tasks [this pool-name matches]
+    (let [task-metadata-seq (mapcat :task-metadata-seq matches)]
+      (log/info "In" pool-name "pool, launching tasks for" name "compute cluster"
+                {:num-matches (count matches)
+                 :num-tasks (count task-metadata-seq)})
+      (let [futures
+            (doall
+              (map (fn [task-metadata]
+                     (.submit
+                       launch-task-executor-service
+                       ^Callable (fn []
+                                   (launch-task! this task-metadata))))
+                   task-metadata-seq))]
+        (run! deref futures))))
 
   (kill-task [this task-id]
     ; Note we can't use timer/time! because it wraps the body in a Callable, which rebinds 'this' to another 'this'
@@ -375,8 +379,8 @@
                       "synthetic pod(s) in" synthetic-task-pool-name "pool")
             (let [timer-context-launch-tasks (timers/start (metrics/timer "cc-synthetic-pod-launch-tasks" name))]
               (cc/launch-tasks this
-                               nil ; offers (not used by KubernetesComputeCluster)
-                               task-metadata-seq)
+                               synthetic-task-pool-name
+                               [{:task-metadata-seq task-metadata-seq}])
               (.stop timer-context-launch-tasks))))
         (.stop timer-context-autoscale))
       (catch Throwable e

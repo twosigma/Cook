@@ -42,10 +42,11 @@
 (def kill-lock-object (Object.))
 
 (defprotocol ComputeCluster
-  ; These methods should accept bulk data and process in batches.
-  ;(kill-tasks [this task]
-  (launch-tasks [this offers task-metadata-seq])
-  (compute-cluster-name [this])
+  (launch-tasks [this pool-name matches]
+    "Launches the tasks contained in the given matches collection")
+
+  (compute-cluster-name [this]
+    "Returns the name of this compute cluster")
 
   (db-id [this]
     "Get a database entity-id for this compute cluster (used for putting it into a task structure).")
