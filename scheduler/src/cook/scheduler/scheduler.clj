@@ -718,6 +718,26 @@
   (let [offers (mapv :offer leases)]
     (-> offers first :compute-cluster)))
 
+(defn launch-matches!
+  "Launches tasks for the given matches in the given compute cluster"
+  [compute-cluster pool-name matches fenzo]
+  (try
+    (cc/launch-tasks
+      compute-cluster
+      pool-name
+      matches
+      (fn process-task-post-launch!
+        [{:keys [hostname task-request]}]
+        (let [user (get-in task-request [:job :job/user])]
+          (ratelimit/spend! ratelimit/job-launch-rate-limiter user 1))
+        (locking fenzo
+          (.. fenzo
+              (getTaskAssigner)
+              (call task-request hostname)))))
+    (catch Throwable t
+      (log/error t "In" pool-name "pool, error launching tasks for"
+                 (cc/compute-cluster-name compute-cluster) "compute cluster"))))
+
 (defn launch-matched-tasks!
   "Updates the state of matched tasks in the database and then launches them."
   [matches conn db fenzo mesos-run-as-user pool-name]
@@ -744,9 +764,6 @@
               (throw e))))
         (log/info "In" pool-name "pool, launching" (count task-txns) "tasks")
         (ratelimit/spend! ratelimit/global-job-launch-rate-limiter ratelimit/global-job-launch-rate-limiter-key (count task-txns))
-        ;; This launch-tasks MUST happen after the above transaction in
-        ;; order to allow a transaction failure (due to failed preconditions)
-        ;; to block the launch
         (let [num-offers-matched (->> matches
                                       (mapcat (comp :id :offer :leases))
                                       (distinct)
@@ -754,24 +771,20 @@
           (meters/mark! scheduler-offer-matched num-offers-matched)
           (histograms/update! number-offers-matched num-offers-matched))
         (meters/mark! (meters/meter (metric-title "matched-tasks" pool-name)) (count task-txns))
+
+        ;; Launching the matched tasks MUST happen after the above transaction in
+        ;; order to allow a transaction failure (due to failed preconditions)
+        ;; to block the launch
         (timers/time!
           (timers/timer (metric-title "handle-resource-offer!-mesos-submit-duration" pool-name))
-          (doseq [[compute-cluster matches-in-compute-cluster]
-                  (group-by match->compute-cluster matches)]
-            (try
-              (cc/launch-tasks compute-cluster pool-name
-                               matches-in-compute-cluster
-                               (fn process-task-post-launch!
-                                 [{:keys [hostname task-request]}]
-                                 (let [user (get-in task-request [:job :job/user])]
-                                   (ratelimit/spend! ratelimit/job-launch-rate-limiter user 1))
-                                 (locking fenzo
-                                   (.. fenzo
-                                       (getTaskAssigner)
-                                       (call task-request hostname)))))
-              (catch Throwable t
-                (log/error t "In" pool-name "pool, error launching tasks for"
-                           (cc/compute-cluster-name compute-cluster) "compute cluster")))))))))
+          (->> (group-by match->compute-cluster matches)
+               (map
+                 (fn [[compute-cluster matches-in-compute-cluster]]
+                   (future
+                     (launch-matches! compute-cluster pool-name
+                                      matches-in-compute-cluster fenzo))))
+               doall
+               (run! deref)))))))
 
 (defn update-host-reservations!
   "Updates the rebalancer-reservation-atom with the result of the match cycle.
