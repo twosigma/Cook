@@ -760,15 +760,15 @@
                   (group-by match->compute-cluster matches)]
             (try
               (cc/launch-tasks compute-cluster pool-name
-                               matches-in-compute-cluster)
-              (doseq [{:keys [task-metadata-seq]} matches-in-compute-cluster]
-                (doseq [{:keys [hostname task-request]} task-metadata-seq]
-                  (let [user (get-in task-request [:job :job/user])]
-                    (ratelimit/spend! ratelimit/job-launch-rate-limiter user 1))
-                  (locking fenzo
-                    (.. fenzo
-                        (getTaskAssigner)
-                        (call task-request hostname)))))
+                               matches-in-compute-cluster
+                               (fn process-task-post-launch!
+                                 [{:keys [hostname task-request]}]
+                                 (let [user (get-in task-request [:job :job/user])]
+                                   (ratelimit/spend! ratelimit/job-launch-rate-limiter user 1))
+                                 (locking fenzo
+                                   (.. fenzo
+                                       (getTaskAssigner)
+                                       (call task-request hostname)))))
               (catch Throwable t
                 (log/error t "In" pool-name "pool, error launching tasks for"
                            (cc/compute-cluster-name compute-cluster) "compute cluster")))))))))

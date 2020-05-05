@@ -42,7 +42,7 @@
 (def kill-lock-object (Object.))
 
 (defprotocol ComputeCluster
-  (launch-tasks [this pool-name matches]
+  (launch-tasks [this pool-name matches process-task-post-launch-fn]
     "Launches the tasks contained in the given matches collection")
 
   (compute-cluster-name [this]

@@ -233,7 +233,7 @@
                                      synthetic-pods-config node-blocklist-labels
                                      ^ExecutorService launch-task-executor-service]
   cc/ComputeCluster
-  (launch-tasks [this pool-name matches]
+  (launch-tasks [this pool-name matches process-task-post-launch-fn]
     (let [task-metadata-seq (mapcat :task-metadata-seq matches)]
       (log/info "In" pool-name "pool, launching tasks for" name "compute cluster"
                 {:num-matches (count matches)
@@ -244,7 +244,8 @@
                      (.submit
                        launch-task-executor-service
                        ^Callable (fn []
-                                   (launch-task! this task-metadata))))
+                                   (launch-task! this task-metadata)
+                                   (process-task-post-launch-fn task-metadata))))
                    task-metadata-seq))]
         (run! deref futures))))
 
@@ -380,7 +381,8 @@
             (let [timer-context-launch-tasks (timers/start (metrics/timer "cc-synthetic-pod-launch-tasks" name))]
               (cc/launch-tasks this
                                synthetic-task-pool-name
-                               [{:task-metadata-seq task-metadata-seq}])
+                               [{:task-metadata-seq task-metadata-seq}]
+                               (fn [_]))
               (.stop timer-context-launch-tasks))))
         (.stop timer-context-autoscale))
       (catch Throwable e
