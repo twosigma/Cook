@@ -289,7 +289,8 @@
                       (when (some-> @all-pods-atom
                                     (get namespaced-pod-name)
                                     (is-cook-scheduler-pod compute-cluster-name))
-                        (log/info "Received pod event"
+                        (log/info "In" compute-cluster-name
+                                  "compute cluster, received pod event"
                                   (.-type watch-response)
                                   (.serialize json event)))))))))
           (catch Exception e
