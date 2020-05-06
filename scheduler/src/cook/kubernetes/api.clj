@@ -18,12 +18,13 @@
     (io.kubernetes.client.apis CoreV1Api)
     (io.kubernetes.client.custom Quantity Quantity$Format IntOrString)
     (io.kubernetes.client.models V1Affinity V1Container V1ContainerPort V1ContainerState V1DeleteOptions
-                                 V1DeleteOptionsBuilder V1EmptyDirVolumeSource V1EnvVar V1EnvVarBuilder
+                                 V1DeleteOptionsBuilder V1EmptyDirVolumeSource V1EnvVar V1Event
                                  V1HostPathVolumeSource V1HTTPGetAction V1Node V1NodeAffinity V1NodeSelector
-                                 V1NodeSelectorRequirement V1NodeSelectorTerm V1ObjectMeta V1Pod V1PodCondition
-                                 V1PodSecurityContext V1PodSpec V1PodStatus V1Probe V1ResourceRequirements
-                                 V1Toleration V1VolumeBuilder V1Volume V1VolumeMount)
+                                 V1NodeSelectorRequirement V1NodeSelectorTerm V1ObjectMeta V1ObjectReference V1Pod
+                                 V1PodCondition V1PodSecurityContext V1PodSpec V1PodStatus V1Probe
+                                 V1ResourceRequirements V1Toleration V1VolumeBuilder V1Volume V1VolumeMount)
     (io.kubernetes.client.util Watch)
+    (java.net SocketTimeoutException)
     (java.util.concurrent Executors ExecutorService)))
 
 
@@ -191,7 +192,7 @@
                                 callbacks)
           (catch Exception e
             (let [cause (.getCause e)]
-              (if (and cause (instance? java.net.SocketTimeoutException cause))
+              (if (and cause (instance? SocketTimeoutException cause))
                 (log/info e "In" compute-cluster-name "compute cluster, pod watch timed out")
                 (log/error e "In" compute-cluster-name "compute cluster, error during pod watch"))))
           (finally
@@ -262,6 +263,55 @@
                   (initialize-node-watch-helper api-client compute-cluster-name current-nodes-atom)
                   (catch Exception e
                     (log/error e "Error during node watch initial setup of looking at nodes for" compute-cluster-name
+                               "and sleeping" reconnect-delay-ms "milliseconds before reconnect")
+                    (Thread/sleep reconnect-delay-ms)
+                    nil)))
+        ^Callable first-success (->> tmpfn repeatedly (some identity))]
+    (.submit kubernetes-executor ^Callable first-success)))
+
+(declare initialize-event-watch)
+(let [json (JSON.)]
+  (defn ^Callable initialize-event-watch-helper
+    "Returns a new event watch Callable"
+    [^ApiClient api-client compute-cluster-name all-pods-atom]
+    (let [watch (WatchHelper/createEventWatch api-client nil)]
+      (fn []
+        (try
+          (log/info "In" compute-cluster-name "compute cluster, handling event watch updates")
+          (while (.hasNext watch)
+            (let [watch-response (.next watch)
+                  ^V1Event event (.-object watch-response)]
+              (when event
+                (let [^V1ObjectReference involved-object (.getInvolvedObject event)]
+                  (when (and involved-object (= (.getKind involved-object) "Pod"))
+                    (let [namespaced-pod-name {:namespace (.getNamespace involved-object)
+                                               :name (.getName involved-object)}]
+                      (when (some-> @all-pods-atom
+                                    (get namespaced-pod-name)
+                                    (is-cook-scheduler-pod compute-cluster-name))
+                        (log/info "Received pod event"
+                                  (.-type watch-response)
+                                  (.serialize json event)))))))))
+          (catch Exception e
+            (let [cause (.getCause e)]
+              (if (and cause (instance? SocketTimeoutException cause))
+                (log/info e "In" compute-cluster-name "compute cluster, event watch timed out")
+                (log/error e "In" compute-cluster-name "compute cluster, error during event watch"))))
+          (finally
+            (.close watch)
+            (initialize-event-watch api-client compute-cluster-name all-pods-atom)))))))
+
+(defn initialize-event-watch
+  "Initializes the event watch"
+  [^ApiClient api-client compute-cluster-name all-pods-atom]
+  (log/info "In" compute-cluster-name "compute cluster, initializing event watch")
+  (let [{:keys [reconnect-delay-ms]} (config/kubernetes)
+        tmpfn (fn []
+                (try
+                  (log/info "In" compute-cluster-name "compute cluster, initializing event watch helper")
+                  (initialize-event-watch-helper api-client compute-cluster-name all-pods-atom)
+                  (catch Exception e
+                    (log/error e "Error during event watch initial setup of looking at events for" compute-cluster-name
                                "and sleeping" reconnect-delay-ms "milliseconds before reconnect")
                     (Thread/sleep reconnect-delay-ms)
                     nil)))
