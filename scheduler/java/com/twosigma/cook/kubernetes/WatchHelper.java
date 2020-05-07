@@ -4,6 +4,7 @@ import com.google.common.reflect.TypeToken;
 import io.kubernetes.client.ApiClient;
 import io.kubernetes.client.ApiException;
 import io.kubernetes.client.apis.CoreV1Api;
+import io.kubernetes.client.models.V1Event;
 import io.kubernetes.client.models.V1Node;
 import io.kubernetes.client.models.V1Pod;
 import io.kubernetes.client.util.Watch;
@@ -25,5 +26,14 @@ public class WatchHelper {
                         null, resourceVersion, null, true, null,
                         null),
                 new TypeToken<Watch.Response<V1Node>>() {}.getType());
+    }
+
+    public static Watch<V1Event> createEventWatch(ApiClient apiClient, String resourceVersion) throws ApiException {
+        CoreV1Api api = new CoreV1Api(apiClient);
+        return Watch.createWatch(apiClient,
+                api.listEventForAllNamespacesCall(null, null, null, null,
+                        null, null, resourceVersion, null, true, null,
+                        null),
+                new TypeToken<Watch.Response<V1Event>>() {}.getType());
     }
 }
