@@ -110,12 +110,12 @@
 
 (defn get-pod-namespaced-key
   [^V1Pod pod]
-  {:namespace (-> pod
-                  .getMetadata
-                  .getNamespace)
-   :name (-> pod
-             .getMetadata
-             .getName)})
+  (if-let [^V1ObjectMeta pod-metadata (some-> pod .getMetadata)]
+    {:namespace (-> pod-metadata .getNamespace)
+     :name (-> pod-metadata .getName)}
+    (throw (ex-info
+             (str "Unable to get namespaced key for pod: " pod)
+             {:pod pod}))))
 
 (defn get-all-pods-in-kubernetes
   "Get all pods in kubernetes."
