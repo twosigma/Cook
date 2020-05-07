@@ -291,8 +291,9 @@
                                     (is-cook-scheduler-pod compute-cluster-name))
                         (log/info "In" compute-cluster-name
                                   "compute cluster, received pod event"
-                                  (.-type watch-response)
-                                  (.serialize json event)))))))))
+                                  {:event-reason (.getReason event)
+                                   :event (.serialize json event)
+                                   :watch-response-type (.-type watch-response)}))))))))
           (catch Exception e
             (let [cause (.getCause e)]
               (if (and cause (instance? SocketTimeoutException cause))
