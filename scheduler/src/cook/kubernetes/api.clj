@@ -615,7 +615,7 @@
 (defn calculate-effective-checkpointing-config
   "Given the job's checkpointing config, calculate the effective config. Making any adjustments such as defaults,
   overrides, or other behavior modifications."
-  [{:keys [job/checkpoint job/instance] :as job}]
+  [{:keys [job/checkpoint job/instance] :as job} task-id]
   (when checkpoint
     (let [{:keys [default-checkpoint-config]} (config/kubernetes)
           checkpoint (merge default-checkpoint-config (util/job-ent->checkpoint job))]
@@ -657,7 +657,7 @@
         workdir (get-workdir parameters sandbox-dir)
         {:keys [volumes volume-mounts sandbox-volume-mount-fn]} (make-volumes volumes sandbox-dir)
         {:keys [custom-shell init-container set-container-cpu-limit? sidecar]} (config/kubernetes)
-        checkpoint (calculate-effective-checkpointing-config job)
+        checkpoint (calculate-effective-checkpointing-config job task-id)
         checkpoint-memory-overhead (:memory-overhead checkpoint)
         use-cook-init? (and init-container pod-supports-cook-init?)
         use-cook-sidecar? (and sidecar pod-supports-cook-sidecar?)

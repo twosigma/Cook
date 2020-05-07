@@ -479,29 +479,29 @@
   (testing "No checkpoint"
     (with-redefs [config/kubernetes (fn [] {})]
       (let [job {}]
-        (is (= nil (api/calculate-effective-checkpointing-config job))))))
+        (is (= nil (api/calculate-effective-checkpointing-config job 1))))))
   (testing "No change"
     (with-redefs [config/kubernetes (fn [] {})]
       (let [checkpoint {:mode "auto"}
             job {:job/checkpoint {:checkpoint/mode "auto"}}]
-        (is (= checkpoint (api/calculate-effective-checkpointing-config job))))))
+        (is (= checkpoint (api/calculate-effective-checkpointing-config job 1))))))
   (testing "Checkpoint and add defaults"
     (with-redefs [config/kubernetes (fn [] {:default-checkpoint-config {:memory-overhead 129}})]
       (let [checkpoint {:mode "auto"
                         :memory-overhead 129}
             job {:job/checkpoint {:checkpoint/mode "auto"}}]
-        (is (= checkpoint (api/calculate-effective-checkpointing-config job))))))
+        (is (= checkpoint (api/calculate-effective-checkpointing-config job 1))))))
   (testing "checkpoint when max attempts not set"
     (with-redefs [config/kubernetes (fn [] {:default-checkpoint-config {}})]
       (let [job {:job/checkpoint {:checkpoint/mode "auto"}
                  :job/instance [{:instance/reason {:reason/name :mesos-unknown}}
                                 {:instance/reason {:reason/name :mesos-unknown}}
                                 {:instance/reason {:reason/name :mesos-unknown}}]}]
-        (is (= {:mode "auto"} (api/calculate-effective-checkpointing-config job))))))
+        (is (= {:mode "auto"} (api/calculate-effective-checkpointing-config job 1))))))
   (testing "Don't checkpoint when max attempts exceeded"
     (with-redefs [config/kubernetes (fn [] {:default-checkpoint-config {:max-checkpoint-attempts 3}})]
       (let [job {:job/checkpoint {:checkpoint/mode "auto"}
                  :job/instance [{:instance/reason {:reason/name :mesos-unknown}}
                                 {:instance/reason {:reason/name :mesos-unknown}}
                                 {:instance/reason {:reason/name :mesos-unknown}}]}]
-        (is (= nil (api/calculate-effective-checkpointing-config job)))))))
+        (is (= nil (api/calculate-effective-checkpointing-config job 1)))))))
