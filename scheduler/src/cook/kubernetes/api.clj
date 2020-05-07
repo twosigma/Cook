@@ -624,7 +624,10 @@
               checkpoint-failures (filter (fn [{:keys [instance/reason]}]
                                             (contains? checkpoint-failure-reasons (:reason/name reason)))
                                           instance)]
-          (if (-> checkpoint-failures count (>= max-checkpoint-attempts)) nil checkpoint))
+          (if (-> checkpoint-failures count (>= max-checkpoint-attempts))
+            (log/info "Will not checkpoint task-id" task-id ", there are at least" max-checkpoint-attempts "failed instances"
+                      {:job job})
+            checkpoint))
         checkpoint))))
 
 (defn ^V1Pod task-metadata->pod
