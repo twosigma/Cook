@@ -471,16 +471,16 @@
                                         :cook-expected-state/running
                                         (case pod-synthesized-state-modified
                                           ; This indicates that something deleted it behind our back
-                                          :missing (do
-                                                     (log/info "In compute cluster" name ", something deleted"
-                                                               pod-name "behind our back")
-                                                     ; A :cook-expected-state/running job suddenly disappearing in k8s is
-                                                     ; a sign of a preemption, so treat this case as a missed preemption.
-                                                     ; TODO: When we have a better story for preemption, we should switch this to
-                                                     ; go through the handle-pod-completed stack. That needs to be guarded with a null
-                                                     ; check because handle-pod-completed cannot handle null pods. So, something like:
-                                                     ; (if pod (handle-pod-completed ...) (....write a unknown reason to the pod....))
-                                                     (handle-pod-preemption compute-cluster pod-name))
+                                          :missing (if (some-> synthesized-state :pod-preempted?)
+                                                     (handle-pod-preemption compute-cluster pod-name)
+                                                     (do
+                                                       (log/info "In compute cluster" name ", something deleted"
+                                                                 pod-name "behind our back")
+                                                       (if (= api/pod-explicitly-deleted-state-reason (:reason synthesized-state))
+                                                         (handle-pod-completed compute-cluster pod-name k8s-actual-state-dict)
+                                                         ; A :cook-expected-state/running job suddenly disappearing in k8s is
+                                                         ; a sign of a preemption, so treat this case as a missed preemption.
+                                                         (handle-pod-preemption compute-cluster pod-name))))
                                           ; TODO: May need to mark mea culpa retry
                                           :pod/failed (handle-pod-completed compute-cluster pod-name k8s-actual-state-dict)
                                           :pod/running cook-expected-state-dict

@@ -922,15 +922,18 @@
           ; * A job may have additional containers with the name aux-*
           job-status (first (filter (fn [c] (= cook-container-name-for-job (.getName c)))
                                     container-statuses))]
-      ; TODO: When we add logic here that supports detecting pods that have a i-am-being-preempted label, we need to modify
-      ; the controller to set the failure reason to unknown for pods in  :running,:missing.
       (if (some-> pod .getMetadata .getDeletionTimestamp)
-        ; If a pod has been ordered deleted, treat it as if it was gone, It's being async removed.
-        ; Note that we distinguish between this explicit :missing, and not being there at all when processing
-        ; (:cook-expected-state/killed, :missing) in cook.kubernetes.controller/process
-        {:state :missing
-         :reason "Pod was explicitly deleted"
-         :pod-deleted? true}
+        (if (some-> pod .getMetadata .getLabels (get "node-preempted"))
+          {:state :missing
+           :reason "Node preempted"
+           :pod-deleted? true
+           :pod-preempted? true}
+          ; If a pod has been ordered deleted, treat it as if it was gone, It's being async removed.
+          ; Note that we distinguish between this explicit :missing, and not being there at all when processing
+          ; (:cook-expected-state/killed, :missing) in cook.kubernetes.controller/process
+          {:state :missing
+           :reason "Pod was explicitly deleted"
+           :pod-deleted? true})
         ; If pod isn't being async removed, then look at the containers inside it.
         (if job-status
           (let [^V1ContainerState state (.getState job-status)]
