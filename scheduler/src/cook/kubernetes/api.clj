@@ -605,6 +605,28 @@
            period-sec
            (assoc "COOK_CHECKPOINT_PERIOD_SEC" (str period-sec))))))))
 
+(def default-checkpoint-failure-reasons
+  "Default set of failure reasons that should be counted against checkpointing attempts"
+  #{:mesos-unknown
+    :mesos-command-executor-failed
+    :mesos-container-limitation-memory
+    :mesos-container-launch-failed})
+
+(defn calculate-effective-checkpointing-config
+  "Given the job's checkpointing config, calculate the effective config. Making any adjustments such as defaults,
+  overrides, or other behavior modifications."
+  [{:keys [job/checkpoint job/instance] :as job}]
+  (when checkpoint
+    (let [{:keys [default-checkpoint-config]} (config/kubernetes)
+          checkpoint (merge default-checkpoint-config (util/job-ent->checkpoint job))]
+      (if-let [max-checkpoint-attempts (:max-checkpoint-attempts checkpoint)]
+        (let [checkpoint-failure-reasons (or (:checkpoint-failure-reasons checkpoint) default-checkpoint-failure-reasons)
+              checkpoint-failures (filter (fn [{:keys [instance/reason]}]
+                                            (contains? checkpoint-failure-reasons (:reason/name reason)))
+                                          instance)]
+          (if (-> checkpoint-failures count (>= max-checkpoint-attempts)) nil checkpoint))
+        checkpoint))))
+
 (defn ^V1Pod task-metadata->pod
   "Given a task-request and other data generate the kubernetes V1Pod to launch that task."
   [namespace compute-cluster-name
@@ -619,7 +641,6 @@
         {:strs [mem cpus]} scalar-requests
         {:keys [docker volumes]} container
         {:keys [image parameters]} docker
-        {:keys [job/progress-output-file job/progress-regex-string job/checkpoint]} job
         {:keys [environment]} command
         pod (V1Pod.)
         pod-spec (V1PodSpec.)
@@ -632,9 +653,8 @@
         sandbox-dir (:default-workdir (config/kubernetes))
         workdir (get-workdir parameters sandbox-dir)
         {:keys [volumes volume-mounts sandbox-volume-mount-fn]} (make-volumes volumes sandbox-dir)
-        {:keys [custom-shell default-checkpoint-config init-container set-container-cpu-limit? sidecar]}
-        (config/kubernetes)
-        checkpoint (when checkpoint (merge default-checkpoint-config (util/job-ent->checkpoint job)))
+        {:keys [custom-shell init-container set-container-cpu-limit? sidecar]} (config/kubernetes)
+        checkpoint (calculate-effective-checkpointing-config job)
         checkpoint-memory-overhead (:memory-overhead checkpoint)
         use-cook-init? (and init-container pod-supports-cook-init?)
         use-cook-sidecar? (and sidecar pod-supports-cook-sidecar?)
