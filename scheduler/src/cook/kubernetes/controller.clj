@@ -348,7 +348,7 @@
   (timers/time! (metrics/timer "controller-process" name)
     (loop [{:keys [cook-expected-state waiting-metric-timer] :as cook-expected-state-dict} (get @cook-expected-state-map pod-name)
            {:keys [synthesized-state pod] :as k8s-actual-state-dict} (get @k8s-actual-state-map pod-name)]
-      (log/info "In compute cluster" name ", processing pod" pod-name ";"
+      (log/info "In" name "compute cluster, processing pod" pod-name ";"
                 "cook-expected:" (prepare-cook-expected-state-dict-for-logging cook-expected-state-dict) ","
                 "k8s-actual:" (prepare-k8s-actual-state-dict-for-logging k8s-actual-state-dict))
       ; We should have the cross product of

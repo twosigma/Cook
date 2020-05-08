@@ -292,6 +292,8 @@
 
         ; Initialize the node watch path.
         (api/initialize-node-watch api-client name current-nodes-atom)
+
+        (api/initialize-event-watch api-client name all-pods-atom)
         (catch Throwable e
           (log/error e "Failed to bring up compute cluster" name)
           (throw e))))
