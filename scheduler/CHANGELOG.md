@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.42.0] - 2020-05-08
+### Added
+- `Killed by user` reason code, from @nsinkov
+- Fallback to k8s checkpointing disabled when max attempts exceeded, from @nsinkov
+- Logging of k8s pod events, from @dposada
+### Changed
+- Added `safe-to-evict` annotation to k8s synthetic pods, from @dposada
+- Made matches go to `launch-tasks` in bulk, from @dposada
+
 ## [1.41.0] - 2020-04-30
 ### Added
 - Support for specifying the default container on a per-pool basis, from @scrosby
