@@ -232,10 +232,15 @@
   (compute-cluster-name [this]
     compute-cluster-name)
 
-  (launch-tasks [this offers task-metadata-seq]
-    (mesos/launch-tasks! @driver-atom
-                         (mapv :id offers)
-                         (task/compile-mesos-messages framework-id offers task-metadata-seq)))
+  (launch-tasks [_ pool-name matches process-task-post-launch-fn]
+    (doseq [{:keys [leases task-metadata-seq]} matches
+            :let [offers (mapv :offer leases)]]
+      (log/info "In" pool-name "pool, launching" (count offers)
+                "offers for" compute-cluster-name "compute cluster")
+      (mesos/launch-tasks! @driver-atom
+                           (mapv :id offers)
+                           (task/compile-mesos-messages framework-id offers task-metadata-seq))
+      (run! process-task-post-launch-fn task-metadata-seq)))
 
   (kill-task [this task-id]
     (mesos/kill-task! @driver-atom {:value task-id}))
