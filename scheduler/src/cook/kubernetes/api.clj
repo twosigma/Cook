@@ -618,9 +618,10 @@
   [{:keys [job/checkpoint job/instance] :as job} task-id]
   (when checkpoint
     (let [{:keys [default-checkpoint-config]} (config/kubernetes)
-          checkpoint (merge default-checkpoint-config (util/job-ent->checkpoint job))]
-      (if-let [max-checkpoint-attempts (:max-checkpoint-attempts checkpoint)]
-        (let [checkpoint-failure-reasons (or (:checkpoint-failure-reasons checkpoint) default-checkpoint-failure-reasons)
+          {:keys [max-checkpoint-attempts checkpoint-failure-reasons] :as checkpoint}
+          (merge default-checkpoint-config (util/job-ent->checkpoint job))]
+      (if max-checkpoint-attempts
+        (let [checkpoint-failure-reasons (or checkpoint-failure-reasons default-checkpoint-failure-reasons)
               checkpoint-failures (filter (fn [{:keys [instance/reason]}]
                                             (contains? checkpoint-failure-reasons (:reason/name reason)))
                                           instance)]
