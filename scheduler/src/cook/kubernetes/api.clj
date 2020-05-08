@@ -36,6 +36,9 @@
 (def cook-synthetic-pod-priority-class "synthetic-pod")
 (def cook-synthetic-pod-name-prefix "synthetic")
 (def k8s-hostname-label "kubernetes.io/hostname")
+; This pod annotation signals to the cluster autoscaler that
+; it's safe to remove the node on which the pod is running
+(def k8s-safe-to-evict-annotation "cluster-autoscaler.kubernetes.io/safe-to-evict")
 
 (def default-shell
   "Default shell command used by our k8s scheduler to wrap and launch a job command
@@ -608,7 +611,7 @@
 (defn ^V1Pod task-metadata->pod
   "Given a task-request and other data generate the kubernetes V1Pod to launch that task."
   [namespace compute-cluster-name
-   {:keys [task-id command container task-request hostname pod-labels pod-hostnames-to-avoid
+   {:keys [task-id command container task-request hostname pod-annotations pod-labels pod-hostnames-to-avoid
            pod-priority-class pod-supports-cook-init? pod-supports-cook-sidecar?]
     :or {pod-priority-class cook-job-pod-priority-class
          pod-supports-cook-init? true
@@ -674,6 +677,8 @@
     (.setName metadata (str task-id))
     (.setNamespace metadata namespace)
     (.setLabels metadata labels)
+    (when pod-annotations
+      (.setAnnotations metadata pod-annotations))
 
     ; container
     (.setName container cook-container-name-for-job)
