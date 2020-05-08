@@ -346,6 +346,9 @@
                               {:command {:user (or user-from-synthetic-pods-config user)
                                          :value command}
                                :container {:docker {:image image}}
+                               ; We need to *not* prevent the cluster autoscaler from
+                               ; removing a node just because it's running synthetic pods
+                               :pod-annotations {api/k8s-safe-to-evict-annotation "true"}
                                ; Cook has a "novel host constraint", which disallows a job from
                                ; running on the same host twice. So, we need to avoid running a
                                ; synthetic pod on any of the hosts that the real job won't be able
