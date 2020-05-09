@@ -476,11 +476,7 @@
                                                      (do
                                                        (log/info "In compute cluster" name ", something deleted"
                                                                  pod-name "behind our back")
-                                                       (if (= api/pod-explicitly-deleted-state-reason (:reason synthesized-state))
-                                                         (handle-pod-completed compute-cluster pod-name k8s-actual-state-dict)
-                                                         ; A :cook-expected-state/running job suddenly disappearing in k8s is
-                                                         ; a sign of a preemption, so treat this case as a missed preemption.
-                                                         (handle-pod-preemption compute-cluster pod-name))))
+                                                       (handle-pod-completed compute-cluster pod-name k8s-actual-state-dict)))
                                           ; TODO: May need to mark mea culpa retry
                                           :pod/failed (handle-pod-completed compute-cluster pod-name k8s-actual-state-dict)
                                           :pod/running cook-expected-state-dict
