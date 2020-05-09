@@ -929,7 +929,7 @@
         {:state :missing
          :reason "Pod was explicitly deleted"
          :pod-deleted? true}
-        (if (some-> pod .getMetadata .getLabels (get "node-preempted"))
+        (if (some-> pod .getMetadata .getLabels (get (or (-> (config/kubernetes) :node-preempted-label) "node-preempted")))
           {:state :missing
            :reason "Node preempted"
            :pod-deleted? true
