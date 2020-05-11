@@ -155,6 +155,19 @@
       (write-status-to-datomic compute-cluster status)))
   {:cook-expected-state :cook-expected-state/completed})
 
+(defn handle-pod-externally-deleted
+  "Marks the corresponding job instance as failed in the database and
+  returns the `completed` cook expected state."
+  [{:keys [name] :as compute-cluster} pod-name]
+  (log/info "In compute cluster" name ", pod" pod-name "was externally deleted")
+  (when-not (api/synthetic-pod? pod-name)
+    (let [instance-id pod-name
+          status {:reason :reason-executor-terminated
+                  :state :task-failed
+                  :task-id {:value instance-id}}]
+      (write-status-to-datomic compute-cluster status)))
+  {:cook-expected-state :cook-expected-state/completed})
+
 (defn launch-pod
   [{:keys [api-client name] :as compute-cluster} cook-expected-state-dict pod-name]
   (if (api/launch-pod api-client name cook-expected-state-dict pod-name)
@@ -476,7 +489,7 @@
                                                      (do
                                                        (log/info "In compute cluster" name ", something deleted"
                                                                  pod-name "behind our back")
-                                                       (handle-pod-completed compute-cluster pod-name k8s-actual-state-dict)))
+                                                       (handle-pod-externally-deleted compute-cluster pod-name)))
                                           ; TODO: May need to mark mea culpa retry
                                           :pod/failed (handle-pod-completed compute-cluster pod-name k8s-actual-state-dict)
                                           :pod/running cook-expected-state-dict
