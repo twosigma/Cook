@@ -49,7 +49,7 @@
                                                                       compute-cluster
                                                                       (task-assignment-result-helper "testuser"))]
 
-          (cc/launch-tasks compute-cluster "test-pool" [{:task-metadata-seq [task-metadata]}] (fn [_]))
+          (cc/launch-tasks compute-cluster [] [task-metadata])
           (is (= "cook" (-> @launched-pod-atom
                             :pod
                             .getMetadata
@@ -64,7 +64,7 @@
                                                                       nil
                                                                       compute-cluster
                                                                       (task-assignment-result-helper "testuser"))]
-          (cc/launch-tasks compute-cluster "test-pool" [{:task-metadata-seq [task-metadata]}] (fn [_]))
+          (cc/launch-tasks compute-cluster [] [task-metadata])
           (is (= "testuser" (-> @launched-pod-atom
                                 :pod
                                 .getMetadata
@@ -89,7 +89,7 @@
           job-ent-2 (d/entity db j2)
           task-1 (tu/make-task-metadata job-ent-1 db compute-cluster)
           task-2 (tu/make-task-metadata job-ent-2 db compute-cluster)
-          _ (cc/launch-tasks compute-cluster "no-pool" [{:task-metadata-seq [task-1 task-2]}] (fn [_]))
+          _ (cc/launch-tasks compute-cluster nil [task-1 task-2])
           task-1-id (-> task-1 :task-request :task-id)
           pod-name->pod {{:namespace "cook" :name "podA"} (tu/pod-helper "podA" "nodeA"
                                                                          {:cpus 0.25 :mem 250.0}
@@ -134,7 +134,6 @@
   )
 
 (deftest test-autoscale!
-  (tu/setup)
   (let [make-job-fn (fn [job-uuid user]
                       {:job/resource [{:resource/type :cpus, :resource/amount 0.1}
                                       {:resource/type :mem, :resource/amount 32}]
@@ -203,26 +202,7 @@
                   first)]
           (is (= api/k8s-hostname-label (.getKey node-selector-requirement)))
           (is (= "NotIn" (.getOperator node-selector-requirement)))
-          (is (= ["test-host-1" "test-host-2"] (.getValues node-selector-requirement))))))
-
-    (testing "synthetic pods have safe-to-evict annotation"
-      (let [job-uuid-1 (str (UUID/randomUUID))
-            pool-name "test-pool"
-            compute-cluster (tu/make-kubernetes-compute-cluster {} #{pool-name} nil nil)
-            pending-jobs [(make-job-fn job-uuid-1 "user-1")]
-            launched-pods-atom (atom [])]
-        (with-redefs [api/launch-pod (fn [_ _ cook-expected-state-dict _]
-                                       (swap! launched-pods-atom conj cook-expected-state-dict))]
-          (cc/autoscale! compute-cluster pool-name pending-jobs sched/adjust-job-resources-for-pool-fn))
-        (is (= 1 (count @launched-pods-atom)))
-        (is (= "true"
-               (-> @launched-pods-atom
-                   (nth 0)
-                   :launch-pod
-                   :pod
-                   .getMetadata
-                   .getAnnotations
-                   (get api/k8s-safe-to-evict-annotation))))))))
+          (is (= ["test-host-1" "test-host-2"] (.getValues node-selector-requirement))))))))
 
 (deftest test-factory-fn
   (testing "guards against inappropriate number of threads"

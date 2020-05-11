@@ -233,21 +233,16 @@
                                      synthetic-pods-config node-blocklist-labels
                                      ^ExecutorService launch-task-executor-service]
   cc/ComputeCluster
-  (launch-tasks [this pool-name matches process-task-post-launch-fn]
-    (let [task-metadata-seq (mapcat :task-metadata-seq matches)]
-      (log/info "In" pool-name "pool, launching tasks for" name "compute cluster"
-                {:num-matches (count matches)
-                 :num-tasks (count task-metadata-seq)})
-      (let [futures
-            (doall
-              (map (fn [task-metadata]
-                     (.submit
-                       launch-task-executor-service
-                       ^Callable (fn []
-                                   (launch-task! this task-metadata)
-                                   (process-task-post-launch-fn task-metadata))))
-                   task-metadata-seq))]
-        (run! deref futures))))
+  (launch-tasks [this _ task-metadata-seq]
+    (let [futures
+          (doall
+            (map (fn [task-metadata]
+                   (.submit
+                     launch-task-executor-service
+                     ^Callable (fn []
+                                 (launch-task! this task-metadata))))
+                 task-metadata-seq))]
+      (run! deref futures)))
 
   (kill-task [this task-id]
     ; Note we can't use timer/time! because it wraps the body in a Callable, which rebinds 'this' to another 'this'
@@ -351,9 +346,6 @@
                               {:command {:user (or user-from-synthetic-pods-config user)
                                          :value command}
                                :container {:docker {:image image}}
-                               ; We need to *not* prevent the cluster autoscaler from
-                               ; removing a node just because it's running synthetic pods
-                               :pod-annotations {api/k8s-safe-to-evict-annotation "true"}
                                ; Cook has a "novel host constraint", which disallows a job from
                                ; running on the same host twice. So, we need to avoid running a
                                ; synthetic pod on any of the hosts that the real job won't be able
@@ -385,9 +377,8 @@
                       "synthetic pod(s) in" synthetic-task-pool-name "pool")
             (let [timer-context-launch-tasks (timers/start (metrics/timer "cc-synthetic-pod-launch-tasks" name))]
               (cc/launch-tasks this
-                               synthetic-task-pool-name
-                               [{:task-metadata-seq task-metadata-seq}]
-                               (fn [_]))
+                               nil ; offers (not used by KubernetesComputeCluster)
+                               task-metadata-seq)
               (.stop timer-context-launch-tasks))))
         (.stop timer-context-autoscale))
       (catch Throwable e
