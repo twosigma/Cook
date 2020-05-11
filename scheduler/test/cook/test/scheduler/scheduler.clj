@@ -1927,7 +1927,7 @@
     (let [matches [{:leases [{:offer {}}]}]]
       (with-redefs [cc/db-id (constantly -1)
                     cc/compute-cluster-name (constantly "foo")
-                    cc/launch-tasks (fn [_ _ _ _] (throw (ex-info "Foo" {})))
+                    cc/launch-tasks (fn [_ _ _] (throw (ex-info "Foo" {})))
                     datomic/transact (constantly nil)]
         (sched/launch-matched-tasks! matches nil nil nil nil nil)))))
 
