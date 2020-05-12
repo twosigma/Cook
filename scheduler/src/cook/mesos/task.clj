@@ -341,6 +341,7 @@
    a task, return a Mesos message that will actually launch that task"
   [framework-id {:keys [command container data executor-key labels name ports-resource-messages
            scalar-resource-messages slave-id task-id ports-assigned]}]
+  (log/info "running task-info->mesos-message:" (.. Thread currentThread getContextClassLoader))
   (let [command (update command
                         :environment
                         (fn [env] {:variables (map->mesos-kv env :name)}))
