@@ -486,10 +486,7 @@
                                           ; This indicates that something deleted it behind our back
                                           :missing (if (some-> synthesized-state :pod-preempted?)
                                                      (handle-pod-preemption compute-cluster pod-name)
-                                                     (do
-                                                       (log/info "In compute cluster" name ", something deleted"
-                                                                 pod-name "behind our back")
-                                                       (handle-pod-externally-deleted compute-cluster pod-name)))
+                                                     (handle-pod-externally-deleted compute-cluster pod-name))
                                           ; TODO: May need to mark mea culpa retry
                                           :pod/failed (handle-pod-completed compute-cluster pod-name k8s-actual-state-dict)
                                           :pod/running cook-expected-state-dict
