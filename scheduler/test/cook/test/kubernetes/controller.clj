@@ -78,6 +78,21 @@
     (is (= :cook-expected-state/killed (do-process :cook-expected-state/killed :pod/waiting)))
 
     (is (nil? (do-process :cook-expected-state/running :missing)))
+    (is (= :reason-executor-terminated @reason))
+    (is (nil? (do-process :cook-expected-state/running :missing :custom-test-state {:state :missing
+                                                                                    :reason "Node preempted"
+                                                                                    :pod-deleted? true
+                                                                                    :pod-preempted? true})))
+    (is (= :reason-slave-removed @reason))
+    (is (nil? (do-process :cook-expected-state/running :missing :custom-test-state {:state :missing
+                                                                                    :reason "Pod was explicitly deleted"
+                                                                                    :pod-deleted? true}
+                          :force-nil-pod? true)))
+    (is (= :reason-executor-terminated @reason))
+    (is (nil? (do-process :cook-expected-state/running :missing :custom-test-state {:state :missing
+                                                                                    :reason "Pod was explicitly deleted"
+                                                                                    :pod-deleted? true})))
+    (is (= :reason-executor-terminated @reason))
     (is (= :cook-expected-state/completed (do-process :cook-expected-state/running :pod/succeeded)))
     (is (= :reason-normal-exit @reason))
     (is (= :cook-expected-state/completed (do-process :cook-expected-state/running :pod/failed)))
@@ -108,21 +123,7 @@
     (is (nil? (do-process :missing :pod/failed)))
     (is (= :missing (do-process :missing :pod/running)))
     (is (nil? (do-process :missing :pod/unknown)))
-    (is (= :missing (do-process :missing :pod/waiting)))
-    (is (nil? (do-process :cook-expected-state/running :missing :custom-test-state {:state :missing
-                                                                                    :reason "Node preempted"
-                                                                                    :pod-deleted? true
-                                                                                    :pod-preempted? true})))
-    (is (= :reason-slave-removed @reason))
-    (is (nil? (do-process :cook-expected-state/running :missing :custom-test-state {:state :missing
-                                                                                    :reason "Pod was explicitly deleted"
-                                                                                    :pod-deleted? true}
-                          :force-nil-pod? true)))
-    (is (= :reason-executor-terminated @reason))
-    (is (nil? (do-process :cook-expected-state/running :missing :custom-test-state {:state :missing
-                                                                                    :reason "Pod was explicitly deleted"
-                                                                                    :pod-deleted? true})))
-    (is (= :reason-executor-terminated @reason))))
+    (is (= :missing (do-process :missing :pod/waiting)))))
 
 (deftest test-launch-kill-process
   (let [pod-name "TestPodName-LKP"
