@@ -36,9 +36,6 @@
 (def cook-synthetic-pod-priority-class "synthetic-pod")
 (def cook-synthetic-pod-name-prefix "synthetic")
 (def k8s-hostname-label "kubernetes.io/hostname")
-; This pod annotation signals to the cluster autoscaler that
-; it's safe to remove the node on which the pod is running
-(def k8s-safe-to-evict-annotation "cluster-autoscaler.kubernetes.io/safe-to-evict")
 
 (def default-shell
   "Default shell command used by our k8s scheduler to wrap and launch a job command
@@ -608,36 +605,10 @@
            period-sec
            (assoc "COOK_CHECKPOINT_PERIOD_SEC" (str period-sec))))))))
 
-(def default-checkpoint-failure-reasons
-  "Default set of failure reasons that should be counted against checkpointing attempts"
-  #{:mesos-unknown
-    :mesos-command-executor-failed
-    :mesos-container-limitation-memory
-    :mesos-container-launch-failed})
-
-(defn calculate-effective-checkpointing-config
-  "Given the job's checkpointing config, calculate the effective config. Making any adjustments such as defaults,
-  overrides, or other behavior modifications."
-  [{:keys [job/checkpoint job/instance] :as job} task-id]
-  (when checkpoint
-    (let [{:keys [default-checkpoint-config]} (config/kubernetes)
-          {:keys [max-checkpoint-attempts checkpoint-failure-reasons] :as checkpoint}
-          (merge default-checkpoint-config (util/job-ent->checkpoint job))]
-      (if max-checkpoint-attempts
-        (let [checkpoint-failure-reasons (or checkpoint-failure-reasons default-checkpoint-failure-reasons)
-              checkpoint-failures (filter (fn [{:keys [instance/reason]}]
-                                            (contains? checkpoint-failure-reasons (:reason/name reason)))
-                                          instance)]
-          (if (-> checkpoint-failures count (>= max-checkpoint-attempts))
-            (log/info "Will not checkpoint task-id" task-id ", there are at least" max-checkpoint-attempts "failed instances"
-                      {:job job})
-            checkpoint))
-        checkpoint))))
-
 (defn ^V1Pod task-metadata->pod
   "Given a task-request and other data generate the kubernetes V1Pod to launch that task."
   [namespace compute-cluster-name
-   {:keys [task-id command container task-request hostname pod-annotations pod-labels pod-hostnames-to-avoid
+   {:keys [task-id command container task-request hostname pod-labels pod-hostnames-to-avoid
            pod-priority-class pod-supports-cook-init? pod-supports-cook-sidecar?]
     :or {pod-priority-class cook-job-pod-priority-class
          pod-supports-cook-init? true
@@ -648,6 +619,7 @@
         {:strs [mem cpus]} scalar-requests
         {:keys [docker volumes]} container
         {:keys [image parameters]} docker
+        {:keys [job/progress-output-file job/progress-regex-string job/checkpoint]} job
         {:keys [environment]} command
         pod (V1Pod.)
         pod-spec (V1PodSpec.)
@@ -660,8 +632,9 @@
         sandbox-dir (:default-workdir (config/kubernetes))
         workdir (get-workdir parameters sandbox-dir)
         {:keys [volumes volume-mounts sandbox-volume-mount-fn]} (make-volumes volumes sandbox-dir)
-        {:keys [custom-shell init-container set-container-cpu-limit? sidecar]} (config/kubernetes)
-        checkpoint (calculate-effective-checkpointing-config job task-id)
+        {:keys [custom-shell default-checkpoint-config init-container set-container-cpu-limit? sidecar]}
+        (config/kubernetes)
+        checkpoint (when checkpoint (merge default-checkpoint-config (util/job-ent->checkpoint job)))
         checkpoint-memory-overhead (:memory-overhead checkpoint)
         use-cook-init? (and init-container pod-supports-cook-init?)
         use-cook-sidecar? (and sidecar pod-supports-cook-sidecar?)
@@ -701,8 +674,6 @@
     (.setName metadata (str task-id))
     (.setNamespace metadata namespace)
     (.setLabels metadata labels)
-    (when pod-annotations
-      (.setAnnotations metadata pod-annotations))
 
     ; container
     (.setName container cook-container-name-for-job)

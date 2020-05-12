@@ -780,14 +780,11 @@
           (->> (group-by match->compute-cluster matches)
                (map
                  (fn [[compute-cluster matches-in-compute-cluster]]
-                   (let [launch-matches-in-compute-cluster!
-                         #(launch-matches! compute-cluster pool-name
-                                           matches-in-compute-cluster fenzo)]
-                     (if (:mesos-config compute-cluster)
-                       (launch-matches-in-compute-cluster!)
-                       (future (launch-matches-in-compute-cluster!))))))
+                   (future
+                     (launch-matches! compute-cluster pool-name
+                                      matches-in-compute-cluster fenzo))))
                doall
-               (run! #(when (future? %) (deref %)))))))))
+               (run! deref)))))))
 
 (defn update-host-reservations!
   "Updates the rebalancer-reservation-atom with the result of the match cycle.
