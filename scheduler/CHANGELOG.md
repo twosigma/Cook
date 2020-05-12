@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.42.1] - 2020-05-12
+### Changed
+- Added check for k8s node preemption using preemption pod label, from @nsinkov
+### Fixed
+- Resolved `ClassNotFoundException` for Mesos task-launching, from @dposada
+
 ## [1.42.0] - 2020-05-08
 ### Added
 - `Killed by user` reason code, from @nsinkov
