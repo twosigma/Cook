@@ -7,6 +7,7 @@
 01005: Running
 01006: Scheduling failed on host
 01007: Container initialization timed out
+01008: Killed externally
 
 02xxx: Job Misconfiguration
 02000: REASON_CONTAINER_LIMITATION

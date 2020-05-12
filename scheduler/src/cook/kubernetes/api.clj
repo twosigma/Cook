@@ -922,8 +922,6 @@
           ; * A job may have additional containers with the name aux-*
           job-status (first (filter (fn [c] (= cook-container-name-for-job (.getName c)))
                                     container-statuses))]
-      ; TODO: When we add logic here that supports detecting pods that have a i-am-being-preempted label, we need to modify
-      ; the controller to set the failure reason to unknown for pods in  :running,:missing.
       (if (some-> pod .getMetadata .getDeletionTimestamp)
         ; If a pod has been ordered deleted, treat it as if it was gone, It's being async removed.
         ; Note that we distinguish between this explicit :missing, and not being there at all when processing
@@ -931,58 +929,63 @@
         {:state :missing
          :reason "Pod was explicitly deleted"
          :pod-deleted? true}
-        ; If pod isn't being async removed, then look at the containers inside it.
-        (if job-status
-          (let [^V1ContainerState state (.getState job-status)]
-            (cond
-              (.getWaiting state)
-              (if (pod-containers-not-initialized? (V1Pod->name pod) pod-status)
-                ; If the containers are not getting initialized,
-                ; then we should consider the pod failed. This
-                ; state can occur, for example, when volume
-                ; mounts fail.
-                {:state :pod/failed
-                 :reason "ContainersNotInitialized"}
-                {:state :pod/waiting
-                 :reason (-> state .getWaiting .getReason)})
-              (.getRunning state)
-              {:state :pod/running
-               :reason "Running"}
-              (.getTerminated state)
-              (let [exit-code (-> state .getTerminated .getExitCode)]
-                (if (= 0 exit-code)
-                  {:state :pod/succeeded
-                   :exit exit-code
-                   :reason (-> state .getTerminated .getReason)}
+        (if (some-> pod .getMetadata .getLabels (get (or (-> (config/kubernetes) :node-preempted-label) "node-preempted")))
+          {:state :missing
+           :reason "Node preempted"
+           :pod-deleted? true
+           :pod-preempted? true}
+          ; If pod isn't being async removed, then look at the containers inside it.
+          (if job-status
+            (let [^V1ContainerState state (.getState job-status)]
+              (cond
+                (.getWaiting state)
+                (if (pod-containers-not-initialized? (V1Pod->name pod) pod-status)
+                  ; If the containers are not getting initialized,
+                  ; then we should consider the pod failed. This
+                  ; state can occur, for example, when volume
+                  ; mounts fail.
                   {:state :pod/failed
-                   :exit exit-code
-                   :reason (-> state .getTerminated .getReason)}))
-              :default
-              {:state :pod/unknown
-               :reason "Unknown"}))
-          (cond
-            ; https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/#pod-phase
-            ; Failed means:
-            ; All Containers in the Pod have terminated, and at least
-            ; one Container has terminated in failure. That is, the
-            ; Container either exited with non-zero status or was
-            ; terminated by the system.
-            (= (.getPhase pod-status) "Failed") {:state :pod/failed
-                                                 :reason (.getReason pod-status)}
+                   :reason "ContainersNotInitialized"}
+                  {:state :pod/waiting
+                   :reason (-> state .getWaiting .getReason)})
+                (.getRunning state)
+                {:state :pod/running
+                 :reason "Running"}
+                (.getTerminated state)
+                (let [exit-code (-> state .getTerminated .getExitCode)]
+                  (if (= 0 exit-code)
+                    {:state :pod/succeeded
+                     :exit exit-code
+                     :reason (-> state .getTerminated .getReason)}
+                    {:state :pod/failed
+                     :exit exit-code
+                     :reason (-> state .getTerminated .getReason)}))
+                :default
+                {:state :pod/unknown
+                 :reason "Unknown"}))
+            (cond
+              ; https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/#pod-phase
+              ; Failed means:
+              ; All Containers in the Pod have terminated, and at least
+              ; one Container has terminated in failure. That is, the
+              ; Container either exited with non-zero status or was
+              ; terminated by the system.
+              (= (.getPhase pod-status) "Failed") {:state :pod/failed
+                                                   :reason (.getReason pod-status)}
 
-            ; If the pod is unschedulable, then we should consider it failed. Note that
-            ; pod-unschedulable? will never return true for synthetic pods, because
-            ; they will be unschedulable by design, in order to trigger the cluster
-            ; autoscaler to scale up. For non-synthetic pods, however, this state
-            ; likely means something changed about the node we matched to. For example,
-            ; if the ToBeDeletedByClusterAutoscaler taint gets added between when we
-            ; saw available capacity on a node and when we submitted the pod to that
-            ; node, then the pod will never get scheduled.
-            (pod-unschedulable? (V1Pod->name pod) pod-status) {:state :pod/failed
-                                                               :reason "Unschedulable"}
+              ; If the pod is unschedulable, then we should consider it failed. Note that
+              ; pod-unschedulable? will never return true for synthetic pods, because
+              ; they will be unschedulable by design, in order to trigger the cluster
+              ; autoscaler to scale up. For non-synthetic pods, however, this state
+              ; likely means something changed about the node we matched to. For example,
+              ; if the ToBeDeletedByClusterAutoscaler taint gets added between when we
+              ; saw available capacity on a node and when we submitted the pod to that
+              ; node, then the pod will never get scheduled.
+              (pod-unschedulable? (V1Pod->name pod) pod-status) {:state :pod/failed
+                                                                 :reason "Unschedulable"}
 
-            :else {:state :pod/waiting
-                   :reason "Pending"}))))))
+              :else {:state :pod/waiting
+                     :reason "Pending"})))))))
 
 (defn pod->sandbox-file-server-container-state
   "From a V1Pod object, determine the state of the sandbox file server container, running, not running, or unknown.

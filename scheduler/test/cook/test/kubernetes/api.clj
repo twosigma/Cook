@@ -372,6 +372,32 @@
                       (constantly {:pod-condition-containers-not-initialized-seconds 60})]
           (is (= {:state :pod/failed
                   :reason "ContainersNotInitialized"}
+                 (api/pod->synthesized-pod-state pod))))))
+
+    (testing "node preempted default label"
+      (let [pod (V1Pod.)
+            pod-metadata (V1ObjectMeta.)
+            pod-status (V1PodStatus.)]
+        (.setStatus pod pod-status)
+        (.setMetadata pod pod-metadata)
+        (.setLabels pod-metadata {"node-preempted" 1589084484537})
+        (is (= {:state :missing
+                :reason "Node preempted"
+                :pod-deleted? true
+                :pod-preempted? true}
+               (api/pod->synthesized-pod-state pod)))))
+    (testing "node preempted custom label"
+      (with-redefs [config/kubernetes (fn [] {:node-preempted-label "custom-node-preempted"})]
+        (let [pod (V1Pod.)
+              pod-metadata (V1ObjectMeta.)
+              pod-status (V1PodStatus.)]
+          (.setStatus pod pod-status)
+          (.setMetadata pod pod-metadata)
+          (.setLabels pod-metadata {"custom-node-preempted" 1589084484537})
+          (is (= {:state :missing
+                  :reason "Node preempted"
+                  :pod-deleted? true
+                  :pod-preempted? true}
                  (api/pod->synthesized-pod-state pod))))))))
 
 (deftest test-node-schedulable

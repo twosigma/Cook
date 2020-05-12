@@ -155,6 +155,19 @@
       (write-status-to-datomic compute-cluster status)))
   {:cook-expected-state :cook-expected-state/completed})
 
+(defn handle-pod-externally-deleted
+  "Marks the corresponding job instance as failed in the database and
+  returns the `completed` cook expected state."
+  [{:keys [name] :as compute-cluster} pod-name]
+  (log/info "In compute cluster" name ", pod" pod-name "was externally deleted")
+  (when-not (api/synthetic-pod? pod-name)
+    (let [instance-id pod-name
+          status {:reason :reason-killed-externally
+                  :state :task-failed
+                  :task-id {:value instance-id}}]
+      (write-status-to-datomic compute-cluster status)))
+  {:cook-expected-state :cook-expected-state/completed})
+
 (defn launch-pod
   [{:keys [api-client name] :as compute-cluster} cook-expected-state-dict pod-name]
   (if (api/launch-pod api-client name cook-expected-state-dict pod-name)
@@ -471,16 +484,9 @@
                                         :cook-expected-state/running
                                         (case pod-synthesized-state-modified
                                           ; This indicates that something deleted it behind our back
-                                          :missing (do
-                                                     (log/info "In compute cluster" name ", something deleted"
-                                                               pod-name "behind our back")
-                                                     ; A :cook-expected-state/running job suddenly disappearing in k8s is
-                                                     ; a sign of a preemption, so treat this case as a missed preemption.
-                                                     ; TODO: When we have a better story for preemption, we should switch this to
-                                                     ; go through the handle-pod-completed stack. That needs to be guarded with a null
-                                                     ; check because handle-pod-completed cannot handle null pods. So, something like:
-                                                     ; (if pod (handle-pod-completed ...) (....write a unknown reason to the pod....))
-                                                     (handle-pod-preemption compute-cluster pod-name))
+                                          :missing (if (some-> synthesized-state :pod-preempted?)
+                                                     (handle-pod-preemption compute-cluster pod-name)
+                                                     (handle-pod-externally-deleted compute-cluster pod-name))
                                           ; TODO: May need to mark mea culpa retry
                                           :pod/failed (handle-pod-completed compute-cluster pod-name k8s-actual-state-dict)
                                           :pod/running cook-expected-state-dict
