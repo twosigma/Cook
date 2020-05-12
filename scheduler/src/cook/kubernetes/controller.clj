@@ -162,7 +162,7 @@
   (log/info "In compute cluster" name ", pod" pod-name "was externally deleted")
   (when-not (api/synthetic-pod? pod-name)
     (let [instance-id pod-name
-          status {:reason :reason-executor-terminated
+          status {:reason :reason-killed-externally
                   :state :task-failed
                   :task-id {:value instance-id}}]
       (write-status-to-datomic compute-cluster status)))

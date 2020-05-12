@@ -78,7 +78,7 @@
     (is (= :cook-expected-state/killed (do-process :cook-expected-state/killed :pod/waiting)))
 
     (is (nil? (do-process :cook-expected-state/running :missing)))
-    (is (= :reason-executor-terminated @reason))
+    (is (= :reason-killed-externally @reason))
     (is (nil? (do-process :cook-expected-state/running :missing :custom-test-state {:state :missing
                                                                                     :reason "Node preempted"
                                                                                     :pod-deleted? true
@@ -88,11 +88,11 @@
                                                                                     :reason "Pod was explicitly deleted"
                                                                                     :pod-deleted? true}
                           :force-nil-pod? true)))
-    (is (= :reason-executor-terminated @reason))
+    (is (= :reason-killed-externally @reason))
     (is (nil? (do-process :cook-expected-state/running :missing :custom-test-state {:state :missing
                                                                                     :reason "Pod was explicitly deleted"
                                                                                     :pod-deleted? true})))
-    (is (= :reason-executor-terminated @reason))
+    (is (= :reason-killed-externally @reason))
     (is (= :cook-expected-state/completed (do-process :cook-expected-state/running :pod/succeeded)))
     (is (= :reason-normal-exit @reason))
     (is (= :cook-expected-state/completed (do-process :cook-expected-state/running :pod/failed)))

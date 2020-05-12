@@ -1282,6 +1282,12 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :reason/name :container-initialization-timed-out
     :reason/mea-culpa? false
     :reason/mesos-reason :reason-container-initialization-timed-out}
+   {:db/id (d/tempid :db.part/user)
+    :reason/code 1008
+    :reason/string "Killed externally"
+    :reason/name :killed-externally
+    :reason/mea-culpa? true
+    :reason/mesos-reason :reason-killed-externally}
 
    {:db/id (d/tempid :db.part/user)
     :reason/code 2000
