@@ -532,45 +532,53 @@
   [db ^TaskScheduler fenzo considerable offers rebalancer-reservation-atom pool-name]
   (log/info "In" pool-name "pool, matching" (count offers) "offers to"
             (count considerable) "considerable jobs with fenzo")
-  (log/debug "In" pool-name "pool, tasks to scheduleOnce" considerable)
-  (dl/update-cost-staleness-metric considerable)
-  (let [t (System/currentTimeMillis)
-        leases (mapv #(->VirtualMachineLeaseAdapter % t) offers)
-        considerable->task-id (plumbing.core/map-from-keys (fn [_] (str (d/squuid))) considerable)
-        guuid->considerable-cotask-ids (tools/make-guuid->considerable-cotask-ids considerable->task-id)
-        running-cotask-cache (atom (cache/fifo-cache-factory {} :threshold (max 1 (count considerable))))
-        job-uuid->reserved-host (or (:job-uuid->reserved-host @rebalancer-reservation-atom) {})
-        reserved-hosts (into (hash-set) (vals job-uuid->reserved-host))
-        ; Important that requests maintains the same order as considerable
-        requests (mapv (fn [job]
-                         (make-task-request db job pool-name
-                                            :guuid->considerable-cotask-ids guuid->considerable-cotask-ids
-                                            :reserved-hosts (disj reserved-hosts (job-uuid->reserved-host (:job/uuid job)))
-                                            :running-cotask-cache running-cotask-cache
-                                            :task-id (considerable->task-id job)))
-                       considerable)
-        ;; Need to lock on fenzo when accessing scheduleOnce because scheduleOnce and
-        ;; task assigner can not be called at the same time.
-        ;; task assigner may be called when reconciling
-        result (locking fenzo
-                 (.scheduleOnce fenzo requests leases))
-        failure-results (.. result getFailures values)
-        assignments (.. result getResultMap values)]
-    (doall (map (fn [^VirtualMachineLease lease]
-                  (when (-> lease :offer :reject-after-match-attempt)
-                    (log/info "In" pool-name "pool, retracting lease" (-> lease :offer :id))
-                    (locking fenzo
-                      (.expireLease fenzo (.getId lease)))))
-                leases))
+  (if (-> considerable count pos?)
+    (do
+      (log/debug "In" pool-name "pool, tasks to scheduleOnce" considerable)
+      (dl/update-cost-staleness-metric considerable)
+      (let [t (System/currentTimeMillis)
+            leases (mapv #(->VirtualMachineLeaseAdapter % t) offers)
+            considerable->task-id (plumbing.core/map-from-keys (fn [_] (str (d/squuid))) considerable)
+            guuid->considerable-cotask-ids (tools/make-guuid->considerable-cotask-ids considerable->task-id)
+            running-cotask-cache (atom (cache/fifo-cache-factory {} :threshold (max 1 (count considerable))))
+            job-uuid->reserved-host (or (:job-uuid->reserved-host @rebalancer-reservation-atom) {})
+            reserved-hosts (into (hash-set) (vals job-uuid->reserved-host))
+            ; Important that requests maintains the same order as considerable
+            requests (mapv (fn [job]
+                             (make-task-request db job pool-name
+                                                :guuid->considerable-cotask-ids guuid->considerable-cotask-ids
+                                                :reserved-hosts (disj reserved-hosts (job-uuid->reserved-host (:job/uuid job)))
+                                                :running-cotask-cache running-cotask-cache
+                                                :task-id (considerable->task-id job)))
+                           considerable)
+            ;; Need to lock on fenzo when accessing scheduleOnce because scheduleOnce and
+            ;; task assigner can not be called at the same time.
+            ;; task assigner may be called when reconciling
+            result (locking fenzo
+                     (timers/time!
+                       (timers/timer (metric-title "fenzo-schedule-once-duration" pool-name))
+                       (.scheduleOnce fenzo requests leases)))
+            failure-results (.. result getFailures values)
+            assignments (.. result getResultMap values)]
+        (doall (map (fn [^VirtualMachineLease lease]
+                      (when (-> lease :offer :reject-after-match-attempt)
+                        (log/info "In" pool-name "pool, retracting lease" (-> lease :offer :id))
+                        (locking fenzo
+                          (.expireLease fenzo (.getId lease)))))
+                    leases))
 
-    (log/debug "In" pool-name "pool, found this assignment:" result)
+        (log/debug "In" pool-name "pool, found this assignment:" result)
 
-    {:matches (mapv (fn [assignment]
-                      {:leases (.getLeasesUsed assignment)
-                       :tasks (.getTasksAssigned assignment)
-                       :hostname (.getHostname assignment)})
-                    assignments)
-     :failures failure-results}))
+        {:matches (mapv (fn [assignment]
+                          {:leases (.getLeasesUsed assignment)
+                           :tasks (.getTasksAssigned assignment)
+                           :hostname (.getHostname assignment)})
+                        assignments)
+         :failures failure-results}))
+    (do
+      (log/info "In" pool-name
+                "pool, skipping match (0 considerable jobs)")
+      {:matches [] :failures []})))
 
 (meters/defmeter [cook-mesos scheduler scheduler-offer-declined])
 
