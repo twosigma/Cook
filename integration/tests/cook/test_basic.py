@@ -3038,6 +3038,7 @@ class CookTest(util.CookTest):
             util.kill_jobs(self.cook_url, [job_uuid1, job_uuid2])
 
     @unittest.skipUnless(util.using_kubernetes(), 'Test requires kubernetes')
+    @pytest.mark.xfail
     def test_kubernetes_checkpointing(self):
         docker_image = util.docker_image()
         container = {'type': 'docker',
