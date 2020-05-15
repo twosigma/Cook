@@ -532,7 +532,15 @@
   [db ^TaskScheduler fenzo considerable offers rebalancer-reservation-atom pool-name]
   (log/info "In" pool-name "pool, matching" (count offers) "offers to"
             (count considerable) "considerable jobs with fenzo")
-  (if (-> considerable count pos?)
+  (if (and (-> considerable count zero?)
+           (every? :reject-after-match-attempt offers))
+    ; If there are 0 considerable jobs and all offers are
+    ; destined to get rejected after the match attempt, we
+    ; might as well skip this matching iteration.
+    (do
+      (log/info "In" pool-name
+                "pool, skip matching (0 considerable jobs)")
+      {:matches [] :failures []})
     (do
       (log/debug "In" pool-name "pool, tasks to scheduleOnce" considerable)
       (dl/update-cost-staleness-metric considerable)
@@ -574,11 +582,7 @@
                            :tasks (.getTasksAssigned assignment)
                            :hostname (.getHostname assignment)})
                         assignments)
-         :failures failure-results}))
-    (do
-      (log/info "In" pool-name
-                "pool, skipping match (0 considerable jobs)")
-      {:matches [] :failures []})))
+         :failures failure-results}))))
 
 (meters/defmeter [cook-mesos scheduler scheduler-offer-declined])
 

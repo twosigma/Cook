@@ -97,7 +97,12 @@
                       :compute-clusters [{:factory-fn cook.mesos.mesos-compute-cluster/factory-fn
                                           :config {:compute-cluster-name fake-test-compute-cluster-name}}]
                       :database {:datomic-uri ""}
-                      :log {}
+                      :log (cond-> {}
+                             ; Allow tests that go through the real logging
+                             ; initialization code to log to the console when
+                             ; requested via the property
+                             (System/getProperty "cook.test.logging.console")
+                             (assoc :file "/dev/stdout"))
                       :mesos {:leader-path "", :master ""}
                       :metrics {}
                       :nrepl {}
