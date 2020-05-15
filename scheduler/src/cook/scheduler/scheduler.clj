@@ -533,6 +533,7 @@
   (log/info "In" pool-name "pool, matching" (count offers) "offers to"
             (count considerable) "considerable jobs with fenzo")
   (if (and (-> considerable count zero?)
+           (-> offers count pos?)
            (every? :reject-after-match-attempt offers))
     ; If there are 0 considerable jobs and all offers are
     ; destined to get rejected after the match attempt, we
