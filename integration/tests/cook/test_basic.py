@@ -2680,7 +2680,7 @@ class CookTest(util.CookTest):
             util.wait_until(query_unscheduled, lambda r: r, 30000)
             job = util.load_job(self.cook_url, job_uuid)
             details = f"Job details: {json.dumps(job, sort_keys=True)}"
-            self.assertEquals(job['status'], 'waiting', details)
+            self.assertEqual(job['status'], 'waiting', details)
 
             # Wait a bit and the demo plugin will mark it as launchable.
             # So, see if it is now running or completed.
@@ -2802,8 +2802,7 @@ class CookTest(util.CookTest):
         finally:
             util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
 
-    @unittest.skipUnless(util.supports_mesos_containerizer_images(),
-                         "Requires support for docker images in mesos containerizer")
+    @unittest.skip("The mesos containerizer is not used in the wild")
     def test_mesos_containerizer_image_support(self):
         container = {'type': 'mesos', 'mesos': {'image': 'alpine'}}
         settings = util.settings(self.cook_url)
