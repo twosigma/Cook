@@ -41,10 +41,19 @@ The quickest way to get Cook running locally against [GKE](https://cloud.google.
 1. Clone down this repo
 1. Run `vagrant up --provider=virtualbox` to create the dev environment
 1. Run `vagrant ssh` to ssh into the dev environment
+
+In your Vagrant dev environment:
+
 1. Run `gcloud auth login` to login to Google cloud
 1. Run `bin/make-gke-test-clusters <gcp_project_name>` to create GKE clusters
+1. Run `bin/start-datomic.sh` to start Datomic (Cook database)
 1. Run `bin/run-local-kubernetes.sh` to start the Cook scheduler
 1. Cook should now be listening locally on port 12321
+
+To test a simple job submission (still inside your Vagrant dev environment):
+
+1. Run `cs submit --pool k8s-alpha --cpu 0.5 --mem 32 --docker-image gcr.io/google-containers/alpine-with-bash:1.0 ls` to submit a simple job
+1. Run `cs show <job_uuid>` to show the status of your job (it should eventually show Success)
 
 ### Using Mesos
 
