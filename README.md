@@ -32,6 +32,22 @@ Please visit the `scheduler` subproject first to get started.
 
 ## Quickstart
 
+### Using Google Kubernetes Engine (GKE)
+
+The quickest way to get Cook running locally against [GKE](https://cloud.google.com/kubernetes-engine) is with [Vagrant](https://www.vagrantup.com/).
+
+1. [Install Vagrant](https://www.vagrantup.com/downloads.html)
+1. [Install Virtualbox](https://www.virtualbox.org/wiki/Downloads)
+1. Clone down this repo
+1. Run `vagrant up --provider=virtualbox` to create the dev environment
+1. Run `vagrant ssh` to ssh into the dev environment
+1. Run `gcloud auth login` to login to Google cloud
+1. Run `bin/make-gke-test-clusters <gcp_project_name>` to create GKE clusters
+1. Run `bin/run-local-kubernetes.sh` to start the Cook scheduler
+1. Cook should now be listening locally on port 12321
+
+### Using Mesos
+
 The quickest way to get Mesos and Cook running locally is with [docker](https://www.docker.com/) and [minimesos](https://minimesos.org/). 
 
 1. Install `docker`

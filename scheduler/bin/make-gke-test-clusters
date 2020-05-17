@@ -20,13 +20,16 @@ then
     exit 1
 fi
 
+GKE_CLUSTER_OWNER=${GKE_CLUSTER_OWNER:-$USER}
 PROJECT=$1
 ZONE=${2:-us-central1-a}
-CLUSTERNAME=${3:-$USER-test-$(date '+%m%d-%H%M%S')}
+CLUSTERNAME=${3:-$GKE_CLUSTER_OWNER-test-$(date '+%m%d-%H%M%S')}
 
 gcloud="gcloud --project $PROJECT"
 
 bin/help-delete-temporary-clusters "$PROJECT" "$ZONE"
+rm -f .cook_kubeconfig_1
+rm -f .cook_kubeconfig_2
 
 # Make 2 clusters.
 bin/help-make-cluster "$PROJECT" "$ZONE" "${CLUSTERNAME}"-a .cook_kubeconfig_1 &
@@ -34,4 +37,5 @@ bin/help-make-cluster "$PROJECT" "$ZONE" "${CLUSTERNAME}"-b .cook_kubeconfig_2 &
 wait
 
 echo "---- Showing all of the clusters we generated"
-$gcloud container clusters list
+filter="resourceLabels.longevity=temporary AND resourceLabels.owner=$GKE_CLUSTER_OWNER"
+$gcloud container clusters list --filter "$filter"

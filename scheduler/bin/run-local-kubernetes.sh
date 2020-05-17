@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Usage: ./bin/run-local.sh
+# Usage: ./bin/run-local-kubernetes.sh
 # Runs the cook scheduler locally.
 
 set -e
@@ -50,4 +50,7 @@ export COOK_SSL_PORT="${COOK_SSL_PORT}"
 export COOK_KEYSTORE_PATH="${COOK_KEYSTORE_PATH}"
 
 echo "Starting cook..."
+rm -f "$COOK_LOG_FILE"
+KUBECONFIG=.cook_kubeconfig_1 kubectl get pods --namespace cook
+KUBECONFIG=.cook_kubeconfig_2 kubectl get pods --namespace cook
 lein run config-k8s.edn

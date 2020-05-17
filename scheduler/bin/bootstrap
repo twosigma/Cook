@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+
+if [ -z "$GKE_CLUSTER_OWNER" ]
+then
+  echo "Please set \$GKE_CLUSTER_OWNER"
+  exit 1
+fi
+
+scheduler=/vagrant/scheduler
+home_dir=/home/vagrant
+bashrc=$home_dir/.bashrc
+bin=$home_dir/bin
+echo 'export PATH='$bin':$PATH' | tee -a $bashrc
+
+apt-get -y update
+add-apt-repository ppa:openjdk-r/ppa
+apt-get -y update
+apt-get --no-install-recommends -y install jq openjdk-8-jdk python3-pip unzip
+apt-get clean
+rm -Rf /var/lib/apt/lists/*
+
+# Java setup
+export JAVA_CMD=/usr/lib/jvm/java-8-openjdk-amd64/bin/java
+
+# Lein setup (https://leiningen.org/#install)
+mkdir $bin
+export PATH="$PATH":$bin
+curl -o $bin/lein https://raw.githubusercontent.com/technomancy/leiningen/stable/bin/lein
+chmod a+x $bin/lein
+lein
+
+# Start Datomic
+cd $scheduler || exit 1
+./bin/start-datomic.sh &
+echo 'export COOK_DATOMIC_URI=datomic:free://127.0.0.1:4334/jobs' | tee -a $bashrc
+
+# gcloud setup (https://cloud.google.com/sdk/docs/quickstart-linux)
+curl -o $bin/gcloud.tar.gz https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-sdk-292.0.0-linux-x86_64.tar.gz
+cd $bin || exit 1
+tar zxvf gcloud.tar.gz google-cloud-sdk
+./google-cloud-sdk/install.sh
+export PATH=$bin/google-cloud-sdk/bin:$PATH
+echo 'export PATH='$bin'/google-cloud-sdk/bin:$PATH' | tee -a $bashrc
+echo 'export GKE_CLUSTER_OWNER='"$GKE_CLUSTER_OWNER" | tee -a $bashrc
+gcloud components install kubectl
+
+# Start in the scheduler dir
+echo 'cd '"$scheduler" | tee -a $bashrc
+
+# Python setup
+pip3 install --upgrade pip setuptools wheel
+
+# Cook Scheduler CLI setup
+cli=$scheduler/../cli
+cd $cli || exit 1
+pip3 install -e .
+cs --version
+rm -f $home_dir/.cs.json
+ln -s $cli/.cs.json $home_dir/.cs.json
+
+# Provide some pointers
+echo "* To login to your dev environment: vagrant ssh"
+echo "* To login to Google cloud:         gcloud auth login"
+echo "* To create GKE clusters:           bin/make-gke-test-clusters <gcp_project_name>"
+echo "* To start Cook Scheduler:          bin/run-local-kubernetes.sh"
+echo "* To submit a k8s job:              cs submit --pool k8s-alpha --cpu 0.5 --mem 32 --docker-image gcr.io/google-containers/alpine-with-bash:1.0 ls"
+echo "* To show the status of your job:   cs show <job_uuid>"
