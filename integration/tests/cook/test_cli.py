@@ -1437,7 +1437,7 @@ if __name__ == '__main__':
 
             cp = cli.config_get('constant')
             self.assertEqual(0, cp.returncode, cp.stderr)
-            self.assertEquals('bar\n', cli.decode(cp.stdout))
+            self.assertEqual('bar\n', cli.decode(cp.stdout))
 
             # Overwrite defaults with specified config file
             config = {'overwrite': 'baz'}
