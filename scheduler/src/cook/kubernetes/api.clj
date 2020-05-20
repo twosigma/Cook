@@ -14,15 +14,15 @@
   (:import
     (com.google.gson JsonSyntaxException)
     (com.twosigma.cook.kubernetes WatchHelper)
-    (io.kubernetes.client ApiClient ApiException JSON)
-    (io.kubernetes.client.apis CoreV1Api)
     (io.kubernetes.client.custom Quantity Quantity$Format IntOrString)
-    (io.kubernetes.client.models V1Affinity V1Container V1ContainerPort V1ContainerState V1DeleteOptions
-                                 V1DeleteOptionsBuilder V1EmptyDirVolumeSource V1EnvVar V1Event
-                                 V1HostPathVolumeSource V1HTTPGetAction V1Node V1NodeAffinity V1NodeSelector
-                                 V1NodeSelectorRequirement V1NodeSelectorTerm V1ObjectMeta V1ObjectReference V1Pod
-                                 V1PodCondition V1PodSecurityContext V1PodSpec V1PodStatus V1Probe
-                                 V1ResourceRequirements V1Toleration V1VolumeBuilder V1Volume V1VolumeMount)
+    (io.kubernetes.client.openapi ApiClient ApiException JSON)
+    (io.kubernetes.client.openapi.apis CoreV1Api)
+    (io.kubernetes.client.openapi.models V1Affinity V1Container V1ContainerPort V1ContainerState V1DeleteOptions
+                                         V1DeleteOptionsBuilder V1EmptyDirVolumeSource V1EnvVar V1Event
+                                         V1HostPathVolumeSource V1HTTPGetAction V1Node V1NodeAffinity V1NodeSelector
+                                         V1NodeSelectorRequirement V1NodeSelectorTerm V1ObjectMeta V1ObjectReference
+                                         V1Pod V1PodCondition V1PodSecurityContext V1PodSpec V1PodStatus V1Probe
+                                         V1ResourceRequirements V1Toleration V1VolumeBuilder V1Volume V1VolumeMount)
     (io.kubernetes.client.util Watch)
     (java.net SocketTimeoutException)
     (java.util.concurrent Executors ExecutorService)))

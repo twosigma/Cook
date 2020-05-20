@@ -8,7 +8,7 @@
             [cook.test.testutil :as tu]
             [datomic.api :as d])
   (:import (clojure.lang ExceptionInfo)
-           (io.kubernetes.client.models V1NodeSelectorRequirement V1Pod V1PodSecurityContext)
+           (io.kubernetes.client.openapi.models V1NodeSelectorRequirement V1Pod V1PodSecurityContext)
            (java.util UUID)
            (java.util.concurrent Executors)))
 

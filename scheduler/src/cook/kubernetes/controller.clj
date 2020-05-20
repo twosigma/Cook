@@ -11,7 +11,7 @@
             [clojure.tools.logging :as log]
             [metrics.timers :as timers])
   (:import (clojure.lang IAtom)
-           (io.kubernetes.client.models V1Pod V1ContainerStatus V1PodStatus)
+           (io.kubernetes.client.openapi.models V1Pod V1ContainerStatus V1PodStatus)
            (java.net URLEncoder)
            (java.util.concurrent.locks Lock)))
 

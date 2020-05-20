@@ -5,10 +5,10 @@
             [cook.kubernetes.api :as api]
             [cook.test.testutil :as tu]
             [datomic.api :as d])
-  (:import (io.kubernetes.client.models V1Container V1ContainerState V1ContainerStateWaiting V1ContainerStatus
-                                        V1EnvVar V1ListMeta V1Node V1NodeSpec V1ObjectMeta V1Pod V1PodCondition
-                                        V1PodList V1PodSpec V1PodStatus V1ResourceRequirements V1Taint V1Volume
-                                        V1VolumeMount)))
+  (:import (io.kubernetes.client.openapi.models V1Container V1ContainerState V1ContainerStateWaiting V1ContainerStatus
+                                                V1EnvVar V1ListMeta V1Node V1NodeSpec V1ObjectMeta V1Pod V1PodCondition
+                                                V1PodList V1PodSpec V1PodStatus V1ResourceRequirements V1Taint V1Volume
+                                                V1VolumeMount)))
 
 (deftest test-get-consumption
   (testing "correctly computes consumption for a single pod"
@@ -199,7 +199,7 @@
 (defn- k8s-mount->clj [^V1VolumeMount mount]
   {:name (.getName mount)
    :mount-path (.getMountPath mount)
-   :read-only? (.isReadOnly mount)})
+   :read-only? (.getReadOnly mount)})
 
 (defn- dummy-uuid-generator []
   (let [n (atom 0)]
@@ -263,7 +263,7 @@
       (is (= (.getName volume)
              (.getName volume-mount)))
       (is (= host-path (-> volume .getHostPath .getPath)))
-      (is (not (.isReadOnly volume-mount)))
+      (is (not (.getReadOnly volume-mount)))
       (is (= container-path (.getMountPath volume-mount)))))
 
   (testing "disallows configured volumes"

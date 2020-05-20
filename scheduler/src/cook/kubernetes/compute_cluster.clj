@@ -20,12 +20,13 @@
             [metrics.timers :as timers]
             [plumbing.core :as pc])
   (:import (com.google.auth.oauth2 GoogleCredentials)
-           (io.kubernetes.client ApiClient)
-           (io.kubernetes.client.models V1Node V1Pod)
+           (io.kubernetes.client.openapi ApiClient)
+           (io.kubernetes.client.openapi.models V1Node V1Pod)
            (io.kubernetes.client.util Config)
            (java.io FileInputStream File)
            (java.util UUID)
-           (java.util.concurrent ExecutorService Executors ScheduledExecutorService TimeUnit)))
+           (java.util.concurrent ExecutorService Executors ScheduledExecutorService TimeUnit)
+           (okhttp3 OkHttpClient$Builder)))
 
 (defn schedulable-node-filter
   "Is a node schedulable?"
@@ -473,9 +474,10 @@
   [^String config-file base-path ^String use-google-service-account? bearer-token-refresh-seconds verifying-ssl ^String ssl-cert-path]
   (let [api-client (if (some? config-file)
                      (Config/fromConfig config-file)
-                     (ApiClient.))]
-    ; Reset to a more sane timeout from the default 10 seconds.
-    (some-> api-client .getHttpClient (.setReadTimeout 120 TimeUnit/SECONDS))
+                     (ApiClient.))
+        ; Reset to a more sane timeout from the default 10 seconds.
+        http-client (-> (OkHttpClient$Builder.) (.readTimeout 120 TimeUnit/SECONDS) .build)]
+    (.setHttpClient api-client http-client)
     (when base-path
       (.setBasePath api-client base-path))
     (when (some? verifying-ssl)

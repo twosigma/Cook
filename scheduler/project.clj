@@ -114,7 +114,7 @@
                  [mount "0.1.12"]
 
                  ;; Kubernetes
-                 [io.kubernetes/client-java "4.0.0"]
+                 [io.kubernetes/client-java "7.0.0"]
                  [com.google.auth/google-auth-library-oauth2-http "0.16.2"]]
 
   :repositories {"maven2" {:url "https://files.couchbase.com/maven2/"}
