@@ -49,8 +49,21 @@ export MESOS_NATIVE_JAVA_LIBRARY="${MESOS_NATIVE_JAVA_LIBRARY}"
 export COOK_SSL_PORT="${COOK_SSL_PORT}"
 export COOK_KEYSTORE_PATH="${COOK_KEYSTORE_PATH}"
 
-echo "Starting cook..."
-rm -f "$COOK_LOG_FILE"
+echo "Getting GKE credentials..."
+filter="resourceLabels.longevity=temporary AND resourceLabels.owner=$GKE_CLUSTER_OWNER"
+gcloud container clusters list --filter "$filter"
+i=1
+for cluster_zone in $(gcloud container clusters list --filter "$filter" --format="csv(name,zone)" | tail -n +2)
+do
+    cluster=$(echo "$cluster_zone" | cut -d',' -f1)
+    zone=$(echo "$cluster_zone" | cut -d',' -f2)
+    echo "Getting credentials for cluster $cluster in zone $zone ($i)"
+    KUBECONFIG=.cook_kubeconfig_$i gcloud container clusters get-credentials "$cluster" --zone "$zone"
+    ((i++))
+done
 KUBECONFIG=.cook_kubeconfig_1 kubectl get pods --namespace cook
 KUBECONFIG=.cook_kubeconfig_2 kubectl get pods --namespace cook
+
+echo "Starting cook..."
+rm -f "$COOK_LOG_FILE"
 lein run config-k8s.edn

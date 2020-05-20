@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 
-# Usage: ./bin/make-gke-test-clusters <project> [<zone>] [<clustername>]
+# Usage: ./bin/make-gke-test-clusters [<project>] [<zone>] [<clustername>]
 #   Configure two kubernetes clusters for running pool-based integration tests and running pools in general.
 #    NOTE: This script labels any clusters it creates and will DELETE old clusters it created.
-#   <project> is a gcloud project.
+#   <project> is a gcloud project and defaults to $GCP_PROJECT_NAME.
 #   <zone> can be a zone. E.g., us-central1-a
 #   <clustername> is the name of a cluster. E.g., 'test-cluster-1'
 
@@ -14,14 +14,8 @@
 
 set -e
 
-if [ $# -eq 0 ]
-then
-    echo "You must provide the GCP project to use!"
-    exit 1
-fi
-
 GKE_CLUSTER_OWNER=${GKE_CLUSTER_OWNER:-$USER}
-PROJECT=$1
+PROJECT=${1:-$GCP_PROJECT_NAME}
 ZONE=${2:-us-central1-a}
 CLUSTERNAME=${3:-$GKE_CLUSTER_OWNER-test-$(date '+%m%d-%H%M%S')}
 

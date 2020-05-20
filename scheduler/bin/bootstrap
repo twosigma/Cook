@@ -6,6 +6,12 @@ then
   exit 1
 fi
 
+if [ -z "$GCP_PROJECT_NAME" ]
+then
+  echo "Please set \$GCP_PROJECT_NAME"
+  exit 1
+fi
+
 scheduler=/vagrant/scheduler
 home_dir=/home/vagrant
 bashrc=$home_dir/.bashrc
@@ -15,12 +21,13 @@ echo 'export PATH='$bin':$PATH' | tee -a $bashrc
 apt-get -y update
 add-apt-repository ppa:openjdk-r/ppa
 apt-get -y update
-apt-get --no-install-recommends -y install jq openjdk-8-jdk python3-pip unzip
+apt-get --no-install-recommends -y install jq maven openjdk-8-jdk python3-pip tree unzip
 apt-get clean
 rm -Rf /var/lib/apt/lists/*
 
 # Java setup
 export JAVA_CMD=/usr/lib/jvm/java-8-openjdk-amd64/bin/java
+echo 'export JAVA_CMD='$JAVA_CMD | tee -a $bashrc
 
 # Lein setup (https://leiningen.org/#install)
 mkdir $bin
@@ -40,6 +47,8 @@ tar zxvf gcloud.tar.gz google-cloud-sdk
 export PATH=$bin/google-cloud-sdk/bin:$PATH
 echo 'export PATH='$bin'/google-cloud-sdk/bin:$PATH' | tee -a $bashrc
 echo 'export GKE_CLUSTER_OWNER='"$GKE_CLUSTER_OWNER" | tee -a $bashrc
+echo 'export GCP_PROJECT_NAME='"$GCP_PROJECT_NAME" | tee -a $bashrc
+echo 'gcloud config set project "$GCP_PROJECT_NAME"' | tee -a $bashrc
 gcloud components install kubectl
 
 # Start in the scheduler dir
@@ -56,11 +65,13 @@ cs --version
 rm -f $home_dir/.cs.json
 ln -s $cli/.cs.json $home_dir/.cs.json
 
-# Provide some pointers
-echo "* To login to your dev environment: vagrant ssh"
-echo "* To login to Google cloud:         gcloud auth login"
-echo "* To create GKE clusters:           bin/make-gke-test-clusters <gcp_project_name>"
-echo "* To start Datomic (Cook database): bin/start-datomic.sh"
-echo "* To start Cook Scheduler:          bin/run-local-kubernetes.sh"
-echo "* To submit a k8s job:              cs submit --pool k8s-alpha --cpu 0.5 --mem 32 --docker-image gcr.io/google-containers/alpine-with-bash:1.0 ls"
-echo "* To show the status of your job:   cs show <job_uuid>"
+# Integration tests setup
+echo "export COOK_TEST_DOCKER_IMAGE=gcr.io/google-containers/alpine-with-bash:1.0" | tee -a $bashrc
+echo "export COOK_TEST_DOCKER_WORKING_DIRECTORY=/mnt/sandbox" | tee -a $bashrc
+echo "export COOK_TEST_DISALLOW_POOLS_REGEX='(?!^k8s-(alpha)$)'" | tee -a $bashrc
+echo "export COOK_TEST_DEFAULT_SUBMIT_POOL=k8s-alpha" | tee -a $bashrc
+echo "export COOK_TEST_COMPUTE_CLUSTER_TYPE=kubernetes" | tee -a $bashrc
+echo "export COOK_TEST_DEFAULT_TIMEOUT_MS=480000" | tee -a $bashrc
+echo "export COOK_TEST_DEFAULT_WAIT_INTERVAL_MS=8000" | tee -a $bashrc
+integration=$scheduler/../integration
+pip3 install -r $integration/requirements.txt

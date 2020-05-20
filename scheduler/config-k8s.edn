@@ -108,8 +108,7 @@
               :min-dru-diff 1.0
               :safe-dru-threshold 1.0}
  :sandbox-syncer {:sync-interval-ms 1000}
- :scheduler {:fenzo-fitness-calculator "cook.scheduler.data-locality/make-data-local-fitness-calculator"
-             :offer-incubate-ms 15000
+ :scheduler {:offer-incubate-ms 15000
              :task-constraints {:command-length-limit 5000
                                 :cpus 10
                                 :memory-gb 48
