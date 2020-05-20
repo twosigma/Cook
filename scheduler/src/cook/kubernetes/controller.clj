@@ -101,6 +101,7 @@
         (dissoc :pod)
         (assoc 
           :node-name (api/pod->node-name pod)
+          :pod-metadata (some-> pod .getMetadata)
           :pod-status (some-> pod .getStatus)))
     (catch Throwable t
       (log/error t "Error preparing k8s actual state for logging:" k8s-actual-state-dict)
