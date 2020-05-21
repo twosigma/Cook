@@ -23,7 +23,6 @@
             [congestion.storage :as storage]
             [cook.config :refer (config)]
             [cook.rest.cors :as cors]
-            [cook.curator :as curator]
             [cook.datomic :as datomic]
             ; This explicit require is needed so that mount can see the defstate defined in the cook.plugins.adjustment namespace.
             [cook.plugins.adjustment]
