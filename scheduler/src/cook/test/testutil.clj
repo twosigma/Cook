@@ -41,8 +41,8 @@
             [cook.mesos.task :as task])
   (:import (com.netflix.fenzo SimpleAssignmentResult)
            (io.kubernetes.client.custom Quantity$Format Quantity)
-           (io.kubernetes.client.models V1Container V1ResourceRequirements V1Pod V1ObjectMeta V1PodSpec V1Node
-                                        V1NodeStatus V1NodeSpec V1Taint)
+           (io.kubernetes.client.openapi.models V1Container V1ResourceRequirements V1Pod V1ObjectMeta V1PodSpec V1Node
+                                                V1NodeStatus V1NodeSpec V1Taint)
            (java.util UUID)
            (java.util.concurrent Executors)
            (org.apache.log4j ConsoleAppender Logger PatternLayout)))

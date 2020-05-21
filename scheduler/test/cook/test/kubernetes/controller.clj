@@ -6,8 +6,8 @@
             [cook.kubernetes.api :as api]
             [cook.kubernetes.controller :as controller]
             [cook.test.testutil :as tu])
-  (:import (io.kubernetes.client ApiException)
-           (io.kubernetes.client.models V1PodCondition V1PodStatus)
+  (:import (io.kubernetes.client.openapi ApiException)
+           (io.kubernetes.client.openapi.models V1PodCondition V1PodStatus)
            (java.util.concurrent.locks ReentrantLock)))
 
 (defn make-test-kubernetes-config
