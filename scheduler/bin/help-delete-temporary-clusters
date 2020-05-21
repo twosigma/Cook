@@ -11,13 +11,15 @@ set -e
 
 PROJECT=$1
 ZONE=$2
+GKE_CLUSTER_OWNER=${GKE_CLUSTER_OWNER:-$USER}
 
 gcloud="gcloud --project $PROJECT"
 
 # Nuke all existing temporary clusters; don't want to keep on making more idle clusters each time you invoke this.
-echo "---- Deleting any existing temporary clusters."
-$gcloud container clusters list --filter 'resourceLabels.longevity=temporary'
-for i in $($gcloud container clusters list --filter 'resourceLabels.longevity=temporary' --format="value(name)")
+echo "---- Deleting any existing temporary clusters with owner $GKE_CLUSTER_OWNER"
+filter="resourceLabels.longevity=temporary AND resourceLabels.owner=$GKE_CLUSTER_OWNER"
+$gcloud container clusters list --filter "$filter"
+for i in $($gcloud container clusters list --filter "$filter" --format="value(name)")
 do
     echo "Deleting $i"
     $gcloud --quiet container clusters delete "$i" --zone "$ZONE" &

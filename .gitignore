@@ -29,9 +29,14 @@ scheduler/log/
 scheduler/resources/public/cook-executor*
 scheduler/src/cfg
 scheduler/trace*.csv
+scheduler/.cook_kubeconfig_*
+scheduler/cook.p12
+scheduler/datomic/datomic-free-0.9.5394/
 src/cfg/current.clj
 target
 test-log
 *.orig
 venv
 dist
+.vagrant/
+

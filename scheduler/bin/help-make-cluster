@@ -16,8 +16,9 @@ PROJECT=$1
 ZONE=$2
 CLUSTERNAME=$3
 COOK_KUBECONFIG=$4
+GKE_CLUSTER_OWNER=${GKE_CLUSTER_OWNER:-$USER}
 
-VERSION=1.15.9-gke.26
+VERSION=1.15.11-gke.12
 
 gcloud="gcloud --project $PROJECT"
 
@@ -27,10 +28,10 @@ echo "---- Building kubernetes cluster for project=$PROJECT zone=$ZONE clusterna
 # Create 7 nodes, with three tainted for k8s-alpha, 3 untainted and 3 tainted with k8s-gamma pool.
 # The untainted ones are for GKE's own uses for its system pods. Also convenient to have around if I'm doing non-pool tests.
 # The second line of flags about upgrades and legacy endpoints is to suppress some warnings.
-echo "---- Creating new cluster (please wait 5 minutes)"
+echo "---- Creating new cluster with owner $GKE_CLUSTER_OWNER (please wait 5 minutes)"
 time $gcloud container clusters create "$CLUSTERNAME" --zone "$ZONE" --disk-size=20gb --machine-type=g1-small --preemptible  \
      --no-enable-autoupgrade --no-enable-basic-auth --no-issue-client-certificate --no-enable-ip-alias --metadata disable-legacy-endpoints=true \
-     --labels longevity=temporary --enable-autoscaling --min-nodes=0 --max-nodes=6
+     --labels longevity=temporary,owner="$GKE_CLUSTER_OWNER" --enable-autoscaling --min-nodes=0 --max-nodes=6
 
 echo "---- Setting up gcloud credentials"
 # Add credentials to the kubeconfig used by cook.

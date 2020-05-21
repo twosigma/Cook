@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 
-# Usage: ./bin/make-gke-test-clusters <project> [<zone>] [<clustername>]
+# Usage: ./bin/make-gke-test-clusters [<project>] [<zone>] [<clustername>]
 #   Configure two kubernetes clusters for running pool-based integration tests and running pools in general.
 #    NOTE: This script labels any clusters it creates and will DELETE old clusters it created.
-#   <project> is a gcloud project.
+#   <project> is a gcloud project and defaults to $GCP_PROJECT_NAME.
 #   <zone> can be a zone. E.g., us-central1-a
 #   <clustername> is the name of a cluster. E.g., 'test-cluster-1'
 
@@ -14,19 +14,16 @@
 
 set -e
 
-if [ $# -eq 0 ]
-then
-    echo "You must provide the GCP project to use!"
-    exit 1
-fi
-
-PROJECT=$1
+GKE_CLUSTER_OWNER=${GKE_CLUSTER_OWNER:-$USER}
+PROJECT=${1:-$GCP_PROJECT_NAME}
 ZONE=${2:-us-central1-a}
-CLUSTERNAME=${3:-$USER-test-$(date '+%m%d-%H%M%S')}
+CLUSTERNAME=${3:-$GKE_CLUSTER_OWNER-test-$(date '+%m%d-%H%M%S')}
 
 gcloud="gcloud --project $PROJECT"
 
 bin/help-delete-temporary-clusters "$PROJECT" "$ZONE"
+rm -f .cook_kubeconfig_1
+rm -f .cook_kubeconfig_2
 
 # Make 2 clusters.
 bin/help-make-cluster "$PROJECT" "$ZONE" "${CLUSTERNAME}"-a .cook_kubeconfig_1 &
@@ -34,4 +31,5 @@ bin/help-make-cluster "$PROJECT" "$ZONE" "${CLUSTERNAME}"-b .cook_kubeconfig_2 &
 wait
 
 echo "---- Showing all of the clusters we generated"
-$gcloud container clusters list
+filter="resourceLabels.longevity=temporary AND resourceLabels.owner=$GKE_CLUSTER_OWNER"
+$gcloud container clusters list --filter "$filter"

@@ -32,6 +32,37 @@ Please visit the `scheduler` subproject first to get started.
 
 ## Quickstart
 
+### Using Google Kubernetes Engine (GKE)
+
+The quickest way to get Cook running locally against [GKE](https://cloud.google.com/kubernetes-engine) is with [Vagrant](https://www.vagrantup.com/).
+
+1. [Install Vagrant](https://www.vagrantup.com/downloads.html)
+1. [Install Virtualbox](https://www.virtualbox.org/wiki/Downloads)
+1. Clone down this repo
+1. Run `GCP_PROJECT_NAME=<gcp_project_name> vagrant up --provider=virtualbox` to create the dev environment
+1. Run `vagrant ssh` to ssh into the dev environment
+
+#### In your Vagrant dev environment
+
+1. Run `gcloud auth login` to login to Google cloud
+1. Run `bin/make-gke-test-clusters` to create GKE clusters
+1. Run `bin/start-datomic.sh` to start Datomic (Cook database)
+1. Run `bin/run-local-kubernetes.sh` to start the Cook scheduler
+1. Cook should now be listening locally on port 12321
+
+To test a simple job submission:
+
+1. Run `cs submit --pool k8s-alpha --cpu 0.5 --mem 32 --docker-image gcr.io/google-containers/alpine-with-bash:1.0 ls` to submit a simple job
+1. Run `cs show <job_uuid>` to show the status of your job (it should eventually show Success)
+
+To run automated tests:
+
+1. Run `lein test :all-but-benchmark` to run unit tests
+1. Run `cd ../integration && pytest -m 'not cli'` to run integration tests
+1. Run `cd ../integration && pytest -k test_basic_submit -n 0 -s` to run a particular integration test
+
+### Using Mesos
+
 The quickest way to get Mesos and Cook running locally is with [docker](https://www.docker.com/) and [minimesos](https://minimesos.org/). 
 
 1. Install `docker`
