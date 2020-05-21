@@ -531,3 +531,13 @@
                                 {:instance/reason {:reason/name :mesos-unknown}}
                                 {:instance/reason {:reason/name :mesos-unknown}}]}]
         (is (= nil (api/calculate-effective-checkpointing-config job 1)))))))
+
+(deftest test-pod->sandbox-file-server-container-state
+  (testing "file server not running"
+    (let [pod (V1Pod.)
+          pod-status (V1PodStatus.)
+          container-status (V1ContainerStatus.)]
+      (.setName container-status api/cook-container-name-for-file-server)
+      (.addContainerStatusesItem pod-status container-status)
+      (.setStatus pod pod-status)
+      (= :not-running (api/pod->sandbox-file-server-container-state pod)))))

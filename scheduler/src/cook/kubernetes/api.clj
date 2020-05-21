@@ -17,12 +17,13 @@
     (io.kubernetes.client.custom Quantity Quantity$Format IntOrString)
     (io.kubernetes.client.openapi ApiClient ApiException JSON)
     (io.kubernetes.client.openapi.apis CoreV1Api)
-    (io.kubernetes.client.openapi.models V1Affinity V1Container V1ContainerPort V1ContainerState V1DeleteOptions
-                                         V1DeleteOptionsBuilder V1EmptyDirVolumeSource V1EnvVar V1Event
-                                         V1HostPathVolumeSource V1HTTPGetAction V1Node V1NodeAffinity V1NodeSelector
-                                         V1NodeSelectorRequirement V1NodeSelectorTerm V1ObjectMeta V1ObjectReference
-                                         V1Pod V1PodCondition V1PodSecurityContext V1PodSpec V1PodStatus V1Probe
-                                         V1ResourceRequirements V1Toleration V1VolumeBuilder V1Volume V1VolumeMount)
+    (io.kubernetes.client.openapi.models V1Affinity V1Container V1ContainerPort V1ContainerState V1ContainerStatus
+                                         V1DeleteOptions V1DeleteOptionsBuilder V1EmptyDirVolumeSource V1EnvVar
+                                         V1Event V1HostPathVolumeSource V1HTTPGetAction V1Node V1NodeAffinity
+                                         V1NodeSelector V1NodeSelectorRequirement V1NodeSelectorTerm V1ObjectMeta
+                                         V1ObjectReference V1Pod V1PodCondition V1PodSecurityContext V1PodSpec
+                                         V1PodStatus V1Probe V1ResourceRequirements V1Toleration V1VolumeBuilder
+                                         V1Volume V1VolumeMount)
     (io.kubernetes.client.util Watch)
     (java.net SocketTimeoutException)
     (java.util.concurrent Executors ExecutorService)))
@@ -996,11 +997,15 @@
   (when pod
     (let [^V1PodStatus pod-status (.getStatus pod)
           container-statuses (.getContainerStatuses pod-status)
-          file-server-status (first (filter (fn [c] (= cook-container-name-for-file-server (.getName c)))
-                                            container-statuses))]
+          ^V1ContainerStatus file-server-status
+          (first
+            (filter
+              (fn [c]
+                (= cook-container-name-for-file-server (.getName c)))
+              container-statuses))]
       (cond
         (nil? file-server-status) :unknown
-        (.isReady file-server-status) :running
+        (.getReady file-server-status) :running
         :else :not-running))))
 
 (defn delete-pod
@@ -1018,12 +1023,12 @@
           api
           pod-name
           pod-namespace
+          nil ; pretty
+          nil ; dryRun
+          nil ; gracePeriodSeconds
+          nil ; oprphanDependents
+          nil ; propagationPolicy
           deleteOptions
-          nil                                               ; pretty
-          nil                                               ; dryRun
-          nil                                               ; gracePeriodSeconds
-          nil                                               ; oprphanDependents
-          nil                                               ; propagationPolicy
           )
         (catch JsonSyntaxException e
           ; Silently gobble this exception.
