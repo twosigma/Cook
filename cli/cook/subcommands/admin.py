@@ -58,20 +58,34 @@ def copy_limits(args, config_path):
                 reason = f'Copying limits for {user} user from {from_cluster_name} to {to_cluster_name}'
 
                 from_share = from_dict['share']
-                resp = http.post(to_cluster, 'share', {'user': user, 'reason': reason, 'share': from_share})
+                resp = http.post(to_cluster,
+                                 'share',
+                                 {'pool': pool_name,
+                                  'user': user,
+                                  'reason': reason,
+                                  'share': from_share})
                 if resp.status_code != 201:
                     print_error(f'Setting share for {pool_name} on {to_cluster_name} '
                                 f'failed with status code {resp.status_code}: {resp.text}')
                 else:
-                    print(f'Copied share for {pool_name} pool from {from_cluster_name} to {to_cluster_name}')
+                    print(terminal.success(f'Copied share for {pool_name} pool '
+                                           f'from {from_cluster_name} '
+                                           f'to {to_cluster_name}.'))
 
                 from_quota = from_dict['quota']
-                resp = http.post(to_cluster, 'quota', {'user': user, 'reason': reason, 'quota': from_quota})
+                resp = http.post(to_cluster,
+                                 'quota',
+                                 {'pool': pool_name,
+                                  'user': user,
+                                  'reason': reason,
+                                  'quota': from_quota})
                 if resp.status_code != 201:
                     print_error(f'Setting quota for {pool_name} on {to_cluster_name} '
                                 f'failed with status code {resp.status_code}: {resp.text}')
                 else:
-                    print(f'Copied quota for {pool_name} pool from {from_cluster_name} to {to_cluster_name}')
+                    print(terminal.success(f'Copied quota for {pool_name} pool '
+                                           f'from {from_cluster_name} '
+                                           f'to {to_cluster_name}.'))
 
 
 def limits(args, config_path):
