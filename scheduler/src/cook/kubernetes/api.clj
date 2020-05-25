@@ -778,7 +778,8 @@
 
           ; resources
           (.putRequestsItem resources "cpu" (double->quantity cpu-request))
-          (.putLimitsItem resources "cpu" (double->quantity cpu-limit))
+          (when set-container-cpu-limit?
+            (.putLimitsItem resources "cpu" (double->quantity cpu-limit)))
           (.putRequestsItem resources "memory" (double->quantity (* memory-multiplier memory-request)))
           (.putLimitsItem resources "memory" (double->quantity (* memory-multiplier memory-limit)))
           (.setResources container resources)
