@@ -73,6 +73,16 @@ def cli(args, cook_url=None, flags=None, stdin=None, env=None, wait_for_exit=Tru
 
 def submit(command=None, cook_url=None, flags=None, submit_flags=None, stdin=None):
     """Submits one job via the CLI"""
+    default_pool = util.default_submit_pool()
+    if default_pool:
+        message = f'Submitting explicitly to the {default_pool} pool (set as default)'
+        if not submit_flags:
+            submit_flags = f'--pool {default_pool}'
+            logger.info(message)
+        elif '--pool' not in submit_flags:
+            submit_flags += f' --pool {default_pool}'
+            logger.info(message)
+
     args = 'submit %s%s' % (submit_flags + ' ' if submit_flags else '', command if command else '')
     cp = cli(args, cook_url, flags, stdin)
     uuids = [s for s in stdout(cp).split() if len(s) == 36 and util.is_valid_uuid(s)]
