@@ -83,7 +83,7 @@
                                                                                     :reason "Node preempted"
                                                                                     :pod-deleted? true
                                                                                     :pod-preempted? true})))
-    (is (= :reason-slave-removed @reason))
+    (is (= :reason-killed-externally @reason))
     (is (nil? (do-process :cook-expected-state/running :missing :custom-test-state {:state :missing
                                                                                     :reason "Pod was explicitly deleted"
                                                                                     :pod-deleted? true}
