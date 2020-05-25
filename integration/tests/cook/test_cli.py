@@ -716,6 +716,7 @@ if __name__ == '__main__':
         finally:
             util.kill_jobs(self.cook_url, job_uuids, assert_response=False)
 
+    @unittest.skipIf(util.using_kubernetes(), 'This test is not yet supported on kubernetes')
     def test_ssh_job_uuid(self):
         cp, uuids = cli.submit('ls', self.cook_url, submit_flags=f'--name {self.current_name()}')
         self.assertEqual(0, cp.returncode, cp.stderr)
@@ -768,6 +769,7 @@ if __name__ == '__main__':
         self.assertEqual(1, cp.returncode, cp.stdout)
         self.assertIn('You provided a job group uuid', cli.decode(cp.stderr))
 
+    @unittest.skipIf(util.using_kubernetes(), 'This test is not yet supported on kubernetes')
     def test_ssh_instance_uuid(self):
         cp, uuids = cli.submit('ls', self.cook_url, submit_flags=f'--name {self.current_name()}')
         self.assertEqual(0, cp.returncode, cp.stderr)
@@ -855,6 +857,7 @@ if __name__ == '__main__':
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual('helloworld' * pow(2, iterations), cli.decode(cp.stdout))
 
+    @unittest.skipIf(util.using_kubernetes(), 'This test is not yet supported on kubernetes')
     def test_tail_follow(self):
         sleep_seconds_between_lines = 0.5
         cp, uuids = cli.submit(
@@ -1975,7 +1978,7 @@ if __name__ == '__main__':
 
         all_uuids = [uuid_1, uuid_2, uuid_3, uuid_4, uuid_5, uuid_6, uuid_7, uuid_8, uuid_9]
 
-        default_pool = util.default_pool(self.cook_url)
+        default_pool = util.default_submit_pool() or util.default_pool(self.cook_url)
         active_pools, _ = util.active_pools(self.cook_url)
         extra_pool = None
 
