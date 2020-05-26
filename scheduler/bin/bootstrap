@@ -53,25 +53,3 @@ gcloud components install kubectl
 
 # Start in the scheduler dir
 echo 'cd '"$scheduler" | tee -a $bashrc
-
-# Python setup
-pip3 install --upgrade pip setuptools wheel
-
-# Cook Scheduler CLI setup
-cli=$scheduler/../cli
-cd $cli || exit 1
-pip3 install -e .
-cs --version
-rm -f $home_dir/.cs.json
-ln -s $cli/.cs.json $home_dir/.cs.json
-
-# Integration tests setup
-echo "export COOK_TEST_DOCKER_IMAGE=gcr.io/google-containers/alpine-with-bash:1.0" | tee -a $bashrc
-echo "export COOK_TEST_DOCKER_WORKING_DIRECTORY=/mnt/sandbox" | tee -a $bashrc
-echo "export COOK_TEST_DISALLOW_POOLS_REGEX='(?!^k8s-(alpha)$)'" | tee -a $bashrc
-echo "export COOK_TEST_DEFAULT_SUBMIT_POOL=k8s-alpha" | tee -a $bashrc
-echo "export COOK_TEST_COMPUTE_CLUSTER_TYPE=kubernetes" | tee -a $bashrc
-echo "export COOK_TEST_DEFAULT_TIMEOUT_MS=480000" | tee -a $bashrc
-echo "export COOK_TEST_DEFAULT_WAIT_INTERVAL_MS=8000" | tee -a $bashrc
-integration=$scheduler/../integration
-pip3 install -r $integration/requirements.txt
