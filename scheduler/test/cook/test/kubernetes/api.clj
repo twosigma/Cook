@@ -382,7 +382,8 @@
         (.setMetadata pod pod-metadata)
         (.setLabels pod-metadata {"node-preempted" 1589084484537})
         (is (= {:reason "Pending"
-                :state :pod/waiting}
+                :state :pod/waiting
+                :pod-preempted-timestamp 1589084484537}
                (api/pod->synthesized-pod-state pod)))))
     (testing "node preempted custom label"
       (with-redefs [config/kubernetes (fn [] {:node-preempted-label "custom-node-preempted"})]
@@ -393,7 +394,8 @@
           (.setMetadata pod pod-metadata)
           (.setLabels pod-metadata {"custom-node-preempted" 1589084484537})
           (is (= {:reason "Pending"
-                  :state :pod/waiting}
+                  :state :pod/waiting
+                  :pod-preempted-timestamp 1589084484537}
                  (api/pod->synthesized-pod-state pod))))))))
 
 (deftest test-node-schedulable
