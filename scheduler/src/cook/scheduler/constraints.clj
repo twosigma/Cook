@@ -49,16 +49,6 @@
   [^VirtualMachineLease lease]
   (.getAttributeMap lease))
 
-(defn job-needs-gpus?
-  "Returns true if the provided job needs GPUs, false otherwise."
-  [job]
-  (->> (:job/resource job)
-       (filter (fn gpu-resource? [res]
-                 (and (= (:resource/type res) :resource.type/gpus)
-                      (pos? (:resource/amount res)))))
-       (seq)
-       (boolean)))
-
 ;; Job host placement constraints
 (defprotocol JobConstraint
   "A placement constraint that is defined only by the job being placed."
@@ -105,33 +95,53 @@
   (let [previous-hosts (job->previous-hosts-to-avoid job)]
     (->novel-host-constraint job previous-hosts)))
 
-(defrecord gpu-host-constraint [job needs-gpus?]
+(defn get-gpu-models-entry-on-pool
+  "Given a pool name, determine the default GPU model on that pool."
+  [valid-gpu-models effective-pool-name]
+  (->> valid-gpu-models
+       (filter (fn [{:keys [pool-regex]}] (re-find (re-pattern pool-regex) effective-pool-name)))
+       first))
+
+(defn get-default-gpu-model-on-pool
+  "Given a pool name, determine the default GPU model on that pool."
+  [valid-gpu-models effective-pool-name]
+  (->> valid-gpu-models
+       (filter (fn [{:keys [pool-regex]}] (re-find (re-pattern pool-regex) effective-pool-name)))
+       first
+       :default-model))
+
+(defrecord gpu-host-constraint [job]
   JobConstraint
   (job-constraint-name [this] (get-class-name this))
   (job-constraint-evaluate
     [this _ vm-attributes]
     (job-constraint-evaluate this nil vm-attributes []))
   (job-constraint-evaluate
-    [this _ vm-attributes target-vm-tasks-assigned]
-    (let [; Look at attribute and running jobs to determine if vm has gpus
-          vm-has-gpus? (or (get vm-attributes "COOK_GPU?") ; Set when putting attributes in cache
-                           (some (fn gpu-task? [{:keys [needs-gpus?]}]
-                                   needs-gpus?)
-                                 target-vm-tasks-assigned))
-          job (:job this)
-          passes? (or (and needs-gpus? vm-has-gpus?)
-                      (and (not needs-gpus?) (not vm-has-gpus?)))]
-      [passes? (when-not passes? (if (and needs-gpus? (not vm-has-gpus?))
-                                   "Job needs gpus, host does not have gpus."
-                                   "Job does not need gpus, host has gpus."))])))
+    [{:keys [job]} _ vm-attributes target-vm-tasks-assigned]
+    (let [; Look at attribute to determine if vm has gpus
+          gpu-models-entry-on-pool (get-gpu-models-entry-on-pool (config/valid-gpu-models) (util/job->pool-name job))
+          gpu-model-requested (or (-> job util/job-ent->env (get "COOK_GPU_MODEL"))
+                                  (:default-model gpu-models-entry-on-pool))
+          gpu-count-requested (-> job util/job-ent->resources :gpus (or 0))
+          gpu-model->count-available (get vm-attributes "gpus") ; get map of gpu models and resources available
+          is-k8s-vm (= (get vm-attributes "source") "k8s")
+          ; VM that supports GPU models but does not have any available GPUs will have a gpus map of {"model A" 0 "model B" 0 ...}
+          ; VM that does not support GPU models will have an empty gpus map of {}
+          passes? (if is-k8s-vm
+                    (if (and (pos? gpu-count-requested) gpu-model-requested)
+                      (>= (get gpu-model->count-available gpu-model-requested 0) gpu-count-requested)
+                      (-> gpu-model->count-available count zero?))
+                    (zero? gpu-count-requested))] ; if job does not request GPUs, do not schedule it on a VM that has GPU models
+      [passes? (when-not passes? (if (not gpu-model-requested)
+                                   "Job does not need GPUs, host has GPUs."
+                                   (str "Job needs GPU model " gpu-model-requested " , host does not have GPU model" gpu-model-requested)))])))
 
 (defn build-gpu-host-constraint
   "Constructs a gpu-host-constraint.
-  The constraint prevents a gpu job from running on a non-gpu host (resources should also handle this)
+  The constraint prevents a gpu job from running on a host that does not have the correct number and model of gpus (resources should also handle this)
   and a non-gpu job from running on a gpu host because we consider gpus scarce resources."
   [job]
-  (let [needs-gpus? (job-needs-gpus? job)]
-    (->gpu-host-constraint job needs-gpus?)))
+  (->gpu-host-constraint job))
 
 (defrecord rebalancer-reservation-constraint [reserved-hosts]
   JobConstraint

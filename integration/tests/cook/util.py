@@ -433,6 +433,7 @@ def init_cook_session(*cook_urls):
         logger.info(f'Session auth set to {session.auth}')
 
 
+@functools.lru_cache()
 def settings(cook_url):
     return session.get(f'{cook_url}/settings').json()
 
@@ -1571,7 +1572,6 @@ def is_preemption_enabled():
     """Returns true if task preemption is enabled on the cluster"""
     max_preemption = rebalancer_settings().get('max-preemption')
     return max_preemption is not None
-
 
 @functools.lru_cache()
 def rebalancer_settings():

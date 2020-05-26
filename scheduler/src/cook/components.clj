@@ -23,7 +23,6 @@
             [congestion.storage :as storage]
             [cook.config :refer (config)]
             [cook.rest.cors :as cors]
-            [cook.curator :as curator]
             [cook.datomic :as datomic]
             ; This explicit require is needed so that mount can see the defstate defined in the cook.plugins.adjustment namespace.
             [cook.plugins.adjustment]
@@ -344,6 +343,7 @@
     ; you need to require S's namespace with ns :require. 'ns :require' is how mount finds defstates to initialize.
     (mount/start-with-args (cook.config/read-config config-file-path))
     (pool/guard-invalid-default-pool (d/db datomic/conn))
+    (cook.config/guard-invalid-gpu-models)
     (metrics-jvm/instrument-jvm)
     (let [server (scheduler-server config)]
       (intern 'user 'main-graph server)

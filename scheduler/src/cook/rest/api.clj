@@ -28,6 +28,7 @@
             [compojure.core :refer [ANY GET POST routes]]
             [cook.compute-cluster :as cc]
             [cook.config :as config]
+            [cook.scheduler.constraints :as constraints]
             [cook.rest.cors :as cors]
             [cook.datomic :as datomic]
             [cook.scheduler.data-locality :as dl]
@@ -687,6 +688,11 @@
        first
        :container))
 
+(defn get-gpu-models-on-pool
+  "Given a pool name, determine the supported GPU models on that pool."
+  [valid-gpu-models effective-pool-name]
+  (:valid-models (constraints/get-gpu-models-entry-on-pool valid-gpu-models effective-pool-name)))
+
 (s/defn make-job-txn
   "Creates the necessary txn data to insert a job into the database"
   [pool commit-latch-id db job :- Job]
@@ -912,11 +918,25 @@
                 (assoc :partitions (into #{} (walk/stringify-keys partitions))))))
        (into #{})))
 
+(defn validate-gpu-job
+  "Validates that a job requesting GPUs is supported on the pool"
+  [gpu-enabled? pool-name {:keys [gpus env]}]
+  (let [requested-gpu-model (get env "COOK_GPU_MODEL")
+        gpus' (or gpus 0)]
+    (when (and (pos? gpus') (not gpu-enabled?))
+      (throw (ex-info (str "GPU support is not enabled") {})))
+    (when (and requested-gpu-model
+               (not (contains? (get-gpu-models-on-pool (config/valid-gpu-models) pool-name) requested-gpu-model)))
+      (throw (ex-info (str "The following GPU model is not supported: " requested-gpu-model) {})))
+    (when (and (and (pos? gpus') (not requested-gpu-model))
+               (not (get-gpu-models-on-pool (config/valid-gpu-models) pool-name)))
+      (throw (ex-info (str "Job requested GPUs but pool " pool-name " does not have any valid GPU models") {})))))
+
 (defn validate-and-munge-job
   "Takes the user, the parsed json from the job and a list of the uuids of
    new-groups (submitted in the same request as the job). Returns proper Job
    objects, or else throws an exception"
-  [db user task-constraints gpu-enabled? new-group-uuids
+  [db pool-name user task-constraints gpu-enabled? new-group-uuids
    {:keys [cpus mem gpus uuid command priority max-retries max-runtime expected-runtime name
            uris ports env labels container group application disable-mea-culpa-retries
            constraints executor progress-output-file progress-regex-string datasets checkpoint]
@@ -964,8 +984,8 @@
                                                  checkpoint)}))
         params (get-in munged [:container :docker :parameters])]
     (s/validate Job munged)
-    (when (and (:gpus munged) (not gpu-enabled?))
-      (throw (ex-info (str "GPU support is not enabled") {:gpus gpus})))
+    ; Note that we are passing munged here because the function expects stringified env
+    (validate-gpu-job gpu-enabled? pool-name munged)
     (when (> cpus (:cpus task-constraints))
       (throw (ex-info (str "Requested " cpus " cpus, but only allowed to use "
                            (:cpus task-constraints))
@@ -1940,8 +1960,10 @@
                                                                           (into [])))}]
                          :else
                          (let [groups (mapv #(validate-and-munge-group (db conn) %) groups)
+                               effective-pool-name (or (:pool/name pool) (config/default-pool))
                                jobs (mapv #(validate-and-munge-job
                                              (db conn)
+                                             effective-pool-name
                                              user
                                              task-constraints
                                              gpu-enabled?

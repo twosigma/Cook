@@ -1,5 +1,6 @@
 (ns cook.test.kubernetes.api
   (:require [clj-time.core :as t]
+            [clojure.string :as str]
             [clojure.test :refer :all]
             [cook.config :as config]
             [cook.kubernetes.api :as api]
@@ -12,44 +13,57 @@
 
 (deftest test-get-consumption
   (testing "correctly computes consumption for a single pod"
-    (let [pods [(tu/pod-helper "podA" "hostA" {:cpus 1.0 :mem 100.0})]]
+    (let [pods [(tu/pod-helper "podA" "hostA" {:cpus 1.0 :mem 100.0 :gpus "2"})]
+          node-name->pods (api/pods->node-name->pods pods)]
       (is (= {"hostA" {:cpus 1.0
-                       :mem 100.0}}
-             (api/get-consumption pods)))))
+                       :mem 100.0
+                       :gpus {"nvidia-tesla-p100" 2}}}
+             (api/get-consumption node-name->pods)))))
 
   (testing "correctly computes consumption for a pod with multiple containers"
     (let [pods [(tu/pod-helper "podA" "hostA"
-                               {:cpus 1.0 :mem 100.0}
-                               {:cpus 1.0 :mem 0.0}
-                               {:mem 100.0})]]
+                               {:cpus 1.0 :mem 100.0 :gpus "1"}
+                               {:cpus 1.0 :mem 0.0 :gpus "4"}
+                               {:mem 100.0})]
+          node-name->pods (api/pods->node-name->pods pods)]
       (is (= {"hostA" {:cpus 2.0
-                       :mem 200.0}}
-             (api/get-consumption pods)))))
+                       :mem 200.0
+                       :gpus {"nvidia-tesla-p100" 5}}}
+             (api/get-consumption node-name->pods)))))
 
   (testing "correctly aggregates pods by node name"
     (let [pods [(tu/pod-helper "podA" "hostA"
-                               {:cpus 1.0 :mem 100.0})
+                               {:cpus 1.0
+                                :mem 100.0
+                                :gpus "2"})
                 (tu/pod-helper "podB" "hostA"
                                {:cpus 1.0})
+                (tu/pod-helper "podA" "hostA"
+                               {:gpus "1"})
                 (tu/pod-helper "podC" "hostB"
                                {:cpus 1.0}
                                {:mem 100.0})
+                (tu/pod-helper "podC" "hostB"
+                               {:cpus 2.0}
+                               {:mem 30.0
+                                :gpus "1"})
                 (tu/pod-helper "podD" "hostC"
-                               {:cpus 1.0})]]
-      (is (= {"hostA" {:cpus 2.0 :mem 100.0}
-              "hostB" {:cpus 1.0 :mem 100.0}
-              "hostC" {:cpus 1.0 :mem 0.0}}
-             (api/get-consumption pods))))))
+                               {:cpus 1.0})]
+          node-name->pods (api/pods->node-name->pods pods)]
+      (is (= {"hostA" {:cpus 2.0 :mem 100.0 :gpus {"nvidia-tesla-p100" 3}}
+              "hostB" {:cpus 3.0 :mem 130.0 :gpus {"nvidia-tesla-p100" 1}}
+              "hostC" {:cpus 1.0 :mem 0.0 :gpus {}}}
+             (api/get-consumption node-name->pods))))))
 
 (deftest test-get-capacity
-  (let [node-name->node {"nodeA" (tu/node-helper "nodeA" 1.0 100.0 nil)
-                         "nodeB" (tu/node-helper "nodeB" 1.0 nil nil)
-                         "nodeC" (tu/node-helper "nodeC" nil 100.0 nil)
-                         "nodeD" (tu/node-helper "nodeD" nil nil nil)}]
-    (is (= {"nodeA" {:cpus 1.0 :mem 100.0}
-            "nodeB" {:cpus 1.0 :mem 0.0}
-            "nodeC" {:cpus 0.0 :mem 100.0}
-            "nodeD" {:cpus 0.0 :mem 0.0}}
+  (let [node-name->node {"nodeA" (tu/node-helper "nodeA" 1.0 100.0 "2" nil)
+                         "nodeB" (tu/node-helper "nodeB" 1.0 nil nil nil)
+                         "nodeC" (tu/node-helper "nodeC" nil 100.0 "5" nil)
+                         "nodeD" (tu/node-helper "nodeD" nil nil "7" nil)}]
+    (is (= {"nodeA" {:cpus 1.0 :mem 100.0 :gpus {"nvidia-tesla-p100" 2}}
+            "nodeB" {:cpus 1.0 :mem 0.0 :gpus {}}
+            "nodeC" {:cpus 0.0 :mem 100.0 :gpus {"nvidia-tesla-p100" 5}}
+            "nodeD" {:cpus 0.0 :mem 0.0 :gpus {"nvidia-tesla-p100" 7}}}
            (api/get-capacity node-name->node)))))
 
 (defn assert-env-var-value
@@ -188,7 +202,31 @@
 
       (with-redefs [config/kubernetes (constantly {})]
         (let [^V1Pod pod (api/task-metadata->pod nil nil task-metadata)]
-          (is (nil? (pod->cpu-limit-fn pod))))))))
+          (is (nil? (pod->cpu-limit-fn pod)))))))
+  (testing "checkpointing volumes"
+    (with-redefs [config/kubernetes (constantly {:default-checkpoint-config {:volume-name "cook-checkpointing-tools-volume"
+                                                                             :init-container-volume-mounts [{:path "/abc/xyz"}]
+                                                                             :main-container-volume-mounts [{:path "/abc/xyz"}
+                                                                                                            {:path "/qed/bbq"
+                                                                                                             :sub-path "efg/hij"}]}
+                                                 :init-container {:command ["init container command"]
+                                                                  :image "init container image"}})]
+      (let [task-metadata {:container {:docker {:parameters [{:key "user"
+                                                              :value "100:10"}]}}
+                           :task-request {:scalar-requests {"mem" 512
+                                                            "cpus" 1.0}
+                                          :job {:job/checkpoint {:checkpoint/mode "auto"}}}}
+            ^V1Pod pod (api/task-metadata->pod nil nil task-metadata)
+            ^V1Container init-container (-> pod .getSpec .getInitContainers first)
+            ^V1Container main-container (-> pod .getSpec .getContainers (->> (filter #(= (.getName %) api/cook-container-name-for-job))) first)
+            init-container-paths (into #{} (-> init-container .getVolumeMounts
+                                                              (->> (filter #(= (.getName %) "cook-checkpointing-tools-volume")))
+                                                              (->> (map #(str (.getMountPath %) (.getSubPath %))))))
+            main-container-paths (into #{} (-> main-container .getVolumeMounts
+                                                              (->> (filter #(= (.getName %) "cook-checkpointing-tools-volume")))
+                                                              (->> (map #(str (.getMountPath %) (.getSubPath %))))))]
+        (is (= #{"/abc/xyz"} init-container-paths))
+        (is (= #{"/abc/xyz" "/qed/bbqefg/hij"} main-container-paths))))))
 
 (defn- k8s-volume->clj [^V1Volume volume]
   {:name (.getName volume)

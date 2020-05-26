@@ -329,15 +329,25 @@
   [^Quantity q]
   (-> q .getNumber .doubleValue))
 
+(defn to-int
+  "Map a quantity to an int, whether integer, double, or float."
+  [^Quantity q]
+  (-> q .getNumber .intValue))
+
 (defn convert-resource-map
-  "Converts a map of Kubernetes resources to a cook resource map {:mem double, :cpus double}"
+  "Converts a map of Kubernetes resources to a cook resource map {:mem double, :cpus double, :gpus double}"
   [m]
-  {:mem (if (get m "memory")
-          (-> m (get "memory") to-double (/ memory-multiplier))
-          0.0)
+  {:mem  (if (get m "memory")
+           (-> m (get "memory") to-double (/ memory-multiplier))
+           0.0)
    :cpus (if (get m "cpu")
            (-> m (get "cpu") to-double)
-           0.0)})
+           0.0)
+   ;; For the purposes of simplified operations on the resource maps, we only look at number of GPUs in this function
+   ;; If GKE supports multiple GPU models on the same node in the future, this function must be modified
+   :gpus (if (get m "nvidia.com/gpu")
+          (-> m (get "nvidia.com/gpu") to-int)
+          0)})
 
 (defn get-node-pool
   "Get the pool for a node. In the case of no pool, return 'no-pool"
@@ -355,6 +365,11 @@
   (or (some-> pod .getSpec .getNodeName)
       (some-> pod .getSpec .getNodeSelector (get k8s-hostname-label))))
 
+(defn pods->node-name->pods
+  "Given a seq of pods, create a map of node names to pods"
+  [pods]
+  (group-by pod->node-name pods))
+
 (defn num-pods-on-node
   "Returns the number of pods assigned to the given node"
   [node-name pods]
@@ -365,7 +380,7 @@
   "Can we schedule on a node. For now, yes, unless there are other taints on it or it contains any label in the
   node-blocklist-labels list.
   TODO: Incorporate other node-health measures here."
-  [^V1Node node pod-count-capacity pods node-blocklist-labels]
+  [^V1Node node pod-count-capacity node-name->pods node-blocklist-labels]
   (if (nil? node)
     false
     (let [taints-on-node (or (some-> node .getSpec .getTaints) [])
@@ -374,49 +389,70 @@
                                   (.getKey %))
                                taints-on-node)
           node-name (some-> node .getMetadata .getName)
-          pods-on-node (num-pods-on-node node-name pods)
+          num-pods-on-node (-> node-name->pods (get node-name []) count)
           labels-on-node (or (some-> node .getMetadata .getLabels) {})
           matching-node-blocklist-keyvals (select-keys labels-on-node node-blocklist-labels)]
       (cond  (seq other-taints) (do
                                   (log/info "Filtering out" node-name "because it has taints" other-taints)
                                   false)
-             (>= pods-on-node pod-count-capacity) (do
-                                                    (log/info "Filtering out" node-name "because it is at or above its pod count capacity of"
-                                                              pod-count-capacity "(" pods-on-node ")")
-                                                    false)
+             (>= num-pods-on-node pod-count-capacity) (do
+                                                        (log/info "Filtering out" node-name "because it is at or above its pod count capacity of"
+                                                                  pod-count-capacity "(" num-pods-on-node ")")
+                                                        false)
              (seq matching-node-blocklist-keyvals) (do
-                                                    (log/info "Filtering out" node-name "because it has node blocklist labels" matching-node-blocklist-keyvals)
-                                                    false)
+                                                     (log/info "Filtering out" node-name "because it has node blocklist labels" matching-node-blocklist-keyvals)
+                                                     false)
              :else true))))
+
+(defn merge-resource-maps
+  "Given a function and two resource-maps, merge into a single resource map"
+  [f resource-map-a resource-map-b]
+  {:cpus (f (:cpus resource-map-a) (or (:cpus resource-map-b) 0))
+   :mem (f (:mem resource-map-a) (or (:mem resource-map-b) 0))
+   :gpus (merge-with f (:gpus resource-map-a) (:gpus resource-map-b))})
+
+(defn merge-resource-map-collection
+  "Given a function and multiple resource-maps, merge into a single resource map"
+  [f & resource-maps]
+  (reduce (fn [resource-map-a resource-map-b]
+            (merge-resource-maps f resource-map-a resource-map-b))
+          resource-maps))
 
 (defn get-capacity
   "Given a map from node-name to node, generate a map from node-name->resource-type-><capacity>"
   [node-name->node]
   (pc/map-vals (fn [^V1Node node]
-                 (-> node .getStatus .getAllocatable convert-resource-map))
+                 (let [{:keys [gpus] :as resource-map} (-> node .getStatus .getAllocatable convert-resource-map)
+                       gpu-model (-> node .getMetadata .getLabels (get "gpu-type"))]
+                   (if (and gpu-model (pos? gpus))
+                     (assoc resource-map :gpus {gpu-model (:gpus resource-map)})
+                     (assoc resource-map :gpus {}))))
                node-name->node))
 
 (defn get-consumption
   "Given a map from pod-name to pod, generate a map from node-name->resource-type->capacity
-
   When accounting for resources, we use resource requests to determine how much is used, not limits.
   See https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/#resource-requests-and-limits-of-pod-and-container"
-  [pods]
-  (let [node-name->pods (group-by pod->node-name pods)
-        node-name->requests (pc/map-vals (fn [pods]
-                                           (->> pods
-                                                (map (fn [^V1Pod pod]
-                                                       (let [containers (-> pod .getSpec .getContainers)
-                                                             container-requests (map (fn [^V1Container c]
-                                                                                       (-> c
-                                                                                           .getResources
-                                                                                           .getRequests
-                                                                                           convert-resource-map))
-                                                                                     containers)]
-                                                         (apply merge-with + container-requests))))
-                                                (apply merge-with +)))
-                                         node-name->pods)]
-    node-name->requests))
+  [node-name->pods]
+  (pc/map-vals (fn [pods]
+                 (->> pods
+                      (map (fn [^V1Pod pod]
+                             (let [containers (-> pod .getSpec .getContainers)
+                                   container-requests (map (fn [^V1Container c]
+                                                             (-> c
+                                                                 .getResources
+                                                                 .getRequests
+                                                                 convert-resource-map))
+                                                           containers)
+                                   {:keys [gpus] :as resource-map} (apply merge-with + container-requests)
+                                   gpu-model (-> pod .getSpec .getNodeSelector (get "cloud.google.com/gke-accelerator"))]
+                               (if (and gpu-model (pos? gpus))
+                                 (assoc resource-map :gpus {gpu-model gpus})
+                                 (assoc resource-map :gpus {})))))
+                       ;; sum-resources will need to handle the unlikely case where
+                       ;; two pods on the same node asked for different models
+                      (apply merge-resource-map-collection +)))
+               node-name->pods))
 
 ; see pod->synthesized-pod-state comment for container naming conventions
 (def cook-container-name-for-job
@@ -583,11 +619,20 @@
                                  .getNodeSelector
                                  (assoc key val))))
 
+(defn- checkpoint->volume
+  "Get separate volume needed for checkpointing"
+  [{:keys [mode volume-name]}]
+  (when (and mode volume-name)
+    (make-empty-volume volume-name)))
+
 (defn- checkpoint->volume-mounts
   "Get custom volume mounts needed for checkpointing"
-  [{:keys [mode volume-mounts]} checkpointing-tools-volume]
-  (when mode
-    (map (fn [{:keys [path sub-path]}] (make-volume-mount checkpointing-tools-volume path sub-path true)) volume-mounts)))
+  [{:keys [mode init-container-volume-mounts main-container-volume-mounts]} checkpointing-tools-volume]
+  (let [volumes-from-spec-fn #(map (fn [{:keys [path sub-path]}]
+                                     (make-volume-mount checkpointing-tools-volume path sub-path false)) %)]
+    (when (and mode checkpointing-tools-volume)
+      {:init-container-checkpoint-volume-mounts (volumes-from-spec-fn init-container-volume-mounts)
+       :main-container-checkpoint-volume-mounts (volumes-from-spec-fn main-container-volume-mounts)})))
 
 (defn checkpoint->env
   "Get environment variables needed for checkpointing"
@@ -611,10 +656,12 @@
 
 (def default-checkpoint-failure-reasons
   "Default set of failure reasons that should be counted against checkpointing attempts"
-  #{:mesos-unknown
+  #{:max-runtime-exceeded
     :mesos-command-executor-failed
+    :mesos-container-launch-failed
     :mesos-container-limitation-memory
-    :mesos-container-launch-failed})
+    :mesos-unknown
+    :straggler})
 
 (defn calculate-effective-checkpointing-config
   "Given the job's checkpointing config, calculate the effective config. Making any adjustments such as defaults,
@@ -678,7 +725,9 @@
         scratch-space "/mnt/scratch-space"
         scratch-space-volume (make-empty-volume "cook-scratch-space-volume")
         scratch-space-volume-mount-fn (partial make-volume-mount scratch-space-volume scratch-space)
-        checkpoint-volume-mounts (checkpoint->volume-mounts checkpoint scratch-space-volume)
+        checkpoint-volume (checkpoint->volume checkpoint)
+        {:keys [init-container-checkpoint-volume-mounts main-container-checkpoint-volume-mounts]}
+        (checkpoint->volume-mounts checkpoint checkpoint-volume)
         sandbox-env {"COOK_SANDBOX" sandbox-dir
                      "HOME" sandbox-dir
                      "MESOS_DIRECTORY" sandbox-dir
@@ -725,7 +774,7 @@
       ; QoS, which requires limits for both memory and cpu
       (.putLimitsItem resources "cpu" (double->quantity cpus)))
     (.setResources container resources)
-    (.setVolumeMounts container (filterv some? (conj (concat volume-mounts checkpoint-volume-mounts)
+    (.setVolumeMounts container (filterv some? (conj (concat volume-mounts main-container-checkpoint-volume-mounts)
                                                      (init-container-workdir-volume-mount-fn true)
                                                      (scratch-space-volume-mount-fn false)
                                                      (sidecar-workdir-volume-mount-fn true))))
@@ -744,8 +793,9 @@
           (.setCommand container command)
           (.setWorkingDir container init-container-workdir)
           (.setEnv container main-env-vars)
-          (.setVolumeMounts container [(init-container-workdir-volume-mount-fn false)
-                                       (scratch-space-volume-mount-fn false)])
+          (.setVolumeMounts container (filterv some? (concat [(init-container-workdir-volume-mount-fn false)
+                                                              (scratch-space-volume-mount-fn false)]
+                                                             init-container-checkpoint-volume-mounts)))
           (.addInitContainersItem pod-spec container))))
 
     ; sandbox file server container
@@ -834,7 +884,8 @@
     (.setVolumes pod-spec (filterv some? (conj volumes
                                                init-container-workdir-volume
                                                scratch-space-volume
-                                               sidecar-workdir-volume)))
+                                               sidecar-workdir-volume
+                                               checkpoint-volume)))
     (.setSecurityContext pod-spec security-context)
     (.setPriorityClassName pod-spec pod-priority-class)
 

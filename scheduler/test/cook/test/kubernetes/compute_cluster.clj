@@ -6,7 +6,8 @@
             [cook.mesos.task :as task]
             [cook.scheduler.scheduler :as sched]
             [cook.test.testutil :as tu]
-            [datomic.api :as d])
+            [datomic.api :as d]
+            [clojure.tools.logging :as log])
   (:import (clojure.lang ExceptionInfo)
            (io.kubernetes.client.openapi.models V1NodeSelectorRequirement V1Pod V1PodSecurityContext)
            (java.util UUID)
@@ -78,10 +79,10 @@
                                                           (atom {}) (atom {}) (atom {}) (atom {}) (atom nil)
                                                           {:kind :static :namespace "cook"} nil 3 nil nil
                                                           (Executors/newSingleThreadExecutor))
-          node-name->node {"nodeA" (tu/node-helper "nodeA" 1.0 1000.0 nil)
-                           "nodeB" (tu/node-helper "nodeB" 1.0 1000.0 nil)
-                           "nodeC" (tu/node-helper "nodeC" 1.0 1000.0 nil)
-                           "my.fake.host" (tu/node-helper "my.fake.host" 1.0 1000.0 nil)}
+          node-name->node {"nodeA" (tu/node-helper "nodeA" 1.0 1000.0 "10" nil)
+                           "nodeB" (tu/node-helper "nodeB" 1.0 1000.0 "25" nil)
+                           "nodeC" (tu/node-helper "nodeC" 1.0 1000.0 nil nil)
+                           "my.fake.host" (tu/node-helper "my.fake.host" 1.0 1000.0 nil nil)}
           j1 (tu/create-dummy-job conn :ncpus 0.1)
           j2 (tu/create-dummy-job conn :ncpus 0.2)
           db (d/db conn)
@@ -91,27 +92,29 @@
           task-2 (tu/make-task-metadata job-ent-2 db compute-cluster)
           _ (cc/launch-tasks compute-cluster "no-pool" [{:task-metadata-seq [task-1 task-2]}] (fn [_]))
           task-1-id (-> task-1 :task-request :task-id)
-          pod-name->pod {{:namespace "cook" :name "podA"} (tu/pod-helper "podA" "nodeA"
-                                                                         {:cpus 0.25 :mem 250.0}
-                                                                         {:cpus 0.1 :mem 100.0})
-                         {:namespace "cook" :name "podB"} (tu/pod-helper "podB" "nodeA"
-                                                                         {:cpus 0.25 :mem 250.0})
-                         {:namespace "cook" :name "podC"} (tu/pod-helper "podC" "nodeB"
-                                                                         {:cpus 1.0 :mem 1100.0})
-                         {:namespace "cook" :name task-1-id} (tu/pod-helper task-1-id "my.fake.host"
-                                                                            {:cpus 0.1 :mem 10.0})}
-          all-offers (kcc/generate-offers compute-cluster node-name->node
-                                          (kcc/add-starting-pods compute-cluster pod-name->pod))
+          pods {{:namespace "cook" :name "podA"} (tu/pod-helper "podA" "nodeA"
+                                                                {:cpus 0.25 :mem 250.0 :gpus "9"}
+                                                                {:cpus 0.1 :mem 100.0})
+                {:namespace "cook" :name "podB"} (tu/pod-helper "podB" "nodeA"
+                                                                {:cpus 0.25 :mem 250.0 :gpus "1"})
+                {:namespace "cook" :name "podC"} (tu/pod-helper "podC" "nodeB"
+                                                                {:cpus 1.0 :mem 1100.0 :gpus "10"})
+                {:namespace "cook" :name task-1-id} (tu/pod-helper task-1-id "my.fake.host"
+                                                                   {:cpus 0.1 :mem 10.0})}
+          node-name->pods (api/pods->node-name->pods (kcc/add-starting-pods compute-cluster pods))
+          all-offers (kcc/generate-offers compute-cluster node-name->node node-name->pods)
           offers (get all-offers "no-pool")]
       (is (= 4 (count offers)))
       (let [offer (first (filter #(= "nodeA" (:hostname %))
                                  offers))]
         (is (not (nil? offer)))
+        (log/info offer)
         (is (= "kubecompute" (:framework-id offer)))
         (is (= {:value "nodeA"} (:slave-id offer)))
         (is (= [{:name "mem" :type :value-scalar :scalar 400.0}
                 {:name "cpus" :type :value-scalar :scalar 0.4}
-                {:name "disk" :type :value-scalar :scalar 0.0}]
+                {:name "disk" :type :value-scalar :scalar 0.0}
+                {:name "gpus" :type :value-available-types :available-types {"nvidia-tesla-p100" 0}}]
                (:resources offer)))
         (is (:reject-after-match-attempt offer)))
 
@@ -120,13 +123,15 @@
         (is (= {:value "nodeB"} (:slave-id offer)))
         (is (= [{:name "mem" :type :value-scalar :scalar 0.0}
                 {:name "cpus" :type :value-scalar :scalar 0.0}
-                {:name "disk" :type :value-scalar :scalar 0.0}]
+                {:name "disk" :type :value-scalar :scalar 0.0}
+                {:name "gpus" :type :value-available-types :available-types {"nvidia-tesla-p100" 15}}]
                (:resources offer))))
 
       (let [offer (first (filter #(= "my.fake.host" (:hostname %)) offers))]
         (is (= [{:name "mem" :type :value-scalar :scalar 980.0}
                 {:name "cpus" :type :value-scalar :scalar 0.7}
-                {:name "disk" :type :value-scalar :scalar 0.0}]
+                {:name "disk" :type :value-scalar :scalar 0.0}
+                {:name "gpus" :type :value-available-types :available-types {}}]
                (:resources offer)))))))
 
 (deftest determine-cook-expected-state

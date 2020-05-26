@@ -4,6 +4,29 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.42.4] - 2020-06-15
+### Added
+- Validation for GPU model requests, from @kathryn-zhou
+### Changed
+- Added extra metrics and logging around match cycle, from @scrosby
+### Fixed
+- Fixed O(#pods * #nodes) bug in calculating k8s offers, from @scrosby
+
+## [1.42.3] - 2020-06-02
+### Changed
+- Update checkpointing settings, from @nsinkov
+
+## [1.42.2] - 2020-05-26
+### Added
+- Automates GKE dev environment setup, from @dposada
+### Changed
+- Don't set cpu limit on sidecar if not setting on main container, from @nsinkov
+- Upgrades k8s client library to 7.0.0, from @dposada
+- Log pod metadata, from @nsinkov
+- Skips match when there are no considerable jobs, from @dposada
+### Fixed
+- Do not use :missing state for preempted pod, from @nsinkov
+
 ## [1.42.1] - 2020-05-12
 ### Changed
 - Added check for k8s node preemption using preemption pod label, from @nsinkov
