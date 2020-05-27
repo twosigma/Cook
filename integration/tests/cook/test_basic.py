@@ -53,7 +53,7 @@ class CookTest(util.CookTest):
 
     def test_basic_submit(self):
         job_executor_type = util.get_job_executor_type()
-        job_uuid, resp = util.submit_job(self.cook_url, executor=job_executor_type)
+        job_uuid, resp = util.submit_job(self.cook_url, executor=job_executor_type, max_retries=5)
         self.assertEqual(resp.status_code, 201, msg=resp.content)
         self.assertEqual(resp.content, str.encode(f"submitted jobs {job_uuid}"))
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
