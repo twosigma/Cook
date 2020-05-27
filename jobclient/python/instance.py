@@ -99,6 +99,26 @@ class Instance:
         if 'reason_mea_culpa' in kwargs:
             self.__reason_mea_culpa = kwargs['reason_mea_culpa']
 
+    def __hash__(self):
+        PRIME = 31
+        result = 1
+        result = (PRIME * result +
+                  hash(self.status) if self.status is not None else 0)
+        result = (PRIME * result +
+                  hash(self.task_id) if self.task_id is not None else 0)
+        return result
+
+    def __eq__(self, other):
+        if self is other:
+            return True
+        if not isinstance(other, self.__class__):
+            return False
+        if self.status != other.status:
+            return False
+        if self.task_id != other.task_id:
+            return False
+        return True
+
     @property
     def task_id(self) -> UUID:
         return self.__task_id
