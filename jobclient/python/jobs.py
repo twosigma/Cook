@@ -167,6 +167,51 @@ class Job:
             return False
         return self.uuid == other.uuid and self.status == other.status
 
+    def to_dict(self) -> dict:
+        d = {
+            'command': self.command,
+            'memory': self.memory,
+            'cpus': self.cpus,
+            'uuid': self.uuid,
+            'name': self.name,
+            'retries': self.retries,
+            'max_runtime': self.max_runtime,
+            'status': self.status,
+            'priority': self.priority,
+            'is_mea_culpa_retries_disabled': self.is_mea_culpa_retries_disabled
+        }
+        if self.executor is not None:
+            d['executor'] = self.executor
+        if self.expected_runtime is not None:
+            d['expected_runtime'] = self.expected_runtime
+        if self.pool is not None:
+            d['pool'] = self.pool
+        if self.instances is not None:
+            d['instances'] = self.instances
+        if self.env is not None:
+            d['env'] = self.env
+        if self.uris is not None:
+            d['uris'] = self.uris
+        if self.container is not None:
+            d['container'] = self.container
+        if self.labels is not None:
+            d['labels'] = self.labels
+        if self.constraints is not None:
+            d['constraints'] = self.constraints
+        if self.groups is not None:
+            d['groups'] = self.groups
+        if self.application is not None:
+            d['application'] = self.application
+        if self.progress_output_file is not None:
+            d['progress_output_file'] = self.progress_output_file
+        if self.progress_regex_string is not None:
+            d['progress_regex_string'] = self.progress_regex_string
+        if self.user is not None:
+            d['user'] = self.user
+        if self.datasets is not None:
+            d['datasets'] = self.datasets
+        return d
+
     @property
     def command(self) -> str:
         return self.__command
