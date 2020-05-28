@@ -837,8 +837,14 @@
           (let [compute-cluster->jobs (distribute-jobs-to-compute-clusters
                                         pending-jobs autoscaling-compute-clusters)]
             (log/info "In" pool-name "pool, starting autoscaling")
-            (doseq [[compute-cluster jobs-for-cluster] compute-cluster->jobs]
-              (cc/autoscale! compute-cluster pool-name jobs-for-cluster adjust-job-resources-for-pool-fn))
+            (->> compute-cluster->jobs
+                 (map
+                   (fn [[compute-cluster jobs-for-cluster]]
+                     (future
+                       (cc/autoscale! compute-cluster pool-name jobs-for-cluster
+                                      adjust-job-resources-for-pool-fn))))
+                 doall
+                 (run! deref))
             (log/info "In" pool-name "pool, done autoscaling"))))
       (catch Throwable e
         (log/error e "In" pool-name "pool, encountered error while triggering autoscaling")))))
