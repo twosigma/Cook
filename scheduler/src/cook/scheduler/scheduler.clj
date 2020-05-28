@@ -950,6 +950,7 @@
     (tools/chime-at-ch
       trigger-chan
       (fn match-jobs-event []
+        (log/info "In" pool-name "pool, starting a matching round")
         (let [num-considerable @fenzo-num-considerable-atom
               next-considerable
               (try
@@ -1033,7 +1034,8 @@
                                  "now give Fenzo" max-considerable "jobs to look at.")
                       (meters/mark! fenzo-abandon-and-reset-meter)
                       max-considerable)
-                    next-considerable))))
+                    next-considerable)))
+        (log/info "In" pool-name "pool, finished a matching round"))
       {:error-handler (fn [ex] (log/error ex "In" pool-name "pool, error occurred in match"))})
     resources-atom))
 
