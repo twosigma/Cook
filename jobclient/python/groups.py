@@ -1,6 +1,10 @@
+import util
+
 from enum import Enum
-from typing import Dict
+from typing import Dict, List
 from uuid import UUID
+
+from straggler_handling import StragglerHandling
 
 
 class Status(Enum):
@@ -59,7 +63,7 @@ class HostPlacement:
     __parameters: Dict[str, str]
 
     def __init__(self, placement_type: HostPlacementType,
-                 parameters: Dict[str, str]):
+                 parameters: Dict[str, str] = {}):
         self.__placement_type = placement_type
         self.__parameters = parameters
 
@@ -88,4 +92,54 @@ class Group:
     __uuid: UUID
     __status: Status
     __name: str
-    __host_placement: None
+    __host_placement: HostPlacement
+    __straggler_handling: StragglerHandling
+    __jobs: List[UUID]
+
+    def __init__(self, *,
+                 uuid: UUID = None,
+                 status: Status = Status.INITIALIZED,
+                 name: str = 'cookgroup',
+                 host_placement: HostPlacement
+                                = HostPlacement(HostPlacementType.ALL),
+                 straggler_handling: StragglerHandling = StragglerHandling(),
+                 jobs: List[UUID] = []):
+        self.__uuid = uuid if uuid is not None else util.make_temporal_uuid()
+        self.__status = status
+        self.__name = name
+        self.__host_placement = host_placement
+        self.__straggler_handling = straggler_handling
+
+    def to_dict(self) -> dict:
+        return {
+            'uuid': self.uuid,
+            'status': self.status,
+            'name': self.name,
+            'host_placement': self.host_placement,
+            'straggler_handling': self.straggler_handling,
+            'jobs': self.jobs
+        }
+
+    @property
+    def uuid(self) -> UUID:
+        return self.__uuid
+
+    @property
+    def status(self) -> Status:
+        return self.__status
+
+    @property
+    def name(self) -> str:
+        return self.__name
+
+    @property
+    def host_placement(self) -> HostPlacement:
+        return self.__host_placement
+
+    @property
+    def straggler_handling(self) -> StragglerHandling:
+        return self.__straggler_handling
+
+    @property
+    def jobs(self) -> List[UUID]:
+        return self.__jobs

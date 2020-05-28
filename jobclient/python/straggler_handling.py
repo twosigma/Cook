@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Dict
+from typing import Any, Dict
 
 
 class StragglerHandlingType(Enum):
@@ -25,14 +25,21 @@ _STRAGGLER_HANDLING_TYPE_LOOKUP = {
 
 class StragglerHandling:
     __handling_type: StragglerHandlingType
-    __parameters: Dict[str, str]
+    __parameters: Dict[str, Any]
 
-    def __init__(self, handling_type: StragglerHandlingType,
-                 parameters: Dict[str, str]):
+    def __init__(self,
+                 handling_type: StragglerHandlingType = StragglerHandlingType.NONE, # noqa
+                 parameters: Dict[str, Any] = {}):
         self.__handling_type = handling_type
         self.__parameters = parameters
 
-    def parameter(self, key: str) -> str:
+        if handling_type == StragglerHandlingType.QUANTILE_DEVIATION:
+            if 'quantile' not in parameters or parameters['quantile'] is None:
+                raise Exception("Straggler handling type was 'quantile-deviation' but 'parameters.quantile' was not set") # noqa
+            if 'multiplier' not in parameters or parameters['multiplier'] is None: # noqa
+                raise Exception("Straggler handling type was 'quantile-deviation' but 'parameters.multiplier' was not set") # noqa
+
+    def parameter(self, key: str) -> Any:
         return self.__parameters[key]
 
     def to_dict(self) -> dict:
@@ -41,7 +48,7 @@ class StragglerHandling:
             'parameters': self.parameters
         }
 
-    def __index__(self, key: str) -> str:
+    def __index__(self, key: str) -> Any:
         return self.parameter(key)
 
     @property
@@ -49,5 +56,5 @@ class StragglerHandling:
         return self.__handling_type
 
     @property
-    def parameters(self) -> Dict[str, str]:
+    def parameters(self) -> Dict[str, Any]:
         return self.__parameters
