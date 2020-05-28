@@ -54,7 +54,8 @@
   (import [com.netflix.fenzo TaskAssignmentResult TaskRequest TaskScheduler TaskScheduler$Builder
                              VirtualMachineLease VirtualMachineLease$Range
                              VirtualMachineCurrentState]
-          [com.netflix.fenzo.functions Action1 Func1]))
+          [com.netflix.fenzo.functions Action1 Func1]
+          [java.util UUID]))
 
 (defn now
   []
@@ -944,8 +945,9 @@
     (tools/chime-at-ch
       trigger-chan
       (fn match-jobs-event []
-        (log/info "In" pool-name "pool, starting a matching round")
-        (let [num-considerable @fenzo-num-considerable-atom
+        (let [match-round-uuid (UUID/randomUUID)
+              _ (log/info "In" pool-name "pool, starting matching round" match-round-uuid)
+              num-considerable @fenzo-num-considerable-atom
               next-considerable
               (try
                 (let [
@@ -1028,8 +1030,8 @@
                                  "now give Fenzo" max-considerable "jobs to look at.")
                       (meters/mark! fenzo-abandon-and-reset-meter)
                       max-considerable)
-                    next-considerable)))
-        (log/info "In" pool-name "pool, finished a matching round"))
+                    next-considerable))
+          (log/info "In" pool-name "pool, finished matching round" match-round-uuid)))
       {:error-handler (fn [ex] (log/error ex "In" pool-name "pool, error occurred in match"))})
     resources-atom))
 
