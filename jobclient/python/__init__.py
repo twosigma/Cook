@@ -1,3 +1,4 @@
+import json
 import logging
 
 import requests
@@ -14,6 +15,7 @@ from jobs import Application, Job
 
 _LOG = logging.getLogger(__name__)
 _LOG.addHandler(logging.StreamHandler())
+_LOG.setLevel(logging.DEBUG)
 
 _COOK_IMPERSONATE_HEADER = 'X-Cook-Impersonate'
 
@@ -57,6 +59,7 @@ class JobClient:
                command: str,
                cpus: float,
                mem: float,
+               max_retries: int,
 
                uuid: Optional[UUID] = None,
                env: Optional[Dict[str, str]] = None,
@@ -73,6 +76,9 @@ class JobClient:
         :type cpus: float
         :param mem: The amount of memory, in GB, to request from Cook.
         :type mem: float
+        :param max_retries: The number of times this job should be retried
+            before failing.
+        :type max_retries: int
         :param uuid: The UUID of the job to submit. If this value is not
             provided, then a random UUID will be generated.
         :type uuid: UUID, optional
@@ -94,28 +100,32 @@ class JobClient:
         :return: The UUID of the newly-created job.
         :rtype: UUID
         """
+        uuid = str(uuid if uuid is not None else util.make_temporal_uuid())
         payload = {
             'command': command,
             'cpus': cpus,
             'mem': mem,
-            'uuid': uuid if uuid is not None else util.make_temporal_uuid()
+            'uuid': uuid,
+            'max-retries': max_retries
         }
-        payload['uuid'] = str(payload['uuid'])
         if env is not None:
             payload['env'] = env
         if labels is not None:
             payload['labels'] = labels
         if max_runtime is not None:
-            payload['max_runtime'] = max_runtime
+            payload['max-runtime'] = max_runtime
         if name is not None:
             payload['name'] = name
         if priority is not None:
             payload['priority'] = priority
         if application is not None:
             payload['application'] = application.to_dict()
-
+        payload = {'jobs': [payload]}
+        _LOG.debug(json.dumps(payload, indent=4))
         resp = requests.post(self.__job_uri, json=payload)
-        resp.raise_for_status()
+        if not resp.ok:
+            _LOG.error(f"Could not submit job: {resp.status_code} {resp.text}")
+            resp.raise_for_status()
 
         return payload['uuid']
 
