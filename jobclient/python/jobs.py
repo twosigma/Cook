@@ -65,47 +65,53 @@ class Application:
 
 
 class Job:
-    command: str
-    memory: float
-    cpus: float
+    command: str  #
+    mem: float  #
+    cpus: float  #
 
-    uuid: UUID
-    name: str
-    retries: int
-    max_runtime: int
-    status: Status
-    priority: int
-    is_mea_culpa_retries_disabled: bool
+    uuid: UUID  #
+    name: str  #
+    max_retries: int  #
+    max_runtime: int  #
+    state: Status  #
+    priority: int  #
+    disable_mea_culpa_retries: bool  #
 
     executor: Optional[Executor]
     expected_runtime: Optional[int]
     pool: Optional[str]
-    instances: Optional[List[Instance]]
-    env: Optional[Dict[str, str]]
-    uris: Optional[List[FetchableUri]]
-    container: Optional[dict]
-    labels: Optional[Dict[str, str]]
-    constraints: Optional[Set[Constraint]]
-    groups: Optional[List[UUID]]
+    instances: Optional[List[Instance]]  #
+    env: Optional[Dict[str, str]]  #
+    uris: Optional[List[FetchableUri]]  #
+    container: Optional[dict]  #
+    labels: Optional[Dict[str, str]]  #
+    constraints: Optional[Set[Constraint]]  #
+    groups: Optional[List[UUID]]  #
     application: Optional[Application]
     progress_output_file: Optional[str]
     progress_regex_string: Optional[str]
-    user: Optional[str]
+    user: Optional[str]  #
     datasets: Optional[list]
+    gpus: Optional[float]  #
+    framework_id: Optional[str]  #
+    ports: Optional[int]  #
+    submit_time: Optional[int]  #
+    retries_remaining: Optional[int]
 
     def __init__(self, *,
                  # Required args
                  command: str,
-                 memory: float,
+                 mem: float,
                  cpus: float,
                  # Optional args with defaults
                  uuid: Optional[UUID] = None,
                  name: str = 'cookjob',
-                 retries: int = 5,
+                 max_retries: int = 5,
                  max_runtime: int = sys.maxsize,
+                 state: Status = Status.INITIALIZED,
                  status: Status = Status.INITIALIZED,
                  priority: int = 50,
-                 is_mea_culpa_retries_disabled: bool = False,
+                 disable_mea_culpa_retries: bool = False,
                  # Optional args with null defaults
                  executor: Optional[Executor] = None,
                  expected_runtime: Optional[int] = None,
@@ -121,17 +127,22 @@ class Job:
                  progress_output_file: Optional[str] = None,
                  progress_regex_string: Optional[str] = None,
                  user: Optional[str] = None,
-                 datasets: Optional[list] = None):
+                 datasets: Optional[list] = None,
+                 gpus: Optional[float] = None,
+                 framework_id: Optional[str] = None,
+                 ports: Optional[int] = None,
+                 submit_time: Optional[int] = None,
+                 retries_remaining: Optional[int] = None):
         self.command = command
-        self.memory = memory
+        self.mem = mem
         self.cpus = cpus
         self.uuid = uuid if uuid is not None else util.make_temporal_uuid()
         self.name = name
-        self.retries = retries
+        self.max_retries = max_retries
         self.max_runtime = max_runtime
-        self.status = status
+        self.state = state
         self.priority = priority
-        self.is_mea_culpa_retries_disabled = is_mea_culpa_retries_disabled
+        self.disable_mea_culpa_retries = disable_mea_culpa_retries
         self.executor = executor
         self.expected_runtime = expected_runtime
         self.pool = pool
@@ -147,6 +158,11 @@ class Job:
         self.progress_regex_string = progress_regex_string
         self.user = user
         self.datasets = datasets
+        self.gpus = gpus
+        self.framework_id = framework_id
+        self.ports = ports
+        self.submit_time = submit_time
+        self.retries_remaining = retries_remaining
 
     def __hash__(self):
         PRIME = 31
@@ -167,15 +183,15 @@ class Job:
     def to_dict(self) -> dict:
         d = {
             'command': self.command,
-            'memory': self.memory,
+            'mem': self.mem,
             'cpus': self.cpus,
             'uuid': self.uuid,
             'name': self.name,
-            'retries': self.retries,
+            'max_retries': self.max_retries,
             'max_runtime': self.max_runtime,
-            'status': self.status,
+            'state': self.state,
             'priority': self.priority,
-            'is_mea_culpa_retries_disabled': self.is_mea_culpa_retries_disabled
+            'disable_mea_culpa_retries': self.disable_mea_culpa_retries
         }
         if self.executor is not None:
             d['executor'] = self.executor

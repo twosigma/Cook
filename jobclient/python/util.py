@@ -2,6 +2,7 @@ import time
 import uuid
 
 from uuid import UUID
+from typing import Any, Dict
 
 
 class FetchableUri:
@@ -73,3 +74,31 @@ def make_temporal_uuid() -> UUID:
     base_low = int.from_bytes(base_uuid.bytes[4:], byteorder='big')
 
     return UUID(int=base_high_masked | base_low)
+
+
+def kebab_to_snake(obj: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert a `dict`'s keys from `kebab-case` to `snake_case`.
+
+    The provided dict is expected to be the result of a call to `json.load` or
+    `json.loads`. As such, it is expected that the keys are all string values.
+
+    This function will scan the topmost level of the `dict` and replace all
+    keys in `kebab-case`, as is used in Cook for its JSON objects, to
+    `snake_case`, as is used in Python for variable names.
+
+    Usage
+    -----
+    Use this function in as a value for the `object_hook` keyword parameter in
+    `json.load` or `json.loads`.
+
+    Parameters
+    ----------
+    :param obj: The object to replace keys for.
+    :type obj: dict
+    :return: A shallow copy of the provided dict with all `kebab-case` keys
+        converted to `snake-case`.
+    :rtype: dict
+    """
+    return {
+        key.replace('-', '_'): value for key, value in obj.items()
+    }

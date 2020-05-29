@@ -6,7 +6,7 @@ import requests
 import util
 
 from typing import Dict, Optional
-from urllib.parse import urlencode, urlparse, urlunparse
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 from uuid import UUID
 
 from requests.auth import AuthBase
@@ -142,12 +142,13 @@ class JobClient:
             param_name = 'uuid'
         else:
             param_name = 'job'
-        query = urlencode({param_name: str(uuid), **parsed.query})
+        query = urlencode({param_name: str(uuid), **parse_qs(parsed.query)})
         url = urlunparse((parsed.scheme, parsed.netloc, parsed.path,
                           parsed.params, query, parsed.fragment))
+        _LOG.debug(query)
         resp = requests.get(url)
         resp.raise_for_status()
-        return Job.from_dict(resp.json())
+        return Job.from_dict(resp.json()[0])
 
     @property
     def host(self) -> str:
