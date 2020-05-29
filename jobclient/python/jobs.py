@@ -46,7 +46,11 @@ _JOB_STATUS_LOOKUP = {
 
 
 class State(Enum):
-    """The current state of a job."""
+    """The current state of a job.
+
+    Indicates whether a job is currently running, has finished and succeeded,
+    or has finished and failed.
+    """
     WAITING = 'WAITING'
     PASSED = 'PASSED'
     FAILED = 'FAILED'
@@ -90,6 +94,7 @@ class Application:
 
 
 class Job:
+    """A job object returned from Cook."""
     command: str
     mem: float
     cpus: float
@@ -159,6 +164,84 @@ class Job:
                  ports: Optional[int] = None,
                  submit_time: Optional[int] = None,
                  retries_remaining: Optional[int] = None):
+        """Initializes a job object.
+
+        Normally, this function wouldn't be invoked directly. It is instead
+        used by `JobClient` when getting the data from `query`.
+
+        Required Parameters
+        -------------------
+        :param command: The command-line string that this job will execute.
+        :type command: str
+        :param mem: The amount of memory, in GB, to request from the scheduler.
+        :type mem: float
+        :param cpus: The number of CPUs to request from Cook.
+        :type cpus: float
+
+        Parameters With Defaults
+        ------------------------
+        :param name: The name of the job, defaults to 'cookjob'
+        :type name: str, optional
+        :param max_retries: The maximum number of times to retry this job,
+            defaults to 5
+        :type max_retries: int, optional
+        :param max_runtime: The maximum time, in seconds, that this job may
+            run, defaults to sys.maxsize
+        :type max_runtime: int, optional
+        :param state: The current state of the job, defaults to State.WAITING
+        :type state: State, optional
+        :param status: The current status of the job, defaults to
+            Status.INITIALIZED
+        :type status: Status, optional
+        :param priority: The current priority of the job, defaults to 50
+        :type priority: int, optional
+        :param disable_mea_culpa_retries: If true, then the job will not issue
+            *mea culpa* retries, defaults to False
+        :type disable_mea_culpa_retries: bool, optional
+
+        Optional Parameters
+        -------------------
+        :param expected_runtime: This job's expected runtime, in seconds.
+        :type expected_runtime: Optional[int], optional
+        :param pool: The pool that this job should be deployed to.
+        :type pool: Optional[str], optional
+        :param instances: A list of instances for this job.
+        :type instances: Optional[List[Instance]], optional
+        :param env: A mapping of environment variables that should be set
+            before running this job.
+        :type env: Optional[Dict[str, str]], optional
+        :param uris: A list of URIs associated with this job.
+        :type uris: Optional[List[FetchableUri]], optional
+        :param container: Cotnainer description for this job.
+        :type container: Optional[dict], optional
+        :param labels: Labels associated with this job.
+        :type labels: Optional[Dict[str, str]], optional
+        :param constraints: Constraints for this job.
+        :type constraints: Optional[Set[Constraint]], optional
+        :param groups: Groups associated with this job.
+        :type groups: Optional[List[UUID]], optional
+        :param application: Application information for this job.
+        :type application: Optional[Application], optional
+        :param progress_output_file: Path to the file where this job will
+            output its progress.
+        :type progress_output_file: Optional[str], optional
+        :param progress_regex_string: Progress regex.
+        :type progress_regex_string: Optional[str], optional
+        :param user: User running this job.
+        :type user: Optional[str], optional
+        :param datasets: Datasets associated with this job.
+        :type datasets: Optional[list], optional
+        :param gpus: The number of GPUs to request from Cook.
+        :type gpus: Optional[float], optional
+        :param framework_id: Framework ID for this job.
+        :type framework_id: Optional[str], optional
+        :param ports: Ports for this job.
+        :type ports: Optional[int], optional
+        :param submit_time: The UNIX timestamp when this job was submitted.
+        :type submit_time: Optional[int], optional
+        :param retries_remaining: The number of retries remaining for this job.
+        :type retries_remaining: Optional[int], optional
+        """
         self.command = command
         self.mem = mem
         self.cpus = cpus
@@ -208,6 +291,7 @@ class Job:
         return self.uuid == other.uuid and self.status == other.status
 
     def to_dict(self) -> dict:
+        """Generate this job's `dict` representation."""
         d = {
             'command': self.command,
             'mem': self.mem,
@@ -216,6 +300,7 @@ class Job:
             'name': self.name,
             'max_retries': self.max_retries,
             'max_runtime': self.max_runtime,
+            'status': self.status,
             'state': self.state,
             'priority': self.priority,
             'disable_mea_culpa_retries': self.disable_mea_culpa_retries
@@ -250,10 +335,21 @@ class Job:
             d['user'] = self.user
         if self.datasets is not None:
             d['datasets'] = self.datasets
+        if self.gpus is not None:
+            d['gpus'] = self.gpus
+        if self.framework_id is not None:
+            d['framework_id'] = self.framework_id
+        if self.ports is not None:
+            d['ports'] = self.ports
+        if self.submit_time is not None:
+            d['submit_time'] = self.submit_time
+        if self.retries_remaining is not None:
+            d['retries_remaining'] = self.retries_remaining
         return d
 
     @classmethod
     def from_dict(cls, d: dict) -> 'Job':
+        """Parse a Job from its `dict` representation."""
         d = deepcopy(d)
         d['uuid'] = UUID(d['uuid'])
         d['status'] = Status.from_string(d['status'])

@@ -2,10 +2,14 @@ import time
 import uuid
 
 from uuid import UUID
-from typing import Any, Dict
 
 
 class FetchableUri:
+    """An immutable fetchable Mesos URI.
+
+    Represents a resource that Mesos should fetch before launching a job, with
+    extra parameters indicating how it should be handled.
+    """
     value: str
 
     cache: bool
@@ -16,12 +20,27 @@ class FetchableUri:
                  cache: bool = False,
                  extract: bool = True,
                  executable: bool = False):
+        """Initialize a fetchable URI object.
+
+        :param value: The base URI.
+        :type value: str
+        :param cache: If true, then the resource should be cached, defaults to
+            False.
+        :type cache: bool, optional
+        :param extract: If true, then the resource is an archive that should
+            be, defaults to True.
+        :type extract: bool, optional
+        :param executable: If true, then the resources should be marked as
+            executable, defaults to False.
+        :type executable: bool, optional
+        """
         self.value = value
         self.cache = cache
         self.extract = extract
         self.executable = executable
 
     def __len__(self):
+        """Get the length of the inner URI."""
         return len(self.value)
 
     def __hash__(self):
@@ -49,6 +68,7 @@ class FetchableUri:
         return f'FetchableUri({self.value}, extract={self.is_extract}, executable={self.is_executable}, cache={self.is_cache})' # noqa 501
 
     def as_dict(self):
+        """Generate this object's `dict` representation."""
         return {
             'value': self.value,
             'executable': self.is_executable,
@@ -58,10 +78,17 @@ class FetchableUri:
 
     @classmethod
     def from_dict(cls, d: dict) -> 'FetchableUri':
+        """Parse a `FetchableURI` from a `dict` representation."""
         return cls(**d)
 
 
 def make_temporal_uuid() -> UUID:
+    """Create a temporally-clustered UUID.
+
+    UUIDs generated with this function will be temporally clustered so that
+    UUIDs generated closer in time will have a longer prefix than those
+    generated further apart.
+    """
     millis = int(time.time() * 1000)
     millis_masked = millis & ((1 << 40) - 1)
     base_uuid = uuid.uuid4()
@@ -74,31 +101,3 @@ def make_temporal_uuid() -> UUID:
     base_low = int.from_bytes(base_uuid.bytes[4:], byteorder='big')
 
     return UUID(int=base_high_masked | base_low)
-
-
-def kebab_to_snake(obj: Dict[str, Any]) -> Dict[str, Any]:
-    """Convert a `dict`'s keys from `kebab-case` to `snake_case`.
-
-    The provided dict is expected to be the result of a call to `json.load` or
-    `json.loads`. As such, it is expected that the keys are all string values.
-
-    This function will scan the topmost level of the `dict` and replace all
-    keys in `kebab-case`, as is used in Cook for its JSON objects, to
-    `snake_case`, as is used in Python for variable names.
-
-    Usage
-    -----
-    Use this function in as a value for the `object_hook` keyword parameter in
-    `json.load` or `json.loads`.
-
-    Parameters
-    ----------
-    :param obj: The object to replace keys for.
-    :type obj: dict
-    :return: A shallow copy of the provided dict with all `kebab-case` keys
-        converted to `snake-case`.
-    :rtype: dict
-    """
-    return {
-        key.replace('-', '_'): value for key, value in obj.items()
-    }

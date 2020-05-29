@@ -21,6 +21,7 @@ _DEFAULT_STATUS_UPDATE_INTERVAL_SECONDS = 10
 _DEFAULT_BATCH_REQUEST_SIZE = 32
 _DEFAULT_REQUEST_TIMEOUT_SECONDS = 60
 _DEFAULT_SUBMIT_RETRY_INTERVAL_SECONDS = 10
+_DEFAULT_JOB_ENDPOINT = '/jobs'
 _DEFAULT_DELETE_ENDPOINT = '/rawscheduler'
 
 
@@ -42,8 +43,22 @@ class JobClient:
     __request_timeout_seconds: int = _DEFAULT_REQUEST_TIMEOUT_SECONDS
 
     def __init__(self, host: str, port: int, *,
-                 job_endpoint: str,
+                 job_endpoint: str = _DEFAULT_JOB_ENDPOINT,
                  delete_endpoint: str = _DEFAULT_DELETE_ENDPOINT):
+        """Initialize an instance of the Cook client.
+
+        Parameters
+        ----------
+        :param host: The hostname of the Cook instance.
+        :type host: str
+        :param port: The port at which the Cook instance is listening.
+        :type port: int
+        :param job_endpoint: The endpoint to be reached when scheduling new
+            jobs or getting the status of running jobs. Defaults to `/jobs`.
+        :type job_endpoint: str, optional
+        :param delete_endpoint: The endpoint to be reached when terminating
+            running jobs. Defaults to `/rawscheduler`
+        """
         self.__netloc = f'{host}:{port}'
         self.__job_endpoint = job_endpoint
         self.__delete_endpoint = delete_endpoint
@@ -63,6 +78,8 @@ class JobClient:
                application: Optional[Application] = None) -> UUID:
         """Submit a single job to Cook.
 
+        Required Parameters
+        -------------------
         :param command: The command to run on Cook.
         :type command: str
         :param cpus: The number of CPUs to request from Cook.
@@ -72,6 +89,8 @@ class JobClient:
         :param max_retries: The number of times this job should be retried
             before failing.
         :type max_retries: int
+        Optional Parameters
+        -------------------
         :param uuid: The UUID of the job to submit. If this value is not
             provided, then a random UUID will be generated.
         :type uuid: UUID, optional
@@ -90,6 +109,8 @@ class JobClient:
         :param application: Application information to assign to the job,
             defaults to None.
         :type application: Application, optional
+        Output
+        ------
         :return: The UUID of the newly-created job.
         :rtype: UUID
         """
@@ -150,6 +171,14 @@ class JobClient:
     def kill(self, uuid: UUID):
         """Stop a job on Cook.
 
+        Exceptions
+        ----------
+        If an error occurs when issuing the delete request to the remote Cook
+        instance, an error message will be printed to the logger, and the
+        `raise_for_status` method will be invoked on the response object.
+
+        Parameters
+        ----------
         :param uuid: The UUID of the job to kill.
         :type uuid: UUID
         """
