@@ -144,7 +144,7 @@ class JobClient:
             _LOG.error(f"Could not submit job: {resp.status_code} {resp.text}")
             resp.raise_for_status()
 
-        return payload['uuid']
+        return UUID(uuid)
 
     def query(self, uuid: UUID) -> Job:
         """Query Cook for a job's status.

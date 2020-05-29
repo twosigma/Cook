@@ -67,7 +67,7 @@ class FetchableUri:
     def __repr__(self):
         return f'FetchableUri({self.value}, extract={self.is_extract}, executable={self.is_executable}, cache={self.is_cache})' # noqa 501
 
-    def as_dict(self):
+    def to_dict(self):
         """Generate this object's `dict` representation."""
         return {
             'value': self.value,

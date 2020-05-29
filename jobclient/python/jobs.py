@@ -296,37 +296,37 @@ class Job:
             'command': self.command,
             'mem': self.mem,
             'cpus': self.cpus,
-            'uuid': self.uuid,
+            'uuid': str(self.uuid),
             'name': self.name,
             'max_retries': self.max_retries,
             'max_runtime': self.max_runtime,
-            'status': self.status,
-            'state': self.state,
+            'status': str(self.status),
+            'state': str(self.state),
             'priority': self.priority,
             'disable_mea_culpa_retries': self.disable_mea_culpa_retries
         }
         if self.executor is not None:
-            d['executor'] = self.executor
+            d['executor'] = str(self.executor)
         if self.expected_runtime is not None:
             d['expected_runtime'] = self.expected_runtime
         if self.pool is not None:
             d['pool'] = self.pool
         if self.instances is not None:
-            d['instances'] = self.instances
+            d['instances'] = list(map(str, self.instances))
         if self.env is not None:
             d['env'] = self.env
         if self.uris is not None:
-            d['uris'] = self.uris
+            d['uris'] = list(map(FetchableUri.to_dict, self.uris))
         if self.container is not None:
             d['container'] = self.container
         if self.labels is not None:
             d['labels'] = self.labels
         if self.constraints is not None:
-            d['constraints'] = self.constraints
+            d['constraints'] = list(map(lambda c: c.to_list, self.constraints))
         if self.groups is not None:
-            d['groups'] = self.groups
+            d['groups'] = list(map(str, self.groups))
         if self.application is not None:
-            d['application'] = self.application
+            d['application'] = self.application.to_dict()
         if self.progress_output_file is not None:
             d['progress_output_file'] = self.progress_output_file
         if self.progress_regex_string is not None:
