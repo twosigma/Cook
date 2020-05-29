@@ -2,6 +2,7 @@ import sys
 
 import util
 
+from dataclasses import dataclass, field
 from enum import Enum
 from uuid import UUID
 from typing import Dict, List, Optional, Set
@@ -43,9 +44,10 @@ _JOB_STATUS_LOOKUP = {
 }
 
 
+@dataclass(frozen=True)
 class Application:
-    __name: str
-    __version: str
+    name: str
+    version: str
 
     def __init__(self, name, version):
         self.__name = name
@@ -57,99 +59,36 @@ class Application:
             'version': self.version
         }
 
-    @property
-    def name(self) -> str:
-        return self.__name
 
-    @property
-    def version(self) -> str:
-        return self.__version
-
-
+@dataclass(frozen=True)
 class Job:
-    __command: str
-    __memory: float
-    __cpus: float
+    command: str
+    memory: float
+    cpus: float
 
-    __uuid: UUID = util.make_temporal_uuid()
-    __name: str = 'cookjob'
-    __retries: int = 5
-    __max_runtime: int = sys.maxsize
-    __status: Status = Status.INITIALIZED
-    __priority: int = 50
-    __is_mea_culpa_retries_disabled: bool = False
+    uuid: UUID = field(default_factory=util.make_temporal_uuid)
+    name: str = 'cookjob'
+    retries: int = 5
+    max_runtime: int = sys.maxsize
+    status: Status = Status.INITIALIZED
+    priority: int = 50
+    is_mea_culpa_retries_disabled: bool = False
 
-    __executor: Optional[Executor]
-    __expected_runtime: Optional[int]
-    __pool: Optional[str]
-    __instances: Optional[List[Instance]]
-    __env: Optional[Dict[str, str]]
-    __uris: Optional[List[FetchableUri]]
-    __container: Optional[dict]
-    __labels: Optional[Dict[str, str]]
-    __constraints: Optional[Set[Constraint]]
-    __groups: Optional[List[UUID]]
-    __application: Optional[Application]
-    __progress_output_file: Optional[str]
-    __progress_regex_string: Optional[str]
-    __user: Optional[str]
-    __datasets: Optional[list]
-
-    def __init__(self, *,
-                 command: str,
-                 memory: str,
-                 cpus: str,
-                 **kwargs):
-        # Required args
-        self.__command = command
-        self.__memory = memory
-        self.__cpus = cpus
-        # Optional args with defaults
-        if 'uuid' in kwargs:
-            self.__uuid = kwargs['uuid']
-        if 'name' in kwargs:
-            self.__name = kwargs['name']
-        if 'executor' in kwargs:
-            self.__executor = kwargs['executor']
-        if 'retries' in kwargs:
-            self.__retries = kwargs['retries']
-        if 'max_runtime' in kwargs:
-            self.__max_runtime = kwargs['max_runtime']
-        if 'status' in kwargs:
-            self.__status = kwargs['status']
-        if 'priority' in kwargs:
-            self.__priority = kwargs['priority']
-        if 'is_mea_culpa_retries_disabled' in kwargs:
-            self.__is_mea_culpa_retries_disabled = kwargs['is_mea_culpa_retries_disabled'] # noqa 501
-        # Optional args without defaults
-        if 'expected_runtime' in kwargs:
-            self.__expected_runtime = kwargs['expected_runtime']
-        if 'pool' in kwargs:
-            self.__pool = kwargs['pool']
-        if 'instances' in kwargs:
-            self.__instances = kwargs['instances']
-        if 'env' in kwargs:
-            self.__env = kwargs['env']
-        if 'uris' in kwargs:
-            self.__uris = kwargs['uris']
-        if 'container' in kwargs:
-            self.__container = kwargs['container']
-        if 'labels' in kwargs:
-            self.__labels = kwargs['labels']
-        if 'constraints' in kwargs:
-            self.__constraints = kwargs['constraints']
-        if 'groups' in kwargs:
-            self.__groups = kwargs['groups']
-        if 'application' in kwargs:
-            self.__application = kwargs['application']
-        if 'progress_output_file' in kwargs:
-            self.__progress_output_file = kwargs['progress_output_file']
-        if 'progress_regex_string' in kwargs:
-            self.__progress_regex_string = kwargs['progress_regex_string']
-        if 'user' in kwargs:
-            self.__user = kwargs['user']
-        if 'datasets' in kwargs:
-            self.__datasets = kwargs['datasets']
+    executor: Optional[Executor] = None
+    expected_runtime: Optional[int] = None
+    pool: Optional[str] = None
+    instances: Optional[List[Instance]] = None
+    env: Optional[Dict[str, str]] = None
+    uris: Optional[List[FetchableUri]] = None
+    container: Optional[dict] = None
+    labels: Optional[Dict[str, str]] = None
+    constraints: Optional[Set[Constraint]] = None
+    groups: Optional[List[UUID]] = None
+    application: Optional[Application] = None
+    progress_output_file: Optional[str] = None
+    progress_regex_string: Optional[str] = None
+    user: Optional[str] = None
+    datasets: Optional[list] = None
 
     def __hash__(self):
         PRIME = 31
@@ -211,103 +150,3 @@ class Job:
         if self.datasets is not None:
             d['datasets'] = self.datasets
         return d
-
-    @property
-    def command(self) -> str:
-        return self.__command
-
-    @property
-    def memory(self) -> float:
-        return self.__memory
-
-    @property
-    def cpus(self) -> float:
-        return self.__cpus
-
-    @property
-    def uuid(self) -> UUID:
-        return self.__uuid
-
-    @property
-    def name(self) -> str:
-        return self.__name
-
-    @property
-    def retries(self) -> int:
-        return self.__retries
-
-    @property
-    def max_runtime(self) -> int:
-        return self.__max_runtime
-
-    @property
-    def status(self) -> Status:
-        return self.__status
-
-    @property
-    def priority(self) -> int:
-        return self.__priority
-
-    @property
-    def is_mea_culpa_retries_disabled(self) -> bool:
-        return self.__is_mea_culpa_retries_disabled
-
-    @property
-    def executor(self) -> Optional[Executor]:
-        return self.__executor
-
-    @property
-    def expected_runtime(self) -> Optional[int]:
-        return self.__expected_runtime
-
-    @property
-    def pool(self) -> Optional[str]:
-        return self.__pool
-
-    @property
-    def instances(self) -> Optional[List[Instance]]:
-        return self.__instances
-
-    @property
-    def env(self) -> Optional[Dict[str, str]]:
-        return self.__env
-
-    @property
-    def uris(self) -> Optional[List[FetchableUri]]:
-        return self.__uris
-
-    @property
-    def container(self) -> Optional[dict]:
-        return self.__container
-
-    @property
-    def labels(self) -> Optional[Dict[str, str]]:
-        return self.__labels
-
-    @property
-    def constraints(self) -> Optional[Set[Constraint]]:
-        return self.__constraints
-
-    @property
-    def groups(self) -> Optional[List[UUID]]:
-        return self.__groups
-
-    @property
-    def application(self) -> Optional[Application]:
-        return self.__application
-
-    @property
-    def progress_output_file(self) -> Optional[str]:
-        return self.__progress_output_file
-
-    @property
-    def progress_regex_string(self) -> Optional[str]:
-        return self.__progress_regex_string
-
-    @property
-    def user(self) -> Optional[str]:
-        return self.__user
-
-    @property
-    def datasets(self) -> Optional[list]:
-        return self.__datasets

@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from enum import Enum
 
 
@@ -24,24 +25,12 @@ class Constraint:
     def to_list(self) -> list:
         raise NotImplementedError("stub")
 
-    @property
-    def attribute(self) -> str:
-        raise NotImplementedError("stub")
 
-    @property
-    def operator(self) -> Operator:
-        raise NotImplementedError("stub")
-
-
+@dataclass(frozen=True)
 class OneToOneConstraint(Constraint):
-    __operator: Operator
-    __attribute: str
-    __value: str
-
-    def __init__(self, op, attribute, value):
-        self.__operator = op
-        self.__attribute = attribute
-        self.__value = value
+    operator: Operator
+    attribute: str
+    value: str
 
     def __hash__(self):
         return hash((self.operator, self.attribute, self.value))
@@ -61,18 +50,6 @@ class OneToOneConstraint(Constraint):
             str(self.operator),
             self.value
         ]
-
-    @property
-    def attribute(self) -> str:
-        return self.__attribute
-
-    @property
-    def operator(self) -> Operator:
-        return self.__operator
-
-    @property
-    def value(self) -> str:
-        return self.__value
 
 
 def build_equals_constraint(attr: str, value: str) -> Constraint:
