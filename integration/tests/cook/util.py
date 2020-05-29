@@ -433,6 +433,7 @@ def init_cook_session(*cook_urls):
         logger.info(f'Session auth set to {session.auth}')
 
 
+@functools.lru_cache()
 def settings(cook_url):
     return session.get(f'{cook_url}/settings').json()
 
