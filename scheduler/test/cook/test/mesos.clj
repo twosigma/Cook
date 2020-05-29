@@ -17,48 +17,9 @@
   (:use clojure.test)
   (:require [clojure.core.async :as async]
             [cook.config :as config]
-            [cook.curator :as curator]
             [cook.datomic]
             [cook.mesos :as mesos]
-            [cook.scheduler.scheduler :as sched]
-            [cook.schema :as schem]
-            [datomic.api :as d :refer (q db)])
-  (:import [org.apache.curator.framework CuratorFrameworkFactory CuratorFramework]
-           [org.apache.curator.retry BoundedExponentialBackoffRetry]
-           [org.apache.curator.test TestingServer]))
-
-(defmacro with-zk [[connect-string] & body]
-  "Evaluates body with a zookeeper test instance running"
-  `(let [zk# (TestingServer.)
-         ~connect-string (.getConnectString zk#)]
-     (try
-       ~@body
-       (finally
-         (.close zk#)))))
-
-(deftest curator-set-get
-  (with-zk [cs]
-    (let [framework (doto
-                        (.. (CuratorFrameworkFactory/builder)
-                            (connectString cs)
-                            (retryPolicy (BoundedExponentialBackoffRetry. 1000 30000 3))
-                            build)
-                      .start)]
-      (do
-        (curator/set-or-create framework "/my/data" (.getBytes "some-data"))
-        (= "some-data" (String. (curator/get-or-nil framework "/my/data")))))))
-
-(deftest curator-get-nil
-  (with-zk [cs]
-    (let [framework (doto
-                        (.. (CuratorFrameworkFactory/builder)
-                            (connectString cs)
-                            (retryPolicy (BoundedExponentialBackoffRetry. 1000 30000 3))
-                            build)
-                      .start)]
-      (do
-        (curator/set-or-create framework "/my/data" (.getBytes "some-data"))
-      (= nil (curator/get-or-nil framework "/my/missing/data"))))))
+            [datomic.api :as d :refer (q db)]))
 
 (defn make-jobs-in-db
   "Takes a list of pairs, where the pairs are the cpu/memory of the job, and returns
