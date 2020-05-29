@@ -1,25 +1,17 @@
 import time
 import uuid
 
+from dataclasses import dataclass
 from uuid import UUID
 
 
+@dataclass(frozen=True)
 class FetchableUri:
-    __value: str
+    value: str
 
-    __cache: bool = False
-    __extract: bool = True
-    __executable: bool = False
-
-    def __init__(self, value, **kwargs):
-        self.__value = value
-
-        if 'cache' in kwargs:
-            self.__cache = kwargs['cache']
-        if 'extract' in kwargs:
-            self.__extract = kwargs['extract']
-        if 'executable' in kwargs:
-            self.__executable = kwargs['executable']
+    cache: bool = False
+    extract: bool = True
+    executable: bool = False
 
     def __len__(self):
         return len(self.value)
@@ -56,21 +48,9 @@ class FetchableUri:
             'extract': self.is_extract
         }
 
-    @property
-    def value(self) -> str:
-        return self.__value
-
-    @property
-    def is_cache(self) -> bool:
-        return self.__cache
-
-    @property
-    def is_extract(self) -> bool:
-        return self.__extract
-
-    @property
-    def is_executable(self) -> bool:
-        return self.__executable
+    @classmethod
+    def from_dict(cls, d: dict) -> 'FetchableUri':
+        return cls(**d)
 
 
 def make_temporal_uuid() -> UUID:

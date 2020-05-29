@@ -51,6 +51,10 @@ class OneToOneConstraint(Constraint):
             self.value
         ]
 
+    @classmethod
+    def from_list(cls, ls: list) -> 'OneToOneConstraint':
+        cls(*ls)
+
 
 def build_equals_constraint(attr: str, value: str) -> Constraint:
     return OneToOneConstraint(Operator.EQUALS, attr, value)

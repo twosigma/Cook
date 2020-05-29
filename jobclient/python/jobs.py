@@ -2,12 +2,13 @@ import sys
 
 import util
 
+from copy import deepcopy
 from dataclasses import dataclass, field
 from enum import Enum
 from uuid import UUID
 from typing import Dict, List, Optional, Set
 
-from constraints import Constraint
+from constraints import Constraint, OneToOneConstraint
 from instance import Executor, Instance
 from util import FetchableUri
 
@@ -58,6 +59,10 @@ class Application:
             'name': self.name,
             'version': self.version
         }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> 'Application':
+        return cls(**d)
 
 
 @dataclass(frozen=True)
@@ -150,3 +155,21 @@ class Job:
         if self.datasets is not None:
             d['datasets'] = self.datasets
         return d
+
+    @classmethod
+    def from_dict(cls, d: dict) -> 'Job':
+        d = deepcopy(d)
+        d['uuid'] = UUID(d['uuid'])
+        d['status'] = Status.from_string(d['status'])
+        if 'application' in d:
+            d['application'] = Application.from_dict(d['application'])
+        if 'uris' in d:
+            d['uris'] = list(map(FetchableUri.from_dict, d['uris']))
+        if 'constraints' in d:
+            d['constraints'] = set(map(OneToOneConstraint.from_list,
+                                       d['constraints']))
+        if 'executor' in d:
+            d['executor'] = Executor.from_string(d['executor'])
+        if 'instances' in d:
+            d['instances'] = list(map(Instance.from_dict, d['instances']))
+        return cls(**d)

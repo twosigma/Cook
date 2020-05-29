@@ -1,3 +1,4 @@
+from copy import deepcopy
 from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
@@ -88,3 +89,12 @@ class Instance:
         if self.task_id != other.task_id:
             return False
         return True
+
+    @classmethod
+    def from_dict(cls, d: dict) -> 'Instance':
+        d = deepcopy(d)
+        d['uuid'] = UUID(d['uuid'])
+        d['status'] = Status.from_string(d['status'])
+        if 'executor' in d:
+            d['executor'] = Executor.from_string(d['executor'])
+        return cls(**d)

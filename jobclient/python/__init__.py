@@ -5,11 +5,12 @@ import requests
 import util
 
 from typing import Dict, Optional
+from urllib.parse import urlencode, urlparse, urlunparse
 from uuid import UUID
 
 from requests.auth import AuthBase
 
-from jobs import Application
+from jobs import Application, Job
 
 _LOG = logging.getLogger(__name__)
 _LOG.addHandler(logging.StreamHandler())
@@ -46,8 +47,11 @@ class JobClient:
                  delete_endpoint: str):
         self.__host = host
         self.__port = port
-        self.__job_uri = f'http://{host}:{port}/{job_endpoint}'
-        self.__delete_uri = f'http://{host}:{port}/{delete_endpoint}'
+        netloc = f'{host}:{port}'
+        self.__job_uri = urlunparse(
+            ('http', netloc, job_endpoint, '', '', ''))
+        self.__delete_uri = urlunparse(
+            ('http', netloc, delete_endpoint, '', '', ''))
 
     def submit(self, *,
                command: str,
@@ -113,6 +117,26 @@ class JobClient:
         resp.raise_for_status()
 
         return payload['uuid']
+
+    def query(self, uuid: UUID) -> Job:
+        """Query Cook for a job's status.
+
+        :param uuid: The UUID to query.
+        :type uuid: UUID
+        :return: A Job object containing the job's information.
+        :rtype: Job
+        """
+        parsed = urlparse(self.__job_uri)
+        if parsed.path == '/jobs':
+            param_name = 'uuid'
+        else:
+            param_name = 'job'
+        query = urlencode({param_name: str(uuid), **parsed.query})
+        url = urlunparse((parsed.scheme, parsed.netloc, parsed.path,
+                          parsed.params, query, parsed.fragment))
+        resp = requests.get(url)
+        resp.raise_for_status()
+        return Job.from_dict(resp.json())
 
     @property
     def host(self) -> str:
