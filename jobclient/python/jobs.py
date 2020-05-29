@@ -45,6 +45,31 @@ _JOB_STATUS_LOOKUP = {
 }
 
 
+class State(Enum):
+    """The current state of a job."""
+    WAITING = 'WAITING'
+    PASSED = 'PASSED'
+    FAILED = 'FAILED'
+
+    def __str__(self):
+        return self.value
+
+    def __repr__(self):
+        return f'State.{self.value}'
+
+    @staticmethod
+    def from_string(name: str) -> 'State':
+        """Parse a `State` from a case-invariant string representation."""
+        return _JOB_STATE_LOOKUP[name.lower()]
+
+
+_JOB_STATE_LOOKUP = {
+    'waiting': State.WAITING,
+    'passed': State.PASSED,
+    'failed': State.FAILED
+}
+
+
 class Application:
     name: str
     version: str
@@ -65,37 +90,38 @@ class Application:
 
 
 class Job:
-    command: str  #
-    mem: float  #
-    cpus: float  #
+    command: str
+    mem: float
+    cpus: float
 
-    uuid: UUID  #
-    name: str  #
-    max_retries: int  #
-    max_runtime: int  #
-    state: Status  #
-    priority: int  #
-    disable_mea_culpa_retries: bool  #
+    uuid: UUID
+    name: str
+    max_retries: int
+    max_runtime: int
+    status: Status
+    state: State
+    priority: int
+    disable_mea_culpa_retries: bool
 
     executor: Optional[Executor]
     expected_runtime: Optional[int]
     pool: Optional[str]
-    instances: Optional[List[Instance]]  #
-    env: Optional[Dict[str, str]]  #
-    uris: Optional[List[FetchableUri]]  #
-    container: Optional[dict]  #
-    labels: Optional[Dict[str, str]]  #
-    constraints: Optional[Set[Constraint]]  #
-    groups: Optional[List[UUID]]  #
+    instances: Optional[List[Instance]]
+    env: Optional[Dict[str, str]]
+    uris: Optional[List[FetchableUri]]
+    container: Optional[dict]
+    labels: Optional[Dict[str, str]]
+    constraints: Optional[Set[Constraint]]
+    groups: Optional[List[UUID]]
     application: Optional[Application]
     progress_output_file: Optional[str]
     progress_regex_string: Optional[str]
-    user: Optional[str]  #
+    user: Optional[str]
     datasets: Optional[list]
-    gpus: Optional[float]  #
-    framework_id: Optional[str]  #
-    ports: Optional[int]  #
-    submit_time: Optional[int]  #
+    gpus: Optional[float]
+    framework_id: Optional[str]
+    ports: Optional[int]
+    submit_time: Optional[int]
     retries_remaining: Optional[int]
 
     def __init__(self, *,
@@ -108,7 +134,7 @@ class Job:
                  name: str = 'cookjob',
                  max_retries: int = 5,
                  max_runtime: int = sys.maxsize,
-                 state: Status = Status.INITIALIZED,
+                 state: State = State.WAITING,
                  status: Status = Status.INITIALIZED,
                  priority: int = 50,
                  disable_mea_culpa_retries: bool = False,
@@ -141,6 +167,7 @@ class Job:
         self.max_retries = max_retries
         self.max_runtime = max_runtime
         self.state = state
+        self.status = status
         self.priority = priority
         self.disable_mea_culpa_retries = disable_mea_culpa_retries
         self.executor = executor
