@@ -72,4 +72,4 @@ def make_temporal_uuid() -> UUID:
 
     base_low = int.from_bytes(base_uuid.bytes[4:], byteorder='big')
 
-    return UUID(base_high_masked | base_low)
+    return UUID(int=base_high_masked | base_low)

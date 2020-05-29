@@ -100,6 +100,7 @@ class JobClient:
             'mem': mem,
             'uuid': uuid if uuid is not None else util.make_temporal_uuid()
         }
+        payload['uuid'] = str(payload['uuid'])
         if env is not None:
             payload['env'] = env
         if labels is not None:
