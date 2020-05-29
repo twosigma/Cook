@@ -6,10 +6,8 @@ import requests
 import util
 
 from typing import Dict, Optional
-from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
+from urllib.parse import urlencode, urlunparse
 from uuid import UUID
-
-from requests.auth import AuthBase
 
 from jobs import Application, Job
 
@@ -32,12 +30,11 @@ class InstanceDecorator:
 
 
 class JobClient:
-    __host: str
-    __port: int
+    __netloc: str
 
-    __job_uri: str
-    __delete_uri: str
-    __group_uri: str
+    __job_endpoint: str
+    __delete_endpoint: str
+    __group_endpoint: str
 
     __status_update_interval: int = _DEFAULT_STATUS_UPDATE_INTERVAL_SECONDS
     __submit_retry_interval: int = _DEFAULT_SUBMIT_RETRY_INTERVAL_SECONDS
@@ -46,14 +43,10 @@ class JobClient:
 
     def __init__(self, host: str, port: int, *,
                  job_endpoint: str,
-                 delete_endpoint: str):
-        self.__host = host
-        self.__port = port
-        netloc = f'{host}:{port}'
-        self.__job_uri = urlunparse(
-            ('http', netloc, job_endpoint, '', '', ''))
-        self.__delete_uri = urlunparse(
-            ('http', netloc, delete_endpoint, '', '', ''))
+                 delete_endpoint: str = _DEFAULT_DELETE_ENDPOINT):
+        self.__netloc = f'{host}:{port}'
+        self.__job_endpoint = job_endpoint
+        self.__delete_endpoint = delete_endpoint
 
     def submit(self, *,
                command: str,
@@ -121,8 +114,11 @@ class JobClient:
         if application is not None:
             payload['application'] = application.to_dict()
         payload = {'jobs': [payload]}
+        url = urlunparse(('http', self.__netloc, self.__job_endpoint, '', '', ''))  # noqa E501
+        _LOG.debug(f"Sending POST to {url}")
+        _LOG.debug("Payload:")
         _LOG.debug(json.dumps(payload, indent=4))
-        resp = requests.post(self.__job_uri, json=payload)
+        resp = requests.post(url, json=payload)
         if not resp.ok:
             _LOG.error(f"Could not submit job: {resp.status_code} {resp.text}")
             resp.raise_for_status()
@@ -137,59 +133,31 @@ class JobClient:
         :return: A Job object containing the job's information.
         :rtype: Job
         """
-        parsed = urlparse(self.__job_uri)
-        if parsed.path == '/jobs':
+        if self.__job_endpoint == '/jobs':
             param_name = 'uuid'
         else:
             param_name = 'job'
-        query = urlencode({param_name: str(uuid), **parse_qs(parsed.query)})
-        url = urlunparse((parsed.scheme, parsed.netloc, parsed.path,
-                          parsed.params, query, parsed.fragment))
-        _LOG.debug(query)
+        query = urlencode([(param_name, str(uuid))])
+        url = urlunparse(('http', self.__netloc, self.__job_endpoint, '',
+                          query, ''))
+        _LOG.debug(f'Sending GET to {url}')
         resp = requests.get(url)
-        resp.raise_for_status()
+        if not resp.ok:
+            _LOG.error(f"Could not query job: {resp.status_code} {resp.text}")
+            resp.raise_for_status()
         return Job.from_dict(resp.json()[0])
 
-    @property
-    def host(self) -> str:
-        return self.__host
+    def kill(self, uuid: UUID):
+        """Stop a job on Cook.
 
-    @property
-    def port(self) -> int:
-        return self.__port
-
-    @property
-    def job_uri(self) -> str:
-        return self.__job_uri
-
-    @property
-    def delete_uri(self) -> str:
-        return self.__delete_uri
-
-    @property
-    def group_uri(self) -> str:
-        return self.__group_uri
-
-    @property
-    def status_update_interval(self) -> int:
-        return self.__status_update_interval
-
-    @property
-    def submit_retry_interval(self) -> int:
-        return self.__submit_retry_interval
-
-    @property
-    def batch_request_size(self) -> int:
-        return self.__batch_request_size
-
-    @property
-    def request_timeout_seconds(self) -> int:
-        return self.__request_timeout_seconds
-
-    @property
-    def instance_decorator(self) -> Optional[InstanceDecorator]:
-        return self.__instance_decorator
-
-    @property
-    def auth(self) -> Optional[AuthBase]:
-        return self.__auth
+        :param uuid: The UUID of the job to kill.
+        :type uuid: UUID
+        """
+        query = urlencode([('job', str(uuid))])
+        url = urlunparse(('http', self.__netloc, self.__delete_endpoint, '',
+                          query, ''))
+        _LOG.debug(f'Sending DELETE to {url}')
+        resp = requests.delete(url)
+        if not resp.ok:
+            _LOG.error(f"Could not delete job: {resp.status_code} {resp.text}")
+            resp.raise_for_status()
