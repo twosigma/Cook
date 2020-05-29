@@ -945,7 +945,7 @@
     (tools/chime-at-ch
       trigger-chan
       (fn match-jobs-event []
-        (let [match-round-uuid (UUID/randomUUID)
+        (let [match-round-uuid (str (UUID/randomUUID))
               _ (log/info "In" pool-name "pool, starting matching round" match-round-uuid)
               num-considerable @fenzo-num-considerable-atom
               next-considerable
