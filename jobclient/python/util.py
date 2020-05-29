@@ -1,17 +1,24 @@
 import time
 import uuid
 
-from dataclasses import dataclass
 from uuid import UUID
 
 
-@dataclass(frozen=True)
 class FetchableUri:
     value: str
 
-    cache: bool = False
-    extract: bool = True
-    executable: bool = False
+    cache: bool
+    extract: bool
+    executable: bool
+
+    def __init__(self, value: str, *,
+                 cache: bool = False,
+                 extract: bool = True,
+                 executable: bool = False):
+        self.value = value
+        self.cache = cache
+        self.extract = extract
+        self.executable = executable
 
     def __len__(self):
         return len(self.value)

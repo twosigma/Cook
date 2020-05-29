@@ -1,14 +1,14 @@
 import sys
 
+import constraints
 import util
 
 from copy import deepcopy
-from dataclasses import dataclass, field
 from enum import Enum
 from uuid import UUID
 from typing import Dict, List, Optional, Set
 
-from constraints import Constraint, OneToOneConstraint
+from constraints import Constraint
 from instance import Executor, Instance
 from util import FetchableUri
 
@@ -45,14 +45,13 @@ _JOB_STATUS_LOOKUP = {
 }
 
 
-@dataclass(frozen=True)
 class Application:
     name: str
     version: str
 
-    def __init__(self, name, version):
-        self.__name = name
-        self.__version = version
+    def __init__(self, name: str, version: str):
+        self.name = name
+        self.version = version
 
     def to_dict(self) -> dict:
         return {
@@ -65,35 +64,89 @@ class Application:
         return cls(**d)
 
 
-@dataclass(frozen=True)
 class Job:
     command: str
     memory: float
     cpus: float
 
-    uuid: UUID = field(default_factory=util.make_temporal_uuid)
-    name: str = 'cookjob'
-    retries: int = 5
-    max_runtime: int = sys.maxsize
-    status: Status = Status.INITIALIZED
-    priority: int = 50
-    is_mea_culpa_retries_disabled: bool = False
+    uuid: UUID
+    name: str
+    retries: int
+    max_runtime: int
+    status: Status
+    priority: int
+    is_mea_culpa_retries_disabled: bool
 
-    executor: Optional[Executor] = None
-    expected_runtime: Optional[int] = None
-    pool: Optional[str] = None
-    instances: Optional[List[Instance]] = None
-    env: Optional[Dict[str, str]] = None
-    uris: Optional[List[FetchableUri]] = None
-    container: Optional[dict] = None
-    labels: Optional[Dict[str, str]] = None
-    constraints: Optional[Set[Constraint]] = None
-    groups: Optional[List[UUID]] = None
-    application: Optional[Application] = None
-    progress_output_file: Optional[str] = None
-    progress_regex_string: Optional[str] = None
-    user: Optional[str] = None
-    datasets: Optional[list] = None
+    executor: Optional[Executor]
+    expected_runtime: Optional[int]
+    pool: Optional[str]
+    instances: Optional[List[Instance]]
+    env: Optional[Dict[str, str]]
+    uris: Optional[List[FetchableUri]]
+    container: Optional[dict]
+    labels: Optional[Dict[str, str]]
+    constraints: Optional[Set[Constraint]]
+    groups: Optional[List[UUID]]
+    application: Optional[Application]
+    progress_output_file: Optional[str]
+    progress_regex_string: Optional[str]
+    user: Optional[str]
+    datasets: Optional[list]
+
+    def __init__(self, *,
+                 # Required args
+                 command: str,
+                 memory: float,
+                 cpus: float,
+                 # Optional args with defaults
+                 uuid: Optional[UUID] = None,
+                 name: str = 'cookjob',
+                 retries: int = 5,
+                 max_runtime: int = sys.maxsize,
+                 status: Status = Status.INITIALIZED,
+                 priority: int = 50,
+                 is_mea_culpa_retries_disabled: bool = False,
+                 # Optional args with null defaults
+                 executor: Optional[Executor] = None,
+                 expected_runtime: Optional[int] = None,
+                 pool: Optional[str] = None,
+                 instances: Optional[List[Instance]] = None,
+                 env: Optional[Dict[str, str]] = None,
+                 uris: Optional[List[FetchableUri]] = None,
+                 container: Optional[dict] = None,
+                 labels: Optional[Dict[str, str]] = None,
+                 constraints: Optional[Set[Constraint]] = None,
+                 groups: Optional[List[UUID]] = None,
+                 application: Optional[Application] = None,
+                 progress_output_file: Optional[str] = None,
+                 progress_regex_string: Optional[str] = None,
+                 user: Optional[str] = None,
+                 datasets: Optional[list] = None):
+        self.command = command
+        self.memory = memory
+        self.cpus = cpus
+        self.uuid = uuid if uuid is not None else util.make_temporal_uuid()
+        self.name = name
+        self.retries = retries
+        self.max_runtime = max_runtime
+        self.status = status
+        self.priority = priority
+        self.is_mea_culpa_retries_disabled = is_mea_culpa_retries_disabled
+        self.executor = executor
+        self.expected_runtime = expected_runtime
+        self.pool = pool
+        self.instances = instances
+        self.env = env
+        self.uris = uris
+        self.container = container
+        self.labels = labels
+        self.constraints = constraints
+        self.groups = groups
+        self.application = application
+        self.progress_output_file = progress_output_file
+        self.progress_regex_string = progress_regex_string
+        self.user = user
+        self.datasets = datasets
 
     def __hash__(self):
         PRIME = 31
@@ -166,7 +219,7 @@ class Job:
         if 'uris' in d:
             d['uris'] = list(map(FetchableUri.from_dict, d['uris']))
         if 'constraints' in d:
-            d['constraints'] = set(map(OneToOneConstraint.from_list,
+            d['constraints'] = set(map(constraints.parse_from,
                                        d['constraints']))
         if 'executor' in d:
             d['executor'] = Executor.from_string(d['executor'])

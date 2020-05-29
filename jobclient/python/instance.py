@@ -1,5 +1,4 @@
 from copy import deepcopy
-from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
 from uuid import UUID
@@ -52,7 +51,6 @@ _EXECUTOR_LOOKUP = {
 }
 
 
-@dataclass(frozen=True)
 class Instance:
     task_id: UUID
     slave_id: str
@@ -62,13 +60,45 @@ class Instance:
     status: Status
     preempted: bool
 
-    end_time: Optional[int] = None
-    progress: Optional[int] = None
-    progress_message: Optional[str] = None
-    reason_code: Optional[int] = None
-    output_url: Optional[str] = None
-    executor: Optional[Executor] = None
-    reason_mea_culpa: Optional[bool] = None
+    end_time: Optional[int]
+    progress: Optional[int]
+    progress_message: Optional[str]
+    reason_code: Optional[int]
+    output_url: Optional[str]
+    executor: Optional[Executor]
+    reason_mea_culpa: Optional[bool]
+
+    def __init__(self, *,
+                 # Required arguments
+                 task_id: UUID,
+                 slave_id: str,
+                 executor_id: str,
+                 start_time: int,
+                 hostname: str,
+                 status: Status,
+                 preempted: bool,
+                 # Optional arguments
+                 end_time: Optional[int] = None,
+                 progress: Optional[int] = None,
+                 progress_message: Optional[str] = None,
+                 reason_code: Optional[int] = None,
+                 output_url: Optional[str] = None,
+                 executor: Optional[Executor] = None,
+                 reason_mea_culpa: Optional[bool] = None):
+        self.task_id = task_id
+        self.slave_id = slave_id
+        self.executor_id = executor_id
+        self.start_time = start_time
+        self.hostname = hostname
+        self.status = status
+        self.preempted = preempted
+        self.end_time = end_time
+        self.progress = progress
+        self.progress_message = progress_message
+        self.reason_code = reason_code
+        self.output_url = output_url
+        self.executor = executor
+        self.reason_mea_culpa = reason_mea_culpa
 
     def __hash__(self):
         PRIME = 31

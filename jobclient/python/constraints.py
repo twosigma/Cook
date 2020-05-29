@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 from enum import Enum
 
 
@@ -26,11 +25,15 @@ class Constraint:
         raise NotImplementedError("stub")
 
 
-@dataclass(frozen=True)
 class OneToOneConstraint(Constraint):
     operator: Operator
     attribute: str
     value: str
+
+    def __init__(self, operator: Operator, attribute: str, value: str):
+        self.operator = operator
+        self.attribute = attribute
+        self.value = value
 
     def __hash__(self):
         return hash((self.operator, self.attribute, self.value))

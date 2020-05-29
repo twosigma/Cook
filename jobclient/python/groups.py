@@ -1,8 +1,7 @@
 import util
 
-from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List
+from typing import Dict, List, Optional
 from uuid import UUID
 
 from straggler_handling import StragglerHandling
@@ -59,10 +58,14 @@ _HOST_PLACEMENT_TYPE_LOOKUP = {
 }
 
 
-@dataclass(frozen=True)
 class HostPlacement:
     placement_type: HostPlacementType
     parameters: Dict[str, str] = {}
+
+    def __init__(self, placement_type: HostPlacementType,
+                 parameters: Dict[str, str] = {}):
+        self.placement_type = HostPlacementType
+        self.parameters = parameters
 
     def parameter(self, key: str) -> str:
         return self.parameters[key]
@@ -77,14 +80,28 @@ class HostPlacement:
         return self.parameter(key)
 
 
-@dataclass(frozen=True)
 class Group:
-    uuid: UUID = field(default_factory=util.make_temporal_uuid)
+    uuid: UUID
     status: Status = Status.INITIALIZED
     name: str = 'cookgroup'
     host_placement: HostPlacement = HostPlacement(HostPlacement.ALL)
     straggler_handling: StragglerHandling = StragglerHandling()
     jobs: List[UUID] = []
+
+    def __init__(self, *,
+                 uuid: Optional[UUID] = None,
+                 status: Status = Status.INITIALIZED,
+                 name: str = 'cookgroup',
+                 host_placement: HostPlacement = HostPlacement(
+                     HostPlacement.ALL),
+                 straggler_handling: StragglerHandling = StragglerHandling(),
+                 jobs: List[UUID] = []):
+        self.uuid = uuid if uuid is not None else util.make_temporal_uuid()
+        self.status = status
+        self.name = name
+        self.host_placement = host_placement
+        self.straggler_handling = straggler_handling
+        self.jobs = jobs
 
     def to_dict(self) -> dict:
         return {

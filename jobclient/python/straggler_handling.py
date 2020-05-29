@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict
 
@@ -24,12 +23,14 @@ _STRAGGLER_HANDLING_TYPE_LOOKUP = {
 }
 
 
-@dataclass(frozen=True)
 class StragglerHandling:
     handling_type: StragglerHandlingType = StragglerHandlingType.NONE
     parameters: Dict[str, Any] = {}
 
-    def __post_init__(self):
+    def __init__(self, handling_type: StragglerHandlingType.NONE,
+                 parameters: Dict[str, Any] = {}):
+        self.handling_type = handling_type
+        self.parameters = parameters
         if self.handling_type == StragglerHandlingType.QUANTILE_DEVIATION:
             if 'quantile' not in self.parameters \
                     or self.parameters['quantile'] is None:
