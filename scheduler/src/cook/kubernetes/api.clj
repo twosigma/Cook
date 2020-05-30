@@ -587,7 +587,7 @@
   "Get custom volume mounts needed for checkpointing"
   [{:keys [mode volume-mounts]} checkpointing-tools-volume]
   (when mode
-    (map (fn [{:keys [path sub-path]}] (make-volume-mount checkpointing-tools-volume path sub-path true)) volume-mounts)))
+    (map (fn [{:keys [path sub-path]}] (make-volume-mount checkpointing-tools-volume path sub-path false)) volume-mounts)))
 
 (defn checkpoint->env
   "Get environment variables needed for checkpointing"
@@ -611,10 +611,12 @@
 
 (def default-checkpoint-failure-reasons
   "Default set of failure reasons that should be counted against checkpointing attempts"
-  #{:mesos-unknown
+  #{:max-runtime-exceeded
     :mesos-command-executor-failed
+    :mesos-container-launch-failed
     :mesos-container-limitation-memory
-    :mesos-container-launch-failed})
+    :mesos-unknown
+    :straggler})
 
 (defn calculate-effective-checkpointing-config
   "Given the job's checkpointing config, calculate the effective config. Making any adjustments such as defaults,
