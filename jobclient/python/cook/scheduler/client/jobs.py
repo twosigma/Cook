@@ -12,17 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import constraints
-
 from copy import deepcopy
+from datetime import datetime, timedelta
 from enum import Enum
 from uuid import UUID
 from typing import Dict, List, Set
 
-from constraints import Constraint
-from datetime import datetime, timedelta
-from instance import Executor, Instance
-from util import FetchableUri
+from . import constraints
+from .constraints import Constraint
+from .instance import Executor, Instance
+from .util import FetchableUri
 
 
 class Status(Enum):
@@ -46,9 +45,9 @@ class Status(Enum):
 
 
 _JOB_STATUS_LOOKUP = {
-    'initialized': Status.INITIALIZED,
     'waiting': Status.WAITING,
-    'running': Status.RUNNING
+    'running': Status.RUNNING,
+    'completed': Status.COMPLETED
 }
 
 

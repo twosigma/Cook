@@ -18,14 +18,13 @@ import logging
 
 import requests
 
-import util
-
 from datetime import timedelta
 from typing import Dict, Optional, Union
 from urllib.parse import urlencode, urlunparse
 from uuid import UUID
 
-from jobs import Application, Job
+from . import util
+from .jobs import Application, Job
 
 _LOG = logging.getLogger(__name__)
 _LOG.addHandler(logging.StreamHandler())
