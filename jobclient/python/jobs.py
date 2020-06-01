@@ -187,7 +187,7 @@ class Job:
         -------------------
         :param command: The command-line string that this job will execute.
         :type command: str
-        :param mem: The amount of memory, in GB, to request from the scheduler.
+        :param mem: The amount of memory, in MB, to request from the scheduler.
         :type mem: float
         :param cpus: The number of CPUs to request from Cook.
         :type cpus: float

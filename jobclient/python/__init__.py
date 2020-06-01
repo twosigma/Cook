@@ -98,7 +98,7 @@ class JobClient:
         :type command: str
         :param cpus: The number of CPUs to request from Cook.
         :type cpus: float
-        :param mem: The amount of memory, in GB, to request from Cook.
+        :param mem: The amount of memory, in MB, to request from Cook.
         :type mem: float
         :param max_retries: The number of times this job should be retried
             before failing.
