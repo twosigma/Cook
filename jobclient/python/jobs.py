@@ -18,9 +18,10 @@ import util
 from copy import deepcopy
 from enum import Enum
 from uuid import UUID
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Set
 
 from constraints import Constraint
+from datetime import datetime, timedelta
 from instance import Executor, Instance
 from util import FetchableUri
 
@@ -110,7 +111,6 @@ class Job:
     command: str
     mem: float
     cpus: float
-
     uuid: UUID
     name: str
     max_retries: int
@@ -119,27 +119,26 @@ class Job:
     state: State
     priority: int
     disable_mea_culpa_retries: bool
-
-    executor: Optional[Executor]
-    expected_runtime: Optional[int]
-    pool: Optional[str]
-    instances: Optional[List[Instance]]
-    env: Optional[Dict[str, str]]
-    uris: Optional[List[FetchableUri]]
-    container: Optional[dict]
-    labels: Optional[Dict[str, str]]
-    constraints: Optional[Set[Constraint]]
-    groups: Optional[List[UUID]]
-    application: Optional[Application]
-    progress_output_file: Optional[str]
-    progress_regex_string: Optional[str]
-    user: Optional[str]
-    datasets: Optional[list]
-    gpus: Optional[float]
-    framework_id: Optional[str]
-    ports: Optional[int]
-    submit_time: Optional[int]
-    retries_remaining: Optional[int]
+    executor: Executor
+    expected_runtime: timedelta
+    pool: str
+    instances: List[Instance]
+    env: Dict[str, str]
+    uris: List[FetchableUri]
+    container: dict
+    labels: Dict[str, str]
+    constraints: Set[Constraint]
+    groups: List[UUID]
+    application: Application
+    progress_output_file: str
+    progress_regex_string: str
+    user: str
+    datasets: list
+    gpus: int
+    framework_id: str
+    ports: int
+    submit_time: datetime
+    retries_remaining: int
 
     def __init__(self, *,
                  # Required args
@@ -149,7 +148,7 @@ class Job:
                  uuid: UUID,
                  name: str,
                  max_retries: int,
-                 max_runtime: int,
+                 max_runtime: timedelta,
                  state: State,
                  status: Status,
                  priority: int,
@@ -179,77 +178,69 @@ class Job:
         Normally, this function wouldn't be invoked directly. It is instead
         used by `JobClient` when getting the data from `query`.
 
-        Required Parameters
-        -------------------
+        Parameters
+        ----------
         :param command: The command-line string that this job will execute.
         :type command: str
         :param mem: The amount of memory, in MB, to request from the scheduler.
         :type mem: float
         :param cpus: The number of CPUs to request from Cook.
         :type cpus: float
-
-        Parameters With Defaults
-        ------------------------
         :param name: The name of the job, defaults to 'cookjob'
-        :type name: str, optional
+        :type name: str
         :param max_retries: The maximum number of times to attempt this job.
-        :type max_retries: int, optional
-        :param max_runtime: The maximum time, in seconds, that this job may
-            run, defaults to sys.maxsize
-        :type max_runtime: int, optional
-        :param state: The current state of the job, defaults to State.WAITING
-        :type state: State, optional
-        :param status: The current status of the job, defaults to
-            Status.INITIALIZED
-        :type status: Status, optional
+        :type max_retries: int
+        :param max_runtime: The maximum time that this job may run.
+        :type max_runtime: timedelta
+        :param state: The current state of the job.
+        :type state: State
+        :param status: The current status of the job.
+        :type status: Status
         :param priority: The current priority of the job, defaults to 50
-        :type priority: int, optional
+        :type priority: int
         :param disable_mea_culpa_retries: If true, then the job will not issue
-            *mea culpa* retries, defaults to False
-        :type disable_mea_culpa_retries: bool, optional
-
-        Optional Parameters
-        -------------------
-        :param expected_runtime: This job's expected runtime, in seconds.
-        :type expected_runtime: Optional[int], optional
+            *mea culpa* retries.
+        :type disable_mea_culpa_retries: bool
+        :param expected_runtime: This job's expected runtime.
+        :type expected_runtime: timedelta
         :param pool: The pool that this job should be deployed to.
-        :type pool: Optional[str], optional
+        :type pool: str
         :param instances: A list of instances for this job.
-        :type instances: Optional[List[Instance]], optional
+        :type instances: List[Instance]
         :param env: A mapping of environment variables that should be set
             before running this job.
-        :type env: Optional[Dict[str, str]], optional
+        :type env: Dict[str, str]
         :param uris: A list of URIs associated with this job.
-        :type uris: Optional[List[FetchableUri]], optional
+        :type uris: List[FetchableUri]
         :param container: Cotnainer description for this job.
-        :type container: Optional[dict], optional
+        :type container: dict
         :param labels: Labels associated with this job.
-        :type labels: Optional[Dict[str, str]], optional
+        :type labels: Dict[str, str]
         :param constraints: Constraints for this job.
-        :type constraints: Optional[Set[Constraint]], optional
+        :type constraints: Set[Constraint]
         :param groups: Groups associated with this job.
-        :type groups: Optional[List[UUID]], optional
+        :type groups: List[UUID]
         :param application: Application information for this job.
-        :type application: Optional[Application], optional
+        :type application: Application
         :param progress_output_file: Path to the file where this job will
             output its progress.
-        :type progress_output_file: Optional[str], optional
+        :type progress_output_file: str
         :param progress_regex_string: Progress regex.
-        :type progress_regex_string: Optional[str], optional
+        :type progress_regex_string: str
         :param user: User running this job.
-        :type user: Optional[str], optional
+        :type user: str
         :param datasets: Datasets associated with this job.
-        :type datasets: Optional[list], optional
+        :type datasets: list
         :param gpus: The number of GPUs to request from Cook.
-        :type gpus: Optional[float], optional
+        :type gpus: int
         :param framework_id: Framework ID for this job.
-        :type framework_id: Optional[str], optional
+        :type framework_id: str
         :param ports: Ports for this job.
-        :type ports: Optional[int], optional
-        :param submit_time: The UNIX timestamp when this job was submitted.
-        :type submit_time: Optional[int], optional
+        :type ports: int
+        :param submit_time: The point in time when this job was submitted.
+        :type submit_time: datetime
         :param retries_remaining: The number of retries remaining for this job.
-        :type retries_remaining: Optional[int], optional
+        :type retries_remaining: int
         """
         self.command = command
         self.mem = mem
@@ -301,7 +292,7 @@ class Job:
 
     def to_dict(self) -> dict:
         """Generate this job's `dict` representation."""
-        d = {
+        return {
             'command': self.command,
             'mem': self.mem,
             'cpus': self.cpus,
@@ -312,49 +303,28 @@ class Job:
             'status': str(self.status),
             'state': str(self.state),
             'priority': self.priority,
-            'disable_mea_culpa_retries': self.disable_mea_culpa_retries
+            'disable_mea_culpa_retries': self.disable_mea_culpa_retries,
+            'executor': str(self.executor),
+            'expected_runtime': int(self.expected_runtime.total_seconds()),
+            'pool': self.pool,
+            'instances': list(map(str, self.instances)),
+            'env': self.env,
+            'uris': list(map(FetchableUri.to_dict, self.uris)),
+            'container': self.container,
+            'labels': self.labels,
+            'constraints': list(map(lambda c: c.to_list, self.constraints)),
+            'groups': list(map(str, self.groups)),
+            'application': self.application.to_dict(),
+            'progress_output_file': self.progress_output_file,
+            'progress_regex_string': self.progress_regex_string,
+            'user': self.user,
+            'datasets': self.datasets,
+            'gpus': self.gpus,
+            'framework_id': self.framework_id,
+            'ports': self.ports,
+            'submit_time': datetime.fromtimestamp(self.submit_time),
+            'retries_remaining': self.retries_remaining,
         }
-        if self.executor is not None:
-            d['executor'] = str(self.executor)
-        if self.expected_runtime is not None:
-            d['expected_runtime'] = self.expected_runtime
-        if self.pool is not None:
-            d['pool'] = self.pool
-        if self.instances is not None:
-            d['instances'] = list(map(str, self.instances))
-        if self.env is not None:
-            d['env'] = self.env
-        if self.uris is not None:
-            d['uris'] = list(map(FetchableUri.to_dict, self.uris))
-        if self.container is not None:
-            d['container'] = self.container
-        if self.labels is not None:
-            d['labels'] = self.labels
-        if self.constraints is not None:
-            d['constraints'] = list(map(lambda c: c.to_list, self.constraints))
-        if self.groups is not None:
-            d['groups'] = list(map(str, self.groups))
-        if self.application is not None:
-            d['application'] = self.application.to_dict()
-        if self.progress_output_file is not None:
-            d['progress_output_file'] = self.progress_output_file
-        if self.progress_regex_string is not None:
-            d['progress_regex_string'] = self.progress_regex_string
-        if self.user is not None:
-            d['user'] = self.user
-        if self.datasets is not None:
-            d['datasets'] = self.datasets
-        if self.gpus is not None:
-            d['gpus'] = self.gpus
-        if self.framework_id is not None:
-            d['framework_id'] = self.framework_id
-        if self.ports is not None:
-            d['ports'] = self.ports
-        if self.submit_time is not None:
-            d['submit_time'] = self.submit_time
-        if self.retries_remaining is not None:
-            d['retries_remaining'] = self.retries_remaining
-        return d
 
     @classmethod
     def from_dict(cls, d: dict) -> 'Job':
@@ -362,15 +332,13 @@ class Job:
         d = deepcopy(d)
         d['uuid'] = UUID(d['uuid'])
         d['status'] = Status.from_string(d['status'])
-        if 'application' in d:
-            d['application'] = Application.from_dict(d['application'])
-        if 'uris' in d:
-            d['uris'] = list(map(FetchableUri.from_dict, d['uris']))
-        if 'constraints' in d:
-            d['constraints'] = set(map(constraints.parse_from,
-                                       d['constraints']))
-        if 'executor' in d:
-            d['executor'] = Executor.from_string(d['executor'])
-        if 'instances' in d:
-            d['instances'] = list(map(Instance.from_dict, d['instances']))
+        d['state'] = State.from_string(d['state'])
+        d['max_runtime'] = timedelta(seconds=d['max_runtime'])
+        d['application'] = Application.from_dict(d['application'])
+        d['uris'] = list(map(FetchableUri.from_dict, d['uris']))
+        d['constraints'] = set(map(constraints.parse_from, d['constraints']))
+        d['executor'] = Executor.from_string(d['executor'])
+        d['instances'] = list(map(Instance.from_dict, d['instances']))
+        d['expected_runtime'] = timedelta(seconds=d['expected_runtime'])
+        d['submit_time'] = datetime.fromtimestamp(d['submit_time'])
         return cls(**d)
