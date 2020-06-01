@@ -29,11 +29,7 @@ from util import FetchableUri
 class Status(Enum):
     """
     The curent status of a job.
-
-    A job in Cook has only three statuses: WAITING, RUNNING, COMPLETED. The
-    INITIALIZED status is for a `JobListener` to receive status updates.
     """
-    INITIALIZED = 'INITIALIZED'
     WAITING = 'WAITING'
     RUNNING = 'RUNNING'
     COMPLETED = 'COMPLETED'
@@ -53,8 +49,7 @@ class Status(Enum):
 _JOB_STATUS_LOOKUP = {
     'initialized': Status.INITIALIZED,
     'waiting': Status.WAITING,
-    'running': Status.RUNNING,
-    'completed': Status.COMPLETED
+    'running': Status.RUNNING
 }
 
 
