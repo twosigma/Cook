@@ -25,7 +25,7 @@ Check the [changelog](scheduler/CHANGELOG.md) for release info.
 In this repository, you'll find several subprojects, each of which has its own documentation.
 
 * `scheduler` - This is the actual Mesos framework, Cook. It comes with a JSON REST API.
-* `jobclient` - This is the Java API for Cook, which uses the REST API under the hood.
+* `jobclient` - This includes the Java and Python APIs for Cook, both of which use the REST API under the hood.
 * `spark` - This contains the patch to Spark to enable Cook as a backend.
 
 Please visit the `scheduler` subproject first to get started.
