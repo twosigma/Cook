@@ -19,7 +19,7 @@ import requests
 
 import util
 
-from typing import Dict, Optional
+from typing import Dict, Optional, Union
 from urllib.parse import urlencode, urlunparse
 from uuid import UUID
 
@@ -83,7 +83,7 @@ class JobClient:
                mem: float,
                max_retries: int,
 
-               uuid: Optional[UUID] = None,
+               uuid: Optional[Union[str, UUID]] = None,
                env: Optional[Dict[str, str]] = None,
                labels: Optional[Dict[str, str]] = None,
                max_runtime: Optional[int] = None,
@@ -107,7 +107,7 @@ class JobClient:
         -------------------
         :param uuid: The UUID of the job to submit. If this value is not
             provided, then a random UUID will be generated.
-        :type uuid: UUID, optional
+        :type uuid: Union[str, UUID], optional
         :param env: Environment variables to set within the job's context,
             defaults to None.
         :type env: Dict[str, str], optional
@@ -128,7 +128,7 @@ class JobClient:
         :return: The UUID of the newly-created job.
         :rtype: UUID
         """
-        uuid = str(uuid if uuid is not None else util.make_temporal_uuid())
+        uuid = str(uuid or util.make_temporal_uuid())
         payload = {
             'command': command,
             'cpus': cpus,
@@ -160,19 +160,20 @@ class JobClient:
 
         return UUID(uuid)
 
-    def query(self, uuid: UUID) -> Job:
+    def query(self, uuid: Union[str, UUID]) -> Job:
         """Query Cook for a job's status.
 
         :param uuid: The UUID to query.
-        :type uuid: UUID
+        :type uuid: Union[str, UUID]
         :return: A Job object containing the job's information.
         :rtype: Job
         """
+        uuid = str(uuid)
         if self.__job_endpoint == '/jobs':
             param_name = 'uuid'
         else:
             param_name = 'job'
-        query = urlencode([(param_name, str(uuid))])
+        query = urlencode([(param_name, uuid)])
         url = urlunparse(('http', self.__netloc, self.__job_endpoint, '',
                           query, ''))
         _LOG.debug(f'Sending GET to {url}')
@@ -182,7 +183,7 @@ class JobClient:
             resp.raise_for_status()
         return Job.from_dict(resp.json()[0])
 
-    def kill(self, uuid: UUID):
+    def kill(self, uuid: Union[str, UUID]):
         """Stop a job on Cook.
 
         Exceptions
@@ -194,9 +195,10 @@ class JobClient:
         Parameters
         ----------
         :param uuid: The UUID of the job to kill.
-        :type uuid: UUID
+        :type uuid: Union[str, UUID]
         """
-        query = urlencode([('job', str(uuid))])
+        uuid = str(uuid)
+        query = urlencode([('job', uuid)])
         url = urlunparse(('http', self.__netloc, self.__delete_endpoint, '',
                           query, ''))
         _LOG.debug(f'Sending DELETE to {url}')
