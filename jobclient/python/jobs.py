@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import constraints
-import util
 
 from copy import deepcopy
 from enum import Enum
