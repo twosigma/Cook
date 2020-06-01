@@ -274,22 +274,6 @@ class Job:
         self.submit_time = submit_time
         self.retries_remaining = retries_remaining
 
-    def __hash__(self):
-        PRIME = 31
-        result = 1
-        result = (PRIME * result
-                  + hash(self.status) if self.status is not None else 0)
-        result = (PRIME * result
-                  + hash(self.uuid) if self.uuid is not None else 0)
-        return result
-
-    def __eq__(self, other):
-        if self is other:
-            return True
-        if not isinstance(other, self.__class__):
-            return False
-        return self.uuid == other.uuid and self.status == other.status
-
     def to_dict(self) -> dict:
         """Generate this job's `dict` representation."""
         return {

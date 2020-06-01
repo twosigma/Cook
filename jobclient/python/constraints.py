@@ -53,18 +53,6 @@ class OneToOneConstraint(Constraint):
         self.attribute = attribute
         self.value = value
 
-    def __hash__(self):
-        return hash((self.operator, self.attribute, self.value))
-
-    def __eq__(self, other):
-        if self is other:
-            return True
-        if not isinstance(other, self.__class__):
-            return False
-        return (self.operator == other.operator and
-                self.attribute == other.attribute and
-                self.value == other.value)
-
     def to_list(self) -> list:
         """Generate this constraint's `list` representation."""
         return [

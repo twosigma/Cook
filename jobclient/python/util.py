@@ -57,27 +57,6 @@ class FetchableUri:
         """Get the length of the inner URI."""
         return len(self.value)
 
-    def __hash__(self):
-        PRIME = 37
-        result = 1
-        result = PRIME * result + hash(self.value)
-        result = PRIME * result + (0 if self.is_extract else 1)
-        result = PRIME * result + (0 if self.is_executable else 3)
-        result = PRIME * result + (0 if self.is_cache else 5)
-        return result
-
-    def __eq__(self, other):
-        if self is other:
-            return True
-        if other is None:
-            return False
-        if not isinstance(other, self.__class__):
-            return False
-        return (self.value == other.value and
-                self.is_cache == other.is_cache and
-                self.is_executable == other.is_executable and
-                self.is_extract == other.is_extract)
-
     def __repr__(self):
         return f'FetchableUri({self.value}, extract={self.is_extract}, executable={self.is_executable}, cache={self.is_cache})' # noqa 501
 
