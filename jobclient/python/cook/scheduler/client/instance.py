@@ -48,7 +48,7 @@ _INSTANCE_STATUS_LOOKUP = {
 class Executor(Enum):
     """Indicates where an instance is running."""
     COOK = 'COOK'
-    EXECUTOR = 'EXECUTOR'
+    MESOS = 'MESOS'
 
     def __str__(self):
         return self.value
@@ -64,7 +64,7 @@ class Executor(Enum):
 
 _EXECUTOR_LOOKUP = {
     'cook': Executor.COOK,
-    'executor': Executor.EXECUTOR,
+    'mesos': Executor.MESOS,
 }
 
 
