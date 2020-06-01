@@ -240,7 +240,7 @@ class Job:
         self.command = command
         self.mem = mem
         self.cpus = cpus
-        self.uuid = uuid if uuid is not None else util.make_temporal_uuid()
+        self.uuid = uuid
         self.name = name
         self.max_retries = max_retries
         self.max_runtime = max_runtime
