@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import getpass
 import json
 import logging
 
@@ -19,6 +20,7 @@ import requests
 
 import util
 
+from datetime import timedelta
 from typing import Dict, Optional, Union
 from urllib.parse import urlencode, urlunparse
 from uuid import UUID
@@ -30,6 +32,8 @@ _LOG.addHandler(logging.StreamHandler())
 _LOG.setLevel(logging.DEBUG)
 
 _COOK_IMPERSONATE_HEADER = 'X-Cook-Impersonate'
+
+_CLIENT_APP = Application('cook-python-client', '0.1')
 
 _DEFAULT_STATUS_UPDATE_INTERVAL_SECONDS = 10
 _DEFAULT_BATCH_REQUEST_SIZE = 32
@@ -86,10 +90,10 @@ class JobClient:
                uuid: Optional[Union[str, UUID]] = None,
                env: Optional[Dict[str, str]] = None,
                labels: Optional[Dict[str, str]] = None,
-               max_runtime: Optional[int] = None,
-               name: Optional[str] = None,
+               max_runtime: timedelta = timedelta(days=1),
+               name: str = f'{getpass.getuser()}-job',
                priority: Optional[int] = None,
-               application: Optional[Application] = None) -> UUID:
+               application: Application = _CLIENT_APP) -> UUID:
         """Submit a single job to Cook.
 
         Required Parameters
@@ -114,15 +118,15 @@ class JobClient:
         :type env: Dict[str, str], optional
         :param labels: Labels to assign to the job, defaults to None.
         :type labels: Dict[str, str], optional
-        :param max_runtime: The maximum number seconds this job should be
-            allowed to run, defaults to None.
-        :type max_runtime: int, optional
-        :param name: A name to assign to the job, defaults to None.
+        :param max_runtime: The maximum time this job should be allowed to run,
+            defaults to one day.
+        :type max_runtime: timedelta, optional
+        :param name: A name to assign to the job, defaults to `$USER-job`.
         :type name: str, optional
         :param priority: A priority to assign to the job, defaults to None.
         :type priority: int, optional
         :param application: Application information to assign to the job,
-            defaults to None.
+            defaults to `cook-python-client` with version 0.1.
         :type application: Application, optional
         Output
         ------
