@@ -56,7 +56,7 @@ class JobClient:
     __batch_request_size: int = _DEFAULT_BATCH_REQUEST_SIZE
     __request_timeout_seconds: int = _DEFAULT_REQUEST_TIMEOUT_SECONDS
 
-    def __init__(self, host: str, port: int, *,
+    def __init__(self, url: str, *,
                  job_endpoint: str = _DEFAULT_JOB_ENDPOINT,
                  delete_endpoint: str = _DEFAULT_DELETE_ENDPOINT):
         """Initialize an instance of the Cook client.
@@ -73,7 +73,7 @@ class JobClient:
         :param delete_endpoint: The endpoint to be reached when terminating
             running jobs. Defaults to `/rawscheduler`
         """
-        self.__netloc = f'{host}:{port}'
+        self.__netloc = url
         self.__job_endpoint = job_endpoint
         self.__delete_endpoint = delete_endpoint
 
