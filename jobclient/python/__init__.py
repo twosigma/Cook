@@ -100,8 +100,9 @@ class JobClient:
         :type cpus: float
         :param mem: The amount of memory, in MB, to request from Cook.
         :type mem: float
-        :param max_retries: The number of times this job should be retried
-            before failing.
+        :param max_retries: The *total* number of times this job should be
+            attempted before failing. Naming is to keep association with the
+            REST API.
         :type max_retries: int
         Optional Parameters
         -------------------

@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import sys
-
 import constraints
 import util
 
@@ -148,36 +146,34 @@ class Job:
                  command: str,
                  mem: float,
                  cpus: float,
-                 # Optional args with defaults
-                 uuid: Optional[UUID] = None,
-                 name: str = 'cookjob',
-                 max_retries: int = 5,
-                 max_runtime: int = sys.maxsize,
-                 state: State = State.WAITING,
-                 status: Status = Status.INITIALIZED,
-                 priority: int = 50,
-                 disable_mea_culpa_retries: bool = False,
-                 # Optional args with null defaults
-                 executor: Optional[Executor] = None,
-                 expected_runtime: Optional[int] = None,
-                 pool: Optional[str] = None,
-                 instances: Optional[List[Instance]] = None,
-                 env: Optional[Dict[str, str]] = None,
-                 uris: Optional[List[FetchableUri]] = None,
-                 container: Optional[dict] = None,
-                 labels: Optional[Dict[str, str]] = None,
-                 constraints: Optional[Set[Constraint]] = None,
-                 groups: Optional[List[UUID]] = None,
-                 application: Optional[Application] = None,
-                 progress_output_file: Optional[str] = None,
-                 progress_regex_string: Optional[str] = None,
-                 user: Optional[str] = None,
-                 datasets: Optional[list] = None,
-                 gpus: Optional[float] = None,
-                 framework_id: Optional[str] = None,
-                 ports: Optional[int] = None,
-                 submit_time: Optional[int] = None,
-                 retries_remaining: Optional[int] = None):
+                 uuid: UUID,
+                 name: str,
+                 max_retries: int,
+                 max_runtime: int,
+                 state: State,
+                 status: Status,
+                 priority: int,
+                 disable_mea_culpa_retries: bool,
+                 executor: Executor,
+                 expected_runtime: int,
+                 pool: str,
+                 instances: List[Instance],
+                 env: Dict[str, str],
+                 uris: List[FetchableUri],
+                 container: dict,
+                 labels: Dict[str, str],
+                 constraints: Set[Constraint],
+                 groups: List[UUID],
+                 application: Application,
+                 progress_output_file: str,
+                 progress_regex_string: str,
+                 user: str,
+                 datasets: list,
+                 gpus: float,
+                 framework_id: str,
+                 ports: int,
+                 submit_time: int,
+                 retries_remaining: int):
         """Initializes a job object.
 
         Normally, this function wouldn't be invoked directly. It is instead
@@ -196,8 +192,7 @@ class Job:
         ------------------------
         :param name: The name of the job, defaults to 'cookjob'
         :type name: str, optional
-        :param max_retries: The maximum number of times to retry this job,
-            defaults to 5
+        :param max_retries: The maximum number of times to attempt this job.
         :type max_retries: int, optional
         :param max_runtime: The maximum time, in seconds, that this job may
             run, defaults to sys.maxsize
