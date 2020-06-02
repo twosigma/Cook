@@ -949,6 +949,11 @@ public class JobClient implements Closeable, JobClientInterface {
 
     @Override
     public Map<UUID, Job> queryJobs(Collection<UUID> uuids)
+            throws JobClientException {
+        return queryJobs(uuids, null);
+    }
+
+    private Map<UUID, Job> queryJobs(Collection<UUID> uuids, String impersonatedUser)
         throws JobClientException {
         final List<NameValuePair> allParams = new ArrayList<NameValuePair>(uuids.size());
         final String paramName;
@@ -969,6 +974,7 @@ public class JobClient implements Closeable, JobClientInterface {
                 URIBuilder uriBuilder = new URIBuilder(_jobURI);
                 uriBuilder.addParameters(params);
                 httpRequest = new HttpGet(uriBuilder.build());
+                addImpersonation(httpRequest, impersonatedUser);
                 httpResponse = _httpClient.execute(httpRequest);
             } catch (IOException | URISyntaxException e) {
                 throw releaseAndCreateException(null, null, "Can not submit GET request " + params + " via uri " + _jobURI, e);
@@ -1017,16 +1023,26 @@ public class JobClient implements Closeable, JobClientInterface {
 
     @Override
     public Map<UUID, Job> queryGroupJobs(Group group)
+            throws JobClientException {
+        return queryGroupJobs(group, null);
+    }
+
+    private Map<UUID, Job> queryGroupJobs(Group group, String impersonatedUser)
         throws JobClientException {
         ArrayList<UUID> uuids = new ArrayList<UUID>();
         for (UUID juuid : group.getJobs()) {
             uuids.add(juuid);
         }
-        return queryJobs(uuids);
+        return queryJobs(uuids, impersonatedUser);
     }
 
     @Override
     public Group queryGroup(UUID guuid)
+            throws JobClientException {
+        return queryGroup(guuid, null);
+    }
+
+    private Group queryGroup(UUID guuid, String impersonatedUser)
         throws JobClientException {
         if (_groupURI == null) {
             throw groupEndpointMissingException("Cannot query groups if the jobclient's group endpoint is null");
@@ -1042,6 +1058,7 @@ public class JobClient implements Closeable, JobClientInterface {
             URIBuilder uriBuilder = new URIBuilder(_groupURI);
             uriBuilder.addParameters(allParams);
             httpRequest = new HttpGet(uriBuilder.build());
+            addImpersonation(httpRequest, impersonatedUser);
             httpResponse = _httpClient.execute(httpRequest);
         } catch (IOException | URISyntaxException e) {
             throw releaseAndCreateException(null, null, "Can not submit GET request " + allParams + " via uri " + _jobURI, e);
@@ -1076,6 +1093,11 @@ public class JobClient implements Closeable, JobClientInterface {
 
     @Override
     public Map<UUID, Group> queryGroups(Collection<UUID> guuids)
+            throws JobClientException {
+        return queryGroups(guuids, null);
+    }
+
+    private Map<UUID, Group> queryGroups(Collection<UUID> guuids, String impersonatedUser)
         throws JobClientException {
         if (_groupURI == null) {
             throw groupEndpointMissingException("Cannot query groups if the jobclient's group endpoint is null");
@@ -1094,6 +1116,7 @@ public class JobClient implements Closeable, JobClientInterface {
                 URIBuilder uriBuilder = new URIBuilder(_groupURI);
                 uriBuilder.addParameters(params);
                 httpRequest = new HttpGet(uriBuilder.build());
+                addImpersonation(httpRequest, impersonatedUser);
                 httpResponse = _httpClient.execute(httpRequest);
             } catch (IOException | URISyntaxException e) {
                 throw releaseAndCreateException(null, null, "Can not submit GET request " + params + " via uri " + _jobURI, e);
@@ -1310,25 +1333,25 @@ public class JobClient implements Closeable, JobClientInterface {
         @Override
         public Map<UUID, Job> queryJobs(Collection<UUID> uuids)
             throws JobClientException {
-            return JobClient.this.queryJobs(uuids);
+            return JobClient.this.queryJobs(uuids, _impersonatedUser);
         }
 
         @Override
         public Map<UUID, Job> queryGroupJobs(Group group)
             throws JobClientException {
-            return JobClient.this.queryGroupJobs(group);
+            return JobClient.this.queryGroupJobs(group, _impersonatedUser);
         }
 
         @Override
         public Group queryGroup(UUID guuid)
             throws JobClientException {
-            return JobClient.this.queryGroup(guuid);
+            return JobClient.this.queryGroup(guuid, _impersonatedUser);
         }
 
         @Override
         public Map<UUID, Group> queryGroups(Collection<UUID> guuids)
             throws JobClientException {
-            return JobClient.this.queryGroups(guuids);
+            return JobClient.this.queryGroups(guuids, _impersonatedUser);
         }
 
         @Override
