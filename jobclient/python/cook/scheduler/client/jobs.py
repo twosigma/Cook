@@ -21,7 +21,7 @@ from typing import Dict, List, Optional, Set
 from . import constraints
 from .constraints import Constraint
 from .instance import Executor, Instance
-from .util import FetchableUri
+from .util import Dataset, FetchableUri
 
 
 class Status(Enum):
@@ -130,7 +130,7 @@ class Job:
     application: Optional[Application]
     progress_output_file: Optional[str]
     progress_regex_string: Optional[str]
-    datasets: Optional[dict]
+    datasets: Optional[List[Dataset]]
     gpus: Optional[int]
     ports: Optional[int]
 
@@ -166,7 +166,7 @@ class Job:
                  application: Optional[Application] = None,
                  progress_output_file: Optional[str] = None,
                  progress_regex_string: Optional[str] = None,
-                 datasets: Optional[dict] = None,
+                 datasets: Optional[List[Dataset]] = None,
                  gpus: Optional[int] = None,
                  ports: Optional[int] = None):
         """Initializes a job object.
@@ -241,7 +241,7 @@ class Job:
         :param progress_regex_string: Progress regex.
         :type progress_regex_string: str
         :param datasets: Datasets associated with this job.
-        :type datasets: list
+        :type datasets: List[Dataset]
         :param gpus: The number of GPUs to request from Cook.
         :type gpus: int
         :param ports: Ports for this job.
@@ -329,7 +329,7 @@ class Job:
         if self.user is not None:
             d['user'] = self.user
         if self.datasets is not None:
-            d['datasets'] = self.datasets
+            d['datasets'] = list(map(Dataset.to_dict, self.datasets))
         if self.gpus is not None:
             d['gpus'] = self.gpus
         if self.framework_id is not None:
@@ -366,4 +366,6 @@ class Job:
             d['groups'] = list(map(UUID, d['groups']))
         if 'application' in d:
             d['application'] = Application.from_dict(d['application'])
+        if 'datasets' in d:
+            d['datasets'] = list(map(Dataset.from_dict, d['datasets']))
         return cls(**d)

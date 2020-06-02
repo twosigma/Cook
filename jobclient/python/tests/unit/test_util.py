@@ -1,0 +1,96 @@
+from unittest import TestCase
+
+from cook.scheduler.client.util import Dataset, FetchableUri
+
+URI_DICT_NO_OPTIONALS = {'value': 'localhost/resource1'}
+
+URI_DICT_WITH_OPTIONALS = {
+    'value': 'localhost/resource2',
+    'cache': True,
+    'extract': False,
+    'executable': True
+}
+
+URI_EXAMPLE = FetchableUri(
+    'localhost/resource2',
+    cache=True,
+    extract=False,
+    executable=True
+)
+
+DATASET_DICT_NO_OPTIONALS = {
+    'dataset': {
+        'key': 'value',
+        'key2': 'value'
+    }
+}
+
+DATASET_DICT_WITH_OPTIONALS = {**DATASET_DICT_NO_OPTIONALS, **{
+    'partitions': [
+        {
+            'from': '20190201',
+            'to': '20190301'
+        },
+        {
+            'from': '20200201',
+            'to': '20200301'
+        },
+    ]
+}}
+
+DATASET_EXAMPLE = Dataset(
+    dataset={
+        'key': 'value',
+        'key2': 'value'
+    },
+    partitions=[
+        {
+            'from': '20190201',
+            'to': '20190301'
+        },
+        {
+            'from': '20200201',
+            'to': '20200301'
+        },
+    ]
+)
+
+
+class FetchableUriTest(TestCase):
+    def test_dict_parse_required(self):
+        uridict = URI_DICT_NO_OPTIONALS
+        uri = FetchableUri.from_dict(uridict)
+        self.assertEqual(uri.value, uridict['value'])
+
+    def test_dict_parse_optional(self):
+        uridict = URI_DICT_WITH_OPTIONALS
+        uri = FetchableUri.from_dict(uridict)
+        self.assertEqual(uri.cache, uridict['cache'])
+        self.assertEqual(uri.extract, uridict['extract'])
+        self.assertEqual(uri.executable, uridict['executable'])
+
+    def test_dict_output(self):
+        uri = URI_EXAMPLE
+        uridict = uri.to_dict()
+        self.assertEqual(uri.value, uridict['value'])
+        self.assertEqual(uri.cache, uridict['cache'])
+        self.assertEqual(uri.extract, uridict['extract'])
+        self.assertEqual(uri.executable, uridict['executable'])
+
+
+class DatasetTest(TestCase):
+    def test_dict_parse_required(self):
+        dsdict = DATASET_DICT_NO_OPTIONALS
+        ds = Dataset.from_dict(dsdict)
+        self.assertEqual(ds.dataset, dsdict['dataset'])
+
+    def test_dict_parse_optional(self):
+        dsdict = DATASET_DICT_WITH_OPTIONALS
+        ds = Dataset.from_dict(dsdict)
+        self.assertEqual(ds.partitions, dsdict['partitions'])
+
+    def test_dict_output(self):
+        ds = DATASET_EXAMPLE
+        dsdict = ds.to_dict()
+        self.assertEqual(ds.dataset, dsdict['dataset'])
+        self.assertEqual(ds.partitions, dsdict['partitions'])

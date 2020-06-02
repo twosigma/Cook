@@ -12,10 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
 import time
 import uuid
 
 from uuid import UUID
+from typing import Dict, List, Optional
 
 
 class FetchableUri:
@@ -72,6 +74,38 @@ class FetchableUri:
     @classmethod
     def from_dict(cls, d: dict) -> 'FetchableUri':
         """Parse a `FetchableURI` from a `dict` representation."""
+        return cls(**d)
+
+
+class Dataset:
+    """A data dependency for a job."""
+    dataset: Dict[str, str]
+    partitions: Optional[List[Dict[str, str]]]
+
+    def __init__(self, *,
+                 dataset: Dict[str, str],
+                 partitions: Optional[List[Dict[str, str]]] = None):
+        """Create a new Dataset.
+
+        :param dataset: Describes the dataset.
+        :type dataset: Dict[str, str]
+        :param partitions: Describes a subset of the dataset required.
+        :type partitions: Optional[Dict[str, str]], optional
+        """
+        self.dataset = dataset
+        self.partitions = partitions
+
+    def to_dict(self) -> dict:
+        """Convert a dataset into its dict representation."""
+        d = {'dataset': self.dataset}
+        if self.partitions is not None:
+            d['partitions'] = self.partitions
+        return d
+
+    @classmethod
+    def from_dict(cls, d: dict) -> 'Dataset':
+        """Parse a Dataset from its dict representation."""
+        d = copy.deepcopy(d)
         return cls(**d)
 
 
