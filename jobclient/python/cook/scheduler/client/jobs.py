@@ -182,6 +182,8 @@ class Job:
         :type mem: float
         :param cpus: The number of CPUs to request from Cook.
         :type cpus: float
+        :param uuid: The UUID of the job.
+        :type uuid: UUID
         :param name: The name of the job, defaults to 'cookjob'
         :type name: str
         :param max_retries: The maximum number of times to attempt this job.
@@ -205,6 +207,10 @@ class Job:
 
         Optional Parameters
         -------------------
+        :param executor: Executor information about the job.
+        :type executor: Executor
+        :param container: Cotnainer description for this job.
+        :type container: dict
         :param disable_mea_culpa_retries: If true, then the job will not issue
             *mea culpa* retries.
         :type disable_mea_culpa_retries: bool
@@ -219,14 +225,12 @@ class Job:
         :type env: Dict[str, str]
         :param uris: A list of URIs associated with this job.
         :type uris: List[FetchableUri]
-        :param container: Cotnainer description for this job.
-        :type container: dict
         :param labels: Labels associated with this job.
         :type labels: Dict[str, str]
         :param constraints: Constraints for this job.
         :type constraints: Set[Constraint]
-        :param groups: Group associated with this job.
-        :type groups: List[UUID]
+        :param group: Group associated with this job.
+        :type group: UUID
         :param groups: Groups associated with this job.
         :type groups: List[UUID]
         :param application: Application information for this job.
