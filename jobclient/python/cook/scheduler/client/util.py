@@ -66,9 +66,9 @@ class FetchableUri:
         """Generate this object's `dict` representation."""
         return {
             'value': self.value,
-            'executable': self.is_executable,
-            'cache': self.is_cache,
-            'extract': self.is_extract
+            'executable': self.executable,
+            'cache': self.cache,
+            'extract': self.extract
         }
 
     @classmethod

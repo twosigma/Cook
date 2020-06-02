@@ -49,45 +49,47 @@ class InstanceTest(TestCase):
     def test_dict_parse_required(self):
         instdict = INSTANCE_DICT_NO_OPTIONALS
         inst = Instance.from_dict(instdict)
-        self.assertEqual(inst.task_id, instdict['task_id'])
+        self.assertEqual(str(inst.task_id), instdict['task_id'])
         self.assertEqual(inst.slave_id, instdict['slave_id'])
         self.assertEqual(inst.executor_id, instdict['executor_id'])
-        self.assertEqual(int(inst.start_time.timestamp()),
+        self.assertEqual(int(inst.start_time.timestamp() * 1000),
                          instdict['start_time'])
         self.assertEqual(inst.hostname, instdict['hostname'])
-        self.assertEqual(str(inst.status), instdict['status'])
+        self.assertEqual(str(inst.status).lower(), instdict['status'].lower())
         self.assertEqual(inst.preempted, instdict['preempted'])
 
     def test_dict_parse_optional(self):
         instdict = INSTANCE_DICT_WITH_OPTIONALS
         inst = Instance.from_dict(instdict)
-        self.assertEqual(int(inst.end_time.timestamp()),
+        self.assertEqual(int(inst.end_time.timestamp() * 1000),
                          instdict['end_time'])
         self.assertEqual(inst.progress, instdict['progress'])
         self.assertEqual(inst.progress_message, instdict['progress_message'])
         self.assertEqual(inst.reason_code, instdict['reason_code'])
         self.assertEqual(inst.output_url, instdict['output_url'])
-        self.assertEqual(str(inst.executor), instdict['executor'])
+        self.assertEqual(str(inst.executor).lower(),
+                         instdict['executor'].lower())
         self.assertEqual(inst.reason_mea_culpa, instdict['reason_mea_culpa'])
 
     def test_dict_output(self):
         inst = INSTANCE_EXAMPLE
         instdict = inst.to_dict()
         # REQUIRED KEYS
-        self.assertEqual(inst.task_id, instdict['task_id'])
+        self.assertEqual(str(inst.task_id), instdict['task_id'])
         self.assertEqual(inst.slave_id, instdict['slave_id'])
         self.assertEqual(inst.executor_id, instdict['executor_id'])
-        self.assertEqual(int(inst.start_time.timestamp()),
+        self.assertEqual(int(inst.start_time.timestamp() * 1000),
                          instdict['start_time'])
         self.assertEqual(inst.hostname, instdict['hostname'])
-        self.assertEqual(str(inst.status), instdict['status'])
+        self.assertEqual(str(inst.status).lower(), instdict['status'].lower())
         self.assertEqual(inst.preempted, instdict['preempted'])
         # OPTIONAL KEYS
-        self.assertEqual(int(inst.end_time.timestamp()),
+        self.assertEqual(int(inst.end_time.timestamp() * 1000),
                          instdict['end_time'])
         self.assertEqual(inst.progress, instdict['progress'])
         self.assertEqual(inst.progress_message, instdict['progress_message'])
         self.assertEqual(inst.reason_code, instdict['reason_code'])
         self.assertEqual(inst.output_url, instdict['output_url'])
-        self.assertEqual(str(inst.executor), instdict['executor'])
+        self.assertEqual(str(inst.executor).lower(),
+                         instdict['executor'].lower())
         self.assertEqual(inst.reason_mea_culpa, instdict['reason_mea_culpa'])

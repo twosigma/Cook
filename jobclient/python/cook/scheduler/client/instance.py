@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from copy import deepcopy
+from datetime import datetime
 from enum import Enum
 from typing import Optional
 from uuid import UUID
@@ -73,12 +74,12 @@ class Instance:
     task_id: UUID
     slave_id: str
     executor_id: str
-    start_time: int
+    start_time: datetime
     hostname: str
     status: Status
     preempted: bool
 
-    end_time: Optional[int]
+    end_time: Optional[datetime]
     progress: Optional[int]
     progress_message: Optional[str]
     reason_code: Optional[int]
@@ -91,12 +92,12 @@ class Instance:
                  task_id: UUID,
                  slave_id: str,
                  executor_id: str,
-                 start_time: int,
+                 start_time: datetime,
                  hostname: str,
                  status: Status,
                  preempted: bool,
                  # Optional arguments
-                 end_time: Optional[int] = None,
+                 end_time: Optional[datetime] = None,
                  progress: Optional[int] = None,
                  progress_message: Optional[str] = None,
                  reason_code: Optional[int] = None,
@@ -113,7 +114,7 @@ class Instance:
         :type executor_id: str
         :param start_time: The UNIX timestamp at which this instance began
             running.
-        :type start_time: int
+        :type start_time: datetime
         :param hostname: The hostname of the machine running this instance.
         :type hostname: str
         :param status: The status of this instance.
@@ -122,6 +123,8 @@ class Instance:
         :type preempted: bool
         Optional Parameters
         -------------------
+        :param end_time: Time at which the instance finished.
+        :type end_time: Optional[datetime], optional
         :param progress: Progress of this instance.
         :type progress: Optional[int], optional
         :param progress_message: Progress message of this instance.
@@ -153,16 +156,16 @@ class Instance:
     def to_dict(self) -> dict:
         """Generate this instance's `dict` representation."""
         d = {
-            'task_id': str(self.uuid),
+            'task_id': str(self.task_id),
             'slave_id': self.slave_id,
             'executor_id': self.executor_id,
-            'start_time': self.start_time,
+            'start_time': int(self.start_time.timestamp() * 1000),
             'hostname': self.hostname,
             'status': str(self.status),
             'preempted': self.preempted
         }
         if self.end_time is not None:
-            d['end_time'] = self.end_time
+            d['end_time'] = int(self.end_time.timestamp() * 1000)
         if self.progress is not None:
             d['progress'] = self.progress
         if self.progress_message is not None:
@@ -172,7 +175,7 @@ class Instance:
         if self.output_url is not None:
             d['output_url'] = self.output_url
         if self.executor is not None:
-            d['executor'] = self.executor
+            d['executor'] = str(self.executor)
         if self.reason_mea_culpa is not None:
             d['reason_mea_culpa'] = self.reason_mea_culpa
         return d
@@ -181,8 +184,11 @@ class Instance:
     def from_dict(cls, d: dict) -> 'Instance':
         """Create an instance from its `dict` representation."""
         d = deepcopy(d)
-        d['uuid'] = UUID(d['uuid'])
+        d['task_id'] = UUID(d['task_id'])
+        d['start_time'] = datetime.fromtimestamp(d['start_time'] / 1000)
         d['status'] = Status.from_string(d['status'])
+        if 'end_time' in d:
+            d['end_time'] = datetime.fromtimestamp(d['end_time'] / 1000)
         if 'executor' in d:
             d['executor'] = Executor.from_string(d['executor'])
         return cls(**d)

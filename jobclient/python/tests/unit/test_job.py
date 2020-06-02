@@ -108,7 +108,7 @@ JOB_DICT_WITH_OPTIONALS = {**JOB_DICT_NO_OPTIONALS, **{
                 'foo': 'bar',
                 'fizz': 'buzz'
             },
-            'partition': [
+            'partitions': [
                 {
                     'begin': '20180201',
                     'end': '20180301'
@@ -131,7 +131,7 @@ JOB_EXAMPLE = Job(
     uuid=uuid.uuid4(),
     name='test-job',
     max_retries=10,
-    max_runtime=15,
+    max_runtime=timedelta(seconds=15),
     status=JobStatus.RUNNING,
     state=JobState.WAITING,
     priority=50,
@@ -191,21 +191,21 @@ class JobTest(TestCase):
         job = Job.from_dict(jobdict)
         self.assertEqual(job.command, jobdict['command'])
         self.assertAlmostEqual(job.mem, jobdict['mem'])
-        self.assertAlmostEqual(job.cpus, jobdict['cpu'])
+        self.assertAlmostEqual(job.cpus, jobdict['cpus'])
         self.assertEqual(str(job.uuid), jobdict['uuid'])
         self.assertEqual(job.name, jobdict['name'])
         self.assertEqual(job.max_retries, jobdict['max_retries'])
         self.assertEqual(int(job.max_runtime.total_seconds()),
                          jobdict['max_runtime'])
-        self.assertEqual(str(job.status).lower(), jobdict['status'])
-        self.assertEqual(str(job.state).lower(), jobdict['state'])
+        self.assertEqual(str(job.status).lower(), jobdict['status'].lower())
+        self.assertEqual(str(job.state).lower(), jobdict['state'].lower())
         self.assertEqual(job.priority, jobdict['priority'])
         self.assertEqual(job.framework_id, jobdict['framework_id'])
         self.assertEqual(job.retries_remaining, jobdict['retries_remaining'])
         # jobdict['submit_time'] is in milliseconds, while datetime.timestamp()
         # is in seconds.
-        self.assertAlmostEqual(job.submit_time.timestamp() * 1000,
-                               jobdict['submit_time'])
+        self.assertEqual(int(job.submit_time.timestamp() * 1000),
+                         jobdict['submit_time'])
         self.assertEqual(job.user, jobdict['user'])
 
     def test_dict_parse_optional(self):
@@ -215,7 +215,8 @@ class JobTest(TestCase):
         """
         jobdict = JOB_DICT_WITH_OPTIONALS
         job = Job.from_dict(jobdict)
-        self.assertEqual(job.executor, jobdict['executor'])
+        self.assertEqual(str(job.executor).lower(),
+                         jobdict['executor'].lower())
         self.assertEqual(job.container, jobdict['container'])
         self.assertEqual(job.disable_mea_culpa_retries,
                          jobdict['disable_mea_culpa_retries'])
@@ -230,7 +231,7 @@ class JobTest(TestCase):
         for uri in job.uris:
             self.assertTrue(isinstance(uri, FetchableUri))
         self.assertEqual(job.labels, jobdict['labels'])
-        self.assertEqual(len(job.constraints), len(jobdict['contraints']))
+        self.assertEqual(len(job.constraints), len(jobdict['constraints']))
         self.assertEqual(str(job.group), jobdict['group'])
         self.assertEqual(len(job.groups), len(jobdict['groups']))
         for i in range(len(job.groups)):
@@ -255,24 +256,25 @@ class JobTest(TestCase):
         # REQUIRED KEYS
         self.assertEqual(job.command, jobdict['command'])
         self.assertAlmostEqual(job.mem, jobdict['mem'])
-        self.assertAlmostEqual(job.cpus, jobdict['cpu'])
+        self.assertAlmostEqual(job.cpus, jobdict['cpus'])
         self.assertEqual(str(job.uuid), jobdict['uuid'])
         self.assertEqual(job.name, jobdict['name'])
         self.assertEqual(job.max_retries, jobdict['max_retries'])
         self.assertEqual(int(job.max_runtime.total_seconds()),
                          jobdict['max_runtime'])
-        self.assertEqual(str(job.status).lower(), jobdict['status'])
-        self.assertEqual(str(job.state).lower(), jobdict['state'])
+        self.assertEqual(str(job.status).lower(), jobdict['status'].lower())
+        self.assertEqual(str(job.state).lower(), jobdict['state'].lower())
         self.assertEqual(job.priority, jobdict['priority'])
         self.assertEqual(job.framework_id, jobdict['framework_id'])
         self.assertEqual(job.retries_remaining, jobdict['retries_remaining'])
         # jobdict['submit_time'] is in milliseconds, while datetime.timestamp()
         # is in seconds.
-        self.assertAlmostEqual(job.submit_time.timestamp() * 1000,
-                               jobdict['submit_time'])
+        self.assertEqual(int(job.submit_time.timestamp() * 1000),
+                         jobdict['submit_time'])
         self.assertEqual(job.user, jobdict['user'])
         # OPTIONAL KEYS
-        self.assertEqual(job.executor, jobdict['executor'])
+        self.assertEqual(str(job.executor).lower(),
+                         jobdict['executor'].lower())
         self.assertEqual(job.container, jobdict['container'])
         self.assertEqual(job.disable_mea_culpa_retries,
                          jobdict['disable_mea_culpa_retries'])
@@ -287,7 +289,7 @@ class JobTest(TestCase):
         for uri in jobdict['uris']:
             self.assertTrue(isinstance(uri, dict))
         self.assertEqual(job.labels, jobdict['labels'])
-        self.assertEqual(len(job.constraints), len(jobdict['contraints']))
+        self.assertEqual(len(job.constraints), len(jobdict['constraints']))
         self.assertEqual(str(job.group), jobdict['group'])
         self.assertEqual(len(job.groups), len(jobdict['groups']))
         for i in range(len(job.groups)):

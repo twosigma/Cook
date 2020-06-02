@@ -295,7 +295,7 @@ class Job:
             'priority': self.priority,
             'framework_id': self.framework_id,
             'retries_remaining': self.retries_remaining,
-            'submit_time': int(self.submit_time.timestamp()),
+            'submit_time': int(self.submit_time.timestamp() * 1000),
             'user': self.user
         }
         if self.disable_mea_culpa_retries is not None:
@@ -318,6 +318,8 @@ class Job:
             d['labels'] = self.labels
         if self.constraints is not None:
             d['constraints'] = list(map(lambda c: c.to_list, self.constraints))
+        if self.group is not None:
+            d['group'] = str(self.group)
         if self.groups is not None:
             d['groups'] = list(map(str, self.groups))
         if self.application is not None:
