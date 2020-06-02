@@ -182,13 +182,7 @@ JOB_EXAMPLE = Job(
 
 
 class JobTest(TestCase):
-    def test_dict_parse_required(self):
-        """Test parsing a job dictionary object parsed from JSON.
-
-        This test case will only test the required fields.
-        """
-        jobdict = JOB_DICT_NO_OPTIONALS
-        job = Job.from_dict(jobdict)
+    def _check_required_fields(self, job: Job, jobdict: dict):
         self.assertEqual(job.command, jobdict['command'])
         self.assertAlmostEqual(job.mem, jobdict['mem'])
         self.assertAlmostEqual(job.cpus, jobdict['cpus'])
@@ -208,13 +202,7 @@ class JobTest(TestCase):
                          jobdict['submit_time'])
         self.assertEqual(job.user, jobdict['user'])
 
-    def test_dict_parse_optional(self):
-        """Test parsing a job dictionary object parsed from JSON.
-
-        This test case will only test the optional fields.
-        """
-        jobdict = JOB_DICT_WITH_OPTIONALS
-        job = Job.from_dict(jobdict)
+    def _check_optional_fields(self, job: Job, jobdict: dict):
         self.assertEqual(str(job.executor).lower(),
                          jobdict['executor'].lower())
         self.assertEqual(job.container, jobdict['container'])
@@ -250,60 +238,26 @@ class JobTest(TestCase):
         self.assertEqual(job.gpus, jobdict['gpus'])
         self.assertEqual(job.ports, jobdict['ports'])
 
+    def test_dict_parse_required(self):
+        """Test parsing a job dictionary object parsed from JSON.
+
+        This test case will only test the required fields.
+        """
+        jobdict = JOB_DICT_NO_OPTIONALS
+        job = Job.from_dict(jobdict)
+        self._check_required_fields(job, jobdict)
+
+    def test_dict_parse_optional(self):
+        """Test parsing a job dictionary object parsed from JSON.
+
+        This test case will only test the optional fields.
+        """
+        jobdict = JOB_DICT_WITH_OPTIONALS
+        job = Job.from_dict(jobdict)
+        self._check_optional_fields(job, jobdict)
+
     def test_dict_output(self):
         job = JOB_EXAMPLE
         jobdict = job.to_dict()
-        # REQUIRED KEYS
-        self.assertEqual(job.command, jobdict['command'])
-        self.assertAlmostEqual(job.mem, jobdict['mem'])
-        self.assertAlmostEqual(job.cpus, jobdict['cpus'])
-        self.assertEqual(str(job.uuid), jobdict['uuid'])
-        self.assertEqual(job.name, jobdict['name'])
-        self.assertEqual(job.max_retries, jobdict['max_retries'])
-        self.assertEqual(int(job.max_runtime.total_seconds()),
-                         jobdict['max_runtime'])
-        self.assertEqual(str(job.status).lower(), jobdict['status'].lower())
-        self.assertEqual(str(job.state).lower(), jobdict['state'].lower())
-        self.assertEqual(job.priority, jobdict['priority'])
-        self.assertEqual(job.framework_id, jobdict['framework_id'])
-        self.assertEqual(job.retries_remaining, jobdict['retries_remaining'])
-        # jobdict['submit_time'] is in milliseconds, while datetime.timestamp()
-        # is in seconds.
-        self.assertEqual(int(job.submit_time.timestamp() * 1000),
-                         jobdict['submit_time'])
-        self.assertEqual(job.user, jobdict['user'])
-        # OPTIONAL KEYS
-        self.assertEqual(str(job.executor).lower(),
-                         jobdict['executor'].lower())
-        self.assertEqual(job.container, jobdict['container'])
-        self.assertEqual(job.disable_mea_culpa_retries,
-                         jobdict['disable_mea_culpa_retries'])
-        self.assertEqual(int(job.expected_runtime.total_seconds()),
-                         jobdict['expected_runtime'])
-        self.assertEqual(job.pool, jobdict['pool'])
-        self.assertEqual(len(job.instances), len(jobdict['instances']))
-        for instance in jobdict['instances']:
-            self.assertTrue(isinstance(instance, dict))
-        self.assertEqual(job.env, jobdict['env'])
-        self.assertEqual(len(job.uris), len(jobdict['uris']))
-        for uri in jobdict['uris']:
-            self.assertTrue(isinstance(uri, dict))
-        self.assertEqual(job.labels, jobdict['labels'])
-        self.assertEqual(len(job.constraints), len(jobdict['constraints']))
-        self.assertEqual(str(job.group), jobdict['group'])
-        self.assertEqual(len(job.groups), len(jobdict['groups']))
-        for i in range(len(job.groups)):
-            self.assertEqual(str(job.groups[i]), jobdict['groups'][i])
-        # Test application inline as it's a very simple structure
-        self.assertEqual(job.application.name, jobdict['application']['name'])
-        self.assertEqual(job.application.version,
-                         jobdict['application']['version'])
-        self.assertEqual(job.progress_output_file,
-                         jobdict['progress_output_file'])
-        self.assertEqual(job.progress_regex_string,
-                         jobdict['progress_regex_string'])
-        self.assertEqual(len(job.datasets), len(jobdict['datasets']))
-        for dataset in jobdict['datasets']:
-            self.assertTrue(isinstance(dataset, dict))
-        self.assertEqual(job.gpus, jobdict['gpus'])
-        self.assertEqual(job.ports, jobdict['ports'])
+        self._check_required_fields(job, jobdict)
+        self._check_optional_fields(job, jobdict)

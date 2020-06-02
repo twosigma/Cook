@@ -57,40 +57,50 @@ DATASET_EXAMPLE = Dataset(
 
 
 class FetchableUriTest(TestCase):
+    def _check_required_fields(self, uri: FetchableUri, uridict: dict):
+        self.assertEqual(uri.value, uridict['value'])
+
+    def _check_optional_fields(self, uri: FetchableUri, uridict: dict):
+        self.assertEqual(uri.cache, uridict['cache'])
+        self.assertEqual(uri.extract, uridict['extract'])
+        self.assertEqual(uri.executable, uridict['executable'])
+
     def test_dict_parse_required(self):
         uridict = URI_DICT_NO_OPTIONALS
         uri = FetchableUri.from_dict(uridict)
-        self.assertEqual(uri.value, uridict['value'])
+        self._check_required_fields(uri, uridict)
 
     def test_dict_parse_optional(self):
         uridict = URI_DICT_WITH_OPTIONALS
         uri = FetchableUri.from_dict(uridict)
-        self.assertEqual(uri.cache, uridict['cache'])
-        self.assertEqual(uri.extract, uridict['extract'])
-        self.assertEqual(uri.executable, uridict['executable'])
+        self._check_optional_fields(uri, uridict)
 
     def test_dict_output(self):
         uri = URI_EXAMPLE
         uridict = uri.to_dict()
-        self.assertEqual(uri.value, uridict['value'])
-        self.assertEqual(uri.cache, uridict['cache'])
-        self.assertEqual(uri.extract, uridict['extract'])
-        self.assertEqual(uri.executable, uridict['executable'])
+        self._check_required_fields(uri, uridict)
+        self._check_optional_fields(uri, uridict)
 
 
 class DatasetTest(TestCase):
+    def _check_required_fields(self, ds: Dataset, dsdict: dict):
+        self.assertEqual(ds.dataset, dsdict['dataset'])
+
+    def _check_optional_fields(self, ds: Dataset, dsdict: dict):
+        self.assertEqual(ds.partitions, dsdict['partitions'])
+
     def test_dict_parse_required(self):
         dsdict = DATASET_DICT_NO_OPTIONALS
         ds = Dataset.from_dict(dsdict)
-        self.assertEqual(ds.dataset, dsdict['dataset'])
+        self._check_required_fields(ds, dsdict)
 
     def test_dict_parse_optional(self):
         dsdict = DATASET_DICT_WITH_OPTIONALS
         ds = Dataset.from_dict(dsdict)
-        self.assertEqual(ds.partitions, dsdict['partitions'])
+        self._check_optional_fields(ds, dsdict)
 
     def test_dict_output(self):
         ds = DATASET_EXAMPLE
         dsdict = ds.to_dict()
-        self.assertEqual(ds.dataset, dsdict['dataset'])
-        self.assertEqual(ds.partitions, dsdict['partitions'])
+        self._check_required_fields(ds, dsdict)
+        self._check_optional_fields(ds, dsdict)
