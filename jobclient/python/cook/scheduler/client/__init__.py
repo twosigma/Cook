@@ -59,9 +59,7 @@ class JobClient:
     __batch_request_size: int = _DEFAULT_BATCH_REQUEST_SIZE
     __request_timeout_seconds: int = _DEFAULT_REQUEST_TIMEOUT_SECONDS
 
-    def __init__(self, url: str, *,
-                 job_endpoint: str = _DEFAULT_JOB_ENDPOINT,
-                 delete_endpoint: str = _DEFAULT_DELETE_ENDPOINT):
+    def __init__(self, url: str):
         """Initialize an instance of the Cook client.
 
         Parameters
@@ -70,15 +68,10 @@ class JobClient:
         :type host: str
         :param port: The port at which the Cook instance is listening.
         :type port: int
-        :param job_endpoint: The endpoint to be reached when scheduling new
-            jobs or getting the status of running jobs. Defaults to `/jobs`.
-        :type job_endpoint: str, optional
-        :param delete_endpoint: The endpoint to be reached when terminating
-            running jobs. Defaults to `/rawscheduler`
         """
         self.__netloc = url
-        self.__job_endpoint = job_endpoint
-        self.__delete_endpoint = delete_endpoint
+        self.__job_endpoint = _DEFAULT_JOB_ENDPOINT
+        self.__delete_endpoint = _DEFAULT_DELETE_ENDPOINT
 
     def submit(self, *,
                command: str,
