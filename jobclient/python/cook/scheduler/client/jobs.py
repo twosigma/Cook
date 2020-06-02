@@ -107,7 +107,7 @@ class Job:
     uuid: UUID
     name: str
     max_retries: int
-    max_runtime: int
+    max_runtime: timedelta
     status: Status
     state: State
     priority: int
@@ -126,6 +126,7 @@ class Job:
     labels: Optional[Dict[str, str]]
     constraints: Optional[Set[Constraint]]
     group: Optional[UUID]
+    groups: Optional[List[UUID]]
     application: Optional[Application]
     progress_output_file: Optional[str]
     progress_regex_string: Optional[str]
@@ -161,6 +162,7 @@ class Job:
                  labels: Optional[Dict[str, str]] = None,
                  constraints: Optional[Set[Constraint]] = None,
                  group: Optional[UUID] = None,
+                 groups: Optional[List[UUID]] = None,
                  application: Optional[Application] = None,
                  progress_output_file: Optional[str] = None,
                  progress_regex_string: Optional[str] = None,
@@ -223,6 +225,8 @@ class Job:
         :type labels: Dict[str, str]
         :param constraints: Constraints for this job.
         :type constraints: Set[Constraint]
+        :param groups: Group associated with this job.
+        :type groups: List[UUID]
         :param groups: Groups associated with this job.
         :type groups: List[UUID]
         :param application: Application information for this job.
@@ -264,6 +268,7 @@ class Job:
         self.labels = labels
         self.constraints = constraints
         self.group = group
+        self.groups = groups
         self.application = application
         self.progress_output_file = progress_output_file
         self.progress_regex_string = progress_regex_string
@@ -280,7 +285,7 @@ class Job:
             'uuid': str(self.uuid),
             'name': self.name,
             'max_retries': self.max_retries,
-            'max_runtime': self.max_runtime,
+            'max_runtime': int(self.max_runtime.total_seconds()),
             'status': str(self.status),
             'state': str(self.state),
             'priority': self.priority,
@@ -327,8 +332,6 @@ class Job:
             d['framework_id'] = self.framework_id
         if self.ports is not None:
             d['ports'] = self.ports
-        if self.submit_time is not None:
-            d['submit_time'] = datetime.fromtimestamp(self.submit_time)
         if self.retries_remaining is not None:
             d['retries_remaining'] = self.retries_remaining
         return d
@@ -341,7 +344,7 @@ class Job:
         d['max_runtime'] = timedelta(seconds=d['max_runtime'])
         d['status'] = Status.from_string(d['status'])
         d['state'] = State.from_string(d['state'])
-        d['submit_time'] = datetime.fromtimestamp(d['submit_time'])
+        d['submit_time'] = datetime.fromtimestamp(d['submit_time'] / 1000)
 
         if 'executor' in d:
             d['executor'] = Executor.from_string(d['executor'])
@@ -353,6 +356,10 @@ class Job:
             d['uris'] = list(map(FetchableUri.from_dict, d['uris']))
         if 'constraints' in d:
             d['constraints'] = set(map(constraints.parse_from, d['constraints']))  # noqa E501
+        if 'group' in d:
+            d['group'] = UUID(d['group'])
+        if 'groups' in d:
+            d['groups'] = list(map(UUID, d['groups']))
         if 'application' in d:
             d['application'] = Application.from_dict(d['application'])
         return cls(**d)
