@@ -41,7 +41,8 @@ class ClientTest(TestCase):
         job = self.client.query(uuid)
         self.assertEqual(job.command, 'ls')
         self.assertAlmostEqual(job.cpus, 0.5)
-        self.assertAlmostEqual(job.max_retries, 5)
+        self.assertAlmostEqual(job.mem, 1.0)
+        self.assertEqual(job.max_retries, 5)
 
     def test_kill(self):
         uuid = self.client.submit(command='ls',
