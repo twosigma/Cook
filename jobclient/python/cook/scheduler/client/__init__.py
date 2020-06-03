@@ -75,9 +75,10 @@ class JobClient:
 
     def submit(self, *,
                command: str,
-               cpus: float,
-               mem: float,
-               max_retries: int,
+
+               cpus: float = 1.0,
+               mem: float = 128.0,
+               max_retries: int = 1,
 
                uuid: Optional[Union[str, UUID]] = None,
                env: Optional[Dict[str, str]] = None,
@@ -92,16 +93,18 @@ class JobClient:
         -------------------
         :param command: The command to run on Cook.
         :type command: str
-        :param cpus: The number of CPUs to request from Cook.
-        :type cpus: float
-        :param mem: The amount of memory, in MB, to request from Cook.
-        :type mem: float
-        :param max_retries: The *total* number of times this job should be
-            attempted before failing. Naming is to keep association with the
-            REST API.
-        :type max_retries: int
+
         Optional Parameters
         -------------------
+        :param cpus: The number of CPUs to request from Cook. Defaults to 1.
+        :type cpus: float, optional
+        :param mem: The amount of memory, in MB, to request from Cook. Defaults
+            to 128.
+        :type mem: float, optional
+        :param max_retries: The *total* number of times this job should be
+            attempted before failing. Naming is to keep association with the
+            REST API. Defaults to 1.
+        :type max_retries: int, optional
         :param uuid: The UUID of the job to submit. If this value is not
             provided, then a random UUID will be generated.
         :type uuid: Union[str, UUID], optional
