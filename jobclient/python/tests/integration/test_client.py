@@ -45,10 +45,13 @@ class ClientTest(TestCase):
         self.assertEqual(job.max_retries, 5)
 
     def test_kill(self):
-        uuid = self.client.submit(command='ls',
+        uuid = self.client.submit(command='sleep 10',
                                   cpus=0.5,
                                   mem=1.0,
                                   max_retries=5)
+        job = self.client.query(uuid)
+        # Ensure the job is either waiting or running
+        self.assertNotEqual(job.status, JobStatus.COMPLETED)
         self.client.kill(uuid)
         job = self.client.query(uuid)
         self.assertEqual(job.status, JobStatus.COMPLETED)
