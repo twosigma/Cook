@@ -18,6 +18,8 @@ from enum import Enum
 from typing import Optional
 from uuid import UUID
 
+from .util import unix_ms_to_datetime
+
 
 class Status(Enum):
     """A status for some instance in Cook."""
@@ -185,10 +187,10 @@ class Instance:
         """Create an instance from its `dict` representation."""
         d = deepcopy(d)
         d['task_id'] = UUID(d['task_id'])
-        d['start_time'] = datetime.fromtimestamp(d['start_time'] / 1000)
+        d['start_time'] = unix_ms_to_datetime(d['start_time'])
         d['status'] = Status.from_string(d['status'])
         if 'end_time' in d:
-            d['end_time'] = datetime.fromtimestamp(d['end_time'] / 1000)
+            d['end_time'] = unix_ms_to_datetime(d['end_time'])
         if 'executor' in d:
             d['executor'] = Executor.from_string(d['executor'])
         return cls(**d)

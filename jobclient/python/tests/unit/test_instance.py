@@ -19,6 +19,7 @@ from unittest import TestCase
 
 from cook.scheduler.client.instance import Executor, Instance
 from cook.scheduler.client.instance import Status as InstanceStatus
+from cook.scheduler.client.util import datetime_to_unix_ms
 
 INSTANCE_DICT_NO_OPTIONALS = {
     'task_id': '123e4567-e89b-12d3-a456-426614174010',
@@ -64,14 +65,14 @@ class InstanceTest(TestCase):
         self.assertEqual(str(inst.task_id), instdict['task_id'])
         self.assertEqual(inst.slave_id, instdict['slave_id'])
         self.assertEqual(inst.executor_id, instdict['executor_id'])
-        self.assertEqual(int(inst.start_time.timestamp() * 1000),
+        self.assertEqual(datetime_to_unix_ms(inst.start_time),
                          instdict['start_time'])
         self.assertEqual(inst.hostname, instdict['hostname'])
         self.assertEqual(str(inst.status).lower(), instdict['status'].lower())
         self.assertEqual(inst.preempted, instdict['preempted'])
 
     def _check_optional_fields(self, inst: Instance, instdict: dict):
-        self.assertEqual(int(inst.end_time.timestamp() * 1000),
+        self.assertEqual(datetime_to_unix_ms(inst.end_time),
                          instdict['end_time'])
         self.assertEqual(inst.progress, instdict['progress'])
         self.assertEqual(inst.progress_message, instdict['progress_message'])

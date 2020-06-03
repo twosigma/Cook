@@ -16,6 +16,7 @@ import copy
 import time
 import uuid
 
+from datetime import datetime
 from uuid import UUID
 from typing import Dict, List, Optional
 
@@ -128,3 +129,23 @@ def make_temporal_uuid() -> UUID:
     base_low = int.from_bytes(base_uuid.bytes[4:], byteorder='big')
 
     return UUID(int=base_high_masked | base_low)
+
+
+def datetime_to_unix_ms(dt: datetime) -> int:
+    """Convert a Python `datetime` object to a Unix millisecond timestamp.
+
+    This is necessary as the timestamps Cook returns in its API are in
+    milliseconds, while the Python `datetime` API uses seconds for Unix
+    timestamps.
+    """
+    return int(dt.timestamp() * 1000)
+
+
+def unix_ms_to_datetime(timestamp: int) -> datetime:
+    """Convert a Unix millisecond timestamp to a Python `datetime` object.
+
+    This is necessary as the timestamps Cook returns in its API are in
+    milliseconds, while the Python `datetime` API uses seconds for Unix
+    timestamps.
+    """
+    return datetime.fromtimestamp(timestamp / 1000)

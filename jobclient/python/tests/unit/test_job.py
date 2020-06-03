@@ -23,7 +23,11 @@ from cook.scheduler.client.instance import Instance, Executor
 from cook.scheduler.client.jobs import Application, Job
 from cook.scheduler.client.jobs import Status as JobStatus
 from cook.scheduler.client.jobs import State as JobState
-from cook.scheduler.client.util import Dataset, FetchableUri
+from cook.scheduler.client.util import (
+    Dataset,
+    FetchableUri,
+    datetime_to_unix_ms
+)
 
 JOB_DICT_NO_OPTIONALS = {
     'command': 'ls',
@@ -212,7 +216,7 @@ class JobTest(TestCase):
         self.assertEqual(job.retries_remaining, jobdict['retries_remaining'])
         # jobdict['submit_time'] is in milliseconds, while datetime.timestamp()
         # is in seconds.
-        self.assertEqual(int(job.submit_time.timestamp() * 1000),
+        self.assertEqual(datetime_to_unix_ms(job.submit_time),
                          jobdict['submit_time'])
         self.assertEqual(job.user, jobdict['user'])
 

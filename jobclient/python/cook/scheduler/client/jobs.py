@@ -22,6 +22,7 @@ from . import constraints
 from .constraints import Constraint
 from .instance import Executor, Instance
 from .util import Dataset, FetchableUri
+from .util import unix_ms_to_datetime
 
 
 class Status(Enum):
@@ -350,7 +351,7 @@ class Job:
         d['max_runtime'] = timedelta(seconds=d['max_runtime'])
         d['status'] = Status.from_string(d['status'])
         d['state'] = State.from_string(d['state'])
-        d['submit_time'] = datetime.fromtimestamp(d['submit_time'] / 1000)
+        d['submit_time'] = unix_ms_to_datetime(d['submit_time'])
 
         if 'executor' in d:
             d['executor'] = Executor.from_string(d['executor'])
