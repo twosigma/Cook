@@ -18,10 +18,7 @@ from enum import Enum
 from uuid import UUID
 from typing import Dict, List, Optional, Set
 
-from . import constraints
-from .constraints import Constraint
 from .instance import Executor, Instance
-from .util import Dataset, FetchableUri
 from .util import unix_ms_to_datetime
 
 
@@ -123,15 +120,14 @@ class Job:
     pool: Optional[str]
     instances: Optional[List[Instance]]
     env: Optional[Dict[str, str]]
-    uris: Optional[List[FetchableUri]]
+    uris: Optional[List[str]]
     labels: Optional[Dict[str, str]]
-    constraints: Optional[Set[Constraint]]
+    constraints: Optional[Set[list]]
     group: Optional[UUID]
     groups: Optional[List[UUID]]
     application: Optional[Application]
     progress_output_file: Optional[str]
     progress_regex_string: Optional[str]
-    datasets: Optional[List[Dataset]]
     gpus: Optional[int]
     ports: Optional[int]
 
@@ -159,15 +155,14 @@ class Job:
                  pool: Optional[str] = None,
                  instances: Optional[List[Instance]] = None,
                  env: Optional[Dict[str, str]] = None,
-                 uris: Optional[List[FetchableUri]] = None,
+                 uris: Optional[List[str]] = None,
                  labels: Optional[Dict[str, str]] = None,
-                 constraints: Optional[Set[Constraint]] = None,
+                 constraints: Optional[Set[list]] = None,
                  group: Optional[UUID] = None,
                  groups: Optional[List[UUID]] = None,
                  application: Optional[Application] = None,
                  progress_output_file: Optional[str] = None,
                  progress_regex_string: Optional[str] = None,
-                 datasets: Optional[List[Dataset]] = None,
                  gpus: Optional[int] = None,
                  ports: Optional[int] = None):
         """Initializes a job object.
@@ -225,11 +220,11 @@ class Job:
             before running this job.
         :type env: Dict[str, str]
         :param uris: A list of URIs associated with this job.
-        :type uris: List[FetchableUri]
+        :type uris: List[str]
         :param labels: Labels associated with this job.
         :type labels: Dict[str, str]
         :param constraints: Constraints for this job.
-        :type constraints: Set[Constraint]
+        :type constraints: Set[list]
         :param group: Group associated with this job.
         :type group: UUID
         :param groups: Groups associated with this job.
@@ -241,8 +236,6 @@ class Job:
         :type progress_output_file: str
         :param progress_regex_string: Progress regex.
         :type progress_regex_string: str
-        :param datasets: Datasets associated with this job.
-        :type datasets: List[Dataset]
         :param gpus: The number of GPUs to request from Cook.
         :type gpus: int
         :param ports: Ports for this job.
@@ -277,7 +270,6 @@ class Job:
         self.application = application
         self.progress_output_file = progress_output_file
         self.progress_regex_string = progress_regex_string
-        self.datasets = datasets
         self.gpus = gpus
         self.ports = ports
 
@@ -312,13 +304,13 @@ class Job:
         if self.env is not None:
             d['env'] = self.env
         if self.uris is not None:
-            d['uris'] = list(map(FetchableUri.to_dict, self.uris))
+            d['uris'] = [{'value': uri} for uri in self.uris]
         if self.container is not None:
             d['container'] = self.container
         if self.labels is not None:
             d['labels'] = self.labels
         if self.constraints is not None:
-            d['constraints'] = list(map(lambda c: c.to_list, self.constraints))
+            d['constraints'] = self.constraints
         if self.group is not None:
             d['group'] = str(self.group)
         if self.groups is not None:
@@ -331,8 +323,6 @@ class Job:
             d['progress_regex_string'] = self.progress_regex_string
         if self.user is not None:
             d['user'] = self.user
-        if self.datasets is not None:
-            d['datasets'] = list(map(Dataset.to_dict, self.datasets))
         if self.gpus is not None:
             d['gpus'] = self.gpus
         if self.framework_id is not None:
@@ -360,15 +350,11 @@ class Job:
         if 'instances' in d:
             d['instances'] = list(map(Instance.from_dict, d['instances']))
         if 'uris' in d:
-            d['uris'] = list(map(FetchableUri.from_dict, d['uris']))
-        if 'constraints' in d:
-            d['constraints'] = set(map(constraints.parse_from, d['constraints']))  # noqa E501
+            d['uris'] = [uri['value'] for uri in d['uris']]
         if 'group' in d:
             d['group'] = UUID(d['group'])
         if 'groups' in d:
             d['groups'] = list(map(UUID, d['groups']))
         if 'application' in d:
             d['application'] = Application.from_dict(d['application'])
-        if 'datasets' in d:
-            d['datasets'] = list(map(Dataset.from_dict, d['datasets']))
         return cls(**d)

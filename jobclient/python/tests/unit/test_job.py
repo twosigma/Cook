@@ -14,8 +14,6 @@
 
 import uuid
 
-import cook.scheduler.client.constraints
-
 from datetime import datetime, timedelta
 from unittest import TestCase
 
@@ -23,11 +21,7 @@ from cook.scheduler.client.instance import Instance, Executor
 from cook.scheduler.client.jobs import Application, Job
 from cook.scheduler.client.jobs import Status as JobStatus
 from cook.scheduler.client.jobs import State as JobState
-from cook.scheduler.client.util import (
-    Dataset,
-    FetchableUri,
-    datetime_to_unix_ms
-)
+from cook.scheduler.client.util import datetime_to_unix_ms
 
 JOB_DICT_NO_OPTIONALS = {
     'command': 'ls',
@@ -114,30 +108,6 @@ JOB_DICT_WITH_OPTIONALS = {**JOB_DICT_NO_OPTIONALS, **{
     },
     'progress_output_file': 'output.txt',
     'progress_regex_string': 'test',
-    'datasets': [
-        {
-            'dataset': {
-                'foo': 'bar'
-            }
-        },
-        {
-            'dataset': {
-                'partition-type': 'date',
-                'foo': 'bar',
-                'fizz': 'buzz'
-            },
-            'partitions': [
-                {
-                    'begin': '20180201',
-                    'end': '20180301'
-                },
-                {
-                    'begin': '20190201',
-                    'end': '20190301'
-                }
-            ]
-        }
-    ],
     'gpus': 1,
     'ports': 10
 }}
@@ -169,19 +139,15 @@ JOB_EXAMPLE = Job(
         'KEY2': 'VALUE'
     },
     uris=[
-        FetchableUri('localhost:80/resource1'),
-        FetchableUri('localhost:80/resource2',
-                     executable=False,
-                     extract=False,
-                     cache=True)
+        'localhost:80/resource1',
+        'localhost:80/resource2',
     ],
     labels={
         'label1': 'value1',
         'label2': 'value2'
     },
     constraints=[
-        cook.scheduler.client.constraints.build_equals_constraint(
-            'attr', 'value')
+        ['EQUALS', 'attr', 'value']
     ],
     group=uuid.uuid4(),
     groups=[
@@ -191,9 +157,6 @@ JOB_EXAMPLE = Job(
     application=Application('pytest', '1.0'),
     progress_output_file='output.txt',
     progress_regex_string='test',
-    datasets=[
-        Dataset(dataset={'foo': 'bar'}),
-    ],
     gpus=1,
     ports=10
 )
@@ -234,10 +197,10 @@ class JobTest(TestCase):
             self.assertTrue(isinstance(instance, Instance))
         self.assertEqual(job.env, jobdict['env'])
         self.assertEqual(len(job.uris), len(jobdict['uris']))
-        for uri in job.uris:
-            self.assertTrue(isinstance(uri, FetchableUri))
+        for i in range(len(job.uris)):
+            self.assertEqual(job.uris[i], jobdict['uris'][i]['value'])
         self.assertEqual(job.labels, jobdict['labels'])
-        self.assertEqual(len(job.constraints), len(jobdict['constraints']))
+        self.assertEqual(job.constraints, jobdict['constraints'])
         self.assertEqual(str(job.group), jobdict['group'])
         self.assertEqual(len(job.groups), len(jobdict['groups']))
         for i in range(len(job.groups)):
@@ -250,9 +213,6 @@ class JobTest(TestCase):
                          jobdict['progress_output_file'])
         self.assertEqual(job.progress_regex_string,
                          jobdict['progress_regex_string'])
-        self.assertEqual(len(job.datasets), len(jobdict['datasets']))
-        for dataset in job.datasets:
-            self.assertTrue(isinstance(dataset, Dataset))
         self.assertEqual(job.gpus, jobdict['gpus'])
         self.assertEqual(job.ports, jobdict['ports'])
 
