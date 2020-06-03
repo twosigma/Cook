@@ -83,7 +83,8 @@
                  :attributes []
                  :executor-ids []
                  :compute-cluster compute-cluster
-                 :reject-after-match-attempt true}))
+                 :reject-after-match-attempt true
+                 :offer-match-timer (timers/start (metrics/timer "offer-match-timer" compute-cluster-name))}))
          (group-by (fn [offer] (-> offer :hostname node-name->node api/get-node-pool))))))
 
 (defn taskids-to-scan
@@ -303,7 +304,9 @@
     (async/chan 1))
 
   (pending-offers [this pool-name]
-    (let [pods (add-starting-pods this @all-pods-atom)
+    (log/info "In" name " compute cluster, looking for offers for pool" pool-name)
+    (let [timer (timers/start (metrics/timer "cc-k8s-pending-offers-compute" name))
+          pods (add-starting-pods this @all-pods-atom)
           nodes @current-nodes-atom
           offers-all-pools (generate-offers this nodes pods)
           ; TODO: We are generating offers for every pool here, and filtering out only offers for this one pool.
@@ -316,6 +319,7 @@
                 {:num-total-nodes-in-compute-cluster (count nodes)
                  :num-total-pods-in-compute-cluster (count pods)
                  :offers-this-pool offers-this-pool-for-logging})
+      (timers/stop timer)
       offers-this-pool))
 
   (restore-offers [this pool-name offers])

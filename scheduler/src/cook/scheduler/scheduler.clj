@@ -796,6 +796,8 @@
                    (let [launch-matches-in-compute-cluster!
                          #(launch-matches! compute-cluster pool-name
                                            matches-in-compute-cluster fenzo)]
+                     (doseq [match matches-in-compute-cluster]
+                       (timers/stop (-> match :leases first :offer :offer-match-timer)))
                      (if (:mesos-config compute-cluster)
                        (launch-matches-in-compute-cluster!)
                        (future (launch-matches-in-compute-cluster!))))))
