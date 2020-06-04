@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
+
 from copy import deepcopy
 from datetime import datetime, timedelta
 from enum import Enum
@@ -85,6 +87,12 @@ class Application:
     def __init__(self, name: str, version: str):
         self.name = name
         self.version = version
+
+    def __str__(self):
+        return json.dumps(self.to_dict, indent=4)
+
+    def __repr__(self):
+        return f'Application({self.name}, {self.version})'
 
     def to_dict(self) -> dict:
         return {
@@ -272,6 +280,16 @@ class Job:
         self.progress_regex_string = progress_regex_string
         self.gpus = gpus
         self.ports = ports
+
+    def __str__(self):
+        return json.dumps(self.to_dict(), indent=4)
+
+    def __repr__(self):
+        inner = ', '.join(
+            f'{key}={repr(value)}'
+            for key, value in self.__dict__.items()
+        )
+        return f'Job({inner})'
 
     def to_dict(self) -> dict:
         """Generate this job's `dict` representation."""

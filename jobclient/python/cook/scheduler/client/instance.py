@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
+
 from copy import deepcopy
 from datetime import datetime
 from enum import Enum
@@ -154,6 +156,16 @@ class Instance:
         self.output_url = output_url
         self.executor = executor
         self.reason_mea_culpa = reason_mea_culpa
+
+    def __str__(self):
+        return json.dumps(self.to_dict(), indent=4)
+
+    def __repr__(self):
+        inner = ', '.join(
+            f'{key}={repr(value)}'
+            for key, value in self.__dict__.items()
+        )
+        return f'Instance({inner})'
 
     def to_dict(self) -> dict:
         """Generate this instance's `dict` representation."""
