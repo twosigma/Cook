@@ -12,19 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
-
-from unittest import TestCase
-
 from cook.scheduler.client import JobClient
 from cook.scheduler.client.jobs import Status as JobStatus
 
-CLIENT_HOST = os.environ.get('TEST_CLIENT_HOST', 'localhost:12321')
+from tests.cook import util
 
 
-class ClientTest(TestCase):
+class ClientTest(util.CookTest):
+    @classmethod
+    def setUpCls(cls):
+        cls.cook_url = util.retreive_cook_url()
+
     def setUp(self):
-        self.client = JobClient(CLIENT_HOST)
+        self.client = JobClient(type(self).cook_url)
 
     def test_submit(self):
         uuid = self.client.submit(command='ls',
