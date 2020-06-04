@@ -97,10 +97,8 @@ JOB_DICT_WITH_OPTIONALS = {**JOB_DICT_NO_OPTIONALS, **{
         ['EQUALS', 'attr', 'value'],
         ['EQUALS', 'attr2', 'value2'],
     ],
-    'group': '123e4567-e89b-12d3-a456-426614174001',
     'groups': [
-        '123e4567-e89b-12d3-a456-426614174002',
-        '123e4567-e89b-12d3-a456-426614174003'
+        '123e4567-e89b-12d3-a456-426614174002'
     ],
     'application': {
         'name': 'pytest',
@@ -110,6 +108,25 @@ JOB_DICT_WITH_OPTIONALS = {**JOB_DICT_NO_OPTIONALS, **{
     'progress_regex_string': 'test',
     'gpus': 1,
     'ports': 10
+}}
+
+JOB_DICT_GROUP_AND_GROUPS = {**JOB_DICT_NO_OPTIONALS, **{
+    'group': '123e4567-e89b-12d3-a456-426614174002',
+    'groups': [
+        '123e4567-e89b-12d3-a456-426614174003',
+        '123e4567-e89b-12d3-a456-426614174004'
+    ]
+}}
+
+JOB_DICT_GROUP_NO_GROUPS = {**JOB_DICT_NO_OPTIONALS, **{
+    'group': '123e4567-e89b-12d3-a456-426614174002'
+}}
+
+JOB_DICT_GROUPS_NO_GROUP = {**JOB_DICT_NO_OPTIONALS, **{
+    'groups': [
+        '123e4567-e89b-12d3-a456-426614174003',
+        '123e4567-e89b-12d3-a456-426614174004'
+    ]
 }}
 
 JOB_EXAMPLE = Job(
@@ -150,10 +167,6 @@ JOB_EXAMPLE = Job(
         ['EQUALS', 'attr', 'value']
     ],
     group=uuid.uuid4(),
-    groups=[
-        uuid.uuid4(),
-        uuid.uuid4()
-    ],
     application=Application('pytest', '1.0'),
     progress_output_file='output.txt',
     progress_regex_string='test',
@@ -183,7 +196,24 @@ class JobTest(TestCase):
                          jobdict['submit_time'])
         self.assertEqual(job.user, jobdict['user'])
 
+    def _check_group(self, job: Job, jobdict: dict):
+        """Check the group field of a Job.
+
+        The Job's group attribute should be either:
+        * The value of `jobdict['group']` if set,
+        * Otherwise, the value of `jobdict['group'][0]` if set,
+        * Otherwise, `None`.
+        """
+        if 'group' in jobdict:
+            self.assertEqual(str(job.group), jobdict['group'])
+        elif 'groups' in jobdict:
+            self.assertEqual(str(job.group), jobdict['groups'][0])
+        else:
+            self.assertIsNone(job.group)
+
     def _check_optional_fields(self, job: Job, jobdict: dict):
+        self._check_group(job, jobdict)
+
         self.assertEqual(str(job.executor).lower(),
                          jobdict['executor'].lower())
         self.assertEqual(job.container, jobdict['container'])
@@ -201,10 +231,6 @@ class JobTest(TestCase):
             self.assertEqual(job.uris[i], jobdict['uris'][i]['value'])
         self.assertEqual(job.labels, jobdict['labels'])
         self.assertEqual(job.constraints, jobdict['constraints'])
-        self.assertEqual(str(job.group), jobdict['group'])
-        self.assertEqual(len(job.groups), len(jobdict['groups']))
-        for i in range(len(job.groups)):
-            self.assertEqual(str(job.groups[i]), jobdict['groups'][i])
         # Test application inline as it's a very simple structure
         self.assertEqual(job.application.name, jobdict['application']['name'])
         self.assertEqual(job.application.version,
@@ -233,6 +259,27 @@ class JobTest(TestCase):
         jobdict = JOB_DICT_WITH_OPTIONALS
         job = Job.from_dict(jobdict)
         self._check_optional_fields(job, jobdict)
+
+    def test_dict_parse_groups(self):
+        # jobdict has both 'group' and 'groups'
+        jobdict = JOB_DICT_GROUP_AND_GROUPS
+        job = Job.from_dict(jobdict)
+        self._check_group(job, jobdict)
+
+        # jobdict has only 'group'
+        jobdict = JOB_DICT_GROUP_NO_GROUPS
+        job = Job.from_dict(jobdict)
+        self._check_group(job, jobdict)
+
+        # jobdict only has 'groups'
+        jobdict = JOB_DICT_GROUPS_NO_GROUP
+        job = Job.from_dict(jobdict)
+        self._check_group(job, jobdict)
+
+        # jobdict has neither
+        jobdict = JOB_DICT_NO_OPTIONALS
+        job = Job.from_dict(jobdict)
+        self._check_group(job, jobdict)
 
     def test_dict_output(self):
         job = JOB_EXAMPLE

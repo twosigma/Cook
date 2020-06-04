@@ -132,7 +132,6 @@ class Job:
     labels: Optional[Dict[str, str]]
     constraints: Optional[Set[list]]
     group: Optional[UUID]
-    groups: Optional[List[UUID]]
     application: Optional[Application]
     progress_output_file: Optional[str]
     progress_regex_string: Optional[str]
@@ -167,7 +166,6 @@ class Job:
                  labels: Optional[Dict[str, str]] = None,
                  constraints: Optional[Set[list]] = None,
                  group: Optional[UUID] = None,
-                 groups: Optional[List[UUID]] = None,
                  application: Optional[Application] = None,
                  progress_output_file: Optional[str] = None,
                  progress_regex_string: Optional[str] = None,
@@ -235,8 +233,6 @@ class Job:
         :type constraints: Set[list]
         :param group: Group associated with this job.
         :type group: UUID
-        :param groups: Groups associated with this job.
-        :type groups: List[UUID]
         :param application: Application information for this job.
         :type application: Application
         :param progress_output_file: Path to the file where this job will
@@ -274,7 +270,6 @@ class Job:
         self.labels = labels
         self.constraints = constraints
         self.group = group
-        self.groups = groups
         self.application = application
         self.progress_output_file = progress_output_file
         self.progress_regex_string = progress_regex_string
@@ -331,8 +326,6 @@ class Job:
             d['constraints'] = self.constraints
         if self.group is not None:
             d['group'] = str(self.group)
-        if self.groups is not None:
-            d['groups'] = list(map(str, self.groups))
         if self.application is not None:
             d['application'] = self.application.to_dict()
         if self.progress_output_file is not None:
@@ -369,10 +362,19 @@ class Job:
             d['instances'] = list(map(Instance.from_dict, d['instances']))
         if 'uris' in d:
             d['uris'] = [uri['value'] for uri in d['uris']]
+        # Assigning the Job's group works in the following manner:
+        # * If the key 'group' is defined, use that UUID.
+        # * Otherwise, if the key 'groups' is defined and has more than one
+        #   item, use the first element of that list.
         if 'group' in d:
             d['group'] = UUID(d['group'])
-        if 'groups' in d:
-            d['groups'] = list(map(UUID, d['groups']))
+        elif 'groups' in d and len(d['groups']) > 0:
+            d['group'] = d['groups'][0]
         if 'application' in d:
             d['application'] = Application.from_dict(d['application'])
+
+        # There's no 'groups' field in the Job constructor, so remove that key
+        # from the dict.
+        if 'groups' in d:
+            del d['groups']
         return cls(**d)
