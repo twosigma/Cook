@@ -169,11 +169,7 @@ class JobClient:
         :rtype: Job
         """
         uuid = str(uuid)
-        if self.__job_endpoint == '/jobs':
-            param_name = 'uuid'
-        else:
-            param_name = 'job'
-        query = urlencode([(param_name, uuid)])
+        query = urlencode([('uuid', uuid)])
         url = urlunparse(('http', self.__netloc, self.__job_endpoint, '',
                           query, ''))
         _LOG.debug(f'Sending GET to {url}')
