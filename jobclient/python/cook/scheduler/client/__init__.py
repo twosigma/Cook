@@ -32,7 +32,7 @@ _LOG.setLevel(logging.DEBUG)
 
 _COOK_IMPERSONATE_HEADER = 'X-Cook-Impersonate'
 
-_CLIENT_APP = Application('cook-python-client', '0.1')
+_CLIENT_APP = Application('cook-python-client', '0.1.0')
 
 _DEFAULT_STATUS_UPDATE_INTERVAL_SECONDS = 10
 _DEFAULT_BATCH_REQUEST_SIZE = 32
