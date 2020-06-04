@@ -77,6 +77,7 @@ final public class Instance {
         private String _hostName;
         private Executor _executor;
         private Boolean _reasonMeaCulpa;
+        private String _reasonString;
 
         /**
          * The task id must be provided prior to {@code build()}. If the instance status is not
@@ -89,8 +90,9 @@ final public class Instance {
             if (_status == null) {
                 _status = Status.UNKNOWN;
             }
-            return new Instance(_taskID, _slaveID, _executorID, _startTime, _endTime, _status, _progress,
-                _progressMessage,  _reasonCode, _preempted, _outputURL, _hostName, _executor, _reasonMeaCulpa);
+            return new Instance(
+                    _taskID, _slaveID, _executorID, _startTime, _endTime, _status, _progress, _progressMessage,
+                    _reasonCode, _preempted, _outputURL, _hostName, _executor, _reasonMeaCulpa, _reasonString);
         }
 
         /**
@@ -185,6 +187,11 @@ final public class Instance {
 
         public Builder setReasonCode(Long reasonCode) {
             _reasonCode = reasonCode;
+            return this;
+        }
+
+        public Builder setReasonString(String reasonString) {
+            _reasonString = reasonString;
             return this;
         }
 
@@ -326,10 +333,11 @@ final public class Instance {
     final private String _hostName;
     final private Executor _executor;
     final private Boolean _reasonMeaCulpa;
+    final private String _reasonString;
 
     private Instance(UUID taskID, String slaveID, String executorID, Long startTime, Long endTime,
                      Status status, Integer progress, String progressMessage, Long reasonCode, Boolean preempted,
-                     String outputURL, String hostName, Executor executor, Boolean reasonMeaCulpa) {
+                     String outputURL, String hostName, Executor executor, Boolean reasonMeaCulpa, String reasonString) {
         _taskID = taskID;
         _slaveID = slaveID;
         _executorID = executorID;
@@ -344,6 +352,7 @@ final public class Instance {
         _hostName = hostName;
         _executor = executor;
         _reasonMeaCulpa = reasonMeaCulpa;
+        _reasonString = reasonString;
     }
 
     /**
@@ -421,6 +430,9 @@ final public class Instance {
             if (json.has("reason_mea_culpa")) {
                 instanceBuilder.setReasonMeaCulpa(json.getBoolean("reason_mea_culpa"));
             }
+            if (json.has("reason_string")) {
+                instanceBuilder.setReasonString(json.getString("reason_string"));
+            }
             if (decorator != null) {
                 instanceBuilder = decorator.decorate(instanceBuilder);
             }
@@ -449,7 +461,8 @@ final public class Instance {
                 + _executorID + ", _startTime=" + _startTime + ", _endTime=" + _endTime
                 + ", _status=" + _status + ", _progress=" + _progress + ", _progressMessage=" + _progressMessage
                 + ", _reasonCode=" + _reasonCode + ", _preempted=" + _preempted + ", _outputURL=" + _outputURL
-                + ", _hostName=" + _hostName + ", _executor=" + _executor + ", _reasonMeaCulpa=" + _reasonMeaCulpa + "]";
+                + ", _hostName=" + _hostName + ", _executor=" + _executor + ", _reasonMeaCulpa=" + _reasonMeaCulpa
+                + ", _reasonString=" + _reasonString + "]";
     }
 
     public UUID getTaskID() {
@@ -492,6 +505,10 @@ final public class Instance {
 
     public Long getReasonCode() {
         return _reasonCode;
+    }
+
+    public String getReasonString() {
+        return _reasonString;
     }
 
     public Boolean getPreempted() {
