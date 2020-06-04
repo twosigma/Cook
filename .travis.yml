@@ -35,7 +35,8 @@ matrix:
         - ./cli/travis/setup.sh
         - cd scheduler && ./travis/setup.sh
       script:
-        - pushd ../jobclient && mvn test
+        - pushd ../jobclient/java && mvn test
+        - popd && pushd ../jobclient/python && python -m pytest
         - popd && pushd ../cli && python -m pytest
         - popd && lein with-profile +test test :all-but-benchmark
 
