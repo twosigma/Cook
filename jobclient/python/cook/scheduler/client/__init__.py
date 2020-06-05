@@ -53,7 +53,10 @@ class JobClient:
 
     __request_timeout_seconds: int = _DEFAULT_REQUEST_TIMEOUT_SECONDS
 
-    def __init__(self, url: str):
+    __auth: Optional[requests.auth.AuthBase]
+
+    def __init__(self, url: str, *,
+                 auth: Optional[requests.auth.AuthBase] = None):
         """Initialize an instance of the Cook client.
 
         Parameters
@@ -61,10 +64,14 @@ class JobClient:
         :param url: The base URL of the Cook instance. Includes hostname and
             port.
         :type url: str
+        :param auth: Authentication handler to use for requests made with this
+            client. Defaults to None.
+        :type auth: requests.auth.AuthBase, optional
         """
         self.__netloc = url
         self.__job_endpoint = _DEFAULT_JOB_ENDPOINT
         self.__delete_endpoint = _DEFAULT_DELETE_ENDPOINT
+        self.__auth = auth
 
     def submit(self, *,
                command: str,
@@ -147,6 +154,7 @@ class JobClient:
         _LOG.debug("Payload:")
         _LOG.debug(json.dumps(payload, indent=4))
         resp = requests.post(url, json=payload,
+                             auth=self.__auth,
                              timeout=self.__request_timeout_seconds)
         if not resp.ok:
             _LOG.error(f"Could not submit job: {resp.status_code} {resp.text}")
@@ -167,7 +175,8 @@ class JobClient:
         url = urlunparse(('http', self.__netloc, self.__job_endpoint, '',
                           query, ''))
         _LOG.debug(f'Sending GET to {url}')
-        resp = requests.get(url, timeout=self.__request_timeout_seconds)
+        resp = requests.get(url, timeout=self.__request_timeout_seconds,
+                            auth=self.__auth)
         if not resp.ok:
             _LOG.error(f"Could not query job: {resp.status_code} {resp.text}")
             resp.raise_for_status()
@@ -192,7 +201,8 @@ class JobClient:
         url = urlunparse(('http', self.__netloc, self.__delete_endpoint, '',
                           query, ''))
         _LOG.debug(f'Sending DELETE to {url}')
-        resp = requests.delete(url, timeout=self.__request_timeout_seconds)
+        resp = requests.delete(url, timeout=self.__request_timeout_seconds,
+                               auth=self.__auth)
         if not resp.ok:
             _LOG.error(f"Could not delete job: {resp.status_code} {resp.text}")
             resp.raise_for_status()
