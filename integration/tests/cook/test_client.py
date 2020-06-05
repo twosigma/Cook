@@ -45,7 +45,7 @@ class ClientTest(util.CookTest):
         self.assertEqual(job.max_retries, 5)
 
     def test_kill(self):
-        uuid = self.client.submit(command='sleep 10',
+        uuid = self.client.submit(command=f'sleep {util.DEFAULT_TEST_TIMEOUT_SECS}',
                                   cpus=0.5,
                                   mem=1.0,
                                   max_retries=5)
