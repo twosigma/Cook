@@ -80,9 +80,9 @@
     (is (nil? (do-process :cook-expected-state/running :missing)))
     (is (= :reason-killed-externally @reason))
     (is (nil? (do-process :cook-expected-state/running :missing :custom-test-state {:state :missing
-                                                                                    :reason "Node preempted"
+                                                                                    :reason "Pod was explicitly deleted"
                                                                                     :pod-deleted? true
-                                                                                    :pod-preempted? true})))
+                                                                                    :pod-preempted-timestamp 1589084484537})))
     (is (= :reason-slave-removed @reason))
     (is (nil? (do-process :cook-expected-state/running :missing :custom-test-state {:state :missing
                                                                                     :reason "Pod was explicitly deleted"

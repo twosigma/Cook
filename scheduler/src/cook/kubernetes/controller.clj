@@ -485,7 +485,7 @@
                                         :cook-expected-state/running
                                         (case pod-synthesized-state-modified
                                           ; This indicates that something deleted it behind our back
-                                          :missing (if (some-> synthesized-state :pod-preempted?)
+                                          :missing (if (some-> synthesized-state :pod-preempted-timestamp)
                                                      (handle-pod-preemption compute-cluster pod-name)
                                                      (handle-pod-externally-deleted compute-cluster pod-name))
                                           ; TODO: May need to mark mea culpa retry
