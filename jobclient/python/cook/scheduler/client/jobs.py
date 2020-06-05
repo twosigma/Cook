@@ -325,7 +325,7 @@ class Job:
         if self.constraints is not None:
             d['constraints'] = self.constraints
         if self.group is not None:
-            d['group'] = str(self.group)
+            d['groups'] = [str(self.group)]
         if self.application is not None:
             d['application'] = self.application.to_dict()
         if self.progress_output_file is not None:
@@ -362,13 +362,7 @@ class Job:
             d['instances'] = list(map(Instance.from_dict, d['instances']))
         if 'uris' in d:
             d['uris'] = [uri['value'] for uri in d['uris']]
-        # Assigning the Job's group works in the following manner:
-        # * If the key 'group' is defined, use that UUID.
-        # * Otherwise, if the key 'groups' is defined and has more than one
-        #   item, use the first element of that list.
-        if 'group' in d:
-            d['group'] = UUID(d['group'])
-        elif 'groups' in d and len(d['groups']) > 0:
+        if 'groups' in d and len(d['groups']) > 0:
             d['group'] = d['groups'][0]
         if 'application' in d:
             d['application'] = Application.from_dict(d['application'])

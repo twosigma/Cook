@@ -118,11 +118,17 @@ JOB_DICT_GROUP_AND_GROUPS = {**JOB_DICT_NO_OPTIONALS, **{
     ]
 }}
 
-JOB_DICT_GROUP_NO_GROUPS = {**JOB_DICT_NO_OPTIONALS, **{
-    'group': '123e4567-e89b-12d3-a456-426614174002'
+JOB_DICT_NO_GROUPS = {**JOB_DICT_NO_OPTIONALS, **{
+    'groups': []
 }}
 
-JOB_DICT_GROUPS_NO_GROUP = {**JOB_DICT_NO_OPTIONALS, **{
+JOB_DICT_ONE_GROUP = {**JOB_DICT_NO_OPTIONALS, **{
+    'groups': [
+        '123e4567-e89b-12d3-a456-426614174003'
+    ]
+}}
+
+JOB_DICT_MANY_GROUPS = {**JOB_DICT_NO_OPTIONALS, **{
     'groups': [
         '123e4567-e89b-12d3-a456-426614174003',
         '123e4567-e89b-12d3-a456-426614174004'
@@ -204,9 +210,7 @@ class JobTest(TestCase):
         * Otherwise, the value of `jobdict['group'][0]` if set,
         * Otherwise, `None`.
         """
-        if 'group' in jobdict:
-            self.assertEqual(str(job.group), jobdict['group'])
-        elif 'groups' in jobdict:
+        if 'groups' in jobdict and len(jobdict['groups']) > 0:
             self.assertEqual(str(job.group), jobdict['groups'][0])
         else:
             self.assertIsNone(job.group)
@@ -261,18 +265,18 @@ class JobTest(TestCase):
         self._check_optional_fields(job, jobdict)
 
     def test_dict_parse_groups(self):
-        # jobdict has both 'group' and 'groups'
-        jobdict = JOB_DICT_GROUP_AND_GROUPS
+        # jobdict has no groups
+        jobdict = JOB_DICT_NO_GROUPS
         job = Job.from_dict(jobdict)
         self._check_group(job, jobdict)
 
-        # jobdict has only 'group'
-        jobdict = JOB_DICT_GROUP_NO_GROUPS
+        # jobdict has only one group
+        jobdict = JOB_DICT_ONE_GROUP
         job = Job.from_dict(jobdict)
         self._check_group(job, jobdict)
 
-        # jobdict only has 'groups'
-        jobdict = JOB_DICT_GROUPS_NO_GROUP
+        # jobdict has many groups
+        jobdict = JOB_DICT_MANY_GROUPS
         job = Job.from_dict(jobdict)
         self._check_group(job, jobdict)
 
