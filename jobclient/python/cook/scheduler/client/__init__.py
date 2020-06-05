@@ -34,10 +34,7 @@ _COOK_IMPERSONATE_HEADER = 'X-Cook-Impersonate'
 
 _CLIENT_APP = Application('cook-python-client', '0.1.0')
 
-_DEFAULT_STATUS_UPDATE_INTERVAL_SECONDS = 10
-_DEFAULT_BATCH_REQUEST_SIZE = 32
 _DEFAULT_REQUEST_TIMEOUT_SECONDS = 60
-_DEFAULT_SUBMIT_RETRY_INTERVAL_SECONDS = 10
 _DEFAULT_JOB_ENDPOINT = '/jobs'
 _DEFAULT_DELETE_ENDPOINT = '/rawscheduler'
 
@@ -54,9 +51,6 @@ class JobClient:
     __delete_endpoint: str
     __group_endpoint: str
 
-    __status_update_interval: int = _DEFAULT_STATUS_UPDATE_INTERVAL_SECONDS
-    __submit_retry_interval: int = _DEFAULT_SUBMIT_RETRY_INTERVAL_SECONDS
-    __batch_request_size: int = _DEFAULT_BATCH_REQUEST_SIZE
     __request_timeout_seconds: int = _DEFAULT_REQUEST_TIMEOUT_SECONDS
 
     def __init__(self, url: str):
@@ -64,10 +58,9 @@ class JobClient:
 
         Parameters
         ----------
-        :param host: The hostname of the Cook instance.
-        :type host: str
-        :param port: The port at which the Cook instance is listening.
-        :type port: int
+        :param url: The base URL of the Cook instance. Includes hostname and
+            port.
+        :type url: str
         """
         self.__netloc = url
         self.__job_endpoint = _DEFAULT_JOB_ENDPOINT
@@ -153,7 +146,8 @@ class JobClient:
         _LOG.debug(f"Sending POST to {url}")
         _LOG.debug("Payload:")
         _LOG.debug(json.dumps(payload, indent=4))
-        resp = requests.post(url, json=payload)
+        resp = requests.post(url, json=payload,
+                             timeout=self.__request_timeout_seconds)
         if not resp.ok:
             _LOG.error(f"Could not submit job: {resp.status_code} {resp.text}")
             resp.raise_for_status()
@@ -173,7 +167,7 @@ class JobClient:
         url = urlunparse(('http', self.__netloc, self.__job_endpoint, '',
                           query, ''))
         _LOG.debug(f'Sending GET to {url}')
-        resp = requests.get(url)
+        resp = requests.get(url, timeout=self.__request_timeout_seconds)
         if not resp.ok:
             _LOG.error(f"Could not query job: {resp.status_code} {resp.text}")
             resp.raise_for_status()
@@ -198,7 +192,7 @@ class JobClient:
         url = urlunparse(('http', self.__netloc, self.__delete_endpoint, '',
                           query, ''))
         _LOG.debug(f'Sending DELETE to {url}')
-        resp = requests.delete(url)
+        resp = requests.delete(url, timeout=self.__request_timeout_seconds)
         if not resp.ok:
             _LOG.error(f"Could not delete job: {resp.status_code} {resp.text}")
             resp.raise_for_status()
