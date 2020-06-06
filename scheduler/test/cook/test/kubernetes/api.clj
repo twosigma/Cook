@@ -1,5 +1,6 @@
 (ns cook.test.kubernetes.api
   (:require [clj-time.core :as t]
+            [clojure.string :as str]
             [clojure.test :refer :all]
             [cook.config :as config]
             [cook.kubernetes.api :as api]
@@ -188,7 +189,31 @@
 
       (with-redefs [config/kubernetes (constantly {})]
         (let [^V1Pod pod (api/task-metadata->pod nil nil task-metadata)]
-          (is (nil? (pod->cpu-limit-fn pod))))))))
+          (is (nil? (pod->cpu-limit-fn pod)))))))
+  (testing "checkpointing volumes"
+    (with-redefs [config/kubernetes (constantly {:default-checkpoint-config {:volume-name "cook-checkpointing-tools-volume"
+                                                                             :init-container-volume-mounts [{:path "/abc/xyz"}]
+                                                                             :main-container-volume-mounts [{:path "/abc/xyz"}
+                                                                                                            {:path "/qed/bbq"
+                                                                                                             :sub-path "efg/hij"}]}
+                                                 :init-container {:command ["init container command"]
+                                                                  :image "init container image"}})]
+      (let [task-metadata {:container {:docker {:parameters [{:key "user"
+                                                              :value "100:10"}]}}
+                           :task-request {:scalar-requests {"mem" 512
+                                                            "cpus" 1.0}
+                                          :job {:job/checkpoint {:checkpoint/mode "auto"}}}}
+            ^V1Pod pod (api/task-metadata->pod nil nil task-metadata)
+            ^V1Container init-container (-> pod .getSpec .getInitContainers first)
+            ^V1Container main-container (-> pod .getSpec .getContainers (->> (filter #(= (.getName %) api/cook-container-name-for-job))) first)
+            init-container-paths (into #{} (-> init-container .getVolumeMounts
+                                                              (->> (filter #(= (.getName %) "cook-checkpointing-tools-volume")))
+                                                              (->> (map #(str (.getMountPath %) (.getSubPath %))))))
+            main-container-paths (into #{} (-> main-container .getVolumeMounts
+                                                              (->> (filter #(= (.getName %) "cook-checkpointing-tools-volume")))
+                                                              (->> (map #(str (.getMountPath %) (.getSubPath %))))))]
+        (is (= #{"/abc/xyz"} init-container-paths))
+        (is (= #{"/abc/xyz" "/qed/bbqefg/hij"} main-container-paths))))))
 
 (defn- k8s-volume->clj [^V1Volume volume]
   {:name (.getName volume)
