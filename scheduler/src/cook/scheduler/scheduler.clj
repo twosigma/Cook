@@ -946,7 +946,7 @@
     (tools/chime-at-ch
       trigger-chan
       (fn match-jobs-event []
-        (log/info "Start match-jobs-event offer processing for " pool-name)
+        (log/info "In" pool-name "pool, starting offer matching")
         (timers/time!
           (timers/timer (metric-title "match-jobs-event" pool-name))
           (let [num-considerable @fenzo-num-considerable-atom
@@ -1033,7 +1033,7 @@
                         (meters/mark! fenzo-abandon-and-reset-meter)
                         max-considerable)
                       next-considerable))))
-        (log/info "Done match-jobs-event offer processing for " pool-name))
+        (log/info "In" pool-name "pool, done with offer matching"))
       {:error-handler (fn [ex] (log/error ex "In" pool-name "pool, error occurred in match"))})
     resources-atom))
 
