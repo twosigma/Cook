@@ -583,11 +583,20 @@
                                  .getNodeSelector
                                  (assoc key val))))
 
+(defn- checkpoint->volume
+  "Get separate volume needed for checkpointing"
+  [{:keys [mode volume-name]}]
+  (when (and mode volume-name)
+    (make-empty-volume volume-name)))
+
 (defn- checkpoint->volume-mounts
   "Get custom volume mounts needed for checkpointing"
-  [{:keys [mode volume-mounts]} checkpointing-tools-volume]
-  (when mode
-    (map (fn [{:keys [path sub-path]}] (make-volume-mount checkpointing-tools-volume path sub-path false)) volume-mounts)))
+  [{:keys [mode init-container-volume-mounts main-container-volume-mounts]} checkpointing-tools-volume]
+  (let [volumes-from-spec-fn #(map (fn [{:keys [path sub-path]}]
+                                     (make-volume-mount checkpointing-tools-volume path sub-path false)) %)]
+    (when (and mode checkpointing-tools-volume)
+      {:init-container-checkpoint-volume-mounts (volumes-from-spec-fn init-container-volume-mounts)
+       :main-container-checkpoint-volume-mounts (volumes-from-spec-fn main-container-volume-mounts)})))
 
 (defn checkpoint->env
   "Get environment variables needed for checkpointing"
@@ -680,7 +689,9 @@
         scratch-space "/mnt/scratch-space"
         scratch-space-volume (make-empty-volume "cook-scratch-space-volume")
         scratch-space-volume-mount-fn (partial make-volume-mount scratch-space-volume scratch-space)
-        checkpoint-volume-mounts (checkpoint->volume-mounts checkpoint scratch-space-volume)
+        checkpoint-volume (checkpoint->volume checkpoint)
+        {:keys [init-container-checkpoint-volume-mounts main-container-checkpoint-volume-mounts]}
+        (checkpoint->volume-mounts checkpoint checkpoint-volume)
         sandbox-env {"COOK_SANDBOX" sandbox-dir
                      "HOME" sandbox-dir
                      "MESOS_DIRECTORY" sandbox-dir
@@ -727,7 +738,7 @@
       ; QoS, which requires limits for both memory and cpu
       (.putLimitsItem resources "cpu" (double->quantity cpus)))
     (.setResources container resources)
-    (.setVolumeMounts container (filterv some? (conj (concat volume-mounts checkpoint-volume-mounts)
+    (.setVolumeMounts container (filterv some? (conj (concat volume-mounts main-container-checkpoint-volume-mounts)
                                                      (init-container-workdir-volume-mount-fn true)
                                                      (scratch-space-volume-mount-fn false)
                                                      (sidecar-workdir-volume-mount-fn true))))
@@ -746,8 +757,9 @@
           (.setCommand container command)
           (.setWorkingDir container init-container-workdir)
           (.setEnv container main-env-vars)
-          (.setVolumeMounts container [(init-container-workdir-volume-mount-fn false)
-                                       (scratch-space-volume-mount-fn false)])
+          (.setVolumeMounts container (filterv some? (concat [(init-container-workdir-volume-mount-fn false)
+                                                              (scratch-space-volume-mount-fn false)]
+                                                             init-container-checkpoint-volume-mounts)))
           (.addInitContainersItem pod-spec container))))
 
     ; sandbox file server container
@@ -836,7 +848,8 @@
     (.setVolumes pod-spec (filterv some? (conj volumes
                                                init-container-workdir-volume
                                                scratch-space-volume
-                                               sidecar-workdir-volume)))
+                                               sidecar-workdir-volume
+                                               checkpoint-volume)))
     (.setSecurityContext pod-spec security-context)
     (.setPriorityClassName pod-spec pod-priority-class)
 
