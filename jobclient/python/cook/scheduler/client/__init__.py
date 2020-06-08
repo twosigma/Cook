@@ -26,13 +26,15 @@ from uuid import UUID
 from . import util
 from .jobs import Application, Job
 
+CLIENT_VERSION = '0.1.0'
+
 _LOG = logging.getLogger(__name__)
 _LOG.addHandler(logging.StreamHandler())
 _LOG.setLevel(logging.DEBUG)
 
 _COOK_IMPERSONATE_HEADER = 'X-Cook-Impersonate'
 
-_CLIENT_APP = Application('cook-python-client', '0.1.0')
+_CLIENT_APP = Application('cook-python-client', CLIENT_VERSION)
 
 _DEFAULT_REQUEST_TIMEOUT_SECONDS = 60
 _DEFAULT_JOB_ENDPOINT = '/jobs'
