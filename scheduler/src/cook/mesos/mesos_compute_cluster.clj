@@ -19,10 +19,10 @@
             [clojure.tools.logging :as log]
             [cook.compute-cluster :as cc]
             [cook.config :as config]
+            [cook.kubernetes.metrics :as metrics]
             [cook.mesos.heartbeat :as heartbeat]
             [cook.mesos.sandbox :as sandbox]
             [cook.mesos.task :as task]
-            [cook.kubernetes.metrics :as metrics]
             [cook.plugins.definitions :as plugins]
             [cook.plugins.pool :as pool-plugin]
             [cook.pool :as pool]
@@ -31,10 +31,10 @@
             [cook.tools :as tools]
             [datomic.api :as d]
             [mesomatic.scheduler :as mesos]
-            [metrics.meters :as meters]
-            [plumbing.core :as pc]
             [metrics.counters :as counters]
-            [metrics.timers :as timers])
+            [metrics.meters :as meters]
+            [metrics.timers :as timers]
+            [plumbing.core :as pc])
   (:import (java.net URLEncoder)
            (org.apache.mesos Protos$TaskStatus$Reason)))
 
