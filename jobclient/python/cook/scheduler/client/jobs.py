@@ -29,8 +29,11 @@ class Status(Enum):
     The curent status of a job.
     """
     WAITING = 'WAITING'
+    """The job is currently waiting to begin."""
     RUNNING = 'RUNNING'
+    """The job is currently running."""
     COMPLETED = 'COMPLETED'
+    """The job has finished running."""
 
     def __str__(self):
         return self.value
@@ -40,7 +43,7 @@ class Status(Enum):
 
     @staticmethod
     def from_string(name: str) -> 'Status':
-        """Parse a `Status` from a case-invariant string representation."""
+        """Parse a ``Status`` from a case-invariant string representation."""
         return _JOB_STATUS_LOOKUP[name.lower()]
 
 
@@ -58,8 +61,11 @@ class State(Enum):
     or has finished and failed.
     """
     WAITING = 'WAITING'
+    """The job has not finished yet."""
     PASSED = 'PASSED'
+    """The job has finished and succeeded."""
     FAILED = 'FAILED'
+    """The job has finished and failed."""
 
     def __str__(self):
         return self.value
@@ -69,7 +75,7 @@ class State(Enum):
 
     @staticmethod
     def from_string(name: str) -> 'State':
-        """Parse a `State` from a case-invariant string representation."""
+        """Parse a ``State`` from a case-invariant string representation."""
         return _JOB_STATE_LOOKUP[name.lower()]
 
 
@@ -81,6 +87,13 @@ _JOB_STATE_LOOKUP = {
 
 
 class Application:
+    """Application information associated with a job.
+
+    :param name: Name of the application.
+    :type name: str
+    :param version: Application version.
+    :type version: str
+    """
     name: str
     version: str
 
@@ -102,11 +115,81 @@ class Application:
 
     @classmethod
     def from_dict(cls, d: dict) -> 'Application':
+        """Parse an ``Application`` from its dict representation."""
         return cls(**d)
 
 
 class Job:
-    """A job object returned from Cook."""
+    """A job object returned from Cook.
+
+    Normally, this class wouldn't be instantiated directly. It is instead
+    used by ``JobClient`` when fetching a job information from ``query``.
+
+    :param command: The command-line string that this job will execute.
+    :type command: str
+    :param mem: The amount of memory, in MB, to request from the scheduler.
+    :type mem: float
+    :param cpus: The number of CPUs to request from Cook.
+    :type cpus: float
+    :param uuid: The UUID of the job.
+    :type uuid: UUID
+    :param name: The name of the job, defaults to 'cookjob'
+    :type name: str
+    :param max_retries: The maximum number of times to attempt this job.
+    :type max_retries: int
+    :param max_runtime: The maximum time that this job may run.
+    :type max_runtime: timedelta
+    :param status: The current status of the job.
+    :type status: cook.scheduler.client.jobs.Status
+    :param state: The current state of the job.
+    :type state: State
+    :param priority: The current priority of the job, defaults to 50
+    :type priority: int
+    :param framework_id: Framework ID for this job.
+    :type framework_id: str
+    :param retries_remaining: The number of retries remaining for this job.
+    :type retries_remaining: int
+    :param submit_time: The point in time when this job was submitted.
+    :type submit_time: datetime
+    :param user: User running this job.
+    :type user: str
+
+    :param executor: Executor information about the job.
+    :type executor: Executor, optional
+    :param container: Cotnainer description for this job.
+    :type container: dict, optional
+    :param disable_mea_culpa_retries: If true, then the job will not issue
+        *mea culpa* retries.
+    :type disable_mea_culpa_retries: bool, optional
+    :param expected_runtime: This job's expected runtime.
+    :type expected_runtime: timedelta, optional
+    :param pool: The pool that this job should be deployed to.
+    :type pool: str, optional
+    :param instances: A list of instances for this job.
+    :type instances: List[Instance], optional
+    :param env: A mapping of environment variables that should be set
+        before running this job.
+    :type env: Dict[str, str], optional
+    :param uris: A list of URIs associated with this job.
+    :type uris: List[str], optional
+    :param labels: Labels associated with this job.
+    :type labels: Dict[str, str], optional
+    :param constraints: Constraints for this job.
+    :type constraints: Set[list], optional
+    :param group: Group associated with this job.
+    :type group: UUID, optional
+    :param application: Application information for this job.
+    :type application: Application, optional
+    :param progress_output_file: Path to the file where this job will
+        output its progress.
+    :type progress_output_file: str, optional
+    :param progress_regex_string: Progress regex.
+    :type progress_regex_string: str, optional
+    :param gpus: The number of GPUs to request from Cook.
+    :type gpus: int, optional
+    :param ports: Ports for this job.
+    :type ports: int, optional
+    """
     command: str
     mem: float
     cpus: float
@@ -174,76 +257,7 @@ class Job:
         """Initializes a job object.
 
         Normally, this function wouldn't be invoked directly. It is instead
-        used by `JobClient` when getting the data from `query`.
-
-        Required Parameters
-        ----------
-        :param command: The command-line string that this job will execute.
-        :type command: str
-        :param mem: The amount of memory, in MB, to request from the scheduler.
-        :type mem: float
-        :param cpus: The number of CPUs to request from Cook.
-        :type cpus: float
-        :param uuid: The UUID of the job.
-        :type uuid: UUID
-        :param name: The name of the job, defaults to 'cookjob'
-        :type name: str
-        :param max_retries: The maximum number of times to attempt this job.
-        :type max_retries: int
-        :param max_runtime: The maximum time that this job may run.
-        :type max_runtime: timedelta
-        :param status: The current status of the job.
-        :type status: Status
-        :param state: The current state of the job.
-        :type state: State
-        :param priority: The current priority of the job, defaults to 50
-        :type priority: int
-        :param framework_id: Framework ID for this job.
-        :type framework_id: str
-        :param retries_remaining: The number of retries remaining for this job.
-        :type retries_remaining: int
-        :param submit_time: The point in time when this job was submitted.
-        :type submit_time: datetime
-        :param user: User running this job.
-        :type user: str
-
-        Optional Parameters
-        -------------------
-        :param executor: Executor information about the job.
-        :type executor: Executor
-        :param container: Cotnainer description for this job.
-        :type container: dict
-        :param disable_mea_culpa_retries: If true, then the job will not issue
-            *mea culpa* retries.
-        :type disable_mea_culpa_retries: bool
-        :param expected_runtime: This job's expected runtime.
-        :type expected_runtime: timedelta
-        :param pool: The pool that this job should be deployed to.
-        :type pool: str
-        :param instances: A list of instances for this job.
-        :type instances: List[Instance]
-        :param env: A mapping of environment variables that should be set
-            before running this job.
-        :type env: Dict[str, str]
-        :param uris: A list of URIs associated with this job.
-        :type uris: List[str]
-        :param labels: Labels associated with this job.
-        :type labels: Dict[str, str]
-        :param constraints: Constraints for this job.
-        :type constraints: Set[list]
-        :param group: Group associated with this job.
-        :type group: UUID
-        :param application: Application information for this job.
-        :type application: Application
-        :param progress_output_file: Path to the file where this job will
-            output its progress.
-        :type progress_output_file: str
-        :param progress_regex_string: Progress regex.
-        :type progress_regex_string: str
-        :param gpus: The number of GPUs to request from Cook.
-        :type gpus: int
-        :param ports: Ports for this job.
-        :type ports: int
+        used by ``JobClient`` when getting the data from ``query``.
         """
         self.command = command
         self.mem = mem

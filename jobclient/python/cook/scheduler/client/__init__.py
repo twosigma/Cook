@@ -41,12 +41,16 @@ _DEFAULT_JOB_ENDPOINT = '/jobs'
 _DEFAULT_DELETE_ENDPOINT = '/rawscheduler'
 
 
-class InstanceDecorator:
-    def decorate(self, inst_args: dict) -> dict:
-        raise NotImplementedError("stub")
-
-
 class JobClient:
+    """A client to some remote Cook instance.
+
+    :param url: The base URL of the Cook instance. Includes hostname and
+        port.
+    :type url: str
+    :param auth: Authentication handler to use for requests made with this
+        client. Defaults to None.
+    :type auth: requests.auth.AuthBase, optional
+    """
     __netloc: str
 
     __job_endpoint: str
@@ -59,17 +63,6 @@ class JobClient:
 
     def __init__(self, url: str, *,
                  auth: Optional[requests.auth.AuthBase] = None):
-        """Initialize an instance of the Cook client.
-
-        Parameters
-        ----------
-        :param url: The base URL of the Cook instance. Includes hostname and
-            port.
-        :type url: str
-        :param auth: Authentication handler to use for requests made with this
-            client. Defaults to None.
-        :type auth: requests.auth.AuthBase, optional
-        """
         self.__netloc = url
         self.__job_endpoint = _DEFAULT_JOB_ENDPOINT
         self.__delete_endpoint = _DEFAULT_DELETE_ENDPOINT
@@ -91,13 +84,12 @@ class JobClient:
                application: Application = _CLIENT_APP) -> UUID:
         """Submit a single job to Cook.
 
-        Required Parameters
-        -------------------
+        If an error occurs when issuing the submit request to the remote Cook
+        instance, an error message will be printed to the logger, and the
+        ``raise_for_status`` method will be invoked on the response object.
+
         :param command: The command to run on Cook.
         :type command: str
-
-        Optional Parameters
-        -------------------
         :param cpus: The number of CPUs to request from Cook. Defaults to 1.
         :type cpus: float, optional
         :param mem: The amount of memory, in MB, to request from Cook. Defaults
@@ -109,7 +101,7 @@ class JobClient:
         :type max_retries: int, optional
         :param uuid: The UUID of the job to submit. If this value is not
             provided, then a random UUID will be generated.
-        :type uuid: Union[str, UUID], optional
+        :type uuid: str or UUID, optional
         :param env: Environment variables to set within the job's context,
             defaults to None.
         :type env: Dict[str, str], optional
@@ -118,15 +110,13 @@ class JobClient:
         :param max_runtime: The maximum time this job should be allowed to run,
             defaults to one day.
         :type max_runtime: timedelta, optional
-        :param name: A name to assign to the job, defaults to `$USER-job`.
+        :param name: A name to assign to the job, defaults to ``$USER-job``.
         :type name: str, optional
         :param priority: A priority to assign to the job, defaults to None.
         :type priority: int, optional
         :param application: Application information to assign to the job,
-            defaults to `cook-python-client` with version 0.1.
+            defaults to ``cook-python-client`` with version 0.1.
         :type application: Application, optional
-        Output
-        ------
         :return: The UUID of the newly-created job.
         :rtype: UUID
         """
@@ -167,8 +157,12 @@ class JobClient:
     def query(self, uuid: Union[str, UUID]) -> Job:
         """Query Cook for a job's status.
 
+        If an error occurs when issuing the query request to the remote Cook
+        instance, an error message will be printed to the logger, and the
+        ``raise_for_status`` method will be invoked on the response object.
+
         :param uuid: The UUID to query.
-        :type uuid: Union[str, UUID]
+        :type uuid: str or UUID
         :return: A Job object containing the job's information.
         :rtype: Job
         """
@@ -187,16 +181,12 @@ class JobClient:
     def kill(self, uuid: Union[str, UUID]):
         """Stop a job on Cook.
 
-        Exceptions
-        ----------
         If an error occurs when issuing the delete request to the remote Cook
         instance, an error message will be printed to the logger, and the
-        `raise_for_status` method will be invoked on the response object.
+        ``raise_for_status`` method will be invoked on the response object.
 
-        Parameters
-        ----------
         :param uuid: The UUID of the job to kill.
-        :type uuid: Union[str, UUID]
+        :type uuid: str or UUID
         """
         uuid = str(uuid)
         query = urlencode([('job', uuid)])

@@ -26,9 +26,13 @@ from .util import unix_ms_to_datetime
 class Status(Enum):
     """A status for some instance in Cook."""
     UNKNOWN = 'UNKNOWN'
+    """The instance's status is unknown."""
     RUNNING = 'RUNNING'
+    """The instance is currently running."""
     SUCCESS = 'SUCCESS'
+    """The instance has finished and succeeded."""
     FAILED = 'FAILED'
+    """The instance has finished and failed."""
 
     def __str__(self):
         return self.value
@@ -53,7 +57,9 @@ _INSTANCE_STATUS_LOOKUP = {
 class Executor(Enum):
     """Indicates where an instance is running."""
     COOK = 'COOK'
+    """The instance is running on a Cook executor."""
     MESOS = 'MESOS'
+    """The instance is running on a Mesos executor."""
 
     def __str__(self):
         return self.value
@@ -74,7 +80,40 @@ _EXECUTOR_LOOKUP = {
 
 
 class Instance:
-    """An instance of a job in Cook."""
+    """An instance of a job in Cook.
+
+    Normally, this class wouldn't be instantiated directly. It is instead
+    used by ``JobClient`` when fetching a job information from ``query``.
+
+    :param slave_id: The ID of the slave running this instance.
+    :type slave_id: str
+    :param executor_id: The ID of the executor running this instance.
+    :type executor_id: str
+    :param start_time: The UNIX timestamp at which this instance began
+        running.
+    :type start_time: datetime
+    :param hostname: The hostname of the machine running this instance.
+    :type hostname: str
+    :param status: The status of this instance.
+    :type status: cook.scheduler.client.instance.Status
+    :param preempted: If true, then this instance was preempted.
+    :type preempted: bool
+    :param end_time: Time at which the instance finished.
+    :type end_time: datetime, optional
+    :param progress: Progress of this instance.
+    :type progress: int, optional
+    :param progress_message: Progress message of this instance.
+    :type progress_message: str, optional
+    :param reason_code: Reason code of this instance.
+    :type reason_code: int, optional
+    :param output_url: Output URL for this instance.
+    :type output_url: str, optional
+    :param executor: Executor information for this instance.
+    :type executor: Executor, optional
+    :param reason_mea_culpa: If true, then reason mea culpa.
+    :type reason_mea_culpa: bool, optional
+    """
+
     task_id: UUID
     slave_id: str
     executor_id: str
@@ -108,40 +147,7 @@ class Instance:
                  output_url: Optional[str] = None,
                  executor: Optional[Executor] = None,
                  reason_mea_culpa: Optional[bool] = None):
-        """Initialize an instance.
-
-        Required Parameters
-        -------------------
-        :param slave_id: The ID of the slave running this instance.
-        :type slave_id: str
-        :param executor_id: The ID of the executor running this instance.
-        :type executor_id: str
-        :param start_time: The UNIX timestamp at which this instance began
-            running.
-        :type start_time: datetime
-        :param hostname: The hostname of the machine running this instance.
-        :type hostname: str
-        :param status: The status of this instance.
-        :type status: Status
-        :param preempted: If true, then this instance was preempted.
-        :type preempted: bool
-        Optional Parameters
-        -------------------
-        :param end_time: Time at which the instance finished.
-        :type end_time: Optional[datetime], optional
-        :param progress: Progress of this instance.
-        :type progress: Optional[int], optional
-        :param progress_message: Progress message of this instance.
-        :type progress_message: Optional[str], optional
-        :param reason_code: Reason code of this instance.
-        :type reason_code: Optional[int], optional
-        :param output_url: Output URL for this instance.
-        :type output_url: Optional[str], optional
-        :param executor: Executor information for this instance.
-        :type executor: Optional[Executor], optional
-        :param reason_mea_culpa: If true, then reason mea culpa.
-        :type reason_mea_culpa: Optional[bool], optional
-        """
+        """Initialize an instance."""
         self.task_id = task_id
         self.slave_id = slave_id
         self.executor_id = executor_id

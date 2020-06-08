@@ -42,3 +42,4 @@ test-log
 venv
 dist
 .vagrant/
+jobclient/python/docs/build/

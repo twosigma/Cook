@@ -41,20 +41,20 @@ def make_temporal_uuid() -> UUID:
 
 
 def datetime_to_unix_ms(dt: datetime) -> int:
-    """Convert a Python `datetime` object to a Unix millisecond timestamp.
+    """Convert a Python ``datetime`` object to a Unix millisecond timestamp.
 
     This is necessary as the timestamps Cook returns in its API are in
-    milliseconds, while the Python `datetime` API uses seconds for Unix
+    milliseconds, while the Python ``datetime`` API uses seconds for Unix
     timestamps.
     """
     return int(dt.timestamp() * 1000)
 
 
 def unix_ms_to_datetime(timestamp: int) -> datetime:
-    """Convert a Unix millisecond timestamp to a Python `datetime` object.
+    """Convert a Unix millisecond timestamp to a Python ``datetime`` object.
 
     This is necessary as the timestamps Cook returns in its API are in
-    milliseconds, while the Python `datetime` API uses seconds for Unix
+    milliseconds, while the Python ``datetime`` API uses seconds for Unix
     timestamps.
     """
     return datetime.fromtimestamp(timestamp / 1000)
