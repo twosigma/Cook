@@ -14,6 +14,8 @@ import os
 import sys
 sys.path.insert(0, os.path.abspath('../..'))
 
+from cook.scheduler.client import CLIENT_VERSION  # noqa E402
+
 
 # -- Project information -----------------------------------------------------
 
@@ -22,7 +24,7 @@ copyright = '2020, Two Sigma'
 author = 'Two Sigma'
 
 # The full version, including alpha/beta/rc tags
-release = '0.1.0'
+release = CLIENT_VERSION
 
 
 # -- General configuration ---------------------------------------------------
