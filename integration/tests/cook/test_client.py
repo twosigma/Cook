@@ -20,7 +20,7 @@ from tests.cook import util
 
 class ClientTest(util.CookTest):
     @classmethod
-    def setUpCls(cls):
+    def setUpClass(cls):
         cls.cook_url = util.retreive_cook_url()
 
     def setUp(self):
