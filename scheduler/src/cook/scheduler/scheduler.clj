@@ -901,11 +901,16 @@
                                @pool-name->pending-jobs-atom)
                     (launch-matched-tasks! matches conn db fenzo mesos-run-as-user pool-name)
                     (update-host-reservations! rebalancer-reservation-atom matched-job-uuids)
-                    matched-considerable-jobs-head?))]
+                    matched-considerable-jobs-head?))
+                ;; We need to filter pending jobs based on quota so that we don't
+                ;; trigger autoscaling beyond what users have quota to actually run
+                autoscalable-jobs (->> pool-name
+                                       (get @pool-name->pending-jobs-atom)
+                                       (tools/filter-based-on-quota user->quota user->usage))]
             ;; This call needs to happen *after* launch-matched-tasks!
             ;; in order to avoid autoscaling tasks taking up available
             ;; capacity that was already matched for real Cook tasks.
-            (trigger-autoscaling! (get @pool-name->pending-jobs-atom pool-name) pool-name compute-clusters)
+            (trigger-autoscaling! autoscalable-jobs pool-name compute-clusters)
             matched-head-or-no-matches?))
         (catch Throwable t
           (meters/mark! handle-resource-offer!-errors)
