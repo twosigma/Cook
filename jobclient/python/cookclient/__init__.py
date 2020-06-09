@@ -20,7 +20,7 @@ import requests
 
 from datetime import timedelta
 from typing import Dict, Optional, Union
-from urllib.parse import urlencode, urlunparse
+from urllib.parse import urlencode, urlparse, urlunparse
 from uuid import UUID
 
 from . import util
@@ -45,12 +45,13 @@ class JobClient:
     """A client to some remote Cook instance.
 
     :param url: The base URL of the Cook instance. Includes hostname and
-        port.
+        port. If no scheme is provided, http will be assumed.
     :type url: str
     :param auth: Authentication handler to use for requests made with this
         client. Defaults to None.
     :type auth: requests.auth.AuthBase, optional
     """
+    __scheme: str
     __netloc: str
 
     __job_endpoint: str
@@ -63,7 +64,9 @@ class JobClient:
 
     def __init__(self, url: str, *,
                  auth: Optional[requests.auth.AuthBase] = None):
-        self.__netloc = url
+        parsed = urlparse(url, 'http')
+        self.__scheme = parsed.scheme
+        self.__netloc = parsed.netloc
         self.__job_endpoint = _DEFAULT_JOB_ENDPOINT
         self.__delete_endpoint = _DEFAULT_DELETE_ENDPOINT
         self.__auth = auth
@@ -141,7 +144,8 @@ class JobClient:
         if application is not None:
             payload['application'] = application.to_dict()
         payload = {'jobs': [payload]}
-        url = urlunparse(('http', self.__netloc, self.__job_endpoint, '', '', ''))  # noqa E501
+        url = urlunparse((self.__scheme, self.__netloc, self.__job_endpoint,
+                          '', '', ''))
         _LOG.debug(f"Sending POST to {url}")
         _LOG.debug("Payload:")
         _LOG.debug(json.dumps(payload, indent=4))
@@ -168,8 +172,8 @@ class JobClient:
         """
         uuid = str(uuid)
         query = urlencode([('uuid', uuid)])
-        url = urlunparse(('http', self.__netloc, self.__job_endpoint, '',
-                          query, ''))
+        url = urlunparse((self.__scheme, self.__netloc, self.__job_endpoint,
+                          '', query, ''))
         _LOG.debug(f'Sending GET to {url}')
         resp = requests.get(url, timeout=self.__request_timeout_seconds,
                             auth=self.__auth)
@@ -190,8 +194,8 @@ class JobClient:
         """
         uuid = str(uuid)
         query = urlencode([('job', uuid)])
-        url = urlunparse(('http', self.__netloc, self.__delete_endpoint, '',
-                          query, ''))
+        url = urlunparse((self.__scheme, self.__netloc, self.__delete_endpoint,
+                          '', query, ''))
         _LOG.debug(f'Sending DELETE to {url}')
         resp = requests.delete(url, timeout=self.__request_timeout_seconds,
                                auth=self.__auth)
