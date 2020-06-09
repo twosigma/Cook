@@ -2,7 +2,7 @@
 
 from setuptools import setup
 
-from cook.scheduler.client import CLIENT_VERSION
+from cookclient import CLIENT_VERSION
 
 with open('README.md') as fd:
     readme = fd.read()
@@ -11,12 +11,12 @@ requirements = [
     'requests'
 ]
 
-setup(name='cook-scheduler-client',
+setup(name='cookclient',
       version=CLIENT_VERSION,
       description="Cook Scheduler Client API for Python",
       long_description=readme,
       long_description_content_type='text/markdown',
-      packages=['cook.scheduler.client'],
+      packages=['cookclient'],
       url='https://github.com/twosigma/Cook',
       install_requires=requirements,
       classifiers=[

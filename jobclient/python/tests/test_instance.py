@@ -17,9 +17,9 @@ import uuid
 from datetime import datetime
 from unittest import TestCase
 
-from cook.scheduler.client.instance import Executor, Instance
-from cook.scheduler.client.instance import Status as InstanceStatus
-from cook.scheduler.client.util import datetime_to_unix_ms
+from cookclient.instance import Executor, Instance
+from cookclient.instance import Status as InstanceStatus
+from cookclient.util import datetime_to_unix_ms
 
 INSTANCE_DICT_NO_OPTIONALS = {
     'task_id': '123e4567-e89b-12d3-a456-426614174010',

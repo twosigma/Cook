@@ -7,7 +7,7 @@ This package defines a client API for Cook Scheduler, allowing Python applicatio
 The code below shows how to use the client API to connect to a Cook cluster listening on `localhost:12321`, submit a job to the cluster, and query its information.
 
 ```python
-from cook.scheduler.client import JobClient
+from cookclient import JobClient
 
 client = JobClient('localhost:12321')
 

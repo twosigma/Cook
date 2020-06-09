@@ -140,7 +140,7 @@ class Job:
     :param max_runtime: The maximum time that this job may run.
     :type max_runtime: timedelta
     :param status: The current status of the job.
-    :type status: cook.scheduler.client.jobs.Status
+    :type status: cookclient.jobs.Status
     :param state: The current state of the job.
     :type state: State
     :param priority: The current priority of the job, defaults to 50

@@ -14,7 +14,7 @@ import os
 import sys
 sys.path.insert(0, os.path.abspath('../..'))
 
-from cook.scheduler.client import CLIENT_VERSION  # noqa E402
+from cookclient import CLIENT_VERSION
 
 
 # -- Project information -----------------------------------------------------

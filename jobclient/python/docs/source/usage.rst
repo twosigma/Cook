@@ -9,7 +9,7 @@ information.
 
 ::
 
-    from cook.scheduler.client import JobClient
+    from cookclient import JobClient
 
     client = JobClient('localhost:12321')
 
@@ -20,6 +20,6 @@ information.
 JobClient Reference
 -------------------
 
-.. py:module:: cook.scheduler.client
+.. py:module:: cookclient
 .. autoclass:: JobClient
    :members:

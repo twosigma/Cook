@@ -95,7 +95,7 @@ class Instance:
     :param hostname: The hostname of the machine running this instance.
     :type hostname: str
     :param status: The status of this instance.
-    :type status: cook.scheduler.client.instance.Status
+    :type status: cookclient.instance.Status
     :param preempted: If true, then this instance was preempted.
     :type preempted: bool
     :param end_time: Time at which the instance finished.

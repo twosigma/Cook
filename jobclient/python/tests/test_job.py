@@ -17,11 +17,11 @@ import uuid
 from datetime import datetime, timedelta
 from unittest import TestCase
 
-from cook.scheduler.client.instance import Instance, Executor
-from cook.scheduler.client.jobs import Application, Job
-from cook.scheduler.client.jobs import Status as JobStatus
-from cook.scheduler.client.jobs import State as JobState
-from cook.scheduler.client.util import datetime_to_unix_ms
+from cookclient.instance import Instance, Executor
+from cookclient.jobs import Application, Job
+from cookclient.jobs import Status as JobStatus
+from cookclient.jobs import State as JobState
+from cookclient.util import datetime_to_unix_ms
 
 JOB_DICT_NO_OPTIONALS = {
     'command': 'ls',

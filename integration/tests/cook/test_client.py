@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from cook.scheduler.client import JobClient
-from cook.scheduler.client.jobs import Status as JobStatus
+from cookclient import JobClient
+from cookclient.jobs import Status as JobStatus
 
 from tests.cook import util
 

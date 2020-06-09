@@ -13,7 +13,7 @@ The most important Cook object is the Job, which is the object returned via the
 ``query`` method on the JobClient. It is a simple container class that houses
 the attributes returned by the Cook REST API.
 
-.. py:module:: cook.scheduler.client.jobs
+.. py:module:: cookclient.jobs
 
 .. autoclass:: Job
    :members:
@@ -49,7 +49,7 @@ A job may attempt to run several times on a Cook cluster. Each of these
 attempts is known as an *instance*, and is represented with the ``Instance``
 class:
 
-.. py:module:: cook.scheduler.client.instance
+.. py:module:: cookclient.instance
 
 .. autoclass:: Instance
    :members:
@@ -81,7 +81,7 @@ The Cook API returns Unix millisecond timestamps for timestamp values. To
 provide a nicer, higher-level API, the Python client automatically converts
 these into Python ``datetime`` objects using the following functions:
 
-.. py:module:: cook.scheduler.client.util
+.. py:module:: cookclient.util
 
 .. autofunction:: unix_ms_to_datetime
 
