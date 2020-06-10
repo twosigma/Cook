@@ -18,6 +18,7 @@
             [clojure.data.json :as json]
             [clojure.tools.logging :as log]
             [cook.compute-cluster :as cc]
+            [cook.compute-cluster.metrics :as ccmetrics]
             [cook.config :as config]
             [cook.mesos.heartbeat :as heartbeat]
             [cook.mesos.sandbox :as sandbox]
@@ -30,9 +31,10 @@
             [cook.tools :as tools]
             [datomic.api :as d]
             [mesomatic.scheduler :as mesos]
+            [metrics.counters :as counters]
             [metrics.meters :as meters]
-            [plumbing.core :as pc]
-            [metrics.counters :as counters])
+            [metrics.timers :as timers]
+            [plumbing.core :as pc])
   (:import (java.net URLEncoder)
            (org.apache.mesos Protos$TaskStatus$Reason)))
 
@@ -159,7 +161,9 @@
       (resource-offers
         [this driver raw-offers]
         (log/debug "Got offers:" raw-offers)
-        (let [offers (map #(assoc % :compute-cluster compute-cluster) raw-offers)
+        (let [offers (map #(assoc % :compute-cluster compute-cluster
+                                    :offer-match-timer (timers/start (ccmetrics/timer "offer-match-timer" (cc/compute-cluster-name compute-cluster))))
+                          raw-offers)
               pool->offers (group-by (fn [o] (plugins/select-pool pool-plugin/plugin o)) offers)
               using-pools? (config/default-pool)]
           (log/info "Offers by pool:" (pc/map-vals count pool->offers))
@@ -290,6 +294,7 @@
             (reset! driver-atom nil))))))
 
   (pending-offers [this pool-name]
+    (log/info "In" compute-cluster-name "compute cluster, looking for offers for pool" pool-name)
     (->> (tools/read-chan (pool->offers-chan pool-name) offer-chan-size)
          ((fn decrement-offer-chan-depth [offer-lists]
             (counters/dec! offer-chan-depth (count offer-lists))
@@ -424,4 +429,3 @@
     (catch Throwable t
       (log/error t "Failed to construct mesos compute cluster")
       (throw t))))
-
