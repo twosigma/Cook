@@ -71,7 +71,19 @@ class JobClient:
     def __init__(self, url: str, *,
                  session: Optional[requests.Session] = None,
                  **kwargs):
-        parsed = urlparse(url, 'http')
+        # In addition to explicitly defaulting to the HTTP scheme, this also
+        # helps to resolve ambiguity in urllib when handling 'localhost' (note
+        # the netloc and path params):
+        #
+        # >>> urlparse('localhost:8080')
+        # ParseResult(scheme='', netloc='', path='localhost:8080', params='',
+        #             query='', fragment='')
+        # >>> urlparse('http://localhost:8080')
+        # ParseResult(scheme='http', netloc='localhost:8080', path='',
+        #             params='', query='', fragment='')
+        if not url.startswith(('http://', 'https://')):
+            url = f'http://{url}'
+        parsed = urlparse(url)
         self.__scheme = parsed.scheme
         self.__netloc = parsed.netloc
         self.__job_endpoint = _DEFAULT_JOB_ENDPOINT
