@@ -18,8 +18,8 @@
             [clojure.data.json :as json]
             [clojure.tools.logging :as log]
             [cook.compute-cluster :as cc]
+            [cook.compute-cluster.metrics :as ccmetrics]
             [cook.config :as config]
-            [cook.kubernetes.metrics :as metrics]
             [cook.mesos.heartbeat :as heartbeat]
             [cook.mesos.sandbox :as sandbox]
             [cook.mesos.task :as task]
@@ -162,7 +162,7 @@
         [this driver raw-offers]
         (log/debug "Got offers:" raw-offers)
         (let [offers (map #(assoc % :compute-cluster compute-cluster
-                                    :offer-match-timer (timers/start (metrics/timer "offer-match-timer" (cc/compute-cluster-name compute-cluster)))) 
+                                    :offer-match-timer (timers/start (ccmetrics/timer "offer-match-timer" (cc/compute-cluster-name compute-cluster))))
                           raw-offers)
               pool->offers (group-by (fn [o] (plugins/select-pool pool-plugin/plugin o)) offers)
               using-pools? (config/default-pool)]

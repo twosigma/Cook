@@ -7,6 +7,7 @@
             [clojure.tools.logging :as log]
             [clojure.walk :as walk]
             [cook.compute-cluster :as cc]
+            [cook.compute-cluster.metrics :as ccmetrics]
             [cook.config :as config]
             [cook.kubernetes.api :as api]
             [cook.kubernetes.controller :as controller]
@@ -84,7 +85,7 @@
                  :executor-ids []
                  :compute-cluster compute-cluster
                  :reject-after-match-attempt true
-                 :offer-match-timer (timers/start (metrics/timer "offer-match-timer" compute-cluster-name))}))
+                 :offer-match-timer (timers/start (ccmetrics/timer "offer-match-timer" compute-cluster-name))}))
          (group-by (fn [offer] (-> offer :hostname node-name->node api/get-node-pool))))))
 
 (defn taskids-to-scan
