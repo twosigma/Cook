@@ -47,29 +47,39 @@ class JobClient:
     :param url: The base URL of the Cook instance. Includes hostname and
         port. If no scheme is provided, http will be assumed.
     :type url: str
-    :param auth: Authentication handler to use for requests made with this
-        client. Defaults to None.
-    :type auth: requests.auth.AuthBase, optional
+    :param session: Requests Session object to use for making requests. If
+        provided, then the client will make requests using this session.
+        Otherwise, the top-level ``requests`` functions will be used.
+    :type auth: requests.Session, optional
+    :param **kwargs: Kwargs to provide to the request functions. If a session
+        was provided, then these options will take precedence over options
+        specified there. For example, if ``auth`` is set in both ``session``
+        and ``kwargs``, then the value from ``kwargs`` will be used. However,
+        if ``auth`` is set in ``session`` but not ``kwargs``, then the
+        ``session``'s auth will be used. Additionally, note that if no timeout
+        is provided here, a default timeout of 60 seconds will be used instead.
     """
     __scheme: str
     __netloc: str
 
     __job_endpoint: str
     __delete_endpoint: str
-    __group_endpoint: str
 
-    __request_timeout_seconds: int = _DEFAULT_REQUEST_TIMEOUT_SECONDS
-
-    __auth: Optional[requests.auth.AuthBase]
+    __session: Optional[requests.Session] = None
+    __kwargs: dict
 
     def __init__(self, url: str, *,
-                 auth: Optional[requests.auth.AuthBase] = None):
+                 session: Optional[requests.Session] = None,
+                 **kwargs):
         parsed = urlparse(url, 'http')
         self.__scheme = parsed.scheme
         self.__netloc = parsed.netloc
         self.__job_endpoint = _DEFAULT_JOB_ENDPOINT
         self.__delete_endpoint = _DEFAULT_DELETE_ENDPOINT
-        self.__auth = auth
+        self.__session = session
+        self.__kwargs = kwargs or {}
+        if 'timeout' not in self.__kwargs:
+            self.__kwargs['timeout'] = _DEFAULT_REQUEST_TIMEOUT_SECONDS
 
     def submit(self, *,
                command: str,
@@ -84,7 +94,9 @@ class JobClient:
                max_runtime: timedelta = timedelta(days=1),
                name: str = f'{getpass.getuser()}-job',
                priority: Optional[int] = None,
-               application: Application = _CLIENT_APP) -> UUID:
+               application: Application = _CLIENT_APP,
+
+               **kwargs) -> UUID:
         """Submit a single job to Cook.
 
         If an error occurs when issuing the submit request to the remote Cook
@@ -120,6 +132,8 @@ class JobClient:
         :param application: Application information to assign to the job,
             defaults to ``cook-python-client`` with version 0.1.
         :type application: Application, optional
+        :param kwargs: Request kwargs. If kwargs were specified to the client
+            on construction, then these will take precedence over those.
         :return: The UUID of the newly-created job.
         :rtype: UUID
         """
@@ -149,16 +163,18 @@ class JobClient:
         _LOG.debug(f"Sending POST to {url}")
         _LOG.debug("Payload:")
         _LOG.debug(json.dumps(payload, indent=4))
-        resp = requests.post(url, json=payload,
-                             auth=self.__auth,
-                             timeout=self.__request_timeout_seconds)
+
+        kwargs = {**kwargs, **self.__kwargs}
+        r = self.__session or requests
+
+        resp = r.post(url, json=payload, **kwargs)
         if not resp.ok:
             _LOG.error(f"Could not submit job: {resp.status_code} {resp.text}")
             resp.raise_for_status()
 
         return UUID(uuid)
 
-    def query(self, uuid: Union[str, UUID]) -> Job:
+    def query(self, uuid: Union[str, UUID], **kwargs) -> Job:
         """Query Cook for a job's status.
 
         If an error occurs when issuing the query request to the remote Cook
@@ -167,6 +183,8 @@ class JobClient:
 
         :param uuid: The UUID to query.
         :type uuid: str or UUID
+        :param kwargs: Request kwargs. If kwargs were specified to the client
+            on construction, then these will take precedence over those.
         :return: A Job object containing the job's information.
         :rtype: Job
         """
@@ -175,14 +193,17 @@ class JobClient:
         url = urlunparse((self.__scheme, self.__netloc, self.__job_endpoint,
                           '', query, ''))
         _LOG.debug(f'Sending GET to {url}')
-        resp = requests.get(url, timeout=self.__request_timeout_seconds,
-                            auth=self.__auth)
+
+        kwargs = {**self.__kwargs, **kwargs}
+        r = self.__session or requests
+
+        resp = r.get(url, **kwargs)
         if not resp.ok:
             _LOG.error(f"Could not query job: {resp.status_code} {resp.text}")
             resp.raise_for_status()
         return Job.from_dict(resp.json()[0])
 
-    def kill(self, uuid: Union[str, UUID]):
+    def kill(self, uuid: Union[str, UUID], **kwargs):
         """Stop a job on Cook.
 
         If an error occurs when issuing the delete request to the remote Cook
@@ -191,14 +212,43 @@ class JobClient:
 
         :param uuid: The UUID of the job to kill.
         :type uuid: str or UUID
+        :param kwargs: Request kwargs. If kwargs were specified to the client
+            on construction, then these will take precedence over those.
         """
         uuid = str(uuid)
         query = urlencode([('job', uuid)])
         url = urlunparse((self.__scheme, self.__netloc, self.__delete_endpoint,
                           '', query, ''))
         _LOG.debug(f'Sending DELETE to {url}')
-        resp = requests.delete(url, timeout=self.__request_timeout_seconds,
-                               auth=self.__auth)
+
+        kwargs = {**self.__kwargs, **kwargs}
+        r = self.__session or requests
+
+        resp = r.delete(url, **kwargs)
         if not resp.ok:
             _LOG.error(f"Could not delete job: {resp.status_code} {resp.text}")
             resp.raise_for_status()
+
+    def close(self):
+        """Close this client.
+
+        If this client was created with a requests Session, then the underlying
+        Session object is closed. Otherwise, this function is a no-op.
+
+        The client should not be used after this method is called. If you need
+        to call this method manually, consider wrapping the client in a
+        ``with`` block, like so:
+
+        ::
+            with JobClient('localhost:12321', requests.Session()) as client:
+                client.submit('ls')
+                # ... do more stuff with the client
+        """
+        if self.__session is not None:
+            self.__session.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self):
+        self.close()
