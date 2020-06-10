@@ -687,6 +687,14 @@
        first
        :container))
 
+(defn get-gpu-models-on-pool
+   "Given a pool name, determine the supported GPU models on that pool."
+   [valid-gpu-models effective-pool-name]
+   (->> valid-gpu-models
+        (filter (fn [{:keys [pool-regex]}] (re-find (re-pattern pool-regex) effective-pool-name)))
+        first
+        :valid-models))
+
 (s/defn make-job-txn
   "Creates the necessary txn data to insert a job into the database"
   [pool commit-latch-id db job :- Job]
@@ -912,11 +920,19 @@
                 (assoc :partitions (into #{} (walk/stringify-keys partitions))))))
        (into #{})))
 
+(defn validate-job-gpu-model
+  "Validates that GPU model entered is supported on the pool"
+  [pool-name {:keys [env]}]
+  (let [requested-gpu-model (get env "COOK_GPU_MODEL")]
+    (when (and requested-gpu-model
+               (not (contains? (get-gpu-models-on-pool (config/valid-gpu-models) pool-name) requested-gpu-model)))
+      (throw (ex-info (str "The following GPU model is not supported: " requested-gpu-model) {})))))
+
 (defn validate-and-munge-job
   "Takes the user, the parsed json from the job and a list of the uuids of
    new-groups (submitted in the same request as the job). Returns proper Job
    objects, or else throws an exception"
-  [db user task-constraints gpu-enabled? new-group-uuids
+  [db pool-name user task-constraints gpu-enabled? new-group-uuids
    {:keys [cpus mem gpus uuid command priority max-retries max-runtime expected-runtime name
            uris ports env labels container group application disable-mea-culpa-retries
            constraints executor progress-output-file progress-regex-string datasets checkpoint]
@@ -966,6 +982,8 @@
     (s/validate Job munged)
     (when (and (:gpus munged) (not gpu-enabled?))
       (throw (ex-info (str "GPU support is not enabled") {:gpus gpus})))
+    ; Note that we are passing munged here because the function expects stringified env
+    (validate-job-gpu-model pool-name munged)
     (when (> cpus (:cpus task-constraints))
       (throw (ex-info (str "Requested " cpus " cpus, but only allowed to use "
                            (:cpus task-constraints))
@@ -1940,8 +1958,10 @@
                                                                           (into [])))}]
                          :else
                          (let [groups (mapv #(validate-and-munge-group (db conn) %) groups)
+                               effective-pool-name (or (:pool/name pool) (config/default-pool))
                                jobs (mapv #(validate-and-munge-job
                                              (db conn)
+                                             effective-pool-name
                                              user
                                              task-constraints
                                              gpu-enabled?

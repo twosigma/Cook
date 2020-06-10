@@ -1573,7 +1573,6 @@ def is_preemption_enabled():
     max_preemption = rebalancer_settings().get('max-preemption')
     return max_preemption is not None
 
-
 @functools.lru_cache()
 def rebalancer_settings():
     cook_url = retrieve_cook_url()

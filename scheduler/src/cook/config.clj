@@ -524,6 +524,11 @@
       nil
       pool)))
 
+(defn valid-gpu-models
+  "Returns valid GPU models for the pool the job is scheduled in"
+   []
+   (-> config :settings :pools :valid-gpu-models))
+
 (defn job-resource-adjustments
   "Returns the specification for how to adjust resources requested by a job based on the pool it's scheduled on.
    The specification consists of an applicable pool name regex and the name of a function that adjusts resources."
