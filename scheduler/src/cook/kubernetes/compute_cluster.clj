@@ -305,7 +305,7 @@
 
   (pending-offers [this pool-name]
     (log/info "In" name "compute cluster, looking for offers for pool" pool-name)
-    (let [timer (timers/start (metrics/timer "cc-k8s-pending-offers-compute" name))
+    (let [timer (timers/start (metrics/timer "cc-pending-offers-compute" name))
           pods (add-starting-pods this @all-pods-atom)
           nodes @current-nodes-atom
           offers-all-pools (generate-offers this nodes pods)
