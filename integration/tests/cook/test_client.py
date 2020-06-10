@@ -22,9 +22,10 @@ class ClientTest(util.CookTest):
     @classmethod
     def setUpClass(cls):
         cls.cook_url = util.retrieve_cook_url()
+        util.init_cook_session(cls.cook_url)
 
     def setUp(self):
-        self.client = JobClient(type(self).cook_url)
+        self.client = JobClient(type(self).cook_url, session=util.session)
 
     def test_submit(self):
         uuid = self.client.submit(command='ls',
