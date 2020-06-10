@@ -47,6 +47,7 @@
             [datomic.api :as d :refer (q db)]
             [mesomatic.scheduler :as msched]
             [mesomatic.types :as mtypes]
+            [metrics.timers :as timers]
             [plumbing.core :as pc])
   (:import (clojure.lang ExceptionInfo)
            (com.netflix.fenzo SimpleAssignmentResult TaskAssignmentResult
@@ -1529,7 +1530,8 @@
                        :id {:value (str "id-" (UUID/randomUUID))}
                        :slave-id {:value (str "slave-" (UUID/randomUUID))}
                        :hostname (str "host-" (UUID/randomUUID))
-                       :compute-cluster compute-cluster})
+                       :compute-cluster compute-cluster
+                       :offer-match-timer (timers/start (timers/timer "noop-timer-offer"))})
         offers-chan (async/chan (async/buffer 10))
         offer-1 (offer-maker 10 2048 0)
         offer-2 (offer-maker 20 16384 0)
@@ -1807,7 +1809,8 @@
                          :id {:value (str "id-" (UUID/randomUUID))}
                          :slave-id {:value (str "slave-" (UUID/randomUUID))}
                          :hostname (str "host-" (UUID/randomUUID))
-                         :compute-cluster compute-cluster})
+                         :compute-cluster compute-cluster
+                         :offer-match-timer (timers/start (timers/timer "noop-timer-offer"))})
           offers-chan (async/chan (async/buffer 10))
           offer-1 (offer-maker 10 2048 0)
           offer-2 (offer-maker 20 16384 0)
@@ -1918,7 +1921,8 @@
                                (when (= :warn level)
                                  (reset! logged-atom {:throwable throwable
                                                       :message message})))
-                    cc/use-cook-executor? (constantly true)]
+                    cc/use-cook-executor? (constantly true)
+                    timers/stop (constantly nil)]
         (is (thrown? ExceptionInfo (sched/launch-matched-tasks! matches conn nil nil nil nil)))
         (is (= timeout-exception (:throwable @logged-atom)))
         (is (str/includes? (:message @logged-atom) (str job-id))))))
@@ -1928,7 +1932,8 @@
       (with-redefs [cc/db-id (constantly -1)
                     cc/compute-cluster-name (constantly "foo")
                     cc/launch-tasks (fn [_ _ _ _] (throw (ex-info "Foo" {})))
-                    datomic/transact (constantly nil)]
+                    datomic/transact (constantly nil)
+                    timers/stop (constantly nil)]
         (sched/launch-matched-tasks! matches nil nil nil nil nil)))))
 
 (deftest test-reconcile-tasks
