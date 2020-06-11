@@ -7,6 +7,7 @@
             [clojure.tools.logging :as log]
             [clojure.walk :as walk]
             [cook.compute-cluster :as cc]
+            [cook.compute-cluster.metrics :as ccmetrics]
             [cook.config :as config]
             [cook.kubernetes.api :as api]
             [cook.kubernetes.controller :as controller]
@@ -30,9 +31,9 @@
 
 (defn schedulable-node-filter
   "Is a node schedulable?"
-  [node-name->node [node-name _] {:keys [node-blocklist-labels] :as compute-cluster} pods]
+  [node-name->node node-name->pods {:keys [node-blocklist-labels] :as compute-cluster} [node-name _]]
   (if-let [^V1Node node (node-name->node node-name)]
-    (api/node-schedulable? node (cc/max-tasks-per-host compute-cluster) pods node-blocklist-labels)
+    (api/node-schedulable? node (cc/max-tasks-per-host compute-cluster) node-name->pods node-blocklist-labels)
     (do
       (log/error "In" (cc/compute-cluster-name compute-cluster)
                  "compute cluster, unable to get node from node name" node-name)
@@ -46,10 +47,10 @@
 
 (defn generate-offers
   "Given a compute cluster and maps with node capacity and existing pods, return a map from pool to offers."
-  [compute-cluster node-name->node pods]
+  [compute-cluster node-name->node node-name->pods]
   (let [compute-cluster-name (cc/compute-cluster-name compute-cluster)
         node-name->capacity (api/get-capacity node-name->node)
-        node-name->consumed (api/get-consumption pods)
+        node-name->consumed (api/get-consumption node-name->pods)
         node-name->available (pc/map-from-keys (fn [node-name]
                                                  (merge-with -
                                                              (node-name->capacity node-name)
@@ -67,11 +68,11 @@
     (log/info "In" compute-cluster-name "compute cluster, consumption:" node-name->consumed)
     (log/info "In" compute-cluster-name "compute cluster, filtering out"
               (->> node-name->available
-                   (remove #(schedulable-node-filter node-name->node % compute-cluster pods))
+                   (remove #(schedulable-node-filter node-name->node node-name->pods compute-cluster %))
                    count)
               "nodes as not schedulable")
     (->> node-name->available
-         (filter #(schedulable-node-filter node-name->node % compute-cluster pods))
+         (filter #(schedulable-node-filter node-name->node node-name->pods compute-cluster %))
          (map (fn [[node-name available]]
                 {:id {:value (str (UUID/randomUUID))}
                  :framework-id compute-cluster-name
@@ -84,7 +85,8 @@
                  :attributes []
                  :executor-ids []
                  :compute-cluster compute-cluster
-                 :reject-after-match-attempt true}))
+                 :reject-after-match-attempt true
+                 :offer-match-timer (timers/start (ccmetrics/timer "offer-match-timer" compute-cluster-name))}))
          (group-by (fn [offer] (-> offer :hostname node-name->node api/get-node-pool))))))
 
 (defn taskids-to-scan
@@ -304,9 +306,12 @@
     (async/chan 1))
 
   (pending-offers [this pool-name]
-    (let [pods (add-starting-pods this @all-pods-atom)
+    (log/info "In" name "compute cluster, looking for offers for pool" pool-name)
+    (let [timer (timers/start (metrics/timer "cc-pending-offers-compute" name))
+          pods (add-starting-pods this @all-pods-atom)
           nodes @current-nodes-atom
-          offers-all-pools (generate-offers this nodes pods)
+          node-name->pods (api/pods->node-name->pods pods)
+          offers-all-pools (generate-offers this nodes node-name->pods)
           ; TODO: We are generating offers for every pool here, and filtering out only offers for this one pool.
           ; TODO: We should be smarter here and generate once, then reuse for each pool, instead of generating for each pool each time and only keeping one
           offers-this-pool (get offers-all-pools pool-name)
@@ -317,6 +322,7 @@
                 {:num-total-nodes-in-compute-cluster (count nodes)
                  :num-total-pods-in-compute-cluster (count pods)
                  :offers-this-pool offers-this-pool-for-logging})
+      (timers/stop timer)
       offers-this-pool))
 
   (restore-offers [this pool-name offers])
