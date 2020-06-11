@@ -4,8 +4,10 @@
 *.swo
 *.swp
 *~
+*.pyc
 .DS_Store
 .idea/
+.vscode/
 .kill_lein
 .lein-cljsbuild-compiler*
 .lein-deps-sum
@@ -20,6 +22,7 @@
 /lib
 /log
 /target
+__pycache__/
 gclog*
 jobclient/src/cfg
 pom.xml
@@ -39,4 +42,4 @@ test-log
 venv
 dist
 .vagrant/
-
+jobclient/python/docs/build/

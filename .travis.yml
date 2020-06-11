@@ -35,7 +35,8 @@ matrix:
         - ./cli/travis/setup.sh
         - cd scheduler && ./travis/setup.sh
       script:
-        - pushd ../jobclient && mvn test
+        - pushd ../jobclient/java && mvn test
+        - popd && pushd ../jobclient/python && python -m pytest
         - popd && pushd ../cli && python -m pytest
         - popd && lein with-profile +test test :all-but-benchmark
 
@@ -43,7 +44,9 @@ matrix:
       services: docker
       install: sudo ./travis/install_mesos.sh
       before_script: cd integration && ./travis/prepare_integration.sh
-      script: ./travis/run_integration.sh --executor=cook --image=python:3.5
+      script:
+      	- export PYTHONPATH=$PWD/jobclient/python
+      	- ./travis/run_integration.sh --executor=cook --image=python:3.5
 
     # We want a small rate limit to make the job launch rate limit integration test be stable and not
     # need to launch a lot of jobs. Those low launch rate limit settings would cause other integration
