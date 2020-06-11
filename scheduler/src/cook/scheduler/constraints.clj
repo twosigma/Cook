@@ -120,7 +120,10 @@
                                  target-vm-tasks-assigned))
           job (:job this)
           passes? (or (and needs-gpus? vm-has-gpus?)
-                      (and (not needs-gpus?) (not vm-has-gpus?)))]
+                      (and (not needs-gpus?) (not vm-has-gpus?)))
+          (let [model-requested (get env "COOK_GPU_MODEL")]
+            (passes? (or (and (model-requested?) (contains? (vm-stuff) (model-requested)))        ;;check if the vm has the model-requested available
+                         (not vm-has-gpus?))))]
       [passes? (when-not passes? (if (and needs-gpus? (not vm-has-gpus?))
                                    "Job needs gpus, host does not have gpus."
                                    "Job does not need gpus, host has gpus."))])))
