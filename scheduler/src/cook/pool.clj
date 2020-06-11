@@ -79,3 +79,13 @@
       (when (-> pools count pos?)
         (throw (ex-info "There are pools in the database, but no default pool is configured"
                         {:pools pools}))))))
+
+(defn guard-invalid-default-gpu-model
+  "Throws if either of the following is true:
+  - there are valid-gpu-models in the pool, but no default gpu model is configured
+  - there is no gpu-model in valid-gpu-models matching the configured default"
+  []
+  (for [entry (config/valid-gpu-models)]
+    (when-not (contains? (:valid-models entry) (:default-model entry))
+      (throw (ex-info "Default GPU model is not configured correctly" {})))))
+
