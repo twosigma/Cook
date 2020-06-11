@@ -79,7 +79,8 @@
                  :hostname node-name
                  :resources [{:name "mem" :type :value-scalar :scalar (max 0.0 (:mem available))}
                              {:name "cpus" :type :value-scalar :scalar (max 0.0 (:cpus available))}
-                             {:name "disk" :type :value-scalar :scalar 0.0}]
+                             {:name "disk" :type :value-scalar :scalar 0.0}
+                             {:name "gpus" :type :value-available-types-map :available-types-map {}}]
                  :attributes []
                  :executor-ids []
                  :compute-cluster compute-cluster

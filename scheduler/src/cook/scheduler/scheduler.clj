@@ -76,12 +76,13 @@
   "Gets all the attributes from an offer and puts them in a simple, less structured map of the form
    name->value"
   [{:keys [attributes compute-cluster hostname] :as offer}]
-  (let [mesos-attributes (->> attributes
+  (let [offer-attributes (->> attributes
                               (map #(vector (:name %) (case (:type %)
                                                         :value-scalar (:scalar %)
                                                         :value-ranges (:ranges %)
                                                         :value-set (:set %)
                                                         :value-text (:text %)
+                                                        :value-available-types-map (:map %)
                                                         ; Default
                                                         (:value %))))
                               (into {}))
@@ -94,7 +95,7 @@
                           compute-cluster
                           (assoc "COOK_MAX_TASKS_PER_HOST" (cc/max-tasks-per-host compute-cluster)
                                  "COOK_NUM_TASKS_ON_HOST" (cc/num-tasks-on-host compute-cluster hostname)))]
-    (merge mesos-attributes cook-attributes)))
+    (merge offer-attributes cook-attributes)))
 
 (timers/deftimer [cook-mesos scheduler handle-status-update-duration])
 (timers/deftimer [cook-mesos scheduler handle-framework-message-duration])
