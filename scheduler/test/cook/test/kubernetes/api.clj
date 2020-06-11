@@ -13,19 +13,21 @@
 
 (deftest test-get-consumption
   (testing "correctly computes consumption for a single pod"
-    (let [pods [(tu/pod-helper "podA" "hostA" {:cpus 1.0 :mem 100.0})]]
+    (let [pods [(tu/pod-helper "podA" "hostA" {:cpus 1.0 :mem 100.0})]
+          node-name->pods (api/pods->node-name->pods pods)]
       (is (= {"hostA" {:cpus 1.0
                        :mem 100.0}}
-             (api/get-consumption pods)))))
+             (api/get-consumption node-name->pods)))))
 
   (testing "correctly computes consumption for a pod with multiple containers"
     (let [pods [(tu/pod-helper "podA" "hostA"
                                {:cpus 1.0 :mem 100.0}
                                {:cpus 1.0 :mem 0.0}
-                               {:mem 100.0})]]
+                               {:mem 100.0})]
+          node-name->pods (api/pods->node-name->pods pods)]
       (is (= {"hostA" {:cpus 2.0
                        :mem 200.0}}
-             (api/get-consumption pods)))))
+             (api/get-consumption node-name->pods)))))
 
   (testing "correctly aggregates pods by node name"
     (let [pods [(tu/pod-helper "podA" "hostA"
@@ -36,11 +38,12 @@
                                {:cpus 1.0}
                                {:mem 100.0})
                 (tu/pod-helper "podD" "hostC"
-                               {:cpus 1.0})]]
+                               {:cpus 1.0})]
+          node-name->pods (api/pods->node-name->pods pods)]
       (is (= {"hostA" {:cpus 2.0 :mem 100.0}
               "hostB" {:cpus 1.0 :mem 100.0}
               "hostC" {:cpus 1.0 :mem 0.0}}
-             (api/get-consumption pods))))))
+             (api/get-consumption node-name->pods))))))
 
 (deftest test-get-capacity
   (let [node-name->node {"nodeA" (tu/node-helper "nodeA" 1.0 100.0 nil)
