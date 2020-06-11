@@ -355,6 +355,11 @@
   (or (some-> pod .getSpec .getNodeName)
       (some-> pod .getSpec .getNodeSelector (get k8s-hostname-label))))
 
+(defn pods->node-name->pods
+  "Given a seq of pods, create a map of node names to pods"
+  [pods]
+  (group-by pod->node-name pods))
+
 (defn num-pods-on-node
   "Returns the number of pods assigned to the given node"
   [node-name pods]
@@ -365,7 +370,7 @@
   "Can we schedule on a node. For now, yes, unless there are other taints on it or it contains any label in the
   node-blocklist-labels list.
   TODO: Incorporate other node-health measures here."
-  [^V1Node node pod-count-capacity pods node-blocklist-labels]
+  [^V1Node node pod-count-capacity node-name->pods node-blocklist-labels]
   (if (nil? node)
     false
     (let [taints-on-node (or (some-> node .getSpec .getTaints) [])
@@ -374,19 +379,19 @@
                                   (.getKey %))
                                taints-on-node)
           node-name (some-> node .getMetadata .getName)
-          pods-on-node (num-pods-on-node node-name pods)
+          num-pods-on-node (-> node-name->pods (get node-name []) count)
           labels-on-node (or (some-> node .getMetadata .getLabels) {})
           matching-node-blocklist-keyvals (select-keys labels-on-node node-blocklist-labels)]
       (cond  (seq other-taints) (do
                                   (log/info "Filtering out" node-name "because it has taints" other-taints)
                                   false)
-             (>= pods-on-node pod-count-capacity) (do
-                                                    (log/info "Filtering out" node-name "because it is at or above its pod count capacity of"
-                                                              pod-count-capacity "(" pods-on-node ")")
-                                                    false)
+             (>= num-pods-on-node pod-count-capacity) (do
+                                                        (log/info "Filtering out" node-name "because it is at or above its pod count capacity of"
+                                                                  pod-count-capacity "(" num-pods-on-node ")")
+                                                        false)
              (seq matching-node-blocklist-keyvals) (do
-                                                    (log/info "Filtering out" node-name "because it has node blocklist labels" matching-node-blocklist-keyvals)
-                                                    false)
+                                                     (log/info "Filtering out" node-name "because it has node blocklist labels" matching-node-blocklist-keyvals)
+                                                     false)
              :else true))))
 
 (defn get-capacity
@@ -401,22 +406,20 @@
 
   When accounting for resources, we use resource requests to determine how much is used, not limits.
   See https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/#resource-requests-and-limits-of-pod-and-container"
-  [pods]
-  (let [node-name->pods (group-by pod->node-name pods)
-        node-name->requests (pc/map-vals (fn [pods]
-                                           (->> pods
-                                                (map (fn [^V1Pod pod]
-                                                       (let [containers (-> pod .getSpec .getContainers)
-                                                             container-requests (map (fn [^V1Container c]
-                                                                                       (-> c
-                                                                                           .getResources
-                                                                                           .getRequests
-                                                                                           convert-resource-map))
-                                                                                     containers)]
-                                                         (apply merge-with + container-requests))))
-                                                (apply merge-with +)))
-                                         node-name->pods)]
-    node-name->requests))
+  [node-name->pods]
+  (pc/map-vals (fn [pods]
+                 (->> pods
+                      (map (fn [^V1Pod pod]
+                             (let [containers (-> pod .getSpec .getContainers)
+                                   container-requests (map (fn [^V1Container c]
+                                                             (-> c
+                                                                 .getResources
+                                                                 .getRequests
+                                                                 convert-resource-map))
+                                                           containers)]
+                               (apply merge-with + container-requests))))
+                      (apply merge-with +)))
+               node-name->pods))
 
 ; see pod->synthesized-pod-state comment for container naming conventions
 (def cook-container-name-for-job
