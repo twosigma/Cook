@@ -1,7 +1,8 @@
 (ns cook.test.pool
   (:require [clojure.test :refer :all]
             [cook.config :as config]
-            [cook.pool :as pool])
+            [cook.pool :as pool]
+            [clojure.tools.logging :as log])
   (:import (clojure.lang ExceptionInfo)))
 
 (deftest test-guard-invalid-default-pool
@@ -28,18 +29,20 @@
                           (pool/guard-invalid-default-pool nil)))))
 
 (deftest test-guard-invalid-default-gpu-model
+  (testing "test"
+    (is (nil? (pool/guard-invalid-default-gpu-model))))
   (testing "valid default model"
     (with-redefs [config/valid-gpu-models (constantly [{:pool-regex    "test-pool"
                                                         :valid-models  #{"valid-gpu-model"}
                                                         :default-model "valid-gpu-model"}])]
-      (is (nil? (pool/guard-invalid-default-gpu-model nil)))))
+      (is (nil? (pool/guard-invalid-default-gpu-model)))))
   (testing "no default model"
     (with-redefs [config/valid-gpu-models (constantly [{:pool-regex    "test-pool"
                                                         :valid-models  #{"valid-gpu-model"}}])]
       (is (thrown-with-msg?
             ExceptionInfo
             #"Default GPU model is not configured correctly"
-            pool/guard-invalid-default-gpu-model nil))))
+            pool/guard-invalid-default-gpu-model))))
   (testing "invalid default model"
     (with-redefs [config/valid-gpu-models (constantly [{:pool-regex    "test-pool"
                                                         :valid-models  #{"valid-gpu-model"}
@@ -47,4 +50,4 @@
       (is (thrown-with-msg?
             ExceptionInfo
             #"Default GPU model is not configured correctly"
-            pool/guard-invalid-default-gpu-model nil)))))
+            pool/guard-invalid-default-gpu-model)))))
