@@ -26,3 +26,25 @@
     (is (thrown-with-msg? ExceptionInfo
                           #"There is no pool in the database matching the configured default pool"
                           (pool/guard-invalid-default-pool nil)))))
+
+(deftest test-guard-invalid-default-gpu-model
+  (testing "valid default model"
+    (with-redefs [config/valid-gpu-models (constantly [{:pool-regex    "test-pool"
+                                                        :valid-models  #{"valid-gpu-model"}
+                                                        :default-model "valid-gpu-model"}])]
+      (is (nil? (pool/guard-invalid-default-gpu-model nil)))))
+  (testing "no default model"
+    (with-redefs [config/valid-gpu-models (constantly [{:pool-regex    "test-pool"
+                                                        :valid-models  #{"valid-gpu-model"}}])]
+      (is (thrown-with-msg?
+            ExceptionInfo
+            #"Default GPU model is not configured correctly"
+            pool/guard-invalid-default-gpu-model nil))))
+  (testing "invalid default model"
+    (with-redefs [config/valid-gpu-models (constantly [{:pool-regex    "test-pool"
+                                                        :valid-models  #{"valid-gpu-model"}
+                                                        :default-model "invalid-gpu-model"}])]
+      (is (thrown-with-msg?
+            ExceptionInfo
+            #"Default GPU model is not configured correctly"
+            pool/guard-invalid-default-gpu-model nil)))))

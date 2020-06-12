@@ -82,10 +82,14 @@
 
 (defn guard-invalid-default-gpu-model
   "Throws if either of the following is true:
-  - there are valid-gpu-models in the pool, but no default gpu model is configured
+  - there are valid-models for a pool-regex, but no default gpu model is configured
   - there is no gpu-model in valid-gpu-models matching the configured default"
-  []
-  (for [entry (config/valid-gpu-models)]
-    (when-not (contains? (:valid-models entry) (:default-model entry))
-      (throw (ex-info "Default GPU model is not configured correctly" {})))))
-
+  [db]
+  (run! (fn validate-default-model
+          [{:keys [valid-models default-model]}]
+          (log/info "~~~~~~" valid-models)
+          (log/info "~~~~~~" default-model)
+          (when (or (and valid-models (not default-model))
+                    (not (contains? valid-models default-model)))
+            (throw (ex-info "Default GPU model is not configured correctly" {}))))
+        (config/valid-gpu-models)))
