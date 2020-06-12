@@ -86,8 +86,11 @@
   - there is no gpu-model in valid-gpu-models matching the configured default"
   []
   (run! (fn validate-default-model
-          [{:keys [valid-models default-model]}]
-          (when (or (and valid-models (not default-model))
-                    (not (contains? valid-models default-model)))
-            (throw (ex-info "Default GPU model is not configured correctly" {}))))
+          [{:keys [default-model pool-regex valid-models] :as entry}]
+          (when (and pool-regex (not valid-models))
+            (throw (ex-info (str "Valid GPU models for pool-regex " pool-regex " is not defined") entry)))
+          (when (and pool-regex (not default-model))
+            (throw (ex-info (str "Default GPU model for pool-regex " pool-regex " is not defined") entry)))
+          (when (not (contains? valid-models default-model))
+            (throw (ex-info (str "Default GPU model for pool-regex " pool-regex " is not listed as a valid GPU model") entry))))
         (config/valid-gpu-models)))
