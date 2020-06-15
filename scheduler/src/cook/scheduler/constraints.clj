@@ -105,7 +105,7 @@
   (let [previous-hosts (job->previous-hosts-to-avoid job)]
     (->novel-host-constraint job previous-hosts)))
 
-(defrecord gpu-host-constraint [job needs-gpus?]
+(defrecord gpu-host-constraint [job vm-gpus-available]
   JobConstraint
   (job-constraint-name [this] (get-class-name this))
   (job-constraint-evaluate
@@ -114,19 +114,19 @@
   (job-constraint-evaluate
     [this _ vm-attributes target-vm-tasks-assigned]
     (let [; Look at attribute and running jobs to determine if vm has gpus
-          vm-has-gpus? (or (get vm-attributes "COOK_GPU?") ; Set when putting attributes in cache
-                           (some (fn gpu-task? [{:keys [needs-gpus?]}]
-                                   needs-gpus?)
-                                 target-vm-tasks-assigned))
+          gpu-model->count-available (vm-gpus-available)    ; get map of gpu models and resources available
+          gpu-model-requested (get "COOK_GPU_MODEL" (util/job-ent->env))
+          gpu-count-requested (:resource.type/gpus)
+          vm-has-requested-gpu-models
           job (:job this)
-          passes? (or (and needs-gpus? vm-has-gpus?)
-                      (and (not needs-gpus?) (not vm-has-gpus?)))
-          (let [model-requested (get env "COOK_GPU_MODEL")]
-            (passes? (or (and (model-requested?) (contains? (vm-stuff) (model-requested)))        ;;check if the vm has the model-requested available
-                         (not vm-has-gpus?))))]
-      [passes? (when-not passes? (if (and needs-gpus? (not vm-has-gpus?))
-                                   "Job needs gpus, host does not have gpus."
-                                   "Job does not need gpus, host has gpus."))])))
+
+          passes? (if (pos? gpu-count-requested)            ; if job requests GPUs, constraint passes if the VM has enough GPUs available of the requested model
+                    (>= (get gpu-model->count-available gpu-model-requested 0) gpu-count-requested)
+                    (-> gpu-model->count-available count zero?))] ; if job does not request GPUs, do not schedule it on a VM that has GPU models
+
+      [passes? (when-not passes? (if (pos? gpu-model-requested)
+                                   "Job does not need GPUs, host has GPUs."
+                                   (str "Job needs GPU model " gpu-model-requested " , host does not have GPU model" gpu-model-requested)))])))
 
 (defn build-gpu-host-constraint
   "Constructs a gpu-host-constraint.
