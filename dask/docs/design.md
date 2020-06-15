@@ -47,7 +47,7 @@ Or, using context managers:
 from dask_cook import CookCluster
 from dask.distributed import Client
 
-with CookCluster('https://my-cook-instance.internal'):
+with CookCluster('https://my-cook-instance.internal') as cluster:
     cluster.scale(20)
     client = Client(cluster)
 ```
@@ -208,7 +208,7 @@ With context managers:
 from dask_cook import CookCluster
 from dask.distributed import Client
 
-with CookCluster('https://my-cook-instance.internal'):
+with CookCluster('https://my-cook-instance.internal') as cluster:
     cluster.scale(20)
     client = Client(cluster)
 ```
