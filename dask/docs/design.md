@@ -29,6 +29,29 @@ from dask.distributed import Client
 client = Client(cluster)
 ```
 
+The end result would look something like this:
+
+```python
+from dask_cook import CookCluster
+cluster = CookCluster('https://my-cook-instance.internal')
+cluster.scale(20)  # add 20 workers
+cluster.adapt()    # or create and destroy workers dynamically based on workload
+
+from dask.distributed import Client
+client = Client(cluster)
+```
+
+Or, using context managers:
+
+```python
+from dask_cook import CookCluster
+from dask.distributed import Client
+
+with CookCluster('https://my-cook-instance.internal'):
+    cluster.scale(20)
+    client = Client(cluster)
+```
+
 ## Architecture
 
 Long story short, a Dask system has two different kinds of nodes: one 
@@ -166,7 +189,8 @@ would, ideally, only require a selector indicating which Cook address to
 connect to at construction time (e.g. https://my-cook-instance.internal), and
 then the user can use the standard Dask API via `dask.distributed.Client`.
 
-The end goal will be for deployment of jobs on Cook to be as simple as:
+The end goal will be for deployment of jobs on Cook to be as simple as the
+example in [Goals and Non-Goals](#goals-and-non-goals), reproduced below:
 
 ```python
 from dask_cook import CookCluster
@@ -178,7 +202,7 @@ from dask.distributed import Client
 client = Client(cluster)
 ```
 
-Or, using context managers:
+With context managers:
 
 ```python
 from dask_cook import CookCluster
