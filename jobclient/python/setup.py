@@ -11,7 +11,7 @@ requirements = [
     'requests'
 ]
 
-setup(name='cookclient',
+setup(name='cook-client-api',
       version=CLIENT_VERSION,
       description="Cook Scheduler Client API for Python",
       long_description=readme,
