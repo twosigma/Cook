@@ -16,7 +16,7 @@ the Cook backend in a "plug-and-play" fashion similar to other backends in
 Dask.
 
 Ideally, the process of using Cook on Dask should look something like using
-Kubernetes as Dask, as shown below (taken from [here](https://docs.dask.org/en/latest/setup/kubernetes.html)):
+Kubernetes on Dask, as shown below (taken from [here](https://docs.dask.org/en/latest/setup/kubernetes.html)):
 
 ```python
 from dask_kubernetes import KubeCluster
