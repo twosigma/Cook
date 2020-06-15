@@ -13,7 +13,7 @@
 ;; See the License for the specific language governing permissions and
 ;; limitations under the License.
 ;;
-(defproject cook "1.42.4"
+(defproject cook "1.42.5-SNAPSHOT"
   :description "This launches jobs on a Mesos cluster with fair sharing and preemption"
   :license {:name "Apache License, Version 2.0"}
   :dependencies [[org.clojure/clojure "1.8.0"]
