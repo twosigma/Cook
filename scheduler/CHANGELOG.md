@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.42.4] - 2020-06-15
+### Added
+- Validation for GPU model requests, from @kathryn-zhou
+### Changed
+- Added extra metrics and logging around match cycle, from @scrosby
+### Fixed
+- Fixed O(#pods * #nodes) bug in calculating k8s offers, from @scrosby
+
 ## [1.42.3] - 2020-06-02
 ### Changed
 - Update checkpointing settings, from @nsinkov
