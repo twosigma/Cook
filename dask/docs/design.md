@@ -3,10 +3,10 @@
 ## Motivation
 
 As part of our overall effort to introduce support for Dask workloads with GPU
-support in GCP, we would like to be able to deploy jobs using the Dask API onto
-Cook. Although [`dask-kubernetes`](https://kubernetes.dask.org/en/latest) exists
-and some exploration has been done on that front, using Cook as a compute
-backend offers many benefits since it can federate access to multiple
+support in Kubernetes, we would like to be able to deploy jobs using the Dask
+API onto Cook. Although [`dask-kubernetes`](https://kubernetes.dask.org/en/latest)
+exists and some exploration has been done on that front, using Cook as a
+compute backend offers many benefits since it can federate access to multiple
 Kubernetes clusters.
 
 ## Goals and Non-Goals
