@@ -4,9 +4,10 @@
 
 As part of our overall effort to introduce support for Dask workloads with GPU
 support in GCP, we would like to be able to deploy jobs using the Dask API onto
-Cook. Although `dask-kubernetes` exists and some exploration has been done on
-that front, using Cook as a compute backend offers many benefits since it can
-federate access to multiple Kubernetes clusters.
+Cook. Although [`dask-kubernetes`](https://kubernetes.dask.org/en/latest) exists
+and some exploration has been done on that front, using Cook as a compute
+backend offers many benefits since it can federate access to multiple
+Kubernetes clusters.
 
 ## Goals and Non-Goals
 
@@ -65,7 +66,7 @@ requirements for custom worker types:
 The three elements listed above will form the core behavior of our custom
 `CookJob` class. An instance of htis class would receive the specifications for
 a Cook job in its constructor, corresponding to the signature for
-`JobClient.submit`.
+[`JobClient.submit`](https://github.com/twosigma/Cook/blob/master/jobclient/python/cookclient/__init__.py#L96-L111).
 
 #### `async def start(self)`
 
