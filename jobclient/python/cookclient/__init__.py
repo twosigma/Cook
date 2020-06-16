@@ -26,7 +26,7 @@ from uuid import UUID
 from . import util
 from .jobs import Application, Job
 
-CLIENT_VERSION = '0.1.0'
+CLIENT_VERSION = '0.2.1'
 
 _LOG = logging.getLogger(__name__)
 _LOG.addHandler(logging.StreamHandler())
