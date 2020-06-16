@@ -162,7 +162,7 @@ class JobClient:
         if labels is not None:
             payload['labels'] = labels
         if max_runtime is not None:
-            payload['max-runtime'] = max_runtime.total_seconds()
+            payload['max-runtime'] = max_runtime.total_seconds() * 1000
         if name is not None:
             payload['name'] = name
         if priority is not None:

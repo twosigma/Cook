@@ -21,7 +21,7 @@ from uuid import UUID
 from typing import Dict, List, Optional, Set
 
 from .instance import Executor, Instance
-from .util import unix_ms_to_datetime
+from .util import unix_ms_to_datetime, datetime_to_unix_ms
 
 
 class State(Enum):
@@ -312,13 +312,13 @@ class Job:
             'uuid': str(self.uuid),
             'name': self.name,
             'max_retries': self.max_retries,
-            'max_runtime': int(self.max_runtime.total_seconds()),
+            'max_runtime': int(self.max_runtime.total_seconds() * 1000),
             'status': str(self.status),
             'state': str(self.state),
             'priority': self.priority,
             'framework_id': self.framework_id,
             'retries_remaining': self.retries_remaining,
-            'submit_time': int(self.submit_time.timestamp() * 1000),
+            'submit_time': datetime_to_unix_ms(self.submit_time),
             'user': self.user
         }
         if self.disable_mea_culpa_retries is not None:
@@ -366,7 +366,7 @@ class Job:
         """Parse a Job from its `dict` representation."""
         d = deepcopy(d)
         d['uuid'] = UUID(d['uuid'])
-        d['max_runtime'] = timedelta(seconds=d['max_runtime'])
+        d['max_runtime'] = timedelta(milliseconds=d['max_runtime'])
         d['status'] = Status.from_string(d['status'])
         d['state'] = State.from_string(d['state'])
         d['submit_time'] = unix_ms_to_datetime(d['submit_time'])
