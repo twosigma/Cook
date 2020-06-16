@@ -109,6 +109,7 @@ class JobClient:
                priority: Optional[int] = None,
                container: Optional[AbstractContainer] = None,
                application: Application = _CLIENT_APP,
+               pool: Optional[str] = None,
 
                pool: Optional[str] = None,
 
@@ -148,6 +149,9 @@ class JobClient:
         :param application: Application information to assign to the job,
             defaults to ``cook-python-client`` with version 0.1.
         :type application: Application, optional
+        :param pool: Which pool the job should be submitted to, defaults to
+            one.
+        :type pool: str, optional
         :param kwargs: Request kwargs. If kwargs were specified to the client
             on construction, then these will take precedence over those.
         :return: The UUID of the newly-created job.
@@ -176,6 +180,12 @@ class JobClient:
         if container is not None:
             payload['container'] = container.to_dict()
         payload = {'jobs': [payload]}
+
+        # Pool requests are assigned to the group payload instead of each
+        # individual job submission's payload.
+        if pool is not None:
+            payload['pool'] = pool
+
         url = urlunparse((self.__scheme, self.__netloc, self.__job_endpoint,
                           '', '', ''))
         _LOG.debug(f"Sending POST to {url}")
