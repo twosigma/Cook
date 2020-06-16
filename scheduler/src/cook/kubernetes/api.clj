@@ -329,15 +329,29 @@
   [^Quantity q]
   (-> q .getNumber .doubleValue))
 
+(defn to-int
+  "Map a quantity to an int, whether integer, double, or float."
+  [^Quantity q]
+  (-> q .getNumber .intValue))
+
 (defn convert-resource-map
-  "Converts a map of Kubernetes resources to a cook resource map {:mem double, :cpus double}"
-  [m]
-  {:mem (if (get m "memory")
-          (-> m (get "memory") to-double (/ memory-multiplier))
-          0.0)
+  "Converts a map of Kubernetes resources to a cook resource map {:mem double, :cpus double, :gpus double}"
+  [m node pod]
+  {:mem  (if (get m "memory")
+           (-> m (get "memory") to-double (/ memory-multiplier))
+           0.0)
    :cpus (if (get m "cpu")
            (-> m (get "cpu") to-double)
-           0.0)})
+           0.0)
+   (let [gpu-count (-> m (get "nvidia.com/gpu") to-int)]
+     ; if node has gpu type and pos gpu count, include gpus key for get-capacity
+     (if (and (-> node .getMetadata .getLabels (get "gpu-type"))
+              (pos? gpu-count))
+       :gpus gpu-count)
+     ; if pod has gpu type and pos gpu count, include gpus key for get-consumption
+     (if (and (-> pod .getSpec .getNodeSelector (get "cloud.google.com/gke-accelerator"))
+              (pos? gpu-count))
+       :gpus gpu-count))})
 
 (defn get-node-pool
   "Get the pool for a node. In the case of no pool, return 'no-pool"
@@ -415,7 +429,7 @@
                                                              (-> c
                                                                  .getResources
                                                                  .getRequests
-                                                                 convert-resource-map))
+                                                                 convert-resource-map)) ; change this convert-resource-map
                                                            containers)]
                                (apply merge-with + container-requests))))
                       (apply merge-with +)))
