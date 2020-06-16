@@ -38,7 +38,8 @@
             [qbits.jet.server :refer (run-jetty)]
             [ring.middleware.params :refer (wrap-params)]
             [cook.scheduler.scheduler :as sched]
-            [cook.mesos.task :as task])
+            [cook.mesos.task :as task]
+            [cook.config :as config])
   (:import (com.netflix.fenzo SimpleAssignmentResult)
            (io.kubernetes.client.custom Quantity$Format Quantity)
            (io.kubernetes.client.openapi.models V1Container V1ResourceRequirements V1Pod V1ObjectMeta V1PodSpec V1Node
@@ -481,7 +482,7 @@
   (let [pod (V1Pod.)
         metadata (V1ObjectMeta.)
         spec (V1PodSpec.)]
-    (doall (for [{:keys [mem cpus]} requests]
+    (doall (for [{:keys [mem cpus gpus]} requests]
              (let [container (V1Container.)
                    resources (V1ResourceRequirements.)]
                (when mem
@@ -494,6 +495,13 @@
                                    "cpu"
                                    (Quantity. (BigDecimal. cpus)
                                               Quantity$Format/DECIMAL_SI)))
+               (when gpus
+                 (.putRequestsItem resources
+                                   "nvidia.com/gpu"
+                                   (Quantity. gpus))
+                 (.putNodeSelectorItem spec
+                                       "cloud.google.com/gke-accelerator"
+                                       "nvidia-tesla-p100"))
                (.setResources container resources)
                (.addContainersItem spec container))))
     (.setNodeName spec node-name)
@@ -515,7 +523,7 @@
         (.addTolerationsItem (kapi/toleration-for-pool pool-name)))
     outstanding-synthetic-pod))
 
-(defn node-helper [node-name cpus mem pool]
+(defn node-helper [node-name cpus mem gpus pool]
   "Make a fake node for kubernetes unit tests"
   (let [node (V1Node.)
         status (V1NodeStatus.)
@@ -531,6 +539,12 @@
                                                    Quantity$Format/DECIMAL_SI))
       (.putAllocatableItem status "memory" (Quantity. (BigDecimal. (* kapi/memory-multiplier mem))
                                                       Quantity$Format/DECIMAL_SI)))
+    (when gpus
+      (.putCapacityItem status "nvidia.com/gpu" (Quantity. gpus))
+      (.putAllocatableItem status "nvidia.com/gpu" (Quantity. gpus))
+      ; for testing purposes use "nvidia-tesla-p100"
+      (.putLabelsItem metadata "gpu-type" "nvidia-tesla-p100"))
+
     (when pool
       (let [^V1Taint taint (V1Taint.)]
         (.setKey taint "cook-pool")
