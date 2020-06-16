@@ -336,22 +336,18 @@
 
 (defn convert-resource-map
   "Converts a map of Kubernetes resources to a cook resource map {:mem double, :cpus double, :gpus double}"
-  [m node pod]
+  [m]
   {:mem  (if (get m "memory")
            (-> m (get "memory") to-double (/ memory-multiplier))
            0.0)
    :cpus (if (get m "cpu")
            (-> m (get "cpu") to-double)
            0.0)
-   (let [gpu-count (-> m (get "nvidia.com/gpu") to-int)]
-     ; if node has gpu type and pos gpu count, include gpus key for get-capacity
-     (if (and (-> node .getMetadata .getLabels (get "gpu-type"))
-              (pos? gpu-count))
-       :gpus gpu-count)
-     ; if pod has gpu type and pos gpu count, include gpus key for get-consumption
-     (if (and (-> pod .getSpec .getNodeSelector (get "cloud.google.com/gke-accelerator"))
-              (pos? gpu-count))
-       :gpus gpu-count))})
+   ;; For the purposes of simplified operations on the resource maps, we only look at number of GPUs in this function
+   ;; If GKE supports multiple GPU models on the same node in the future, this function must be modified
+   :gpus (if (get m "nvidia.com/gpu")
+          (-> m (get "nvidia.com/gpu") to-int)
+          0)})
 
 (defn get-node-pool
   "Get the pool for a node. In the case of no pool, return 'no-pool"
@@ -408,16 +404,33 @@
                                                      false)
              :else true))))
 
+(defn merge-resource-maps
+  "Given a function and two resource-maps, merge into a single resource map"
+  [f resource-map-a resource-map-b]
+  {:cpus (f (:cpus resource-map-a) (:cpus resource-map-b))
+   :mem (f (:mem resource-map-a) (:mem resource-map-b))
+   :gpus (merge-with f (:gpus resource-map-a) (:gpus resource-map-b))})
+
+(defn merge-resource-map-collection
+  "Given a function and multiple resource-maps, merge into a single resource map"
+  [f & resource-maps]
+  (reduce (fn [resource-map-a resource-map-b]
+            (merge-resource-maps f resource-map-a resource-map-b))
+          resource-maps))
+
 (defn get-capacity
   "Given a map from node-name to node, generate a map from node-name->resource-type-><capacity>"
   [node-name->node]
   (pc/map-vals (fn [^V1Node node]
-                 (-> node .getStatus .getAllocatable convert-resource-map))
+                 (let [{:keys [gpus] :as resource-map} (-> node .getStatus .getAllocatable convert-resource-map)
+                       gpu-model (-> node .getMetadata .getLabels (get "gpu-type"))]
+                   (if (and gpu-model (pos? gpus))
+                     (assoc resource-map :gpus {gpu-model (:gpus resource-map)})
+                     (assoc resource-map :gpus {}))))
                node-name->node))
 
 (defn get-consumption
   "Given a map from pod-name to pod, generate a map from node-name->resource-type->capacity
-
   When accounting for resources, we use resource requests to determine how much is used, not limits.
   See https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/#resource-requests-and-limits-of-pod-and-container"
   [node-name->pods]
@@ -429,10 +442,16 @@
                                                              (-> c
                                                                  .getResources
                                                                  .getRequests
-                                                                 convert-resource-map)) ; change this convert-resource-map
-                                                           containers)]
-                               (apply merge-with + container-requests))))
-                      (apply merge-with +)))
+                                                                 convert-resource-map))
+                                                           containers)
+                                   {:keys [gpus] :as resource-map} (apply merge-with + container-requests)
+                                   gpu-model (-> pod .getSpec .getNodeSelector (get "cloud.google.com/gke-accelerator"))]
+                               (if (and gpu-model (pos? gpus))
+                                 (assoc resource-map :gpus {gpu-model gpus})
+                                 (assoc resource-map :gpus {})))))
+                       ;; sum-resources will need to handle the unlikely case where
+                       ;; two pods on the same node asked for different models
+                      (apply merge-resource-map-collection +)))
                node-name->pods))
 
 ; see pod->synthesized-pod-state comment for container naming conventions
