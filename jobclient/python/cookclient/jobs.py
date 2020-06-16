@@ -62,7 +62,9 @@ class State(Enum):
     """
     WAITING = 'WAITING'
     """The job has not finished yet."""
-    PASSED = 'PASSED'
+    RUNNING = 'RUNNING'
+    """The job is currently running."""
+    SUCCESS = 'SUCCESS'
     """The job has finished and succeeded."""
     FAILED = 'FAILED'
     """The job has finished and failed."""
@@ -81,7 +83,8 @@ class State(Enum):
 
 _JOB_STATE_LOOKUP = {
     'waiting': State.WAITING,
-    'passed': State.PASSED,
+    'success': State.SUCCESS,
+    'running': State.RUNNING,
     'failed': State.FAILED
 }
 
@@ -327,7 +330,7 @@ class Job:
         if self.pool is not None:
             d['pool'] = self.pool
         if self.instances is not None:
-            d['instances'] = list(map(str, self.instances))
+            d['instances'] = list(map(Instance.to_dict, self.instances))
         if self.env is not None:
             d['env'] = self.env
         if self.uris is not None:

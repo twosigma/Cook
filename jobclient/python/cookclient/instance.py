@@ -17,7 +17,7 @@ import json
 from copy import deepcopy
 from datetime import datetime
 from enum import Enum
-from typing import Optional
+from typing import List, Optional
 from uuid import UUID
 
 from .util import unix_ms_to_datetime
@@ -98,6 +98,8 @@ class Instance:
     :type status: cookclient.instance.Status
     :param preempted: If true, then this instance was preempted.
     :type preempted: bool
+    :param backfilled: If true, than this instance was backfilled.
+    :type backfilled: bool
     :param end_time: Time at which the instance finished.
     :type end_time: datetime, optional
     :param progress: Progress of this instance.
@@ -121,6 +123,9 @@ class Instance:
     hostname: str
     status: Status
     preempted: bool
+    backfilled: bool
+    ports: List[int]
+    compute_cluster: dict
 
     end_time: Optional[datetime]
     progress: Optional[int]
@@ -130,6 +135,7 @@ class Instance:
     output_url: Optional[str]
     executor: Optional[Executor]
     reason_mea_culpa: Optional[bool]
+    exit_code: Optional[int]
 
     def __init__(self, *,
                  # Required arguments
@@ -140,6 +146,9 @@ class Instance:
                  hostname: str,
                  status: Status,
                  preempted: bool,
+                 backfilled: bool,
+                 ports: List[int],
+                 compute_cluster: dict,
                  # Optional arguments
                  end_time: Optional[datetime] = None,
                  progress: Optional[int] = None,
@@ -148,7 +157,8 @@ class Instance:
                  reason_string: Optional[str] = None,
                  output_url: Optional[str] = None,
                  executor: Optional[Executor] = None,
-                 reason_mea_culpa: Optional[bool] = None):
+                 reason_mea_culpa: Optional[bool] = None,
+                 exit_code: Optional[int] = None):
         """Initialize an instance."""
         self.task_id = task_id
         self.slave_id = slave_id
@@ -157,6 +167,9 @@ class Instance:
         self.hostname = hostname
         self.status = status
         self.preempted = preempted
+        self.backfilled = backfilled
+        self.ports = ports
+        self.compute_cluster = compute_cluster
         self.end_time = end_time
         self.progress = progress
         self.progress_message = progress_message
@@ -165,6 +178,7 @@ class Instance:
         self.output_url = output_url
         self.executor = executor
         self.reason_mea_culpa = reason_mea_culpa
+        self.exit_code = exit_code
 
     def __str__(self):
         return json.dumps(self.to_dict(), indent=4)
@@ -185,7 +199,10 @@ class Instance:
             'start_time': int(self.start_time.timestamp() * 1000),
             'hostname': self.hostname,
             'status': str(self.status),
-            'preempted': self.preempted
+            'preempted': self.preempted,
+            'backfilled': self.backfilled,
+            'ports': self.ports,
+            'compute-cluster': self.compute_cluster
         }
         if self.end_time is not None:
             d['end_time'] = int(self.end_time.timestamp() * 1000)
@@ -203,6 +220,8 @@ class Instance:
             d['executor'] = str(self.executor)
         if self.reason_mea_culpa is not None:
             d['reason_mea_culpa'] = self.reason_mea_culpa
+        if self.exit_code is not None:
+            d['exit_code'] = self.exit_code
         return d
 
     @classmethod
@@ -212,6 +231,8 @@ class Instance:
         d['task_id'] = UUID(d['task_id'])
         d['start_time'] = unix_ms_to_datetime(d['start_time'])
         d['status'] = Status.from_string(d['status'])
+        d['compute_cluster'] = d['compute-cluster']
+        del d['compute-cluster']
         if 'end_time' in d:
             d['end_time'] = unix_ms_to_datetime(d['end_time'])
         if 'executor' in d:
