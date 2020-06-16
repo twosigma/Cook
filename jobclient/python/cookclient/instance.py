@@ -126,6 +126,7 @@ class Instance:
     progress: Optional[int]
     progress_message: Optional[str]
     reason_code: Optional[int]
+    reason_string: Optional[str]
     output_url: Optional[str]
     executor: Optional[Executor]
     reason_mea_culpa: Optional[bool]
@@ -144,6 +145,7 @@ class Instance:
                  progress: Optional[int] = None,
                  progress_message: Optional[str] = None,
                  reason_code: Optional[int] = None,
+                 reason_string: Optional[str] = None,
                  output_url: Optional[str] = None,
                  executor: Optional[Executor] = None,
                  reason_mea_culpa: Optional[bool] = None):
@@ -159,6 +161,7 @@ class Instance:
         self.progress = progress
         self.progress_message = progress_message
         self.reason_code = reason_code
+        self.reason_string = reason_string
         self.output_url = output_url
         self.executor = executor
         self.reason_mea_culpa = reason_mea_culpa
@@ -192,6 +195,8 @@ class Instance:
             d['progress_message'] = self.progress_message
         if self.reason_code is not None:
             d['reason_code'] = self.reason_code
+        if self.reason_string is not None:
+            d['reason_string'] = self.reason_string
         if self.output_url is not None:
             d['output_url'] = self.output_url
         if self.executor is not None:
