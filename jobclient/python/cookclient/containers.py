@@ -123,7 +123,7 @@ class DockerPortMapping:
 
 
 class DockerContainer(AbstractContainer):
-    """A Docker container.
+    """A Docker container description.
 
     :param image: Name of the image to use.
     :type image: str

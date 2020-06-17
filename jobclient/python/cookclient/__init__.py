@@ -52,7 +52,7 @@ class JobClient:
         provided, then the client will make requests using this session.
         Otherwise, the top-level ``requests`` functions will be used.
     :type auth: requests.Session, optional
-    :param **kwargs: Kwargs to provide to the request functions. If a session
+    :param \*\*kwargs: Kwargs to provide to the request functions. If a session
         was provided, then these options will take precedence over options
         specified there. For example, if ``auth`` is set in both ``session``
         and ``kwargs``, then the value from ``kwargs`` will be used. However,
@@ -145,11 +145,15 @@ class JobClient:
         :type name: str, optional
         :param priority: A priority to assign to the job, defaults to None.
         :type priority: int, optional
+        :param container: Which container to use for the job. Currently, only
+            Docker containers are supported. Defaults to None.
+        :type container: AbstractContainer, optional
         :param application: Application information to assign to the job,
-            defaults to ``cook-python-client`` with version 0.1.
+            defaults to ``cook-python-client`` with the current client
+            library version.
         :type application: Application, optional
         :param pool: Which pool the job should be submitted to, defaults to
-            one.
+            None.
         :type pool: str, optional
         :param kwargs: Request kwargs. If kwargs were specified to the client
             on construction, then these will take precedence over those.
@@ -267,6 +271,7 @@ class JobClient:
         ``with`` block, like so:
 
         ::
+
             with JobClient('localhost:12321', requests.Session()) as client:
                 client.submit('ls')
                 # ... do more stuff with the client
