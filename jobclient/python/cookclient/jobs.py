@@ -24,9 +24,9 @@ from .instance import Executor, Instance
 from .util import unix_ms_to_datetime, datetime_to_unix_ms
 
 
-class State(Enum):
+class Status(Enum):
     """
-    The curent state of a job.
+    The curent status of a job.
     """
     WAITING = 'WAITING'
     """The job is currently waiting to begin."""
@@ -39,22 +39,22 @@ class State(Enum):
         return self.value
 
     def __repr__(self):
-        return f'State.{self.value}'
+        return f'Status.{self.value}'
 
     @staticmethod
-    def from_string(name: str) -> 'State':
-        """Parse a ``State`` from a case-invariant string representation."""
-        return _JOB_STATE_LOOKUP[name.lower()]
+    def from_string(name: str) -> 'Status':
+        """Parse a ``Status`` from a case-invariant string representation."""
+        return _JOB_STATUS_LOOKUP[name.lower()]
 
 
-_JOB_STATE_LOOKUP = {
-    'waiting': State.WAITING,
-    'running': State.RUNNING,
-    'completed': State.COMPLETED
+_JOB_STATUS_LOOKUP = {
+    'waiting': Status.WAITING,
+    'running': Status.RUNNING,
+    'completed': Status.COMPLETED
 }
 
 
-class Status(Enum):
+class State(Enum):
     """The current status of a job.
 
     Indicates whether a job is currently running, has finished and succeeded,
@@ -73,19 +73,19 @@ class Status(Enum):
         return self.value
 
     def __repr__(self):
-        return f'Status.{self.value}'
+        return f'State.{self.value}'
 
     @staticmethod
-    def from_string(name: str) -> 'Status':
-        """Parse a ``Status`` from a case-invariant string representation."""
-        return _JOB_STATUS_LOOKUP[name.lower()]
+    def from_string(name: str) -> 'State':
+        """Parse a ``State`` from a case-invariant string representation."""
+        return _JOB_STATE_LOOKUP[name.lower()]
 
 
-_JOB_STATUS_LOOKUP = {
-    'waiting': Status.WAITING,
-    'success': Status.SUCCESS,
-    'running': Status.RUNNING,
-    'failed': Status.FAILED
+_JOB_STATE_LOOKUP = {
+    'waiting': State.WAITING,
+    'success': State.SUCCESS,
+    'running': State.RUNNING,
+    'failed': State.FAILED
 }
 
 

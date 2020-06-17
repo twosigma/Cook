@@ -32,24 +32,24 @@ Querying Job Status
 
 The client library can also be used to query the status of a running job on
 Cook. The following example shows one method of waiting until a job has
-finished running on Cook, and then printing its status.
+finished running on Cook, and then printing its state.
 
 ::
 
     import time
 
     from cookclient import JobClient
-    from cookclient.jobs import State as JobState
+    from cookclient.jobs import Status as JobStatus
 
     COOK_URL = 'http://localhost:12321'
 
     client = JobClient(COOK_URL)
     job = client.query('123e4567-e89b-12d3-a456-426614174000')
-    while job.state != JobState.COMPLETED:
+    while job.status != JobStatus.COMPLETED:
         time.sleep(15)
         job = client.query('123e4567-e89b-12d3-a456-426614174000')
 
-    print(job.status)
+    print(job.state)
 
 Killing a Job
 -------------
