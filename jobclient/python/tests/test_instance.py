@@ -28,7 +28,13 @@ INSTANCE_DICT_NO_OPTIONALS = {
     'start_time': 123123123,
     'hostname': 'host.name',
     'status': 'failed',
-    'preempted': True
+    'preempted': True,
+    'backfilled': True,
+    'ports': [
+        22,
+        80
+    ],
+    'compute-cluster': {}
 }
 
 INSTANCE_DICT_WITH_OPTIONALS = {**INSTANCE_DICT_NO_OPTIONALS, **{
@@ -49,6 +55,9 @@ INSTANCE_EXAMPLE = Instance(
     hostname='host.name',
     status=InstanceStatus.RUNNING,
     preempted=False,
+    backfilled=True,
+    ports=[22, 80],
+    compute_cluster={},
 
     end_time=datetime.now(),
     progress=100,

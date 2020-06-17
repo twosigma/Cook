@@ -55,7 +55,12 @@ JOB_DICT_WITH_OPTIONALS = {**JOB_DICT_NO_OPTIONALS, **{
             'start_time': 123123123,
             'hostname': 'host.name',
             'status': 'failed',
-            'preempted': True
+            'preempted': True,
+            'backfilled': False,
+            'ports': [
+                443,
+            ],
+            'compute-cluster': {}
         },
         {
             'task_id': '123e4567-e89b-12d3-a456-426614174020',
@@ -65,6 +70,9 @@ JOB_DICT_WITH_OPTIONALS = {**JOB_DICT_NO_OPTIONALS, **{
             'hostname': 'host.name',
             'status': 'success',
             'preempted': False,
+            'backfilled': False,
+            'ports': [],
+            'compute-cluster': {},
             'end_time': 123123521,
             'progress': 100,
             'progress_message': 'foo',
@@ -189,7 +197,7 @@ class JobTest(TestCase):
         self.assertEqual(str(job.uuid), jobdict['uuid'])
         self.assertEqual(job.name, jobdict['name'])
         self.assertEqual(job.max_retries, jobdict['max_retries'])
-        self.assertEqual(int(job.max_runtime.total_seconds()),
+        self.assertEqual(int(job.max_runtime.total_seconds() * 1000),
                          jobdict['max_runtime'])
         self.assertEqual(str(job.status).lower(), jobdict['status'].lower())
         self.assertEqual(str(job.state).lower(), jobdict['state'].lower())
