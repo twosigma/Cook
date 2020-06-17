@@ -175,16 +175,18 @@ class DockerContainer(AbstractContainer):
     def to_dict(self) -> dict:
         """Get the ``dict`` representation of this container."""
         d = super().to_dict()
-        d['docker'] = {'image': self.image}
-        ddocker = d['docker']
 
+        docker = {'image': self.image}
         if self.network is not None:
-            ddocker['network'] = self.network
+            docker['network'] = self.network
         if self.force_pull_image is not None:
-            ddocker['force_pull_image'] = self.force_pull_image
+            docker['force_pull_image'] = self.force_pull_image
         if self.parameters is not None:
-            ddocker['parameters'] = self.parameters
+            docker['parameters'] = self.parameters
         if self.port_mapping is not None:
-            ddocker['port_mapping'] = list(map(DockerPortMapping.to_dict,
+            docker['port_mapping'] = list(map(DockerPortMapping.to_dict,
                                                self.port_mapping))
+
+        d['docker'] = docker
+
         return d

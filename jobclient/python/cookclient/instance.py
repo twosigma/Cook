@@ -231,8 +231,12 @@ class Instance:
         d['task_id'] = UUID(d['task_id'])
         d['start_time'] = unix_ms_to_datetime(d['start_time'])
         d['status'] = Status.from_string(d['status'])
+        # The JSON object uses the key `compute-cluster`, which isn't a valid
+        # Python identifier, so we rename it to `compute_cluster` (note how the
+        # hyphen is now an underscore)
         d['compute_cluster'] = d['compute-cluster']
         del d['compute-cluster']
+
         if 'end_time' in d:
             d['end_time'] = unix_ms_to_datetime(d['end_time'])
         if 'executor' in d:
