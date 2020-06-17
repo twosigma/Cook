@@ -312,6 +312,7 @@ class Job:
             'uuid': str(self.uuid),
             'name': self.name,
             'max_retries': self.max_retries,
+            # Convert s to ms
             'max_runtime': int(self.max_runtime.total_seconds() * 1000),
             'status': str(self.status),
             'state': str(self.state),
