@@ -81,11 +81,11 @@ class Status(Enum):
         return _JOB_STATUS_LOOKUP[name.lower()]
 
 
-_JOB_STATE_LOOKUP = {
-    'waiting': State.WAITING,
-    'success': State.SUCCESS,
-    'running': State.RUNNING,
-    'failed': State.FAILED
+_JOB_STATUS_LOOKUP = {
+    'waiting': Status.WAITING,
+    'success': Status.SUCCESS,
+    'running': Status.RUNNING,
+    'failed': Status.FAILED
 }
 
 

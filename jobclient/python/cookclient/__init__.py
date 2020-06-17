@@ -109,7 +109,6 @@ class JobClient:
                priority: Optional[int] = None,
                container: Optional[AbstractContainer] = None,
                application: Application = _CLIENT_APP,
-               pool: Optional[str] = None,
 
                pool: Optional[str] = None,
 
