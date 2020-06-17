@@ -82,16 +82,12 @@
                                                         :value-ranges (:ranges %)
                                                         :value-set (:set %)
                                                         :value-text (:text %)
-                                                        :value-available-types-map (:map %)
+                                                        :value-available-types (:available-types %)
                                                         ; Default
                                                         (:value %))))
                               (into {}))
         cook-attributes (cond->
-                          {"HOSTNAME" hostname
-                           "COOK_GPU?" (-> offer
-                                           (offer-resource-scalar "gpus")
-                                           (or 0.0)
-                                           pos?)}
+                          {"HOSTNAME" hostname}
                           compute-cluster
                           (assoc "COOK_MAX_TASKS_PER_HOST" (cc/max-tasks-per-host compute-cluster)
                                  "COOK_NUM_TASKS_ON_HOST" (cc/num-tasks-on-host compute-cluster hostname)))]
@@ -468,7 +464,7 @@
                         (offer-resource-ranges offer "ports"))))
 
 
-(defrecord TaskRequestAdapter [job resources task-id assigned-resources guuid->considerable-cotask-ids constraints needs-gpus? scalar-requests]
+(defrecord TaskRequestAdapter [job resources task-id assigned-resources guuid->considerable-cotask-ids constraints scalar-requests]
   TaskRequest
   (getCPUs [_] (:cpus resources))
   (getDisk [_] 0.0)
@@ -512,7 +508,7 @@
                                         (constraints/make-fenzo-group-constraint
                                           db group #(guuid->considerable-cotask-ids (:group/uuid group)) running-cotask-cache))
                                       (:group/_job job)))))
-        needs-gpus? (constraints/job-needs-gpus? job)
+        ;needs-gpus? (constraints/job-needs-gpus? job)
         scalar-requests (reduce (fn [result resource]
                                   (if-let [value (:resource/amount resource)]
                                     (assoc result (name (:resource/type resource)) value)
@@ -520,7 +516,7 @@
                                 {}
                                 (:job/resource job))
         pool-specific-resources ((adjust-job-resources-for-pool-fn pool-name) job resources)]
-    (->TaskRequestAdapter job pool-specific-resources task-id assigned-resources guuid->considerable-cotask-ids constraints needs-gpus? scalar-requests)))
+    (->TaskRequestAdapter job pool-specific-resources task-id assigned-resources guuid->considerable-cotask-ids constraints scalar-requests)))
 
 (defn match-offer-to-schedule
   "Given an offer and a schedule, computes all the tasks should be launched as a result.

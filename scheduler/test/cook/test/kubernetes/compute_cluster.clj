@@ -78,10 +78,10 @@
                                                           (atom {}) (atom {}) (atom {}) (atom {}) (atom nil)
                                                           {:kind :static :namespace "cook"} nil 3 nil nil
                                                           (Executors/newSingleThreadExecutor))
-          node-name->node {"nodeA" (tu/node-helper "nodeA" 1.0 1000.0 nil)
-                           "nodeB" (tu/node-helper "nodeB" 1.0 1000.0 nil)
-                           "nodeC" (tu/node-helper "nodeC" 1.0 1000.0 nil)
-                           "my.fake.host" (tu/node-helper "my.fake.host" 1.0 1000.0 nil)}
+          node-name->node {"nodeA" (tu/node-helper "nodeA" 1.0 1000.0 "10" nil)
+                           "nodeB" (tu/node-helper "nodeB" 1.0 1000.0 "25" nil)
+                           "nodeC" (tu/node-helper "nodeC" 1.0 1000.0 nil nil)
+                           "my.fake.host" (tu/node-helper "my.fake.host" 1.0 1000.0 nil nil)}
           j1 (tu/create-dummy-job conn :ncpus 0.1)
           j2 (tu/create-dummy-job conn :ncpus 0.2)
           db (d/db conn)
@@ -92,8 +92,8 @@
           _ (cc/launch-tasks compute-cluster "no-pool" [{:task-metadata-seq [task-1 task-2]}] (fn [_]))
           task-1-id (-> task-1 :task-request :task-id)
           pods {{:namespace "cook" :name "podA"} (tu/pod-helper "podA" "nodeA"
-                                                                {:cpus 0.25 :mem 250.0}
-                                                                {:cpus 0.1 :mem 100.0})
+                                                                {:cpus 0.25 :mem 250.0 :gpus "2"}
+                                                                {:cpus 0.1 :mem 100.0 :gpus "1"})
                 {:namespace "cook" :name "podB"} (tu/pod-helper "podB" "nodeA"
                                                                 {:cpus 0.25 :mem 250.0})
                 {:namespace "cook" :name "podC"} (tu/pod-helper "podC" "nodeB"

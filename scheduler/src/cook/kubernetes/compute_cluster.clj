@@ -64,6 +64,7 @@
                           (total-resource node-name->consumed :cpus))
     (monitor/set-counter! (metrics/counter "consumption-mem" compute-cluster-name)
                           (total-resource node-name->consumed :mem))
+    ;TODO: set-counter for gpus?
     (log/info "In" compute-cluster-name "compute cluster, capacity:" node-name->capacity)
     (log/info "In" compute-cluster-name "compute cluster, consumption:" node-name->consumed)
     (log/info "In" compute-cluster-name "compute cluster, filtering out"
@@ -81,7 +82,7 @@
                  :resources [{:name "mem" :type :value-scalar :scalar (max 0.0 (:mem available))}
                              {:name "cpus" :type :value-scalar :scalar (max 0.0 (:cpus available))}
                              {:name "disk" :type :value-scalar :scalar 0.0}
-                             {:name "gpus" :type :value-available-types :available-types (:gpus available)}] ;fix this part
+                             {:name "gpus" :type :value-available-types :available-types (:gpus available)}]
                  :attributes []
                  :executor-ids []
                  :compute-cluster compute-cluster
@@ -89,8 +90,6 @@
                  :offer-match-timer (timers/start (ccmetrics/timer "offer-match-timer" compute-cluster-name))}))
          (group-by (fn [offer] (-> offer :hostname node-name->node api/get-node-pool))))))
 
-;(defn subtract-resources
-;  )
 (defn taskids-to-scan
   "Determine all taskids to scan by unioning task id's from cook expected state and existing taskid maps. "
   [{:keys [cook-expected-state-map k8s-actual-state-map] :as kcc}]
