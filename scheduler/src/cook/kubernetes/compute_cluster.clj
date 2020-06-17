@@ -52,7 +52,7 @@
         node-name->capacity (api/get-capacity node-name->node)
         node-name->consumed (api/get-consumption node-name->pods)
         node-name->available (pc/map-from-keys (fn [node-name]
-                                                 (merge-with -
+                                                 (api/merge-resource-map-collection -
                                                              (node-name->capacity node-name)
                                                              (node-name->consumed node-name)))
                                                (keys node-name->capacity))]
@@ -81,7 +81,7 @@
                  :resources [{:name "mem" :type :value-scalar :scalar (max 0.0 (:mem available))}
                              {:name "cpus" :type :value-scalar :scalar (max 0.0 (:cpus available))}
                              {:name "disk" :type :value-scalar :scalar 0.0}
-                             {:name "gpus" :type :value-available-types-map :available-types-map {}}]
+                             {:name "gpus" :type :value-available-types :available-types (:gpus available)}] ;fix this part
                  :attributes []
                  :executor-ids []
                  :compute-cluster compute-cluster
@@ -89,6 +89,8 @@
                  :offer-match-timer (timers/start (ccmetrics/timer "offer-match-timer" compute-cluster-name))}))
          (group-by (fn [offer] (-> offer :hostname node-name->node api/get-node-pool))))))
 
+;(defn subtract-resources
+;  )
 (defn taskids-to-scan
   "Determine all taskids to scan by unioning task id's from cook expected state and existing taskid maps. "
   [{:keys [cook-expected-state-map k8s-actual-state-map] :as kcc}]
