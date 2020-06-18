@@ -92,12 +92,12 @@
           _ (cc/launch-tasks compute-cluster "no-pool" [{:task-metadata-seq [task-1 task-2]}] (fn [_]))
           task-1-id (-> task-1 :task-request :task-id)
           pods {{:namespace "cook" :name "podA"} (tu/pod-helper "podA" "nodeA"
-                                                                {:cpus 0.25 :mem 250.0 :gpus "2"}
-                                                                {:cpus 0.1 :mem 100.0 :gpus "1"})
+                                                                {:cpus 0.25 :mem 250.0 :gpus "9"}
+                                                                {:cpus 0.1 :mem 100.0})
                 {:namespace "cook" :name "podB"} (tu/pod-helper "podB" "nodeA"
-                                                                {:cpus 0.25 :mem 250.0})
+                                                                {:cpus 0.25 :mem 250.0 :gpus "1"})
                 {:namespace "cook" :name "podC"} (tu/pod-helper "podC" "nodeB"
-                                                                {:cpus 1.0 :mem 1100.0})
+                                                                {:cpus 1.0 :mem 1100.0 :gpus "10"})
                 {:namespace "cook" :name task-1-id} (tu/pod-helper task-1-id "my.fake.host"
                                                                    {:cpus 0.1 :mem 10.0})}
           node-name->pods (api/pods->node-name->pods (kcc/add-starting-pods compute-cluster pods))
@@ -111,7 +111,8 @@
         (is (= {:value "nodeA"} (:slave-id offer)))
         (is (= [{:name "mem" :type :value-scalar :scalar 400.0}
                 {:name "cpus" :type :value-scalar :scalar 0.4}
-                {:name "disk" :type :value-scalar :scalar 0.0}]
+                {:name "disk" :type :value-scalar :scalar 0.0}
+                {:name "gpus" :type :value-available-types :available-types {"nvidia-tesla-p100" 0}}]
                (:resources offer)))
         (is (:reject-after-match-attempt offer)))
 
@@ -120,13 +121,15 @@
         (is (= {:value "nodeB"} (:slave-id offer)))
         (is (= [{:name "mem" :type :value-scalar :scalar 0.0}
                 {:name "cpus" :type :value-scalar :scalar 0.0}
-                {:name "disk" :type :value-scalar :scalar 0.0}]
+                {:name "disk" :type :value-scalar :scalar 0.0}
+                {:name "gpus" :type :value-available-types :available-types {"nvidia-tesla-p100" 15}}]
                (:resources offer))))
 
       (let [offer (first (filter #(= "my.fake.host" (:hostname %)) offers))]
         (is (= [{:name "mem" :type :value-scalar :scalar 980.0}
                 {:name "cpus" :type :value-scalar :scalar 0.7}
-                {:name "disk" :type :value-scalar :scalar 0.0}]
+                {:name "disk" :type :value-scalar :scalar 0.0}
+                {:name "gpus" :type :value-available-types :available-types {}}]
                (:resources offer)))))))
 
 (deftest determine-cook-expected-state

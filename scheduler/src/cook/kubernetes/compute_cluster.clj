@@ -50,7 +50,9 @@
   [compute-cluster node-name->node node-name->pods]
   (let [compute-cluster-name (cc/compute-cluster-name compute-cluster)
         node-name->capacity (api/get-capacity node-name->node)
+        _ (println "*****" node-name->capacity)
         node-name->consumed (api/get-consumption node-name->pods)
+        _ (println "*****" node-name->consumed)
         node-name->available (pc/map-from-keys (fn [node-name]
                                                  (api/merge-resource-map-collection -
                                                              (node-name->capacity node-name)

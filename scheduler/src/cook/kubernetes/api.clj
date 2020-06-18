@@ -407,13 +407,16 @@
 (defn merge-resource-maps
   "Given a function and two resource-maps, merge into a single resource map"
   [f resource-map-a resource-map-b]
-  {:cpus (f (:cpus resource-map-a) (:cpus resource-map-b))
-   :mem (f (:mem resource-map-a) (:mem resource-map-b))
+  (println "~~~~~" resource-map-a)
+  (println "~~~~~" resource-map-b)
+  {:cpus (f (:cpus resource-map-a) (or (:cpus resource-map-b) 0))
+   :mem (f (:mem resource-map-a) (or (:mem resource-map-b) 0))
    :gpus (merge-with f (:gpus resource-map-a) (:gpus resource-map-b))})
 
 (defn merge-resource-map-collection
   "Given a function and multiple resource-maps, merge into a single resource map"
   [f & resource-maps]
+  (println "~~~~~" resource-maps)
   (reduce (fn [resource-map-a resource-map-b]
             (merge-resource-maps f resource-map-a resource-map-b))
           resource-maps))
