@@ -2326,30 +2326,55 @@
     (is (= (api/get-default-container-for-pool default-containers "baz") {:bar 2})))
   (is (= (api/get-default-container-for-pool [] "foo") nil)))
 
-(deftest test-validate-job-gpu-model
+(deftest test-validate-gpu-job
   (testing "no env specified"
-    (is (nil? (api/validate-job-gpu-model "test-pool" {}))))
+    (is (nil? (api/validate-gpu-job true "k8s-alpha" {}))))
+
+  (testing "job requests GPUs when cluster is not gpu-enabled"
+    (is (thrown-with-msg?
+          ExceptionInfo
+          #"GPU support is not enabled"
+          (let [gpu-enabled? false]
+            (api/validate-gpu-job gpu-enabled? "test-pool" {:gpus 2
+                                                            :env {"COOK_GPU_MODEL" "invalid-gpu-model"}})))))
 
   (testing "invalid GPU model"
     (is (thrown-with-msg?
           ExceptionInfo
           #"The following GPU model is not supported: invalid-gpu-model"
-          (api/validate-job-gpu-model "test-pool" {:env {"COOK_GPU_MODEL" "invalid-gpu-model"}}))))
+          (let [gpu-enabled? true]
+            (api/validate-gpu-job gpu-enabled? "test-pool" {:gpus 2
+                                                            :env {"COOK_GPU_MODEL" "invalid-gpu-model"}})))))
 
   (testing "valid GPU model"
     (with-redefs [config/valid-gpu-models (constantly [{:pool-regex   "test-pool"
                                                         :valid-models #{"valid-gpu-model"}}])]
-      (is (nil? (api/validate-job-gpu-model "test-pool" {:env {"COOK_GPU_MODEL" "valid-gpu-model"}}))))
+      (is (nil? (let [gpu-enabled? true]
+                  (api/validate-gpu-job gpu-enabled? "test-pool" {:gpus 2
+                                                                  :env {"COOK_GPU_MODEL" "valid-gpu-model"}})))))
     (with-redefs [config/valid-gpu-models (constantly [{:pool-regex   "test-.+"
                                                         :valid-models #{"valid-gpu-model"}}])]
-      (is (nil? (api/validate-job-gpu-model "test-pool" {:env {"COOK_GPU_MODEL" "valid-gpu-model"}})))))
+      (is (nil? (let [gpu-enabled? true]
+                  (api/validate-gpu-job gpu-enabled? "test-pool" {:gpus 2
+                                                                  :env {"COOK_GPU_MODEL" "valid-gpu-model"}}))))))
 
   (testing "invalid GPU model on pool"
     (with-redefs [config/valid-gpu-models (constantly [{:pool-regex   "test-pool"
                                                         :valid-models #{"valid-gpu-model"}}])]
       (is (thrown-with-msg?
             ExceptionInfo
-            #"The following GPU model is not supported: foo"
-            (api/validate-job-gpu-model "test-pool" {:env {"COOK_GPU_MODEL" "foo"}}))))))
+            #"The following GPU model is not supported: invalid-gpu-model"
+            (let [gpu-enabled? true]
+              (api/validate-gpu-job gpu-enabled? "test-pool" {:gpus 2
+                                                              :env {"COOK_GPU_MODEL" "invalid-gpu-model"}}))))))
+
+  (testing "job requests GPUs but pool doesn't have valid-models"
+    (with-redefs [config/valid-gpu-models (constantly [{}])]
+      (is (thrown-with-msg?
+            ExceptionInfo
+            #"Job requested GPUs but pool test-pool does not have any valid GPU models"
+            (let [gpu-enabled? true]
+              (api/validate-gpu-job gpu-enabled? "test-pool" {:gpus 2 :env {}}))))))
+  )
 
 

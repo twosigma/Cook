@@ -920,13 +920,19 @@
                 (assoc :partitions (into #{} (walk/stringify-keys partitions))))))
        (into #{})))
 
-(defn validate-job-gpu-model
-  "Validates that GPU model entered is supported on the pool"
-  [pool-name {:keys [env]}]
+(defn validate-gpu-job
+  "Validates that a job requesting GPUs is supported on the pool"
+  [gpu-enabled? pool-name {:keys [gpus env]}]
   (let [requested-gpu-model (get env "COOK_GPU_MODEL")]
+    (when (and (pos? gpus) (not gpu-enabled?))
+      (println "not gpu-enabled")
+      (throw (ex-info (str "GPU support is not enabled") {})))
     (when (and requested-gpu-model
                (not (contains? (get-gpu-models-on-pool (config/valid-gpu-models) pool-name) requested-gpu-model)))
-      (throw (ex-info (str "The following GPU model is not supported: " requested-gpu-model) {})))))
+      (throw (ex-info (str "The following GPU model is not supported: " requested-gpu-model) {})))
+    (when (and (and (pos? gpus) (not requested-gpu-model))
+               (not (get-gpu-models-on-pool (config/valid-gpu-models) pool-name)))
+      (throw (ex-info (str "Job requested GPUs but pool" pool-name "does not have any valid GPU models") {})))))
 
 (defn validate-and-munge-job
   "Takes the user, the parsed json from the job and a list of the uuids of
@@ -980,10 +986,8 @@
                                                  checkpoint)}))
         params (get-in munged [:container :docker :parameters])]
     (s/validate Job munged)
-    (when (and (:gpus munged) (not gpu-enabled?))
-      (throw (ex-info (str "GPU support is not enabled") {:gpus gpus})))
     ; Note that we are passing munged here because the function expects stringified env
-    (validate-job-gpu-model pool-name munged)
+    (validate-gpu-job gpu-enabled? pool-name munged)
     (when (> cpus (:cpus task-constraints))
       (throw (ex-info (str "Requested " cpus " cpus, but only allowed to use "
                            (:cpus task-constraints))
