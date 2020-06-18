@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import unittest
+
 from cookclient import JobClient
 from cookclient.containers import DockerContainer
 from cookclient.jobs import Job, Status as JobStatus
