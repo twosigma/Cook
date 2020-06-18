@@ -2369,7 +2369,7 @@
                                                               :env {"COOK_GPU_MODEL" "invalid-gpu-model"}}))))))
 
   (testing "job requests GPUs but pool doesn't have valid-models"
-    (with-redefs [config/valid-gpu-models (constantly [{}])]
+    (with-redefs [config/valid-gpu-models (constantly [])]
       (is (thrown-with-msg?
             ExceptionInfo
             #"Job requested GPUs but pool test-pool does not have any valid GPU models"

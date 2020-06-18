@@ -923,16 +923,16 @@
 (defn validate-gpu-job
   "Validates that a job requesting GPUs is supported on the pool"
   [gpu-enabled? pool-name {:keys [gpus env]}]
-  (let [requested-gpu-model (get env "COOK_GPU_MODEL")]
-    (when (and (pos? gpus) (not gpu-enabled?))
-      (println "not gpu-enabled")
+  (let [requested-gpu-model (get env "COOK_GPU_MODEL")
+        gpus' (or gpus 0)]
+    (when (and (pos? gpus') (not gpu-enabled?))
       (throw (ex-info (str "GPU support is not enabled") {})))
     (when (and requested-gpu-model
                (not (contains? (get-gpu-models-on-pool (config/valid-gpu-models) pool-name) requested-gpu-model)))
       (throw (ex-info (str "The following GPU model is not supported: " requested-gpu-model) {})))
-    (when (and (and (pos? gpus) (not requested-gpu-model))
+    (when (and (and (pos? gpus') (not requested-gpu-model))
                (not (get-gpu-models-on-pool (config/valid-gpu-models) pool-name)))
-      (throw (ex-info (str "Job requested GPUs but pool" pool-name "does not have any valid GPU models") {})))))
+      (throw (ex-info (str "Job requested GPUs but pool " pool-name " does not have any valid GPU models") {})))))
 
 (defn validate-and-munge-job
   "Takes the user, the parsed json from the job and a list of the uuids of
