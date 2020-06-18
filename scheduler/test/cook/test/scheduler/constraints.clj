@@ -95,20 +95,7 @@
                                 (getHostname [_] "test-host")
                                 (getRunningTasks [_] [])
                                 (getTasksCurrentlyAssigned [_] [])
-                                (getCurrAvailableResources [_]  (sched/->VirtualMachineLeaseAdapter gpu-offer 0)))]
-                              ["running gpu"
-                               (reify com.netflix.fenzo.VirtualMachineCurrentState
-                                (getHostname [_] "test-host")
-                                (getRunningTasks [_] [(sched/make-task-request db other-gpu-job nil)])
-                                (getTasksCurrentlyAssigned [_] [])
-                                (getCurrAvailableResources [_]  (sched/->VirtualMachineLeaseAdapter non-gpu-offer 0)))]
-                              ["gpu assigned"
-                               (reify com.netflix.fenzo.VirtualMachineCurrentState
-                                (getHostname [_] "test-host")
-                                (getRunningTasks [_] [])
-                                (getTasksCurrentlyAssigned [_] [(mock-gpu-assignment)])
-                                (getCurrAvailableResources [_]  (sched/->VirtualMachineLeaseAdapter non-gpu-offer 0)))]
-                              ]]
+                                (getCurrAvailableResources [_]  (sched/->VirtualMachineLeaseAdapter gpu-offer 0)))]]]
       (is (.isSuccessful
             (.evaluate (constraints/fenzoize-job-constraint (constraints/build-gpu-host-constraint gpu-job))
                        (sched/make-task-request db gpu-job nil)
