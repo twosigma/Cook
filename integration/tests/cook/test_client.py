@@ -60,6 +60,8 @@ class ClientTest(util.CookTest):
         job = self.client.query(uuid)
         self.assertEqual(job.status, JobStatus.COMPLETED)
 
+    @unittest.skipUnless(util.docker_tests_enabled(),
+                         "Requires setting the COOK_TEST_DOCKER_IMAGE environment variable")
     def test_container_submit(self):
         container = DockerContainer(util.docker_image())
         self.assertIsNotNone(container.image)
