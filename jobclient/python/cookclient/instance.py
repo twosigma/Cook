@@ -98,8 +98,6 @@ class Instance:
     :type status: cookclient.instance.Status
     :param preempted: If true, then this instance was preempted.
     :type preempted: bool
-    :param backfilled: If true, than this instance was backfilled.
-    :type backfilled: bool
     :param end_time: Time at which the instance finished.
     :type end_time: datetime, optional
     :param progress: Progress of this instance.
@@ -123,7 +121,6 @@ class Instance:
     hostname: str
     status: Status
     preempted: bool
-    backfilled: bool
     ports: List[int]
     compute_cluster: dict
 
@@ -146,7 +143,6 @@ class Instance:
                  hostname: str,
                  status: Status,
                  preempted: bool,
-                 backfilled: bool,
                  ports: List[int],
                  compute_cluster: dict,
                  # Optional arguments
@@ -167,7 +163,6 @@ class Instance:
         self.hostname = hostname
         self.status = status
         self.preempted = preempted
-        self.backfilled = backfilled
         self.ports = ports
         self.compute_cluster = compute_cluster
         self.end_time = end_time
@@ -200,7 +195,6 @@ class Instance:
             'hostname': self.hostname,
             'status': str(self.status),
             'preempted': self.preempted,
-            'backfilled': self.backfilled,
             'ports': self.ports,
             'compute-cluster': self.compute_cluster
         }
@@ -236,6 +230,10 @@ class Instance:
         # hyphen is now an underscore)
         d['compute_cluster'] = d['compute-cluster']
         del d['compute-cluster']
+
+        # `backfilled` is deprecated, but is still in the API output, so we
+        # delete it from the dict.
+        del d['backfilled']
 
         if 'end_time' in d:
             d['end_time'] = unix_ms_to_datetime(d['end_time'])
