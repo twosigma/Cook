@@ -83,14 +83,7 @@ class ClientTest(util.CookTest):
                                   mem=1.0,
                                   max_retries=5)
 
-        def is_instance_available(job: Job):
-            any_instances = len(job.instances) > 0
-            if not any_instances:
-                util.logger.info(f"Job {job.uuid} has no instances yet.")
-            return any_instances
-            
-        util.wait_until(lambda: self.client.query(uuid),
-                        is_instance_available)
+        util.wait_for_instance(type(self).cook_url, uuid)
 
         job = self.client.query(uuid)
 
