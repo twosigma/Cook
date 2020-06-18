@@ -228,6 +228,8 @@ class Job:
     gpus: Optional[int]
     ports: Optional[int]
 
+    etc: dict
+
     def __init__(self, *,
                  # Required args
                  command: str,
@@ -260,7 +262,9 @@ class Job:
                  progress_output_file: Optional[str] = None,
                  progress_regex_string: Optional[str] = None,
                  gpus: Optional[int] = None,
-                 ports: Optional[int] = None):
+                 ports: Optional[int] = None,
+                 # Extra not-officially-supported params
+                 **kwargs):
         """Initializes a job object.
 
         Normally, this function wouldn't be invoked directly. It is instead
@@ -296,6 +300,7 @@ class Job:
         self.progress_regex_string = progress_regex_string
         self.gpus = gpus
         self.ports = ports
+        self.etc = kwargs
 
     def __str__(self):
         return json.dumps(self.to_dict(), indent=4)
@@ -324,7 +329,8 @@ class Job:
             'framework_id': self.framework_id,
             'retries_remaining': self.retries_remaining,
             'submit_time': datetime_to_unix_ms(self.submit_time),
-            'user': self.user
+            'user': self.user,
+            **self.etc
         }
         if self.disable_mea_culpa_retries is not None:
             d['disable_mea_culpa_retries'] = self.disable_mea_culpa_retries
