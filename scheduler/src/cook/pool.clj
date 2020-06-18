@@ -80,13 +80,16 @@
         (throw (ex-info "There are pools in the database, but no default pool is configured"
                         {:pools pools}))))))
 
-(defn guard-invalid-default-gpu-model
+(defn guard-invalid-gpu-models
   "Throws if either of the following is true:
+  - any one of the keys (pool-regex, valid-models, default-model) is not configured
   - there are valid-models for a pool-regex, but no default gpu model is configured
   - there is no gpu-model in valid-gpu-models matching the configured default"
   []
   (run! (fn validate-default-model
           [{:keys [default-model pool-regex valid-models] :as entry}]
+          (when (not pool-regex)
+            (throw (ex-info (str "pool-regex key is missing from config"))))
           (when (and pool-regex (not valid-models))
             (throw (ex-info (str "Valid GPU models for pool-regex " pool-regex " is not defined") entry)))
           (when (and pool-regex (not default-model))
