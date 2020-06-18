@@ -68,7 +68,8 @@ class ClientTest(util.CookTest):
         job = self.client.query(uuid)
 
         remote_container = job.container
-        self.assertEqual(remote_container['type'], 'DOCKER')
+        self.assertEqual(remote_container['type'].lower(),
+                         'DOCKER'.lower())
         self.assertEqual(remote_container['docker']['image'], container.image)
 
         self.client.kill(uuid)

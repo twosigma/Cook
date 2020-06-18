@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import sys
 import uuid
 
 from datetime import datetime, timedelta
@@ -231,7 +232,7 @@ class JobTest(TestCase):
         self.assertEqual(job.container, jobdict['container'])
         self.assertEqual(job.disable_mea_culpa_retries,
                          jobdict['disable_mea_culpa_retries'])
-        self.assertEqual(int(job.expected_runtime.total_seconds()),
+        self.assertEqual(int(job.expected_runtime.total_seconds() * 1000),
                          jobdict['expected_runtime'])
         self.assertEqual(job.pool, jobdict['pool'])
         self.assertEqual(len(job.instances), len(jobdict['instances']))
@@ -298,3 +299,15 @@ class JobTest(TestCase):
         jobdict = job.to_dict()
         self._check_required_fields(job, jobdict)
         self._check_optional_fields(job, jobdict)
+
+    def test_timedelta_overflows(self):
+        """Test parsing a job with runtime values that overflow timedelta."""
+        jobdict = JOB_DICT_NO_OPTIONALS
+        jobdict.update({
+            'max_runtime': sys.maxsize,
+            'expected_runtime': sys.maxsize
+        })
+        job = Job.from_dict(jobdict)
+
+        self.assertEqual(job.max_runtime, timedelta.max)
+        self.assertEqual(job.expected_runtime, timedelta.max)

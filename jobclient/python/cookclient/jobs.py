@@ -21,7 +21,11 @@ from uuid import UUID
 from typing import Dict, List, Optional, Set
 
 from .instance import Executor, Instance
-from .util import unix_ms_to_datetime, datetime_to_unix_ms
+from .util import (
+    clamped_ms_to_timedelta,
+    unix_ms_to_datetime,
+    datetime_to_unix_ms
+)
 
 
 class Status(Enum):
@@ -327,7 +331,7 @@ class Job:
         if self.executor is not None:
             d['executor'] = str(self.executor)
         if self.expected_runtime is not None:
-            d['expected_runtime'] = int(self.expected_runtime.total_seconds())
+            d['expected_runtime'] = int(self.expected_runtime.total_seconds() * 1000)  # noqa: E501
         if self.pool is not None:
             d['pool'] = self.pool
         if self.instances is not None:
@@ -367,7 +371,7 @@ class Job:
         """Parse a Job from its `dict` representation."""
         d = deepcopy(d)
         d['uuid'] = UUID(d['uuid'])
-        d['max_runtime'] = timedelta(milliseconds=d['max_runtime'])
+        d['max_runtime'] = clamped_ms_to_timedelta(d['max_runtime'])
         d['status'] = Status.from_string(d['status'])
         d['state'] = State.from_string(d['state'])
         d['submit_time'] = unix_ms_to_datetime(d['submit_time'])
@@ -375,7 +379,7 @@ class Job:
         if 'executor' in d:
             d['executor'] = Executor.from_string(d['executor'])
         if 'expected_runtime' in d:
-            d['expected_runtime'] = timedelta(seconds=d['expected_runtime'])
+            d['expected_runtime'] = clamped_ms_to_timedelta(d['expected_runtime'])
         if 'instances' in d:
             d['instances'] = list(map(Instance.from_dict, d['instances']))
         if 'uris' in d:
