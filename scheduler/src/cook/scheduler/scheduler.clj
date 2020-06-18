@@ -72,26 +72,31 @@
   [offer resource-name]
   (reduce into [] (offer-resource-values offer resource-name :ranges)))
 
+(defn offer-value-list-map
+  [value-list]
+  (->> value-list
+       (map #(vector (:name %) (case (:type %)
+                                 :value-scalar (:scalar %)
+                                 :value-ranges (:ranges %)
+                                 :value-set (:set %)
+                                 :value-text (:text %)
+                                 :value-available-types (:available-types %)
+                                 ; Default
+                                 (:value %))))
+       (into {})))
+
 (defn get-offer-attr-map
   "Gets all the attributes from an offer and puts them in a simple, less structured map of the form
    name->value"
-  [{:keys [attributes compute-cluster hostname] :as offer}]
-  (let [offer-attributes (->> attributes
-                              (map #(vector (:name %) (case (:type %)
-                                                        :value-scalar (:scalar %)
-                                                        :value-ranges (:ranges %)
-                                                        :value-set (:set %)
-                                                        :value-text (:text %)
-                                                        :value-available-types (:available-types %)
-                                                        ; Default
-                                                        (:value %))))
-                              (into {}))
+  [{:keys [attributes compute-cluster hostname resources] :as offer}]
+  (let [offer-attributes (offer-value-list-map attributes)
+        offer-resources (offer-value-list-map resources)
         cook-attributes (cond->
                           {"HOSTNAME" hostname}
                           compute-cluster
                           (assoc "COOK_MAX_TASKS_PER_HOST" (cc/max-tasks-per-host compute-cluster)
                                  "COOK_NUM_TASKS_ON_HOST" (cc/num-tasks-on-host compute-cluster hostname)))]
-    (merge offer-attributes cook-attributes)))
+    (merge offer-resources offer-attributes cook-attributes)))
 
 (timers/deftimer [cook-mesos scheduler handle-status-update-duration])
 (timers/deftimer [cook-mesos scheduler handle-framework-message-duration])
