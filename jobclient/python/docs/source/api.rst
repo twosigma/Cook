@@ -45,10 +45,10 @@ this may be overridden in the ``JobClient.submit`` method.
 Containers
 ^^^^^^^^^^
 
-By default, jobs submitted to Cook will use the ``python:3.6`` container, which
-doesn't a lot outside of the core GNU/Linux utilities. Custom containers can be
-provided to Cook via the ``container`` parameter of the ``JobClient.submit``
-method. Container definitions inherit from the ``AbstractContainer`` class:
+Jobs submitted to Cook will use a configurable default container. If you need
+to use a custom container for your job, then you can provide a custom container
+to Cook via the ``container`` parameter of the ``JobClient.submit`` method.
+Container definitions inherit from the ``AbstractContainer`` class:
 
 .. py:module:: cookclient.containers
 
