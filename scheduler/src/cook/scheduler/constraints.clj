@@ -105,6 +105,14 @@
   (let [previous-hosts (job->previous-hosts-to-avoid job)]
     (->novel-host-constraint job previous-hosts)))
 
+(defn get-default-gpu-model-on-pool
+  "Given a pool name, determine the default GPU model on that pool."
+  [valid-gpu-models effective-pool-name]
+  (->> valid-gpu-models
+       (filter (fn [{:keys [pool-regex]}] (re-find (re-pattern pool-regex) effective-pool-name)))
+       first
+       :default-model))
+
 (defrecord gpu-host-constraint [job]
   JobConstraint
   (job-constraint-name [this] (get-class-name this))
@@ -114,8 +122,9 @@
   (job-constraint-evaluate
     [{:keys [job]} _ vm-attributes target-vm-tasks-assigned]
     (let [; Look at attribute to determine if vm has gpus
-          gpu-model-requested (-> job cook.tools/job-ent->env (get "COOK_GPU_MODEL"))
-          gpu-count-requested (-> job cook.tools/job-ent->resources :gpus)
+          gpu-model-requested (or (-> job util/job-ent->env (get "COOK_GPU_MODEL"))
+                                  (get-default-gpu-model-on-pool (config/valid-gpu-models) (util/job->pool-name job)))
+          gpu-count-requested (-> job util/job-ent->resources :gpus)
           gpu-model->count-available (get vm-attributes "gpus")  ; get map of gpu models and resources available
 
           ; VM that supports GPU models but does not have any available GPUs will have a gpus list of {"model A" 0 "model B" 0 ...}

@@ -23,7 +23,7 @@
             [cook.scheduler.data-locality :as dl]
             [cook.scheduler.scheduler :as sched]
             [cook.tools :as util]
-            [cook.test.testutil :refer (restore-fresh-database! create-dummy-group create-dummy-job create-dummy-instance create-dummy-job-with-instances setup)]
+            [cook.test.testutil :refer (restore-fresh-database! create-dummy-group create-dummy-job create-dummy-instance create-dummy-job-with-instances create-pool setup)]
             [datomic.api :as d :refer (db)])
   (:import [java.util Date UUID]
            org.joda.time.DateTime
@@ -80,14 +80,17 @@
                                              :executor-ids []}
         uri "datomic:mem://test-gpu-constraint"
         conn (restore-fresh-database! uri)
+        test-pool (create-pool conn "k8s-alpha")
         gpu-job-id-1 (create-dummy-job conn :user "ljin" :ncpus 5.0 :memory 5.0 :gpus 1 :env {"COOK_GPU_MODEL" "nvidia-tesla-p100"})
         gpu-job-id-2 (create-dummy-job conn :user "ljin" :ncpus 5.0 :memory 5.0 :gpus 10 :env {"COOK_GPU_MODEL" "nvidia-tesla-p100"})
         gpu-job-id-3 (create-dummy-job conn :user "ljin" :ncpus 5.0 :memory 5.0 :gpus 2 :env {"COOK_GPU_MODEL" "nvidia-tesla-k80"})
+        gpu-job-id-4 (create-dummy-job conn :user "ljin" :ncpus 5.0 :memory 5.0 :gpus 3 :pool "k8s-alpha")
         non-gpu-job-id (create-dummy-job conn :user "ljin" :ncpus 5.0 :memory 5.0 :gpus 0.0)
         db (db conn)
         gpu-job-1 (d/entity db gpu-job-id-1)
         gpu-job-2 (d/entity db gpu-job-id-2)
         gpu-job-3 (d/entity db gpu-job-id-3)
+        gpu-job-4 (d/entity db gpu-job-id-4)
         non-gpu-job (d/entity db non-gpu-job-id)]
     (is (.isSuccessful
           (.evaluate (constraints/fenzoize-job-constraint (constraints/build-gpu-host-constraint gpu-job-1))
@@ -119,6 +122,19 @@
                             (getCurrAvailableResources [_] (sched/->VirtualMachineLeaseAdapter gpu-offer 0)))
                           nil)))
         (str "GPU task on GPU host without correct GPU models should fail"))
+    (with-redefs [config/valid-gpu-models (constantly [{:pool-regex   "k8s-alpha"
+                                                        :valid-models #{"nvidia-tesla-p100"}
+                                                        :default-model "nvidia-tesla-p100"}])]
+      (is (.isSuccessful
+            (.evaluate (constraints/fenzoize-job-constraint (constraints/build-gpu-host-constraint gpu-job-4))
+                       (sched/make-task-request db gpu-job-4 nil)
+                       (reify com.netflix.fenzo.VirtualMachineCurrentState
+                         (getHostname [_] "test-host")
+                         (getRunningTasks [_] [])
+                         (getTasksCurrentlyAssigned [_] [])
+                         (getCurrAvailableResources [_] (sched/->VirtualMachineLeaseAdapter gpu-offer 0)))
+                       nil))
+          (str "GPU task on GPU host with enough available GPUs should succeed")))
     (is (not (.isSuccessful
                (.evaluate (constraints/fenzoize-job-constraint (constraints/build-gpu-host-constraint non-gpu-job))
                           (sched/make-task-request db non-gpu-job nil)
@@ -148,7 +164,8 @@
                        (getTasksCurrentlyAssigned [_] [])
                        (getCurrAvailableResources [_] (sched/->VirtualMachineLeaseAdapter non-gpu-offer 0)))
                      nil))
-        "non GPU task on non GPU host should succeed")))
+        "non GPU task on non GPU host should succeed")
+    ))
 
 
 (deftest test-rebalancer-reservation-constraint
