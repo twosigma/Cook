@@ -13,7 +13,8 @@
 # limitations under the License.
 
 from cookclient import JobClient
-from cookclient.jobs import Status as JobStatus
+from cookclient.containers import DockerContainer
+from cookclient.jobs import Job, Status as JobStatus
 
 from tests.cook import util
 
@@ -33,6 +34,7 @@ class ClientTest(util.CookTest):
                                   mem=1.0,
                                   max_retries=5)
         self.assertTrue(uuid is not None)
+        self.client.kill(uuid)
 
     def test_query(self):
         uuid = self.client.submit(command='ls',
@@ -44,6 +46,7 @@ class ClientTest(util.CookTest):
         self.assertAlmostEqual(job.cpus, 0.5)
         self.assertAlmostEqual(job.mem, 1.0)
         self.assertEqual(job.max_retries, 5)
+        self.client.kill(uuid)
 
     def test_kill(self):
         uuid = self.client.submit(command=f'sleep {util.DEFAULT_TEST_TIMEOUT_SECS}',
@@ -56,3 +59,37 @@ class ClientTest(util.CookTest):
         self.client.kill(uuid)
         job = self.client.query(uuid)
         self.assertEqual(job.status, JobStatus.COMPLETED)
+
+    def test_container_submit(self):
+        container = DockerContainer(util.docker_image())
+        self.assertIsNotNone(container.image)
+        uuid = self.client.submit(command='ls',
+                                  container=DockerContainer(image))
+        job = self.client.query(uuid)
+
+        remote_container = job.container
+        self.assertEqual(remote_container['type'], 'DOCKER')
+        self.assertEqual(remote_container['docker']['image'], container.image)
+
+        self.client.kill(uuid)
+
+    def test_instance_query(self):
+        """Test that parsing an instance yielded from Cook works."""
+        uuid = self.client.submit(command=f'sleep {util.DEFAULT_TEST_TIMEOUT_SECS}',
+                                  cpus=0.5,
+                                  mem=1.0,
+                                  max_retries=5)
+
+        def is_instance_available(job: Job):
+            any_instances = len(job.instances) > 0
+            if not any_instances:
+                util.logger.info(f"Job {job.uuid} has no instances yet.")
+            return any_instances
+            
+        util.wait_until(lambda: self.client.query(uuid),
+                        is_instance_available)
+
+        job = self.client.query(uuid)
+
+        self.assertNotEqual(job.instances, [])
+        self.assertIsNotNone(job.instances[0])
