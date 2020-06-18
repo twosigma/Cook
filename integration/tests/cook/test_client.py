@@ -35,32 +35,42 @@ class ClientTest(util.CookTest):
                                   cpus=0.5,
                                   mem=1.0,
                                   max_retries=5)
-        self.assertTrue(uuid is not None)
-        self.client.kill(uuid)
+        try:
+            self.assertTrue(uuid is not None)
+        finally:
+            self.client.kill(uuid)
 
     def test_query(self):
         uuid = self.client.submit(command='ls',
                                   cpus=0.5,
                                   mem=1.0,
                                   max_retries=5)
-        job = self.client.query(uuid)
-        self.assertEqual(job.command, 'ls')
-        self.assertAlmostEqual(job.cpus, 0.5)
-        self.assertAlmostEqual(job.mem, 1.0)
-        self.assertEqual(job.max_retries, 5)
-        self.client.kill(uuid)
+        try:
+            job = self.client.query(uuid)
+            self.assertEqual(job.command, 'ls')
+            self.assertAlmostEqual(job.cpus, 0.5)
+            self.assertAlmostEqual(job.mem, 1.0)
+            self.assertEqual(job.max_retries, 5)
+        finally:
+            self.client.kill(uuid)
 
     def test_kill(self):
         uuid = self.client.submit(command=f'sleep {util.DEFAULT_TEST_TIMEOUT_SECS}',
                                   cpus=0.5,
                                   mem=1.0,
                                   max_retries=5)
-        job = self.client.query(uuid)
-        # Ensure the job is either waiting or running
-        self.assertNotEqual(job.status, JobStatus.COMPLETED)
-        self.client.kill(uuid)
-        job = self.client.query(uuid)
-        self.assertEqual(job.status, JobStatus.COMPLETED)
+        killed = False
+        try:
+            job = self.client.query(uuid)
+            # Ensure the job is either waiting or running
+            self.assertNotEqual(job.status, JobStatus.COMPLETED)
+            self.client.kill(uuid)
+            killed = True
+            job = self.client.query(uuid)
+            self.assertEqual(job.status, JobStatus.COMPLETED)
+        finally:
+            if not killed:
+                self.client.kill(uuid)
 
     @unittest.skipUnless(util.docker_tests_enabled(),
                          "Requires setting the COOK_TEST_DOCKER_IMAGE environment variable")
@@ -68,13 +78,14 @@ class ClientTest(util.CookTest):
         container = DockerContainer(util.docker_image())
         self.assertIsNotNone(container.image)
         uuid = self.client.submit(command='ls', container=container)
-        job = self.client.query(uuid)
+        try:
+            job = self.client.query(uuid)
 
-        remote_container = job.container
-        self.assertEqual(remote_container['type'].lower(), 'docker')
-        self.assertEqual(remote_container['docker']['image'], container.image)
-
-        self.client.kill(uuid)
+            remote_container = job.container
+            self.assertEqual(remote_container['type'].lower(), 'docker')
+            self.assertEqual(remote_container['docker']['image'], container.image)
+        finally:
+            self.client.kill(uuid)
 
     def test_instance_query(self):
         """Test that parsing an instance yielded from Cook works."""
@@ -83,9 +94,12 @@ class ClientTest(util.CookTest):
                                   mem=1.0,
                                   max_retries=5)
 
-        util.wait_for_instance(type(self).cook_url, uuid)
+        try:
+            util.wait_for_instance(type(self).cook_url, uuid)
 
-        job = self.client.query(uuid)
+            job = self.client.query(uuid)
 
-        self.assertNotEqual(job.instances, [])
-        self.assertIsNotNone(job.instances[0])
+            self.assertNotEqual(job.instances, [])
+            self.assertIsNotNone(job.instances[0])
+        finally:
+            self.client.kill(uuid)
