@@ -28,7 +28,13 @@ INSTANCE_DICT_NO_OPTIONALS = {
     'start_time': 123123123,
     'hostname': 'host.name',
     'status': 'failed',
-    'preempted': True
+    'preempted': True,
+    'backfilled': True,
+    'ports': [
+        22,
+        80
+    ],
+    'compute-cluster': {}
 }
 
 INSTANCE_DICT_WITH_OPTIONALS = {**INSTANCE_DICT_NO_OPTIONALS, **{
@@ -36,9 +42,11 @@ INSTANCE_DICT_WITH_OPTIONALS = {**INSTANCE_DICT_NO_OPTIONALS, **{
     'progress': 100,
     'progress_message': 'foo',
     'reason_code': 0,
+    'reason_string': "Segmentation fault",
     'output_url': 'http://localhost/output',
     'executor': 'cook',
-    'reason_mea_culpa': False
+    'reason_mea_culpa': False,
+    'exit_code': 1
 }}
 
 INSTANCE_EXAMPLE = Instance(
@@ -49,14 +57,18 @@ INSTANCE_EXAMPLE = Instance(
     hostname='host.name',
     status=InstanceStatus.RUNNING,
     preempted=False,
+    ports=[22, 80],
+    compute_cluster={},
 
     end_time=datetime.now(),
     progress=100,
     progress_message='foo',
     reason_code=0,
+    reason_string="Segmentation fault",
     output_url='http://localhost/output',
     executor=Executor.COOK,
-    reason_mea_culpa=False
+    reason_mea_culpa=False,
+    exit_code=1
 )
 
 
@@ -70,6 +82,8 @@ class InstanceTest(TestCase):
         self.assertEqual(inst.hostname, instdict['hostname'])
         self.assertEqual(str(inst.status).lower(), instdict['status'].lower())
         self.assertEqual(inst.preempted, instdict['preempted'])
+        self.assertEqual(inst.ports, instdict['ports'])
+        self.assertEqual(inst.compute_cluster, instdict['compute-cluster'])
 
     def _check_optional_fields(self, inst: Instance, instdict: dict):
         self.assertEqual(datetime_to_unix_ms(inst.end_time),
@@ -81,6 +95,8 @@ class InstanceTest(TestCase):
         self.assertEqual(str(inst.executor).lower(),
                          instdict['executor'].lower())
         self.assertEqual(inst.reason_mea_culpa, instdict['reason_mea_culpa'])
+        self.assertEqual(inst.reason_string, instdict['reason_string'])
+        self.assertEqual(inst.exit_code, instdict['exit_code'])
 
     def test_dict_parse_required(self):
         instdict = INSTANCE_DICT_NO_OPTIONALS

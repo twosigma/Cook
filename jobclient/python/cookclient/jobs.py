@@ -21,7 +21,11 @@ from uuid import UUID
 from typing import Dict, List, Optional, Set
 
 from .instance import Executor, Instance
-from .util import unix_ms_to_datetime
+from .util import (
+    clamped_ms_to_timedelta,
+    unix_ms_to_datetime,
+    datetime_to_unix_ms
+)
 
 
 class Status(Enum):
@@ -55,14 +59,16 @@ _JOB_STATUS_LOOKUP = {
 
 
 class State(Enum):
-    """The current state of a job.
+    """The current status of a job.
 
     Indicates whether a job is currently running, has finished and succeeded,
     or has finished and failed.
     """
     WAITING = 'WAITING'
     """The job has not finished yet."""
-    PASSED = 'PASSED'
+    RUNNING = 'RUNNING'
+    """The job is currently running."""
+    SUCCESS = 'SUCCESS'
     """The job has finished and succeeded."""
     FAILED = 'FAILED'
     """The job has finished and failed."""
@@ -81,7 +87,8 @@ class State(Enum):
 
 _JOB_STATE_LOOKUP = {
     'waiting': State.WAITING,
-    'passed': State.PASSED,
+    'success': State.SUCCESS,
+    'running': State.RUNNING,
     'failed': State.FAILED
 }
 
@@ -221,6 +228,8 @@ class Job:
     gpus: Optional[int]
     ports: Optional[int]
 
+    etc: dict
+
     def __init__(self, *,
                  # Required args
                  command: str,
@@ -253,7 +262,9 @@ class Job:
                  progress_output_file: Optional[str] = None,
                  progress_regex_string: Optional[str] = None,
                  gpus: Optional[int] = None,
-                 ports: Optional[int] = None):
+                 ports: Optional[int] = None,
+                 # Extra not-officially-supported params
+                 **kwargs):
         """Initializes a job object.
 
         Normally, this function wouldn't be invoked directly. It is instead
@@ -289,6 +300,7 @@ class Job:
         self.progress_regex_string = progress_regex_string
         self.gpus = gpus
         self.ports = ports
+        self.etc = kwargs
 
     def __str__(self):
         return json.dumps(self.to_dict(), indent=4)
@@ -309,25 +321,27 @@ class Job:
             'uuid': str(self.uuid),
             'name': self.name,
             'max_retries': self.max_retries,
-            'max_runtime': int(self.max_runtime.total_seconds()),
+            # Convert s to ms
+            'max_runtime': int(self.max_runtime.total_seconds() * 1000),
             'status': str(self.status),
             'state': str(self.state),
             'priority': self.priority,
             'framework_id': self.framework_id,
             'retries_remaining': self.retries_remaining,
-            'submit_time': int(self.submit_time.timestamp() * 1000),
-            'user': self.user
+            'submit_time': datetime_to_unix_ms(self.submit_time),
+            'user': self.user,
+            **self.etc
         }
         if self.disable_mea_culpa_retries is not None:
             d['disable_mea_culpa_retries'] = self.disable_mea_culpa_retries
         if self.executor is not None:
             d['executor'] = str(self.executor)
         if self.expected_runtime is not None:
-            d['expected_runtime'] = int(self.expected_runtime.total_seconds())
+            d['expected_runtime'] = int(self.expected_runtime.total_seconds() * 1000)  # noqa: E501
         if self.pool is not None:
             d['pool'] = self.pool
         if self.instances is not None:
-            d['instances'] = list(map(str, self.instances))
+            d['instances'] = list(map(Instance.to_dict, self.instances))
         if self.env is not None:
             d['env'] = self.env
         if self.uris is not None:
@@ -363,7 +377,7 @@ class Job:
         """Parse a Job from its `dict` representation."""
         d = deepcopy(d)
         d['uuid'] = UUID(d['uuid'])
-        d['max_runtime'] = timedelta(seconds=d['max_runtime'])
+        d['max_runtime'] = clamped_ms_to_timedelta(d['max_runtime'])
         d['status'] = Status.from_string(d['status'])
         d['state'] = State.from_string(d['state'])
         d['submit_time'] = unix_ms_to_datetime(d['submit_time'])
@@ -371,7 +385,7 @@ class Job:
         if 'executor' in d:
             d['executor'] = Executor.from_string(d['executor'])
         if 'expected_runtime' in d:
-            d['expected_runtime'] = timedelta(seconds=d['expected_runtime'])
+            d['expected_runtime'] = clamped_ms_to_timedelta(d['expected_runtime'])
         if 'instances' in d:
             d['instances'] = list(map(Instance.from_dict, d['instances']))
         if 'uris' in d:

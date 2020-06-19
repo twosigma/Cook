@@ -42,6 +42,33 @@ this may be overridden in the ``JobClient.submit`` method.
 .. autoclass:: Application
    :members:
 
+Containers
+^^^^^^^^^^
+
+Jobs submitted to Cook will use a configurable default container. If you need
+to use a custom container for your job, then you can provide a custom container
+to Cook via the ``container`` parameter of the ``JobClient.submit`` method.
+Container definitions inherit from the ``AbstractContainer`` class:
+
+.. py:module:: cookclient.containers
+
+.. autoclass:: AbstractContainer
+   :members:
+
+Currently, only Docker containers are supported:
+
+.. autoclass:: DockerContainer
+   :members:
+
+.. autoclass:: DockerPortMapping
+   :members:
+
+Containers may mount one or more *volumes*, which can be used to bring in files
+to the job.
+
+.. autoclass:: Volume
+   :members:
+
 Instances
 ^^^^^^^^^
 
