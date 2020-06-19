@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import sys
 import uuid
 
 from datetime import datetime, timedelta
@@ -55,7 +56,12 @@ JOB_DICT_WITH_OPTIONALS = {**JOB_DICT_NO_OPTIONALS, **{
             'start_time': 123123123,
             'hostname': 'host.name',
             'status': 'failed',
-            'preempted': True
+            'preempted': True,
+            'backfilled': False,
+            'ports': [
+                443,
+            ],
+            'compute-cluster': {}
         },
         {
             'task_id': '123e4567-e89b-12d3-a456-426614174020',
@@ -65,6 +71,9 @@ JOB_DICT_WITH_OPTIONALS = {**JOB_DICT_NO_OPTIONALS, **{
             'hostname': 'host.name',
             'status': 'success',
             'preempted': False,
+            'backfilled': False,
+            'ports': [],
+            'compute-cluster': {},
             'end_time': 123123521,
             'progress': 100,
             'progress_message': 'foo',
@@ -189,7 +198,7 @@ class JobTest(TestCase):
         self.assertEqual(str(job.uuid), jobdict['uuid'])
         self.assertEqual(job.name, jobdict['name'])
         self.assertEqual(job.max_retries, jobdict['max_retries'])
-        self.assertEqual(int(job.max_runtime.total_seconds()),
+        self.assertEqual(int(job.max_runtime.total_seconds() * 1000),
                          jobdict['max_runtime'])
         self.assertEqual(str(job.status).lower(), jobdict['status'].lower())
         self.assertEqual(str(job.state).lower(), jobdict['state'].lower())
@@ -223,7 +232,7 @@ class JobTest(TestCase):
         self.assertEqual(job.container, jobdict['container'])
         self.assertEqual(job.disable_mea_culpa_retries,
                          jobdict['disable_mea_culpa_retries'])
-        self.assertEqual(int(job.expected_runtime.total_seconds()),
+        self.assertEqual(int(job.expected_runtime.total_seconds() * 1000),
                          jobdict['expected_runtime'])
         self.assertEqual(job.pool, jobdict['pool'])
         self.assertEqual(len(job.instances), len(jobdict['instances']))
@@ -290,3 +299,15 @@ class JobTest(TestCase):
         jobdict = job.to_dict()
         self._check_required_fields(job, jobdict)
         self._check_optional_fields(job, jobdict)
+
+    def test_timedelta_overflows(self):
+        """Test parsing a job with runtime values that overflow timedelta."""
+        jobdict = JOB_DICT_NO_OPTIONALS
+        jobdict.update({
+            'max_runtime': sys.maxsize,
+            'expected_runtime': sys.maxsize
+        })
+        job = Job.from_dict(jobdict)
+
+        self.assertEqual(job.max_runtime, timedelta.max)
+        self.assertEqual(job.expected_runtime, timedelta.max)

@@ -24,9 +24,10 @@ from urllib.parse import urlencode, urlparse, urlunparse
 from uuid import UUID
 
 from . import util
+from .containers import AbstractContainer
 from .jobs import Application, Job
 
-CLIENT_VERSION = '0.1.0'
+CLIENT_VERSION = '0.2.0'
 
 _LOG = logging.getLogger(__name__)
 _LOG.addHandler(logging.StreamHandler())
@@ -51,7 +52,7 @@ class JobClient:
         provided, then the client will make requests using this session.
         Otherwise, the top-level ``requests`` functions will be used.
     :type auth: requests.Session, optional
-    :param **kwargs: Kwargs to provide to the request functions. If a session
+    :param \*\*kwargs: Kwargs to provide to the request functions. If a session
         was provided, then these options will take precedence over options
         specified there. For example, if ``auth`` is set in both ``session``
         and ``kwargs``, then the value from ``kwargs`` will be used. However,
@@ -106,7 +107,10 @@ class JobClient:
                max_runtime: timedelta = timedelta(days=1),
                name: str = f'{getpass.getuser()}-job',
                priority: Optional[int] = None,
+               container: Optional[AbstractContainer] = None,
                application: Application = _CLIENT_APP,
+
+               pool: Optional[str] = None,
 
                **kwargs) -> UUID:
         """Submit a single job to Cook.
@@ -141,9 +145,16 @@ class JobClient:
         :type name: str, optional
         :param priority: A priority to assign to the job, defaults to None.
         :type priority: int, optional
+        :param container: Which container to use for the job. Currently, only
+            Docker containers are supported. Defaults to None.
+        :type container: AbstractContainer, optional
         :param application: Application information to assign to the job,
-            defaults to ``cook-python-client`` with version 0.1.
+            defaults to ``cook-python-client`` with the current client
+            library version.
         :type application: Application, optional
+        :param pool: Which pool the job should be submitted to, defaults to
+            None.
+        :type pool: str, optional
         :param kwargs: Request kwargs. If kwargs were specified to the client
             on construction, then these will take precedence over those.
         :return: The UUID of the newly-created job.
@@ -162,14 +173,22 @@ class JobClient:
         if labels is not None:
             payload['labels'] = labels
         if max_runtime is not None:
-            payload['max-runtime'] = max_runtime.total_seconds()
+            payload['max-runtime'] = max_runtime.total_seconds() * 1000
         if name is not None:
             payload['name'] = name
         if priority is not None:
             payload['priority'] = priority
         if application is not None:
             payload['application'] = application.to_dict()
+        if container is not None:
+            payload['container'] = container.to_dict()
         payload = {'jobs': [payload]}
+
+        # Pool requests are assigned to the group payload instead of each
+        # individual job submission's payload.
+        if pool is not None:
+            payload['pool'] = pool
+
         url = urlunparse((self.__scheme, self.__netloc, self.__job_endpoint,
                           '', '', ''))
         _LOG.debug(f"Sending POST to {url}")
@@ -252,6 +271,7 @@ class JobClient:
         ``with`` block, like so:
 
         ::
+
             with JobClient('localhost:12321', requests.Session()) as client:
                 client.submit('ls')
                 # ... do more stuff with the client

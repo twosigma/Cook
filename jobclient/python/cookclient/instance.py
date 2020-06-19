@@ -17,7 +17,7 @@ import json
 from copy import deepcopy
 from datetime import datetime
 from enum import Enum
-from typing import Optional
+from typing import List, Optional
 from uuid import UUID
 
 from .util import unix_ms_to_datetime
@@ -117,18 +117,24 @@ class Instance:
     task_id: UUID
     slave_id: str
     executor_id: str
-    start_time: datetime
     hostname: str
     status: Status
     preempted: bool
+    ports: List[int]
+    compute_cluster: dict
 
+    start_time: Optional[datetime]
     end_time: Optional[datetime]
     progress: Optional[int]
     progress_message: Optional[str]
     reason_code: Optional[int]
+    reason_string: Optional[str]
     output_url: Optional[str]
     executor: Optional[Executor]
     reason_mea_culpa: Optional[bool]
+    exit_code: Optional[int]
+
+    etc: dict
 
     def __init__(self, *,
                  # Required arguments
@@ -139,14 +145,20 @@ class Instance:
                  hostname: str,
                  status: Status,
                  preempted: bool,
+                 ports: List[int],
+                 compute_cluster: dict,
                  # Optional arguments
                  end_time: Optional[datetime] = None,
                  progress: Optional[int] = None,
                  progress_message: Optional[str] = None,
                  reason_code: Optional[int] = None,
+                 reason_string: Optional[str] = None,
                  output_url: Optional[str] = None,
                  executor: Optional[Executor] = None,
-                 reason_mea_culpa: Optional[bool] = None):
+                 reason_mea_culpa: Optional[bool] = None,
+                 exit_code: Optional[int] = None,
+                 # Extra not-officially-supported params
+                 **kwargs):
         """Initialize an instance."""
         self.task_id = task_id
         self.slave_id = slave_id
@@ -155,13 +167,18 @@ class Instance:
         self.hostname = hostname
         self.status = status
         self.preempted = preempted
+        self.ports = ports
+        self.compute_cluster = compute_cluster
         self.end_time = end_time
         self.progress = progress
         self.progress_message = progress_message
         self.reason_code = reason_code
+        self.reason_string = reason_string
         self.output_url = output_url
         self.executor = executor
         self.reason_mea_culpa = reason_mea_culpa
+        self.exit_code = exit_code
+        self.etc = kwargs
 
     def __str__(self):
         return json.dumps(self.to_dict(), indent=4)
@@ -182,7 +199,10 @@ class Instance:
             'start_time': int(self.start_time.timestamp() * 1000),
             'hostname': self.hostname,
             'status': str(self.status),
-            'preempted': self.preempted
+            'preempted': self.preempted,
+            'ports': self.ports,
+            'compute-cluster': self.compute_cluster,
+            **self.etc
         }
         if self.end_time is not None:
             d['end_time'] = int(self.end_time.timestamp() * 1000)
@@ -192,12 +212,16 @@ class Instance:
             d['progress_message'] = self.progress_message
         if self.reason_code is not None:
             d['reason_code'] = self.reason_code
+        if self.reason_string is not None:
+            d['reason_string'] = self.reason_string
         if self.output_url is not None:
             d['output_url'] = self.output_url
         if self.executor is not None:
             d['executor'] = str(self.executor)
         if self.reason_mea_culpa is not None:
             d['reason_mea_culpa'] = self.reason_mea_culpa
+        if self.exit_code is not None:
+            d['exit_code'] = self.exit_code
         return d
 
     @classmethod
@@ -207,6 +231,16 @@ class Instance:
         d['task_id'] = UUID(d['task_id'])
         d['start_time'] = unix_ms_to_datetime(d['start_time'])
         d['status'] = Status.from_string(d['status'])
+        # The JSON object uses the key `compute-cluster`, which isn't a valid
+        # Python identifier, so we rename it to `compute_cluster` (note how the
+        # hyphen is now an underscore)
+        d['compute_cluster'] = d['compute-cluster']
+        del d['compute-cluster']
+
+        # `backfilled` is deprecated, but is still in the API output, so we
+        # delete it from the dict.
+        del d['backfilled']
+
         if 'end_time' in d:
             d['end_time'] = unix_ms_to_datetime(d['end_time'])
         if 'executor' in d:
