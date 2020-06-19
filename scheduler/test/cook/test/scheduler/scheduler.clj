@@ -98,6 +98,7 @@
                             :value-scalar {:scalar val}
                             :value-ranges {:ranges [(mtypes/map->ValueRange val)]}
                             :value-set {:set #{val}}
+                            :value-available-types {:available-types val}
                             {}))))
 
 (defn make-offer-resources
@@ -106,7 +107,7 @@
    (make-resource "mem" :value-scalar mem)
    (make-resource "disk" :value-scalar disk)
    (make-resource "ports" :value-ranges ports)
-   (make-resource "gpus" :value-scalar gpus)])
+   (make-resource "gpus" :value-available-types gpus)])
 
 (defn make-attribute
   [name type val]
@@ -130,7 +131,7 @@
 
 (defn make-mesos-offer
   [id framework-id slave-id hostname & {:keys [cpus mem disk ports gpus attrs]
-                                        :or {cpus 40.0 mem 5000.0 disk 6000.0 ports {:begin 31000 :end 32000} gpus 0.0 attrs {}}}]
+                                        :or {cpus 40.0 mem 5000.0 disk 6000.0 ports {:begin 31000 :end 32000} gpus {} attrs {}}}]
   (mtypes/map->Offer {:id (mtypes/map->OfferID {:value id})
                       :framework-id framework-id
                       :slave-id (mtypes/map->SlaveID {:value slave-id})
@@ -140,10 +141,10 @@
                       :executor-ids []}))
 
 (defn make-vm-offer
-  [framework-id host offer-id & {:keys [attrs cpus mem disk] :or {attrs {} cpus 100.0 mem 100000.0 disk 100000.0}}]
+  [framework-id host offer-id & {:keys [attrs cpus mem disk gpus] :or {attrs {} cpus 100.0 mem 100000.0 disk 100000.0 gpus {}}}]
   (sched/->VirtualMachineLeaseAdapter
     (make-mesos-offer offer-id framework-id "test-slave" host
-                      :cpus cpus :mem mem :disk disk :attrs attrs) 0))
+                      :cpus cpus :mem mem :disk disk :gpus gpus :attrs attrs) 0))
 
 ;(.getOffer (make-vm-offer (make-uuid) "lol" (make-uuid)))
 
@@ -664,7 +665,7 @@
                                                  #mesomatic.types.Resource{:name "mem", :type :value-scalar, :scalar 5000.0, :ranges [], :set #{}, :role "*"}
                                                  #mesomatic.types.Resource{:name "disk", :type :value-scalar, :scalar 6000.0, :ranges [], :set #{}, :role "*"}
                                                  #mesomatic.types.Resource{:name "ports", :type :value-ranges, :scalar 0.0, :ranges [#mesomatic.types.ValueRange{:begin 31000, :end 32000}], :set #{}, :role "*"}
-                                                 #mesomatic.types.Resource{:name "gpus", :type :value-scalar :scalar 2.0 :role "*"}],
+                                                 #mesomatic.types.Resource{:name "gpus", :type :value-available-types :available-types {"nvidia-tesla-p100" 2} :role "*"}],
                                      :attributes [],
                                      :executor-ids []}
         adapter (sched/->VirtualMachineLeaseAdapter offer when)]
@@ -676,7 +677,9 @@
     (is (= (.getVMID adapter) "my-slave-id"))
     (is (= (.hostname adapter) "slave3"))
     (is (= (.memoryMB adapter) 5000.0))
-    (is (= (.getScalarValues adapter) {"gpus" 2.0 "cpus" 40.0 "disk" 6000.0 "mem" 5000.0 "ports" 0.0}))
+    (is (= (.getScalarValues adapter) {"cpus" 40.0 "disk" 6000.0 "mem" 5000.0 "ports" 0.0}))
+    ;(is (= ))
+    ;TODO: getAvailableTypesValues adapter
     (is (= (-> adapter .portRanges first .getBeg) 31000))
     (is (= (-> adapter .portRanges first .getEnd) 32000))))
 
@@ -1526,22 +1529,22 @@
         offer-maker (fn [cpus mem gpus]
                       {:resources [{:name "cpus", :scalar cpus, :type :value-scalar, :role "cook"}
                                    {:name "mem", :scalar mem, :type :value-scalar, :role "cook"}
-                                   {:name "gpus", :scalar gpus, :type :value-scalar, :role "cook"}]
+                                   {:name "gpus", :available-types gpus, :type :value-available-types, :role "cook"}]
                        :id {:value (str "id-" (UUID/randomUUID))}
                        :slave-id {:value (str "slave-" (UUID/randomUUID))}
                        :hostname (str "host-" (UUID/randomUUID))
                        :compute-cluster compute-cluster
                        :offer-match-timer (timers/start (timers/timer "noop-timer-offer"))})
         offers-chan (async/chan (async/buffer 10))
-        offer-1 (offer-maker 10 2048 0)
-        offer-2 (offer-maker 20 16384 0)
-        offer-3 (offer-maker 30 8192 0)
-        offer-4 (offer-maker 4 2048 0)
-        offer-5 (offer-maker 4 1024 0)
-        offer-6 (offer-maker 10 4096 10)
-        offer-7 (offer-maker 20 4096 5)
-        offer-8 (offer-maker 30 16384 1)
-        offer-9 (offer-maker 100 200000 0)
+        offer-1 (offer-maker 10 2048 {})
+        offer-2 (offer-maker 20 16384 {})
+        offer-3 (offer-maker 30 8192 {})
+        offer-4 (offer-maker 4 2048 {})
+        offer-5 (offer-maker 4 1024 {})
+        offer-6 (offer-maker 10 4096 {"nvidia-tesla-p100" 10})
+        offer-7 (offer-maker 20 4096 {"nvidia-tesla-p100" 5})
+        offer-8 (offer-maker 30 16384 {"nvidia-tesla-p100" 1})
+        offer-9 (offer-maker 100 200000 {})
         run-handle-resource-offers! (fn [num-considerable offers pool & {:keys [user-quota user->usage rebalancer-reservation-atom job-name->uuid]
                                                                          :or {rebalancer-reservation-atom (atom {})
                                                                               job-name->uuid {}}}]
@@ -1582,14 +1585,16 @@
                                                                                       :name "job-5"
                                                                                       :ncpus 5
                                                                                       :memory 2048
-                                                                                      :gpus 2))
+                                                                                      :gpus 2
+                                                                                      :env {"COOK_GPU_MODEL" "nvidia-tesla-p100"}))
                                             job-6 (d/entity test-db (create-dummy-job conn
                                                                                       :uuid (get-uuid "job-6")
                                                                                       :group group-ent-id
                                                                                       :name "job-6"
                                                                                       :ncpus 19
                                                                                       :memory 1024
-                                                                                      :gpus 4))
+                                                                                      :gpus 4
+                                                                                      :env {"COOK_GPU_MODEL" "nvidia-tesla-p100"}))
                                             entity->map (fn [entity]
                                                           (util/job-ent->map entity (d/db conn)))
                                             pool->pending-jobs (->> {:normal [job-1 job-2 job-3 job-4] :gpu [job-5 job-6]}
@@ -1805,7 +1810,7 @@
           offer-maker (fn [cpus mem gpus]
                         {:resources [{:name "cpus", :scalar cpus, :type :value-scalar, :role "cook"}
                                      {:name "mem", :scalar mem, :type :value-scalar, :role "cook"}
-                                     {:name "gpus", :scalar gpus, :type :value-scalar, :role "cook"}]
+                                     {:name "gpus", :available-types gpus, :type :value-available-types, :role "cook"}]
                          :id {:value (str "id-" (UUID/randomUUID))}
                          :slave-id {:value (str "slave-" (UUID/randomUUID))}
                          :hostname (str "host-" (UUID/randomUUID))
