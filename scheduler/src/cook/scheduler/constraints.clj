@@ -105,6 +105,13 @@
   (let [previous-hosts (job->previous-hosts-to-avoid job)]
     (->novel-host-constraint job previous-hosts)))
 
+(defn get-gpu-models-entry-on-pool
+  "Given a pool name, determine the default GPU model on that pool."
+  [valid-gpu-models effective-pool-name]
+  (->> valid-gpu-models
+       (filter (fn [{:keys [pool-regex]}] (re-find (re-pattern pool-regex) effective-pool-name)))
+       first))
+
 (defn get-default-gpu-model-on-pool
   "Given a pool name, determine the default GPU model on that pool."
   [valid-gpu-models effective-pool-name]
@@ -122,16 +129,19 @@
   (job-constraint-evaluate
     [{:keys [job]} _ vm-attributes target-vm-tasks-assigned]
     (let [; Look at attribute to determine if vm has gpus
+          gpu-models-entry-on-pool (get-gpu-models-entry-on-pool (config/valid-gpu-models) (util/job->pool-name job))
           gpu-model-requested (or (-> job util/job-ent->env (get "COOK_GPU_MODEL"))
-                                  (get-default-gpu-model-on-pool (config/valid-gpu-models) (util/job->pool-name job)))
-          gpu-count-requested (-> job util/job-ent->resources :gpus)
+                                  (:default-model gpu-models-entry-on-pool))
+          gpu-count-requested (-> job util/job-ent->resources :gpus (or 0))
           gpu-model->count-available (get vm-attributes "gpus")  ; get map of gpu models and resources available
-
-          ; VM that supports GPU models but does not have any available GPUs will have a gpus list of {"model A" 0 "model B" 0 ...}
-          ; VM that does not support GPU models will have an empty gpus list of {}
-          passes? (if (pos? gpu-count-requested)            ; if job requests GPUs, constraint passes if the VM has enough GPUs available of the requested model
-                    (>= (get gpu-model->count-available gpu-model-requested 0) gpu-count-requested)
-                    (-> gpu-model->count-available count zero?))] ; if job does not request GPUs, do not schedule it on a VM that has GPU models
+          ; k8s VM that supports GPU models but does not have any available GPUs will have a gpus map of {"model A" 0 "model B" 0 ...}
+          ; k8s VM that does not support GPU models will have an empty gpus map of {}
+          ; mesos VM will have a gpus field of 0.0
+          passes? (if (map? gpu-model->count-available)
+                    (if (and (pos? gpu-count-requested) gpu-model-requested)
+                      (>= (get gpu-model->count-available gpu-model-requested 0) gpu-count-requested)
+                      (-> gpu-model->count-available count zero?))
+                    (and (zero? gpu-count-requested) (zero? gpu-model->count-available)))] ; if job does not request GPUs, do not schedule it on a VM that has GPU models
       [passes? (when-not passes? (if (not gpu-model-requested)
                                    "Job does not need GPUs, host has GPUs."
                                    (str "Job needs GPU model " gpu-model-requested " , host does not have GPU model" gpu-model-requested)))])))
@@ -141,7 +151,12 @@
   The constraint prevents a gpu job from running on a host that does not have the correct number and model of gpus (resources should also handle this)
   and a non-gpu job from running on a gpu host because we consider gpus scarce resources."
   [job]
-  (->gpu-host-constraint job))
+  ;(let [gpu-models-entry-on-pool? (get-gpu-models-entry-on-pool (config/valid-gpu-models) (util/job->pool-name job))]
+  ;  (log/info "******" gpu-models-entry-on-pool?)
+  ;  (when gpu-models-entry-on-pool?
+      (->gpu-host-constraint job)
+      ;))
+  )
 
 (defrecord rebalancer-reservation-constraint [reserved-hosts]
   JobConstraint
