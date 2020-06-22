@@ -45,14 +45,18 @@
   [node-name->resource-map resource-keyword]
   (->> node-name->resource-map vals (map resource-keyword) (reduce +)))
 
+(defn total-gpu-resource
+  "Given a map from node-name->resource-keyword->amount,
+  returns a map from gpu model to count for all nodes."
+  [node-name->resource-map]
+  (->> node-name->resource-map vals (map :gpus) (merge-with +)))
+
 (defn generate-offers
   "Given a compute cluster and maps with node capacity and existing pods, return a map from pool to offers."
   [compute-cluster node-name->node node-name->pods]
   (let [compute-cluster-name (cc/compute-cluster-name compute-cluster)
         node-name->capacity (api/get-capacity node-name->node)
-        _ (println "*****" node-name->capacity)
         node-name->consumed (api/get-consumption node-name->pods)
-        _ (println "*****" node-name->consumed)
         node-name->available (pc/map-from-keys (fn [node-name]
                                                  (api/merge-resource-map-collection -
                                                              (node-name->capacity node-name)
@@ -62,6 +66,7 @@
         gpu-models (set/union
                      (->> node-name->capacity vals (map :gpus) (apply merge) keys set)
                      (->> node-name->capacity vals (map :gpus) (apply merge) keys set))]
+    (log/info "~~~~~" node-name->capacity)
     (monitor/set-counter! (metrics/counter "capacity-cpus" compute-cluster-name)
                           (total-resource node-name->capacity :cpus))
     (monitor/set-counter! (metrics/counter "capacity-mem" compute-cluster-name)
@@ -70,15 +75,15 @@
                           (total-resource node-name->consumed :cpus))
     (monitor/set-counter! (metrics/counter "consumption-mem" compute-cluster-name)
                           (total-resource node-name->consumed :mem))
-    ;(run!
-    ;  (fn [gpu-model]
-    ;    ; TODO: write total-gpu-resource
-    ;    (monitor/set-counter! (metrics/counter (str "capacity-gpu-" gpu-model) compute-cluster-name)
-    ;                          (total-gpu-resource node-name->capacity))
-    ;    ; TODO: write total-gpu-resource
-    ;    (monitor/set-counter! (metrics/counter (str "consumption-gpu-" gpu-model) compute-cluster-name)
-    ;                          (total-gpu-resource node-name->consumed)))
-    ;  gpu-models)
+    (run!
+      (fn [gpu-model]
+        ; TODO: write total-gpu-resource
+        (monitor/set-counter! (metrics/counter (str "capacity-gpu-" gpu-model) compute-cluster-name)
+                              (total-gpu-resource node-name->capacity))
+        ; TODO: write total-gpu-resource
+        (monitor/set-counter! (metrics/counter (str "consumption-gpu-" gpu-model) compute-cluster-name)
+                              (total-gpu-resource node-name->consumed)))
+      gpu-models)
     (log/info "In" compute-cluster-name "compute cluster, capacity:" node-name->capacity)
     (log/info "In" compute-cluster-name "compute cluster, consumption:" node-name->consumed)
     (log/info "In" compute-cluster-name "compute cluster, filtering out"

@@ -6,7 +6,8 @@
             [cook.mesos.task :as task]
             [cook.scheduler.scheduler :as sched]
             [cook.test.testutil :as tu]
-            [datomic.api :as d])
+            [datomic.api :as d]
+            [clojure.tools.logging :as log])
   (:import (clojure.lang ExceptionInfo)
            (io.kubernetes.client.openapi.models V1NodeSelectorRequirement V1Pod V1PodSecurityContext)
            (java.util UUID)
@@ -107,6 +108,7 @@
       (let [offer (first (filter #(= "nodeA" (:hostname %))
                                  offers))]
         (is (not (nil? offer)))
+        (log/info offer)
         (is (= "kubecompute" (:framework-id offer)))
         (is (= {:value "nodeA"} (:slave-id offer)))
         (is (= [{:name "mem" :type :value-scalar :scalar 400.0}

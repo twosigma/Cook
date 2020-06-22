@@ -580,3 +580,28 @@
                                     node-blocklist-labels ; node-blocklist-labels
                                     (Executors/newSingleThreadExecutor) ; launch-task-executor-service
                                     )))
+
+
+;(defn make-and-write-kubernetes-compute-cluster
+;  [synthetic-pods node-blocklist-lab]
+;  (let [conn cook.datomic/conn
+;        cluster-entity-id (get-or-create-cluster-entity-id conn compute-cluster-name)
+;        compute-cluster (kcc/->KubernetesComputeCluster nil ; api-client
+;                                                        "kubecompute" ; name
+;                                                        cluster-entity-id ; entity-id
+;                                                        nil ; match-trigger-chan
+;                                                        nil ; exit-code-syncer-state
+;                                                        (atom {}) ; all-pods-atom
+;                                                        (atom {}) ; current-nodes-atom
+;                                                        (atom {}) ; cook-expected-state-map
+;                                                        (atom {}) ; k8s-actual-state-map
+;                                                        (atom nil) ; pool->fenzo-atom
+;                                                        {:kind :per-user} ; namespace-config
+;                                                        nil ; scan-frequency-seconds-config
+;                                                        nil ; max-pods-per-node
+;                                                        synthetic-pods ; synthetic-pods
+;                                                        node-blocklist-labels ; node-blocklist-labels
+;                                                        (Executors/newSingleThreadExecutor))] ; launch-task-executor-service
+;
+;    (cc/register-compute-cluster! compute-cluster)
+;    compute-cluster))
