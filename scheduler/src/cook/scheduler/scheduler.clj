@@ -72,6 +72,11 @@
   [offer resource-name]
   (reduce into [] (offer-resource-values offer resource-name :ranges)))
 
+(defn offer-resource-available-types
+  [offer resource-name]
+  (log/info "*****" (offer-resource-values offer resource-name :available-types))
+  (merge-with + (offer-resource-values offer resource-name :available-types)))
+
 (defn offer-value-list-map
   [value-list]
   (->> value-list
@@ -452,6 +457,13 @@
                 ;; Do not remove the following fnil--either arg to + can be nil!
                 (update-in result [(:name resource)] (fnil + 0.0 0.0) value)
                 result))
+            {}
+            (:resources offer)))
+  ;TODO: UPDATE THIS
+  (getAvailableTypesValues [_]
+    (reduce (fn [result resource] (if-let [value (:available-types resource)]
+                                    (assoc result (:name resource) value)
+                                    result))
             {}
             (:resources offer)))
   ; Some Fenzo plugins (which are included with fenzo, such as host attribute constraints) expect the "HOSTNAME"
