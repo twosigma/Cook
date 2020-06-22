@@ -28,6 +28,7 @@
             [compojure.core :refer [ANY GET POST routes]]
             [cook.compute-cluster :as cc]
             [cook.config :as config]
+            [cook.scheduler.constraints :as constraints]
             [cook.rest.cors :as cors]
             [cook.datomic :as datomic]
             [cook.scheduler.data-locality :as dl]
@@ -688,12 +689,9 @@
        :container))
 
 (defn get-gpu-models-on-pool
-   "Given a pool name, determine the supported GPU models on that pool."
-   [valid-gpu-models effective-pool-name]
-   (->> valid-gpu-models
-        (filter (fn [{:keys [pool-regex]}] (re-find (re-pattern pool-regex) effective-pool-name)))
-        first
-        :valid-models))
+  "Given a pool name, determine the supported GPU models on that pool."
+  [valid-gpu-models effective-pool-name]
+  (:valid-models (constraints/get-gpu-models-entry-on-pool valid-gpu-models effective-pool-name)))
 
 (s/defn make-job-txn
   "Creates the necessary txn data to insert a job into the database"
