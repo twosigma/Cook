@@ -102,7 +102,7 @@
                              {:name "cpus" :type :value-scalar :scalar (max 0.0 (:cpus available))}
                              {:name "disk" :type :value-scalar :scalar 0.0}
                              {:name "gpus" :type :value-available-types :available-types (:gpus available)}]
-                 :attributes []
+                 :attributes [{:name "source" :type :value-text :text "k8s"}]
                  :executor-ids []
                  :compute-cluster compute-cluster
                  :reject-after-match-attempt true
