@@ -142,6 +142,11 @@
                       (>= (get gpu-model->count-available gpu-model-requested 0) gpu-count-requested)
                       (-> gpu-model->count-available count zero?))
                     (and (zero? gpu-count-requested) (zero? gpu-model->count-available)))] ; if job does not request GPUs, do not schedule it on a VM that has GPU models
+      (log/info "~~~~~" (:job/name job))
+      (log/info "~~~~~" passes?)
+      (log/info "~~~~~" gpu-model-requested)
+      (log/info "~~~~~" gpu-count-requested)
+      (log/info "~~~~~" gpu-model->count-available)
       [passes? (when-not passes? (if (not gpu-model-requested)
                                    "Job does not need GPUs, host has GPUs."
                                    (str "Job needs GPU model " gpu-model-requested " , host does not have GPU model" gpu-model-requested)))])))
