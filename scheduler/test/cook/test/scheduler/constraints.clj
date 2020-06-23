@@ -77,28 +77,6 @@
                                                          {:name "gpus", :type :value-available-types :available-types {} :role "*"}],
                                              :attributes [],
                                              :executor-ids []}
-        mesos-gpu-offer #mesomatic.types.Offer{:id #mesomatic.types.OfferID {:value "my-offer-id"}
-                                                   :framework-id framework-id
-                                                   :slave-id #mesomatic.types.SlaveID{:value "my-slave-id"},
-                                                   :hostname "slave3",
-                                                   :resources [#mesomatic.types.Resource{:name "cpus", :type :value-scalar, :scalar 40.0, :ranges [], :set #{}, :role "*"}
-                                                               #mesomatic.types.Resource{:name "mem", :type :value-scalar, :scalar 5000.0, :ranges [], :set #{}, :role "*"}
-                                                               #mesomatic.types.Resource{:name "disk", :type :value-scalar, :scalar 6000.0, :ranges [], :set #{}, :role "*"}
-                                                               #mesomatic.types.Resource{:name "ports", :type :value-ranges, :scalar 0.0, :ranges [#mesomatic.types.ValueRange{:begin 31000, :end 32000}], :set #{}, :role "*"}
-                                                               #mesomatic.types.Resource{:name "gpus", :type :value-scalar :scalar 5.0 :role "*"}],
-                                                   :attributes [],
-                                                   :executor-ids []}
-        mesos-non-gpu-offer #mesomatic.types.Offer{:id #mesomatic.types.OfferID {:value "my-offer-id"}
-                                                        :framework-id framework-id
-                                                        :slave-id #mesomatic.types.SlaveID{:value "my-slave-id"},
-                                                        :hostname "slave3",
-                                                        :resources [#mesomatic.types.Resource{:name "cpus", :type :value-scalar, :scalar 40.0, :ranges [], :set #{}, :role "*"}
-                                                                    #mesomatic.types.Resource{:name "mem", :type :value-scalar, :scalar 5000.0, :ranges [], :set #{}, :role "*"}
-                                                                    #mesomatic.types.Resource{:name "disk", :type :value-scalar, :scalar 6000.0, :ranges [], :set #{}, :role "*"}
-                                                                    #mesomatic.types.Resource{:name "ports", :type :value-ranges, :scalar 0.0, :ranges [#mesomatic.types.ValueRange{:begin 31000, :end 32000}], :set #{}, :role "*"}
-                                                                    #mesomatic.types.Resource{:name "gpus", :type :value-scalar :scalar 0.0 :role "*"}],
-                                                        :attributes [],
-                                                        :executor-ids []}
         uri "datomic:mem://test-gpu-constraint"
         conn (restore-fresh-database! uri)
         _ (create-pool conn "test-pool")
@@ -192,38 +170,15 @@
                          (getCurrAvailableResources [_] (sched/->VirtualMachineLeaseAdapter k8s-non-gpu-offer 0)))
                        nil))
           "non GPU task on non GPU host should succeed")
-      (is (not (.isSuccessful
-                 (.evaluate (constraints/fenzoize-job-constraint (constraints/build-gpu-host-constraint mesos-gpu-job))
-                            (sched/make-task-request db mesos-gpu-job nil)
-                            (reify com.netflix.fenzo.VirtualMachineCurrentState
-                              (getHostname [_] "test-host")
-                              (getRunningTasks [_] [])
-                              (getTasksCurrentlyAssigned [_] [])
-                              (getCurrAvailableResources [_] (sched/->VirtualMachineLeaseAdapter mesos-gpu-offer 0)))
-                            nil)))
+      (is (nil?
+            (constraints/build-gpu-host-constraint mesos-gpu-job))
           "GPU task on mesos GPU host should fail")
-      (is (.isSuccessful
-            (.evaluate (constraints/fenzoize-job-constraint (constraints/build-gpu-host-constraint mesos-non-gpu-job))
-                       (sched/make-task-request db mesos-non-gpu-job nil)
-                       (reify com.netflix.fenzo.VirtualMachineCurrentState
-                         (getHostname [_] "test-host")
-                         (getRunningTasks [_] [])
-                         (getTasksCurrentlyAssigned [_] [])
-                         (getCurrAvailableResources [_] (sched/->VirtualMachineLeaseAdapter mesos-non-gpu-offer 0)))
-                       nil))
-          "non GPU task on non GPU mesos host should succeed")
-      )
-    (is (.isSuccessful
-          (.evaluate (constraints/fenzoize-job-constraint (constraints/build-gpu-host-constraint non-gpu-job))
-                     (sched/make-task-request db non-gpu-job nil)
-                     (reify com.netflix.fenzo.VirtualMachineCurrentState
-                       (getHostname [_] "test-host")
-                       (getRunningTasks [_] [])
-                       (getTasksCurrentlyAssigned [_] [])
-                       (getCurrAvailableResources [_] (sched/->VirtualMachineLeaseAdapter k8s-non-gpu-offer 0)))
-                     nil))
-        "non GPU task on non GPU host should succeed")
-    ))
+      (is (nil?
+            (constraints/build-gpu-host-constraint mesos-non-gpu-job))
+          "non GPU task on non GPU mesos host should succeed"))
+    (is (nil?
+          (constraints/build-gpu-host-constraint non-gpu-job))
+        "non GPU task on non GPU host should succeed")))
 
 
 (deftest test-rebalancer-reservation-constraint
