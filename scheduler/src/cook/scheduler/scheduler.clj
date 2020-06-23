@@ -525,14 +525,13 @@
                                         (constraints/make-fenzo-group-constraint
                                           db group #(guuid->considerable-cotask-ids (:group/uuid group)) running-cotask-cache))
                                       (:group/_job job)))))
-        ;needs-gpus? (constraints/job-needs-gpus? job)
         scalar-requests (reduce (fn [result resource]
                                   (let [value (:resource/amount resource)
                                         type (:resource/type resource)]
                                     ; task request shouldn't have a scalar request for GPUs.
                                     ; we are completely handling gpus within GPU host constraint
                                     ; (fenzo can't handle gpu models)
-                                    (if (and value (not= type :resource-type/gpus))
+                                    (if (and value (not= type :resource.type/gpus))
                                       (assoc result (name type) value)
                                       result)))
                                 {}
