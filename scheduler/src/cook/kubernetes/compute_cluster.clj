@@ -49,7 +49,7 @@
   "Given a map from node-name->resource-keyword->amount,
   returns a map from gpu model to count for all nodes."
   [node-name->resource-map]
-  (->> node-name->resource-map vals (map :gpus) (merge-with +)))
+  (->> node-name->resource-map vals (map :gpus) (apply merge-with +)))
 
 (defn generate-offers
   "Given a compute cluster and maps with node capacity and existing pods, return a map from pool to offers."
@@ -65,8 +65,10 @@
         ; Grab every unique GPU model being represented
         gpu-models (set/union
                      (->> node-name->capacity vals (map :gpus) (apply merge) keys set)
-                     (->> node-name->capacity vals (map :gpus) (apply merge) keys set))]
-    (log/info "~~~~~" node-name->capacity)
+                     (->> node-name->capacity vals (map :gpus) (apply merge) keys set))
+        total-gpu-capacity (-> node-name->capacity total-gpu-resource)
+        total-gpu-consumed (-> node-name->consumed total-gpu-resource)]
+
     (monitor/set-counter! (metrics/counter "capacity-cpus" compute-cluster-name)
                           (total-resource node-name->capacity :cpus))
     (monitor/set-counter! (metrics/counter "capacity-mem" compute-cluster-name)
@@ -77,12 +79,10 @@
                           (total-resource node-name->consumed :mem))
     (run!
       (fn [gpu-model]
-        ; TODO: write total-gpu-resource
         (monitor/set-counter! (metrics/counter (str "capacity-gpu-" gpu-model) compute-cluster-name)
-                              (total-gpu-resource node-name->capacity))
-        ; TODO: write total-gpu-resource
+                              (get total-gpu-capacity gpu-model))
         (monitor/set-counter! (metrics/counter (str "consumption-gpu-" gpu-model) compute-cluster-name)
-                              (total-gpu-resource node-name->consumed)))
+                              (get total-gpu-consumed gpu-model)))
       gpu-models)
     (log/info "In" compute-cluster-name "compute cluster, capacity:" node-name->capacity)
     (log/info "In" compute-cluster-name "compute cluster, consumption:" node-name->consumed)
