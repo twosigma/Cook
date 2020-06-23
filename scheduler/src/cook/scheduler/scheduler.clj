@@ -527,9 +527,14 @@
                                       (:group/_job job)))))
         ;needs-gpus? (constraints/job-needs-gpus? job)
         scalar-requests (reduce (fn [result resource]
-                                  (if-let [value (:resource/amount resource)]
-                                    (assoc result (name (:resource/type resource)) value)
-                                    result))
+                                  (let [value (:resource/amount resource)
+                                        type (:resource/type resource)]
+                                    ; task request shouldn't have a scalar request for GPUs.
+                                    ; we are completely handling gpus within GPU host constraint
+                                    ; (fenzo can't handle gpu models)
+                                    (if (and value (not= type :resource-type/gpus))
+                                      (assoc result (name type) value)
+                                      result)))
                                 {}
                                 (:job/resource job))
         pool-specific-resources ((adjust-job-resources-for-pool-fn pool-name) job resources)]
