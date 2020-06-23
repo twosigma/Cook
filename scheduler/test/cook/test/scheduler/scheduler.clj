@@ -1971,7 +1971,6 @@
                         :extract false
                         :value "file:///path/to/cook-executor"}}
         launched-job-names-atom (atom [])
-        _ (create-pool conn "test-pool")
         compute-cluster (testutil/make-and-write-kubernetes-compute-cluster conn nil nil)
         offer-maker (fn [cpus mem gpus]
                       {:resources [{:name "cpus", :scalar cpus, :type :value-scalar, :role "cook"}
@@ -1998,6 +1997,7 @@
                                       (reset! launched-job-names-atom [])
                                       (let [conn (restore-fresh-database! uri)
                                             test-db (d/db conn)
+                                            _ (create-pool conn "test-pool")
                                             ^TaskScheduler fenzo (sched/make-fenzo-scheduler 1500 nil 0.8)
                                             group-ent-id (create-dummy-group conn)
                                             get-uuid (fn [name] (get job-name->uuid name (d/squuid)))
@@ -2006,25 +2006,29 @@
                                                                                       :group group-ent-id
                                                                                       :name "job-1"
                                                                                       :ncpus 3
-                                                                                      :memory 2048))
+                                                                                      :memory 2048
+                                                                                      :pool "test-pool"))
                                             job-2 (d/entity test-db (create-dummy-job conn
                                                                                       :uuid (get-uuid "job-2")
                                                                                       :group group-ent-id
                                                                                       :name "job-2"
                                                                                       :ncpus 13
-                                                                                      :memory 1024))
+                                                                                      :memory 1024
+                                                                                      :pool "test-pool"))
                                             job-3 (d/entity test-db (create-dummy-job conn
                                                                                       :uuid (get-uuid "job-3")
                                                                                       :group group-ent-id
                                                                                       :name "job-3"
                                                                                       :ncpus 7
-                                                                                      :memory 4096))
+                                                                                      :memory 4096
+                                                                                      :pool "test-pool"))
                                             job-4 (d/entity test-db (create-dummy-job conn
                                                                                       :uuid (get-uuid "job-4")
                                                                                       :group group-ent-id
                                                                                       :name "job-4"
                                                                                       :ncpus 11
-                                                                                      :memory 1024))
+                                                                                      :memory 1024
+                                                                                      :pool "test-pool"))
                                             job-5 (d/entity test-db (create-dummy-job conn
                                                                                       :uuid (get-uuid "job-5")
                                                                                       :group group-ent-id
@@ -2032,7 +2036,8 @@
                                                                                       :ncpus 5
                                                                                       :memory 2048
                                                                                       :gpus 2
-                                                                                      :env {"COOK_GPU_MODEL" "nvidia-tesla-p100"}))
+                                                                                      :env {"COOK_GPU_MODEL" "nvidia-tesla-p100"}
+                                                                                      :pool "test-pool"))
                                             job-6 (d/entity test-db (create-dummy-job conn
                                                                                       :uuid (get-uuid "job-6")
                                                                                       :group group-ent-id
@@ -2040,7 +2045,8 @@
                                                                                       :ncpus 19
                                                                                       :memory 1024
                                                                                       :gpus 4
-                                                                                      :env {"COOK_GPU_MODEL" "nvidia-tesla-p100"}))
+                                                                                      :env {"COOK_GPU_MODEL" "nvidia-tesla-p100"}
+                                                                                      :pool "test-pool"))
                                             entity->map (fn [entity]
                                                           (util/job-ent->map entity (d/db conn)))
                                             pool->pending-jobs (->> {"test-pool" [job-1 job-2 job-3 job-4 job-5 job-6]}
@@ -2067,7 +2073,6 @@
               offers [offer-1 offer-2 offer-3]]
           (is (run-handle-resource-offers! num-considerable offers "test-pool"))
           (is (= :end-marker (async/<!! offers-chan)))
-          ;(is (= 3 (count @launched-offer-ids-atom)))
           (is (= 4 (count @launched-job-names-atom)))
           (is (= #{"job-1" "job-2" "job-3" "job-4"} (set @launched-job-names-atom)))))
 
@@ -2183,7 +2188,7 @@
       (testing "gpu offers for all gpu jobs"
         (let [num-considerable 10
               offers [offer-6 offer-7]]
-          (is (run-handle-resource-offers! num-considerable offers "test-pool"))
+          (is (not (run-handle-resource-offers! num-considerable offers "test-pool")))
           (is (= :end-marker (async/<!! offers-chan)))
           (is (= 2 (count @launched-job-names-atom)))
           (is (= #{"job-5" "job-6"} (set @launched-job-names-atom)))))
@@ -2191,7 +2196,7 @@
       (testing "gpu offer for single gpu job"
         (let [num-considerable 10
               offers [offer-6]]
-          (is (run-handle-resource-offers! num-considerable offers "test-pool"))
+          (is (not (run-handle-resource-offers! num-considerable offers "test-pool")))
           (is (= :end-marker (async/<!! offers-chan)))
           (is (= 1 (count @launched-job-names-atom)))
           (is (= #{"job-5"} (set @launched-job-names-atom)))))
@@ -2228,6 +2233,14 @@
           (is (= {:job-uuid->reserved-host {}
                   :launched-job-uuids #{job-1-uuid job-2-uuid}}
                  @rebalancer-reservation-atom))))
+
+      (testing "all offers for all jobs"
+        (let [num-considerable 10
+              offers [offer-1 offer-2 offer-3 offer-4 offer-5 offer-6 offer-7 offer-8 offer-9]]
+          (is (run-handle-resource-offers! num-considerable offers "test-pool"))
+          (is (= :end-marker (async/<!! offers-chan)))
+          (is (= 6 (count @launched-job-names-atom)))
+          (is (= #{"job-1" "job-2" "job-3" "job-4" "job-5" "job-6"} (set @launched-job-names-atom)))))
       )))
 
 
@@ -2330,6 +2343,7 @@
                 dl/job-uuid->dataset-maps-cache (util/new-cache)]
     (let [uri "datomic:mem://test-handle-resource-offers-with-data-locality"
           conn (restore-fresh-database! uri)
+          _ (create-pool conn "test-pool")
           test-user (System/getProperty "user.name")
           launched-tasks-atom (atom [])
           compute-cluster (testutil/make-kubernetes-compute-cluster nil nil nil nil)
@@ -2357,7 +2371,6 @@
                                                                                                0.8)
                                               group-ent-id (create-dummy-group conn)
                                               get-uuid (fn [name] (get job-name->uuid name (d/squuid)))
-                                              _ (create-pool conn "test-pool")
                                               job-1 (d/entity (d/db conn) (create-dummy-job conn
                                                                                             :uuid (get-uuid "job-1")
                                                                                             :group group-ent-id
