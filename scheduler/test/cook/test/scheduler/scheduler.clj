@@ -1909,18 +1909,18 @@
               offers [offer-6 offer-7]]
           (is (run-handle-resource-offers! num-considerable offers :gpu))
           (is (= :end-marker (async/<!! offers-chan)))
-          (is (= 2 (count @launched-offer-ids-atom)))
-          (is (= 2 (count @launched-job-ids-atom)))
-          (is (= #{"job-5" "job-6"} (set @launched-job-ids-atom)))))
+          (is (= 0 (count @launched-offer-ids-atom)))
+          (is (= 0 (count @launched-job-ids-atom)))
+          (is (empty? @launched-job-ids-atom))))
 
       (testing "gpu offer for single gpu job"
         (let [num-considerable 10
               offers [offer-6]]
           (is (run-handle-resource-offers! num-considerable offers :gpu))
           (is (= :end-marker (async/<!! offers-chan)))
-          (is (= 1 (count @launched-offer-ids-atom)))
-          (is (= 1 (count @launched-job-ids-atom)))
-          (is (= #{"job-5"} (set @launched-job-ids-atom)))))
+          (is (= 0 (count @launched-offer-ids-atom)))
+          (is (= 0 (count @launched-job-ids-atom)))
+          (is (empty? @launched-job-ids-atom))))
 
       (testing "gpu offer matching no gpu job"
         (let [num-considerable 10
@@ -1976,6 +1976,7 @@
                       {:resources [{:name "cpus", :scalar cpus, :type :value-scalar, :role "cook"}
                                    {:name "mem", :scalar mem, :type :value-scalar, :role "cook"}
                                    {:name "gpus", :available-types gpus, :type :value-available-types, :role "cook"}]
+                       :attributes [{:name "source", :text "k8s", :type :value-text, :role "cook"}]
                        :id {:value (str "id-" (UUID/randomUUID))}
                        :slave-id {:value (str "slave-" (UUID/randomUUID))}
                        :hostname (str "host-" (UUID/randomUUID))
@@ -2045,7 +2046,7 @@
                                                                                       :ncpus 19
                                                                                       :memory 1024
                                                                                       :gpus 4
-                                                                                      :env {"COOK_GPU_MODEL" "nvidia-tesla-p100"}
+                                                                                      ;:env {"COOK_GPU_MODEL" "nvidia-tesla-p100"}
                                                                                       :pool "test-pool"))
                                             entity->map (fn [entity]
                                                           (util/job-ent->map entity (d/db conn)))
@@ -2244,7 +2245,7 @@
       )))
 
 
-(deftest test-handle-resource-offers-with-data-locality-mesos
+(deftest test-handle-resource-offers-with-data-locality
   (setup)
   (with-redefs [config/data-local-fitness-config (constantly {:data-locality-weight 0.95
                                                               :base-calculator BinPackingFitnessCalculators/cpuMemBinPacker})
@@ -2329,98 +2330,6 @@
           (let [launched-tasks @launched-tasks-atom
                 task-1 (first (filter #(.startsWith (:name %) "job-1") launched-tasks))
                 task-2 (first (filter #(.startsWith (:name %) "job-2") launched-tasks))]
-            (is (= 2 (count launched-tasks)))
-            (is (= (:slave-id offer-1) (:slave-id task-1)))
-            (is (= (:slave-id offer-2) (:slave-id task-2)))))))))
-;TODO: fix this test
-(deftest test-handle-resource-offers-with-data-locality-k8s
-  (setup)
-  (with-redefs [config/data-local-fitness-config (constantly {:data-locality-weight 0.95
-                                                              :base-calculator BinPackingFitnessCalculators/cpuMemBinPacker})
-                config/valid-gpu-models (constantly [{:pool-regex "test-pool"
-                                                      :valid-models #{"nvidia-tesla-p100" "nvidia-tesla-k80"}
-                                                      :default-model "nvidia-tesla-p100"}])
-                dl/job-uuid->dataset-maps-cache (util/new-cache)]
-    (let [uri "datomic:mem://test-handle-resource-offers-with-data-locality"
-          conn (restore-fresh-database! uri)
-          _ (create-pool conn "test-pool")
-          test-user (System/getProperty "user.name")
-          launched-tasks-atom (atom [])
-          compute-cluster (testutil/make-kubernetes-compute-cluster nil nil nil nil)
-          offer-maker (fn [cpus mem gpus]
-                        {:resources [{:name "cpus", :scalar cpus, :type :value-scalar, :role "cook"}
-                                     {:name "mem", :scalar mem, :type :value-scalar, :role "cook"}
-                                     {:name "gpus", :available-types gpus, :type :value-available-types, :role "cook"}]
-                         :id {:value (str "id-" (UUID/randomUUID))}
-                         :slave-id {:value (str "slave-" (UUID/randomUUID))}
-                         :hostname (str "host-" (UUID/randomUUID))
-                         :compute-cluster compute-cluster
-                         :offer-match-timer (timers/start (timers/timer "noop-timer-offer"))})
-          offers-chan (async/chan (async/buffer 10))
-          offer-1 (offer-maker 10 2048 {})
-          offer-2 (offer-maker 20 16384 {})
-          offer-3 (offer-maker 30 8192 {})
-          [d1 d2] [#{{:dataset {"a" "a"}} {:dataset {"b" "b"}}}]
-          run-handle-resource-offers! (fn [num-considerable offers & {:keys [user-quota user->usage rebalancer-reservation-atom job-name->uuid]
-                                                                      :or {rebalancer-reservation-atom (atom {})
-                                                                           job-name->uuid {}}}]
-                                        (reset! launched-tasks-atom [])
-                                        (let [conn (restore-fresh-database! uri)
-                                              ^TaskScheduler fenzo (sched/make-fenzo-scheduler 1500
-                                                                                               "cook.scheduler.data-locality/make-data-local-fitness-calculator"
-                                                                                               0.8)
-                                              group-ent-id (create-dummy-group conn)
-                                              get-uuid (fn [name] (get job-name->uuid name (d/squuid)))
-                                              job-1 (d/entity (d/db conn) (create-dummy-job conn
-                                                                                            :uuid (get-uuid "job-1")
-                                                                                            :group group-ent-id
-                                                                                            :name "job-1"
-                                                                                            :ncpus 3
-                                                                                            :memory 2048
-                                                                                            :datasets d1
-                                                                                            :pool "test-pool"))
-                                              job-2 (d/entity (d/db conn) (create-dummy-job conn
-                                                                                            :uuid (get-uuid "job-2")
-                                                                                            :group group-ent-id
-                                                                                            :name "job-2"
-                                                                                            :ncpus 13
-                                                                                            :memory 1024
-                                                                                            :datasets d2
-                                                                                            :pool "test-pool"))
-                                              _ (dl/update-data-local-costs {d1 {(:hostname offer-1) {:cost 0.0
-                                                                                                      :suitable true}
-                                                                                 (:hostname offer-2) {:cost 0.0
-                                                                                                      :suitable true}
-                                                                                 (:hostname offer-3) {:cost 100.0
-                                                                                                      :suitable true}}
-                                                                             d2 {(:hostname offer-1) {:cost 0.0
-                                                                                                      :suitable true}
-                                                                                 (:hostname offer-2) {:cost 0.0
-                                                                                                      :suitable true}
-                                                                                 (:hostname offer-3) {:cost 0.0
-                                                                                                      :suitable true}}}
-                                                                            [])
-                                              entity->map (fn [entity]
-                                                            (util/job-ent->map entity (d/db conn)))
-                                              pool->pending-jobs (->> {:normal [job-1 job-2]}
-                                                                      (pc/map-vals (partial map entity->map)))
-                                              pool-name->pending-jobs-atom (atom pool->pending-jobs)
-                                              user->usage (or user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}})
-                                              user->quota (or user-quota {test-user {:count 10, :cpus 50, :mem 32768, :gpus 10}})
-                                              mesos-run-as-user nil
-                                              result (sched/handle-resource-offers!
-                                                       conn fenzo pool-name->pending-jobs-atom mesos-run-as-user
-                                                       user->usage user->quota num-considerable offers
-                                                       rebalancer-reservation-atom :normal nil)]
-                                          result))]
-      (testing "enough offers for all normal jobs"
-        (let [num-considerable 10
-              offers [offer-1 offer-2 offer-3]]
-          (is (run-handle-resource-offers! num-considerable offers :job-name->uuid {"job-1" (d/squuid) "job-2" (d/squuid)}))
-          (let [launched-tasks @launched-tasks-atom
-                task-1 (first (filter #(.startsWith (:name %) "job-1") launched-tasks))
-                task-2 (first (filter #(.startsWith (:name %) "job-2") launched-tasks))
-                _ (log/info "~~~~" launched-tasks)]
             (is (= 2 (count launched-tasks)))
             (is (= (:slave-id offer-1) (:slave-id task-1)))
             (is (= (:slave-id offer-2) (:slave-id task-2)))))))))
@@ -2519,7 +2428,8 @@
   (setup)
   (with-redefs [config/max-over-quota-jobs (fn [] 10)]
     (let [conn (restore-fresh-database! "datomic:mem://test-limit-over-quota-jobs")
-          job-ids (doall (take 25 (repeatedly #(create-dummy-job conn))))
+          - (create-pool conn "test-pool")
+          job-ids (doall (take 25 (repeatedly #(create-dummy-job conn :pool "test-pool"))))
           db (d/db conn)
           task-ents (->> job-ids
                          (map #(d/entity db %))
