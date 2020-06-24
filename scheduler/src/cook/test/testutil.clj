@@ -556,7 +556,10 @@
                                     nil ; exit-code-syncer-state
                                     (atom namespaced-pod-name->pod) ; all-pods-atom
                                     (atom {}) ; current-nodes-atom
+                                    (atom {}) ; pool->node-name->V1Node
+                                    (atom {}) ; node-name->pod-name->V1Pod
                                     (atom {}) ; cook-expected-state-map
+                                    (atom {}) ; cook-starting-pods
                                     (atom {}) ; k8s-actual-state-map
                                     (atom nil) ; pool->fenzo-atom
                                     {:kind :per-user} ; namespace-config

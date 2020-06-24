@@ -85,8 +85,7 @@
                  :executor-ids []
                  :compute-cluster compute-cluster
                  :reject-after-match-attempt true
-                 :offer-match-timer (timers/start (ccmetrics/timer "offer-match-timer" compute-cluster-name))}))
-         (group-by (fn [offer] (-> offer :hostname node-name->node api/get-node-pool))))))
+                 :offer-match-timer (timers/start (ccmetrics/timer "offer-match-timer" compute-cluster-name))})))))
 
 (defn taskids-to-scan
   "Determine all taskids to scan by unioning task id's from cook expected state and existing taskid maps. "
@@ -230,8 +229,17 @@
                     :pod-namespace pod-namespace
                     :task-metadata task-metadata})))))
 
+(defn get-pods-in-pool
+  "Given a compute cluster and a pool name, extract the pods that are in the current pool only."
+  [{:keys [pool->node-name->V1Node node-name->pod-name->V1Pod]} pool]
+  (->> (get @pool->node-name->V1Node pool)
+       keys
+       (map #(get @node-name->pod-name->V1Pod % {}))
+       (reduce into {})))
+
 (defrecord KubernetesComputeCluster [^ApiClient api-client name entity-id match-trigger-chan exit-code-syncer-state
-                                     all-pods-atom current-nodes-atom cook-expected-state-map k8s-actual-state-map
+                                     all-pods-atom current-nodes-atom pool->node-name->V1Node
+                                     node-name->pod-name->V1Pod cook-expected-state-map cook-starting-pods k8s-actual-state-map
                                      pool->fenzo-atom namespace-config scan-frequency-seconds-config max-pods-per-node
                                      synthetic-pods-config node-blocklist-labels
                                      ^ExecutorService launch-task-executor-service]
@@ -288,13 +296,13 @@
           ; expected and the gradually discovered existing pods.
           (reset! cook-expected-state-map (determine-cook-expected-state-on-startup conn api-client name running-task-ents))
 
-          (api/initialize-pod-watch api-client name all-pods-atom cook-pod-callback)
+          (api/initialize-pod-watch this cook-pod-callback)
           (if scan-frequency-seconds-config
             (regular-scanner this (time/seconds scan-frequency-seconds-config))
             (log/info "State scan disabled because no interval has been set")))
 
         ; Initialize the node watch path.
-        (api/initialize-node-watch api-client name current-nodes-atom)
+        (api/initialize-node-watch this)
 
         (api/initialize-event-watch api-client name all-pods-atom)
         (catch Throwable e
@@ -307,16 +315,15 @@
   (pending-offers [this pool-name]
     (log/info "In" name "compute cluster, looking for offers for pool" pool-name)
     (let [timer (timers/start (metrics/timer "cc-pending-offers-compute" name))
-          pods (add-starting-pods this @all-pods-atom)
-          nodes @current-nodes-atom
-          node-name->pods (api/pods->node-name->pods pods)
-          offers-all-pools (generate-offers this nodes node-name->pods)
-          ; TODO: We are generating offers for every pool here, and filtering out only offers for this one pool.
-          ; TODO: We should be smarter here and generate once, then reuse for each pool, instead of generating for each pool each time and only keeping one
-          offers-this-pool (get offers-all-pools pool-name)
-          offers-this-pool-for-logging (into []
-                                             (map #(into {} (select-keys % [:hostname :resources]))
-                                                  offers-this-pool))]
+          pods (add-starting-pods this @all-pods-atom) ; Safe. O(#pods)
+          nodes @current-nodes-atom ; Safe. O(#nodes)
+          offers-this-pool (generate-offers this (@pool->node-name->V1Node pool-name)
+                                                       (->> (get-pods-in-pool this pool-name)
+                                                            (add-starting-pods this)
+                                                            (api/pods->node-name->pods)))
+          offers-this-pool-for-logging (into #{}
+                                              (map #(into {} (select-keys % [:hostname :resources]))
+                                                   offers-this-pool))]
       (log/info "In" name "compute cluster, generated" (count offers-this-pool) "offers for pool" pool-name
                 {:num-total-nodes-in-compute-cluster (count nodes)
                  :num-total-pods-in-compute-cluster (count pods)
@@ -334,12 +341,12 @@
       (assert (cc/autoscaling? this pool-name)
               (str "In " name " compute cluster, request to autoscale despite invalid / missing config"))
       (let [timer-context-autoscale (timers/start (metrics/timer "cc-synthetic-pod-autoscale" name))
-            outstanding-synthetic-pods (->> @all-pods-atom
+            outstanding-synthetic-pods (->> (get-pods-in-pool this pool-name)
                                             (add-starting-pods this)
                                             (filter synthetic-pod->job-uuid))
             num-synthetic-pods (count outstanding-synthetic-pods)
             {:keys [image user command max-pods-outstanding] :or {command "exit 0"}} synthetic-pods-config]
-        (log/info "In" name "compute cluster, there are" num-synthetic-pods
+        (log/info "In" name "compute cluster, for pool" pool-name "there are" num-synthetic-pods
                   "outstanding synthetic pod(s), and a max of" max-pods-outstanding "are allowed")
         (if (>= num-synthetic-pods max-pods-outstanding)
           (log/info "In" name "compute cluster, cannot launch more synthetic pods")
@@ -411,7 +418,7 @@
   (max-tasks-per-host [_] max-pods-per-node)
 
   (num-tasks-on-host [this hostname]
-    (->> @all-pods-atom
+    (->> (get @node-name->pod-name->V1Pod hostname {})
          (add-starting-pods this)
          (api/num-pods-on-node hostname)))
 
@@ -549,6 +556,9 @@
                                                     cluster-entity-id
                                                     (:match-trigger-chan trigger-chans)
                                                     exit-code-syncer-state
+                                                    (atom {})
+                                                    (atom {})
+                                                    (atom {})
                                                     (atom {})
                                                     (atom {})
                                                     (atom {})
