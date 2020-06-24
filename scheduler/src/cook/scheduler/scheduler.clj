@@ -528,9 +528,9 @@
         scalar-requests (reduce (fn [result resource]
                                   (let [value (:resource/amount resource)
                                         type (:resource/type resource)]
-                                    ; task request shouldn't have a scalar request for GPUs.
-                                    ; we are completely handling gpus within GPU host constraint
-                                    ; (fenzo can't handle gpu models)
+                                    ; Task request shouldn't have a scalar request for GPUs because
+                                    ; we are completely handling GPUs within GPU host constraint
+                                    ; and fenzo cannot handle scheduling for GPU models
                                     (if (and value (not= type :resource.type/gpus))
                                       (assoc result (name type) value)
                                       result)))
