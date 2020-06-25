@@ -895,11 +895,14 @@ class MultiUserCookTest(util.CookTest):
                         self.assertEqual(resp.status_code, 200, resp.text)
 
     def test_queue_endpoint(self):
+        bad_constraints = [["HOSTNAME",
+                           "EQUALS",
+                           "won't get scheduled"]]
         group = {'uuid': str(util.make_temporal_uuid())}
         job_spec = {'group': group['uuid'],
                     'command': 'sleep 30',
                     'cpus': util.max_cpus()}
-        uuids, resp = util.submit_jobs(self.cook_url, job_spec, clones=100, groups=[group])
+        uuids, resp = util.submit_jobs(self.cook_url, job_spec, clones=1, groups=[group], constraints=bad_constraints)
         self.assertEqual(201, resp.status_code, resp.content)
         try:
             default_pool = util.default_submit_pool() or util.default_pool(self.cook_url)
