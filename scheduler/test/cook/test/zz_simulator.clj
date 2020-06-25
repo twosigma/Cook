@@ -2,39 +2,39 @@
 ;; It seems to leave behind a thread that changes job states; maybe restoring consistency between task state and
 ;; job state?
 (ns cook.test.zz-simulator
-  (:use clojure.test)
+  (:gen-class)
   (:require [cheshire.core :as cheshire]
             [chime :refer [chime-ch]]
-            [clj-time.core :as t]
             [clj-time.coerce :as tc]
+            [clj-time.core :as t]
             [clojure.core.async :as async]
             [clojure.core.cache :as cache]
-            [clojure.edn :as edn]
             [clojure.data.csv :as csv]
             [clojure.data.json :as json]
+            [clojure.edn :as edn]
             [clojure.java.io :as io]
+            [clojure.test :refer :all]
             [clojure.tools.cli :refer [parse-opts]]
             [clojure.tools.logging :as log]
-            [clojure.walk :refer (keywordize-keys)]
-            [com.rpl.specter :refer (transform ALL MAP-VALS MAP-KEYS select FIRST)]
-            [cook.config :refer (executor-config, init-logger)]
+            [clojure.walk :refer [keywordize-keys]]
+            [com.rpl.specter :refer [ALL FIRST MAP-KEYS MAP-VALS select transform]]
+            [cook.config :refer [executor-config init-logger]]
             [cook.datomic :as datomic]
             [cook.mesos :as c]
+            [cook.mesos.mesos-compute-cluster :as mcc]
             [cook.mesos.mesos-mock :as mm]
+            [cook.plugins.completion :as completion]
             [cook.progress :as progress]
             [cook.scheduler.share :as share]
+            [cook.test.testutil :as testutil :refer [poll-until restore-fresh-database!]]
             [cook.tools :as util]
-            [cook.plugins.completion :as completion]
-            [cook.test.testutil :as testutil :refer (restore-fresh-database! poll-until)]
             [datomic.api :as d]
-            [plumbing.core :refer (map-vals map-keys map-from-vals)]
-            [cook.mesos.mesos-compute-cluster :as mcc])
-  (:import java.util.Date
-           org.apache.curator.framework.CuratorFrameworkFactory
-           org.apache.curator.framework.state.ConnectionStateListener
-           org.apache.curator.retry.BoundedExponentialBackoffRetry
-           org.joda.time.DateTimeUtils)
-  (:gen-class))
+            [plumbing.core :refer [map-from-vals map-keys map-vals]])
+  (:import (java.util Date)
+           (org.apache.curator.framework CuratorFrameworkFactory)
+           (org.apache.curator.framework.state ConnectionStateListener)
+           (org.apache.curator.retry BoundedExponentialBackoffRetry)
+           (org.joda.time DateTimeUtils)))
 
 ;;; This namespace contains a simulator for cook scheduler that accepts a trace file
 ;;; (defined later on) of jobs to "run" through the simulation as well as how much

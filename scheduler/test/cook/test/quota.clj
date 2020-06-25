@@ -14,13 +14,12 @@
 ;; limitations under the License.
 ;;
 (ns cook.test.quota
-  (:use clojure.test)
-  (:require [cook.config :as config]
-            [cook.scheduler.scheduler :as sched]
+  (:require [clojure.test :refer :all]
+            [cook.config :as config]
             [cook.quota :as quota]
-            [cook.test.testutil :refer (create-pool restore-fresh-database!)]
-            [metatransaction.core :as mt :refer (db)]
-            [datomic.api :as d]))
+            [cook.test.testutil :refer [create-pool restore-fresh-database!]]
+            [datomic.api :as d]
+            [metatransaction.core :as mt :refer [db]]))
 
 (deftest test-quota
   (let [uri "datomic:mem://test"

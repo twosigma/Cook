@@ -3,30 +3,27 @@
             [clojure.set :as set]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
-            [cook.kubernetes.metrics :as metrics]
-            [datomic.api :as d]
             [cook.config :as config]
+            [cook.kubernetes.metrics :as metrics]
             [cook.task :as task]
             [cook.tools :as util]
+            [datomic.api :as d]
             [metrics.meters :as meters]
             [metrics.timers :as timers]
             [plumbing.core :as pc])
-  (:import
-    (com.google.gson JsonSyntaxException)
-    (com.twosigma.cook.kubernetes WatchHelper)
-    (io.kubernetes.client.custom Quantity Quantity$Format IntOrString)
-    (io.kubernetes.client.openapi ApiClient ApiException JSON)
-    (io.kubernetes.client.openapi.apis CoreV1Api)
-    (io.kubernetes.client.openapi.models V1Affinity V1Container V1ContainerPort V1ContainerState V1ContainerStatus
-                                         V1DeleteOptions V1DeleteOptionsBuilder V1EmptyDirVolumeSource V1EnvVar
-                                         V1Event V1HostPathVolumeSource V1HTTPGetAction V1Node V1NodeAffinity
-                                         V1NodeSelector V1NodeSelectorRequirement V1NodeSelectorTerm V1ObjectMeta
-                                         V1ObjectReference V1Pod V1PodCondition V1PodSecurityContext V1PodSpec
-                                         V1PodStatus V1Probe V1ResourceRequirements V1Toleration V1VolumeBuilder
-                                         V1Volume V1VolumeMount)
-    (io.kubernetes.client.util Watch)
-    (java.net SocketTimeoutException)
-    (java.util.concurrent Executors ExecutorService)))
+  (:import (com.google.gson JsonSyntaxException)
+           (com.twosigma.cook.kubernetes WatchHelper)
+           (io.kubernetes.client.custom IntOrString Quantity Quantity$Format)
+           (io.kubernetes.client.openapi ApiClient ApiException JSON)
+           (io.kubernetes.client.openapi.apis CoreV1Api)
+           (io.kubernetes.client.openapi.models
+             V1Affinity V1Container V1ContainerPort V1ContainerState V1ContainerStatus V1DeleteOptions V1DeleteOptionsBuilder
+             V1EmptyDirVolumeSource V1EnvVar V1Event V1HostPathVolumeSource V1HTTPGetAction V1Node V1NodeAffinity V1NodeSelector
+             V1NodeSelectorRequirement V1NodeSelectorTerm V1ObjectMeta V1ObjectReference V1Pod V1PodCondition V1PodSecurityContext
+             V1PodSpec V1PodStatus V1Probe V1ResourceRequirements V1Toleration V1Volume V1VolumeBuilder V1VolumeMount)
+           (io.kubernetes.client.util Watch)
+           (java.net SocketTimeoutException)
+           (java.util.concurrent Executors ExecutorService)))
 
 
 (def cook-pod-label "twosigma.com/cook-scheduler-job")

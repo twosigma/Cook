@@ -16,14 +16,12 @@
 (ns cook.plugins.launch
   (:require [clj-time.core :as t]
             [clj-time.periodic]
-            [chime :as chime]
+            [clojure.tools.logging :as log]
             [cook.cache :as ccache]
             [cook.config :as config]
-            [cook.datomic :as datomic]
-            [cook.plugins.definitions :refer [JobLaunchFilter check-job-launch]]
+            [cook.plugins.definitions :refer [check-job-launch JobLaunchFilter]]
             [cook.plugins.util]
-            [mount.core :as mount]
-            [clojure.tools.logging :as log])
+            [mount.core :as mount])
   (:import (com.google.common.cache Cache CacheBuilder)
            (java.util.concurrent TimeUnit)))
 

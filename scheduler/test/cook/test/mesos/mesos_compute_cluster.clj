@@ -7,10 +7,10 @@
             [cook.mesos.mesos-compute-cluster :as mcc]
             [cook.mesos.sandbox :as sandbox]
             [cook.scheduler.scheduler :as sched]
-            [cook.test.testutil :as testutil :refer [create-dummy-job create-dummy-instance]]
+            [cook.test.testutil :as testutil :refer [create-dummy-instance create-dummy-job]]
             [datomic.api :as d]
-            [mesomatic.types :as mtypes]
             [mesomatic.scheduler :as msched]
+            [mesomatic.types :as mtypes]
             [plumbing.core :as pc])
   (:import (java.util.concurrent CountDownLatch TimeUnit)
            (org.apache.mesos Protos$TaskStatus$Reason)))

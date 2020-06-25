@@ -14,18 +14,16 @@
 ;; limitations under the License.
 ;;
 (ns cook.reporter
-  (:require [clojure.core.async :as async]
-            [clojure.tools.logging :as log]
-            [datomic.api :as d :refer (q)]
-            [metatransaction.core :as mt :refer (db)]
+  (:require [clojure.tools.logging :as log]
+            [datomic.api :refer [q]]
+            [metatransaction.core :refer [db]]
             [metrics.core :as metrics])
-  (:import com.codahale.metrics.ConsoleReporter
-           [com.codahale.metrics.graphite Graphite GraphiteReporter PickledGraphite]
-           [com.codahale.metrics.riemann Riemann RiemannReporter]
-           com.aphyr.riemann.client.RiemannClient
-           com.codahale.metrics.MetricFilter
-           java.net.InetSocketAddress
-           java.util.concurrent.TimeUnit))
+  (:import (com.aphyr.riemann.client RiemannClient)
+           (com.codahale.metrics ConsoleReporter MetricFilter)
+           (com.codahale.metrics.graphite Graphite GraphiteReporter PickledGraphite)
+           (com.codahale.metrics.riemann Riemann RiemannReporter)
+           (java.net InetSocketAddress)
+           (java.util.concurrent TimeUnit)))
 
 ;; the default registry
 (def registry metrics/default-registry)

@@ -16,15 +16,14 @@
 (ns cook.unscheduled
   (:require [clj-time.coerce :as tc]
             [clj-time.core :as t]
+            [clojure.edn :as edn]
             [cook.plugins.launch :as launch-plugin]
-            [cook.scheduler.scheduler :as scheduler]
             [cook.quota :as quota]
+            [cook.rate-limit :as ratelimit]
+            [cook.scheduler.scheduler :as scheduler]
             [cook.scheduler.share :as share]
             [cook.tools :as util]
-            [cook.rate-limit :as ratelimit]
-            [clojure.edn :as edn]
-            [clojure.tools.logging :as log]
-            [datomic.api :as d :refer (q)]))
+            [datomic.api :as d :refer [q]]))
 
 (defn check-exhausted-retries
   [db job]

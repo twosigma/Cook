@@ -15,14 +15,14 @@
 ;;
 (ns cook.util
   (:refer-clojure :exclude [cast merge empty split replace])
-  (:require [clojure.java.io :as io :refer [reader file]]
+  (:require [clojure.java.io :as io :refer [file reader]]
+            [clojure.java.shell :refer :all]
+            [clojure.pprint :refer :all]
+            [clojure.string :refer :all]
             [clojure.tools.logging :as log]
+            [clojure.tools.namespace.dependency :refer :all]
             [postal.core :as postal]
             [schema.core :as s])
-  (:use [clojure.java.shell :only [sh]]
-        [clojure.pprint :only [pp pprint]]
-        [clojure.string :only [join split replace]]
-        [clojure.tools.namespace.dependency])
   (:import (java.util.concurrent.atomic AtomicLong)))
 
 (defmacro try-timeout

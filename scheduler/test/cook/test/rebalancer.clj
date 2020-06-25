@@ -14,19 +14,17 @@
 ;; limitations under the License.
 ;;
 (ns cook.test.rebalancer
-  (:use clojure.test)
   (:require [clojure.core.cache :as cache]
+            [clojure.test :refer :all]
             [clojure.test.check.generators :as gen]
-            [cook.scheduler.dru :as dru]
             [cook.quota :as quota]
-            [cook.rebalancer :as rebalancer :refer (->State)]
+            [cook.rebalancer :as rebalancer :refer [->State]]
+            [cook.scheduler.dru :as dru]
             [cook.scheduler.scheduler :as sched]
             [cook.scheduler.share :as share]
+            [cook.test.testutil :refer [create-dummy-group create-dummy-instance create-dummy-job init-agent-attributes-cache restore-fresh-database!]]
             [cook.tools :as util]
-            [cook.test.testutil :refer (restore-fresh-database! create-dummy-job create-dummy-instance
-                                                                create-dummy-group init-agent-attributes-cache)]
-            [datomic.api :as d :refer (q)])
-  (:import (com.netflix.fenzo SimpleAssignmentResult TaskRequest)))
+            [datomic.api :as d :refer [q]]))
 
 (defn create-running-job
   [conn host & args]

@@ -15,36 +15,35 @@
 ;;
 
 (ns cook.test.testutil
-  (:use clojure.test)
   (:require [clj-logging-config.log4j :as log4j-conf]
             [clj-time.core :as t]
             [clojure.core.async :as async]
             [clojure.core.cache :as cache]
             [clojure.string :as str]
+            [clojure.test :refer :all]
             [clojure.tools.logging :as log]
             [cook.compute-cluster :as cc]
             [cook.kubernetes.api :as kapi]
             [cook.kubernetes.compute-cluster :as kcc]
             [cook.mesos.mesos-compute-cluster :as mcc]
-            [cook.plugins.definitions :refer (JobSubmissionValidator JobLaunchFilter)]
-            [cook.rest.impersonation :refer (create-impersonation-middleware)]
+            [cook.mesos.task :as task]
+            [cook.plugins.definitions :refer [JobLaunchFilter JobSubmissionValidator]]
+            [cook.rate-limit :as rate-limit]
             [cook.rest.api :as api]
+            [cook.rest.impersonation :refer [create-impersonation-middleware]]
+            [cook.scheduler.scheduler :as sched]
             [cook.schema :as schema]
             [cook.tools :as util]
-            [cook.rate-limit :as rate-limit]
-            [datomic.api :as d :refer (q db)]
+            [datomic.api :as d :refer [db q]]
             [mount.core :as mount]
             [plumbing.core :refer [mapply]]
-            [qbits.jet.server :refer (run-jetty)]
-            [ring.middleware.params :refer (wrap-params)]
-            [cook.scheduler.scheduler :as sched]
-            [cook.mesos.task :as task])
+            [qbits.jet.server :refer [run-jetty]]
+            [ring.middleware.params :refer [wrap-params]])
   (:import (com.netflix.fenzo SimpleAssignmentResult)
-           (io.kubernetes.client.custom Quantity$Format Quantity)
-           (io.kubernetes.client.openapi.models V1Container V1ResourceRequirements V1Pod V1ObjectMeta V1PodSpec V1Node
-                                                V1NodeStatus V1NodeSpec V1Taint)
-           (java.util UUID)
+           (io.kubernetes.client.custom Quantity Quantity$Format)
+           (io.kubernetes.client.openapi.models V1Container V1Node V1NodeSpec V1NodeStatus V1ObjectMeta V1Pod V1PodSpec V1ResourceRequirements V1Taint)
            (java.util.concurrent Executors)
+           (java.util UUID)
            (org.apache.log4j ConsoleAppender Logger PatternLayout)))
 
 (defn create-dummy-mesos-compute-cluster

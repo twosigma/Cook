@@ -1,19 +1,17 @@
 (ns cook.test.scheduler.data-locality
-  (:use clojure.test)
   (:require [cheshire.core :as cheshire]
             [clj-http.client :as http]
             [clj-time.coerce :as tc]
             [clj-time.core :as t]
+            [clojure.test :refer :all]
             [cook.config :as config]
             [cook.scheduler.data-locality :as dl]
+            [cook.test.testutil :refer [create-dummy-job restore-fresh-database!]]
             [cook.tools :as util]
-            [cook.test.testutil :refer (restore-fresh-database! create-dummy-job)]
             [datomic.api :as d]
             [plumbing.core :as pc])
-  (:import java.util.UUID
-           [com.netflix.fenzo TaskRequest
-            VMTaskFitnessCalculator
-            VirtualMachineCurrentState]))
+  (:import (com.netflix.fenzo TaskRequest VirtualMachineCurrentState VMTaskFitnessCalculator)
+           (java.util UUID)))
 
 (deftest test-update-data-local-costs
   (with-redefs [config/data-local-fitness-config (constantly {:cache-ttl-ms 5000})

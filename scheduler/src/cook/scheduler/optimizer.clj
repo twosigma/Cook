@@ -14,17 +14,11 @@
 ;; limitations under the License.
 ;;
 (ns cook.scheduler.optimizer
-  (:require [cheshire.core :as cheshire]
-            [chime :refer [chime-at chime-ch]]
-            [clj-http.client :as http]
-            [clj-time.core :as t]
-            [clj-time.coerce :as tc]
-            [clj-time.periodic :as periodic]
-            [clojure.core.async :as async]
+  (:require [chime :refer [chime-at chime-ch]]
             [clojure.tools.logging :as log]
-            [cook.util :refer [lazy-load-var PosNum PosInt NonNegInt]]
             [cook.tools :as util]
-            [datomic.api :as d :refer (q)]
+            [cook.util :refer [lazy-load-var NonNegInt PosInt PosNum]]
+            [datomic.api :refer [q]]
             [schema.core :as s]))
 
 (def TimePeriodMs NonNegInt)

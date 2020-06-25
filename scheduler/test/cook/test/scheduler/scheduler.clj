@@ -15,47 +15,41 @@
 ;;
 
 (ns cook.test.scheduler.scheduler
-  (:use [clojure.test])
   (:require [clj-time.coerce :as tc]
             [clj-time.core :as t]
             [clojure.core.async :as async]
             [clojure.core.cache :as cache]
-            [clojure.data.json :as json]
             [clojure.string :as str]
+            [clojure.test :refer :all]
             [clojure.tools.logging :as log]
             [clojure.walk :as walk]
             [cook.compute-cluster :as cc]
             [cook.config :as config]
             [cook.datomic :as datomic]
-            [cook.scheduler.data-locality :as dl]
-            [cook.mesos.heartbeat :as heartbeat]
-            [cook.mesos.sandbox :as sandbox]
-            [cook.scheduler.scheduler :as sched]
-            [cook.scheduler.share :as share]
-            [cook.tools :as util]
             [cook.plugins.completion :as completion]
             [cook.plugins.definitions :as pd]
             [cook.plugins.launch :as launch-plugin]
             [cook.progress :as progress]
             [cook.quota :as quota]
             [cook.rate-limit :as rate-limit]
-            [cook.test.scheduler.fenzo-utils :as fu]
-            [cook.test.testutil :as testutil :refer [restore-fresh-database! create-dummy-group create-dummy-job
-                                                     create-dummy-instance init-agent-attributes-cache poll-until wait-for
-                                                     create-dummy-job-with-instances create-pool setup]]
+            [cook.scheduler.data-locality :as dl]
+            [cook.scheduler.scheduler :as sched]
+            [cook.scheduler.share :as share]
+            [cook.test.testutil :as testutil
+             :refer [create-dummy-group create-dummy-instance create-dummy-job create-dummy-job-with-instances create-pool
+                     init-agent-attributes-cache poll-until restore-fresh-database! setup wait-for]]
+            [cook.tools :as util]
             [criterium.core :as crit]
-            [datomic.api :as d :refer (q db)]
+            [datomic.api :as d :refer [db q]]
             [mesomatic.scheduler :as msched]
             [mesomatic.types :as mtypes]
             [metrics.timers :as timers]
             [plumbing.core :as pc])
   (:import (clojure.lang ExceptionInfo)
-           (com.netflix.fenzo SimpleAssignmentResult TaskAssignmentResult
-                              TaskRequest TaskScheduler VMTaskFitnessCalculator)
+           (com.netflix.fenzo SimpleAssignmentResult TaskAssignmentResult TaskRequest TaskScheduler)
            (com.netflix.fenzo.plugins BinPackingFitnessCalculators)
            (cook.compute_cluster ComputeCluster)
            (java.util UUID)
-           (java.util.concurrent CountDownLatch TimeUnit)
            (org.mockito Mockito)))
 
 (def datomic-uri "datomic:mem://test-mesos-jobs")

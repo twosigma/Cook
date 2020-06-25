@@ -1,5 +1,7 @@
 (ns cook.kubernetes.controller
-  (:require [cook.compute-cluster :as cc]
+  (:require [clojure.string :as str]
+            [clojure.tools.logging :as log]
+            [cook.compute-cluster :as cc]
             [cook.config :as config]
             [cook.datomic :as datomic]
             [cook.kubernetes.api :as api]
@@ -7,11 +9,9 @@
             [cook.mesos.sandbox :as sandbox]
             [cook.scheduler.scheduler :as scheduler]
             [cook.util :as util]
-            [clojure.string :as str]
-            [clojure.tools.logging :as log]
             [metrics.timers :as timers])
   (:import (clojure.lang IAtom)
-           (io.kubernetes.client.openapi.models V1Pod V1ContainerStatus V1PodStatus)
+           (io.kubernetes.client.openapi.models V1ContainerStatus V1Pod V1PodStatus)
            (java.net URLEncoder)
            (java.util.concurrent.locks Lock)))
 
