@@ -9,8 +9,8 @@
             [datomic.api :as d])
   (:import (clojure.lang ExceptionInfo)
            (io.kubernetes.client.openapi.models V1NodeSelectorRequirement V1Pod V1PodSecurityContext)
-           (java.util UUID)
-           (java.util.concurrent Executors)))
+           (java.util.concurrent Executors)
+           (java.util UUID)))
 
 (deftest test-get-or-create-cluster-entity-id
   (let [conn (tu/restore-fresh-database! "datomic:mem://test-get-or-create-cluster-entity-id")]

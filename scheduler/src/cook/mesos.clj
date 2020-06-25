@@ -20,25 +20,24 @@
             [clojure.tools.logging :as log]
             [cook.compute-cluster :as cc]
             [cook.config :as config]
-            [cook.datomic :refer (transact-with-retries)]
-            [cook.scheduler.data-locality :as dl]
+            [cook.datomic :refer [transact-with-retries]]
             [cook.mesos.heartbeat]
-            [cook.mesos.mesos-compute-cluster :as mcc]
             [cook.monitor]
-            [cook.scheduler.optimizer]
             [cook.rebalancer]
+            [cook.scheduler.data-locality :as dl]
+            [cook.scheduler.optimizer]
             [cook.scheduler.scheduler :as sched]
             [cook.tools :as util]
             [cook.util]
-            [datomic.api :as d :refer (q)]
+            [datomic.api :as d :refer [q]]
             [mesomatic.scheduler]
             [mesomatic.types]
-            [metatransaction.core :as mt :refer (db)]
+            [metatransaction.core :refer [db]]
             [metatransaction.utils :as dutils]
             [metrics.counters :as counters]
             [swiss.arrows :refer :all])
-  (:import [org.apache.curator.framework.recipes.leader LeaderSelector LeaderSelectorListener]
-           org.apache.curator.framework.state.ConnectionState))
+  (:import (org.apache.curator.framework.recipes.leader LeaderSelector LeaderSelectorListener)
+           (org.apache.curator.framework.state ConnectionState)))
 
 ;; ============================================================================
 ;; mesos scheduler etc.

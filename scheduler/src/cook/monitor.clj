@@ -16,14 +16,14 @@
 (ns cook.monitor
   (:require [chime :refer [chime-at]]
             [clj-time.core :as time]
-            [clojure.set :refer (union difference)]
+            [clojure.set :refer [difference union]]
             [clojure.tools.logging :as log]
-            [cook.config :refer (config)]
+            [cook.config :refer [config]]
             [cook.datomic :as datomic]
             [cook.pool :as pool]
             [cook.scheduler.share :as share]
             [cook.tools :as util]
-            [datomic.api :as d :refer (q)]
+            [datomic.api :as d :refer [q]]
             [metrics.counters :as counters]))
 
 (defn- get-job-stats

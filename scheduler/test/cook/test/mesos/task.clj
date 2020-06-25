@@ -1,12 +1,11 @@
 (ns cook.test.mesos.task
-  (:use clojure.test)
   (:require [clojure.data.json :as json]
             [clojure.edn :as edn]
             [clojure.string :as str]
+            [clojure.test :refer :all]
             [cook.compute-cluster :as cc]
-            [cook.config :as config]
-            [cook.scheduler.scheduler :as sched]
             [cook.mesos.task :as task]
+            [cook.scheduler.scheduler :as sched]
             [cook.test.testutil :as tu]
             [datomic.api :as d]
             [mesomatic.types :as mtypes])

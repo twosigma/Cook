@@ -1,7 +1,5 @@
 (ns cook.test.scheduler.optimizer
-  (:use clojure.test)
-  (:require [clj-time.core :as t]
-            [clojure.core.async :as async]
+  (:require [clojure.test :refer :all]
             [cook.scheduler.optimizer :as optimizer]))
 
 ;; Tests to make sure data flows and validates properly

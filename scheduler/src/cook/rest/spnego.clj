@@ -16,10 +16,9 @@
 (ns cook.rest.spnego
   (:require [clojure.data.codec.base64 :as b64]
             [clojure.string :as str]
-            [clojure.string :refer (split lower-case)]
             [cook.util]
-            [ring.util.response :refer (header status response)])
-  (:import [org.ietf.jgss GSSManager GSSCredential Oid]))
+            [ring.util.response :refer [header response status]])
+  (:import (org.ietf.jgss GSSCredential GSSManager Oid)))
 
 (def krb5Mech (Oid. "1.2.840.113554.1.2.2"))
 (def krb5PrincNameType (Oid. "1.2.840.113554.1.2.2.1"))
@@ -31,8 +30,8 @@
 (defn decode-input-token
   [req]
   (let [enc_tok (get-in req [:headers "authorization"])
-        tfields (split  enc_tok #" ")]
-    (if (= "negotiate" (lower-case (first tfields)))
+        tfields (str/split  enc_tok #" ")]
+    (if (= "negotiate" (str/lower-case (first tfields)))
       (b64/decode (.getBytes (last tfields)))
       nil)))
 

@@ -14,8 +14,8 @@
 ;; limitations under the License.
 ;;
 (ns cook.test.rest.basic-auth
- (:use clojure.test)
- (:require [cook.rest.basic-auth :as basic-auth]))
+  (:require [clojure.test :refer :all]
+            [cook.rest.basic-auth :as basic-auth]))
 
 (deftest make-user-password-valid?-test
   (testing "none"

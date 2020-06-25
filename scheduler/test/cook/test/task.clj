@@ -1,6 +1,5 @@
 (ns cook.test.task
-  (:use clojure.test)
-  (:require [cook.config :as config]
+  (:require [clojure.test :refer :all]
             [cook.task :as task]))
 
 (deftest test-build-executor-environment

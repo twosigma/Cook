@@ -19,24 +19,23 @@
             [clj-time.core :as t]
             [clj-time.format :as tf]
             [clj-time.periodic :as tp]
+            [clojure.core.async :as async]
+            [clojure.core.cache :as cache]
             [clojure.java.shell :as sh]
             [clojure.string :as str]
+            [clojure.tools.logging :as log]
             [cook.cache :as ccache]
             [cook.config :as config]
             [cook.pool :as pool]
             [cook.schema :as schema]
-            [clojure.core.async :as async]
-            [clojure.core.cache :as cache]
-            [clojure.tools.logging :as log]
-            [datomic.api :as d :refer (q)]
-            [metatransaction.core :refer (db)]
+            [datomic.api :as d :refer [q]]
+            [metatransaction.core :refer [db]]
             [metrics.timers :as timers]
-            [plumbing.core :as pc :refer (map-vals map-keys)])
-  (:import
-    [com.google.common.cache Cache CacheBuilder]
-    [java.util.concurrent TimeUnit]
-    [java.util Date]
-    [org.joda.time DateTime ReadablePeriod]))
+            [plumbing.core :as pc :refer [map-keys map-vals]])
+  (:import (com.google.common.cache Cache CacheBuilder)
+           (java.util.concurrent TimeUnit)
+           (java.util Date)
+           (org.joda.time DateTime ReadablePeriod)))
 
 (defn retrieve-system-id
   "Executes a shell command to retrieve the user/group id for the specified user"

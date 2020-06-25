@@ -1,7 +1,7 @@
 (ns cook.test.plugins.submission
-  (:require [clojure.test :refer :all]
+  (:require [clj-time.core :as t]
             [clojure.string :as str]
-            [clj-time.core :as t]
+            [clojure.test :refer :all]
             [cook.plugins.definitions :as plugins]
             [cook.plugins.submission :as submit]))
 

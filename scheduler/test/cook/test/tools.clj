@@ -14,24 +14,19 @@
 ;; limitations under the License.
 ;;
 (ns cook.test.tools
-  (:use clojure.test)
   (:require [clj-time.coerce :as tc]
             [clj-time.core :as t]
             [clojure.core.async :as async]
             [clojure.core.cache :as cache]
+            [clojure.test :refer :all]
             [cook.config :as config]
-            [cook.tools :as util]
             [cook.test.testutil :as testutil
-             :refer [create-dummy-group
-                     create-dummy-instance
-                     create-dummy-job
-                     create-dummy-job-with-instances
-                     create-pool
-                     restore-fresh-database!]]
-            [datomic.api :as d :refer (q db)])
-  (:import [java.util Date]
-           [java.util.concurrent ExecutionException]
-           [org.joda.time DateTime]))
+             :refer [create-dummy-group create-dummy-instance create-dummy-job create-dummy-job-with-instances create-pool restore-fresh-database!]]
+            [cook.tools :as util]
+            [datomic.api :as d :refer [db q]])
+  (:import (java.util.concurrent ExecutionException)
+           (java.util Date)
+           (org.joda.time DateTime)))
 
 (deftest test-total-resources-of-jobs
   (let [uri "datomic:mem://test-total-resources-of-jobs"

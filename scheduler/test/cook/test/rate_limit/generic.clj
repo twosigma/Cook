@@ -14,8 +14,8 @@
 ;; limitations under the License.
 ;;
 (ns cook.test.rate-limit.generic
-  (:use clojure.test)
-  (:require [cook.rate-limit.generic :as rtg]))
+  (:require [clojure.test :refer :all]
+            [cook.rate-limit.generic :as rtg]))
 
 (deftest independent-keys-1
   (let [ratelimit (rtg/make-token-bucket-filter 60000 60 10000 true)]

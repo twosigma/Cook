@@ -1,8 +1,7 @@
 (ns cook.group
-  (:require [clj-time.coerce :as tc]
-            [clj-time.core :as t]
-            [datomic.api :as d]
-            [cook.tools :as util]))
+  (:require [clj-time.core :as t]
+            [cook.tools :as util]
+            [datomic.api :as d]))
 
 (defmulti find-stragglers
   "Given a group entity, returns a list of task entities 

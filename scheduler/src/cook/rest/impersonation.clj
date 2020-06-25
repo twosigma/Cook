@@ -15,10 +15,9 @@
 ;;
 (ns cook.rest.impersonation
   "Support for services impersonating a user, performing Cook actions on the user's behalf."
-  (:require [clojure.string]
-            [clojure.tools.logging :as log]
+  (:require [clojure.tools.logging :as log]
             [cook.util]
-            [ring.util.response :refer (header status response)])
+            [ring.util.response :refer [header response status]])
   (:import (clojure.lang Keyword)))
 
 (defn- unrestricted-access

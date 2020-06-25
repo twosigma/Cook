@@ -15,10 +15,9 @@
 ;;
 
 (ns cook.test.schema
-  (:use clojure.test)
-  (:require [cook.schema :as schema]
-            [cook.test.testutil :as testutil :refer (create-dummy-instance create-dummy-job restore-fresh-database!)]
-            [datomic.api :as d :refer (q db)]))
+  (:require [clojure.test :refer :all]
+            [cook.test.testutil :refer [create-dummy-instance create-dummy-job restore-fresh-database!]]
+            [datomic.api :as d :refer [db q]]))
 
 (def datomic-uri "datomic:mem://test")
 

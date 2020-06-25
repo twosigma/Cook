@@ -14,10 +14,10 @@
 ;; limitations under the License.
 ;;
 (ns cook.rate-limit.generic
-  (:require [clj-time.core]
-            [clj-time.coerce]
+  (:require [clj-time.coerce]
+            [clj-time.core]
             [cook.rate-limit.token-bucket-filter :as tbf])
-  (:import (com.google.common.cache CacheBuilder Cache)
+  (:import (com.google.common.cache CacheBuilder)
            (java.util.concurrent TimeUnit)))
 
 (defprotocol RateLimiter
