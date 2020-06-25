@@ -1,7 +1,8 @@
 (ns cook.test.pool
   (:require [clojure.test :refer :all]
             [cook.config :as config]
-            [cook.pool :as pool])
+            [cook.pool :as pool]
+            [clojure.tools.logging :as log])
   (:import (clojure.lang ExceptionInfo)))
 
 (deftest test-guard-invalid-default-pool

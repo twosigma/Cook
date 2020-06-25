@@ -334,9 +334,9 @@
 (defn convert-resource-map
   "Converts a map of Kubernetes resources to a cook resource map {:mem double, :cpus double, :gpus double}"
   [m]
-  {:mem (if (get m "memory")
-          (-> m (get "memory") to-double (/ memory-multiplier))
-          0.0)
+  {:mem  (if (get m "memory")
+           (-> m (get "memory") to-double (/ memory-multiplier))
+           0.0)
    :cpus (if (get m "cpu")
            (-> m (get "cpu") to-double)
            0.0)

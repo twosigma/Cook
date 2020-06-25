@@ -13,57 +13,24 @@
 
 (deftest test-get-consumption
   (testing "correctly computes consumption for a single pod"
-<<<<<<< HEAD
+
     (let [pods [(tu/pod-helper "podA" "hostA" {:cpus 1.0 :mem 100.0 :gpus "2"})]
           node-name->pods (api/pods->node-name->pods pods)]
-||||||| merged common ancestors
-    (let [pods [(tu/pod-helper "podA" "hostA" {:cpus 1.0 :mem 100.0})]]
-=======
-    (let [pods [(tu/pod-helper "podA" "hostA" {:cpus 1.0 :mem 100.0})]
-          node-name->pods (api/pods->node-name->pods pods)]
->>>>>>> origin/master
       (is (= {"hostA" {:cpus 1.0
-<<<<<<< HEAD
                        :mem 100.0
                        :gpus {"nvidia-tesla-p100" 2}}}
              (api/get-consumption node-name->pods)))))
-||||||| merged common ancestors
-                       :mem 100.0}}
-             (api/get-consumption pods)))))
-=======
-                       :mem 100.0}}
-             (api/get-consumption node-name->pods)))))
->>>>>>> origin/master
 
   (testing "correctly computes consumption for a pod with multiple containers"
     (let [pods [(tu/pod-helper "podA" "hostA"
-<<<<<<< HEAD
                                {:cpus 1.0 :mem 100.0 :gpus "1"}
                                {:cpus 1.0 :mem 0.0 :gpus "4"}
                                {:mem 100.0})]
           node-name->pods (api/pods->node-name->pods pods)]
-||||||| merged common ancestors
-                               {:cpus 1.0 :mem 100.0}
-                               {:cpus 1.0 :mem 0.0}
-                               {:mem 100.0})]]
-=======
-                               {:cpus 1.0 :mem 100.0}
-                               {:cpus 1.0 :mem 0.0}
-                               {:mem 100.0})]
-          node-name->pods (api/pods->node-name->pods pods)]
->>>>>>> origin/master
       (is (= {"hostA" {:cpus 2.0
-<<<<<<< HEAD
                        :mem 200.0
                        :gpus {"nvidia-tesla-p100" 5}}}
              (api/get-consumption node-name->pods)))))
-||||||| merged common ancestors
-                       :mem 200.0}}
-             (api/get-consumption pods)))))
-=======
-                       :mem 200.0}}
-             (api/get-consumption node-name->pods)))))
->>>>>>> origin/master
 
   (testing "correctly aggregates pods by node name"
     (let [pods [(tu/pod-helper "podA" "hostA"

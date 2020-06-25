@@ -597,6 +597,7 @@
 (defn task-constraints
   []
   (get-in config [:settings :task-constraints]))
+<<<<<<< HEAD
 
 (defn guard-invalid-gpu-models
   "Throws if either of the following is true:

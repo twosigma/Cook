@@ -6,7 +6,8 @@
             [cook.mesos.task :as task]
             [cook.scheduler.scheduler :as sched]
             [cook.test.testutil :as tu]
-            [datomic.api :as d])
+            [datomic.api :as d]
+            [clojure.tools.logging :as log])
   (:import (clojure.lang ExceptionInfo)
            (io.kubernetes.client.openapi.models V1NodeSelectorRequirement V1Pod V1PodSecurityContext)
            (java.util.concurrent Executors)
@@ -117,12 +118,12 @@
                                           (kcc/add-starting-pods compute-cluster pod-name->pod))
 =======
           pods {{:namespace "cook" :name "podA"} (tu/pod-helper "podA" "nodeA"
-                                                                {:cpus 0.25 :mem 250.0}
+                                                                {:cpus 0.25 :mem 250.0 :gpus "9"}
                                                                 {:cpus 0.1 :mem 100.0})
                 {:namespace "cook" :name "podB"} (tu/pod-helper "podB" "nodeA"
-                                                                {:cpus 0.25 :mem 250.0})
+                                                                {:cpus 0.25 :mem 250.0 :gpus "1"})
                 {:namespace "cook" :name "podC"} (tu/pod-helper "podC" "nodeB"
-                                                                {:cpus 1.0 :mem 1100.0})
+                                                                {:cpus 1.0 :mem 1100.0 :gpus "10"})
                 {:namespace "cook" :name task-1-id} (tu/pod-helper task-1-id "my.fake.host"
                                                                    {:cpus 0.1 :mem 10.0})}
           node-name->pods (api/pods->node-name->pods (kcc/add-starting-pods compute-cluster pods))
@@ -133,6 +134,7 @@
       (let [offer (first (filter #(= "nodeA" (:hostname %))
                                  offers))]
         (is (not (nil? offer)))
+        (log/info offer)
         (is (= "kubecompute" (:framework-id offer)))
         (is (= {:value "nodeA"} (:slave-id offer)))
         (is (= [{:name "mem" :type :value-scalar :scalar 400.0}

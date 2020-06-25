@@ -458,6 +458,13 @@
                 result))
             {}
             (:resources offer)))
+  ;TODO: UPDATE THIS
+  ;(getAvailableTypesValues [_]
+  ;  (reduce (fn [result resource] (if-let [value (:available-types resource)]
+  ;                                  (assoc result (:name resource) value)
+  ;                                  result))
+  ;          {}
+  ;          (:resources offer)))
   ; Some Fenzo plugins (which are included with fenzo, such as host attribute constraints) expect the "HOSTNAME"
   ; attribute to contain the hostname of this virtual machine.
   (getAttributeMap [_] (get-offer-attr-map offer))

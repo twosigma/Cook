@@ -37,8 +37,21 @@
             [datomic.api :as d :refer [db q]]
             [mount.core :as mount]
             [plumbing.core :refer [mapply]]
+<<<<<<< HEAD
             [qbits.jet.server :refer [run-jetty]]
             [ring.middleware.params :refer [wrap-params]])
+||||||| merged common ancestors
+            [qbits.jet.server :refer (run-jetty)]
+            [ring.middleware.params :refer (wrap-params)]
+            [cook.scheduler.scheduler :as sched]
+            [cook.mesos.task :as task])
+=======
+            [qbits.jet.server :refer (run-jetty)]
+            [ring.middleware.params :refer (wrap-params)]
+            [cook.scheduler.scheduler :as sched]
+            [cook.mesos.task :as task]
+            [cook.config :as config])
+>>>>>>> kathryn-zhou/gpu-changes
   (:import (com.netflix.fenzo SimpleAssignmentResult)
            (io.kubernetes.client.custom Quantity Quantity$Format)
            (io.kubernetes.client.openapi.models V1Container V1Node V1NodeSpec V1NodeStatus V1ObjectMeta V1Pod V1PodSpec V1ResourceRequirements V1Taint)
@@ -576,8 +589,7 @@
                                     nil ; max-pods-per-node
                                     synthetic-pods-config ; synthetic-pods-config
                                     node-blocklist-labels ; node-blocklist-labels
-                                    (Executors/newSingleThreadExecutor) ; launch-task-executor-service
-                                    )))
+                                    (Executors/newSingleThreadExecutor)))) ; launch-task-executor-service
 
 
 (defn make-and-write-kubernetes-compute-cluster
