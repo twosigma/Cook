@@ -602,7 +602,6 @@
 (defn guard-invalid-gpu-models
   "Throws if either of the following is true:
   - any one of the keys (pool-regex, valid-models, default-model) is not configured
-  - there are valid-models for a pool-regex, but no default gpu model is configured
   - there is no gpu-model in valid-gpu-models matching the configured default"
   []
   (run! (fn validate-default-model

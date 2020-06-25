@@ -426,8 +426,7 @@
               _ (is (<= 200 (:status resp) 299))
               [body] (response->body-data resp)
               trimmed-body (select-keys body (keys successful-job))]
-          (is (= (dissoc successful-job "uris") (dissoc trimmed-body "uris")))))
-      )))
+          (is (= (dissoc successful-job "uris") (dissoc trimmed-body "uris"))))))))
 
 (deftest retries-api
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
@@ -2386,7 +2385,6 @@
             ExceptionInfo
             #"Job requested GPUs but pool test-pool does not have any valid GPU models"
             (let [gpu-enabled? true]
-              (api/validate-gpu-job gpu-enabled? "test-pool" {:gpus 2 :env {}}))))))
-  )
+              (api/validate-gpu-job gpu-enabled? "test-pool" {:gpus 2 :env {}})))))))
 
 

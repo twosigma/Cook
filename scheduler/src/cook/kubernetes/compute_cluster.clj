@@ -62,10 +62,10 @@
                                                              (node-name->capacity node-name)
                                                              (node-name->consumed node-name)))
                                                (keys node-name->capacity))
-        ; Grab every unique GPU model being represented
+        ; Grab every unique GPU model being represented so that we can set counters for capacity and consumed for each GPU model
         gpu-models (set/union
                      (->> node-name->capacity vals (map :gpus) (apply merge) keys set)
-                     (->> node-name->capacity vals (map :gpus) (apply merge) keys set))
+                     (->> node-name->consumed vals (map :gpus) (apply merge) keys set))
         total-gpu-capacity (-> node-name->capacity total-gpu-resource)
         total-gpu-consumed (-> node-name->consumed total-gpu-resource)]
 
@@ -102,7 +102,7 @@
                              {:name "cpus" :type :value-scalar :scalar (max 0.0 (:cpus available))}
                              {:name "disk" :type :value-scalar :scalar 0.0}
                              {:name "gpus" :type :value-available-types :available-types (:gpus available)}]
-                 :attributes [{:name "source" :type :value-text :text "k8s"}]
+                 :attributes [{:name "compute-cluster-type" :type :value-text :text "kubernetes"}]
                  :executor-ids []
                  :compute-cluster compute-cluster
                  :reject-after-match-attempt true

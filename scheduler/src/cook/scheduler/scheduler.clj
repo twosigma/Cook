@@ -74,7 +74,6 @@
 
 (defn offer-resource-available-types
   [offer resource-name]
-  (log/info "*****" (offer-resource-values offer resource-name :available-types))
   (merge-with + (offer-resource-values offer resource-name :available-types)))
 
 (defn offer-value-list-map
@@ -459,13 +458,6 @@
                 result))
             {}
             (:resources offer)))
-  ;TODO: UPDATE THIS
-  ;(getAvailableTypesValues [_]
-  ;  (reduce (fn [result resource] (if-let [value (:available-types resource)]
-  ;                                  (assoc result (:name resource) value)
-  ;                                  result))
-  ;          {}
-  ;          (:resources offer)))
   ; Some Fenzo plugins (which are included with fenzo, such as host attribute constraints) expect the "HOSTNAME"
   ; attribute to contain the hostname of this virtual machine.
   (getAttributeMap [_] (get-offer-attr-map offer))
@@ -530,7 +522,7 @@
                                         type (:resource/type resource)]
                                     ; Task request shouldn't have a scalar request for GPUs because
                                     ; we are completely handling GPUs within GPU host constraint
-                                    ; and fenzo cannot handle scheduling for GPU models
+                                    ; and fenzo cannot handle scheduling for multiple GPU models
                                     (if (and value (not= type :resource.type/gpus))
                                       (assoc result (name type) value)
                                       result)))

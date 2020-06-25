@@ -691,7 +691,7 @@
 (defn get-gpu-models-on-pool
   "Given a pool name, determine the supported GPU models on that pool."
   [valid-gpu-models effective-pool-name]
-  (:valid-models (constraints/get-gpu-models-entry-on-pool valid-gpu-models effective-pool-name)))
+  (:valid-models (constraints/gpu-models-config-for-pool valid-gpu-models effective-pool-name)))
 
 (s/defn make-job-txn
   "Creates the necessary txn data to insert a job into the database"

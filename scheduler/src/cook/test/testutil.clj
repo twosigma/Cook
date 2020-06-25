@@ -38,8 +38,7 @@
             [qbits.jet.server :refer (run-jetty)]
             [ring.middleware.params :refer (wrap-params)]
             [cook.scheduler.scheduler :as sched]
-            [cook.mesos.task :as task]
-            [cook.config :as config])
+            [cook.mesos.task :as task])
   (:import (com.netflix.fenzo SimpleAssignmentResult)
            (io.kubernetes.client.custom Quantity$Format Quantity)
            (io.kubernetes.client.openapi.models V1Container V1ResourceRequirements V1Pod V1ObjectMeta V1PodSpec V1Node
@@ -586,7 +585,6 @@
   [conn synthetic-pods node-blocklist-labels]
   (let [cluster-entity-id (kcc/get-or-create-cluster-entity-id conn "kubecompute")
         api-client (kcc/make-api-client nil nil nil nil nil nil)
-        ;launch-task-executor-service (Executors/newFixedThreadPool nil)
         compute-cluster (kcc/->KubernetesComputeCluster api-client ; api-client
                                                         "kubecompute" ; name
                                                         cluster-entity-id ; entity-id

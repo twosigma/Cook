@@ -64,7 +64,7 @@
                                       {:name "disk", :type :value-scalar, :scalar 6000.0, :ranges [], :set #{}, :role "*"}
                                       {:name "ports", :type :value-ranges, :scalar 0.0, :ranges [{:begin 31000, :end 32000}], :set #{}, :role "*"}
                                       {:name "gpus", :type :value-available-types :available-types {"nvidia-tesla-p100" 5} :role "*"}],
-                       :attributes   [{:name "source", :type :value-text, :text "k8s" :role "*"}],
+                       :attributes   [{:name "compute-cluster-type", :type :value-text, :text "kubernetes" :role "*"}],
                        :executor-ids []}
         k8s-non-gpu-offer {:id           "my-offer-id"
                            :framework-id framework-id
@@ -75,7 +75,7 @@
                                           {:name "disk", :type :value-scalar, :scalar 6000.0, :ranges [], :set #{}, :role "*"}
                                           {:name "ports", :type :value-ranges, :scalar 0.0, :ranges [{:begin 31000, :end 32000}], :set #{}, :role "*"}
                                           {:name "gpus", :type :value-available-types :available-types {} :role "*"}],
-                           :attributes   [{:name "source", :type :value-text, :text "k8s" :role "*"}],
+                           :attributes   [{:name "compute-cluster-type", :type :value-text, :text "kubernetes" :role "*"}],
                            :executor-ids []}
         uri "datomic:mem://test-gpu-constraint"
         conn (restore-fresh-database! uri)

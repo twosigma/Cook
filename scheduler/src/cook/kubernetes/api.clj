@@ -337,9 +337,9 @@
 (defn convert-resource-map
   "Converts a map of Kubernetes resources to a cook resource map {:mem double, :cpus double, :gpus double}"
   [m]
-  {:mem  (if (get m "memory")
-           (-> m (get "memory") to-double (/ memory-multiplier))
-           0.0)
+  {:mem (if (get m "memory")
+          (-> m (get "memory") to-double (/ memory-multiplier))
+          0.0)
    :cpus (if (get m "cpu")
            (-> m (get "cpu") to-double)
            0.0)
@@ -446,11 +446,11 @@
                                                            containers)
                                    {:keys [gpus] :as resource-map} (apply merge-with + container-requests)
                                    gpu-model (-> pod .getSpec .getNodeSelector (get "cloud.google.com/gke-accelerator"))]
+                               ; GKE nodes cannot currently support multiple GPU models the implementation of
+                               ; get-consumption assumes
                                (if (and gpu-model (pos? gpus))
                                  (assoc resource-map :gpus {gpu-model gpus})
                                  (assoc resource-map :gpus {})))))
-                       ;; sum-resources will need to handle the unlikely case where
-                       ;; two pods on the same node asked for different models
                       (apply merge-resource-map-collection +)))
                node-name->pods))
 

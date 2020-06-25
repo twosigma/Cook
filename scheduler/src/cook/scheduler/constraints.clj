@@ -95,20 +95,12 @@
   (let [previous-hosts (job->previous-hosts-to-avoid job)]
     (->novel-host-constraint job previous-hosts)))
 
-(defn get-gpu-models-entry-on-pool
-  "Given a pool name, determine the default GPU model on that pool."
+(defn gpu-models-config-for-pool
+  "Given a pool name, obtain the valid-gpu-models entry on config for that pool"
   [valid-gpu-models effective-pool-name]
   (->> valid-gpu-models
        (filter (fn [{:keys [pool-regex]}] (re-find (re-pattern pool-regex) effective-pool-name)))
        first))
-
-(defn get-default-gpu-model-on-pool
-  "Given a pool name, determine the default GPU model on that pool."
-  [valid-gpu-models effective-pool-name]
-  (->> valid-gpu-models
-       (filter (fn [{:keys [pool-regex]}] (re-find (re-pattern pool-regex) effective-pool-name)))
-       first
-       :default-model))
 
 (defrecord gpu-host-constraint [job]
   JobConstraint
@@ -118,23 +110,25 @@
     (job-constraint-evaluate this nil vm-attributes []))
   (job-constraint-evaluate
     [{:keys [job]} _ vm-attributes target-vm-tasks-assigned]
-    (let [; Look at attribute to determine if vm has gpus
-          gpu-models-entry-on-pool (get-gpu-models-entry-on-pool (config/valid-gpu-models) (util/job->pool-name job))
-          gpu-model-requested (or (-> job util/job-ent->env (get "COOK_GPU_MODEL"))
-                                  (:default-model gpu-models-entry-on-pool))
+    (let [gpu-model-requested (or (-> job util/job-ent->env (get "COOK_GPU_MODEL"))
+                                  (:default-model (gpu-models-config-for-pool (config/valid-gpu-models) (util/job->pool-name job))))
           gpu-count-requested (-> job util/job-ent->resources :gpus (or 0))
-          gpu-model->count-available (get vm-attributes "gpus") ; get map of gpu models and resources available
-          is-k8s-vm (= (get vm-attributes "source") "k8s")
-          ; VM that supports GPU models but does not have any available GPUs will have a gpus map of {"model A" 0 "model B" 0 ...}
-          ; VM that does not support GPU models will have an empty gpus map of {}
+          gpu-model->count-available (get vm-attributes "gpus")
+          is-k8s-vm (= (get vm-attributes "compute-cluster-type") "kubernetes")
+          ; k8s VM that supports gpu models but does not have any available gpus will have a gpus map of {"model A" 0 "model B" 0 ...}
+          ; k8s VM that does not support gpu models will have an empty gpus map of {}
+
+          ; requesting gpus is only being supported for kubernetes-bound jobs
           passes? (if is-k8s-vm
                     (if (and (pos? gpu-count-requested) gpu-model-requested)
                       (>= (get gpu-model->count-available gpu-model-requested 0) gpu-count-requested)
+                      ; if job is kubernetes-bound and does not request gpus, do not schedule it on a VM that supports gpus
                       (-> gpu-model->count-available count zero?))
-                    (zero? gpu-count-requested))] ; if job does not request GPUs, do not schedule it on a VM that has GPU models
+                    ; if job is mesos-bound, ensure that the gpu-count-requested is 0
+                    (zero? gpu-count-requested))]
       [passes? (when-not passes? (if (not gpu-model-requested)
                                    "Job does not need GPUs, host has GPUs."
-                                   (str "Job needs GPU model " gpu-model-requested " , host does not have GPU model" gpu-model-requested)))])))
+                                   "Job needs GPUs that are not present on host"))])))
 
 (defn build-gpu-host-constraint
   "Constructs a gpu-host-constraint.

@@ -99,29 +99,29 @@
       (is (thrown? ExceptionInfo (config-settings bad-config))))))
 
 (deftest test-guard-invalid-gpu-models
-  (testing "test"
+  (testing "empty valid-gpu-models"
     (is (nil? (config/guard-invalid-gpu-models))))
   (testing "valid default model"
-    (with-redefs [config/valid-gpu-models (constantly [{:pool-regex    "test-pool"
-                                                        :valid-models  #{"valid-gpu-model"}
+    (with-redefs [config/valid-gpu-models (constantly [{:pool-regex "test-pool"
+                                                        :valid-models #{"valid-gpu-model"}
                                                         :default-model "valid-gpu-model"}])]
       (is (nil? (config/guard-invalid-gpu-models)))))
   (testing "no valid models"
-    (with-redefs [config/valid-gpu-models (constantly [{:pool-regex    "test-pool"}])]
+    (with-redefs [config/valid-gpu-models (constantly [{:pool-regex "test-pool"}])]
       (is (thrown-with-msg?
             ExceptionInfo
             #"Valid GPU models for pool-regex test-pool is not defined"
             (config/guard-invalid-gpu-models)))))
   (testing "no default model"
-    (with-redefs [config/valid-gpu-models (constantly [{:pool-regex    "test-pool"
-                                                        :valid-models  #{"valid-gpu-model"}}])]
+    (with-redefs [config/valid-gpu-models (constantly [{:pool-regex "test-pool"
+                                                        :valid-models #{"valid-gpu-model"}}])]
       (is (thrown-with-msg?
             ExceptionInfo
             #"Default GPU model for pool-regex test-pool is not defined"
             (config/guard-invalid-gpu-models)))))
   (testing "invalid default model"
-    (with-redefs [config/valid-gpu-models (constantly [{:pool-regex    "test-pool"
-                                                        :valid-models  #{"valid-gpu-model"}
+    (with-redefs [config/valid-gpu-models (constantly [{:pool-regex "test-pool"
+                                                        :valid-models #{"valid-gpu-model"}
                                                         :default-model "invalid-gpu-model"}])]
       (is (thrown-with-msg?
             ExceptionInfo
