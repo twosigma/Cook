@@ -14,10 +14,10 @@
 ;; limitations under the License.
 ;;
 (ns cook.test.mesos.sandbox
-  (:use clojure.test)
   (:require [clj-http.client :as http]
             [clojure.core.cache :as cache]
             [clojure.string :as str]
+            [clojure.test :refer :all]
             [cook.mesos.sandbox :as sandbox]
             [cook.test.testutil :as tu]
             [datomic.api :as d]

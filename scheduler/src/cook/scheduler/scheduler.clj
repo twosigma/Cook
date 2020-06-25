@@ -25,36 +25,36 @@
             [cook.compute-cluster :as cc]
             [cook.config :as config]
             [cook.datomic :as datomic]
+            [cook.group :as group]
+            [cook.mesos.reason :as reason]
+            [cook.mesos.task :as task]
             [cook.plugins.completion :as completion]
             [cook.plugins.definitions :as plugins]
             [cook.plugins.launch :as launch-plugin]
+            [cook.pool :as pool]
+            [cook.quota :as quota]
+            [cook.rate-limit :as ratelimit]
             [cook.scheduler.constraints :as constraints]
             [cook.scheduler.data-locality :as dl]
             [cook.scheduler.dru :as dru]
             [cook.scheduler.fenzo-utils :as fenzo]
-            [cook.group :as group]
-            [cook.pool :as pool]
-            [cook.quota :as quota]
-            [cook.mesos.reason :as reason]
             [cook.scheduler.share :as share]
-            [cook.mesos.task :as task]
+            [cook.task]
             [cook.tools :as tools]
             [cook.util :as util]
-            [cook.rate-limit :as ratelimit]
-            [cook.task]
-            [datomic.api :as d :refer (q)]
+            [datomic.api :as d :refer [q]]
             [mesomatic.scheduler :as mesos]
-            [metatransaction.core :refer (db)]
+            [metatransaction.core :refer [db]]
             [metrics.counters :as counters]
             [metrics.gauges :as gauges]
             [metrics.histograms :as histograms]
             [metrics.meters :as meters]
             [metrics.timers :as timers]
             [plumbing.core :as pc])
-  (import [com.netflix.fenzo TaskAssignmentResult TaskRequest TaskScheduler TaskScheduler$Builder
-                             VirtualMachineLease VirtualMachineLease$Range
-                             VirtualMachineCurrentState]
-          [com.netflix.fenzo.functions Action1 Func1]))
+  (:import (com.netflix.fenzo
+             TaskAssignmentResult TaskRequest TaskScheduler TaskScheduler$Builder VirtualMachineCurrentState
+             VirtualMachineLease VirtualMachineLease$Range)
+           (com.netflix.fenzo.functions Action1 Func1)))
 
 (defn now
   []

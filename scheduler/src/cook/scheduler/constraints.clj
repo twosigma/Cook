@@ -20,18 +20,12 @@
             [clojure.set :as set]
             [clojure.tools.logging :as log]
             [cook.config :as config]
-            [cook.scheduler.data-locality :as dl]
             [cook.group :as group]
-            [cook.tools :as util]
             [cook.rate-limit :as ratelimit]
+            [cook.scheduler.data-locality :as dl]
             [swiss.arrows :refer :all])
-  (:import (com.netflix.fenzo ConstraintEvaluator
-                              ConstraintEvaluator$Result
-                              TaskRequest
-                              TaskTrackerState
-                              VirtualMachineCurrentState
-                              VirtualMachineLease)
-           java.util.Date))
+  (:import (com.netflix.fenzo ConstraintEvaluator ConstraintEvaluator$Result TaskRequest TaskTrackerState VirtualMachineCurrentState VirtualMachineLease)
+           (java.util Date)))
 
 ;; Wisdom:
 ;; * This code expects that attributes COOK_GPU? and HOSTNAME are set for all

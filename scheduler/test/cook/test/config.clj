@@ -15,12 +15,11 @@
 ;;
 (ns cook.test.config
   (:require [clojure.test :refer :all]
-            [cook.config :as config :refer (config config-settings default-pool env read-edn-config
-                                 config-string->fitness-calculator)]
+            [cook.config :as config :refer (config config-settings config-string->fitness-calculator default-pool env read-edn-config)]
             [cook.test.rest.api :as api]
-            [cook.test.testutil :refer (setup)])
+            [cook.test.testutil :refer [setup]])
   (:import (clojure.lang ExceptionInfo)
-           com.netflix.fenzo.VMTaskFitnessCalculator))
+           (com.netflix.fenzo VMTaskFitnessCalculator)))
 
 (deftest test-read-edn-config
   (is (= {} (read-edn-config "{}")))

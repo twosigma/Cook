@@ -15,13 +15,13 @@
 ;;
 
 (ns cook.test.benchmark
-  (:use clojure.test)
-  (:require [cook.quota :as quota]
+  (:require [clojure.test :refer :all]
+            [cook.quota :as quota]
             [cook.scheduler.dru :as dru]
             [cook.scheduler.scheduler :as sched]
             [cook.scheduler.share :as share]
+            [cook.test.testutil :refer [create-dummy-group create-dummy-instance create-dummy-job poll-until restore-fresh-database! setup]]
             [cook.tools :as util]
-            [cook.test.testutil :refer (restore-fresh-database! create-dummy-group create-dummy-job create-dummy-instance poll-until setup)]
             [criterium.core :as cc]
             [datomic.api :as d]
             [metrics.timers :as timers]))

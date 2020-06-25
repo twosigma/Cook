@@ -14,8 +14,8 @@
 ;; limitations under the License.
 ;;
 (ns cook.test.cache
-  (:use clojure.test)
   (:require [clj-time.core :as t]
+            [clojure.test :refer :all]
             [cook.cache :as ccache])
   (:import (com.google.common.cache Cache CacheBuilder)
            (java.util.concurrent TimeUnit)))

@@ -17,11 +17,11 @@
   (:require [clj-time.core :as time]
             [clojure.test :refer :all]
             [cook.mesos :as mesos]
-            [cook.rest.api :as api]
             [cook.monitor :as monitor]
+            [cook.rest.api :as api]
             [cook.scheduler.share :as share]
+            [cook.test.testutil :as testutil :refer [restore-fresh-database! setup]]
             [cook.tools :as util]
-            [cook.test.testutil :refer [restore-fresh-database! setup] :as testutil]
             [datomic.api :as d :refer [db]]
             [metrics.counters :as counters])
   (:import (java.util UUID)

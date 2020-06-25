@@ -20,13 +20,12 @@
             [clojure.stacktrace :as stacktrace]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
-            [congestion.limits :refer (RateLimit)]
-            [cook.rest.impersonation :refer (impersonation-authorized-wrapper)]
+            [congestion.limits :refer [RateLimit]]
+            [cook.rest.impersonation :refer [impersonation-authorized-wrapper]]
             [cook.util :as util]
             [mount.core :as mount]
-            [plumbing.core :refer (fnk)]
-            [plumbing.graph :as graph]
-            [schema.core :as s])
+            [plumbing.core :refer [fnk]]
+            [plumbing.graph :as graph])
   (:import (com.google.common.io Files)
            (com.netflix.fenzo VMTaskFitnessCalculator)
            (java.io File)

@@ -19,10 +19,9 @@
             [cook.pool :as pool]
             [cook.tools :as util]
             [datomic.api :as d]
-            [metatransaction.core :refer (db)]
+            [metatransaction.core :refer [db]]
             [metrics.timers :as timers]
-            [plumbing.core :as pc])
-  (:import [java.util UUID]))
+            [plumbing.core :as pc]))
 
 (def default-user "default")
 

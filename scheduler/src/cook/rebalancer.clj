@@ -15,20 +15,19 @@
 ;;
 (ns cook.rebalancer
   (:require [chime :refer [chime-at]]
-            [cook.compute-cluster :as cc]
-            [cook.config :as config]
             [clojure.core.async :as async]
             [clojure.core.cache :as cache]
             [clojure.data.priority-map :as pm]
             [clojure.tools.logging :as log]
-            [clojure.walk :refer (keywordize-keys)]
+            [clojure.walk :refer [keywordize-keys]]
+            [cook.compute-cluster :as cc]
+            [cook.config :as config]
+            [cook.quota :as quota]
             [cook.scheduler.constraints :as constraints]
             [cook.scheduler.dru :as dru]
-            [cook.scheduler.share :as share]
             [cook.task :as task]
             [cook.tools :as util]
-            [datomic.api :as d :refer (q)]
-            [mesomatic.scheduler :as mesos]
+            [datomic.api :as d :refer [q]]
             [metatransaction.core :as mt]
             [metrics.histograms :as histograms]
             [metrics.timers :as timers]
@@ -254,7 +253,7 @@
                                                                                        (comp util/task-ent->user :task))
                                                           :pool.dru-mode/gpu (fnil - 0)))
                                  scored-task-pairs)
-         user->quota-fn (cook.quota/create-user->quota-fn db (if using-pools? pool-name nil))]
+         user->quota-fn (quota/create-user->quota-fn db (if using-pools? pool-name nil))]
      (->State task->scored-task
               user->sorted-running-task-ents
               host->spare-resources

@@ -1,19 +1,19 @@
 (ns cook.test.mesos.mesos-mock
-  (:use clojure.test)
   (:require [chime :refer [chime-ch]]
             [clj-time.core :as t]
             [clojure.core.async :as async]
+            [clojure.test :refer :all]
             [clojure.tools.logging :as log]
             [cook.compute-cluster :as cc]
             [cook.mesos.mesos-mock :as mm]
             [cook.scheduler.share :as share]
+            [cook.test.testutil :refer [create-dummy-job poll-until restore-fresh-database! setup]]
+            [cook.test.zz-simulator :refer [dump-jobs-to-csv pull-all-task-ents with-cook-scheduler]]
             [cook.tools :as util]
-            [cook.test.zz-simulator :refer (with-cook-scheduler pull-all-task-ents dump-jobs-to-csv)]
-            [cook.test.testutil :as testutil :refer (restore-fresh-database! create-dummy-job poll-until setup)]
             [datomic.api :as d]
             [mesomatic.scheduler :as mesos]
             [mesomatic.types :as mesos-types])
-  (:import java.util.UUID))
+  (:import (java.util UUID)))
 
 (defn string->uuid
   "Parses the uuid if `uuid-str` is a uuid, returns nil otherwise"

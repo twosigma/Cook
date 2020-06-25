@@ -14,46 +14,41 @@
 ;; limitations under the License.
 ;;
 (ns cook.test.rest.api
-  (:use clojure.test)
   (:require [cheshire.core :as cheshire]
             [clj-time.core :as t]
             [clojure.core.async :as async]
             [clojure.data.json :as json]
             [clojure.string :as str]
+            [clojure.test :refer :all]
             [clojure.walk :refer [keywordize-keys]]
-            [cook.rest.authorization :as auth]
             [cook.compute-cluster :as cc]
             [cook.config :as config]
-            [cook.rest.impersonation :as imp]
-            [cook.rest.api :as api]
-            [cook.scheduler.data-locality :as dl]
             [cook.mesos.reason :as reason]
-            [cook.scheduler.scheduler :as sched]
-            [cook.tools :as util]
             [cook.plugins.definitions :refer [FileUrlGenerator]]
             [cook.plugins.file :as file-plugin]
             [cook.plugins.submission :as submission-plugin]
             [cook.rate-limit :as rate-limit]
+            [cook.rest.api :as api]
+            [cook.rest.authorization :as auth]
+            [cook.rest.impersonation :as imp]
+            [cook.scheduler.data-locality :as dl]
+            [cook.scheduler.scheduler :as sched]
             [cook.task :as task]
-            [cook.test.testutil :refer [create-dummy-instance
-                                        create-dummy-job
-                                        create-dummy-job-with-instances
-                                        create-pool
-                                        flush-caches!
-                                        restore-fresh-database!
-                                        setup] :as testutil]
-            [datomic.api :as d :refer [q db]]
+            [cook.test.testutil :as testutil
+             :refer [create-dummy-instance create-dummy-job create-dummy-job-with-instances create-pool flush-caches! restore-fresh-database! setup]]
+            [cook.tools :as util]
+            [datomic.api :as d :refer [db q]]
             [mesomatic.scheduler :as msched]
             [schema.core :as s])
-  (:import clojure.lang.ExceptionInfo
-           com.fasterxml.jackson.core.JsonGenerationException
-           com.google.protobuf.ByteString
-           java.io.ByteArrayOutputStream
-           java.net.ServerSocket
-           (java.util Date UUID)
-           java.util.concurrent.ExecutionException
+  (:import (clojure.lang ExceptionInfo)
+           (com.fasterxml.jackson.core JsonGenerationException)
+           (com.google.protobuf ByteString)
+           (java.io ByteArrayOutputStream)
+           (java.net ServerSocket)
+           (java.util UUID)
+           (java.util.concurrent ExecutionException)
            (javax.servlet ServletOutputStream ServletResponse)
-           org.apache.curator.test.TestingServer))
+           (org.apache.curator.test TestingServer)))
 
 (defn kw-keys
   [m]

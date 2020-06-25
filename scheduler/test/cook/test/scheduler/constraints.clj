@@ -15,15 +15,16 @@
 ;;
 
 (ns cook.test.scheduler.constraints
-  (:use [clojure.test])
   (:require [clj-time.coerce :as tc]
             [clj-time.core :as t]
+            [clojure.test :refer :all]
             [cook.config :as config]
             [cook.scheduler.constraints :as constraints]
             [cook.scheduler.data-locality :as dl]
             [cook.scheduler.scheduler :as sched]
+            [cook.test.testutil :refer [create-dummy-group create-dummy-instance create-dummy-job create-dummy-job-with-instances create-pool
+                                         restore-fresh-database! setup]]
             [cook.tools :as util]
-            [cook.test.testutil :refer (restore-fresh-database! create-dummy-group create-dummy-job create-dummy-instance create-dummy-job-with-instances create-pool setup)]
             [datomic.api :as d :refer (db)])
   (:import [java.util Date UUID]
            org.joda.time.DateTime

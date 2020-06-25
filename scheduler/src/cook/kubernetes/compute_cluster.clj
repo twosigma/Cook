@@ -24,9 +24,9 @@
            (io.kubernetes.client.openapi ApiClient)
            (io.kubernetes.client.openapi.models V1Node V1Pod)
            (io.kubernetes.client.util Config)
-           (java.io FileInputStream File)
+           (java.io File FileInputStream)
+           (java.util.concurrent Executors ExecutorService ScheduledExecutorService TimeUnit)
            (java.util UUID)
-           (java.util.concurrent ExecutorService Executors ScheduledExecutorService TimeUnit)
            (okhttp3 OkHttpClient$Builder)))
 
 (defn schedulable-node-filter
@@ -110,7 +110,7 @@
          (group-by (fn [offer] (-> offer :hostname node-name->node api/get-node-pool))))))
 
 (defn taskids-to-scan
-  "Determine all taskids to scan by unioning task id's from cook expected state and existing taskid maps. "
+  "Determine all task ids to scan by union-ing task id's from cook expected state and existing task id maps. "
   [{:keys [cook-expected-state-map k8s-actual-state-map] :as kcc}]
   (->>
     (set/union (keys @cook-expected-state-map) (keys @k8s-actual-state-map))
