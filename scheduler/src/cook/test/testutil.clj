@@ -523,7 +523,7 @@
         (.addTolerationsItem (kapi/toleration-for-pool pool-name)))
     outstanding-synthetic-pod))
 
-(defn node-helper [node-name cpus mem gpus pool]
+(defn node-helper [node-name cpus mem gpus gpu-model pool]
   "Make a fake node for kubernetes unit tests"
   (let [node (V1Node.)
         status (V1NodeStatus.)
@@ -542,8 +542,7 @@
     (when gpus
       (.putCapacityItem status "nvidia.com/gpu" (Quantity. gpus))
       (.putAllocatableItem status "nvidia.com/gpu" (Quantity. gpus))
-      ; for testing purposes use "nvidia-tesla-p100"
-      (.putLabelsItem metadata "gpu-type" "nvidia-tesla-p100"))
+      (.putLabelsItem metadata "gpu-type" gpu-model))
 
     (when pool
       (let [^V1Taint taint (V1Taint.)]

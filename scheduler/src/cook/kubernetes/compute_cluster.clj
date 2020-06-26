@@ -63,9 +63,8 @@
                                                              (node-name->consumed node-name)))
                                                (keys node-name->capacity))
         ; Grab every unique GPU model being represented so that we can set counters for capacity and consumed for each GPU model
-        gpu-models (set/union
-                     (->> node-name->capacity vals (map :gpus) (apply merge) keys set)
-                     (->> node-name->consumed vals (map :gpus) (apply merge) keys set))
+        gpu-models (->> node-name->capacity vals (map :gpus) (apply merge) keys set)
+
         total-gpu-capacity (-> node-name->capacity total-gpu-resource)
         total-gpu-consumed (-> node-name->consumed total-gpu-resource)]
 

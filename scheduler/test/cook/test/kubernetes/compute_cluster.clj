@@ -79,10 +79,10 @@
                                                           (atom {}) (atom {}) (atom {}) (atom {}) (atom nil)
                                                           {:kind :static :namespace "cook"} nil 3 nil nil
                                                           (Executors/newSingleThreadExecutor))
-          node-name->node {"nodeA" (tu/node-helper "nodeA" 1.0 1000.0 "10" nil)
-                           "nodeB" (tu/node-helper "nodeB" 1.0 1000.0 "25" nil)
-                           "nodeC" (tu/node-helper "nodeC" 1.0 1000.0 nil nil)
-                           "my.fake.host" (tu/node-helper "my.fake.host" 1.0 1000.0 nil nil)}
+          node-name->node {"nodeA" (tu/node-helper "nodeA" 1.0 1000.0 "10" "nvidia-tesla-p100" nil)
+                           "nodeB" (tu/node-helper "nodeB" 1.0 1000.0 "25" "nvidia-tesla-p100" nil)
+                           "nodeC" (tu/node-helper "nodeC" 1.0 1000.0 nil nil nil)
+                           "my.fake.host" (tu/node-helper "my.fake.host" 1.0 1000.0 nil nil nil)}
           j1 (tu/create-dummy-job conn :ncpus 0.1)
           j2 (tu/create-dummy-job conn :ncpus 0.2)
           db (d/db conn)
