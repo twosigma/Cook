@@ -923,3 +923,45 @@
                                          (reduce (partial merge-with +))))
                                   user->jobs)))
                  pool->jobs)))
+
+(defn make-atom-updater
+  "Given a state atom, returns a callback that updates that state-atom when called with a key, prev item, and item."
+  [state-atom]
+  (fn
+    [key prev-item item]
+    (cond
+      (and (nil? prev-item) (not (nil? item))) (swap! state-atom (fn [m] (assoc m key item)))
+      (and (not (nil? prev-item)) (not (nil? item))) (swap! state-atom (fn [m] (assoc m key item)))
+      (and (not (nil? prev-item)) (nil? item)) (swap! state-atom (fn [m] (dissoc m key))))))
+
+(defn dissoc-in
+  "Disassociate a nested key. Delete any intermediate dictionaries."
+  [m [k1 k2]]
+  (if (get-in m [k1 k2])
+    (let [inner (dissoc (get m k1 {}) k2)]
+      (if (empty? inner)
+        (dissoc m k1)
+        (assoc m k1 inner)))
+    m))
+
+(defn make-nested-atom-updater
+  "Given a state atom, returns a callback that updates that nested-state-atom when called with a key, prev item, and
+  item. Automatically deletes now empty dictionaries."
+  [state-atom k1-extract-fn k2-extract-fn]
+  (fn
+    [_ prev-item item] ; Key is unused here.
+    (cond
+      (and (nil? prev-item) (not (nil? item)))
+      (let [k1 (k1-extract-fn item)
+            k2 (k2-extract-fn item)]
+        (swap! state-atom (fn [m] (assoc-in m [k1 k2] item))))
+      (and (not (nil? prev-item)) (not (nil? item)))
+      (let [k1 (k1-extract-fn item)
+            k2 (k2-extract-fn item)
+            prev-k1 (k1-extract-fn prev-item)
+            prev-k2 (k2-extract-fn prev-item)]
+        (swap! state-atom (fn [m] (assoc-in (dissoc-in m [prev-k1 prev-k2]) [k1 k2] item))))
+      (and (not (nil? prev-item)) (nil? item))
+      (let [prev-k1 (k1-extract-fn prev-item)
+            prev-k2 (k2-extract-fn prev-item)]
+        (swap! state-atom (fn [m] (dissoc-in m [prev-k1 prev-k2])))))))

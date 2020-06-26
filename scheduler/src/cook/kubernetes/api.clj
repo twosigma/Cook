@@ -78,48 +78,6 @@
   (or (some-> pod .getSpec .getNodeName)
       (some-> pod .getSpec .getNodeSelector (get k8s-hostname-label))))
 
-(defn make-atom-updater
-  "Given a state atom, returns a callback that updates that state-atom when called with a key, prev item, and item."
-  [state-atom]
-  (fn
-    [key prev-item item]
-    (cond
-      (and (nil? prev-item) (not (nil? item))) (swap! state-atom (fn [m] (assoc m key item)))
-      (and (not (nil? prev-item)) (not (nil? item))) (swap! state-atom (fn [m] (assoc m key item)))
-      (and (not (nil? prev-item)) (nil? item)) (swap! state-atom (fn [m] (dissoc m key))))))
-
-(defn dissoc-in
-  "Disassociate a nested key. Delete any intermediate dictionaries."
-  [m [k1 k2]]
-  (if (get-in m [k1 k2])
-    (let [inner (dissoc (get m k1 {}) k2)]
-      (if (empty? inner)
-        (dissoc m k1)
-        (assoc m k1 inner)))
-    m))
-
-(defn make-nested-atom-updater
-  "Given a state atom, returns a callback that updates that nested-state-atom when called with a key, prev item, and
-  item. Automatically deletes now empty dictionaries."
-  [state-atom k1-extract-fn k2-extract-fn]
-  (fn
-    [_ prev-item item] ; Key is unused here.
-    (cond
-      (and (nil? prev-item) (not (nil? item)))
-      (let [k1 (k1-extract-fn item)
-            k2 (k2-extract-fn item)]
-        (swap! state-atom (fn [m] (assoc-in m [k1 k2] item))))
-      (and (not (nil? prev-item)) (not (nil? item)))
-      (let [k1 (k1-extract-fn item)
-            k2 (k2-extract-fn item)
-            prev-k1 (k1-extract-fn prev-item)
-            prev-k2 (k2-extract-fn prev-item)]
-        (swap! state-atom (fn [m] (assoc-in (dissoc-in m [prev-k1 prev-k2]) [k1 k2] item))))
-      (and (not (nil? prev-item)) (nil? item))
-      (let [prev-k1 (k1-extract-fn prev-item)
-            prev-k2 (k2-extract-fn prev-item)]
-        (swap! state-atom (fn [m] (dissoc-in m [prev-k1 prev-k2])))))))
-
 (defn cook-pod-callback-wrap
   "A special wrapping function that, given a callback, key, prev-item, and item, will invoke the callback only
   if the item is a pod that is a cook scheduler pod. (THe idea is that (partial cook-pod-callback-wrap othercallback)
@@ -206,10 +164,9 @@
   "Help creating pod watch. Returns a new watch Callable"
   [{:keys [^ApiClient api-client all-pods-atom node-name->pod-name->V1Pod] compute-cluster-name :name :as compute-cluster} cook-pod-callback]
   (let [[current-pods namespaced-pod-name->pod] (get-all-pods-in-kubernetes api-client compute-cluster-name)
-        ; 3 callbacks;
         callbacks
-        [(make-atom-updater all-pods-atom) ; Update the set of all pods.
-         (make-nested-atom-updater node-name->pod-name->V1Pod pod->node-name get-pod-namespaced-key)
+        [(util/make-atom-updater all-pods-atom) ; Update the set of all pods.
+         (util/make-nested-atom-updater node-name->pod-name->V1Pod pod->node-name get-pod-namespaced-key)
          (partial cook-pod-callback-wrap cook-pod-callback compute-cluster-name)] ; Invoke the cook-pod-callback if its a cook pod.
         old-all-pods @all-pods-atom]
     (log/info "In" compute-cluster-name "compute cluster, pod watch processing pods:" (keys namespaced-pod-name->pod))
@@ -260,7 +217,7 @@
         ^Callable first-success (->> tmpfn repeatedly (some identity))]
     (.submit kubernetes-executor ^Callable first-success)))
 
-(defn V1Node->node-name
+(defn node->node-name
   "Given a V1Node, return the name of the node"
   [^V1Node node]
   (-> node .getMetadata .getName))
@@ -297,8 +254,8 @@
                                           (-> node .getMetadata .getName))
                                         (.getItems current-nodes-raw))
         callbacks
-        [(make-atom-updater current-nodes-atom) ; Update the set of all pods.
-         (make-nested-atom-updater pool->node-name->V1Node get-node-pool V1Node->node-name)]
+        [(util/make-atom-updater current-nodes-atom) ; Update the set of all pods.
+         (util/make-nested-atom-updater pool->node-name->V1Node get-node-pool node->node-name)]
          old-current-nodes @current-nodes-atom]
     (log/info "In" compute-cluster-name "compute cluster, node watch processing nodes:" (keys @current-nodes-atom))
     ; We want to process all changes through the callback process.
