@@ -512,13 +512,12 @@
                                           db group #(guuid->considerable-cotask-ids (:group/uuid group)) running-cotask-cache))
                                       (:group/_job job)))))
         scalar-requests (reduce (fn [result resource]
-                                  (let [value (:resource/amount resource)
-                                        type (:resource/type resource)]
+                                  (let [{:keys [resource/amount resource/type]} resource]
                                     ; Task request shouldn't have a scalar request for GPUs because
                                     ; we are completely handling GPUs within GPU host constraint
                                     ; and fenzo cannot handle scheduling for multiple GPU models
-                                    (if (and value (not= type :resource.type/gpus))
-                                      (assoc result (name type) value)
+                                    (if (and amount (not= type :resource.type/gpus))
+                                      (assoc result (name type) amount)
                                       result)))
                                 {}
                                 (:job/resource job))

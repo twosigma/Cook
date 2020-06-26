@@ -97,7 +97,6 @@
        (filter (fn [{:keys [pool-regex]}] (re-find (re-pattern pool-regex) effective-pool-name)))
        first))
 
-
 (defrecord gpu-host-constraint [job]
   JobConstraint
   (job-constraint-name [this] (get-class-name this))
@@ -120,7 +119,7 @@
                       (>= (get gpu-model->count-available gpu-model-requested 0) gpu-count-requested)
                       ; if job is kubernetes-bound and does not request gpus, do not schedule it on a VM that supports gpus
                       (-> gpu-model->count-available count zero?))
-                    ; if job is mesos-bound, ensure that the gpu-count-requested is 0
+                    ; if job is mesos-bound, require that the gpu-count-requested is 0
                     (zero? gpu-count-requested))]
       [passes? (when-not passes? (if (not gpu-model-requested)
                                    "Job does not need GPUs, host has GPUs."

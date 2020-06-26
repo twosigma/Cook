@@ -557,14 +557,14 @@
   node))
 
 (defn make-kubernetes-compute-cluster
-  [namespaced-pod-name->pod pool-names synthetic-pods-user node-blocklist-labels]
+  [api-client cluster-entity-id namespaced-pod-name->pod pool-names synthetic-pods-user]
   (let [synthetic-pods-config {:image "image"
                                :user synthetic-pods-user
                                :max-pods-outstanding 4
                                :pools pool-names}]
-    (kcc/->KubernetesComputeCluster nil ; api-client
+    (kcc/->KubernetesComputeCluster api-client ; api-client
                                     "kubecompute" ; name
-                                    nil ; entity-id
+                                    cluster-entity-id ; entity-id
                                     nil ; match-trigger-chan
                                     nil ; exit-code-syncer-state
                                     (atom namespaced-pod-name->pod) ; all-pods-atom
@@ -576,30 +576,15 @@
                                     nil ; scan-frequency-seconds-config
                                     nil ; max-pods-per-node
                                     synthetic-pods-config ; synthetic-pods-config
-                                    node-blocklist-labels ; node-blocklist-labels
+                                    nil ; node-blocklist-labels
                                     (Executors/newSingleThreadExecutor)))) ; launch-task-executor-service
 
 
 (defn make-and-write-kubernetes-compute-cluster
-  [conn synthetic-pods node-blocklist-labels]
+  "Similar to make-kubernetes-compute-cluster but also writes to a database"
+  [conn]
   (let [cluster-entity-id (kcc/get-or-create-cluster-entity-id conn "kubecompute")
         api-client (kcc/make-api-client nil nil nil nil nil nil)
-        compute-cluster (kcc/->KubernetesComputeCluster api-client ; api-client
-                                                        "kubecompute" ; name
-                                                        cluster-entity-id ; entity-id
-                                                        nil ; match-trigger-chan
-                                                        nil ; exit-code-syncer-state
-                                                        (atom {}) ; all-pods-atom
-                                                        (atom {}) ; current-nodes-atom
-                                                        (atom {}) ; cook-expected-state-map
-                                                        (atom {}) ; k8s-actual-state-map
-                                                        (atom nil) ; pool->fenzo-atom
-                                                        {:kind :per-user} ; namespace-config
-                                                        nil ; scan-frequency-seconds-config
-                                                        nil ; max-pods-per-node
-                                                        synthetic-pods ; synthetic-pods (or empty map)
-                                                        node-blocklist-labels ; node-blocklist-labels (or empty list)
-                                                        (Executors/newSingleThreadExecutor))] ; launch-task-executor-service
-
+        compute-cluster (make-kubernetes-compute-cluster api-client cluster-entity-id {} nil nil)]
     (cc/register-compute-cluster! compute-cluster)
     compute-cluster))

@@ -152,8 +152,8 @@
             job-uuid-3 (str (UUID/randomUUID))
             pool-name "test-pool"
             ^V1Pod outstanding-synthetic-pod-1 (tu/synthetic-pod-helper job-uuid-1 pool-name nil)
-            compute-cluster (tu/make-kubernetes-compute-cluster {nil outstanding-synthetic-pod-1}
-                                                                #{pool-name} "user" nil)
+            compute-cluster (tu/make-kubernetes-compute-cluster nil nil {nil outstanding-synthetic-pod-1}
+                                                                #{pool-name} "user")
             pending-jobs [(make-job-fn job-uuid-1 nil)
                           (make-job-fn job-uuid-2 nil)
                           (make-job-fn job-uuid-3 nil)]
@@ -169,7 +169,7 @@
       (let [job-uuid-1 (str (UUID/randomUUID))
             job-uuid-2 (str (UUID/randomUUID))
             pool-name "test-pool"
-            compute-cluster (tu/make-kubernetes-compute-cluster {} #{pool-name} nil nil)
+            compute-cluster (tu/make-kubernetes-compute-cluster nil nil {} #{pool-name} nil)
             pending-jobs [(make-job-fn job-uuid-1 "user-1")
                           (make-job-fn job-uuid-2 "user-2")]
             launched-pods-atom (atom [])]
@@ -183,7 +183,7 @@
     (testing "synthetic pods avoid job's previous hosts"
       (let [job-uuid-1 (str (UUID/randomUUID))
             pool-name "test-pool"
-            compute-cluster (tu/make-kubernetes-compute-cluster {} #{pool-name} nil nil)
+            compute-cluster (tu/make-kubernetes-compute-cluster nil nil {} #{pool-name} nil)
             pending-jobs [(-> (make-job-fn job-uuid-1 "user-1")
                               (assoc :job/instance
                                      [{:instance/hostname "test-host-1"}
@@ -213,7 +213,7 @@
     (testing "synthetic pods have safe-to-evict annotation"
       (let [job-uuid-1 (str (UUID/randomUUID))
             pool-name "test-pool"
-            compute-cluster (tu/make-kubernetes-compute-cluster {} #{pool-name} nil nil)
+            compute-cluster (tu/make-kubernetes-compute-cluster nil nil {} #{pool-name} nil)
             pending-jobs [(make-job-fn job-uuid-1 "user-1")]
             launched-pods-atom (atom [])]
         (with-redefs [api/launch-pod (fn [_ _ cook-expected-state-dict _]
