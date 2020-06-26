@@ -251,9 +251,7 @@
                      nil ; timeoutSeconds
                      nil ; watch
                      ))
-        current-nodes (pc/map-from-vals (fn [^V1Node node]
-                                          (-> node .getMetadata .getName))
-                                        (.getItems current-nodes-raw))
+        current-nodes (pc/map-from-vals node->node-name (.getItems current-nodes-raw))
         callbacks
         [(util/make-atom-updater current-nodes-atom) ; Update the set of all pods.
          (util/make-nested-atom-updater pool->node-name->V1Node get-node-pool node->node-name)]
@@ -275,7 +273,7 @@
       (fn []
         (try
           (log/info "In" compute-cluster-name "compute cluster, handling node watch updates")
-          (handle-watch-updates current-nodes-atom watch (fn [n] (-> n .getMetadata .getName))
+          (handle-watch-updates current-nodes-atom watch node->node-name
                                 callbacks) ; Update the set of all nodes.
           (catch Exception e
             (log/warn e "Error during node watch for compute cluster" compute-cluster-name))
