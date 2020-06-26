@@ -58,7 +58,7 @@
         node-name->capacity (api/get-capacity node-name->node)
         node-name->consumed (api/get-consumption node-name->pods)
         node-name->available (pc/map-from-keys (fn [node-name]
-                                                 (api/merge-resource-map-collection -
+                                                 (api/deep-merge-with -
                                                              (node-name->capacity node-name)
                                                              (node-name->consumed node-name)))
                                                (keys node-name->capacity))

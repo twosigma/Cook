@@ -400,19 +400,19 @@
                                                      false)
              :else true))))
 
-(defn merge-resource-maps
-  "Given a function and two resource-maps, merge into a single resource map"
-  [f resource-map-a resource-map-b]
-  {:cpus (f (:cpus resource-map-a) (or (:cpus resource-map-b) 0))
-   :mem (f (:mem resource-map-a) (or (:mem resource-map-b) 0))
-   :gpus (merge-with f (:gpus resource-map-a) (:gpus resource-map-b))})
-
-(defn merge-resource-map-collection
-  "Given a function and multiple resource-maps, merge into a single resource map"
-  [f & resource-maps]
-  (reduce (fn [resource-map-a resource-map-b]
-            (merge-resource-maps f resource-map-a resource-map-b))
-          resource-maps))
+(defn deep-merge-with
+  "Like merge-with, but merges maps recursively, applying the given fn
+  only when there's a non-map at a particular level.
+  (deepmerge + {:a {:b {:c 1 :d {:x 1 :y 2}} :e 3} :f 4}
+               {:a {:b {:c 2 :d {:z 9} :z 3} :e 100}})
+  -> {:a {:b {:z 3, :c 3, :d {:z 9, :x 1, :y 2}}, :e 103}, :f 4}"
+  [f & maps]
+  (apply
+    (fn m [& maps]
+      (if (every? map? maps)
+        (apply merge-with m maps)
+        (apply f maps)))
+    maps))
 
 (defn add-gpu-model-to-resource-map
   "Given a map from node-name->resource-type->capacity, perform the following operation:
@@ -450,7 +450,7 @@
                                    {:keys [gpus] :as resource-map} (apply merge-with + container-requests)
                                    gpu-model (-> pod .getSpec .getNodeSelector (get "cloud.google.com/gke-accelerator"))]
                                (add-gpu-model-to-resource-map gpu-model gpus resource-map))))
-                      (apply merge-resource-map-collection +)))
+                      (apply deep-merge-with +)))
                node-name->pods))
 ; see pod->synthesized-pod-state comment for container naming conventions
 (def cook-container-name-for-job
