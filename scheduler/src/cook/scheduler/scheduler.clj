@@ -72,10 +72,6 @@
   [offer resource-name]
   (reduce into [] (offer-resource-values offer resource-name :ranges)))
 
-(defn offer-resource-available-types
-  [offer resource-name]
-  (merge-with + (offer-resource-values offer resource-name :available-types)))
-
 (defn offer-value-list-map
   [value-list]
   (->> value-list
@@ -84,7 +80,7 @@
                                  :value-ranges (:ranges %)
                                  :value-set (:set %)
                                  :value-text (:text %)
-                                 :value-available-types (:available-types %)
+                                 :value-text->scalar (:text->scalar %)
                                  ; Default
                                  (:value %))))
        (into {})))
@@ -458,15 +454,6 @@
                 result))
             {}
             (:resources offer)))
-  ;TODO: UPDATE THIS
-  ;(getAvailableTypesValues [_]
-  ;  (reduce (fn [result resource] (if-let [value (:available-types resource)]
-  ;                                  (assoc result (:name resource) value)
-  ;                                  result))
-  ;          {}
-  ;          (:resources offer)))
-  ; Some Fenzo plugins (which are included with fenzo, such as host attribute constraints) expect the "HOSTNAME"
-  ; attribute to contain the hostname of this virtual machine.
   (getAttributeMap [_] (get-offer-attr-map offer))
   (getId [_] (-> offer :id :value))
   (getOffer [_] (throw (UnsupportedOperationException.)))

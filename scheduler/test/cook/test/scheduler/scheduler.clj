@@ -109,7 +109,7 @@
       :value-scalar {:scalar val}
       :value-ranges {:ranges [val]}
       :value-set {:set #{val}}
-      :value-available-types {:available-types val}
+      :value-text->scalar {:text->scalar val}
       {})))
 
 (defn make-mesos-offer-resources
@@ -126,7 +126,7 @@
    (make-k8s-resource "mem" :value-scalar mem)
    (make-k8s-resource "disk" :value-scalar disk)
    (make-k8s-resource "ports" :value-ranges ports)
-   (make-k8s-resource "gpus" :value-available-types gpus)])
+   (make-k8s-resource "gpus" :value-text->scalar gpus)])
 
 (defn make-mesos-attribute
   [name type val]
@@ -142,7 +142,7 @@
                              :value-text {:text val}
                              :value-ranges {:ranges [(mtypes/map->ValueRange val)]}
                              :value-set {:set #{val}}
-                             :value-available-types {:available-types val}
+                             :value-text->scalar {:text->scalar val}
                              nil))))
 
 (defn make-k8s-attribute
@@ -159,7 +159,7 @@
       :value-text {:text val}
       :value-ranges {:ranges [val]}
       :value-set {:set #{val}}
-      :value-available-types {:available-types val}
+      :value-text->scalar {:text->scalar val}
       nil)))
 
 (defn make-mesos-offer-attributes
@@ -751,13 +751,11 @@
                               {:name "mem", :type :value-scalar, :scalar 5000.0, :ranges [], :set #{}, :role "*"}
                               {:name "disk", :type :value-scalar, :scalar 6000.0, :ranges [], :set #{}, :role "*"}
                               {:name "ports", :type :value-ranges, :scalar 0.0, :ranges [{:begin 31000, :end 32000}], :set #{}, :role "*"}
-                              {:name "gpus", :type :value-available-types :available-types {"nvidia-tesla-p100" 2} :role "*"}],
+                              {:name "gpus", :type :value-text->scalar :text->scalar {"nvidia-tesla-p100" 2} :role "*"}],
                :attributes   [],
                :executor-ids []}
         adapter (sched/->VirtualMachineLeaseAdapter offer when)]
 
-
-    ;(log/info "#####" (->> offer :resources (filter #(= (:name %) "gpus")) (map :available-types)))
     (is (= (.getId adapter) "my-offer-id"))
     (is (= (.cpuCores adapter) 40.0))
     (is (= (.diskMB adapter) 6000.0))
@@ -766,13 +764,11 @@
     (is (= (.hostname adapter) "slave3"))
     (is (= (.memoryMB adapter) 5000.0))
     (is (= (.getScalarValues adapter) {"cpus" 40.0 "disk" 6000.0 "mem" 5000.0 "ports" 0.0}))
-    (log/info "######" (reduce (fn [result resource] (if-let [value (:available-types resource)]
+    (log/info "######" (reduce (fn [result resource] (if-let [value (:text->scalar resource)]
                                         (assoc result (:name resource) value)
                                         result))
                                {}
                                (:resources offer)))
-    ;TODO: add in scheduler.clj
-    ;(is (= (.getAvailableTypesValues adapter) {"gpus" {"nvidia-tesla-p100" 2}}))
     (is (= (-> adapter .portRanges first .getBeg) 31000))
     (is (= (-> adapter .portRanges first .getEnd) 32000))))
 
@@ -1565,41 +1561,40 @@
                (sched/pending-jobs->considerable-jobs
                  (d/db conn) gpu-jobs user->quota user->usage num-considerable nil)))))))
 
-(comment
-  (deftest test-matches->job-uuids
-    (let [create-task-result (fn [job-uuid _ _ gpus]
-                               (-> (Mockito/when (.getRequest (Mockito/mock TaskAssignmentResult)))
-                                   (.thenReturn (sched/make-task-request
-                                                  (Object.)
-                                                  {:job/uuid     job-uuid
-                                                   :job/resource (cond-> [{:resource/type :resource.type/mem, :resource/amount 1000.0}
-                                                                          {:resource/type :resource.type/cpus, :resource/amount 1.0}]
-                                                                         gpus (conj {:resource/type :resource.type/gpus, :resource/amount gpus}))}
-                                                  nil
-                                                  :task-id (str "task-id-" job-uuid)))
-                                   (.getMock)))
-          job-1 (create-task-result "job-1" 1 1024 nil)
-          job-2 (create-task-result "job-2" 2 2048 nil)
-          job-3 (create-task-result "job-3" 3 1024 1)
-          job-4 (create-task-result "job-4" 4 1024 nil)
-          job-5 (create-task-result "job-5" 5 2048 2)
-          job-6 (create-task-result "job-6" 6 1024 3)
-          job-7 (create-task-result "job-7" 7 1024 nil)]
-      (is (= #{"job-3" "job-5" "job-6"}
-             (sched/matches->job-uuids
-               [{:tasks [job-3]}, {:tasks #{job-5}}, {:tasks [job-6]}] nil)))
-      (is (= #{"job-1" "job-2" "job-4" "job-7"}
-             (sched/matches->job-uuids
-               [{:tasks [job-1 job-2]}, {:tasks #{job-4}}, {:tasks [job-7]}] nil)))
-      (is (= #{"job-1" "job-2" "job-4" "job-7"}
-             (sched/matches->job-uuids
-               [{:tasks [job-1 job-2]}, {:tasks #{job-4}}, {:tasks #{}}, {:tasks [job-7]}] nil)))
-      (is (= #{"job-3" "job-5" "job-6"}
-             (sched/matches->job-uuids
-               [{:tasks [job-3]}, {:tasks #{job-5}}, {:tasks #{job-6}}, {:tasks []}] nil)))
-      (is (= #{}
-             (sched/matches->job-uuids
-               [{:tasks []}, {:tasks #{}}, {:tasks #{}}, {:tasks []}] nil))))))
+(deftest test-matches->job-uuids
+  (let [create-task-result (fn [job-uuid _ _ gpus]
+                             (-> (Mockito/when (.getRequest (Mockito/mock TaskAssignmentResult)))
+                                 (.thenReturn (sched/make-task-request
+                                                (Object.)
+                                                {:job/uuid     job-uuid
+                                                 :job/resource (cond-> [{:resource/type :resource.type/mem, :resource/amount 1000.0}
+                                                                        {:resource/type :resource.type/cpus, :resource/amount 1.0}]
+                                                                       gpus (conj {:resource/type :resource.type/gpus, :resource/amount gpus}))}
+                                                nil
+                                                :task-id (str "task-id-" job-uuid)))
+                                 (.getMock)))
+        job-1 (create-task-result "job-1" 1 1024 nil)
+        job-2 (create-task-result "job-2" 2 2048 nil)
+        job-3 (create-task-result "job-3" 3 1024 1)
+        job-4 (create-task-result "job-4" 4 1024 nil)
+        job-5 (create-task-result "job-5" 5 2048 2)
+        job-6 (create-task-result "job-6" 6 1024 3)
+        job-7 (create-task-result "job-7" 7 1024 nil)]
+    (is (= #{"job-3" "job-5" "job-6"}
+           (sched/matches->job-uuids
+             [{:tasks [job-3]}, {:tasks #{job-5}}, {:tasks [job-6]}] nil)))
+    (is (= #{"job-1" "job-2" "job-4" "job-7"}
+           (sched/matches->job-uuids
+             [{:tasks [job-1 job-2]}, {:tasks #{job-4}}, {:tasks [job-7]}] nil)))
+    (is (= #{"job-1" "job-2" "job-4" "job-7"}
+           (sched/matches->job-uuids
+             [{:tasks [job-1 job-2]}, {:tasks #{job-4}}, {:tasks #{}}, {:tasks [job-7]}] nil)))
+    (is (= #{"job-3" "job-5" "job-6"}
+           (sched/matches->job-uuids
+             [{:tasks [job-3]}, {:tasks #{job-5}}, {:tasks #{job-6}}, {:tasks []}] nil)))
+    (is (= #{}
+           (sched/matches->job-uuids
+             [{:tasks []}, {:tasks #{}}, {:tasks #{}}, {:tasks []}] nil)))))
 
 (deftest test-remove-matched-jobs-from-pending-jobs
   (let [create-jobs-in-range (fn [start-inc end-exc]
@@ -1968,7 +1963,7 @@
         offer-maker (fn [cpus mem gpus]
                       {:resources [{:name "cpus", :scalar cpus, :type :value-scalar, :role "cook"}
                                    {:name "mem", :scalar mem, :type :value-scalar, :role "cook"}
-                                   {:name "gpus", :available-types gpus, :type :value-available-types, :role "cook"}]
+                                   {:name "gpus", :text->scalar gpus, :type :value-text->scalar, :role "cook"}]
                        :attributes [{:name "compute-cluster-type", :text "kubernetes", :type :value-text, :role "cook"}]
                        :id {:value (str "id-" (UUID/randomUUID))}
                        :slave-id {:value (str "slave-" (UUID/randomUUID))}

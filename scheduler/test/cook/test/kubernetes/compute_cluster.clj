@@ -114,7 +114,7 @@
         (is (= [{:name "mem" :type :value-scalar :scalar 400.0}
                 {:name "cpus" :type :value-scalar :scalar 0.4}
                 {:name "disk" :type :value-scalar :scalar 0.0}
-                {:name "gpus" :type :value-available-types :available-types {"nvidia-tesla-p100" 0}}]
+                {:name "gpus" :type :value-text->scalar :text->scalar {"nvidia-tesla-p100" 0}}]
                (:resources offer)))
         (is (:reject-after-match-attempt offer)))
 
@@ -124,14 +124,14 @@
         (is (= [{:name "mem" :type :value-scalar :scalar 0.0}
                 {:name "cpus" :type :value-scalar :scalar 0.0}
                 {:name "disk" :type :value-scalar :scalar 0.0}
-                {:name "gpus" :type :value-available-types :available-types {"nvidia-tesla-p100" 15}}]
+                {:name "gpus" :type :value-text->scalar :text->scalar {"nvidia-tesla-p100" 15}}]
                (:resources offer))))
 
       (let [offer (first (filter #(= "my.fake.host" (:hostname %)) offers))]
         (is (= [{:name "mem" :type :value-scalar :scalar 980.0}
                 {:name "cpus" :type :value-scalar :scalar 0.7}
                 {:name "disk" :type :value-scalar :scalar 0.0}
-                {:name "gpus" :type :value-available-types :available-types {}}]
+                {:name "gpus" :type :value-text->scalar :text->scalar {}}]
                (:resources offer)))))))
 
 (deftest determine-cook-expected-state

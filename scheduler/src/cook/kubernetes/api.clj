@@ -340,8 +340,7 @@
    :cpus (if (get m "cpu")
            (-> m (get "cpu") to-double)
            0.0)
-   ;; For the purposes of simplified operations on the resource maps, we only look at number of GPUs in this function
-   ;; If GKE supports multiple GPU models on the same node in the future, this function must be modified
+   ; Assume that each Kubernetes node and each pod only contains one type of GPU model
    :gpus (if (get m "nvidia.com/gpu")
           (-> m (get "nvidia.com/gpu") to-int)
           0)})
@@ -415,15 +414,22 @@
             (merge-resource-maps f resource-map-a resource-map-b))
           resource-maps))
 
+(defn add-gpu-model-to-resource-map
+  "Given a map from node-name->resource-type->capacity, perform the following operation:
+  - if the amount of gpus on the node is positive, set the gpus capacity to model->count
+  - if the amount of gpus on the node is 0, set the gpus capacity to an empty map"
+  [gpu-model gpus resource-map]
+  (if (and gpu-model (pos? gpus))
+    (assoc resource-map :gpus {gpu-model (:gpus resource-map)})
+    (assoc resource-map :gpus {})))
+
 (defn get-capacity
   "Given a map from node-name to node, generate a map from node-name->resource-type-><capacity>"
   [node-name->node]
   (pc/map-vals (fn [^V1Node node]
                  (let [{:keys [gpus] :as resource-map} (-> node .getStatus .getAllocatable convert-resource-map)
                        gpu-model (-> node .getMetadata .getLabels (get "gpu-type"))]
-                   (if (and gpu-model (pos? gpus))
-                     (assoc resource-map :gpus {gpu-model (:gpus resource-map)})
-                     (assoc resource-map :gpus {}))))
+                   (add-gpu-model-to-resource-map gpu-model gpus resource-map )))
                node-name->node))
 
 (defn get-consumption
@@ -443,11 +449,7 @@
                                                            containers)
                                    {:keys [gpus] :as resource-map} (apply merge-with + container-requests)
                                    gpu-model (-> pod .getSpec .getNodeSelector (get "cloud.google.com/gke-accelerator"))]
-                               ; GKE nodes cannot currently support multiple GPU models the implementation of
-                               ; get-consumption assumes
-                               (if (and gpu-model (pos? gpus))
-                                 (assoc resource-map :gpus {gpu-model gpus})
-                                 (assoc resource-map :gpus {})))))
+                               (add-gpu-model-to-resource-map gpu-model gpus resource-map))))
                       (apply merge-resource-map-collection +)))
                node-name->pods))
 ; see pod->synthesized-pod-state comment for container naming conventions

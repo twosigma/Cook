@@ -101,7 +101,7 @@
                  :resources [{:name "mem" :type :value-scalar :scalar (max 0.0 (:mem available))}
                              {:name "cpus" :type :value-scalar :scalar (max 0.0 (:cpus available))}
                              {:name "disk" :type :value-scalar :scalar 0.0}
-                             {:name "gpus" :type :value-available-types :available-types (:gpus available)}]
+                             {:name "gpus" :type :value-text->scalar :text->scalar (:gpus available)}]
                  :attributes [{:name "compute-cluster-type" :type :value-text :text "kubernetes"}]
                  :executor-ids []
                  :compute-cluster compute-cluster
