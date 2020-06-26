@@ -231,15 +231,15 @@
 
 (defn get-pods-in-pool
   "Given a compute cluster and a pool name, extract the pods that are in the current pool only."
-  [{:keys [pool->node-name->V1Node node-name->pod-name->V1Pod]} pool]
-  (->> (get @pool->node-name->V1Node pool)
+  [{:keys [pool->node-name->node node-name->pod-name->pod]} pool]
+  (->> (get @pool->node-name->node pool)
        keys
-       (map #(get @node-name->pod-name->V1Pod % {}))
+       (map #(get @node-name->pod-name->pod % {}))
        (reduce into {})))
 
 (defrecord KubernetesComputeCluster [^ApiClient api-client name entity-id match-trigger-chan exit-code-syncer-state
-                                     all-pods-atom current-nodes-atom pool->node-name->V1Node
-                                     node-name->pod-name->V1Pod cook-expected-state-map cook-starting-pods k8s-actual-state-map
+                                     all-pods-atom current-nodes-atom pool->node-name->node
+                                     node-name->pod-name->pod cook-expected-state-map cook-starting-pods k8s-actual-state-map
                                      pool->fenzo-atom namespace-config scan-frequency-seconds-config max-pods-per-node
                                      synthetic-pods-config node-blocklist-labels
                                      ^ExecutorService launch-task-executor-service]
@@ -317,7 +317,7 @@
     (let [timer (timers/start (metrics/timer "cc-pending-offers-compute" name))
           pods (add-starting-pods this @all-pods-atom) ; Safe. O(#pods)
           nodes @current-nodes-atom ; Safe. O(#nodes)
-          offers-this-pool (generate-offers this (@pool->node-name->V1Node pool-name)
+          offers-this-pool (generate-offers this (@pool->node-name->node pool-name)
                                                        (->> (get-pods-in-pool this pool-name)
                                                             (add-starting-pods this)
                                                             (api/pods->node-name->pods)))
@@ -418,7 +418,7 @@
   (max-tasks-per-host [_] max-pods-per-node)
 
   (num-tasks-on-host [this hostname]
-    (->> (get @node-name->pod-name->V1Pod hostname {})
+    (->> (get @node-name->pod-name->pod hostname {})
          (add-starting-pods this)
          (api/num-pods-on-node hostname)))
 

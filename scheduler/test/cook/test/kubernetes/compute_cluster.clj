@@ -28,15 +28,15 @@
 
 (deftest test-get-pods-in-pool
   (let [in
-        {:pool->node-name->V1Node (atom {:pool-a {:node-1 1 :node-2 2}
-                                         :pool-b {:node-3 3}
-                                         :pool-c {:node-4 4}
-                                         :pool-d {:node-5 5}
-                                         :pool-e {}})
-         :node-name->pod-name->V1Pod (atom {:node-1 {:pod-1a 1 :pod-1b 2}
-                                            :node-2 {:pod-2a 2}
-                                            :node-3 {}
-                                            :node-4 {:pod-4a 1 :pod-4b 2}})}]
+        {:pool->node-name->node (atom {:pool-a {:node-1 1 :node-2 2}
+                                       :pool-b {:node-3 3}
+                                       :pool-c {:node-4 4}
+                                       :pool-d {:node-5 5}
+                                       :pool-e {}})
+         :node-name->pod-name->pod (atom {:node-1 {:pod-1a 1 :pod-1b 2}
+                                          :node-2 {:pod-2a 2}
+                                          :node-3 {}
+                                          :node-4 {:pod-4a 1 :pod-4b 2}})}]
     (is (= {:pod-1a 1 :pod-1b 2 :pod-2a 2} (kcc/get-pods-in-pool in :pool-a)))
     (is (= {} (kcc/get-pods-in-pool in :pool-b)))
     (is (= {:pod-4a 1 :pod-4b 2} (kcc/get-pods-in-pool in :pool-c)))

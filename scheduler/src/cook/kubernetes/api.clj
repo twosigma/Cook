@@ -163,11 +163,11 @@
 (declare initialize-pod-watch)
 (defn ^Callable initialize-pod-watch-helper
   "Help creating pod watch. Returns a new watch Callable"
-  [{:keys [^ApiClient api-client all-pods-atom node-name->pod-name->V1Pod] compute-cluster-name :name :as compute-cluster} cook-pod-callback]
+  [{:keys [^ApiClient api-client all-pods-atom node-name->pod-name->pod] compute-cluster-name :name :as compute-cluster} cook-pod-callback]
   (let [[current-pods namespaced-pod-name->pod] (get-all-pods-in-kubernetes api-client compute-cluster-name)
         callbacks
         [(util/make-atom-updater all-pods-atom) ; Update the set of all pods.
-         (util/make-nested-atom-updater node-name->pod-name->V1Pod pod->node-name get-pod-namespaced-key)
+         (util/make-nested-atom-updater node-name->pod-name->pod pod->node-name get-pod-namespaced-key)
          (partial cook-pod-callback-wrap cook-pod-callback compute-cluster-name)] ; Invoke the cook-pod-callback if its a cook pod.
         old-all-pods @all-pods-atom]
     (log/info "In" compute-cluster-name "compute cluster, pod watch processing pods:" (keys namespaced-pod-name->pod))
@@ -236,7 +236,7 @@
 (declare initialize-node-watch)
 (defn initialize-node-watch-helper
   "Help creating node watch. Returns a new watch Callable"
-  [{:keys [^ApiClient api-client current-nodes-atom pool->node-name->V1Node] compute-cluster-name :name :as compute-cluster}]
+  [{:keys [^ApiClient api-client current-nodes-atom pool->node-name->node] compute-cluster-name :name :as compute-cluster}]
   (let [api (CoreV1Api. api-client)
         current-nodes-raw
         (timers/time! (metrics/timer "get-all-nodes" compute-cluster-name)
@@ -254,7 +254,7 @@
         current-nodes (pc/map-from-vals node->node-name (.getItems current-nodes-raw))
         callbacks
         [(util/make-atom-updater current-nodes-atom) ; Update the set of all pods.
-         (util/make-nested-atom-updater pool->node-name->V1Node get-node-pool node->node-name)]
+         (util/make-nested-atom-updater pool->node-name->node get-node-pool node->node-name)]
          old-current-nodes @current-nodes-atom]
     (log/info "In" compute-cluster-name "compute cluster, node watch processing nodes:" (keys @current-nodes-atom))
     ; We want to process all changes through the callback process.

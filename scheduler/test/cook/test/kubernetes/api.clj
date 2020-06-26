@@ -485,7 +485,7 @@
           all-pods-atom (atom {namespaced-pod-name pod})]
       (with-redefs [api/get-all-pods-in-kubernetes (constantly [pod-list {namespaced-pod-name pod}])
                     api/create-pod-watch (constantly nil)]
-        (api/initialize-pod-watch-helper {:name compute-cluster-name :all-pods-atom all-pods-atom :node-name->pod-name->V1Pod (atom {})} callback-fn))
+        (api/initialize-pod-watch-helper {:name compute-cluster-name :all-pods-atom all-pods-atom :node-name->pod-name->pod (atom {})} callback-fn))
       (is (= 1 (count @namespaced-pod-names-visited)))
       (is (= [namespaced-pod-name] @namespaced-pod-names-visited)))))
 
