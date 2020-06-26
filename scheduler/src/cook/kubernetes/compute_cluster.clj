@@ -315,15 +315,15 @@
   (pending-offers [this pool-name]
     (log/info "In" name "compute cluster, looking for offers for pool" pool-name)
     (let [timer (timers/start (metrics/timer "cc-pending-offers-compute" name))
-          pods (add-starting-pods this @all-pods-atom) ; Safe. O(#pods)
-          nodes @current-nodes-atom ; Safe. O(#nodes)
+          pods (add-starting-pods this @all-pods-atom)
+          nodes @current-nodes-atom
           offers-this-pool (generate-offers this (@pool->node-name->node pool-name)
-                                                       (->> (get-pods-in-pool this pool-name)
-                                                            (add-starting-pods this)
-                                                            (api/pods->node-name->pods)))
+                                            (->> (get-pods-in-pool this pool-name)
+                                                 (add-starting-pods this)
+                                                 (api/pods->node-name->pods)))
           offers-this-pool-for-logging (into #{}
-                                              (map #(into {} (select-keys % [:hostname :resources]))
-                                                   offers-this-pool))]
+                                             (map #(into {} (select-keys % [:hostname :resources]))
+                                                  offers-this-pool))]
       (log/info "In" name "compute cluster, generated" (count offers-this-pool) "offers for pool" pool-name
                 {:num-total-nodes-in-compute-cluster (count nodes)
                  :num-total-pods-in-compute-cluster (count pods)
