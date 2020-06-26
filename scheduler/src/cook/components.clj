@@ -338,7 +338,7 @@
     ; you need to require S's namespace with ns :require. 'ns :require' is how mount finds defstates to initialize.
     (mount/start-with-args (cook.config/read-config config-file-path))
     (pool/guard-invalid-default-pool (d/db datomic/conn))
-    (cook.config/guard-invalid-gpu-models)
+    (cook.config/guard-invalid-gpu-config)
     (metrics-jvm/instrument-jvm)
     (let [server (scheduler-server config)]
       (intern 'user 'main-graph server)

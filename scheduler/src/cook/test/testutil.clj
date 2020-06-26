@@ -482,7 +482,7 @@
   (let [pod (V1Pod.)
         metadata (V1ObjectMeta.)
         spec (V1PodSpec.)]
-    (doall (for [{:keys [mem cpus gpus]} requests]
+    (doall (for [{:keys [mem cpus gpus gpu-model]} requests]
              (let [container (V1Container.)
                    resources (V1ResourceRequirements.)]
                (when mem
@@ -501,7 +501,7 @@
                                    (Quantity. gpus))
                  (.putNodeSelectorItem spec
                                        "cloud.google.com/gke-accelerator"
-                                       "nvidia-tesla-p100"))
+                                       (or gpu-model "nvidia-tesla-p100")))
                (.setResources container resources)
                (.addContainersItem spec container))))
     (.setNodeName spec node-name)
@@ -542,7 +542,7 @@
     (when gpus
       (.putCapacityItem status "nvidia.com/gpu" (Quantity. gpus))
       (.putAllocatableItem status "nvidia.com/gpu" (Quantity. gpus))
-      (.putLabelsItem metadata "gpu-type" gpu-model))
+      (.putLabelsItem metadata "gpu-type" (or gpu-model "nvidia-tesla-p100")))
 
     (when pool
       (let [^V1Taint taint (V1Taint.)]

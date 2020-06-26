@@ -12,19 +12,39 @@
                                                 V1VolumeMount)))
 
 (deftest test-get-consumption
-  (testing "correctly computes consumption for a single pod"
+  (testing "correctly computes consumption for a single pod without gpus"
 
-    (let [pods [(tu/pod-helper "podA" "hostA" {:cpus 1.0 :mem 100.0 :gpus "2"})]
+    (let [pods [(tu/pod-helper "podA" "hostA" {:cpus 1.0 :mem 100.0})]
+          node-name->pods (api/pods->node-name->pods pods)]
+      (is (= {"hostA" {:cpus 1.0
+                       :mem 100.0
+                       :gpus {}}}
+             (api/get-consumption node-name->pods)))))
+
+  (testing "correctly computes consumption for a single pod with gpus"
+
+    (let [pods [(tu/pod-helper "podA" "hostA" {:cpus 1.0 :mem 100.0 :gpus "2" :gpu-model "nvidia-tesla-p100"})]
           node-name->pods (api/pods->node-name->pods pods)]
       (is (= {"hostA" {:cpus 1.0
                        :mem 100.0
                        :gpus {"nvidia-tesla-p100" 2}}}
              (api/get-consumption node-name->pods)))))
 
-  (testing "correctly computes consumption for a pod with multiple containers"
+  (testing "correctly computes consumption for a pod with multiple containers without gpus"
     (let [pods [(tu/pod-helper "podA" "hostA"
-                               {:cpus 1.0 :mem 100.0 :gpus "1"}
-                               {:cpus 1.0 :mem 0.0 :gpus "4"}
+                               {:cpus 1.0 :mem 100.0 :gpus "0"}
+                               {:cpus 1.0 :mem 0.0}
+                               {:mem 100.0})]
+          node-name->pods (api/pods->node-name->pods pods)]
+      (is (= {"hostA" {:cpus 2.0
+                       :mem 200.0
+                       :gpus {}}}
+             (api/get-consumption node-name->pods)))))
+
+  (testing "correctly computes consumption for a pod with multiple containers with gpus"
+    (let [pods [(tu/pod-helper "podA" "hostA"
+                               {:cpus 1.0 :mem 100.0 :gpus "1" :gpu-model "nvidia-tesla-p100"}
+                               {:cpus 1.0 :mem 0.0 :gpus "4" :gpu-model "nvidia-tesla-p100"}
                                {:mem 100.0})]
           node-name->pods (api/pods->node-name->pods pods)]
       (is (= {"hostA" {:cpus 2.0
@@ -36,23 +56,26 @@
     (let [pods [(tu/pod-helper "podA" "hostA"
                                {:cpus 1.0
                                 :mem 100.0
-                                :gpus "2"})
+                                :gpus "2"
+                                :gpu-model "nvidia-tesla-p100"})
                 (tu/pod-helper "podB" "hostA"
                                {:cpus 1.0})
                 (tu/pod-helper "podA" "hostA"
-                               {:gpus "1"})
+                               {:gpus "1"
+                                :gpu-model "nvidia-tesla-p100"})
                 (tu/pod-helper "podC" "hostB"
                                {:cpus 1.0}
                                {:mem 100.0})
                 (tu/pod-helper "podC" "hostB"
                                {:cpus 2.0}
                                {:mem 30.0
-                                :gpus "1"})
+                                :gpus "1"
+                                :gpu-model "nvidia-tesla-k80"})
                 (tu/pod-helper "podD" "hostC"
                                {:cpus 1.0})]
           node-name->pods (api/pods->node-name->pods pods)]
       (is (= {"hostA" {:cpus 2.0 :mem 100.0 :gpus {"nvidia-tesla-p100" 3}}
-              "hostB" {:cpus 3.0 :mem 130.0 :gpus {"nvidia-tesla-p100" 1}}
+              "hostB" {:cpus 3.0 :mem 130.0 :gpus {"nvidia-tesla-k80" 1}}
               "hostC" {:cpus 1.0 :mem 0.0 :gpus {}}}
              (api/get-consumption node-name->pods))))))
 

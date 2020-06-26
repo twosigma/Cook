@@ -57,14 +57,9 @@
   (let [compute-cluster-name (cc/compute-cluster-name compute-cluster)
         node-name->capacity (api/get-capacity node-name->node)
         node-name->consumed (api/get-consumption node-name->pods)
-        node-name->available (pc/map-from-keys (fn [node-name]
-                                                 (api/deep-merge-with -
-                                                             (node-name->capacity node-name)
-                                                             (node-name->consumed node-name)))
-                                               (keys node-name->capacity))
+        node-name->available (api/deep-merge-with - node-name->capacity node-name->consumed)
         ; Grab every unique GPU model being represented so that we can set counters for capacity and consumed for each GPU model
         gpu-models (->> node-name->capacity vals (map :gpus) (apply merge) keys set)
-
         total-gpu-capacity (-> node-name->capacity total-gpu-resource)
         total-gpu-consumed (-> node-name->consumed total-gpu-resource)]
 

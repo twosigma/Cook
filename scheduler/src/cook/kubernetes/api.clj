@@ -429,7 +429,7 @@
   (pc/map-vals (fn [^V1Node node]
                  (let [{:keys [gpus] :as resource-map} (-> node .getStatus .getAllocatable convert-resource-map)
                        gpu-model (-> node .getMetadata .getLabels (get "gpu-type"))]
-                   (add-gpu-model-to-resource-map gpu-model gpus resource-map )))
+                   (add-gpu-model-to-resource-map gpu-model gpus resource-map)))
                node-name->node))
 
 (defn get-consumption

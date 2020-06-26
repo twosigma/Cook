@@ -598,7 +598,7 @@
   []
   (get-in config [:settings :task-constraints]))
 
-(defn guard-invalid-gpu-models
+(defn guard-invalid-gpu-config
   "Throws if either of the following is true:
   - any one of the keys (pool-regex, valid-models, default-model) is not configured
   - there is no gpu-model in valid-gpu-models matching the configured default"

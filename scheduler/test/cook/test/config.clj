@@ -99,25 +99,25 @@
 
 (deftest test-guard-invalid-gpu-models
   (testing "empty valid-gpu-models"
-    (is (nil? (config/guard-invalid-gpu-models))))
+    (is (nil? (config/guard-invalid-gpu-config))))
   (testing "valid default model"
     (with-redefs [config/valid-gpu-models (constantly [{:pool-regex "test-pool"
                                                         :valid-models #{"valid-gpu-model"}
                                                         :default-model "valid-gpu-model"}])]
-      (is (nil? (config/guard-invalid-gpu-models)))))
+      (is (nil? (config/guard-invalid-gpu-config)))))
   (testing "no valid models"
     (with-redefs [config/valid-gpu-models (constantly [{:pool-regex "test-pool"}])]
       (is (thrown-with-msg?
             ExceptionInfo
             #"Valid GPU models for pool-regex test-pool is not defined"
-            (config/guard-invalid-gpu-models)))))
+            (config/guard-invalid-gpu-config)))))
   (testing "no default model"
     (with-redefs [config/valid-gpu-models (constantly [{:pool-regex "test-pool"
                                                         :valid-models #{"valid-gpu-model"}}])]
       (is (thrown-with-msg?
             ExceptionInfo
             #"Default GPU model for pool-regex test-pool is not defined"
-            (config/guard-invalid-gpu-models)))))
+            (config/guard-invalid-gpu-config)))))
   (testing "invalid default model"
     (with-redefs [config/valid-gpu-models (constantly [{:pool-regex "test-pool"
                                                         :valid-models #{"valid-gpu-model"}
@@ -125,4 +125,4 @@
       (is (thrown-with-msg?
             ExceptionInfo
             #"Default GPU model for pool-regex test-pool is not listed as a valid GPU model"
-            (config/guard-invalid-gpu-models))))))
+            (config/guard-invalid-gpu-config))))))

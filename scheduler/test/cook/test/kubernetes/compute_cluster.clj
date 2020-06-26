@@ -93,12 +93,12 @@
           _ (cc/launch-tasks compute-cluster "no-pool" [{:task-metadata-seq [task-1 task-2]}] (fn [_]))
           task-1-id (-> task-1 :task-request :task-id)
           pods {{:namespace "cook" :name "podA"} (tu/pod-helper "podA" "nodeA"
-                                                                {:cpus 0.25 :mem 250.0 :gpus "9"}
+                                                                {:cpus 0.25 :mem 250.0 :gpus "9" :gpu-model "nvidia-tesla-p100"}
                                                                 {:cpus 0.1 :mem 100.0})
                 {:namespace "cook" :name "podB"} (tu/pod-helper "podB" "nodeA"
-                                                                {:cpus 0.25 :mem 250.0 :gpus "1"})
+                                                                {:cpus 0.25 :mem 250.0 :gpus "1" :gpu-model "nvidia-tesla-p100"})
                 {:namespace "cook" :name "podC"} (tu/pod-helper "podC" "nodeB"
-                                                                {:cpus 1.0 :mem 1100.0 :gpus "10"})
+                                                                {:cpus 1.0 :mem 1100.0 :gpus "10" :gpu-model "nvidia-tesla-p100"})
                 {:namespace "cook" :name task-1-id} (tu/pod-helper task-1-id "my.fake.host"
                                                                    {:cpus 0.1 :mem 10.0})}
           node-name->pods (api/pods->node-name->pods (kcc/add-starting-pods compute-cluster pods))
