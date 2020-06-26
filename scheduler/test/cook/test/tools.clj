@@ -834,17 +834,16 @@
 (deftest test-atom-updater
   (let [map-atom (atom {})
         testfn (util/make-atom-updater map-atom)]
-      (let [d1 {}
-            _ (testfn :a nil 1)
-            _ (is (= {:a 1} @map-atom))
-            _ (testfn :b nil 2)
-            _ (is (= {:a 1 :b 2} @map-atom))
-            _ (testfn :b 2 3)
-            _ (is (= {:a 1 :b 3} @map-atom))
-            _ (testfn :a 1 nil)
-            _ (is (= {:b 3} @map-atom))
-            _ (testfn :b 3 nil)
-            _ (is (= {} @map-atom))])))
+    (testfn :a nil 1)
+    (is (= {:a 1} @map-atom))
+    (testfn :b nil 2)
+    (is (= {:a 1 :b 2} @map-atom))
+    (testfn :b 2 3)
+    (is (= {:a 1 :b 3} @map-atom))
+    (testfn :a 1 nil)
+    (is (= {:b 3} @map-atom))
+    (testfn :b 3 nil)
+    (is (= {} @map-atom))))
 
 (deftest test-dissoc-in
   (is (= {:a {:c 3} :d {:e 5 :f 6}} (util/dissoc-in {:a {:b 2 :c 3} :d {:e 5 :f 6}} [:a :b])))
