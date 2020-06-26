@@ -533,7 +533,7 @@
                                                       Quantity$Format/DECIMAL_SI)))
     (when pool
       (let [^V1Taint taint (V1Taint.)]
-        (.setKey taint "cook-pool")
+        (.setKey taint kapi/cook-pool-taint)
         (.setValue taint pool)
         (.setEffect taint "NoSchedule")
         (-> spec (.addTaintsItem taint))

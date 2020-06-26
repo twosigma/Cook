@@ -445,7 +445,7 @@
             metadata (V1ObjectMeta.)
             ^V1NodeSpec spec (V1NodeSpec.)
             ^V1Taint taint (V1Taint.)]
-        (.setKey taint "cook-pool")
+        (.setKey taint api/cook-pool-taint)
         (.setValue taint "a-pool")
         (.setEffect taint "NoSchedule")
         (.addTaintsItem spec taint)

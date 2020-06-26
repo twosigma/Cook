@@ -32,6 +32,7 @@
 (def cook-pod-label "twosigma.com/cook-scheduler-job")
 (def cook-synthetic-pod-job-uuid-label "twosigma.com/cook-scheduler-synthetic-pod-job-uuid")
 (def cook-pool-label "cook-pool")
+(def cook-pool-taint "cook-pool")
 (def cook-sandbox-volume-name "cook-sandbox-volume")
 (def cook-job-pod-priority-class "cook-workload")
 (def cook-synthetic-pod-priority-class "synthetic-pod")
@@ -227,9 +228,9 @@
   [^V1Node node]
   ; In the case of nil, we have taints-on-node == [], and we'll map to no-pool.
   (let [taints-on-node (or (some-> node .getSpec .getTaints) [])
-        cook-pool-taint (filter #(= "cook-pool" (.getKey %)) taints-on-node)]
-    (if (= 1 (count cook-pool-taint))
-      (-> cook-pool-taint first .getValue)
+        found-cook-pool-taint (filter #(= cook-pool-taint (.getKey %)) taints-on-node)]
+    (if (= 1 (count found-cook-pool-taint))
+      (-> found-cook-pool-taint first .getValue)
       "no-pool")))
 
 (declare initialize-node-watch)
@@ -388,7 +389,7 @@
     false
     (let [taints-on-node (or (some-> node .getSpec .getTaints) [])
           other-taints (remove #(contains?
-                                  #{"cook-pool" k8s-deletion-candidate-taint}
+                                  #{cook-pool-taint k8s-deletion-candidate-taint}
                                   (.getKey %))
                                taints-on-node)
           node-name (some-> node .getMetadata .getName)
@@ -506,7 +507,7 @@
   "For a given cook pool name, create the right V1Toleration so that Cook will ignore that cook-pool taint."
   [pool-name]
   (let [^V1Toleration toleration (V1Toleration.)]
-    (.setKey toleration "cook-pool")
+    (.setKey toleration cook-pool-taint)
     (.setValue toleration pool-name)
     (.setOperator toleration "Equal")
     (.setEffect toleration "NoSchedule")
