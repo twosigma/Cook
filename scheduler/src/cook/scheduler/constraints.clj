@@ -23,6 +23,7 @@
             [cook.group :as group]
             [cook.rate-limit :as ratelimit]
             [cook.scheduler.data-locality :as dl]
+            [cook.tools :as util]
             [swiss.arrows :refer :all])
   (:import (com.netflix.fenzo ConstraintEvaluator ConstraintEvaluator$Result TaskRequest TaskTrackerState VirtualMachineCurrentState VirtualMachineLease)
            (java.util Date)))

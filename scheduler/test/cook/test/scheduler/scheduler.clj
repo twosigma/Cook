@@ -26,6 +26,8 @@
             [cook.compute-cluster :as cc]
             [cook.config :as config]
             [cook.datomic :as datomic]
+            [cook.kubernetes.api :as k-api]
+            [cook.kubernetes.compute-cluster :as kcc]
             [cook.plugins.completion :as completion]
             [cook.plugins.definitions :as pd]
             [cook.plugins.launch :as launch-plugin]
@@ -1967,7 +1969,7 @@
                       {:resources [{:name "cpus", :scalar cpus, :type :value-scalar, :role "cook"}
                                    {:name "mem", :scalar mem, :type :value-scalar, :role "cook"}
                                    {:name "gpus", :available-types gpus, :type :value-available-types, :role "cook"}]
-                       :attributes [{:name "source", :text "k8s", :type :value-text, :role "cook"}]
+                       :attributes [{:name "compute-cluster-type", :text "kubernetes", :type :value-text, :role "cook"}]
                        :id {:value (str "id-" (UUID/randomUUID))}
                        :slave-id {:value (str "slave-" (UUID/randomUUID))}
                        :hostname (str "host-" (UUID/randomUUID))

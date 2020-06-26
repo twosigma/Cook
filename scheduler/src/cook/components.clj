@@ -22,16 +22,7 @@
             [compojure.route :as route]
             [congestion.middleware :refer [ip-rate-limit wrap-rate-limit]]
             [congestion.storage :as storage]
-<<<<<<< HEAD
-            [cook.config :refer (config)]
-            [cook.rest.cors :as cors]
-||||||| merged common ancestors
-            [cook.config :refer (config)]
-            [cook.rest.cors :as cors]
-            [cook.curator :as curator]
-=======
             [cook.config :refer [config]]
->>>>>>> origin/master
             [cook.datomic :as datomic]
             ; This explicit require is needed so that mount can see the defstate defined in the cook.plugins.adjustment namespace.
             [cook.plugins.adjustment]
