@@ -62,7 +62,7 @@ requirement. Currently, there are three types of host placement constraints:
 Setting this constraint forces the scheduler to place each job in the group on a different machine
 (based on hostname).
 Example:
-```json
+```
 {"groups": [{"uuid": "410198dd-c171-470e-aeb8-6ffa4e6a2ada",
             "host-placement": {"type": "unique"}}],
  "jobs": [{"uuid": "831836ee-d5c3-47f7-a052-f4c3ce502495",
@@ -80,7 +80,7 @@ of 3 different hosts. If there are 9 jobs in the group, no host may have more th
 3) of the jobs on it. However, the jobs may spread to more than 3 hosts: for example, each job could
 be on a different host.
 Example:
-```json
+```
 {"groups": [{"uuid": "410198dd-c171-470e-aeb8-6ffa4e6a2ada",
             "host-placement": {"type": "balanced",
                                "parameters": {"attribute": "HOSTNAME",
@@ -96,7 +96,7 @@ group will run in hosts that share the same value for the named attribute. For e
 attribute picked is availability zone, all jobs in the group will be run in hosts that share the
 availability zone attribute attribute value, such as 'us-east-1b'.
 Example:
-```json
+```
 {"groups": [{"uuid": "410198dd-c171-470e-aeb8-6ffa4e6a2ada",
             "host-placement": {"type": "attribute-equals",
                                "parameters": {"attribute": "HOSTNAME"}}}],
