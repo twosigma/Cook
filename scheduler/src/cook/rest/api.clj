@@ -28,7 +28,6 @@
             [compojure.core :refer [ANY GET POST routes]]
             [cook.compute-cluster :as cc]
             [cook.config :as config]
-            [cook.rest.cors :as cors]
             [cook.datomic :as datomic]
             [cook.mesos]
             [cook.mesos.reason :as reason]
@@ -923,12 +922,11 @@
         gpus' (or gpus 0)]
     (when (and (pos? gpus') (not gpu-enabled?))
       (throw (ex-info (str "GPU support is not enabled") {})))
+    (when (and (pos? gpus') (not (get-gpu-models-on-pool (config/valid-gpu-models) pool-name)))
+      (throw (ex-info (str "Job requested GPUs but pool " pool-name " does not have any valid GPU models") {})))
     (when (and requested-gpu-model
                (not (contains? (get-gpu-models-on-pool (config/valid-gpu-models) pool-name) requested-gpu-model)))
-      (throw (ex-info (str "The following GPU model is not supported: " requested-gpu-model) {})))
-    (when (and (and (pos? gpus') (not requested-gpu-model))
-               (not (get-gpu-models-on-pool (config/valid-gpu-models) pool-name)))
-      (throw (ex-info (str "Job requested GPUs but pool " pool-name " does not have any valid GPU models") {})))))
+      (throw (ex-info (str "The following GPU model is not supported: " requested-gpu-model) {})))))
 
 (defn validate-and-munge-job
   "Takes the user, the parsed json from the job and a list of the uuids of

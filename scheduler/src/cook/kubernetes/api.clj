@@ -334,16 +334,16 @@
 (defn convert-resource-map
   "Converts a map of Kubernetes resources to a cook resource map {:mem double, :cpus double, :gpus double}"
   [m]
-  {:mem  (if (get m "memory")
-           (-> m (get "memory") to-double (/ memory-multiplier))
-           0.0)
+  {:mem (if (get m "memory")
+          (-> m (get "memory") to-double (/ memory-multiplier))
+          0.0)
    :cpus (if (get m "cpu")
            (-> m (get "cpu") to-double)
            0.0)
    ; Assume that each Kubernetes node and each pod only contains one type of GPU model
    :gpus (if (get m "nvidia.com/gpu")
-          (-> m (get "nvidia.com/gpu") to-int)
-          0)})
+           (-> m (get "nvidia.com/gpu") to-int)
+           0)})
 
 (defn get-node-pool
   "Get the pool for a node. In the case of no pool, return 'no-pool"
@@ -403,7 +403,7 @@
 (defn deep-merge-with
   "Like merge-with, but merges maps recursively, applying the given fn
   only when there's a non-map at a particular level.
-  (deepmerge + {:a {:b {:c 1 :d {:x 1 :y 2}} :e 3} :f 4}
+  (deep-merge-with + {:a {:b {:c 1 :d {:x 1 :y 2}} :e 3} :f 4}
                {:a {:b {:c 2 :d {:z 9} :z 3} :e 100}})
   -> {:a {:b {:z 3, :c 3, :d {:z 9, :x 1, :y 2}}, :e 103}, :f 4}"
   [f & maps]
@@ -418,7 +418,7 @@
   "Given a map from node-name->resource-type->capacity, perform the following operation:
   - if the amount of gpus on the node is positive, set the gpus capacity to model->count
   - if the amount of gpus on the node is 0, set the gpus capacity to an empty map"
-  [gpu-model gpus resource-map]
+  [gpu-model {:keys [gpus] :as resource-map}]
   (if (and gpu-model (pos? gpus))
     (assoc resource-map :gpus {gpu-model (:gpus resource-map)})
     (assoc resource-map :gpus {})))
@@ -427,9 +427,9 @@
   "Given a map from node-name to node, generate a map from node-name->resource-type-><capacity>"
   [node-name->node]
   (pc/map-vals (fn [^V1Node node]
-                 (let [{:keys [gpus] :as resource-map} (-> node .getStatus .getAllocatable convert-resource-map)
+                 (let [resource-map (-> node .getStatus .getAllocatable convert-resource-map)
                        gpu-model (-> node .getMetadata .getLabels (get "gpu-type"))]
-                   (add-gpu-model-to-resource-map gpu-model gpus resource-map)))
+                   (add-gpu-model-to-resource-map gpu-model resource-map)))
                node-name->node))
 
 (defn get-consumption
@@ -447,9 +447,9 @@
                                                                  .getRequests
                                                                  convert-resource-map))
                                                            containers)
-                                   {:keys [gpus] :as resource-map} (apply merge-with + container-requests)
+                                   resource-map (apply merge-with + container-requests)
                                    gpu-model (-> pod .getSpec .getNodeSelector (get "cloud.google.com/gke-accelerator"))]
-                               (add-gpu-model-to-resource-map gpu-model gpus resource-map))))
+                               (add-gpu-model-to-resource-map gpu-model resource-map))))
                       (apply deep-merge-with +)))
                node-name->pods))
 ; see pod->synthesized-pod-state comment for container naming conventions

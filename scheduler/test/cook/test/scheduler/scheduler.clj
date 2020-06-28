@@ -26,7 +26,7 @@
             [cook.compute-cluster :as cc]
             [cook.config :as config]
             [cook.datomic :as datomic]
-            [cook.kubernetes.api :as k-api]
+            [cook.kubernetes.api :as kapi]
             [cook.kubernetes.compute-cluster :as kcc]
             [cook.plugins.completion :as completion]
             [cook.plugins.definitions :as pd]
@@ -99,12 +99,12 @@
 (defn make-k8s-resource
   [name type val]
   (merge
-    {:name   name
-     :type   type
+    {:name name
+     :type type
      :scalar nil
      :ranges []
-     :set    #{}
-     :role   "*"}
+     :set #{}
+     :role "*"}
     (case type
       :value-scalar {:scalar val}
       :value-ranges {:ranges [val]}
@@ -147,12 +147,12 @@
 (defn make-k8s-attribute
   [name type val]
   (merge
-    {:name   name
-     :type   type
+    {:name name
+     :type type
      :scalar nil
      :ranges []
-     :set    #{}
-     :role   "*"}
+     :set #{}
+     :role "*"}
     (case type
       :value-scalar {:scalar val}
       :value-text {:text val}
@@ -188,7 +188,7 @@
 
 (defn make-k8s-offer
   [id framework-id slave-id hostname & {:keys [cpus mem disk ports gpus attrs]
-                                        :or   {cpus 40.0 mem 5000.0 disk 6000.0 ports {:begin 31000 :end 32000} gpus {} attrs {}}}]
+                                        :or {cpus 40.0 mem 5000.0 disk 6000.0 ports {:begin 31000 :end 32000} gpus {} attrs {}}}]
   {:id {:value id}
    :framework-id framework-id
    :slave-id {:value slave-id}
@@ -202,8 +202,6 @@
   (sched/->VirtualMachineLeaseAdapter
     (make-k8s-offer offer-id framework-id "test-slave" host
                     :cpus cpus :mem mem :gpus gpus :disk disk :attrs attrs) 0))
-
-;(.getOffer (make-mesos-vm-offer (make-uuid) "lol" (make-uuid)))
 
 (defn schedule-and-run-jobs
   [conn scheduler offers job-ids]
@@ -493,8 +491,8 @@
         fenzo (make-dummy-scheduler)
         ; Schedule conflicting
         _ (schedule-and-run-jobs conn fenzo [(make-mesos-vm-offer (make-uuid)
-                                                            conflict-host
-                                                            (make-uuid))] [conflicting-job-id])
+                                                                  conflict-host
+                                                                  (make-uuid))] [conflicting-job-id])
         low-priority (map #(d/entity (d/db conn) %) low-priority-ids)
         high-priority (map #(d/entity (d/db conn) %) high-priority-ids)
         considerable (concat high-priority low-priority)]
@@ -713,7 +711,7 @@
 (deftest test-virtual-machine-lease-adapter-mesos
   ;; ensure that the VirtualMachineLeaseAdapter can successfully handle an offer from Mesomatic.
   (let [;; observed offer from Mesomatic API:
-        when (System/currentTimeMillis)
+        now (System/currentTimeMillis)
         offer #mesomatic.types.Offer{:id #mesomatic.types.OfferID{:value "my-offer-id"}
                                      :framework-id #mesomatic.types.FrameworkID{:value "my-framework-id"}
                                      :slave-id #mesomatic.types.SlaveID{:value "my-slave-id"},
@@ -725,12 +723,12 @@
                                                  #mesomatic.types.Resource{:name "gpus", :type :value-scalar :scalar 2.0 :role "*"}],
                                      :attributes [],
                                      :executor-ids []}
-        adapter (sched/->VirtualMachineLeaseAdapter offer when)]
+        adapter (sched/->VirtualMachineLeaseAdapter offer now)]
 
     (is (= (.getId adapter) "my-offer-id"))
     (is (= (.cpuCores adapter) 40.0))
     (is (= (.diskMB adapter) 6000.0))
-    (is (= (.getOfferedTime adapter) when))
+    (is (= (.getOfferedTime adapter) now))
     (is (= (.getVMID adapter) "my-slave-id"))
     (is (= (.hostname adapter) "slave3"))
     (is (= (.memoryMB adapter) 5000.0))
@@ -740,34 +738,28 @@
 
 (deftest test-virtual-machine-lease-adapter-k8s
   ;; ensure that the VirtualMachineLeaseAdapter can successfully handle an offer from Kubernetes.
-  (let [
-        when (System/currentTimeMillis)
-        offer {:id           {:value "my-offer-id"}
+  (let [now (System/currentTimeMillis)
+        offer {:id  {:value "my-offer-id"}
                :framework-id "my-framework-id"
-               :slave-id     {:value "my-slave-id"},
-               :hostname     "slave3",
-               :resources    [{:name "cpus", :type :value-scalar, :scalar 40.0, :ranges [], :set #{}, :role "*"}
-                              {:name "mem", :type :value-scalar, :scalar 5000.0, :ranges [], :set #{}, :role "*"}
-                              {:name "disk", :type :value-scalar, :scalar 6000.0, :ranges [], :set #{}, :role "*"}
-                              {:name "ports", :type :value-ranges, :scalar 0.0, :ranges [{:begin 31000, :end 32000}], :set #{}, :role "*"}
-                              {:name "gpus", :type :value-text->scalar :text->scalar {"nvidia-tesla-p100" 2} :role "*"}],
-               :attributes   [],
+               :slave-id {:value "my-slave-id"},
+               :hostname "slave3",
+               :resources [{:name "cpus", :type :value-scalar, :scalar 40.0, :ranges [], :set #{}, :role "*"}
+                           {:name "mem", :type :value-scalar, :scalar 5000.0, :ranges [], :set #{}, :role "*"}
+                           {:name "disk", :type :value-scalar, :scalar 6000.0, :ranges [], :set #{}, :role "*"}
+                           {:name "ports", :type :value-ranges, :scalar 0.0, :ranges [{:begin 31000, :end 32000}], :set #{}, :role "*"}
+                           {:name "gpus", :type :value-text->scalar :text->scalar {"nvidia-tesla-p100" 2} :role "*"}],
+               :attributes [],
                :executor-ids []}
-        adapter (sched/->VirtualMachineLeaseAdapter offer when)]
+        adapter (sched/->VirtualMachineLeaseAdapter offer now)]
 
     (is (= (.getId adapter) "my-offer-id"))
     (is (= (.cpuCores adapter) 40.0))
     (is (= (.diskMB adapter) 6000.0))
-    (is (= (.getOfferedTime adapter) when))
+    (is (= (.getOfferedTime adapter) now))
     (is (= (.getVMID adapter) "my-slave-id"))
     (is (= (.hostname adapter) "slave3"))
     (is (= (.memoryMB adapter) 5000.0))
     (is (= (.getScalarValues adapter) {"cpus" 40.0 "disk" 6000.0 "mem" 5000.0 "ports" 0.0}))
-    (log/info "######" (reduce (fn [result resource] (if-let [value (:text->scalar resource)]
-                                        (assoc result (:name resource) value)
-                                        result))
-                               {}
-                               (:resources offer)))
     (is (= (-> adapter .portRanges first .getBeg) 31000))
     (is (= (-> adapter .portRanges first .getEnd) 32000))))
 
@@ -902,11 +894,11 @@
         attr-val "east"
         make-attr-offer (fn [cpus]
                           (make-vm-offer framework-id (make-hostname) (make-uuid)
-                                               :cpus cpus :attrs {attr-name attr-val}))
+                                         :cpus cpus :attrs {attr-name attr-val}))
         ; Each non-attr offer can take only one job
         make-non-attr-offers (fn [n]
                                (into [] (repeatedly n #(make-vm-offer framework-id (make-hostname) (make-uuid)
-                                                                            :cpus 1.0 :attrs {attr-name "west"}))))]
+                                                                      :cpus 1.0 :attrs {attr-name "west"}))))]
     (testing "Create group, schedule one job unto VM, then all subsequent jobs must have same attr as the VM."
       (let [scheduler (make-dummy-scheduler)
             group-id (create-dummy-group conn :host-placement
@@ -1335,9 +1327,8 @@
                                      :start-time (tc/to-date (t/ago (t/minutes 30))))
             ;; Straggler handling configured
             straggler-handling {:straggler-handling/type :straggler-handling.type/quantile-deviation
-                                :straggler-handling/parameters
-                                                         {:straggler-handling.quantile-deviation/quantile 0.5
-                                                          :straggler-handling.quantile-deviation/multiplier 2.0}}
+                                :straggler-handling/parameters {:straggler-handling.quantile-deviation/quantile 0.5
+                                                                :straggler-handling.quantile-deviation/multiplier 2.0}}
             group-ent-id (create-dummy-group conn :straggler-handling straggler-handling)
             job-c (create-dummy-job conn :group group-ent-id)
             _ (create-dummy-instance conn job-c :instance-status :instance.status/success
@@ -1510,7 +1501,7 @@
                              (-> (Mockito/when (.getRequest (Mockito/mock TaskAssignmentResult)))
                                  (.thenReturn (sched/make-task-request
                                                 (Object.)
-                                                {:job/uuid     job-uuid
+                                                {:job/uuid job-uuid
                                                  :job/resource (cond-> [{:resource/type :resource.type/mem, :resource/amount 1000.0}
                                                                         {:resource/type :resource.type/cpus, :resource/amount 1.0}]
                                                                        gpus (conj {:resource/type :resource.type/gpus, :resource/amount gpus}))}
@@ -1644,32 +1635,28 @@
                                                                                       :name "job-1"
                                                                                       :ncpus 3
                                                                                       :memory 2048
-                                                                                      :pool "test-pool"
-                                                                                      ))
+                                                                                      :pool "test-pool"))
                                             job-2 (d/entity test-db (create-dummy-job conn
                                                                                       :uuid (get-uuid "job-2")
                                                                                       :group group-ent-id
                                                                                       :name "job-2"
                                                                                       :ncpus 13
                                                                                       :memory 1024
-                                                                                      :pool "test-pool"
-                                                                                      ))
+                                                                                      :pool "test-pool"))
                                             job-3 (d/entity test-db (create-dummy-job conn
                                                                                       :uuid (get-uuid "job-3")
                                                                                       :group group-ent-id
                                                                                       :name "job-3"
                                                                                       :ncpus 7
                                                                                       :memory 4096
-                                                                                      :pool "test-pool"
-                                                                                      ))
+                                                                                      :pool "test-pool"))
                                             job-4 (d/entity test-db (create-dummy-job conn
                                                                                       :uuid (get-uuid "job-4")
                                                                                       :group group-ent-id
                                                                                       :name "job-4"
                                                                                       :ncpus 11
                                                                                       :memory 1024
-                                                                                      :pool "test-pool"
-                                                                                      ))
+                                                                                      :pool "test-pool"))
                                             job-5 (d/entity test-db (create-dummy-job conn
                                                                                       :uuid (get-uuid "job-5")
                                                                                       :group group-ent-id
@@ -1677,9 +1664,8 @@
                                                                                       :ncpus 5
                                                                                       :memory 2048
                                                                                       :gpus 2
-                                                                                      ;:env {"COOK_GPU_MODEL" "nvidia-tesla-p100"}
-                                                                                      :pool "test-pool"
-                                                                                      ))
+                                                                                      :env {"COOK_GPU_MODEL" "nvidia-tesla-p100"}
+                                                                                      :pool "test-pool"))
                                             job-6 (d/entity test-db (create-dummy-job conn
                                                                                       :uuid (get-uuid "job-6")
                                                                                       :group group-ent-id
@@ -1687,9 +1673,7 @@
                                                                                       :ncpus 19
                                                                                       :memory 1024
                                                                                       :gpus 4
-                                                                                      ;:env {"COOK_GPU_MODEL" "nvidia-tesla-p100"}
-                                                                                      :pool "test-pool"
-                                                                                      ))
+                                                                                      :pool "test-pool"))
                                             entity->map (fn [entity]
                                                           (util/job-ent->map entity (d/db conn)))
                                             pool->pending-jobs (->> {"test-pool" [job-1 job-2 job-3 job-4 job-5 job-6]}
@@ -1708,9 +1692,9 @@
                                      (swap! launched-job-names-atom conj (-> task-metadata :task-request :job :job/name)))
                   cook.config/executor-config (constantly executor)
                   config/valid-gpu-models (constantly [{:pool-regex "test-pool"
-                                                        :valid-models {"nvidia-tesla-p100" "nvidia-tesla-k80"}
+                                                        :valid-models #{"nvidia-tesla-p100" "nvidia-tesla-k80"}
                                                         :default-model "nvidia-tesla-p100"}])
-                  k-api/create-namespaced-pod (constantly true)]
+                  kapi/create-namespaced-pod (constantly true)]
       (testing "enough offers for all normal jobs"
         (let [num-considerable 10
               offers [offer-1 offer-2 offer-3]]
@@ -1891,11 +1875,11 @@
 
       (when (not is-mesos-compute-cluster?)
         (testing "k8s gpu offer matching no gpu job"
-        (let [num-considerable 10
-              offers [offer-8]]
-          (is (run-handle-resource-offers! num-considerable offers "test-pool"))
-          (is (= :end-marker (async/<!! offers-chan)))
-          (is (empty? @launched-job-names-atom)))))
+          (let [num-considerable 10
+                offers [offer-8]]
+            (is (run-handle-resource-offers! num-considerable offers "test-pool"))
+            (is (= :end-marker (async/<!! offers-chan)))
+            (is (empty? @launched-job-names-atom)))))
 
       (testing "will not launch jobs on reserved host"
         (let [num-considerable 10
@@ -1934,10 +1918,10 @@
                  (launch-tasks! [_ offer-id tasks]
                    (swap! launched-offer-ids-atom conj (-> offer-id first :value))
                    (swap! launched-job-names-atom concat (map (fn extract-job-id [task]
-                                                              (let [task-name (:name task)
-                                                                    suffix-start (str/index-of task-name (str "_" test-user "_"))]
-                                                                (subs task-name 0 suffix-start)))
-                                                            tasks))))
+                                                                (let [task-name (:name task)
+                                                                      suffix-start (str/index-of task-name (str "_" test-user "_"))]
+                                                                  (subs task-name 0 suffix-start)))
+                                                              tasks))))
         compute-cluster (testutil/fake-test-compute-cluster-with-driver conn uri driver)
         offer-maker (fn [cpus mem gpus]
                       {:resources [{:name "cpus", :scalar cpus, :type :value-scalar, :role "cook"}
@@ -2172,7 +2156,7 @@
   (setup)
   (with-redefs [config/max-over-quota-jobs (fn [] 10)]
     (let [conn (restore-fresh-database! "datomic:mem://test-limit-over-quota-jobs")
-          - (create-pool conn "test-pool")
+          _ (create-pool conn "test-pool")
           job-ids (doall (take 25 (repeatedly #(create-dummy-job conn :pool "test-pool"))))
           db (d/db conn)
           task-ents (->> job-ids

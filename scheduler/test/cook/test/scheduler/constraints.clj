@@ -56,27 +56,27 @@
 (deftest test-gpu-constraint
   (cook.test.testutil/setup)
   (let [framework-id "my-framework-id"
-        k8s-gpu-offer {:id           "my-offer-id"
+        k8s-gpu-offer {:id "my-offer-id"
                        :framework-id framework-id
-                       :slave-id     "my-slave-id",
-                       :hostname     "slave3",
-                       :resources    [{:name "cpus", :type :value-scalar, :scalar 40.0, :ranges [], :set #{}, :role "*"}
-                                      {:name "mem", :type :value-scalar, :scalar 5000.0, :ranges [], :set #{}, :role "*"}
-                                      {:name "disk", :type :value-scalar, :scalar 6000.0, :ranges [], :set #{}, :role "*"}
-                                      {:name "ports", :type :value-ranges, :scalar 0.0, :ranges [{:begin 31000, :end 32000}], :set #{}, :role "*"}
-                                      {:name "gpus", :type :value-text->scalar :text->scalar {"nvidia-tesla-p100" 5} :role "*"}],
-                       :attributes   [{:name "compute-cluster-type", :type :value-text, :text "kubernetes" :role "*"}],
+                       :slave-id "my-slave-id",
+                       :hostname "slave3",
+                       :resources [{:name "cpus", :type :value-scalar, :scalar 40.0, :ranges [], :set #{}, :role "*"}
+                                   {:name "mem", :type :value-scalar, :scalar 5000.0, :ranges [], :set #{}, :role "*"}
+                                   {:name "disk", :type :value-scalar, :scalar 6000.0, :ranges [], :set #{}, :role "*"}
+                                   {:name "ports", :type :value-ranges, :scalar 0.0, :ranges [{:begin 31000, :end 32000}], :set #{}, :role "*"}
+                                   {:name "gpus", :type :value-text->scalar :text->scalar {"nvidia-tesla-p100" 5} :role "*"}],
+                       :attributes [{:name "compute-cluster-type", :type :value-text, :text "kubernetes" :role "*"}],
                        :executor-ids []}
-        k8s-non-gpu-offer {:id           "my-offer-id"
+        k8s-non-gpu-offer {:id "my-offer-id"
                            :framework-id framework-id
-                           :slave-id     "my-slave-id",
-                           :hostname     "slave3",
-                           :resources    [{:name "cpus", :type :value-scalar, :scalar 40.0, :ranges [], :set #{}, :role "*"}
-                                          {:name "mem", :type :value-scalar, :scalar 5000.0, :ranges [], :set #{}, :role "*"}
-                                          {:name "disk", :type :value-scalar, :scalar 6000.0, :ranges [], :set #{}, :role "*"}
-                                          {:name "ports", :type :value-ranges, :scalar 0.0, :ranges [{:begin 31000, :end 32000}], :set #{}, :role "*"}
-                                          {:name "gpus", :type :value-text->scalar :text->scalar {} :role "*"}],
-                           :attributes   [{:name "compute-cluster-type", :type :value-text, :text "kubernetes" :role "*"}],
+                           :slave-id "my-slave-id",
+                           :hostname "slave3",
+                           :resources [{:name "cpus", :type :value-scalar, :scalar 40.0, :ranges [], :set #{}, :role "*"}
+                                       {:name "mem", :type :value-scalar, :scalar 5000.0, :ranges [], :set #{}, :role "*"}
+                                       {:name "disk", :type :value-scalar, :scalar 6000.0, :ranges [], :set #{}, :role "*"}
+                                       {:name "ports", :type :value-ranges, :scalar 0.0, :ranges [{:begin 31000, :end 32000}], :set #{}, :role "*"}
+                                       {:name "gpus", :type :value-text->scalar :text->scalar {} :role "*"}],
+                           :attributes [{:name "compute-cluster-type", :type :value-text, :text "kubernetes" :role "*"}],
                            :executor-ids []}
         uri "datomic:mem://test-gpu-constraint"
         conn (restore-fresh-database! uri)
@@ -190,8 +190,7 @@
                          (getTasksCurrentlyAssigned [_] [])
                          (getCurrAvailableResources [_] (sched/->VirtualMachineLeaseAdapter mesos-non-gpu-job 0)))
                        nil))
-          "non GPU task on non GPU mesos host should succeed")
-      )
+          "non GPU task on non GPU mesos host should succeed"))
     (is (.isSuccessful
           (.evaluate (constraints/fenzoize-job-constraint (constraints/build-gpu-host-constraint non-gpu-job))
                      (sched/make-task-request db non-gpu-job nil)

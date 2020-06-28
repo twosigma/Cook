@@ -603,7 +603,7 @@
   - any one of the keys (pool-regex, valid-models, default-model) is not configured
   - there is no gpu-model in valid-gpu-models matching the configured default"
   []
-  (run! (fn validate-default-model
+  (run! (fn guard-invalid-gpu-config-entry
           [{:keys [default-model pool-regex valid-models] :as entry}]
           (when (not pool-regex)
             (throw (ex-info (str "pool-regex key is missing from config") entry)))

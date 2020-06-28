@@ -104,17 +104,18 @@
     [this _ vm-attributes]
     (job-constraint-evaluate this nil vm-attributes []))
   (job-constraint-evaluate
-    [{:keys [job]} _ vm-attributes target-vm-tasks-assigned]
-    (let [gpu-model-requested (or (-> job util/job-ent->env (get "COOK_GPU_MODEL"))
-                                  (:default-model (gpu-models-config-for-pool (config/valid-gpu-models) (util/job->pool-name job))))
-          gpu-count-requested (-> job util/job-ent->resources :gpus (or 0))
+    [{:keys [job]} _ vm-attributes _]
+    (let [gpu-count-requested (-> job util/job-ent->resources :gpus (or 0))
+          gpu-model-requested (when (pos? gpu-count-requested)
+                                (or (-> job util/job-ent->env (get "COOK_GPU_MODEL"))
+                                  (:default-model (gpu-models-config-for-pool (config/valid-gpu-models) (util/job->pool-name job)))))
           gpu-model->count-available (get vm-attributes "gpus")
-          is-k8s-vm (= (get vm-attributes "compute-cluster-type") "kubernetes")
+          k8s-vm? (= (get vm-attributes "compute-cluster-type") "kubernetes")
           ; k8s VM that supports gpu models but does not have any available gpus will have a gpus map of {"model A" 0 "model B" 0 ...}
           ; k8s VM that does not support gpu models will have an empty gpus map of {}
 
           ; requesting gpus is only being supported for kubernetes-bound jobs
-          passes? (if is-k8s-vm
+          passes? (if k8s-vm?
                     (if (and (pos? gpu-count-requested) gpu-model-requested)
                       (>= (get gpu-model->count-available gpu-model-requested 0) gpu-count-requested)
                       ; if job is kubernetes-bound and does not request gpus, do not schedule it on a VM that supports gpus
@@ -123,11 +124,11 @@
                     (zero? gpu-count-requested))]
       [passes? (when-not passes? (if (not gpu-model-requested)
                                    "Job does not need GPUs, host has GPUs."
-                                   "Job needs GPUs that are not present on host"))])))
+                                   "Job needs GPUs that are not present on host."))])))
 
 (defn build-gpu-host-constraint
   "Constructs a gpu-host-constraint.
-  The constraint prevents a gpu job from running on a host that does not have the correct number and model of gpus (resources should also handle this)
+  The constraint prevents a gpu job from running on a host that does not have the correct number and model of gpus
   and a non-gpu job from running on a gpu host because we consider gpus scarce resources."
   [job]
   (->gpu-host-constraint job))
