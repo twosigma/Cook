@@ -426,7 +426,9 @@
                         #(-> %
                              (update :pool-regex re-pattern)))
                 (not (:default-containers pools))
-                (assoc :default-containers [])))
+                (assoc :default-containers [])
+                (not (:quotas pools))
+                (assoc :quotas [])))
      :api-only? (fnk [[:config {api-only? false}]]
                   api-only?)
      :estimated-completion-constraint (fnk [[:config {estimated-completion-constraint nil}]]
@@ -618,6 +620,10 @@
 (defn task-constraints
   []
   (get-in config [:settings :task-constraints]))
+
+(defn pool-quotas
+  []
+  (get-in config [:settings :pools :quotas]))
 
 (defn offer-matching
   []

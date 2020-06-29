@@ -91,7 +91,11 @@
                                             :docker {:image "python:3.6",
                                                      :network "HOST"
                                                      :force-pull-image false
-                                                     :parameters []}}}]}
+                                                     :parameters []}}}]
+         :quotas [{:pool-regex "k8s-.*"
+                   :quota {:count 10000 :cpus 10000.0 :mem 20000.0}}
+                  {:pool-regex ".*"
+                   :quota {:count 10000 :cpus 10000.0 :mem 20000.0}}]}
  :port #config/env-int "COOK_PORT"
  :ssl {:port #config/env-int "COOK_SSL_PORT"
        :keystore-path #config/env "COOK_KEYSTORE_PATH"
