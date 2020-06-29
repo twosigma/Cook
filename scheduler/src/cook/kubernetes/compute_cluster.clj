@@ -63,6 +63,14 @@
         total-gpu-capacity (total-gpu-resource node-name->capacity)
         total-gpu-consumed (total-gpu-resource node-name->consumed)]
 
+    (log/info "In" compute-cluster-name "compute cluster, capacity:" node-name->capacity)
+    (log/info "In" compute-cluster-name "compute cluster, consumption:" node-name->consumed)
+    (log/info "In" compute-cluster-name "compute cluster, filtering out"
+              (->> node-name->available
+                   (remove #(schedulable-node-filter node-name->node node-name->pods compute-cluster %))
+                   count)
+              "nodes as not schedulable")
+
     (monitor/set-counter! (metrics/counter "capacity-cpus" compute-cluster-name)
                           (total-resource node-name->capacity :cpus))
     (monitor/set-counter! (metrics/counter "capacity-mem" compute-cluster-name)
@@ -76,15 +84,9 @@
         (monitor/set-counter! (metrics/counter (str "capacity-gpu-" gpu-model) compute-cluster-name)
                               (get total-gpu-capacity gpu-model))
         (monitor/set-counter! (metrics/counter (str "consumption-gpu-" gpu-model) compute-cluster-name)
-                              (get total-gpu-consumed gpu-model)))
+                              (get total-gpu-consumed gpu-model 0)))
       gpu-models)
-    (log/info "In" compute-cluster-name "compute cluster, capacity:" node-name->capacity)
-    (log/info "In" compute-cluster-name "compute cluster, consumption:" node-name->consumed)
-    (log/info "In" compute-cluster-name "compute cluster, filtering out"
-              (->> node-name->available
-                   (remove #(schedulable-node-filter node-name->node node-name->pods compute-cluster %))
-                   count)
-              "nodes as not schedulable")
+
     (->> node-name->available
          (filter #(schedulable-node-filter node-name->node node-name->pods compute-cluster %))
          (map (fn [[node-name available]]
