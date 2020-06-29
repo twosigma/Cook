@@ -710,6 +710,7 @@
         resources (V1ResourceRequirements.)
         labels (assoc pod-labels cook-pod-label compute-cluster-name)
         pool-name (some-> job :job/pool :pool/name)
+        ; gpu count is not stored in scalar-requests
         gpus (or (:gpus resources) 0)
         gpu-model-requested (when (pos? gpus)
                               (or (-> job :job/environment get-gpu-model-from-task-metadata)
