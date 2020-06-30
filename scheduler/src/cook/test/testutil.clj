@@ -37,8 +37,8 @@
             [datomic.api :as d :refer [db q]]
             [mount.core :as mount]
             [plumbing.core :refer [mapply]]
-            [qbits.jet.server :refer (run-jetty)]
-            [ring.middleware.params :refer (wrap-params)])
+            [qbits.jet.server :refer [run-jetty]]
+            [ring.middleware.params :refer [wrap-params]])
   (:import (com.netflix.fenzo SimpleAssignmentResult)
            (io.kubernetes.client.custom Quantity Quantity$Format)
            (io.kubernetes.client.openapi.models V1Container V1Node V1NodeSpec V1NodeStatus V1ObjectMeta V1Pod V1PodSpec V1ResourceRequirements V1Taint)
