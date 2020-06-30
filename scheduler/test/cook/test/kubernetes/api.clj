@@ -479,7 +479,7 @@
             metadata (V1ObjectMeta.)
             ^V1NodeSpec spec (V1NodeSpec.)
             ^V1Taint taint (V1Taint.)]
-        (.setKey taint "cook-pool")
+        (.setKey taint api/cook-pool-taint)
         (.setValue taint "a-pool")
         (.setEffect taint "NoSchedule")
         (.addTaintsItem spec taint)
@@ -534,7 +534,7 @@
           all-pods-atom (atom {namespaced-pod-name pod})]
       (with-redefs [api/get-all-pods-in-kubernetes (constantly [pod-list {namespaced-pod-name pod}])
                     api/create-pod-watch (constantly nil)]
-        (api/initialize-pod-watch-helper nil compute-cluster-name all-pods-atom callback-fn))
+        (api/initialize-pod-watch-helper {:name compute-cluster-name :all-pods-atom all-pods-atom :node-name->pod-name->pod (atom {})} callback-fn))
       (is (= 1 (count @namespaced-pod-names-visited)))
       (is (= [namespaced-pod-name] @namespaced-pod-names-visited)))))
 

@@ -59,7 +59,8 @@
                            {:api-client nil
                             :cook-expected-state-map cook-expected-state-map
                             :k8s-actual-state-map (atom {name {:synthesized-state (or custom-test-state {:state k8s-actual-state})
-                                                               :pod (if force-nil-pod? nil pod)}})}
+                                                               :pod (if force-nil-pod? nil pod)}})
+                            :cook-starting-pods (atom {})}
                            name)
                          (:cook-expected-state (get @cook-expected-state-map name {})))))]
 
@@ -131,7 +132,8 @@
         k8s-actual-state-map (atom {})
         mock-cc {:api-client nil
                  :cook-expected-state-map cook-expected-state-map
-                 :k8s-actual-state-map k8s-actual-state-map}
+                 :k8s-actual-state-map k8s-actual-state-map
+                 :cook-starting-pods (atom {})}
         extract-cook-expected-state (fn []
                                       (:cook-expected-state (get @cook-expected-state-map pod-name {})))
         count-kill-pod (atom 0)]
@@ -174,7 +176,8 @@
                        (controller/process
                          {:api-client nil
                           :cook-expected-state-map cook-expected-state-map
-                          :k8s-actual-state-map (atom {name {:synthesized-state {:state k8s-actual-state} :pod nil}})}
+                          :k8s-actual-state-map (atom {name {:synthesized-state {:state k8s-actual-state} :pod nil}})
+                          :cook-starting-pods (atom {})}
                          name)
                        (:cook-expected-state (get @cook-expected-state-map name {}))))
         count-delete-pod (atom 0)]

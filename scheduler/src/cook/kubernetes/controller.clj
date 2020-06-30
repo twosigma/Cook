@@ -52,6 +52,12 @@
     (canonicalize-cook-expected-state old-state)
     (canonicalize-cook-expected-state new-state)))
 
+(defn starting-pod?
+  "Given the expected-state-dict, is this a starting pod?"
+  [{:keys [cook-expected-state launch-pod]}]
+  (and (= :cook-expected-state/starting cook-expected-state)
+       (some? (:pod launch-pod))))
+
 (defn k8s-actual-state-equivalent?
   "Is the old and new state equivalent?"
   [old-state new-state]
@@ -355,10 +361,17 @@
   (kill-pod-in-weird-state compute-cluster pod-name
                            (handle-pod-completed compute-cluster pod-name k8s-actual-state-dict) k8s-actual-state-dict))
 
+(defn update-cook-starting-pods-cache
+  "Update a cache of starting pods."
+  [cook-starting-pods pod-name new-cook-expected-state-dict]
+  (if (starting-pod? new-cook-expected-state-dict)
+    (update-or-delete! cook-starting-pods pod-name new-cook-expected-state-dict)
+    (update-or-delete! cook-starting-pods pod-name nil)))
+
 (defn process
   "Visit this pod-name, processing the new level-state. Returns the new cook expected state. Returns
   empty dictionary to indicate that the result should be deleted. NOTE: Must be invoked with the lock."
-  [{:keys [api-client k8s-actual-state-map cook-expected-state-map name] :as compute-cluster} ^String pod-name]
+  [{:keys [api-client k8s-actual-state-map cook-expected-state-map cook-starting-pods name] :as compute-cluster} ^String pod-name]
   (timers/time! (metrics/timer "controller-process" name)
     (loop [{:keys [cook-expected-state waiting-metric-timer] :as cook-expected-state-dict} (get @cook-expected-state-map pod-name)
            {:keys [synthesized-state pod] :as k8s-actual-state-dict} (get @k8s-actual-state-map pod-name)]
@@ -562,6 +575,7 @@
         ; However, the state may have changed (e.g., metric changes) and we want to
         ; capture that change.
         (update-or-delete! cook-expected-state-map pod-name new-cook-expected-state-dict)
+        (update-cook-starting-pods-cache cook-starting-pods pod-name new-cook-expected-state-dict)
         (when-not (cook-expected-state-equivalent? cook-expected-state-dict new-cook-expected-state-dict)
           (log/info "In compute cluster" name ", processing pod" pod-name "after cook-expected-state-change")
           (recur new-cook-expected-state-dict k8s-actual-state-dict))))))
@@ -617,7 +631,7 @@
   "Update the cook expected state. Include some business logic to e.g., not
    change a state to the same value more than once. Marks any state changes.
    Also has a lattice of state. Called externally and from state machine."
-  [{:keys [cook-expected-state-map name] :as compute-cluster} pod-name new-cook-expected-state-dict]
+  [{:keys [cook-expected-state-map name cook-starting-pods] :as compute-cluster} pod-name new-cook-expected-state-dict]
   (timers/time!
     (metrics/timer "update-cook-expected-state" name)
     (with-process-lock
@@ -629,17 +643,15 @@
             old-pod (:launch-pod old-state)
             new-expected-state-dict-merged (merge {:launch-pod old-pod} new-cook-expected-state-dict)]
         (when-not (cook-expected-state-equivalent? new-expected-state-dict-merged old-state)
+          (update-cook-starting-pods-cache cook-starting-pods pod-name new-cook-expected-state-dict)
           (swap! cook-expected-state-map assoc pod-name new-expected-state-dict-merged)
           (process compute-cluster pod-name))))))
 
 (defn starting-namespaced-pod-name->pod
   "Returns a map from {:namespace pod-namespace :name pod-name}->pod for all instances that we're attempting to send to
    kubernetes to start."
-  [{:keys [cook-expected-state-map] :as compute-cluster}]
-  (->> @cook-expected-state-map
-       (filter (fn [[_ {:keys [cook-expected-state launch-pod]}]]
-                 (and (= :cook-expected-state/starting cook-expected-state)
-                      (some? (:pod launch-pod)))))
+  [{:keys [cook-expected-state-map cook-starting-pods] :as compute-cluster}]
+  (->> @cook-starting-pods
        (map (fn [[_ {:keys [launch-pod]}]]
               (let [{:keys [pod]} launch-pod]
                 [(api/get-pod-namespaced-key pod) pod])))

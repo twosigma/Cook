@@ -941,6 +941,7 @@
 (counters/defcounter [cook-mesos scheduler offer-chan-depth])
 
 (defn make-offer-handler
+  "Make the core scheduling loop for a pool"
   [conn fenzo pool-name->pending-jobs-atom agent-attributes-cache max-considerable scaleback
    floor-iterations-before-warn floor-iterations-before-reset trigger-chan rebalancer-reservation-atom
    mesos-run-as-user pool-name compute-clusters]
@@ -1557,6 +1558,7 @@
   (persist-mea-culpa-failure-limit! conn mea-culpa-failure-limit)
 
   (let [{:keys [match-trigger-chan rank-trigger-chan]} trigger-chans
+        match-trigger-chan-mult (async/mult match-trigger-chan)
         pools (pool/all-pools (d/db conn))
         pools' (if (-> pools count pos?)
                  pools
@@ -1571,7 +1573,8 @@
                         (make-offer-handler
                           conn fenzo pool-name->pending-jobs-atom agent-attributes-cache fenzo-max-jobs-considered
                           fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset
-                          match-trigger-chan rebalancer-reservation-atom mesos-run-as-user pool-name compute-clusters)]
+                          (async/tap match-trigger-chan-mult (async/chan (async/sliding-buffer 1)))
+                          rebalancer-reservation-atom mesos-run-as-user pool-name compute-clusters)]
                     (-> m
                         (assoc-in [:pool->resources-atom pool-name] resources-atom))))
                 {}

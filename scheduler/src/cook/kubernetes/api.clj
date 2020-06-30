@@ -29,6 +29,7 @@
 (def cook-pod-label "twosigma.com/cook-scheduler-job")
 (def cook-synthetic-pod-job-uuid-label "twosigma.com/cook-scheduler-synthetic-pod-job-uuid")
 (def cook-pool-label "cook-pool")
+(def cook-pool-taint "cook-pool")
 (def cook-sandbox-volume-name "cook-sandbox-volume")
 (def cook-job-pod-priority-class "cook-workload")
 (def cook-synthetic-pod-priority-class "synthetic-pod")
@@ -69,15 +70,11 @@
   [^V1Pod pod compute-cluster-name]
   (= compute-cluster-name (some-> pod .getMetadata .getLabels (.get cook-pod-label))))
 
-(defn make-atom-updater
-  "Given a state atom, returns a callback that updates that state-atom when called with a key, prev item, and item."
-  [state-atom]
-  (fn
-    [key prev-item item]
-    (cond
-      (and (nil? prev-item) (not (nil? item))) (swap! state-atom (fn [m] (assoc m key item)))
-      (and (not (nil? prev-item)) (not (nil? item))) (swap! state-atom (fn [m] (assoc m key item)))
-      (and (not (nil? prev-item)) (nil? item)) (swap! state-atom (fn [m] (dissoc m key))))))
+(defn pod->node-name
+  "Given a pod, returns the node name on the pod spec"
+  [^V1Pod pod]
+  (or (some-> pod .getSpec .getNodeName)
+      (some-> pod .getSpec .getNodeSelector (get k8s-hostname-label))))
 
 (defn cook-pod-callback-wrap
   "A special wrapping function that, given a callback, key, prev-item, and item, will invoke the callback only
@@ -163,11 +160,11 @@
 (declare initialize-pod-watch)
 (defn ^Callable initialize-pod-watch-helper
   "Help creating pod watch. Returns a new watch Callable"
-  [^ApiClient api-client compute-cluster-name all-pods-atom cook-pod-callback]
+  [{:keys [^ApiClient api-client all-pods-atom node-name->pod-name->pod] compute-cluster-name :name :as compute-cluster} cook-pod-callback]
   (let [[current-pods namespaced-pod-name->pod] (get-all-pods-in-kubernetes api-client compute-cluster-name)
-        ; 2 callbacks;
         callbacks
-        [(make-atom-updater all-pods-atom) ; Update the set of all pods.
+        [(util/make-atom-updater all-pods-atom) ; Update the set of all pods.
+         (util/make-nested-atom-updater node-name->pod-name->pod pod->node-name get-pod-namespaced-key)
          (partial cook-pod-callback-wrap cook-pod-callback compute-cluster-name)] ; Invoke the cook-pod-callback if its a cook pod.
         old-all-pods @all-pods-atom]
     (log/info "In" compute-cluster-name "compute cluster, pod watch processing pods:" (keys namespaced-pod-name->pod))
@@ -198,18 +195,18 @@
                 (log/error e "In" compute-cluster-name "compute cluster, error during pod watch"))))
           (finally
             (.close watch)
-            (initialize-pod-watch api-client compute-cluster-name all-pods-atom cook-pod-callback)))))))
+            (initialize-pod-watch compute-cluster cook-pod-callback)))))))
 
 (defn initialize-pod-watch
   "Initialize the pod watch. This fills all-pods-atom with data and invokes the callback on pod changes."
-  [^ApiClient api-client compute-cluster-name all-pods-atom cook-pod-callback]
+  [{compute-cluster-name :name :as compute-cluster} cook-pod-callback]
   (log/info "In" compute-cluster-name "compute cluster, initializing pod watch")
   ; We'll iterate trying to connect to k8s until the initialize-pod-watch-helper returns a watch function.
   (let [{:keys [reconnect-delay-ms]} (config/kubernetes)
         tmpfn (fn []
                 (try
                   (log/info "In" compute-cluster-name "compute cluster, initializing pod watch helper")
-                  (initialize-pod-watch-helper api-client compute-cluster-name all-pods-atom cook-pod-callback)
+                  (initialize-pod-watch-helper compute-cluster cook-pod-callback)
                   (catch Exception e
                     (log/error e "Error during pod watch initial setup of looking at pods for" compute-cluster-name
                                "and sleeping" reconnect-delay-ms "milliseconds before reconnect")
@@ -218,12 +215,27 @@
         ^Callable first-success (->> tmpfn repeatedly (some identity))]
     (.submit kubernetes-executor ^Callable first-success)))
 
+(defn node->node-name
+  "Given a V1Node, return the name of the node"
+  [^V1Node node]
+  (-> node .getMetadata .getName))
+
+(defn get-node-pool
+  "Get the pool for a node. In the case of no pool, return 'no-pool"
+  [^V1Node node]
+  ; In the case of nil, we have taints-on-node == [], and we'll map to no-pool.
+  (let [taints-on-node (or (some-> node .getSpec .getTaints) [])
+        found-cook-pool-taint (filter #(= cook-pool-taint (.getKey %)) taints-on-node)]
+    (if (= 1 (count found-cook-pool-taint))
+      (-> found-cook-pool-taint first .getValue)
+      "no-pool")))
+
 (declare initialize-node-watch)
 (defn initialize-node-watch-helper
   "Help creating node watch. Returns a new watch Callable"
-  [^ApiClient api-client compute-cluster-name current-nodes-atom]
+  [{:keys [^ApiClient api-client current-nodes-atom pool->node-name->node] compute-cluster-name :name :as compute-cluster}]
   (let [api (CoreV1Api. api-client)
-        current-nodes
+        current-nodes-raw
         (timers/time! (metrics/timer "get-all-nodes" compute-cluster-name)
           (.listNode api
                      nil ; includeUninitialized
@@ -236,32 +248,46 @@
                      nil ; timeoutSeconds
                      nil ; watch
                      ))
-        node-name->node (pc/map-from-vals (fn [^V1Node node]
-                                            (-> node .getMetadata .getName))
-                                          (.getItems current-nodes))]
-    (reset! current-nodes-atom node-name->node)
-    (let [watch (WatchHelper/createNodeWatch api-client (-> current-nodes .getMetadata .getResourceVersion))]
+        current-nodes (pc/map-from-vals node->node-name (.getItems current-nodes-raw))
+        callbacks
+        [(util/make-atom-updater current-nodes-atom) ; Update the set of all pods.
+         (util/make-nested-atom-updater pool->node-name->node get-node-pool node->node-name)]
+         old-current-nodes @current-nodes-atom]
+    (log/info "In" compute-cluster-name "compute cluster, node watch processing nodes:" (keys @current-nodes-atom))
+    ; We want to process all changes through the callback process.
+    ; So compute the delta between the old and new and process those via the callbacks.
+    ; Note as a side effect, the callbacks mutate current-nodes-atom
+    (doseq [node-name (set/union (set (keys current-nodes)) (set (keys old-current-nodes)))]
+      (log/info "In" compute-cluster-name "compute cluster, node watch doing (startup) callback for" node-name)
+      (doseq [callback callbacks]
+        (try
+          (callback node-name (get old-current-nodes node-name) (get current-nodes node-name))
+          (catch Exception e
+            (log/error e "In" compute-cluster-name
+                       "compute cluster, node watch error while processing callback for" node-name)))))
+
+    (let [watch (WatchHelper/createNodeWatch api-client (-> current-nodes-raw .getMetadata .getResourceVersion))]
       (fn []
         (try
           (log/info "In" compute-cluster-name "compute cluster, handling node watch updates")
-          (handle-watch-updates current-nodes-atom watch (fn [n] (-> n .getMetadata .getName))
-                                [(make-atom-updater current-nodes-atom)]) ; Update the set of all nodes.
+          (handle-watch-updates current-nodes-atom watch node->node-name
+                                callbacks) ; Update the set of all nodes.
           (catch Exception e
             (log/warn e "Error during node watch for compute cluster" compute-cluster-name))
           (finally
             (.close watch)
-            (initialize-node-watch api-client compute-cluster-name current-nodes-atom)))))))
+            (initialize-node-watch compute-cluster)))))))
 
 (defn initialize-node-watch
   "Initialize the node watch. This fills current-nodes-atom with data and invokes the callback on pod changes."
-  [^ApiClient api-client compute-cluster-name current-nodes-atom]
+  [{:keys [^ApiClient api-client current-nodes-atom] compute-cluster-name :name :as compute-cluster}]
   (log/info "In" compute-cluster-name "compute cluster, initializing node watch")
   ; We'll iterate trying to connect to k8s until the initialize-node-watch-helper returns a watch function.
   (let [{:keys [reconnect-delay-ms]} (config/kubernetes)
         tmpfn (fn []
                 (try
                   (log/info "In" compute-cluster-name "compute cluster, initializing node watch helper")
-                  (initialize-node-watch-helper api-client compute-cluster-name current-nodes-atom)
+                  (initialize-node-watch-helper compute-cluster)
                   (catch Exception e
                     (log/error e "Error during node watch initial setup of looking at nodes for" compute-cluster-name
                                "and sleeping" reconnect-delay-ms "milliseconds before reconnect")
@@ -345,21 +371,7 @@
            (-> m (get "nvidia.com/gpu") to-int)
            0)})
 
-(defn get-node-pool
-  "Get the pool for a node. In the case of no pool, return 'no-pool"
-  [^V1Node node]
-  ; In the case of nil, we have taints-on-node == [], and we'll map to no-pool.
-  (let [taints-on-node (or (some-> node .getSpec .getTaints) [])
-        cook-pool-taint (filter #(= "cook-pool" (.getKey %)) taints-on-node)]
-    (if (= 1 (count cook-pool-taint))
-      (-> cook-pool-taint first .getValue)
-      "no-pool")))
 
-(defn pod->node-name
-  "Given a pod, returns the node name on the pod spec"
-  [^V1Pod pod]
-  (or (some-> pod .getSpec .getNodeName)
-      (some-> pod .getSpec .getNodeSelector (get k8s-hostname-label))))
 
 (defn pods->node-name->pods
   "Given a seq of pods, create a map of node names to pods"
@@ -381,7 +393,7 @@
     false
     (let [taints-on-node (or (some-> node .getSpec .getTaints) [])
           other-taints (remove #(contains?
-                                  #{"cook-pool" k8s-deletion-candidate-taint "nvidia.com/gpu"}
+                                  #{cook-pool-taint k8s-deletion-candidate-taint "nvidia.com/gpu"}
                                   (.getKey %))
                                taints-on-node)
           node-name (some-> node .getMetadata .getName)
@@ -524,7 +536,7 @@
   "For a given cook pool name, create the right V1Toleration so that Cook will ignore that cook-pool taint."
   [pool-name]
   (let [^V1Toleration toleration (V1Toleration.)]
-    (.setKey toleration "cook-pool")
+    (.setKey toleration cook-pool-taint)
     (.setValue toleration pool-name)
     (.setOperator toleration "Equal")
     (.setEffect toleration "NoSchedule")
