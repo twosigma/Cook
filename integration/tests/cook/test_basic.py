@@ -1880,8 +1880,8 @@ class CookTest(util.CookTest):
                     gpus=1,
                     env={'COOK_GPU_MODEL': 'nvidia-tesla-p100'})
                 self.assertEqual(resp.status_code, 400)
-                self.assertTrue("The following GPU model is not supported: nvidia-tesla-p100" in resp.text,
-                                msg=resp.content)
+                self.assertTrue(f"Job requested GPUs but pool {default_pool} does not have any valid GPU models" in resp.text,
+                    msg=resp.content)
             else:
                 # Check if there are any active pools
                 active_pools, _ = util.active_pools(self.cook_url)
@@ -1900,8 +1900,8 @@ class CookTest(util.CookTest):
                             gpus=1,
                             env={'COOK_GPU_MODEL': 'nvidia-tesla-p100'})
                         self.assertEqual(resp.status_code, 400)
-                        self.assertTrue("The following GPU model is not supported: nvidia-tesla-p100" in resp.text,
-                                        msg=resp.content)
+                        self.assertTrue(f"Job requested GPUs but pool {pool_name} does not have any valid GPU models" in resp.text,
+                            msg=resp.content)
                         job_uuid, resp = util.submit_job(
                             self.cook_url,
                             pool=pool_name,
@@ -1924,8 +1924,6 @@ class CookTest(util.CookTest):
 
                         # Job submission with default GPU model
                         self.logger.info(f'Submitting to {pool}')
-                        expected_model = [ii["default-model"] for ii in valid_gpu_models_config_map if
-                                               re.match(ii["pool-regex"], pool_name)]
                         job_uuid, resp = util.submit_job(
                             self.cook_url,
                             pool=pool_name,
