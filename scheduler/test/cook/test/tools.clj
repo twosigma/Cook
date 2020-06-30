@@ -826,3 +826,102 @@
                         :count 1}}}
            (util/pool->user->usage (d/db conn))))))
 
+(deftest test-atom-updater
+  (let [map-atom (atom {})
+        testfn (util/make-atom-updater map-atom)]
+    (testfn :a nil 1)
+    (is (= {:a 1} @map-atom))
+    (testfn :b nil 2)
+    (is (= {:a 1 :b 2} @map-atom))
+    (testfn :b 2 3)
+    (is (= {:a 1 :b 3} @map-atom))
+    (testfn :a 1 nil)
+    (is (= {:b 3} @map-atom))
+    (testfn :b 3 nil)
+    (is (= {} @map-atom))))
+
+(deftest test-dissoc-in
+  (is (= {:a {:c 3} :d {:e 5 :f 6}} (util/dissoc-in {:a {:b 2 :c 3} :d {:e 5 :f 6}} [:a :b])))
+  (is (= {:a {:b 2} :d {:e 5 :f 6}} (util/dissoc-in {:a {:b 2 :c 3} :d {:e 5 :f 6}} [:a :c])))
+  (is (= {:a {:b 2 :c 3} :d {:e 5}} (util/dissoc-in {:a {:b 2 :c 3} :d {:e 5 :f 6}} [:d :f])))
+  ; These keys aren't in it.
+  (is (= {:a {:b 2 :c 3} :d {:e 5 :f 6}} (util/dissoc-in {:a {:b 2 :c 3} :d {:e 5 :f 6}} [:a :d])))
+  (is (= {:a {:b 2 :c 3} :d {:e 5 :f 6}} (util/dissoc-in {:a {:b 2 :c 3} :d {:e 5 :f 6}} [:b :c])))
+
+  ;; Now try deleting from smaller dictionaries and make sure it deletes empty leafs.
+  (is (= {:d {:e 5 :f 6}} (util/dissoc-in {:a {:b 2} :d {:e 5 :f 6}} [:a :b])))
+  (is (= {:a {:b 2}} (util/dissoc-in {:a {:b 2} :d {:e 5}} [:d :e])))
+  (is (= {} (util/dissoc-in {:a {:b 2}} [:a :b])))
+
+  ;; Check for nil safety.
+  (is (= {:a {:b 2 :c 3} nil {nil 6}} (util/dissoc-in {:a {:b 2 :c 3} nil {:e 5 nil 6}} [nil :e])))
+  (is (= {:a {:b 2 :c 3} nil {:e 5}} (util/dissoc-in {:a {:b 2 :c 3} nil {:e 5 nil 6}} [nil nil])))
+  (is (= {:a {:b 2} nil {:e 5 nil 6}} (util/dissoc-in {:a {:b 2 nil 3} nil {:e 5 nil 6}} [:a nil])))
+  (is (= {:a {nil 3} nil {:e 5 nil 6}} (util/dissoc-in {:a {:b 2 nil 3} nil {:e 5 nil 6}} [:a :b])))
+
+  (is (= {:a {:b 2} :d {:e 5 :f 6}} (util/dissoc-in {:a {:b 2} :d {:e 5 :f 6}} [nil :b])))
+  (is (= {:a {:b 2} :d {:e 5 :f 6}} (util/dissoc-in {:a {:b 2} :d {:e 5 :f 6}} [:nil nil])))
+  (is (= {:d {:e 5 :f 6}} (util/dissoc-in {nil {:b 2} :d {:e 5 :f 6}} [nil :b])))
+  (is (= {:a {:b 2}} (util/dissoc-in {:a {:b 2} :d {nil 5}} [:d nil]))))
+
+(deftest test-make-nested-atom-updater
+  (let [map-atom (atom {})
+        testfn (util/make-nested-atom-updater map-atom :k1 :k2)]
+    (testing "Inserting"
+      (let [d1 {:k1 :a :k2 :b}
+            _ (testfn nil nil d1)
+            _ (is (= {:a {:b d1}} @map-atom))
+            d2 {:k1 :a :k2 :c}
+            _ (testfn nil nil d2)
+            _ (is (= {:a {:b d1 :c d2}} @map-atom))
+            d3 {:k1 :e :k2 :f}
+            _ (testfn nil nil d3)
+            _ (is (= {:a {:b d1 :c d2} :e {:f d3}} @map-atom))]))
+    (testing "Deleting"
+      (let [d1 {:k1 :a :k2 :b}
+            d2 {:k1 :a :k2 :c}
+            d3 {:k1 :e :k2 :f}
+            _ (testfn nil d1 nil)
+            _ (is (= {:a {:c d2} :e {:f d3}} @map-atom))
+            _ (testfn nil d2 nil)
+            _ (is (= {:e {:f d3}} @map-atom))
+            _ (testfn nil d3 nil)
+            _ (is (= {} @map-atom))]))
+
+    (testing "Inserting nil safe"
+      (let [d1 {:k1 :a :k2 nil}
+            _ (testfn nil nil d1)
+            _ (is (= {:a {nil d1}} @map-atom))
+            d2 {:k1 :a :k2 :c}
+            _ (testfn nil nil d2)
+            _ (is (= {:a {nil d1 :c d2}} @map-atom))
+            d3 {:k1 nil :k2 :f}
+            _ (testfn nil nil d3)
+            _ (is (= {:a {nil d1 :c d2} nil {:f d3}} @map-atom))]))
+
+    (testing "Deleting nil safe"
+      (let [d2 {:k1 :a :k2 :c}
+            d1 {:k1 :a :k2 nil}
+            d3 {:k1 nil :k2 :f}
+            _ (testfn nil d1 nil)
+            _ (is (= {:a {:c d2} nil {:f d3}} @map-atom))
+            _ (testfn nil d2 nil)
+            _ (is (= {nil {:f d3}} @map-atom))
+            _ (testfn nil d3 nil)
+            _ (is (= {} @map-atom))]))
+
+    (testing "Updating"
+      (let [d1-1 {:k1 :a :k2 :b :foo 1}
+            _ (testfn nil nil d1-1)
+            _ (is (= {:a {:b d1-1}} @map-atom))
+            ; Change the value, but neither key.
+            d1-2 {:k1 :a :k2 :b :foo 2}
+            _ (testfn nil d1-1 d1-2)
+            _ (is (= {:a {:b d1-2}} @map-atom))
+            ; Change the key2
+            d2 {:k1 :a :k2 :c}
+            _ (testfn nil d1-1 d2)
+            _ (is (= {:a {:c d2}} @map-atom))
+            d3 {:k1 :e :k2 :f}
+            _ (testfn nil d2 d3)
+            _ (is (= {:e {:f d3}} @map-atom))]))))

@@ -532,7 +532,7 @@
                                                       Quantity$Format/DECIMAL_SI)))
     (when pool
       (let [^V1Taint taint (V1Taint.)]
-        (.setKey taint "cook-pool")
+        (.setKey taint kapi/cook-pool-taint)
         (.setValue taint pool)
         (.setEffect taint "NoSchedule")
         (-> spec (.addTaintsItem taint))
@@ -555,7 +555,10 @@
                                     nil ; exit-code-syncer-state
                                     (atom namespaced-pod-name->pod) ; all-pods-atom
                                     (atom {}) ; current-nodes-atom
+                                    (atom {}) ; pool->node-name->node
+                                    (atom {}) ; node-name->pod-name->pod
                                     (atom {}) ; cook-expected-state-map
+                                    (atom {}) ; cook-starting-pods
                                     (atom {}) ; k8s-actual-state-map
                                     (atom nil) ; pool->fenzo-atom
                                     {:kind :per-user} ; namespace-config
