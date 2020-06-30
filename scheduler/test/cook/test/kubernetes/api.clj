@@ -503,7 +503,22 @@
         (.setNamespace metadata "cook")
         (.setMetadata node metadata)
         (.setSpec node spec)
-        (is (not (api/node-schedulable? node 30 nil ["blocklist-1"])))))))
+        (is (not (api/node-schedulable? node 30 nil ["blocklist-1"])))))
+    (testing "GPU Taint"
+      (let [^V1Node node (V1Node.)
+            metadata (V1ObjectMeta.)
+            ^V1NodeSpec spec (V1NodeSpec.)
+            ^V1Taint taint (V1Taint.)]
+        (.setKey taint "nvidia.com/gpu")
+        (.setValue taint "present")
+        (.setEffect taint "NoSchedule")
+        (.addTaintsItem spec taint)
+
+        (.setName metadata "NodeName")
+        (.setNamespace metadata "cook")
+        (.setMetadata node metadata)
+        (.setSpec node spec)
+        (is (api/node-schedulable? node 30 nil ["blocklist-1"]))))))
 
 (deftest test-initialize-pod-watch-helper
   (testing "only processes each pod once"

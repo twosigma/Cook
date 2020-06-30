@@ -381,7 +381,7 @@
     false
     (let [taints-on-node (or (some-> node .getSpec .getTaints) [])
           other-taints (remove #(contains?
-                                  #{"cook-pool" k8s-deletion-candidate-taint}
+                                  #{"cook-pool" k8s-deletion-candidate-taint "nvidia.com/gpu"}
                                   (.getKey %))
                                taints-on-node)
           node-name (some-> node .getMetadata .getName)
