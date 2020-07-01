@@ -52,7 +52,7 @@ class JobClient:
         provided, then the client will make requests using this session.
         Otherwise, the top-level ``requests`` functions will be used.
     :type auth: requests.Session, optional
-    :param \*\*kwargs: Kwargs to provide to the request functions. If a session
+    :param kwargs: Kwargs to provide to the request functions. If a session
         was provided, then these options will take precedence over options
         specified there. For example, if ``auth`` is set in both ``session``
         and ``kwargs``, then the value from ``kwargs`` will be used. However,

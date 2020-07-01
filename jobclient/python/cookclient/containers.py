@@ -3,6 +3,7 @@ import json
 from copy import deepcopy
 from typing import Dict, List, Optional
 
+
 class Volume:
     """A volume that can be mounted on a container.
 
@@ -39,9 +40,9 @@ class Volume:
 
     def to_dict(self) -> dict:
         """Generate this volume's ``dict`` representation."""
-        d = {'host_path': self.host_path}
+        d = {'host-path': self.host_path}
         if self.container_path is not None:
-            d['container_path'] = self.container_path
+            d['container-path'] = self.container_path
         if self.mode is not None:
             d['mode'] = self.mode
         return d
@@ -50,12 +51,17 @@ class Volume:
     def from_dict(cls, d: dict) -> 'Volume':
         """Create a volume from its ``dict`` representation."""
         d = deepcopy(d)
+        # kebab-case to snake_case
+        d['host_path'] = d['host-path']
+        del d['host-path']
+        d['container_path'] = d['container-path']
+        del d['container-path']
         return cls(**d)
 
 
 class AbstractContainer:
     """Base class for containers to be used on Cook.
-    
+
     Implementors must override the ``kind`` property, which will help indicate
     which subclass of the container to use when working with this class's
     ``dict`` representation.
@@ -78,10 +84,30 @@ class AbstractContainer:
             d['volumes'] = list(map(Volume.to_dict, self.volumes))
         return d
 
+    @staticmethod
+    def from_dict(d: dict) -> 'AbstractContainer':
+        d = deepcopy(d)
+
+        d['volumes'] = list(map(Volume.from_dict, d['volumes']))
+
+        # Figure out which type we should create
+        clsname = d['type']
+        cls = _CONTAINER_TYPES[clsname]
+
+        # Flatten the dict a bit
+        d.update(d[clsname])
+        del d[clsname]
+
+        # Don't need type anymore
+        del d['type']
+
+        # Complete from subclass
+        return cls.from_dict(d)
+
 
 class DockerPortMapping:
     """A Docker port mapping.
-    
+
     :param host_port: Port to open on the host machine.
     :type host_port: int
     :param container_port: Port which will be open inside the container.
@@ -114,12 +140,24 @@ class DockerPortMapping:
 
     def to_dict(self) -> dict:
         d = {
-            'host_port': self.host_port,
-            'container_port': self.container_port
+            'host-port': self.host_port,
+            'container-port': self.container_port
         }
         if self.protocol is not None:
             d['protocol'] = self.protocol
         return d
+
+    @classmethod
+    def from_dict(cls, d: dict) -> 'DockerPortMapping':
+        d = deepcopy(d)
+
+        # kebab-case to snake_case
+        d['host_port'] = d['host-port']
+        del d['host-port']
+        d['container_port'] = d['container-port']
+        del d['container-port']
+
+        return cls(**d)
 
 
 class DockerContainer(AbstractContainer):
@@ -180,13 +218,35 @@ class DockerContainer(AbstractContainer):
         if self.network is not None:
             docker['network'] = self.network
         if self.force_pull_image is not None:
-            docker['force_pull_image'] = self.force_pull_image
+            docker['force-pull-image'] = self.force_pull_image
         if self.parameters is not None:
             docker['parameters'] = self.parameters
         if self.port_mapping is not None:
-            docker['port_mapping'] = list(map(DockerPortMapping.to_dict,
-                                               self.port_mapping))
+            docker['port-mapping'] = list(map(DockerPortMapping.to_dict,
+                                              self.port_mapping))
 
         d['docker'] = docker
 
         return d
+
+    @classmethod
+    def from_dict(cls, d: dict) -> 'DockerContainer':
+        """Parse a Container from its ``dict`` representation."""
+        # NOTE: We don't deep copy d here because that's already been done for
+        #       us by AbstractContainer.from_dict
+
+        # kebab-case to snake_case
+        d['force_pull_image'] = d['force-pull-image']
+        del d['force-pull-image']
+        d['port_mapping'] = d['port-mapping']
+        del d['port-mapping']
+
+        d['port_mapping'] = list(map(DockerPortMapping.from_dict,
+                                     d['port_mapping']))
+
+        return cls(**d)
+
+
+_CONTAINER_TYPES = {
+    'docker': DockerContainer
+}
