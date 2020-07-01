@@ -135,8 +135,8 @@
   "Throws if either of the following is true:
   - any one of the keys (pool-regex, valid-models, default-model) is not configured
   - there is no gpu-model in valid-gpu-models matching the configured default"
-  [pools]
-  (doseq [{:keys [default-model pool-regex valid-models] :as entry} (:valid-gpu-models pools)]
+  [{:keys [valid-gpu-models]}]
+  (doseq [{:keys [default-model pool-regex valid-models] :as entry} valid-gpu-models]
     (when-not pool-regex
       (throw (ex-info (str "pool-regex key is missing from config") entry)))
     (when-not valid-models
@@ -418,17 +418,14 @@
                          (throw (ex-info "You enabled nrepl but didn't configure a port. Please configure a port in your config file." {})))
                        ((util/lazy-load-var 'clojure.tools.nrepl.server/start-server) :port port)))
      :pools (fnk [[:config {pools nil}]]
-              (log/info "#####" pools)
+              (guard-invalid-gpu-config pools)
               (cond-> pools
                 (:job-resource-adjustment pools)
                 (update :job-resource-adjustment
                         #(-> %
                              (update :pool-regex re-pattern)))
                 (not (:default-containers pools))
-                (assoc :default-containers [])
-                (:valid-gpu-models pools)
-                (println "$$$$$" (:valid-gpu-models pools)))
-              )
+                (assoc :default-containers [])))
      :api-only? (fnk [[:config {api-only? false}]]
                   api-only?)
      :estimated-completion-constraint (fnk [[:config {estimated-completion-constraint nil}]]

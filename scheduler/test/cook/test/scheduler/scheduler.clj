@@ -1568,7 +1568,7 @@
 
 (defn test-handle-resource-offers
   "Helper function for test-handle-resource offers"
-  [offers-list uri]
+  [compute-cluster-type offers-list uri]
   (setup)
   (let [test-user (System/getProperty "user.name")
         executor {:command "cook-executor"
@@ -1670,8 +1670,10 @@
                                             (swap! launched-job-names-atom concat
                                                    (map (fn get-job-id [task-metadata]
                                                           (-> task-metadata :task-request :job :job/name))
-                                                        task-metadata-seq))))
-                  atom conj (-> task-metadata :task-request :job :job/name)))
+                                                        task-metadata-seq))
+                                            (doseq [task-metadata task-metadata-seq]
+                                              (rate-limit/spend! rate-limit/job-launch-rate-limiter (get-in (:task-request task-metadata) [:job :job/user]) 1)))
+                                          )
                   cook.config/executor-config (constantly executor)
                   config/valid-gpu-models (constantly [{:pool-regex "test-pool"
                                                         :valid-models #{"nvidia-tesla-p100" "nvidia-tesla-k80"}
@@ -1807,44 +1809,47 @@
           (is (zero? (count @launched-offer-ids-atom)))
           (is (empty? @launched-job-names-atom))))
 
-      (testing "all offers for all jobs"
-        (let [num-considerable 10
-              offers [offer-1 offer-2 offer-3 offer-4 offer-5 offer-6 offer-7 offer-8 offer-9]]
-          (is (run-handle-resource-offers! num-considerable offers "test-pool"))
-          (is (= :end-marker (async/<!! offers-chan)))
-          (is (= 4 (count @launched-job-names-atom)))
-          (is (= #{"job-1" "job-2" "job-3" "job-4"} (set @launched-job-names-atom)))))
+      (when (= compute-cluster-type "mesos")
+        (testing "all offers for all jobs"
+          (let [num-considerable 10
+                offers [offer-1 offer-2 offer-3 offer-4 offer-5 offer-6 offer-7 offer-8 offer-9]]
+            (is (run-handle-resource-offers! num-considerable offers "test-pool"))
+            (is (= :end-marker (async/<!! offers-chan)))
+            (is (= 4 (count @launched-job-names-atom)))
+            (is (= #{"job-1" "job-2" "job-3" "job-4"} (set @launched-job-names-atom))))))
 
-      (testing "all offers for all jobs"
-        (let [num-considerable 10
-              offers [offer-1 offer-2 offer-3 offer-4 offer-5 offer-6 offer-7 offer-8 offer-9]]
-          (is (run-handle-resource-offers! num-considerable offers "test-pool"))
-          (is (= :end-marker (async/<!! offers-chan)))
-          (is (= 6 (count @launched-job-names-atom)))
-          (is (= #{"job-1" "job-2" "job-3" "job-4" "job-5" "job-6"} (set @launched-job-names-atom)))))
+      ;TODO: comment explaining why these tests only apply to kubernetes or mesos
+      (when (= compute-cluster-type "kubernetes")
+        (testing "all offers for all jobs"
+          (let [num-considerable 10
+                offers [offer-1 offer-2 offer-3 offer-4 offer-5 offer-6 offer-7 offer-8 offer-9]]
+            (is (run-handle-resource-offers! num-considerable offers "test-pool"))
+            (is (= :end-marker (async/<!! offers-chan)))
+            (is (= 6 (count @launched-job-names-atom)))
+            (is (= #{"job-1" "job-2" "job-3" "job-4" "job-5" "job-6"} (set @launched-job-names-atom)))))
 
-      (testing "k8s gpu offers for all gpu jobs"
-        (let [num-considerable 10
-              offers [offer-6 offer-7]]
-          (is (not (run-handle-resource-offers! num-considerable offers "test-pool")))
-          (is (= :end-marker (async/<!! offers-chan)))
-          (is (= 2 (count @launched-job-names-atom)))
-          (is (= #{"job-5" "job-6"} (set @launched-job-names-atom)))))
+        (testing "k8s gpu offers for all gpu jobs"
+          (let [num-considerable 10
+                offers [offer-6 offer-7]]
+            (is (not (run-handle-resource-offers! num-considerable offers "test-pool")))
+            (is (= :end-marker (async/<!! offers-chan)))
+            (is (= 2 (count @launched-job-names-atom)))
+            (is (= #{"job-5" "job-6"} (set @launched-job-names-atom)))))
 
-      (testing "k8s gpu offer for single gpu job"
-        (let [num-considerable 10
-              offers [offer-6]]
-          (is (not (run-handle-resource-offers! num-considerable offers "test-pool")))
-          (is (= :end-marker (async/<!! offers-chan)))
-          (is (= 1 (count @launched-job-names-atom)))
-          (is (= #{"job-5"} (set @launched-job-names-atom)))))
+        (testing "k8s gpu offer for single gpu job"
+          (let [num-considerable 10
+                offers [offer-6]]
+            (is (not (run-handle-resource-offers! num-considerable offers "test-pool")))
+            (is (= :end-marker (async/<!! offers-chan)))
+            (is (= 1 (count @launched-job-names-atom)))
+            (is (= #{"job-5"} (set @launched-job-names-atom)))))
 
-      (testing "k8s gpu offer matching no gpu job"
-        (let [num-considerable 10
-              offers [offer-8]]
-          (is (run-handle-resource-offers! num-considerable offers "test-pool"))
-          (is (= :end-marker (async/<!! offers-chan)))
-          (is (empty? @launched-job-names-atom))))
+        (testing "k8s gpu offer matching no gpu job"
+          (let [num-considerable 10
+                offers [offer-8]]
+            (is (run-handle-resource-offers! num-considerable offers "test-pool"))
+            (is (= :end-marker (async/<!! offers-chan)))
+            (is (empty? @launched-job-names-atom)))))
 
       (testing "will not launch jobs on reserved host"
         (let [num-considerable 10
@@ -1870,8 +1875,7 @@
           (is (= #{"job-1" "job-2"} (set @launched-job-names-atom)))
           (is (= {:job-uuid->reserved-host {}
                   :launched-job-uuids #{job-1-uuid job-2-uuid}}
-                 @rebalancer-reservation-atom))))
-      )))
+                 @rebalancer-reservation-atom)))))))
 
 (deftest test-handle-resource-offers-mesos
     (setup)
@@ -1898,7 +1902,7 @@
           offer-8 (offer-maker 30 16384 0)
           offer-9 (offer-maker 100 200000 0)
           offers [offer-1 offer-2 offer-3 offer-4 offer-5 offer-6 offer-7 offer-8 offer-9]]
-      (test-handle-resource-offers offers uri)))
+      (test-handle-resource-offers "mesos" offers uri)))
 
 (deftest test-handle-resource-offers-k8s
   (let [uri "datomic:mem://test-handle-resource-offers"
@@ -1924,7 +1928,7 @@
         offer-8 (offer-maker 30 16384 {"nvidia-tesla-p100" 1})
         offer-9 (offer-maker 100 200000 {})
         offers [offer-1 offer-2 offer-3 offer-4 offer-5 offer-6 offer-7 offer-8 offer-9]]
-    (test-handle-resource-offers offers uri)))
+    (test-handle-resource-offers "kubernetes" offers uri)))
 
 
 (deftest test-handle-resource-offers-with-data-locality
