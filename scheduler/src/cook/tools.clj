@@ -893,6 +893,15 @@
     (cond-> {:count 1 :cpus cpus :mem mem}
       gpus (assoc :gpus gpus))))
 
+(defn match-based-on-pool-name
+  "Given a list of dictionaries [{:pool-regexp .. :field ...} {:pool-regexp .. :field ...}
+   a pool name and a <field> name, return the first matching <field> where the regexp matches the pool name."
+  [match-list effective-pool-name field]
+  (->> match-list
+       (filter (fn [{:keys [pool-regex]}] (re-find (re-pattern pool-regex) effective-pool-name)))
+       first
+       field))
+
 (defn filter-based-on-quota
   "Lazily filters jobs for which the sum of running jobs and jobs earlier in the queue exceeds one of the constraints,
    max-jobs, max-cpus or max-mem"

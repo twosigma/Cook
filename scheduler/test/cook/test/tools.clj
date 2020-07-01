@@ -826,6 +826,16 @@
                         :count 1}}}
            (util/pool->user->usage (d/db conn))))))
 
+(deftest test-match-based-on-pool-name
+  (let [matchlist
+        [{:pool-regex "^foo$" :field {:foo 1}}
+         {:pool-regex ".*" :field {:bar 2}}
+         {:pool-regex "^baz$" :field {:baz 3}}]]
+    (is (= (util/match-based-on-pool-name matchlist "foo" :field) {:foo 1}))
+    (is (= (util/match-based-on-pool-name matchlist "bar" :field) {:bar 2}))
+    (is (= (util/match-based-on-pool-name matchlist "baz" :field) {:bar 2})))
+  (is (= (util/match-based-on-pool-name [] "foo" :field) nil)))
+  
 (deftest test-atom-updater
   (let [map-atom (atom {})
         testfn (util/make-atom-updater map-atom)]
