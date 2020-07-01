@@ -131,6 +131,21 @@
       (throw (IllegalArgumentException.
                (str config-string " is not a VMTaskFitnessCalculator"))))))
 
+(defn guard-invalid-gpu-config
+  "Throws if either of the following is true:
+  - any one of the keys (pool-regex, valid-models, default-model) is not configured
+  - there is no gpu-model in valid-gpu-models matching the configured default"
+  [pools]
+  (doseq [{:keys [default-model pool-regex valid-models] :as entry} (:valid-gpu-models pools)]
+    (when-not pool-regex
+      (throw (ex-info (str "pool-regex key is missing from config") entry)))
+    (when-not valid-models
+      (throw (ex-info (str "Valid GPU models for pool-regex " pool-regex " is not defined") entry)))
+    (when-not default-model
+      (throw (ex-info (str "Default GPU model for pool-regex " pool-regex " is not defined") entry)))
+    (when-not (contains? valid-models default-model)
+      (throw (ex-info (str "Default GPU model for pool-regex " pool-regex " is not listed as a valid GPU model") entry)))))
+
 (def config-settings
   "Parses the settings out of a config file"
   (graph/eager-compile
@@ -403,13 +418,17 @@
                          (throw (ex-info "You enabled nrepl but didn't configure a port. Please configure a port in your config file." {})))
                        ((util/lazy-load-var 'clojure.tools.nrepl.server/start-server) :port port)))
      :pools (fnk [[:config {pools nil}]]
+              (log/info "#####" pools)
               (cond-> pools
                 (:job-resource-adjustment pools)
                 (update :job-resource-adjustment
                         #(-> %
                              (update :pool-regex re-pattern)))
                 (not (:default-containers pools))
-                (assoc :default-containers [])))
+                (assoc :default-containers [])
+                (:valid-gpu-models pools)
+                (println "$$$$$" (:valid-gpu-models pools)))
+              )
      :api-only? (fnk [[:config {api-only? false}]]
                   api-only?)
      :estimated-completion-constraint (fnk [[:config {estimated-completion-constraint nil}]]
@@ -597,20 +616,3 @@
 (defn task-constraints
   []
   (get-in config [:settings :task-constraints]))
-
-(defn guard-invalid-gpu-config
-  "Throws if either of the following is true:
-  - any one of the keys (pool-regex, valid-models, default-model) is not configured
-  - there is no gpu-model in valid-gpu-models matching the configured default"
-  []
-  (run! (fn guard-invalid-gpu-config-entry
-          [{:keys [default-model pool-regex valid-models] :as entry}]
-          (when (not pool-regex)
-            (throw (ex-info (str "pool-regex key is missing from config") entry)))
-          (when (not valid-models)
-            (throw (ex-info (str "Valid GPU models for pool-regex " pool-regex " is not defined") entry)))
-          (when (not default-model)
-            (throw (ex-info (str "Default GPU model for pool-regex " pool-regex " is not defined") entry)))
-          (when (not (contains? valid-models default-model))
-            (throw (ex-info (str "Default GPU model for pool-regex " pool-regex " is not listed as a valid GPU model") entry))))
-        (valid-gpu-models)))

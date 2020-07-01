@@ -98,26 +98,26 @@
     (job-constraint-evaluate this nil vm-attributes []))
   (job-constraint-evaluate
     [{:keys [job]} _ vm-attributes _]
-    (let [gpu-count-requested (-> job util/job-ent->resources :gpus (or 0))
-          gpu-model-requested (when (pos? gpu-count-requested)
-                                (or (-> job util/job-ent->env (get "COOK_GPU_MODEL"))
-                                    (util/match-based-on-pool-name (config/valid-gpu-models) (util/job->pool-name job) :default-model)))
-          gpu-model->count-available (get vm-attributes "gpus")
-          k8s-vm? (= (get vm-attributes "compute-cluster-type") "kubernetes")
-          ; k8s VM that supports gpu models but does not have any available gpus will have a gpus map of {"model A" 0 "model B" 0 ...}
-          ; k8s VM that does not support gpu models will have an empty gpus map of {}
-
-          ; requesting gpus is only being supported for kubernetes-bound jobs
-          passes? (if k8s-vm?
-                    (if (and (pos? gpu-count-requested) gpu-model-requested)
-                      (>= (get gpu-model->count-available gpu-model-requested 0) gpu-count-requested)
-                      ; if job is kubernetes-bound and does not request gpus, do not schedule it on a VM that supports gpus
-                      (-> gpu-model->count-available count zero?))
-                    ; if job is mesos-bound, require that the gpu-count-requested is 0
-                    (zero? gpu-count-requested))]
-      [passes? (when-not passes? (if (not gpu-model-requested)
-                                   "Job does not need GPUs, host has GPUs."
-                                   "Job needs GPUs that are not present on host."))])))
+    (let [k8s-vm? (= (get vm-attributes "compute-cluster-type") "kubernetes")
+          job-gpu-count-requested (-> job util/job-ent->resources :gpus (or 0))]
+          (if k8s-vm?
+            (let [job-gpu-model-requested (when (pos? job-gpu-count-requested)
+                                            (or (-> job util/job-ent->env (get "COOK_GPU_MODEL"))
+                                                (:default-model (gpu-models-config-for-pool (config/valid-gpu-models) (util/job->pool-name job)))))
+                  vm-gpu-model->count-available (get vm-attributes "gpus")
+                  vm-satisfies-constraint? (if (pos? job-gpu-count-requested)
+                                             ; If job requests GPUs, require that the VM has enough gpus available in the same model as the job requested.
+                                             (>= (get vm-gpu-model->count-available job-gpu-model-requested 0) job-gpu-count-requested)
+                                             ; If job does not request GPUs, require that the VM does not support gpus.
+                                             (-> vm-gpu-model->count-available count zero?))]
+              [vm-satisfies-constraint? (when-not vm-satisfies-constraint?
+                                          (if (not job-gpu-model-requested)
+                                            "Job does not need GPUs, kubernetes VM has GPUs."
+                                            "Job needs GPUs that are not present on kubernetes VM."))])
+            ; Mesos jobs cannot request gpus. If VM is a mesos VM, constraint passes only if job requested 0 gpus.
+            (let [vm-satisfies-constraint? (zero? job-gpu-count-requested)]
+              [vm-satisfies-constraint? (when-not vm-satisfies-constraint?
+                                          "Job needs GPUs, mesos VMs do not support GPU jobs.")])))))
 
 (defn build-gpu-host-constraint
   "Constructs a gpu-host-constraint.

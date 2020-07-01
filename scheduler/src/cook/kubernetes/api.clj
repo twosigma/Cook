@@ -366,12 +366,10 @@
    :cpus (if (get m "cpu")
            (-> m (get "cpu") to-double)
            0.0)
-   ; Assume that each Kubernetes node and each pod only contains one type of GPU model
-   :gpus (if (get m "nvidia.com/gpu")
-           (-> m (get "nvidia.com/gpu") to-int)
+   ; Assumes that each Kubernetes node and each pod only contains one type of GPU model
+   :gpus (if-let [gpu-count (get m "nvidia.com/gpu")]
+           (to-int gpu-count)
            0)})
-
-
 
 (defn pods->node-name->pods
   "Given a seq of pods, create a map of node names to pods"
@@ -412,35 +410,22 @@
                                                      false)
              :else true))))
 
-(defn deep-merge-with
-  "Like merge-with, but merges maps recursively, applying the given fn
-  only when there's a non-map at a particular level.
-  (deep-merge-with + {:a {:b {:c 1 :d {:x 1 :y 2}} :e 3} :f 4}
-               {:a {:b {:c 2 :d {:z 9} :z 3} :e 100}})
-  -> {:a {:b {:z 3, :c 3, :d {:z 9, :x 1, :y 2}}, :e 103}, :f 4}"
-  [f & maps]
-  (apply
-    (fn m [& maps]
-      (if (every? map? maps)
-        (apply merge-with m maps)
-        (apply f maps)))
-    maps))
-
 (defn add-gpu-model-to-resource-map
   "Given a map from node-name->resource-type->capacity, perform the following operation:
   - if the amount of gpus on the node is positive, set the gpus capacity to model->count
   - if the amount of gpus on the node is 0, set the gpus capacity to an empty map"
   [gpu-model {:keys [gpus] :as resource-map}]
-  (if (and gpu-model (pos? gpus))
-    (assoc resource-map :gpus {gpu-model (:gpus resource-map)})
-    (assoc resource-map :gpus {})))
+  (let [gpu-model->count (if (and gpu-model (pos? gpus))
+                           {gpu-model gpus}
+                           {})]
+    (assoc resource-map :gpus gpu-model->count)))
 
 (defn get-capacity
   "Given a map from node-name to node, generate a map from node-name->resource-type-><capacity>"
   [node-name->node]
   (pc/map-vals (fn [^V1Node node]
-                 (let [resource-map (-> node .getStatus .getAllocatable convert-resource-map)
-                       gpu-model (-> node .getMetadata .getLabels (get "gpu-type"))]
+                 (let [resource-map (some-> node .getStatus .getAllocatable convert-resource-map)
+                       gpu-model (some-> node .getMetadata .getLabels (get "gpu-type"))]
                    (add-gpu-model-to-resource-map gpu-model resource-map)))
                node-name->node))
 
@@ -452,17 +437,17 @@
   (pc/map-vals (fn [pods]
                  (->> pods
                       (map (fn [^V1Pod pod]
-                             (let [containers (-> pod .getSpec .getContainers)
+                             (let [containers (some-> pod .getSpec .getContainers)
                                    container-requests (map (fn [^V1Container c]
-                                                             (-> c
+                                                             (some-> c
                                                                  .getResources
                                                                  .getRequests
                                                                  convert-resource-map))
                                                            containers)
                                    resource-map (apply merge-with + container-requests)
-                                   gpu-model (-> pod .getSpec .getNodeSelector (get "cloud.google.com/gke-accelerator"))]
+                                   gpu-model (some-> pod .getSpec .getNodeSelector (get "cloud.google.com/gke-accelerator"))]
                                (add-gpu-model-to-resource-map gpu-model resource-map))))
-                      (apply deep-merge-with +)))
+                      (apply util/deep-merge-with +)))
                node-name->pods))
 ; see pod->synthesized-pod-state comment for container naming conventions
 (def cook-container-name-for-job

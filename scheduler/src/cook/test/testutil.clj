@@ -493,7 +493,7 @@
                                    "cpu"
                                    (Quantity. (BigDecimal. cpus)
                                               Quantity$Format/DECIMAL_SI)))
-               (when gpus
+               (when (pos? gpus)
                  (.putRequestsItem resources
                                    "nvidia.com/gpu"
                                    (Quantity. gpus))
@@ -537,7 +537,7 @@
                                                    Quantity$Format/DECIMAL_SI))
       (.putAllocatableItem status "memory" (Quantity. (BigDecimal. (* kapi/memory-multiplier mem))
                                                       Quantity$Format/DECIMAL_SI)))
-    (when gpus
+    (when (pos? gpus)
       (.putCapacityItem status "nvidia.com/gpu" (Quantity. gpus))
       (.putAllocatableItem status "nvidia.com/gpu" (Quantity. gpus))
       (.putLabelsItem metadata "gpu-type" (or gpu-model "nvidia-tesla-p100")))
@@ -555,12 +555,12 @@
   node))
 
 (defn make-kubernetes-compute-cluster
-  [api-client cluster-entity-id namespaced-pod-name->pod pool-names synthetic-pods-user]
+  [cluster-entity-id namespaced-pod-name->pod pool-names synthetic-pods-user]
   (let [synthetic-pods-config {:image "image"
                                :user synthetic-pods-user
                                :max-pods-outstanding 4
                                :pools pool-names}]
-    (kcc/->KubernetesComputeCluster api-client ; api-client
+    (kcc/->KubernetesComputeCluster nil ; api-client
                                     "kubecompute" ; name
                                     cluster-entity-id ; entity-id
                                     nil ; match-trigger-chan
@@ -585,7 +585,6 @@
   "Similar to make-kubernetes-compute-cluster but also writes to a database"
   [conn]
   (let [cluster-entity-id (kcc/get-or-create-cluster-entity-id conn "kubecompute")
-        api-client (kcc/make-api-client nil nil nil nil nil nil)
-        compute-cluster (make-kubernetes-compute-cluster api-client cluster-entity-id {} nil nil)]
+        compute-cluster (make-kubernetes-compute-cluster cluster-entity-id {} nil nil)]
     (cc/register-compute-cluster! compute-cluster)
     compute-cluster))

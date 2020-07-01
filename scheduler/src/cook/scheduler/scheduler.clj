@@ -188,6 +188,20 @@
                       (catch Exception e
                         (log/debug e "Error reading a string from mesos status data. Is it in the format we expect?")))))})
 
+(defn job->scalar-request
+  "Takes job and makes the scalar-request for TaskRequestAdapter"
+  [job]
+  (reduce (fn [result resource]
+            (let [{:keys [resource/amount resource/type]} resource]
+              ; Task request shouldn't have a scalar request for GPUs because
+              ; we are completely handling GPUs within GPU host constraint
+              ; and fenzo cannot handle scheduling for multiple GPU models
+              (if (and amount (not= type :resource.type/gpus))
+                (assoc result (name type) amount)
+                result)))
+          {}
+          (:job/resource job)))
+
 (defn update-reason-metrics!
   "Updates histograms and counters for run time, cpu time, and memory time,
   where the histograms have the failure reason in the title"
@@ -511,16 +525,7 @@
                                         (constraints/make-fenzo-group-constraint
                                           db group #(guuid->considerable-cotask-ids (:group/uuid group)) running-cotask-cache))
                                       (:group/_job job)))))
-        scalar-requests (reduce (fn [result resource]
-                                  (let [{:keys [resource/amount resource/type]} resource]
-                                    ; Task request shouldn't have a scalar request for GPUs because
-                                    ; we are completely handling GPUs within GPU host constraint
-                                    ; and fenzo cannot handle scheduling for multiple GPU models
-                                    (if (and amount (not= type :resource.type/gpus))
-                                      (assoc result (name type) amount)
-                                      result)))
-                                {}
-                                (:job/resource job))
+        scalar-requests (job->scalar-request job)
         pool-specific-resources ((adjust-job-resources-for-pool-fn pool-name) job resources)]
     (->TaskRequestAdapter job pool-specific-resources task-id assigned-resources guuid->considerable-cotask-ids constraints scalar-requests)))
 

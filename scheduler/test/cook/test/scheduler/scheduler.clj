@@ -28,6 +28,7 @@
             [cook.datomic :as datomic]
             [cook.kubernetes.api :as kapi]
             [cook.kubernetes.compute-cluster :as kcc]
+            [cook.mesos.mesos-compute-cluster :as mcc]
             [cook.plugins.completion :as completion]
             [cook.plugins.definitions :as pd]
             [cook.plugins.launch :as launch-plugin]
@@ -128,46 +129,19 @@
    (make-k8s-resource "ports" :value-ranges ports)
    (make-k8s-resource "gpus" :value-text->scalar gpus)])
 
-(defn make-mesos-attribute
-  [name type val]
-  (mtypes/map->Attribute (merge
-                           {:name name
-                            :type type
-                            :scalar nil
-                            :ranges []
-                            :set #{}
-                            :role "*"}
-                           (case type
-                             :value-scalar {:scalar val}
-                             :value-text {:text val}
-                             :value-ranges {:ranges [(mtypes/map->ValueRange val)]}
-                             :value-set {:set #{val}}
-                             nil))))
-
-(defn make-k8s-attribute
+(defn make-attribute
   [name type val]
   (merge
     {:name name
      :type type
-     :scalar nil
-     :ranges []
-     :set #{}
      :role "*"}
     (case type
-      :value-scalar {:scalar val}
       :value-text {:text val}
-      :value-ranges {:ranges [val]}
-      :value-set {:set #{val}}
-      :value-text->scalar {:text->scalar val}
       nil)))
 
-(defn make-mesos-offer-attributes
+(defn make-offer-attributes
   [attrs]
-  (mapv #(make-mesos-attribute (key %) :value-text (val %)) attrs))
-
-(defn make-k8s-offer-attributes
-  [attrs]
-  (mapv #(make-k8s-attribute (key %) :value-text (val %)) attrs))
+  (mapv #(make-attribute (key %) :value-text (val %)) attrs))
 
 (defn make-mesos-offer
   [id framework-id slave-id hostname & {:keys [cpus mem disk ports gpus attrs]
@@ -177,7 +151,7 @@
                       :slave-id (mtypes/map->SlaveID {:value slave-id})
                       :hostname hostname
                       :resources (make-mesos-offer-resources cpus mem disk ports gpus)
-                      :attributes (make-mesos-offer-attributes (merge attrs {"HOSTNAME" hostname}))
+                      :attributes (make-offer-attributes (merge attrs {"HOSTNAME" hostname}))
                       :executor-ids []}))
 
 (defn make-mesos-vm-offer
@@ -194,7 +168,7 @@
    :slave-id {:value slave-id}
    :hostname hostname
    :resources (make-k8s-offer-resources cpus mem disk ports gpus)
-   :attributes (make-k8s-offer-attributes (merge attrs {"HOSTNAME" hostname}))
+   :attributes (make-offer-attributes (merge attrs {"HOSTNAME" hostname}))
    :executor-ids []})
 
 (defn make-k8s-vm-offer
@@ -708,7 +682,7 @@
       (is (= {"no-pool" (list (util/job-ent->map job-entity))}
              (sched/rank-jobs test-db offensive-job-filter))))))
 
-(deftest test-virtual-machine-lease-adapter-mesos
+(deftest test-mesos-virtual-machine-lease-adapter
   ;; ensure that the VirtualMachineLeaseAdapter can successfully handle an offer from Mesomatic.
   (let [;; observed offer from Mesomatic API:
         now (System/currentTimeMillis)
@@ -736,7 +710,7 @@
     (is (= (-> adapter .portRanges first .getBeg) 31000))
     (is (= (-> adapter .portRanges first .getEnd) 32000))))
 
-(deftest test-virtual-machine-lease-adapter-k8s
+(deftest test-k8s-virtual-machine-lease-adapter
   ;; ensure that the VirtualMachineLeaseAdapter can successfully handle an offer from Kubernetes.
   (let [now (System/currentTimeMillis)
         offer {:id  {:value "my-offer-id"}
@@ -760,6 +734,7 @@
     (is (= (.hostname adapter) "slave3"))
     (is (= (.memoryMB adapter) 5000.0))
     (is (= (.getScalarValues adapter) {"cpus" 40.0 "disk" 6000.0 "mem" 5000.0 "ports" 0.0}))
+    (is (= (get (.getAttributeMap adapter) "gpus") {"nvidia-tesla-p100" 2}))
     (is (= (-> adapter .portRanges first .getBeg) 31000))
     (is (= (-> adapter .portRanges first .getEnd) 32000))))
 
@@ -1593,10 +1568,9 @@
 
 (defn test-handle-resource-offers
   "Helper function for test-handle-resource offers"
-  [launched-job-names-atom launched-offer-ids-atom offers-list test-user uri]
+  [offers-list uri]
   (setup)
-  (let [; Mesos needs to know which offers are being used to launch tasks with, whereas kubernetes has no concept of offers
-        is-mesos-compute-cluster? (when launched-offer-ids-atom true)
+  (let [test-user (System/getProperty "user.name")
         executor {:command "cook-executor"
                   :default-progress-regex-string "regex-string"
                   :log-level "INFO"
@@ -1616,12 +1590,13 @@
         offer-7 (nth offers-list 6)
         offer-8 (nth offers-list 7)
         offer-9 (nth offers-list 8)
+        launched-offer-ids-atom (atom [])
+        launched-job-names-atom (atom [])
 
         run-handle-resource-offers! (fn [num-considerable offers pool & {:keys [user-quota user->usage rebalancer-reservation-atom job-name->uuid]
                                                                          :or {rebalancer-reservation-atom (atom {})
                                                                               job-name->uuid {}}}]
-                                      (when is-mesos-compute-cluster?
-                                        (reset! launched-offer-ids-atom []))
+                                      (reset! launched-offer-ids-atom [])
                                       (reset! launched-job-names-atom [])
                                       (let [conn (restore-fresh-database! uri)
                                             test-db (d/db conn)
@@ -1688,8 +1663,15 @@
                                                      rebalancer-reservation-atom pool nil)]
                                         (async/>!! offers-chan :end-marker)
                                         result))]
-    (with-redefs [kcc/launch-task! (fn [_ task-metadata]
-                                     (swap! launched-job-names-atom conj (-> task-metadata :task-request :job :job/name)))
+    (with-redefs [sched/launch-matches! (fn [_ _ matches _]
+                                          (doseq [{:keys [leases task-metadata-seq]} matches]
+                                            (swap! launched-offer-ids-atom conj
+                                                   (-> leases first :offer :id :value))
+                                            (swap! launched-job-names-atom concat
+                                                   (map (fn get-job-id [task-metadata]
+                                                          (-> task-metadata :task-request :job :job/name))
+                                                        task-metadata-seq))))
+                  atom conj (-> task-metadata :task-request :job :job/name)))
                   cook.config/executor-config (constantly executor)
                   config/valid-gpu-models (constantly [{:pool-regex "test-pool"
                                                         :valid-models #{"nvidia-tesla-p100" "nvidia-tesla-k80"}
@@ -1700,8 +1682,7 @@
               offers [offer-1 offer-2 offer-3]]
           (is (run-handle-resource-offers! num-considerable offers "test-pool"))
           (is (= :end-marker (async/<!! offers-chan)))
-          (when is-mesos-compute-cluster?
-            (is (= 3 (count @launched-offer-ids-atom))))
+          (is (= 3 (count @launched-offer-ids-atom)))
           (is (= 4 (count @launched-job-names-atom)))
           (is (= #{"job-1" "job-2" "job-3" "job-4"} (set @launched-job-names-atom)))))
 
@@ -1710,8 +1691,7 @@
               offers [offer-1 offer-2 offer-3]]
           (is (run-handle-resource-offers! num-considerable offers "test-pool"))
           (is (= :end-marker (async/<!! offers-chan)))
-          (when is-mesos-compute-cluster?
-            (is (= 1 (count @launched-offer-ids-atom))))
+          (is (= 1 (count @launched-offer-ids-atom)))
           (is (= 1 (count @launched-job-names-atom)))
           (is (= #{"job-1"} (set @launched-job-names-atom)))))
 
@@ -1720,8 +1700,7 @@
               offers [offer-1 offer-2 offer-3]]
           (is (run-handle-resource-offers! num-considerable offers "test-pool"))
           (is (= :end-marker (async/<!! offers-chan)))
-          (when is-mesos-compute-cluster?
-            (is (= 2 (count @launched-offer-ids-atom))))
+          (is (= 2 (count @launched-offer-ids-atom)))
           (is (= 2 (count @launched-job-names-atom)))
           (is (= #{"job-1" "job-2"} (set @launched-job-names-atom)))))
 
@@ -1734,8 +1713,7 @@
                 offers [offer-1 offer-2 offer-3]]
             (is (run-handle-resource-offers! num-considerable offers "test-pool"))
             (is (= :end-marker (async/<!! offers-chan)))
-            (when is-mesos-compute-cluster?
-              (is (= 1 (count @launched-offer-ids-atom))))
+            (is (= 1 (count @launched-offer-ids-atom)))
             (is (= 1 (count @launched-job-names-atom)))
             (is (= #{"job-1"} (set @launched-job-names-atom))))))
 
@@ -1748,8 +1726,7 @@
                 offers [offer-1 offer-2 offer-3]]
             (is (run-handle-resource-offers! num-considerable offers "test-pool"))
             (is (= :end-marker (async/<!! offers-chan)))
-            (when is-mesos-compute-cluster?
-              (is (= 1 (count @launched-offer-ids-atom))))
+            (is (= 1 (count @launched-offer-ids-atom)))
             (is (= 1 (count @launched-job-names-atom)))
             (is (= #{"job-1"} (set @launched-job-names-atom))))))
 
@@ -1760,8 +1737,7 @@
                   offers [offer-1 offer-2 offer-3]]
               (is (run-handle-resource-offers! num-considerable offers "test-pool"))
               (is (= :end-marker (async/<!! offers-chan)))
-              (when is-mesos-compute-cluster?
-                (is (= 2 (count @launched-offer-ids-atom))))
+              (is (= 2 (count @launched-offer-ids-atom)))
               (is (= 2 (count @launched-job-names-atom)))
               (is (= #{"job-1" "job-2"} (set @launched-job-names-atom)))
               ; We launch two jobs, this involves spending two tokens on per-user rate limiter and 2 on the global launch rate limiter.
@@ -1773,8 +1749,7 @@
               user-quota {test-user {:count 5, :cpus 45, :mem 16384, :gpus 0}}]
           (is (run-handle-resource-offers! num-considerable offers "test-pool" :user-quota user-quota))
           (is (= :end-marker (async/<!! offers-chan)))
-          (when is-mesos-compute-cluster?
-            (is (= 1 (count @launched-offer-ids-atom))))
+          (is (= 1 (count @launched-offer-ids-atom)))
           (is (= 1 (count @launched-job-names-atom)))
           (is (= #{"job-1"} (set @launched-job-names-atom)))))
 
@@ -1784,8 +1759,7 @@
               user->usage {test-user {:count 5, :cpus 5, :mem 16384, :gpus 0}}]
           (is (run-handle-resource-offers! num-considerable offers "test-pool" :user->usage user->usage))
           (is (= :end-marker (async/<!! offers-chan)))
-          (when is-mesos-compute-cluster?
-            (is (= 1 (count @launched-offer-ids-atom))))
+          (is (= 1 (count @launched-offer-ids-atom)))
           (is (= 1 (count @launched-job-names-atom)))
           (is (= #{"job-1"} (set @launched-job-names-atom)))))
 
@@ -1794,8 +1768,7 @@
               offers [offer-4]]
           (is (run-handle-resource-offers! num-considerable offers "test-pool"))
           (is (= :end-marker (async/<!! offers-chan)))
-          (when is-mesos-compute-cluster?
-            (is (= 1 (count @launched-offer-ids-atom))))
+          (is (= 1 (count @launched-offer-ids-atom)))
           (is (= 1 (count @launched-job-names-atom)))
           (is (= #{"job-1"} (set @launched-job-names-atom)))))
 
@@ -1804,8 +1777,7 @@
               offers [offer-3]]
           (is (run-handle-resource-offers! num-considerable offers "test-pool"))
           (is (= :end-marker (async/<!! offers-chan)))
-          (when is-mesos-compute-cluster?
-            (is (= 1 (count @launched-offer-ids-atom))))
+          (is (= 1 (count @launched-offer-ids-atom)))
           (is (= 3 (count @launched-job-names-atom)))
           (is (= #{"job-1" "job-2" "job-3"} (set @launched-job-names-atom)))))
 
@@ -1813,8 +1785,7 @@
         (let [num-considerable 10
               offers [offer-5]]
           (is (run-handle-resource-offers! num-considerable offers "test-pool"))
-          (when is-mesos-compute-cluster?
-            (is (zero? (count @launched-offer-ids-atom))))
+          (is (zero? (count @launched-offer-ids-atom)))
           (is (= :end-marker (async/<!! offers-chan)))
           (is (empty? @launched-job-names-atom))))
 
@@ -1824,8 +1795,7 @@
               user-quota {test-user {:count 5, :cpus 4, :mem 4096, :gpus 0}}]
           (is (run-handle-resource-offers! num-considerable offers "test-pool" :user-quota user-quota))
           (is (= :end-marker (async/<!! offers-chan)))
-          (when is-mesos-compute-cluster?
-            (is (zero? (count @launched-offer-ids-atom))))
+          (is (zero? (count @launched-offer-ids-atom)))
           (is (empty? @launched-job-names-atom))))
 
       (testing "offer fit but user has capacity usage"
@@ -1834,52 +1804,47 @@
               user->usage {test-user {:count 10, :cpus 50, :mem 32768, :gpus 10}}]
           (is (run-handle-resource-offers! num-considerable offers "test-pool" :user->usage user->usage))
           (is (= :end-marker (async/<!! offers-chan)))
-          (when is-mesos-compute-cluster?
-            (is (zero? (count @launched-offer-ids-atom))))
+          (is (zero? (count @launched-offer-ids-atom)))
           (is (empty? @launched-job-names-atom))))
 
-      (if is-mesos-compute-cluster?
-        (testing "all offers for all jobs"
-          (let [num-considerable 10
-                offers [offer-1 offer-2 offer-3 offer-4 offer-5 offer-6 offer-7 offer-8 offer-9]]
-            (is (run-handle-resource-offers! num-considerable offers "test-pool"))
-            (is (= :end-marker (async/<!! offers-chan)))
-            (is (= 4 (count @launched-job-names-atom)))
-            (is (= #{"job-1" "job-2" "job-3" "job-4"} (set @launched-job-names-atom)))))
-        (testing "all offers for all jobs"
-          (let [num-considerable 10
-                offers [offer-1 offer-2 offer-3 offer-4 offer-5 offer-6 offer-7 offer-8 offer-9]]
-            (is (run-handle-resource-offers! num-considerable offers "test-pool"))
-            (is (= :end-marker (async/<!! offers-chan)))
-            (is (= 6 (count @launched-job-names-atom)))
-            (is (= #{"job-1" "job-2" "job-3" "job-4" "job-5" "job-6"} (set @launched-job-names-atom))))))
+      (testing "all offers for all jobs"
+        (let [num-considerable 10
+              offers [offer-1 offer-2 offer-3 offer-4 offer-5 offer-6 offer-7 offer-8 offer-9]]
+          (is (run-handle-resource-offers! num-considerable offers "test-pool"))
+          (is (= :end-marker (async/<!! offers-chan)))
+          (is (= 4 (count @launched-job-names-atom)))
+          (is (= #{"job-1" "job-2" "job-3" "job-4"} (set @launched-job-names-atom)))))
 
-      (when (not is-mesos-compute-cluster?)
-        (testing "k8s gpu offers for all gpu jobs"
-          (let [num-considerable 10
-                offers [offer-6 offer-7]]
-            (is (not (run-handle-resource-offers! num-considerable offers "test-pool")))
-            (is (= :end-marker (async/<!! offers-chan)))
-            (is (= 2 (count @launched-job-names-atom)))
-            (is (= #{"job-5" "job-6"} (set @launched-job-names-atom))))))
+      (testing "all offers for all jobs"
+        (let [num-considerable 10
+              offers [offer-1 offer-2 offer-3 offer-4 offer-5 offer-6 offer-7 offer-8 offer-9]]
+          (is (run-handle-resource-offers! num-considerable offers "test-pool"))
+          (is (= :end-marker (async/<!! offers-chan)))
+          (is (= 6 (count @launched-job-names-atom)))
+          (is (= #{"job-1" "job-2" "job-3" "job-4" "job-5" "job-6"} (set @launched-job-names-atom)))))
 
+      (testing "k8s gpu offers for all gpu jobs"
+        (let [num-considerable 10
+              offers [offer-6 offer-7]]
+          (is (not (run-handle-resource-offers! num-considerable offers "test-pool")))
+          (is (= :end-marker (async/<!! offers-chan)))
+          (is (= 2 (count @launched-job-names-atom)))
+          (is (= #{"job-5" "job-6"} (set @launched-job-names-atom)))))
 
-      (when (not is-mesos-compute-cluster?)
-        (testing "k8s gpu offer for single gpu job"
-          (let [num-considerable 10
-                offers [offer-6]]
-            (is (not (run-handle-resource-offers! num-considerable offers "test-pool")))
-            (is (= :end-marker (async/<!! offers-chan)))
-            (is (= 1 (count @launched-job-names-atom)))
-            (is (= #{"job-5"} (set @launched-job-names-atom))))))
+      (testing "k8s gpu offer for single gpu job"
+        (let [num-considerable 10
+              offers [offer-6]]
+          (is (not (run-handle-resource-offers! num-considerable offers "test-pool")))
+          (is (= :end-marker (async/<!! offers-chan)))
+          (is (= 1 (count @launched-job-names-atom)))
+          (is (= #{"job-5"} (set @launched-job-names-atom)))))
 
-      (when (not is-mesos-compute-cluster?)
-        (testing "k8s gpu offer matching no gpu job"
-          (let [num-considerable 10
-                offers [offer-8]]
-            (is (run-handle-resource-offers! num-considerable offers "test-pool"))
-            (is (= :end-marker (async/<!! offers-chan)))
-            (is (empty? @launched-job-names-atom)))))
+      (testing "k8s gpu offer matching no gpu job"
+        (let [num-considerable 10
+              offers [offer-8]]
+          (is (run-handle-resource-offers! num-considerable offers "test-pool"))
+          (is (= :end-marker (async/<!! offers-chan)))
+          (is (empty? @launched-job-names-atom))))
 
       (testing "will not launch jobs on reserved host"
         (let [num-considerable 10
@@ -1905,50 +1870,39 @@
           (is (= #{"job-1" "job-2"} (set @launched-job-names-atom)))
           (is (= {:job-uuid->reserved-host {}
                   :launched-job-uuids #{job-1-uuid job-2-uuid}}
-                 @rebalancer-reservation-atom)))))))
+                 @rebalancer-reservation-atom))))
+      )))
 
 (deftest test-handle-resource-offers-mesos
-  (setup)
-  (let [uri "datomic:mem://test-handle-resource-offers-mesos"
-        conn (restore-fresh-database! uri)
-        test-user (System/getProperty "user.name")
-        launched-offer-ids-atom (atom [])
-        launched-job-names-atom (atom [])
-        driver (reify msched/SchedulerDriver
-                 (launch-tasks! [_ offer-id tasks]
-                   (swap! launched-offer-ids-atom conj (-> offer-id first :value))
-                   (swap! launched-job-names-atom concat (map (fn extract-job-id [task]
-                                                                (let [task-name (:name task)
-                                                                      suffix-start (str/index-of task-name (str "_" test-user "_"))]
-                                                                  (subs task-name 0 suffix-start)))
-                                                              tasks))))
-        compute-cluster (testutil/fake-test-compute-cluster-with-driver conn uri driver)
-        offer-maker (fn [cpus mem gpus]
-                      {:resources [{:name "cpus", :scalar cpus, :type :value-scalar, :role "cook"}
-                                   {:name "mem", :scalar mem, :type :value-scalar, :role "cook"}
-                                   {:name "gpus", :scalar gpus, :type :value-scalar, :role "cook"}]
-                       :id {:value (str "id-" (UUID/randomUUID))}
-                       :slave-id {:value (str "slave-" (UUID/randomUUID))}
-                       :hostname (str "host-" (UUID/randomUUID))
-                       :compute-cluster compute-cluster
-                       :offer-match-timer (timers/start (timers/timer "noop-timer-offer"))})
-        offer-1 (offer-maker 10 2048 0)
-        offer-2 (offer-maker 20 16384 0)
-        offer-3 (offer-maker 30 8192 0)
-        offer-4 (offer-maker 4 2048 0)
-        offer-5 (offer-maker 4 1024 0)
-        offer-6 (offer-maker 10 4096 0)
-        offer-7 (offer-maker 20 4096 0)
-        offer-8 (offer-maker 30 16384 0)
-        offer-9 (offer-maker 100 200000 0)
-        offers [offer-1 offer-2 offer-3 offer-4 offer-5 offer-6 offer-7 offer-8 offer-9]]
-    (test-handle-resource-offers launched-job-names-atom launched-offer-ids-atom offers test-user uri)))
+    (setup)
+    (let [uri "datomic:mem://test-handle-resource-offers-mesos"
+          conn (restore-fresh-database! uri)
+          driver []
+          compute-cluster (testutil/fake-test-compute-cluster-with-driver conn uri driver)
+          offer-maker (fn [cpus mem gpus]
+                        {:resources [{:name "cpus", :scalar cpus, :type :value-scalar, :role "cook"}
+                                     {:name "mem", :scalar mem, :type :value-scalar, :role "cook"}
+                                     {:name "gpus", :scalar gpus, :type :value-scalar, :role "cook"}]
+                         :id {:value (str "id-" (UUID/randomUUID))}
+                         :slave-id {:value (str "slave-" (UUID/randomUUID))}
+                         :hostname (str "host-" (UUID/randomUUID))
+                         :compute-cluster compute-cluster
+                         :offer-match-timer (timers/start (timers/timer "noop-timer-offer"))})
+          offer-1 (offer-maker 10 2048 0)
+          offer-2 (offer-maker 20 16384 0)
+          offer-3 (offer-maker 30 8192 0)
+          offer-4 (offer-maker 4 2048 0)
+          offer-5 (offer-maker 4 1024 0)
+          offer-6 (offer-maker 10 4096 0)
+          offer-7 (offer-maker 20 4096 0)
+          offer-8 (offer-maker 30 16384 0)
+          offer-9 (offer-maker 100 200000 0)
+          offers [offer-1 offer-2 offer-3 offer-4 offer-5 offer-6 offer-7 offer-8 offer-9]]
+      (test-handle-resource-offers offers uri)))
 
 (deftest test-handle-resource-offers-k8s
   (let [uri "datomic:mem://test-handle-resource-offers"
         conn (restore-fresh-database! uri)
-        test-user (System/getProperty "user.name")
-        launched-job-names-atom (atom [])
         compute-cluster (testutil/make-and-write-kubernetes-compute-cluster conn)
         offer-maker (fn [cpus mem gpus]
                       {:resources [{:name "cpus", :scalar cpus, :type :value-scalar, :role "cook"}
@@ -1970,7 +1924,7 @@
         offer-8 (offer-maker 30 16384 {"nvidia-tesla-p100" 1})
         offer-9 (offer-maker 100 200000 {})
         offers [offer-1 offer-2 offer-3 offer-4 offer-5 offer-6 offer-7 offer-8 offer-9]]
-    (test-handle-resource-offers launched-job-names-atom nil offers test-user uri)))
+    (test-handle-resource-offers offers uri)))
 
 
 (deftest test-handle-resource-offers-with-data-locality
