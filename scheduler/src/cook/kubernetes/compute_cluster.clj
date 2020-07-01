@@ -57,11 +57,12 @@
   (let [compute-cluster-name (cc/compute-cluster-name compute-cluster)
         node-name->capacity (api/get-capacity node-name->node)
         node-name->consumed (api/get-consumption node-name->pods)
-        node-name->available (api/deep-merge-with - node-name->capacity node-name->consumed)
+        node-name->available (tools/deep-merge-with - node-name->capacity node-name->consumed)
         ; Grab every unique GPU model being represented so that we can set counters for capacity and consumed for each GPU model
+        ; This is
         gpu-models (->> node-name->capacity vals (map :gpus) (apply merge) keys set)
-        total-gpu-capacity (total-gpu-resource node-name->capacity)
-        total-gpu-consumed (total-gpu-resource node-name->consumed)]
+        gpu-model->total-capacity (total-gpu-resource node-name->capacity)
+        gpu-model->total-consumed (total-gpu-resource node-name->consumed)]
 
     (log/info "In" compute-cluster-name "compute cluster, capacity:" node-name->capacity)
     (log/info "In" compute-cluster-name "compute cluster, consumption:" node-name->consumed)
@@ -79,13 +80,13 @@
                           (total-resource node-name->consumed :cpus))
     (monitor/set-counter! (metrics/counter "consumption-mem" compute-cluster-name)
                           (total-resource node-name->consumed :mem))
-    (run!
-      (fn [gpu-model]
-        (monitor/set-counter! (metrics/counter (str "capacity-gpu-" gpu-model) compute-cluster-name)
-                              (get total-gpu-capacity gpu-model))
-        (monitor/set-counter! (metrics/counter (str "consumption-gpu-" gpu-model) compute-cluster-name)
-                              (get total-gpu-consumed gpu-model 0)))
-      gpu-models)
+
+    (doseq [gpu-model gpu-models]
+      (monitor/set-counter! (metrics/counter (str "capacity-gpu-" gpu-model) compute-cluster-name)
+                            (get gpu-model->total-capacity gpu-model))
+      (monitor/set-counter! (metrics/counter (str "consumption-gpu-" gpu-model) compute-cluster-name)
+                            (get gpu-model->total-consumed gpu-model 0)))
+
 
     (->> node-name->available
          (filter #(schedulable-node-filter node-name->node node-name->pods compute-cluster %))

@@ -400,6 +400,15 @@
                            :authorization/user "dgrnbrg"
                            :body-params {"jobs" [(job 0)] "pool" "test-pool"}}))
               499)))
+    (testing "Non-whole number of gpus invalid"
+      (is (<= 400
+              (:status (h {:request-method :post
+                           :scheme :http
+                           :uri "/jobs"
+                           :headers {"Content-Type" "application/json"}
+                           :authorization/user "dgrnbrg"
+                           :body-params {"jobs" [(job 1.5)] "pool" "test-pool"}}))
+              499)))
     (with-redefs [config/valid-gpu-models (constantly [{:pool-regex "test-pool"
                                                        :valid-models #{"nvidia-tesla-p100"}
                                                        :default-model "nvidia-tesla-p100"}])]
