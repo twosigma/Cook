@@ -681,15 +681,13 @@
 (defn get-default-container-for-pool
   "Given a pool name, determine a default container that should be run on it."
   [default-containers effective-pool-name]
-  (->> default-containers
-       (filter (fn [{:keys [pool-regex]}] (re-find (re-pattern pool-regex) effective-pool-name)))
-       first
-       :container))
+  (util/match-based-on-pool-name default-containers effective-pool-name :container))
 
 (defn get-gpu-models-on-pool
-  "Given a pool name, determine the supported GPU models on that pool."
-  [valid-gpu-models effective-pool-name]
-  (:valid-models (constraints/gpu-models-config-for-pool valid-gpu-models effective-pool-name)))
+   "Given a pool name, determine the supported GPU models on that pool."
+   [valid-gpu-models effective-pool-name]
+   (util/match-based-on-pool-name valid-gpu-models effective-pool-name :valid-models))
+
 (s/defn make-job-txn
   "Creates the necessary txn data to insert a job into the database"
   [pool commit-latch-id db job :- Job]

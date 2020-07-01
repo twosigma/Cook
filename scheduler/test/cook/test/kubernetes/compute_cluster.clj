@@ -26,6 +26,24 @@
         (is eid2)
         (is (= eid eid2))))))
 
+(deftest test-get-pods-in-pool
+  (let [in
+        {:pool->node-name->node (atom {:pool-a {:node-1 1 :node-2 2}
+                                       :pool-b {:node-3 3}
+                                       :pool-c {:node-4 4}
+                                       :pool-d {:node-5 5}
+                                       :pool-e {}})
+         :node-name->pod-name->pod (atom {:node-1 {:pod-1a 1 :pod-1b 2}
+                                          :node-2 {:pod-2a 2}
+                                          :node-3 {}
+                                          :node-4 {:pod-4a 1 :pod-4b 2}})}]
+    (is (= {:pod-1a 1 :pod-1b 2 :pod-2a 2} (kcc/get-pods-in-pool in :pool-a)))
+    (is (= {} (kcc/get-pods-in-pool in :pool-b)))
+    (is (= {:pod-4a 1 :pod-4b 2} (kcc/get-pods-in-pool in :pool-c)))
+    (is (= {} (kcc/get-pods-in-pool in :pool-d)))
+    (is (= {} (kcc/get-pods-in-pool in :pool-e)))
+    (is (= {} (kcc/get-pods-in-pool in :pool-f)))))
+
 (deftest test-namespace-config
   (tu/setup)
   (let [conn (tu/restore-fresh-database! "datomic:mem://test-namespace-config")
@@ -41,7 +59,7 @@
                   api/make-security-context (constantly (V1PodSecurityContext.))]
       (testing "static namespace"
         (let [compute-cluster (kcc/->KubernetesComputeCluster nil "kubecompute" nil nil nil
-                                                              (atom {}) (atom {}) (atom {}) (atom {}) (atom nil)
+                                                              (atom {}) (atom {}) (atom {}) (atom {}) (atom {}) (atom {}) (atom {}) (atom nil)
                                                               {:kind :static :namespace "cook"} nil nil nil nil
                                                               (Executors/newSingleThreadExecutor))
               task-metadata (task/TaskAssignmentResult->task-metadata (d/db conn)
@@ -57,7 +75,7 @@
 
       (testing "per-user namespace"
         (let [compute-cluster (kcc/->KubernetesComputeCluster nil "kubecompute" nil nil nil
-                                                              (atom {}) (atom {}) (atom {}) (atom {}) (atom nil)
+                                                              (atom {}) (atom {}) (atom {}) (atom {}) (atom {}) (atom {}) (atom {}) (atom nil)
                                                               {:kind :per-user} nil nil nil nil
                                                               (Executors/newSingleThreadExecutor))
               task-metadata (task/TaskAssignmentResult->task-metadata (d/db conn)
@@ -75,7 +93,7 @@
   (with-redefs [api/launch-pod (constantly true)]
     (let [conn (tu/restore-fresh-database! "datomic:mem://test-generate-offers")
           compute-cluster (kcc/->KubernetesComputeCluster nil "kubecompute" nil nil nil
-                                                          (atom {}) (atom {}) (atom {}) (atom {}) (atom nil)
+                                                          (atom {}) (atom {}) (atom {}) (atom {}) (atom {}) (atom {}) (atom {}) (atom nil)
                                                           {:kind :static :namespace "cook"} nil 3 nil nil
                                                           (Executors/newSingleThreadExecutor))
           node-name->node {"nodeA" (tu/node-helper "nodeA" 1.0 1000.0 "10" "nvidia-tesla-p100" nil)
@@ -101,8 +119,7 @@
                 {:namespace "cook" :name task-1-id} (tu/pod-helper task-1-id "my.fake.host"
                                                                    {:cpus 0.1 :mem 10.0})}
           node-name->pods (api/pods->node-name->pods (kcc/add-starting-pods compute-cluster pods))
-          all-offers (kcc/generate-offers compute-cluster node-name->node node-name->pods)
-          offers (get all-offers "no-pool")]
+          offers (kcc/generate-offers compute-cluster node-name->node node-name->pods)]
       (is (= 4 (count offers)))
       (let [offer (first (filter #(= "nodeA" (:hostname %))
                                  offers))]
@@ -138,17 +155,18 @@
 
 (deftest test-autoscale!
   (tu/setup)
-  (let [make-job-fn (fn [job-uuid user]
+  (let [pool-name "test-pool"
+        make-job-fn (fn [job-uuid user]
                       {:job/resource [{:resource/type :cpus, :resource/amount 0.1}
                                       {:resource/type :mem, :resource/amount 32}]
                        :job/user user
-                       :job/uuid job-uuid})]
+                       :job/uuid job-uuid
+                       :job/pool pool-name})]
 
     (testing "synthetic pods basics"
       (let [job-uuid-1 (str (UUID/randomUUID))
             job-uuid-2 (str (UUID/randomUUID))
             job-uuid-3 (str (UUID/randomUUID))
-            pool-name "test-pool"
             ^V1Pod outstanding-synthetic-pod-1 (tu/synthetic-pod-helper job-uuid-1 pool-name nil)
             compute-cluster (tu/make-kubernetes-compute-cluster nil nil {nil outstanding-synthetic-pod-1}
                                                                 #{pool-name} "user")
@@ -157,7 +175,8 @@
                           (make-job-fn job-uuid-3 nil)]
             launched-pods-atom (atom [])]
         (with-redefs [api/launch-pod (fn [_ _ cook-expected-state-dict _]
-                                       (swap! launched-pods-atom conj cook-expected-state-dict))]
+                                       (swap! launched-pods-atom conj cook-expected-state-dict))
+                      kcc/get-pods-in-pool (constantly {{:namespace nil :name job-uuid-1} outstanding-synthetic-pod-1})]
           (cc/autoscale! compute-cluster pool-name pending-jobs sched/adjust-job-resources-for-pool-fn))
         (is (= 2 (count @launched-pods-atom)))
         (is (= job-uuid-2 (-> @launched-pods-atom (nth 0) :launch-pod :pod kcc/synthetic-pod->job-uuid)))

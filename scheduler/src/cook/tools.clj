@@ -893,6 +893,15 @@
     (cond-> {:count 1 :cpus cpus :mem mem}
       gpus (assoc :gpus gpus))))
 
+(defn match-based-on-pool-name
+  "Given a list of dictionaries [{:pool-regexp .. :field ...} {:pool-regexp .. :field ...}
+   a pool name and a <field> name, return the first matching <field> where the regexp matches the pool name."
+  [match-list effective-pool-name field]
+  (->> match-list
+       (filter (fn [{:keys [pool-regex]}] (re-find (re-pattern pool-regex) effective-pool-name)))
+       first
+       field))
+
 (defn filter-based-on-quota
   "Lazily filters jobs for which the sum of running jobs and jobs earlier in the queue exceeds one of the constraints,
    max-jobs, max-cpus or max-mem"
@@ -922,3 +931,45 @@
                                          (reduce (partial merge-with +))))
                                   user->jobs)))
                  pool->jobs)))
+
+(defn make-atom-updater
+  "Given a state atom, returns a callback that updates that state-atom when called with a key, prev item, and item."
+  [state-atom]
+  (fn
+    [key prev-item item]
+    (cond
+      (and (nil? prev-item) (not (nil? item))) (swap! state-atom (fn [m] (assoc m key item)))
+      (and (not (nil? prev-item)) (not (nil? item))) (swap! state-atom (fn [m] (assoc m key item)))
+      (and (not (nil? prev-item)) (nil? item)) (swap! state-atom (fn [m] (dissoc m key))))))
+
+(defn dissoc-in
+  "Disassociate a nested key. Delete any intermediate dictionaries."
+  [m [k1 k2]]
+  (if (get-in m [k1 k2])
+    (let [inner (dissoc (get m k1 {}) k2)]
+      (if (empty? inner)
+        (dissoc m k1)
+        (assoc m k1 inner)))
+    m))
+
+(defn make-nested-atom-updater
+  "Given a state atom, returns a callback that updates that nested-state-atom when called with a key, prev item, and
+  item. Automatically deletes now empty dictionaries."
+  [state-atom k1-extract-fn k2-extract-fn]
+  (fn
+    [_ prev-item item] ; Key is unused here.
+    (cond
+      (and (nil? prev-item) (not (nil? item)))
+      (let [k1 (k1-extract-fn item)
+            k2 (k2-extract-fn item)]
+        (swap! state-atom (fn [m] (assoc-in m [k1 k2] item))))
+      (and (not (nil? prev-item)) (not (nil? item)))
+      (let [k1 (k1-extract-fn item)
+            k2 (k2-extract-fn item)
+            prev-k1 (k1-extract-fn prev-item)
+            prev-k2 (k2-extract-fn prev-item)]
+        (swap! state-atom (fn [m] (assoc-in (dissoc-in m [prev-k1 prev-k2]) [k1 k2] item))))
+      (and (not (nil? prev-item)) (nil? item))
+      (let [prev-k1 (k1-extract-fn prev-item)
+            prev-k2 (k2-extract-fn prev-item)]
+        (swap! state-atom (fn [m] (dissoc-in m [prev-k1 prev-k2])))))))

@@ -90,13 +90,6 @@
   (let [previous-hosts (job->previous-hosts-to-avoid job)]
     (->novel-host-constraint job previous-hosts)))
 
-(defn gpu-models-config-for-pool
-  "Given a pool name, obtain the valid-gpu-models entry on config for that pool"
-  [valid-gpu-models effective-pool-name]
-  (->> valid-gpu-models
-       (filter (fn [{:keys [pool-regex]}] (re-find (re-pattern pool-regex) effective-pool-name)))
-       first))
-
 (defrecord gpu-host-constraint [job]
   JobConstraint
   (job-constraint-name [this] (get-class-name this))
@@ -108,7 +101,7 @@
     (let [gpu-count-requested (-> job util/job-ent->resources :gpus (or 0))
           gpu-model-requested (when (pos? gpu-count-requested)
                                 (or (-> job util/job-ent->env (get "COOK_GPU_MODEL"))
-                                  (:default-model (gpu-models-config-for-pool (config/valid-gpu-models) (util/job->pool-name job)))))
+                                    (util/match-based-on-pool-name (config/valid-gpu-models) (util/job->pool-name job) :default-model)))
           gpu-model->count-available (get vm-attributes "gpus")
           k8s-vm? (= (get vm-attributes "compute-cluster-type") "kubernetes")
           ; k8s VM that supports gpu models but does not have any available gpus will have a gpus map of {"model A" 0 "model B" 0 ...}
