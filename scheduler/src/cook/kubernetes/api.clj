@@ -34,6 +34,7 @@
 (def cook-job-pod-priority-class "cook-workload")
 (def cook-synthetic-pod-priority-class "synthetic-pod")
 (def cook-synthetic-pod-name-prefix "synthetic")
+(def gpu-node-taint "nvidia.com/gpu")
 (def k8s-hostname-label "kubernetes.io/hostname")
 ; This pod annotation signals to the cluster autoscaler that
 ; it's safe to remove the node on which the pod is running
@@ -391,7 +392,7 @@
     false
     (let [taints-on-node (or (some-> node .getSpec .getTaints) [])
           other-taints (remove #(contains?
-                                  #{cook-pool-taint k8s-deletion-candidate-taint "nvidia.com/gpu"}
+                                  #{cook-pool-taint k8s-deletion-candidate-taint gpu-node-taint}
                                   (.getKey %))
                                taints-on-node)
           node-name (some-> node .getMetadata .getName)
