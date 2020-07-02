@@ -91,7 +91,7 @@ class AbstractContainer:
         d['volumes'] = list(map(Volume.from_dict, d['volumes']))
 
         # Figure out which type we should create
-        clsname = d['type']
+        clsname = d['type'].lower()
         cls = _CONTAINER_TYPES[clsname]
 
         # Flatten the dict a bit
