@@ -136,15 +136,16 @@
   - any one of the keys (pool-regex, valid-models, default-model) is not configured
   - there is no gpu-model in valid-gpu-models matching the configured default"
   [{:keys [valid-gpu-models]}]
-  (doseq [{:keys [default-model pool-regex valid-models] :as entry} valid-gpu-models]
-    (when-not pool-regex
-      (throw (ex-info (str "pool-regex key is missing from config") entry)))
-    (when-not valid-models
-      (throw (ex-info (str "Valid GPU models for pool-regex " pool-regex " is not defined") entry)))
-    (when-not default-model
-      (throw (ex-info (str "Default GPU model for pool-regex " pool-regex " is not defined") entry)))
-    (when-not (contains? valid-models default-model)
-      (throw (ex-info (str "Default GPU model for pool-regex " pool-regex " is not listed as a valid GPU model") entry)))))
+  (when valid-gpu-models
+    (doseq [{:keys [default-model pool-regex valid-models] :as entry} valid-gpu-models]
+      (when-not pool-regex
+        (throw (ex-info (str "pool-regex key is missing from config") entry)))
+      (when-not valid-models
+        (throw (ex-info (str "Valid GPU models for pool-regex " pool-regex " is not defined") entry)))
+      (when-not default-model
+        (throw (ex-info (str "Default GPU model for pool-regex " pool-regex " is not defined") entry)))
+      (when-not (contains? valid-models default-model)
+        (throw (ex-info (str "Default GPU model for pool-regex " pool-regex " is not listed as a valid GPU model") entry))))))
 
 (def config-settings
   "Parses the settings out of a config file"

@@ -493,7 +493,7 @@
                                    "cpu"
                                    (Quantity. (BigDecimal. cpus)
                                               Quantity$Format/DECIMAL_SI)))
-               (when (pos? gpus)
+               (when gpus
                  (.putRequestsItem resources
                                    "nvidia.com/gpu"
                                    (Quantity. gpus))
@@ -537,7 +537,7 @@
                                                    Quantity$Format/DECIMAL_SI))
       (.putAllocatableItem status "memory" (Quantity. (BigDecimal. (* kapi/memory-multiplier mem))
                                                       Quantity$Format/DECIMAL_SI)))
-    (when (pos? gpus)
+    (when gpus
       (.putCapacityItem status "nvidia.com/gpu" (Quantity. gpus))
       (.putAllocatableItem status "nvidia.com/gpu" (Quantity. gpus))
       (.putLabelsItem metadata "gpu-type" (or gpu-model "nvidia-tesla-p100")))

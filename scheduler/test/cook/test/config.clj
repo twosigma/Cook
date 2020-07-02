@@ -114,8 +114,6 @@
                                [:config :pools :valid-gpu-models]
                                [{:pool-regex "test-pool"
                                  :default-model "valid-gpu-model"}])]
-      (clojure.tools.logging/info "*****" bad-config)
-      (clojure.tools.logging/info "*****" (-> bad-config :config :pools :valid-gpu-models))
       (is (thrown-with-msg? ExceptionInfo
                    #"Valid GPU models for pool-regex test-pool is not defined"
                    (config-settings bad-config)))))

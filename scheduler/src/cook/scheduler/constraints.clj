@@ -103,7 +103,7 @@
           (if k8s-vm?
             (let [job-gpu-model-requested (when (pos? job-gpu-count-requested)
                                             (or (-> job util/job-ent->env (get "COOK_GPU_MODEL"))
-                                                (:default-model (gpu-models-config-for-pool (config/valid-gpu-models) (util/job->pool-name job)))))
+                                                (util/match-based-on-pool-name (config/valid-gpu-models) (util/job->pool-name job) :default-model)))
                   vm-gpu-model->count-available (get vm-attributes "gpus")
                   vm-satisfies-constraint? (if (pos? job-gpu-count-requested)
                                              ; If job requests GPUs, require that the VM has enough gpus available in the same model as the job requested.
