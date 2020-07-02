@@ -12,11 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import socket
 import unittest
 
 from cookclient import JobClient
-from cookclient.containers import DockerContainer
-from cookclient.jobs import Job, Status as JobStatus
+from cookclient.containers import DockerContainer, DockerPortMapping
+from cookclient.jobs import (
+    State as JobState,
+    Status as JobStatus
+)
 
 from tests.cook import util
 
@@ -86,6 +90,37 @@ class ClientTest(util.CookTest):
             self.assertEqual(remote_container['docker']['image'], container.image)
         finally:
             self.client.kill(uuid)
+
+    @unittest.skipUnless(util.docker_tests_enabled(), "Requires setting the COOK_TEST_DOCKER_IMAGE environment variable")
+    @unittest.skipUnless(util.using_kubernetes(), "Requires Kubernetes")
+    def test_container_port_submit(self):
+        listener_container = DockerContainer(util.docker_image(), port_mapping=[
+            DockerPortMapping(host_port=8080, container_port=8080,
+                              protocol='tcp')
+        ])
+        sender_container = DockerContainer(util.docker_image())
+        listener = self.client.submit(command=f'nc -l 0.0.0.0 8080',
+                                      container=listener_container)
+        sender = None
+        try:
+            util.wait_for_running_instance(type(self).cook_url, str(listener))
+            hostname = self.client.query(listener).instances[0].hostname
+
+            sender = self.client.submit(command=f'echo "Hello world!" | nc -N $(dig +short {hostname}) 8080',
+                                        container=sender_container)
+
+            util.wait_for_jobs(type(self).cook_url,
+                               [str(listener), str(sender)],
+                               'completed')
+
+            self.assertEqual(self.client.query(sender).state,
+                             JobState.SUCCESS)
+            self.assertEqual(self.client.query(listener).state,
+                             JobState.SUCCESS)
+        finally:
+            self.client.kill(listener)
+            if sender is not None:
+                self.client.kill(sender)
 
     def test_instance_query(self):
         """Test that parsing an instance yielded from Cook works."""
