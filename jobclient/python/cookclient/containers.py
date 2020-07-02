@@ -88,7 +88,8 @@ class AbstractContainer:
     def from_dict(d: dict) -> 'AbstractContainer':
         d = deepcopy(d)
 
-        d['volumes'] = list(map(Volume.from_dict, d['volumes']))
+        if 'volumes' in d:
+            d['volumes'] = list(map(Volume.from_dict, d['volumes']))
 
         # Figure out which type we should create
         clsname = d['type'].lower()
@@ -236,13 +237,15 @@ class DockerContainer(AbstractContainer):
         #       us by AbstractContainer.from_dict
 
         # kebab-case to snake_case
-        d['force_pull_image'] = d['force-pull-image']
-        del d['force-pull-image']
-        d['port_mapping'] = d['port-mapping']
-        del d['port-mapping']
+        if 'force-pull-image' in d:
+            d['force_pull_image'] = d['force-pull-image']
+            del d['force-pull-image']
+        if 'port-mapping' in d:
+            d['port_mapping'] = d['port-mapping']
+            del d['port-mapping']
 
-        d['port_mapping'] = list(map(DockerPortMapping.from_dict,
-                                     d['port_mapping']))
+            d['port_mapping'] = list(map(DockerPortMapping.from_dict,
+                                         d['port_mapping']))
 
         return cls(**d)
 
