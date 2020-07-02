@@ -68,10 +68,21 @@ class CookTest(util.CookTest):
             self.logger.info(f'Exit code not checked because cook executor was not used for {instance}')
 
     def test_submit_requesting_gpus(self):
-        #submit job that requests gpus, wait for it to be completed successfully,
-        # use command that succeeds only if nvidia-smi gives the correct output
         job_executor_type = util.get_job_executor_type()
-        job_uuid, resp = util.submit_job(self.cook_url, executor=job_executor_type, max_retries=5)
+        # Command succeeds if nvidia-smi -q gives the right number of gpus and the right model of gpus
+        command = 'nvidia-smi -q | nvidia-smi-output && ' \
+                  'expected_count=2 ; expected_model="Tesla P100" ;' \
+                  'num_gpus=$(grep "Attached GPUs" nvidia-smi-output | cut -d \':\' -f 2 | tr -d \'[:space:]\') ; ' \
+                  'num_expected_model=$(grep "Tesla P100" nvidia-smi-output | wc -1) ; ' \
+                  'if [[ $num_gpus -eq 2 && $num_expected_model -eq  2 ]] ; then exit 0 ; else exit 1 ; fi'
+
+        job_uuid, resp = util.submit_job(
+            self.cook_url,
+            executor=job_executor_type,
+            command=command,
+            gpus=2,
+            env={'COOK_GPU_MODEL': 'nvidia-tesla-p100'},
+            max_retries=5)
         self.assertEqual(resp.status_code, 201, msg=resp.content)
         self.assertEqual(resp.content, str.encode(f"submitted jobs {job_uuid}"))
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
