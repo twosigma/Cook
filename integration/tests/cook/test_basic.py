@@ -67,6 +67,18 @@ class CookTest(util.CookTest):
         else:
             self.logger.info(f'Exit code not checked because cook executor was not used for {instance}')
 
+    def test_submit_requesting_gpus(self):
+        #submit job that requests gpus, wait for it to be completed successfully,
+        # use command that succeeds only if nvidia-smi gives the correct output
+        job_executor_type = util.get_job_executor_type()
+        job_uuid, resp = util.submit_job(self.cook_url, executor=job_executor_type, max_retries=5)
+        self.assertEqual(resp.status_code, 201, msg=resp.content)
+        self.assertEqual(resp.content, str.encode(f"submitted jobs {job_uuid}"))
+        job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
+        self.assertIn('success', [i['status'] for i in job['instances']], json.dumps(job, indent=2))
+        instance = job['instances'][0]
+
+
     @unittest.skipUnless(util.docker_tests_enabled(), 'requires docker')
     @pytest.mark.scheduler_not_in_docker
     # If the cook scheduler is running in a docker container, it won't be able to lookup UID's or GID's. Under those circumstances,

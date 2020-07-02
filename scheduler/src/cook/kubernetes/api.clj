@@ -787,7 +787,7 @@
     (when (pos? gpus)
       (.putLimitsItem resources "nvidia.com/gpu" (double->quantity gpus)))
     (when (pos? gpus)
-      (.putNodeSelectorItem pod-spec "cloud.google.comm/gke-accelerator" gpu-model-requested))
+      (.putNodeSelectorItem pod-spec "cloud.google.com/gke-accelerator" gpu-model-requested))
     (.setResources container resources)
     (.setVolumeMounts container (filterv some? (conj (concat volume-mounts main-container-checkpoint-volume-mounts)
                                                      (init-container-workdir-volume-mount-fn true)
