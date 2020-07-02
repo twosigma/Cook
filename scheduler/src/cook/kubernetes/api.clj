@@ -714,7 +714,7 @@
         gpus (or (:gpus resources) 0)
         gpu-model-requested (when (pos? gpus)
                               (or (-> job :job/environment get-gpu-model-from-task-metadata)
-                                  (:default-model (constraints/gpu-models-config-for-pool (config/valid-gpu-models) pool-name))))
+                                  (util/match-based-on-pool-name (config/valid-gpu-models) pool-name :default-model)))
         security-context (make-security-context parameters (:user command))
         sandbox-dir (:default-workdir (config/kubernetes))
         workdir (get-workdir parameters sandbox-dir)
