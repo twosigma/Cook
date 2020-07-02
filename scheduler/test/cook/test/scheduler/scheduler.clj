@@ -1733,7 +1733,6 @@
                @rebalancer-reservation-atom))))))
 
 (let [uri "datomic:mem://test-handle-resource-offers"
-      conn (restore-fresh-database! uri)
       test-user (System/getProperty "user.name")
       executor {:command "cook-executor"
                 :default-progress-regex-string "regex-string"
@@ -1820,7 +1819,8 @@
 
   (deftest test-handle-resource-offers-mesos
     (setup)
-    (let [driver []
+    (let [conn (restore-fresh-database! uri)
+          driver []
           compute-cluster (testutil/fake-test-compute-cluster-with-driver conn uri driver)
           offer-maker (fn [cpus mem gpus]
                         {:resources [{:name "cpus", :scalar cpus, :type :value-scalar, :role "cook"}
@@ -1867,7 +1867,8 @@
 
   (deftest test-handle-resource-offers-k8s
     (setup)
-    (let [compute-cluster (testutil/make-and-write-kubernetes-compute-cluster conn)
+    (let [conn (restore-fresh-database! uri)
+          compute-cluster (testutil/make-and-write-kubernetes-compute-cluster conn)
           offer-maker (fn [cpus mem gpus]
                         {:resources [{:name "cpus", :scalar cpus, :type :value-scalar, :role "cook"}
                                      {:name "mem", :scalar mem, :type :value-scalar, :role "cook"}
