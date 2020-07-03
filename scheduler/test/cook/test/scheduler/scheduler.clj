@@ -47,7 +47,8 @@
             [mesomatic.scheduler :as msched]
             [mesomatic.types :as mtypes]
             [metrics.timers :as timers]
-            [plumbing.core :as pc])
+            [plumbing.core :as pc]
+            [cook.mesos.task :as task])
   (:import (clojure.lang ExceptionInfo)
            (com.netflix.fenzo SimpleAssignmentResult TaskAssignmentResult TaskRequest TaskScheduler)
            (com.netflix.fenzo.plugins BinPackingFitnessCalculators)
@@ -1569,6 +1570,13 @@
 
 
 (let [uri "datomic:mem://test-handle-resource-offers"
+      ;conn (restore-fresh-database! uri)
+      ;compute-cluster (testutil/fake-test-compute-cluster-with-driver conn uri nil)
+      compute-cluster (reify ComputeCluster
+                        (use-cook-executor? [_] true)
+                        (max-tasks-per-host [_] nil)
+                        (num-tasks-on-host [_ _] nil)
+                        )
       test-user (System/getProperty "user.name")
       executor {:command "cook-executor"
                 :default-progress-regex-string "regex-string"
@@ -1579,10 +1587,13 @@
                       :executable true
                       :extract false
                       :value "file:///path/to/cook-executor"}}
-      static-offer-info {:id {:value (str "id-" (UUID/randomUUID))}
-                         :slave-id {:value (str "slave-" (UUID/randomUUID))}
-                         :hostname (str "host-" (UUID/randomUUID))
-                         :offer-match-timer (timers/start (timers/timer "noop-timer-offer"))}
+      ; Resources and attributes are unique to the compute cluster but static-offer-info is constant
+      static-offer-info (fn []
+                          {:id {:value (str "id-" (UUID/randomUUID))}
+                           :slave-id {:value (str "slave-" (UUID/randomUUID))}
+                           :hostname (str "host-" (UUID/randomUUID))
+                           :compute-cluster compute-cluster
+                           :offer-match-timer (timers/start (timers/timer "noop-timer-offer"))})
       launched-offer-ids-atom (atom [])
       launched-job-names-atom (atom [])
       offers-chan (async/chan (async/buffer 10))
@@ -1655,7 +1666,25 @@
                                                    user->usage user->quota num-considerable offers
                                                    rebalancer-reservation-atom pool nil)]
                                       (async/>!! offers-chan :end-marker)
-                                      result))]
+                                      result))
+      mock-launch-matches (fn [matches]
+                          (doseq [{:keys [leases tasks]} matches]
+                            (let [task-metadata-seq (->> tasks
+                                       (sort-by (comp :job/uuid :job #(.getRequest ^TaskAssignmentResult %)))
+                                       (map (partial task/TaskAssignmentResult->task-metadata nil nil compute-cluster)))]
+                              (swap! launched-offer-ids-atom conj
+                                     (-> leases first :offer :id :value))
+                              (swap! launched-job-names-atom concat
+                                     (map (fn get-job-id [task-metadata]
+                                            (-> task-metadata :task-request :job :job/name))
+                                          task-metadata-seq))
+                              (log/info "~~~~~" task-metadata-seq)
+                              (doseq [task-metadata task-metadata-seq]
+                                (rate-limit/spend! rate-limit/job-launch-rate-limiter (get-in (:task-request task-metadata) [:job :job/user]) 1)))
+                            ))
+      gpu-models-config [{:pool-regex "test-pool"
+                          :valid-models #{"nvidia-tesla-p100" "nvidia-tesla-k80"}
+                          :default-model "nvidia-tesla-p100"}]]
   (defn test-handle-resource-helpers
     "Helper function for test-handle-resource offers"
     [offers-list]
@@ -1820,22 +1849,16 @@
           (is (= #{"job-1" "job-2"} (set @launched-job-names-atom)))
           (is (= {:job-uuid->reserved-host {}
                   :launched-job-uuids      #{job-1-uuid job-2-uuid}}
-                 @rebalancer-reservation-atom))))))
+                 @rebalancer-reservation-atom))))
+      ))
 
   (deftest test-handle-resource-offers-mesos
     (setup)
-    (let [conn (restore-fresh-database! uri)
-          driver []
-          compute-cluster (testutil/fake-test-compute-cluster-with-driver conn uri driver)
-          _ (log/info "~~~~~" static-offer-info)
-          offer-maker (fn [cpus mem gpus]
-                        (merge
-                          {:resources [{:name "cpus", :scalar cpus, :type :value-scalar, :role "cook"}
+    (let [offer-maker (fn [cpus mem gpus]
+                        (assoc (static-offer-info)
+                          :resources [{:name "cpus", :scalar cpus, :type :value-scalar, :role "cook"}
                                       {:name "mem", :scalar mem, :type :value-scalar, :role "cook"}
-                                      {:name "gpus", :scalar gpus, :type :value-scalar, :role "cook"}]
-                           :compute-cluster compute-cluster}
-                          static-offer-info))
-          ; make offer template - unifies the static variables and the resources
+                                      {:name "gpus", :scalar gpus, :type :value-scalar, :role "cook"}]))
           offer-1 (offer-maker 10 2048 0)
           offer-2 (offer-maker 20 16384 0)
           offer-3 (offer-maker 30 8192 0)
@@ -1846,20 +1869,13 @@
           offer-8 (offer-maker 30 16384 0)
           offer-9 (offer-maker 100 200000 0)
           offers [offer-1 offer-2 offer-3 offer-4 offer-5 offer-6 offer-7 offer-8 offer-9]]
-      (with-redefs [sched/launch-matches! (fn [_ _ matches _]
-                                            (doseq [{:keys [leases task-metadata-seq]} matches]
-                                              (swap! launched-offer-ids-atom conj
-                                                     (-> leases first :offer :id :value))
-                                              (swap! launched-job-names-atom concat
-                                                     (map (fn get-job-id [task-metadata]
-                                                            (-> task-metadata :task-request :job :job/name))
-                                                          task-metadata-seq))
-                                              (doseq [task-metadata task-metadata-seq]
-                                                (rate-limit/spend! rate-limit/job-launch-rate-limiter (get-in (:task-request task-metadata) [:job :job/user]) 1))))
+      (with-redefs [
+                    ;sched/launch-matches! (fn [_ _ matches _]
+                    ;                        (mock-launch-matches matches))
+                    sched/launch-matched-tasks! (fn [matches _ _ _ _ _]
+                                                  (mock-launch-matches matches))
                     cook.config/executor-config (constantly executor)
-                    config/valid-gpu-models (constantly [{:pool-regex "test-pool"
-                                                          :valid-models #{"nvidia-tesla-p100" "nvidia-tesla-k80"}
-                                                          :default-model "nvidia-tesla-p100"}])]
+                    config/valid-gpu-models (constantly gpu-models-config)]
         (test-handle-resource-helpers offers)
         ; In mesos, jobs requesting gpus should not get matched
         (testing "all offers for all jobs"
@@ -1872,18 +1888,12 @@
 
   (deftest test-handle-resource-offers-k8s
     (setup)
-    (let [conn (restore-fresh-database! uri)
-          compute-cluster (testutil/make-and-write-kubernetes-compute-cluster conn)
-          offer-maker (fn [cpus mem gpus]
-                        {:resources [{:name "cpus", :scalar cpus, :type :value-scalar, :role "cook"}
-                                     {:name "mem", :scalar mem, :type :value-scalar, :role "cook"}
-                                     {:name "gpus", :text->scalar gpus, :type :value-text->scalar, :role "cook"}]
-                         :attributes [{:name "compute-cluster-type", :text "kubernetes", :type :value-text, :role "cook"}]
-                         :id {:value (str "id-" (UUID/randomUUID))}
-                         :slave-id {:value (str "slave-" (UUID/randomUUID))}
-                         :hostname (str "host-" (UUID/randomUUID))
-                         :compute-cluster compute-cluster
-                         :offer-match-timer (timers/start (timers/timer "noop-timer-offer"))})
+    (let [offer-maker (fn [cpus mem gpus]
+                        (assoc (static-offer-info)
+                          :resources [{:name "cpus", :scalar cpus, :type :value-scalar, :role "cook"}
+                                      {:name "mem", :scalar mem, :type :value-scalar, :role "cook"}
+                                      {:name "gpus", :text->scalar gpus, :type :value-text->scalar, :role "cook"}]
+                          :attributes [{:name "compute-cluster-type", :text "kubernetes", :type :value-text, :role "cook"}]))
           offer-1 (offer-maker 10 2048 {})
           offer-2 (offer-maker 20 16384 {})
           offer-3 (offer-maker 30 8192 {})
@@ -1894,20 +1904,13 @@
           offer-8 (offer-maker 30 16384 {"nvidia-tesla-p100" 1})
           offer-9 (offer-maker 100 200000 {})
           offers [offer-1 offer-2 offer-3 offer-4 offer-5 offer-6 offer-7 offer-8 offer-9]]
-      (with-redefs [sched/launch-matches! (fn [_ _ matches _]
-                                            (doseq [{:keys [leases task-metadata-seq]} matches]
-                                              (swap! launched-offer-ids-atom conj
-                                                     (-> leases first :offer :id :value))
-                                              (swap! launched-job-names-atom concat
-                                                     (map (fn get-job-id [task-metadata]
-                                                            (-> task-metadata :task-request :job :job/name))
-                                                          task-metadata-seq))
-                                              (doseq [task-metadata task-metadata-seq]
-                                                (rate-limit/spend! rate-limit/job-launch-rate-limiter (get-in (:task-request task-metadata) [:job :job/user]) 1))))
+      (with-redefs [
+                    ;sched/launch-matches! (fn [_ _ matches _]
+                    ;                        (mock-launch-matches matches))
+                    sched/launch-matched-tasks! (fn [matches _ _ _ _ _]
+                                                  (mock-launch-matches matches))
                     cook.config/executor-config (constantly executor)
-                    config/valid-gpu-models (constantly [{:pool-regex "test-pool"
-                                                          :valid-models #{"nvidia-tesla-p100" "nvidia-tesla-k80"}
-                                                          :default-model "nvidia-tesla-p100"}])
+                    config/valid-gpu-models (constantly gpu-models-config)
                     kapi/create-namespaced-pod (constantly true)]
         (test-handle-resource-helpers offers)
         ; In kubernetes, gpu jobs should get matched if vm has enough count available in the correct model

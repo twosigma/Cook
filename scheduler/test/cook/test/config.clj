@@ -15,7 +15,7 @@
 ;;
 (ns cook.test.config
   (:require [clojure.test :refer :all]
-            [cook.config :refer (config config-settings config-string->fitness-calculator default-pool env read-edn-config)
+            [cook.config :refer [config config-settings config-string->fitness-calculator default-pool env read-edn-config]
              :as config]
             [cook.test.rest.api :as api]
             [cook.test.testutil :refer [setup]])

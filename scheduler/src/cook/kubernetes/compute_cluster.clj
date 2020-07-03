@@ -59,8 +59,8 @@
         node-name->consumed (api/get-consumption node-name->pods)
         node-name->available (tools/deep-merge-with - node-name->capacity node-name->consumed)
         ; Grab every unique GPU model being represented so that we can set counters for capacity and consumed for each GPU model
-        ; This is
         gpu-models (->> node-name->capacity vals (map :gpus) (apply merge) keys set)
+        ; The following variables are only being used setting counters for monitor
         gpu-model->total-capacity (total-gpu-resource node-name->capacity)
         gpu-model->total-consumed (total-gpu-resource node-name->consumed)]
 
