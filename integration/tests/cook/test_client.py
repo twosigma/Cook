@@ -99,7 +99,8 @@ class ClientTest(util.CookTest):
         JOB_PORT = 30030
         hostname_progress_cmd = util.progress_line(type(self).cook_url,
                                                    50,  # Don't really care, we just need a val
-                                                   '$(hostname -i)')
+                                                   '$(hostname -i)',
+                                                   write_to_file=True)
 
         container = DockerContainer(util.docker_image(), port_mapping=[
             DockerPortMapping(host_port=JOB_PORT, container_port=JOB_PORT,
