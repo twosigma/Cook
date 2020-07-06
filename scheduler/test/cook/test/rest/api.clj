@@ -1626,8 +1626,7 @@
             :port 10000
             :hostname "localhost"
             :metrics {}
-            :nrepl {}
-            :pools {}}})
+            :nrepl {}}})
 
 (deftest test-stringify
   (is (= {:foo (str +)} (api/stringify {:foo +})))

@@ -418,8 +418,8 @@
                        (when (zero? port)
                          (throw (ex-info "You enabled nrepl but didn't configure a port. Please configure a port in your config file." {})))
                        ((util/lazy-load-var 'clojure.tools.nrepl.server/start-server) :port port)))
-     :pools (fnk [[:config [:pools {valid-gpu-models nil} :as pools]]]
-              (guard-invalid-gpu-config valid-gpu-models)
+     :pools (fnk [[:config {pools nil}]]
+              (guard-invalid-gpu-config (:valid-gpu-models pools))
               (cond-> pools
                 (:job-resource-adjustment pools)
                 (update :job-resource-adjustment
