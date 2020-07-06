@@ -92,6 +92,7 @@ class ClientTest(util.CookTest):
             self.client.kill(uuid)
 
     @unittest.skipUnless(util.docker_tests_enabled(), "Requires setting the COOK_TEST_DOCKER_IMAGE environment variable")
+    @unittest.skipUnless(util.using_kubernetes(), "Requires running on Kubernetes")
     @unittest.skipUnless(util.is_job_progress_supported(), "Requires progress reporting")
     def test_container_port_submit(self):
         """Test submitting a job with a port specification."""
