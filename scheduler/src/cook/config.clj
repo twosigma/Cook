@@ -135,7 +135,7 @@
   "Throws if either of the following is true:
   - any one of the keys (pool-regex, valid-models, default-model) is not configured
   - there is no gpu-model in valid-gpu-models matching the configured default"
-  [{:keys [valid-gpu-models]}]
+  [valid-gpu-models]
   (when valid-gpu-models
     (doseq [{:keys [default-model pool-regex valid-models] :as entry} valid-gpu-models]
       (when-not pool-regex
@@ -418,8 +418,8 @@
                        (when (zero? port)
                          (throw (ex-info "You enabled nrepl but didn't configure a port. Please configure a port in your config file." {})))
                        ((util/lazy-load-var 'clojure.tools.nrepl.server/start-server) :port port)))
-     :pools (fnk [[:config {pools nil}]]
-              (guard-invalid-gpu-config pools)
+     :pools (fnk [[:config [:pools {valid-gpu-models nil} :as pools]]]
+              (guard-invalid-gpu-config valid-gpu-models)
               (cond-> pools
                 (:job-resource-adjustment pools)
                 (update :job-resource-adjustment

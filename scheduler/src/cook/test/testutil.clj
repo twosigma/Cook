@@ -555,14 +555,14 @@
   node))
 
 (defn make-kubernetes-compute-cluster
-  [cluster-entity-id namespaced-pod-name->pod pool-names synthetic-pods-user]
+  [namespaced-pod-name->pod pool-names synthetic-pods-user node-blocklist-labels]
   (let [synthetic-pods-config {:image "image"
                                :user synthetic-pods-user
                                :max-pods-outstanding 4
                                :pools pool-names}]
     (kcc/->KubernetesComputeCluster nil ; api-client
                                     "kubecompute" ; name
-                                    cluster-entity-id ; entity-id
+                                    nil ; entity-id
                                     nil ; match-trigger-chan
                                     nil ; exit-code-syncer-state
                                     (atom namespaced-pod-name->pod) ; all-pods-atom
@@ -577,14 +577,6 @@
                                     nil ; scan-frequency-seconds-config
                                     nil ; max-pods-per-node
                                     synthetic-pods-config ; synthetic-pods-config
-                                    nil ; node-blocklist-labels
-                                    (Executors/newSingleThreadExecutor)))) ; launch-task-executor-service
-
-
-(defn make-and-write-kubernetes-compute-cluster
-  "Similar to make-kubernetes-compute-cluster but also writes to a database"
-  [conn]
-  (let [cluster-entity-id (kcc/get-or-create-cluster-entity-id conn "kubecompute")
-        compute-cluster (make-kubernetes-compute-cluster cluster-entity-id {} nil nil)]
-    (cc/register-compute-cluster! compute-cluster)
-    compute-cluster))
+                                    node-blocklist-labels ; node-blocklist-labels
+                                    (Executors/newSingleThreadExecutor) ; launch-task-executor-service
+                                    )))

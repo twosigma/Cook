@@ -1570,13 +1570,10 @@
 
 
 (let [uri "datomic:mem://test-handle-resource-offers"
-      ;conn (restore-fresh-database! uri)
-      ;compute-cluster (testutil/fake-test-compute-cluster-with-driver conn uri nil)
       compute-cluster (reify ComputeCluster
                         (use-cook-executor? [_] true)
                         (max-tasks-per-host [_] nil)
-                        (num-tasks-on-host [_ _] nil)
-                        )
+                        (num-tasks-on-host [_ _] nil))
       test-user (System/getProperty "user.name")
       executor {:command "cook-executor"
                 :default-progress-regex-string "regex-string"
@@ -1667,21 +1664,17 @@
                                                    rebalancer-reservation-atom pool nil)]
                                       (async/>!! offers-chan :end-marker)
                                       result))
-      mock-launch-matches (fn [matches]
-                          (doseq [{:keys [leases tasks]} matches]
-                            (let [task-metadata-seq (->> tasks
-                                       (sort-by (comp :job/uuid :job #(.getRequest ^TaskAssignmentResult %)))
-                                       (map (partial task/TaskAssignmentResult->task-metadata nil nil compute-cluster)))]
-                              (swap! launched-offer-ids-atom conj
-                                     (-> leases first :offer :id :value))
-                              (swap! launched-job-names-atom concat
-                                     (map (fn get-job-id [task-metadata]
-                                            (-> task-metadata :task-request :job :job/name))
-                                          task-metadata-seq))
-                              (log/info "~~~~~" task-metadata-seq)
-                              (doseq [task-metadata task-metadata-seq]
-                                (rate-limit/spend! rate-limit/job-launch-rate-limiter (get-in (:task-request task-metadata) [:job :job/user]) 1)))
-                            ))
+      mock-launch-matched-tasks! (fn [matches]
+                            (doseq [{:keys [leases tasks]} matches]
+                              (let [task-metadata-seq (->> tasks
+                                                           (sort-by (comp :job/uuid :job #(.getRequest ^TaskAssignmentResult %)))
+                                                           (map (partial task/TaskAssignmentResult->task-metadata nil nil compute-cluster)))]
+                                (swap! launched-offer-ids-atom conj
+                                       (-> leases first :offer :id :value))
+                                (swap! launched-job-names-atom concat
+                                       (map (fn get-job-id [task-metadata]
+                                              (-> task-metadata :task-request :job :job/name))
+                                            task-metadata-seq)))))
       gpu-models-config [{:pool-regex "test-pool"
                           :valid-models #{"nvidia-tesla-p100" "nvidia-tesla-k80"}
                           :default-model "nvidia-tesla-p100"}]]
@@ -1747,19 +1740,6 @@
             (is (= 1 (count @launched-offer-ids-atom)))
             (is (= 1 (count @launched-job-names-atom)))
             (is (= #{"job-1"} (set @launched-job-names-atom))))))
-
-      (let [total-spent (atom 0)]
-        (with-redefs [rate-limit/spend! (fn [_ _ tokens] (reset! total-spent (-> @total-spent (+ tokens))))]
-          (testing "enough offers for all normal jobs, limited by num-considerable of 2. Make sure we spend the tokens."
-            (let [num-considerable 2
-                  offers [offer-1 offer-2 offer-3]]
-              (is (run-handle-resource-offers! num-considerable offers "test-pool"))
-              (is (= :end-marker (async/<!! offers-chan)))
-              (is (= 2 (count @launched-offer-ids-atom)))
-              (is (= 2 (count @launched-job-names-atom)))
-              (is (= #{"job-1" "job-2"} (set @launched-job-names-atom)))
-              ; We launch two jobs, this involves spending two tokens on per-user rate limiter and 2 on the global launch rate limiter.
-              (is (= 4 @total-spent))))))
 
       (testing "enough offers for all normal jobs, limited by quota"
         (let [num-considerable 1
@@ -1849,8 +1829,7 @@
           (is (= #{"job-1" "job-2"} (set @launched-job-names-atom)))
           (is (= {:job-uuid->reserved-host {}
                   :launched-job-uuids      #{job-1-uuid job-2-uuid}}
-                 @rebalancer-reservation-atom))))
-      ))
+                 @rebalancer-reservation-atom))))))
 
   (deftest test-handle-resource-offers-mesos
     (setup)
@@ -1869,11 +1848,8 @@
           offer-8 (offer-maker 30 16384 0)
           offer-9 (offer-maker 100 200000 0)
           offers [offer-1 offer-2 offer-3 offer-4 offer-5 offer-6 offer-7 offer-8 offer-9]]
-      (with-redefs [
-                    ;sched/launch-matches! (fn [_ _ matches _]
-                    ;                        (mock-launch-matches matches))
-                    sched/launch-matched-tasks! (fn [matches _ _ _ _ _]
-                                                  (mock-launch-matches matches))
+      (with-redefs [sched/launch-matched-tasks! (fn [matches _ _ _ _ _]
+                                                  (mock-launch-matched-tasks! matches))
                     cook.config/executor-config (constantly executor)
                     config/valid-gpu-models (constantly gpu-models-config)]
         (test-handle-resource-helpers offers)
@@ -1904,11 +1880,8 @@
           offer-8 (offer-maker 30 16384 {"nvidia-tesla-p100" 1})
           offer-9 (offer-maker 100 200000 {})
           offers [offer-1 offer-2 offer-3 offer-4 offer-5 offer-6 offer-7 offer-8 offer-9]]
-      (with-redefs [
-                    ;sched/launch-matches! (fn [_ _ matches _]
-                    ;                        (mock-launch-matches matches))
-                    sched/launch-matched-tasks! (fn [matches _ _ _ _ _]
-                                                  (mock-launch-matches matches))
+      (with-redefs [sched/launch-matched-tasks! (fn [matches _ _ _ _ _]
+                                                  (mock-launch-matched-tasks! matches))
                     cook.config/executor-config (constantly executor)
                     config/valid-gpu-models (constantly gpu-models-config)
                     kapi/create-namespaced-pod (constantly true)]

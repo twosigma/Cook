@@ -100,37 +100,29 @@
 
 (deftest test-valid-gpu-models-config-settings
   (testing "empty valid-gpu-models"
-    (let [valid-config (api/minimal-config)]
-      (is (config-settings valid-config))))
+    (let [good-valid-gpu-models []]
+      (is (nil? (config/guard-invalid-gpu-config good-valid-gpu-models)))))
   (testing "valid default model"
-    (let [valid-config (assoc-in (api/minimal-config)
-                                 [:config :pools :valid-gpu-models]
-                                 [{:pool-regex "test-pool"
-                                   :valid-models #{"valid-gpu-model"}
-                                   :default-model "valid-gpu-model"}])]
-      (is (config-settings valid-config))))
+    (let [good-valid-gpu-models [{:pool-regex "test-pool"
+                                  :valid-models #{"valid-gpu-model"}
+                                  :default-model "valid-gpu-model"}]]
+      (is (nil? (config/guard-invalid-gpu-config good-valid-gpu-models)))))
   (testing "no valid models"
-    (let [bad-config (assoc-in (api/minimal-config)
-                               [:config :pools :valid-gpu-models]
-                               [{:pool-regex "test-pool"
-                                 :default-model "valid-gpu-model"}])]
+    (let [bad-valid-gpu-models [{:pool-regex "test-pool"
+                                 :default-model "valid-gpu-model"}]]
       (is (thrown-with-msg? ExceptionInfo
-                   #"Valid GPU models for pool-regex test-pool is not defined"
-                   (config-settings bad-config)))))
+                            #"Valid GPU models for pool-regex test-pool is not defined"
+                            (config/guard-invalid-gpu-config bad-valid-gpu-models)))))
   (testing "no default model"
-    (let [bad-config (assoc-in (api/minimal-config)
-                               [:config :pools :valid-gpu-models]
-                               [{:pool-regex "test-pool"
-                                 :valid-models #{"valid-gpu-model"}}])]
+    (let [bad-valid-gpu-models [{:pool-regex "test-pool"
+                                 :valid-models #{"valid-gpu-model"}}]]
       (is (thrown-with-msg? ExceptionInfo
-                   #"Default GPU model for pool-regex test-pool is not defined"
-                   (config-settings bad-config)))))
+                            #"Default GPU model for pool-regex test-pool is not defined"
+                            (config/guard-invalid-gpu-config bad-valid-gpu-models)))))
   (testing "invalid default model"
-    (let [bad-config (assoc-in (api/minimal-config)
-                               [:config :pools :valid-gpu-models]
-                               [{:pool-regex "test-pool"
+    (let [bad-valid-gpu-models [{:pool-regex "test-pool"
                                  :valid-models #{"valid-gpu-model"}
-                                 :default-model "invalid-gpu-model"}])]
+                                 :default-model "invalid-gpu-model"}]]
       (is (thrown-with-msg? ExceptionInfo
-                   #"Default GPU model for pool-regex test-pool is not listed as a valid GPU model"
-                   (config-settings bad-config))))))
+                            #"Default GPU model for pool-regex test-pool is not listed as a valid GPU model"
+                   (config/guard-invalid-gpu-config bad-valid-gpu-models))))))
