@@ -101,6 +101,7 @@ class ClientTest(util.CookTest):
     def test_container_port_submit(self):
         """Test submitting a job with a port specification."""
         JOB_PORT = 30030
+        progress_file_env = util.retrieve_progress_file_env(type(self).cook_url)
         hostname_progress_cmd = util.progress_line(type(self).cook_url,
                                                    50,  # Don't really care, we just need a val
                                                    '$(hostname -i)',
@@ -112,6 +113,7 @@ class ClientTest(util.CookTest):
         ])
         uuid = self.client.submit(command=f'{hostname_progress_cmd} && nc -l 0.0.0.0 {JOB_PORT}',
                                   container=container,
+                                  env={progress_file_env: 'progress.txt'},
                                   pool=util.default_submit_pool())
 
         try:
