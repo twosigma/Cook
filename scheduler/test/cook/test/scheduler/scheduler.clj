@@ -27,8 +27,7 @@
             [cook.config :as config]
             [cook.datomic :as datomic]
             [cook.kubernetes.api :as kapi]
-            [cook.kubernetes.compute-cluster :as kcc]
-            [cook.mesos.mesos-compute-cluster :as mcc]
+            [cook.mesos.task :as task]
             [cook.plugins.completion :as completion]
             [cook.plugins.definitions :as pd]
             [cook.plugins.launch :as launch-plugin]
@@ -47,8 +46,7 @@
             [mesomatic.scheduler :as msched]
             [mesomatic.types :as mtypes]
             [metrics.timers :as timers]
-            [plumbing.core :as pc]
-            [cook.mesos.task :as task])
+            [plumbing.core :as pc])
   (:import (clojure.lang ExceptionInfo)
            (com.netflix.fenzo SimpleAssignmentResult TaskAssignmentResult TaskRequest TaskScheduler)
            (com.netflix.fenzo.plugins BinPackingFitnessCalculators)
