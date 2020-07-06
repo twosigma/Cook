@@ -116,6 +116,7 @@ class ClientTest(util.CookTest):
                                   env={progress_file_env: 'progress.txt'},
                                   pool=util.default_submit_pool())
 
+        addr = None
         try:
             util.wait_for_instance_with_progress(type(self).cook_url, str(uuid), 50)
             job = self.client.query(uuid)
@@ -128,6 +129,11 @@ class ClientTest(util.CookTest):
                 message = "hello world!"
 
                 self.assertEqual(sock.send(message), len(message))
+        except Exception as e:
+            if addr is not None:
+                raise Exception(f"Could not connect to {addr}: {e}") from e
+            else:
+                raise e
         finally:
             self.client.kill(uuid)
 
