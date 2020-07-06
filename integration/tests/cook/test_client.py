@@ -38,7 +38,8 @@ class ClientTest(util.CookTest):
         uuid = self.client.submit(command='ls',
                                   cpus=0.5,
                                   mem=1.0,
-                                  max_retries=5)
+                                  max_retries=5,
+                                  pool=util.default_submit_pool())
         try:
             self.assertTrue(uuid is not None)
         finally:
@@ -48,7 +49,8 @@ class ClientTest(util.CookTest):
         uuid = self.client.submit(command='ls',
                                   cpus=0.5,
                                   mem=1.0,
-                                  max_retries=5)
+                                  max_retries=5,
+                                  pool=util.default_submit_pool())
         try:
             job = self.client.query(uuid)
             self.assertEqual(job.command, 'ls')
@@ -62,7 +64,8 @@ class ClientTest(util.CookTest):
         uuid = self.client.submit(command=f'sleep {util.DEFAULT_TEST_TIMEOUT_SECS}',
                                   cpus=0.5,
                                   mem=1.0,
-                                  max_retries=5)
+                                  max_retries=5,
+                                  pool=util.default_submit_pool())
         killed = False
         try:
             job = self.client.query(uuid)
@@ -81,7 +84,8 @@ class ClientTest(util.CookTest):
     def test_container_submit(self):
         container = DockerContainer(util.docker_image())
         self.assertIsNotNone(container.image)
-        uuid = self.client.submit(command='ls', container=container)
+        uuid = self.client.submit(command='ls', container=container,
+                                  pool=util.default_submit_pool())
         try:
             job = self.client.query(uuid)
 
@@ -107,7 +111,8 @@ class ClientTest(util.CookTest):
                               protocol='tcp')
         ])
         uuid = self.client.submit(command=f'{hostname_progress_cmd} && nc -l 0.0.0.0 {JOB_PORT}',
-                                  container=container)
+                                  container=container,
+                                  pool=util.default_submit_pool())
 
         try:
             util.wait_for_instance_with_progress(type(self).cook_url, str(uuid), 50)
@@ -129,7 +134,8 @@ class ClientTest(util.CookTest):
         uuid = self.client.submit(command=f'sleep {util.DEFAULT_TEST_TIMEOUT_SECS}',
                                   cpus=0.5,
                                   mem=1.0,
-                                  max_retries=5)
+                                  max_retries=5,
+                                  pool=util.default_submit_pool())
 
         try:
             util.wait_for_instance(type(self).cook_url, uuid)
