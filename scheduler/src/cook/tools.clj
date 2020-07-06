@@ -930,8 +930,8 @@
                   job-usage (job->usage job)
                   user->usage' (update-in user->usage [user] #(merge-with + job-usage %))]
               (log/debug "User quota check" {:user user
-                                        :usage (get user->usage' user)
-                                        :quota (user->quota user)})
+                                             :usage (get user->usage' user)
+                                             :quota (user->quota user)})
               [user->usage' (below-quota? (user->quota user) (get user->usage' user))]))]
     (filter-sequential filter-with-quota user->usage queue)))
 
@@ -953,7 +953,7 @@
               (let [job-usage (job->usage job)
                     usage' (merge-with + job-usage usage)]
                 (log/debug "Pool quota check" {:usage usage'
-                                              :quota quota})
+                                               :quota quota})
                 [usage' (below-quota? quota usage')]))]
       (filter-sequential filter-with-quota usage queue))))
 
