@@ -126,7 +126,7 @@ class ClientTest(util.CookTest):
 
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
                 sock.connect((addr, JOB_PORT))
-                message = "hello world!"
+                message = b"hello world!"
 
                 self.assertEqual(sock.send(message), len(message))
         except Exception as e:
