@@ -111,7 +111,7 @@ class ClientTest(util.CookTest):
             DockerPortMapping(host_port=0, container_port=JOB_PORT,
                               protocol='tcp')
         ])
-        uuid = self.client.submit(command=f'{hostname_progress_cmd} && nc -l 0.0.0.0 {JOB_PORT}',
+        uuid = self.client.submit(command=f'{hostname_progress_cmd} && nc -l -p {JOB_PORT} $(hostname -I)',
                                   container=container,
                                   env={progress_file_env: 'progress.txt'},
                                   pool=util.default_submit_pool())
