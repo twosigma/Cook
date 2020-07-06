@@ -108,7 +108,7 @@ class ClientTest(util.CookTest):
                                                    write_to_file=True)
 
         container = DockerContainer(util.docker_image(), port_mapping=[
-            DockerPortMapping(host_port=JOB_PORT, container_port=JOB_PORT,
+            DockerPortMapping(host_port=0, container_port=JOB_PORT,
                               protocol='tcp')
         ])
         uuid = self.client.submit(command=f'{hostname_progress_cmd} && nc -l 0.0.0.0 {JOB_PORT}',
