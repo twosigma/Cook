@@ -104,7 +104,7 @@ class ClientTest(util.CookTest):
         progress_file_env = util.retrieve_progress_file_env(type(self).cook_url)
         hostname_progress_cmd = util.progress_line(type(self).cook_url,
                                                    50,  # Don't really care, we just need a val
-                                                   '$(hostname -i)',
+                                                   '$(hostname -I)',
                                                    write_to_file=True)
 
         container = DockerContainer(util.docker_image(), port_mapping=[
