@@ -92,35 +92,35 @@ class ClientTest(util.CookTest):
             self.client.kill(uuid)
 
     @unittest.skipUnless(util.docker_tests_enabled(), "Requires setting the COOK_TEST_DOCKER_IMAGE environment variable")
-    @unittest.skipUnless(util.using_kubernetes(), "Requires Kubernetes")
+    @unittest.skipUnless(util.is_job_progress_supported(), "Requires progress reporting")
     def test_container_port_submit(self):
-        listener_container = DockerContainer(util.docker_image(), port_mapping=[
-            DockerPortMapping(host_port=8080, container_port=8080,
+        """Test submitting a job with a port specification."""
+        JOB_PORT = 30030
+        hostname_progress_cmd = util.progress_line(type(self).cook_url,
+                                                   50,  # Don't really care, we just need a val
+                                                   '$(hostname -i)')
+
+        container = DockerContainer(util.docker_image(), port_mapping=[
+            DockerPortMapping(host_port=JOB_PORT, container_port=JOB_PORT,
                               protocol='tcp')
         ])
-        sender_container = DockerContainer(util.docker_image())
-        listener = self.client.submit(command=f'nc -l 0.0.0.0 8080',
-                                      container=listener_container)
-        sender = None
+        uuid = self.client.submit(command=f'{hostname_progress_cmd} && nc -l 0.0.0.0 {JOB_PORT}',
+                                  container=container)
+
         try:
-            util.wait_for_running_instance(type(self).cook_url, str(listener))
-            hostname = self.client.query(listener).instances[0].hostname
+            util.wait_for_instance_with_progress(type(self).cook_url, str(uuid), 50)
+            job = self.client.query(uuid)
+            addr = job.instances[0].progress_message
 
-            sender = self.client.submit(command=f'echo "Hello world!" | nc -N $(dig +short {hostname}) 8080',
-                                        container=sender_container)
+            self.assertIsNotNone(addr)
 
-            util.wait_for_jobs(type(self).cook_url,
-                               [str(listener), str(sender)],
-                               'completed')
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.connect((addr, JOB_PORT))
+                message = "hello world!"
 
-            self.assertEqual(self.client.query(sender).state,
-                             JobState.SUCCESS)
-            self.assertEqual(self.client.query(listener).state,
-                             JobState.SUCCESS)
+                self.assertEqual(sock.send(message), len(message))
         finally:
-            self.client.kill(listener)
-            if sender is not None:
-                self.client.kill(sender)
+            self.client.kill(uuid)
 
     def test_instance_query(self):
         """Test that parsing an instance yielded from Cook works."""
