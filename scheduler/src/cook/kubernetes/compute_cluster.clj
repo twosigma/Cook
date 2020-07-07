@@ -348,7 +348,7 @@
             total-pods (-> @all-pods-atom keys count)
             total-nodes (-> @current-nodes-atom keys count)
             {:keys [image user command max-pods-outstanding max-total-pods max-total-nodes]
-             :or {command "exit 0" max-total-pods 1000000 max-total-nodes 1000000}} synthetic-pods-config]
+             :or {command "exit 0" max-total-pods 32000 max-total-nodes 1000}} synthetic-pods-config]
         (log/info "In" name "compute cluster there are" total-pods "pods and" total-nodes
                   "nodes of a max of" max-total-pods "pods and" max-total-nodes "nodes")
         (log/info "In" name "compute cluster, for pool" pool-name "there are" num-synthetic-pods
