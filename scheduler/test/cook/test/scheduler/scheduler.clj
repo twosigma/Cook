@@ -1015,7 +1015,7 @@
               instance-id (create-dummy-instance conn job-id
                                                  :instance-status :instance.status/running
                                                  :task-id task-id)]
-          ; Wait for async database transaction inside handle-status-update
+                                        ; Wait for async database transaction inside handle-status-update
           (->> (make-dummy-status-update task-id :reason-gc-error :task-killed)
                (sched/write-status-to-datomic conn (constantly fenzo))
                async/<!!)
@@ -1065,11 +1065,11 @@
                                                  :instance-status :instance.status/failed
                                                  :task-id task-id
                                                  :reason :max-runtime-exceeded)] ; Previous reason is not mea-culpa
-          ; Status update says slave got restarted (mea-culpa)
+                                        ; Status update says slave got restarted (mea-culpa)
           (->> (make-dummy-status-update task-id :mesos-slave-restarted :task-killed)
                (sched/write-status-to-datomic conn (constantly fenzo))
                async/<!!)
-          ; Assert old reason persists
+                                        ; Assert old reason persists
           (is (= :max-runtime-exceeded
                  (ffirst (q '[:find ?reason-name
                               :in $ ?i
@@ -1077,7 +1077,7 @@
                               [?i :instance/reason ?r]
                               [?r :reason/name ?reason-name]]
                             (db conn) instance-id))))
-          ; Assert job still marked as out of retries
+                                        ; Assert job still marked as out of retries
           (is (= :job.state/completed
                  (ffirst (q '[:find ?state
                               :in $ ?j
@@ -1681,17 +1681,6 @@
                                                    rebalancer-reservation-atom pool nil)]
                                       (async/>!! offers-chan :end-marker)
                                       result))
-      ;mock-launch-matched-tasks! (fn [matches]
-      ;                      (doseq [{:keys [leases tasks]} matches]
-      ;                        (let [task-metadata-seq (->> tasks
-      ;                                                     (sort-by (comp :job/uuid :job #(.getRequest ^TaskAssignmentResult %)))
-      ;                                                     (map (partial task/TaskAssignmentResult->task-metadata nil nil compute-cluster)))]
-      ;                          (swap! launched-offer-ids-atom conj
-      ;                                 (-> leases first :offer :id :value))
-      ;                          (swap! launched-job-names-atom concat
-      ;                                 (map (fn get-job-id [task-metadata]
-      ;                                        (-> task-metadata :task-request :job :job/name))
-      ;                                      task-metadata-seq)))))
       gpu-models-config [{:pool-regex "test-pool"
                           :valid-models #{"nvidia-tesla-p100" "nvidia-tesla-k80"}
                           :default-model "nvidia-tesla-p100"}]]
@@ -1758,6 +1747,19 @@
             (is (= 1 (count @launched-job-names-atom)))
             (is (= #{"job-1"} (set @launched-job-names-atom))))))
 
+      (let [total-spent (atom 0)]
+        (with-redefs [rate-limit/spend! (fn [_ _ tokens] (reset! total-spent (-> @total-spent (+ tokens))))]
+          (testing "enough offers for all normal jobs, limited by num-considerable of 2. Make sure we spend the tokens."
+            (let [num-considerable 2
+                  offers [offer-1 offer-2 offer-3]]
+              (is (run-handle-resource-offers! num-considerable offers "test-pool"))
+              (is (= :end-marker (async/<!! offers-chan)))
+              (is (= 2 (count @launched-offer-ids-atom)))
+              (is (= 2 (count @launched-job-names-atom)))
+              (is (= #{"job-1" "job-2"} (set @launched-job-names-atom)))
+              ; We launch two jobs, this involves spending two tokens on per-user rate limiter and 2 on the global launch rate limiter.
+              (is (= 4 @total-spent))))))
+
       (testing "enough offers for all normal jobs, limited by quota"
         (let [num-considerable 1
               offers [offer-1 offer-2 offer-3]
@@ -1768,7 +1770,8 @@
           (is (= 1 (count @launched-job-names-atom)))
           (is (= #{"job-1"} (set @launched-job-names-atom)))))
 
-      (testing "enough offers for all normal jobs, limited by usage capacity"
+
+    (testing "enough offers for all normal jobs, limited by usage capacity"
         (let [num-considerable 1
               offers [offer-1 offer-2 offer-3]
               user->usage {test-user {:count 5, :cpus 5, :mem 16384, :gpus 0}}]
@@ -1865,9 +1868,7 @@
           offer-8 (offer-maker 30 16384 0)
           offer-9 (offer-maker 100 200000 0)
           offers [offer-1 offer-2 offer-3 offer-4 offer-5 offer-6 offer-7 offer-8 offer-9]]
-      (with-redefs [sched/launch-matched-tasks! (fn [matches _ _ _ _ _]
-                                                  (mock-launch-matched-tasks! matches))
-                    cook.config/executor-config (constantly executor)
+      (with-redefs [cook.config/executor-config (constantly executor)
                     config/valid-gpu-models (constantly gpu-models-config)]
         (test-handle-resource-helpers offers)
         ; In mesos, jobs requesting gpus should not get matched
@@ -1897,10 +1898,7 @@
           offer-8 (offer-maker 30 16384 {"nvidia-tesla-p100" 1})
           offer-9 (offer-maker 100 200000 {})
           offers [offer-1 offer-2 offer-3 offer-4 offer-5 offer-6 offer-7 offer-8 offer-9]]
-      (with-redefs [
-                    ;sched/launch-matched-tasks! (fn [matches _ _ _ _ _]
-                    ;                              (mock-launch-matched-tasks! matches))
-                    cook.config/executor-config (constantly executor)
+      (with-redefs [cook.config/executor-config (constantly executor)
                     config/valid-gpu-models (constantly gpu-models-config)
                     kapi/create-namespaced-pod (constantly true)]
         (test-handle-resource-helpers offers)
