@@ -80,10 +80,10 @@
              (api/get-consumption node-name->pods))))))
 
 (deftest test-get-capacity
-  (let [node-name->node {"nodeA" (tu/node-helper "nodeA" 1.0 100.0 "2" "nvidia-tesla-p100" nil)
+  (let [node-name->node {"nodeA" (tu/node-helper "nodeA" 1.0 100.0 2 "nvidia-tesla-p100" nil)
                          "nodeB" (tu/node-helper "nodeB" 1.0 nil nil nil nil)
-                         "nodeC" (tu/node-helper "nodeC" nil 100.0 "5" "nvidia-tesla-p100" nil)
-                         "nodeD" (tu/node-helper "nodeD" nil nil "7" "nvidia-tesla-p100" nil)}]
+                         "nodeC" (tu/node-helper "nodeC" nil 100.0 5 "nvidia-tesla-p100" nil)
+                         "nodeD" (tu/node-helper "nodeD" nil nil 7 "nvidia-tesla-p100" nil)}]
     (is (= {"nodeA" {:cpus 1.0 :mem 100.0 :gpus {"nvidia-tesla-p100" 2}}
             "nodeB" {:cpus 1.0 :mem 0.0 :gpus {}}
             "nodeC" {:cpus 0.0 :mem 100.0 :gpus {"nvidia-tesla-p100" 5}}

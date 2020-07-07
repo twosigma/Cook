@@ -537,9 +537,11 @@
                                                    Quantity$Format/DECIMAL_SI))
       (.putAllocatableItem status "memory" (Quantity. (BigDecimal. (* kapi/memory-multiplier mem))
                                                       Quantity$Format/DECIMAL_SI)))
-    (when (and gpus (-> gpus Integer/parseInt pos?))
-      (.putCapacityItem status "nvidia.com/gpu" (Quantity. gpus))
-      (.putAllocatableItem status "nvidia.com/gpu" (Quantity. gpus))
+    (when (and gpus (pos? gpus))
+      (.putCapacityItem status "nvidia.com/gpu" (Quantity. (BigDecimal. gpus)
+                                                           Quantity$Format/DECIMAL_SI))
+      (.putAllocatableItem status "nvidia.com/gpu" (Quantity. (BigDecimal. gpus)
+                                                              Quantity$Format/DECIMAL_SI))
       (.putLabelsItem metadata "gpu-type" (or gpu-model "nvidia-tesla-p100")))
 
     (when pool
