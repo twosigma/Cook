@@ -46,7 +46,8 @@
             [mesomatic.scheduler :as msched]
             [mesomatic.types :as mtypes]
             [metrics.timers :as timers]
-            [plumbing.core :as pc])
+            [plumbing.core :as pc]
+            [cook.kubernetes.compute-cluster :as kcc])
   (:import (clojure.lang ExceptionInfo)
            (com.netflix.fenzo SimpleAssignmentResult TaskAssignmentResult TaskRequest TaskScheduler)
            (com.netflix.fenzo.plugins BinPackingFitnessCalculators)
@@ -1568,10 +1569,30 @@
 
 
 (let [uri "datomic:mem://test-handle-resource-offers"
+      conn (restore-fresh-database! uri)
+      compute-cluster-name "kubernetes"
+      cluster-entity-id (kcc/get-or-create-cluster-entity-id conn compute-cluster-name)
+      launched-offer-ids-atom (atom [])
+      launched-job-names-atom (atom [])
       compute-cluster (reify ComputeCluster
                         (use-cook-executor? [_] true)
                         (max-tasks-per-host [_] nil)
-                        (num-tasks-on-host [_ _] nil))
+                        (num-tasks-on-host [_ _] nil)
+                        (db-id [_] cluster-entity-id)
+                        (compute-cluster-name [_] compute-cluster-name)
+                        (launch-tasks [this _ matches process-task-post-launch-fn]
+                          (doseq [{:keys [leases tasks]} matches]
+                            (let [task-metadata-seq (->> tasks
+                                                         (sort-by (comp :job/uuid :job #(.getRequest ^TaskAssignmentResult %)))
+                                                         (map (partial task/TaskAssignmentResult->task-metadata nil nil this)))]
+                              (swap! launched-offer-ids-atom conj
+                                     (-> leases first :offer :id :value))
+                              (swap! launched-job-names-atom concat
+                                     (map (fn get-job-id [task-metadata]
+                                            (-> task-metadata :task-request :job :job/name))
+                                          task-metadata-seq))
+                              (doseq [task-metadata task-metadata-seq]
+                                (process-task-post-launch-fn task-metadata))))))
       test-user (System/getProperty "user.name")
       executor {:command "cook-executor"
                 :default-progress-regex-string "regex-string"
@@ -1589,8 +1610,6 @@
                            :hostname (str "host-" (UUID/randomUUID))
                            :compute-cluster compute-cluster
                            :offer-match-timer (timers/start (timers/timer "noop-timer-offer"))})
-      launched-offer-ids-atom (atom [])
-      launched-job-names-atom (atom [])
       offers-chan (async/chan (async/buffer 10))
       run-handle-resource-offers! (fn [num-considerable offers pool & {:keys [user-quota user->usage rebalancer-reservation-atom job-name->uuid]
                                                                        :or {rebalancer-reservation-atom (atom {})
@@ -1662,17 +1681,17 @@
                                                    rebalancer-reservation-atom pool nil)]
                                       (async/>!! offers-chan :end-marker)
                                       result))
-      mock-launch-matched-tasks! (fn [matches]
-                            (doseq [{:keys [leases tasks]} matches]
-                              (let [task-metadata-seq (->> tasks
-                                                           (sort-by (comp :job/uuid :job #(.getRequest ^TaskAssignmentResult %)))
-                                                           (map (partial task/TaskAssignmentResult->task-metadata nil nil compute-cluster)))]
-                                (swap! launched-offer-ids-atom conj
-                                       (-> leases first :offer :id :value))
-                                (swap! launched-job-names-atom concat
-                                       (map (fn get-job-id [task-metadata]
-                                              (-> task-metadata :task-request :job :job/name))
-                                            task-metadata-seq)))))
+      ;mock-launch-matched-tasks! (fn [matches]
+      ;                      (doseq [{:keys [leases tasks]} matches]
+      ;                        (let [task-metadata-seq (->> tasks
+      ;                                                     (sort-by (comp :job/uuid :job #(.getRequest ^TaskAssignmentResult %)))
+      ;                                                     (map (partial task/TaskAssignmentResult->task-metadata nil nil compute-cluster)))]
+      ;                          (swap! launched-offer-ids-atom conj
+      ;                                 (-> leases first :offer :id :value))
+      ;                          (swap! launched-job-names-atom concat
+      ;                                 (map (fn get-job-id [task-metadata]
+      ;                                        (-> task-metadata :task-request :job :job/name))
+      ;                                      task-metadata-seq)))))
       gpu-models-config [{:pool-regex "test-pool"
                           :valid-models #{"nvidia-tesla-p100" "nvidia-tesla-k80"}
                           :default-model "nvidia-tesla-p100"}]]
@@ -1878,8 +1897,9 @@
           offer-8 (offer-maker 30 16384 {"nvidia-tesla-p100" 1})
           offer-9 (offer-maker 100 200000 {})
           offers [offer-1 offer-2 offer-3 offer-4 offer-5 offer-6 offer-7 offer-8 offer-9]]
-      (with-redefs [sched/launch-matched-tasks! (fn [matches _ _ _ _ _]
-                                                  (mock-launch-matched-tasks! matches))
+      (with-redefs [
+                    ;sched/launch-matched-tasks! (fn [matches _ _ _ _ _]
+                    ;                              (mock-launch-matched-tasks! matches))
                     cook.config/executor-config (constantly executor)
                     config/valid-gpu-models (constantly gpu-models-config)
                     kapi/create-namespaced-pod (constantly true)]
