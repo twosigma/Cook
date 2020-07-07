@@ -785,7 +785,8 @@
       ; QoS, which requires limits for both memory and cpu
       (.putLimitsItem resources "cpu" (double->quantity cpus)))
     (when (pos? gpus)
-      (.putLimitsItem resources "nvidia.com/gpu" (double->quantity gpus)))
+      (.putLimitsItem resources "nvidia.com/gpu" (double->quantity gpus))
+      (.putRequestsItem resources "nvidia.com/gpu" (double->quantity gpus)))
     (when (pos? gpus)
       (add-node-selector pod-spec "cloud.google.com/gke-accelerator" gpu-model-requested))
     (.setResources container resources)

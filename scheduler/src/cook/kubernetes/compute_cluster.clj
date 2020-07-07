@@ -377,7 +377,7 @@
                 user-from-synthetic-pods-config user
                 task-metadata-seq
                 (->> new-jobs
-                     (map (fn [{:keys [job/user job/uuid] :as job}]
+                     (map (fn [{:keys [job/user job/uuid job/environment] :as job}]
                             (let [pool-specific-resources
                                   ((adjust-job-resources-for-pool-fn pool-name) job (tools/job-ent->resources job))]
                               {:command {:user (or user-from-synthetic-pods-config user)
@@ -409,7 +409,9 @@
                                :pod-supports-cook-sidecar? false
                                :task-id (str api/cook-synthetic-pod-name-prefix "-" pool-name "-" uuid)
                                :task-request {:scalar-requests (walk/stringify-keys pool-specific-resources)
-                                              :job {:job/pool {:pool/name synthetic-task-pool-name}}}})))
+                                              :job {:job/pool {:pool/name synthetic-task-pool-name}
+                                                    :job/environment environment}
+                                              :resources pool-specific-resources}})))
                      (take (- max-pods-outstanding num-synthetic-pods)))
                 num-synthetic-pods-to-launch (count task-metadata-seq)]
             (meters/mark! (metrics/meter "cc-synthetic-pod-submit-rate" name) num-synthetic-pods-to-launch)
