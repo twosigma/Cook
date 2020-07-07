@@ -68,26 +68,47 @@ class CookTest(util.CookTest):
             self.logger.info(f'Exit code not checked because cook executor was not used for {instance}')
 
     def test_submit_requesting_gpus(self):
-        job_executor_type = util.get_job_executor_type()
-        # Command succeeds if nvidia-smi -q gives the right number of gpus and the right model of gpus
-        command = 'nvidia-smi -q | nvidia-smi-output && ' \
-                  'expected_count=2 ; expected_model="Tesla P100" ;' \
-                  'num_gpus=$(grep "Attached GPUs" nvidia-smi-output | cut -d \':\' -f 2 | tr -d \'[:space:]\') ; ' \
-                  'num_expected_model=$(grep "Tesla P100" nvidia-smi-output | wc -1) ; ' \
-                  'if [[ $num_gpus -eq 2 && $num_expected_model -eq  2 ]] ; then exit 0 ; else exit 1 ; fi'
-
-        job_uuid, resp = util.submit_job(
-            self.cook_url,
-            executor=job_executor_type,
-            command=command,
-            gpus=2,
-            env={'COOK_GPU_MODEL': 'nvidia-tesla-p100'},
-            max_retries=5)
-        self.assertEqual(resp.status_code, 201, msg=resp.content)
-        self.assertEqual(resp.content, str.encode(f"submitted jobs {job_uuid}"))
-        job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
-        self.assertIn('success', [i['status'] for i in job['instances']], json.dumps(job, indent=2))
-        instance = job['instances'][0]
+        settings_dict = util.settings(self.cook_url)
+        gpu_enabled = settings_dict['mesos-gpu-enabled']
+        if not gpu_enabled:
+            self.skipTest("Cluster is not gpu-enabled")
+        else:
+            valid_gpu_models_config_map = settings_dict.get("pools", {}).get("valid-gpu-models", [])
+            if not valid_gpu_models_config_map:
+                self.skipTest("No pools have valid-gpu-models")
+            else:
+                active_pools, _ = util.active_pools(self.cook_url)
+                if len(active_pools) == 0:
+                    self.logger.info('There are no pools to submit jobs to')
+                    self.skipTest("There are no active pools that support GPUs")
+                for pool in active_pools:
+                    pool_name = pool['name']
+                    matching_gpu_models = [ii["valid-models"] for ii in valid_gpu_models_config_map if
+                                           re.match(ii["pool-regex"], pool_name)]
+                    if len(matching_gpu_models) == 0 or len(matching_gpu_models[0]) == 0:
+                        self.skipTest(f"Pool {pool} does not support GPUs")
+                    else:
+                        job_executor_type = util.get_job_executor_type()
+                        # Command succeeds if nvidia-smi -q gives the right number of gpus and the right model of gpus
+                        command = 'nvidia-smi -q | nvidia-smi-output && ' \
+                                  'expected_count=2 ; expected_model="Tesla P100" ;' \
+                                  'num_gpus=$(grep "Attached GPUs" nvidia-smi-output | cut -d \':\' -f 2 | tr -d \'[:space:]\') ; ' \
+                                  'num_expected_model=$(grep "Tesla P100" nvidia-smi-output | wc -1) ; ' \
+                                  'if [[ $num_gpus -eq 2 && $num_expected_model -eq  2 ]] ; then exit 0 ; else exit 1 ; fi'
+                        self.logger.info(f'Submitting to {pool}')
+                        job_uuid, resp = util.submit_job(
+                            self.cook_url,
+                            executor=job_executor_type,
+                            command=command,
+                            pool=pool_name,
+                            gpus=2,
+                            env={'COOK_GPU_MODEL': 'nvidia-tesla-k80'},
+                            max_retries=5)
+                        self.assertEqual(resp.status_code, 201, msg=resp.content)
+                        self.assertEqual(resp.content, str.encode(f"submitted jobs {job_uuid}"))
+                        job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
+                        self.assertIn('success', [i['status'] for i in job['instances']], json.dumps(job, indent=2))
+                        instance = job['instances'][0]
 
 
     @unittest.skipUnless(util.docker_tests_enabled(), 'requires docker')

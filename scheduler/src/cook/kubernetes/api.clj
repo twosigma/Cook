@@ -703,18 +703,18 @@
         {:keys [docker volumes]} container
         {:keys [image parameters]} docker
         {:keys [environment]} command
-        pod (V1Pod.)
-        pod-spec (V1PodSpec.)
-        metadata (V1ObjectMeta.)
-        container (V1Container.)
-        resources (V1ResourceRequirements.)
-        labels (assoc pod-labels cook-pod-label compute-cluster-name)
         pool-name (some-> job :job/pool :pool/name)
         ; gpu count is not stored in scalar-requests
         gpus (or (:gpus resources) 0)
         gpu-model-requested (when (pos? gpus)
                               (or (-> job :job/environment get-gpu-model-from-task-metadata)
                                   (util/match-based-on-pool-name (config/valid-gpu-models) pool-name :default-model)))
+        pod (V1Pod.)
+        pod-spec (V1PodSpec.)
+        metadata (V1ObjectMeta.)
+        container (V1Container.)
+        resources (V1ResourceRequirements.)
+        labels (assoc pod-labels cook-pod-label compute-cluster-name)
         security-context (make-security-context parameters (:user command))
         sandbox-dir (:default-workdir (config/kubernetes))
         workdir (get-workdir parameters sandbox-dir)
@@ -787,7 +787,7 @@
     (when (pos? gpus)
       (.putLimitsItem resources "nvidia.com/gpu" (double->quantity gpus)))
     (when (pos? gpus)
-      (.putNodeSelectorItem pod-spec "cloud.google.com/gke-accelerator" gpu-model-requested))
+      (add-node-selector pod-spec "cloud.google.com/gke-accelerator" gpu-model-requested))
     (.setResources container resources)
     (.setVolumeMounts container (filterv some? (conj (concat volume-mounts main-container-checkpoint-volume-mounts)
                                                      (init-container-workdir-volume-mount-fn true)
