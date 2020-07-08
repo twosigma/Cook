@@ -98,8 +98,8 @@
         mesos-gpu-job (d/entity db mesos-gpu-job-id)
         mesos-non-gpu-job (d/entity db mesos-non-gpu-job-id)]
 
-    (with-redefs [config/valid-gpu-models (constantly [{:pool-regex    "test-pool"
-                                                        :valid-models  #{"nvidia-tesla-p100"}
+    (with-redefs [config/valid-gpu-models (constantly [{:pool-regex "test-pool"
+                                                        :valid-models #{"nvidia-tesla-p100"}
                                                         :default-model "nvidia-tesla-p100"}])]
       (is (.isSuccessful
             (.evaluate (constraints/fenzoize-job-constraint (constraints/build-gpu-host-constraint gpu-job-1))
