@@ -25,7 +25,7 @@
             [cook.test.testutil :refer [create-dummy-group create-dummy-instance create-dummy-job create-dummy-job-with-instances create-pool
                                          restore-fresh-database! setup]]
             [cook.tools :as util]
-            [datomic.api :as d :refer (db)])
+            [datomic.api :as d :refer [db]])
   (:import (java.util Date UUID)
            (org.joda.time DateTime)
            (org.mockito Mockito)))
