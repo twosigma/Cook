@@ -916,6 +916,13 @@
               [user->usage' (below-quota? (user->quota user) (get user->usage' user))]))]
     (filter-sequential filter-with-quota user->usage queue)))
 
+(defn filter-pending-jobs-for-autoscaling
+  "Lazily filters jobs to those that should be considered
+  for autoscaling purposes. Note that this is used in two
+  places: the /queue endpoint (Mesos only) and as an
+  argument to scheduler/trigger-autoscaling! (k8s only)."
+  [user->quota user->usage queue]
+  (filter-based-on-quota user->quota user->usage queue))
 
 (defn pool->user->usage
   "Returns a map from pool name to user name to usage for all users in all pools."

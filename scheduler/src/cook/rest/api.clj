@@ -2129,8 +2129,9 @@
                         pool->user->usage (util/pool->user->usage db)]
                     (pc/for-map [[pool-name queue] pool->queue]
                                 pool-name (->> queue
-                                               (util/filter-based-on-quota (pool->user->quota pool-name)
-                                                                           (pool->user->usage pool-name))
+                                               (util/filter-pending-jobs-for-autoscaling
+                                                 (pool->user->quota pool-name)
+                                                 (pool->user->usage pool-name))
                                                (take (::limit ctx)))))))))
 
 ;;
