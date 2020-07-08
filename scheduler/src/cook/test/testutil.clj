@@ -543,11 +543,12 @@
   node))
 
 (defn make-kubernetes-compute-cluster
-  [namespaced-pod-name->pod pool-names synthetic-pods-user node-blocklist-labels]
-  (let [synthetic-pods-config {:image "image"
-                               :user synthetic-pods-user
-                               :max-pods-outstanding 4
-                               :pools pool-names}]
+  [namespaced-pod-name->pod pool-names node-blocklist-labels additional-synthetic-pods-config]
+  (let [synthetic-pods-config (merge {:image "image"
+                                      :user nil
+                                      :max-pods-outstanding 4
+                                      :pools pool-names} 
+                                     additional-synthetic-pods-config)]
     (kcc/->KubernetesComputeCluster nil ; api-client
                                     "kubecompute" ; name
                                     nil ; entity-id
