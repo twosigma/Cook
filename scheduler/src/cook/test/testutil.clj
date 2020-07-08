@@ -547,7 +547,8 @@
   (let [synthetic-pods-config (merge {:image "image"
                                       :user nil
                                       :max-pods-outstanding 4
-                                      :pools pool-names} additional-synthetic-pods-config)]
+                                      :pools pool-names} 
+                                     additional-synthetic-pods-config)]
     (kcc/->KubernetesComputeCluster nil ; api-client
                                     "kubecompute" ; name
                                     nil ; entity-id
