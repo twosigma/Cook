@@ -26,9 +26,9 @@
                                          restore-fresh-database! setup]]
             [cook.tools :as util]
             [datomic.api :as d :refer (db)])
-  (:import [java.util Date UUID]
-           org.joda.time.DateTime
-           org.mockito.Mockito))
+  (:import (java.util Date UUID)
+           (org.joda.time DateTime)
+           (org.mockito Mockito)))
 
 (deftest test-get-group-constraint-name
   (is (= "unique-host-placement-group-constraint"
