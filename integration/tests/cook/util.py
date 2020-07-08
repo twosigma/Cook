@@ -1810,6 +1810,8 @@ def has_one_agent():
 def supports_exit_code():
     return using_kubernetes() or is_cook_executor_in_use()
 
+def pool_quota_test_pool():
+    return os.getenv("COOK_TEST_POOL_QUOTA_TEST_POOL", None)
 
 def kill_running_and_waiting_jobs(cook_url, user):
     one_hour_in_millis = 60 * 60 * 1000

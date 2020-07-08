@@ -2626,6 +2626,36 @@ class CookTest(util.CookTest):
                 job_uuid, resp = util.submit_job(self.cook_url, pool=pool_name, mem=mem_over_quota)
                 self.assertEqual(422, resp.status_code, msg=resp.content)
 
+
+    @unittest.skipUnless(util.pool_quota_test_pool() is not None, 'Test requires a test pool.')
+    def test_pool_quota(self):
+        job_count = 10
+        self.logger.info(f'Submitting {job_count} jobs')
+        sleep_command = f'sleep {util.DEFAULT_TEST_TIMEOUT_SECS}'
+        job_resources = {'cpus': 0.01, 'mem': 16}
+        job_specs = util.minimal_jobs(job_count, command=sleep_command, **job_resources)
+        job_uuids, resp = util.submit_jobs(self.cook_url, job_specs, pool=util.pool_quota_test_pool())
+        self.assertEqual(resp.status_code, 201, resp.content)
+        try:
+            def query():
+                return util.query_jobs(self.cook_url, True, uuid=job_uuids)
+
+            def predicate(resp):
+                jobs = resp.json()
+                logging.info("Job statuses", str([(job['uuid'], job['status']) for job in jobs]))
+                return len([job for job in jobs if job['status'] == 'running']) >= 2
+
+            # Wait until at least 2 are running.
+            util.wait_until(query, predicate)
+            # Wait an extra 60 seconds to see if anything else starts.
+            time.sleep(60.0)
+            jobs = util.query_jobs(self.cook_url, True, uuid=job_uuids).json()
+            running = [job for job in jobs if job['status'] == 'running']
+            self.assertEqual(2, len(running), jobs)
+        finally:
+            util.kill_jobs(self.cook_url, job_uuids)
+
+
     @unittest.skipIf(util.has_one_agent(), 'Test requires multiple agents')
     def test_decrease_retries_below_attempts(self):
         uuid, resp = util.submit_job(self.cook_url, command='exit 1', max_retries=2)
