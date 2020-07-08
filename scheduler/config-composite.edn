@@ -25,6 +25,8 @@
                               :config-file "../scheduler/.cook_kubeconfig_1"
                               :synthetic-pods {:image "gcr.io/google-containers/alpine-with-bash:1.0"
                                                :max-pods-outstanding 128
+                                               :max-total-pods 30000
+                                               :max-total-nodes 3000
                                                :user #config/env "USER"
                                                :command "exit 0"
                                                :pools #{"k8s-alpha" "k8s-gamma"}}
@@ -38,6 +40,8 @@
                               :config-file "../scheduler/.cook_kubeconfig_2"
                               :synthetic-pods {:image "gcr.io/google-containers/alpine-with-bash:1.0"
                                                :max-pods-outstanding 128
+                                               :max-total-pods 20000
+                                               :max-total-nodes 2000
                                                :user #config/env "USER"
                                                :command "exit 0"
                                                :pools #{"k8s-alpha"}}

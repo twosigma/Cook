@@ -701,7 +701,7 @@
         ;; whereas :scalar-requests always contains the unmodified job resource values.
         {:strs [mem cpus]} scalar-requests
         {:keys [docker volumes]} container
-        {:keys [image parameters]} docker
+        {:keys [image parameters port-mapping]} docker
         {:keys [environment]} command
         pool-name (some-> job :job/pool :pool/name)
         ; gpu count is not stored in scalar-requests
@@ -772,6 +772,15 @@
                        (:value command)))
     (.setEnv container main-env-vars)
     (.setImage container image)
+    (doseq [{:keys [container-port host-port protocol]} port-mapping]
+      (when container-port
+        (let [port (V1ContainerPort.)]
+          (.containerPort port (int container-port))
+          (when host-port
+            (.hostPort port (int host-port)))
+          (when protocol
+            (.protocol port protocol))
+          (.addPortsItem container port))))
 
     ; allocate a TTY to support tools that need to read from stdin
     (.setTty container true)

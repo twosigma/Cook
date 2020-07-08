@@ -363,7 +363,12 @@
                                             (add-starting-pods this)
                                             (filter synthetic-pod->job-uuid))
             num-synthetic-pods (count outstanding-synthetic-pods)
-            {:keys [image user command max-pods-outstanding] :or {command "exit 0"}} synthetic-pods-config]
+            total-pods (-> @all-pods-atom keys count)
+            total-nodes (-> @current-nodes-atom keys count)
+            {:keys [image user command max-pods-outstanding max-total-pods max-total-nodes]
+             :or {command "exit 0" max-total-pods 32000 max-total-nodes 1000}} synthetic-pods-config]
+        (log/info "In" name "compute cluster there are" total-pods "pods and" total-nodes
+                  "nodes of a max of" max-total-pods "pods and" max-total-nodes "nodes")
         (log/info "In" name "compute cluster, for pool" pool-name "there are" num-synthetic-pods
                   "outstanding synthetic pod(s), and a max of" max-pods-outstanding "are allowed")
         (if (>= num-synthetic-pods max-pods-outstanding)
