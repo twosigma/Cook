@@ -906,7 +906,8 @@
                 ;; trigger autoscaling beyond what users have quota to actually run
                 autoscalable-jobs (->> pool-name
                                        (get @pool-name->pending-jobs-atom)
-                                       (tools/filter-based-on-quota user->quota user->usage))]
+                                       (tools/filter-pending-jobs-for-autoscaling
+                                         user->quota user->usage))]
             ;; This call needs to happen *after* launch-matched-tasks!
             ;; in order to avoid autoscaling tasks taking up available
             ;; capacity that was already matched for real Cook tasks.
