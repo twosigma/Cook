@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.42.5] - 2020-07-08
+### Added
+- Port mapping support for k8s, from @dposada
+- Total number of pods and nodes quota for k8s, from @scrosby
+### Fixed
+- Fixed several O(#pods * #nodes) bugs in k8s code, from @scrosby
+- Limit autoscaling to quota of what's allowed to run, from @dposada
+- Improved pool scheduling by fixing chime logic, from @nsinkov
+
 ## [1.42.4] - 2020-06-15
 ### Added
 - Validation for GPU model requests, from @kathryn-zhou

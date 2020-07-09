@@ -20,6 +20,7 @@ from enum import Enum
 from uuid import UUID
 from typing import Dict, List, Optional, Set
 
+from .containers import AbstractContainer
 from .instance import Executor, Instance
 from .util import (
     clamped_ms_to_timedelta,
@@ -212,7 +213,7 @@ class Job:
     submit_time: datetime
     user: str
     executor: Optional[Executor]
-    container: Optional[dict]
+    container: Optional[AbstractContainer]
     disable_mea_culpa_retries: Optional[bool]
     expected_runtime: Optional[timedelta]
     pool: Optional[str]
@@ -248,7 +249,7 @@ class Job:
                  user: str,
                  # Optional keys
                  executor: Optional[Executor] = None,
-                 container: Optional[dict] = None,
+                 container: Optional[AbstractContainer] = None,
                  disable_mea_culpa_retries: Optional[bool] = None,
                  expected_runtime: Optional[timedelta] = None,
                  pool: Optional[str] = None,
@@ -336,6 +337,8 @@ class Job:
             d['disable_mea_culpa_retries'] = self.disable_mea_culpa_retries
         if self.executor is not None:
             d['executor'] = str(self.executor)
+        if self.container is not None:
+            d['container'] = self.container.to_dict()
         if self.expected_runtime is not None:
             d['expected_runtime'] = int(self.expected_runtime.total_seconds() * 1000)  # noqa: E501
         if self.pool is not None:
@@ -346,8 +349,6 @@ class Job:
             d['env'] = self.env
         if self.uris is not None:
             d['uris'] = [{'value': uri} for uri in self.uris]
-        if self.container is not None:
-            d['container'] = self.container
         if self.labels is not None:
             d['labels'] = self.labels
         if self.constraints is not None:
@@ -384,8 +385,10 @@ class Job:
 
         if 'executor' in d:
             d['executor'] = Executor.from_string(d['executor'])
+        if 'container' in d:
+            d['container'] = AbstractContainer.from_dict(d['container'])
         if 'expected_runtime' in d:
-            d['expected_runtime'] = clamped_ms_to_timedelta(d['expected_runtime'])
+            d['expected_runtime'] = clamped_ms_to_timedelta(d['expected_runtime'])  # noqa: E501
         if 'instances' in d:
             d['instances'] = list(map(Instance.from_dict, d['instances']))
         if 'uris' in d:

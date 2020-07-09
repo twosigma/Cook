@@ -168,7 +168,6 @@
             job-uuid-3 (str (UUID/randomUUID))
             ^V1Pod outstanding-synthetic-pod-1 (tu/synthetic-pod-helper job-uuid-1 pool-name nil)
             compute-cluster (tu/make-kubernetes-compute-cluster {nil outstanding-synthetic-pod-1}
-                                                                                #{pool-name} "user" nil)
             pending-jobs [(make-job-fn job-uuid-1 nil)
                           (make-job-fn job-uuid-2 nil)
                           (make-job-fn job-uuid-3 nil)]
@@ -181,11 +180,30 @@
         (is (= job-uuid-2 (-> @launched-pods-atom (nth 0) :launch-pod :pod kcc/synthetic-pod->job-uuid)))
         (is (= job-uuid-3 (-> @launched-pods-atom (nth 1) :launch-pod :pod kcc/synthetic-pod->job-uuid)))))
 
+    (testing "synthetic pod max pod limit"
+      (let [job-uuid-1 (str (UUID/randomUUID))
+            job-uuid-2 (str (UUID/randomUUID))
+            job-uuid-3 (str (UUID/randomUUID))
+            ^V1Pod outstanding-synthetic-pod-1 (tu/synthetic-pod-helper job-uuid-1 pool-name nil)
+            compute-cluster (tu/make-kubernetes-compute-cluster {nil outstanding-synthetic-pod-1}
+                                                                #{pool-name} nil {:max-total-pods 2 :user "user"})
+            pending-jobs [(make-job-fn job-uuid-1 nil)
+                          (make-job-fn job-uuid-2 nil)
+                          (make-job-fn job-uuid-3 nil)]
+            launched-pods-atom (atom [])]
+        (with-redefs [api/launch-pod (fn [_ _ cook-expected-state-dict _]
+                                       (swap! launched-pods-atom conj cook-expected-state-dict))
+                      kcc/get-pods-in-pool (constantly {{:namespace nil :name job-uuid-1} outstanding-synthetic-pod-1})]
+          (cc/autoscale! compute-cluster pool-name pending-jobs sched/adjust-job-resources-for-pool-fn))
+        ; We have one running and a limit of 2, so should have a max of 1 launch.
+        (is (= 1 (count @launched-pods-atom)))
+        (is (= job-uuid-2 (-> @launched-pods-atom (nth 0) :launch-pod :pod kcc/synthetic-pod->job-uuid)))))
+
     (testing "synthetic pods use the user's namespace"
       (let [job-uuid-1 (str (UUID/randomUUID))
             job-uuid-2 (str (UUID/randomUUID))
             pool-name "test-pool"
-            compute-cluster (tu/make-kubernetes-compute-cluster {} #{pool-name} nil nil)
+            compute-cluster (tu/make-kubernetes-compute-cluster {} #{pool-name} nil {})
             pending-jobs [(make-job-fn job-uuid-1 "user-1")
                           (make-job-fn job-uuid-2 "user-2")]
             launched-pods-atom (atom [])]
@@ -199,7 +217,7 @@
     (testing "synthetic pods avoid job's previous hosts"
       (let [job-uuid-1 (str (UUID/randomUUID))
             pool-name "test-pool"
-            compute-cluster (tu/make-kubernetes-compute-cluster {} #{pool-name} nil nil)
+            compute-cluster (tu/make-kubernetes-compute-cluster {} #{pool-name} nil {})
             pending-jobs [(-> (make-job-fn job-uuid-1 "user-1")
                               (assoc :job/instance
                                      [{:instance/hostname "test-host-1"}
@@ -229,7 +247,7 @@
     (testing "synthetic pods have safe-to-evict annotation"
       (let [job-uuid-1 (str (UUID/randomUUID))
             pool-name "test-pool"
-            compute-cluster (tu/make-kubernetes-compute-cluster {} #{pool-name} nil nil)
+            compute-cluster (tu/make-kubernetes-compute-cluster {} #{pool-name} nil {})
             pending-jobs [(make-job-fn job-uuid-1 "user-1")]
             launched-pods-atom (atom [])]
         (with-redefs [api/launch-pod (fn [_ _ cook-expected-state-dict _]
