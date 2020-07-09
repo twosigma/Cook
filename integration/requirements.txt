@@ -4,6 +4,7 @@
 #  pip install -r requirements.txt
 #  pip freeze > requirements-frozen.txt
 # add in any extra lines from the end of this file
+# delete the "distro-info===..." line
 # diff requirements.txt and requirements-frozen.txt to see that requirements-frozen.txt is not overriding any
 # selections in requirements.txt
 beakerx==0.16.1
