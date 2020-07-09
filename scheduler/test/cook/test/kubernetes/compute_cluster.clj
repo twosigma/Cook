@@ -168,6 +168,7 @@
             job-uuid-3 (str (UUID/randomUUID))
             ^V1Pod outstanding-synthetic-pod-1 (tu/synthetic-pod-helper job-uuid-1 pool-name nil)
             compute-cluster (tu/make-kubernetes-compute-cluster {nil outstanding-synthetic-pod-1}
+                                                                #{pool-name} nil {:user "user"})
             pending-jobs [(make-job-fn job-uuid-1 nil)
                           (make-job-fn job-uuid-2 nil)
                           (make-job-fn job-uuid-3 nil)]
