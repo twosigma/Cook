@@ -11,4 +11,4 @@ then
     pip uninstall -y cook-client
 fi
 
-pip install --user -r requirements.txt
+pip install --user -r requirements-frozen.txt
