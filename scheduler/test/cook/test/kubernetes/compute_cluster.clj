@@ -267,42 +267,29 @@
       (let [job-uuid-1 (str (UUID/randomUUID))
             pool-name "test-pool"
             compute-cluster (tu/make-kubernetes-compute-cluster {} #{pool-name} nil nil)
-            pending-jobs [{:job/resource [{:resource/type :cpus, :resource/amount 0.1}
-                                          {:resource/type :mem, :resource/amount 32}
-                                          {:resource/type :gpus, :resource/amount 1}]
-                           :job/user "user-1"
-                           :job/uuid job-uuid-1
-                           :job/pool pool-name
-                           :job/environment #{{:environment/name "COOK_GPU_MODEL"
-                                               :environment/value "nvidia-tesla-p100"}}}]
+            pending-jobs [(-> (make-job-fn job-uuid-1 "user-1")
+                              (assoc :job/environment
+                                     #{{:environment/name "COOK_GPU_MODEL"
+                                        :environment/value "nvidia-tesla-p100"}}
+                                     :job/resource [{:resource/type :cpus, :resource/amount 0.1}
+                                                    {:resource/type :mem, :resource/amount 32}
+                                                    {:resource/type :gpus, :resource/amount 1}]))]
             launched-pods-atom (atom [])]
         (with-redefs [api/launch-pod (fn [_ _ cook-expected-state-dict _]
                                        (swap! launched-pods-atom conj cook-expected-state-dict))]
           (cc/autoscale! compute-cluster pool-name pending-jobs sched/adjust-job-resources-for-pool-fn))
         (is (= 1 (count @launched-pods-atom)))
         (is (= job-uuid-1 (-> @launched-pods-atom (nth 0) :launch-pod :pod kcc/synthetic-pod->job-uuid)))
-        (is (= 1 (-> @launched-pods-atom
-                     (nth 0)
-                     :launch-pod
-                     :pod
-                     .getSpec
-                     .getContainers
-                     first
-                     .getResources
-                     .getRequests
-                     (get "nvidia.com/gpu")
-                     (api/to-int))))
-        (is (= 1 (-> @launched-pods-atom
-                     (nth 0)
-                     :launch-pod
-                     :pod
-                     .getSpec
-                     .getContainers
-                     first
-                     .getResources
-                     .getLimits
-                     (get "nvidia.com/gpu")
-                     (api/to-int))))))))
+        (let [container-resources (-> @launched-pods-atom
+                                      (nth 0)
+                                      :launch-pod
+                                      :pod
+                                      .getSpec
+                                      .getContainers
+                                      first
+                                      .getResources)]
+        (is (= 1 (-> container-resources .getRequests (get "nvidia.com/gpu") (api/to-int))))
+        (is (= 1 (-> container-resources .getLimits (get "nvidia.com/gpu") (api/to-int)))))))))
 
 (deftest test-factory-fn
   (testing "guards against inappropriate number of threads"

@@ -271,8 +271,8 @@
           ^V1Container containers (.getContainers pod-spec)]
       (is (= (-> pod-spec .getNodeSelector (get "cloud.google.com/gke-accelerator")) "nvidia-tesla-p100"))
       (doseq [container containers]
-        (is (= (-> container .getResources .getRequests (get "nvidia.com/gpu") api/to-int) 2))
-        (is (= (-> container .getResources .getLimits (get "nvidia.com/gpu") api/to-int) 2))))))
+        (is (= 2 (-> container .getResources .getRequests (get "nvidia.com/gpu") api/to-int)))
+        (is (= 2 (-> container .getResources .getLimits (get "nvidia.com/gpu") api/to-int)))))))
 
 (defn- k8s-volume->clj [^V1Volume volume]
   {:name (.getName volume)
