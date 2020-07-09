@@ -17,7 +17,8 @@
     (let [pods [(tu/pod-helper "podA" "hostA" {:cpus 1.0 :mem 100.0})]
           node-name->pods (api/pods->node-name->pods pods)]
       (is (= {"hostA" {:cpus 1.0
-                       :mem 100.0}}
+                       :mem 100.0
+                       :gpus {}}}
              (api/get-consumption node-name->pods)))))
 
   (testing "correctly computes consumption for a single pod with gpus"
