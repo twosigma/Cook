@@ -39,7 +39,7 @@ if 'TEST_METRICS_URL' in os.environ:
             test_namespace = '.'.join(request_node._nodeid.split('::')[:-1]).replace('/', '.').replace('.py', '')
             test_name = request_node.name
 
-            # We can't assume that request_node will always have a rep_setup attribue
+            # We can't assume that request_node will always have a rep_setup attribute
             if hasattr(request_node, 'rep_setup'):
                 setup = request_node.rep_setup
                 setup_passed = setup.passed
