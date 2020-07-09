@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.42.6] - 2020-07-17
+### Added
+- Rapid pool skipping in k8s, from @nsinkov.
+- Enhanced offer generation and updated GPU constraints for k8s, from @kathryn-zhou
+### Fixed
+- Fixed some errors that caused NPE and ERROR logs, from @scrosby
+- Replaced chime logic with less aggressive chime logic, from @nsinkov
+
 ## [1.42.5] - 2020-07-08
 ### Added
 - Port mapping support for k8s, from @dposada
