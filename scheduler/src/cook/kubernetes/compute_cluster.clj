@@ -45,17 +45,33 @@
   [node-name->resource-map resource-keyword]
   (->> node-name->resource-map vals (map resource-keyword) (reduce +)))
 
+(defn total-gpu-resource
+  "Given a map from node-name->resource-keyword->amount,
+  returns a map from gpu model to count for all nodes."
+  [node-name->resource-map]
+  (->> node-name->resource-map vals (map :gpus) (apply merge-with +)))
+
 (defn generate-offers
   "Given a compute cluster and maps with node capacity and existing pods, return a map from pool to offers."
   [compute-cluster node-name->node node-name->pods]
   (let [compute-cluster-name (cc/compute-cluster-name compute-cluster)
         node-name->capacity (api/get-capacity node-name->node)
         node-name->consumed (api/get-consumption node-name->pods)
-        node-name->available (pc/map-from-keys (fn [node-name]
-                                                 (merge-with -
-                                                             (node-name->capacity node-name)
-                                                             (node-name->consumed node-name)))
-                                               (keys node-name->capacity))]
+        node-name->available (tools/deep-merge-with - node-name->capacity node-name->consumed)
+        ; Grab every unique GPU model being represented so that we can set counters for capacity and consumed for each GPU model
+        gpu-models (->> node-name->capacity vals (map :gpus) (apply merge) keys set)
+        ; The following variables are only being used setting counters for monitor
+        gpu-model->total-capacity (total-gpu-resource node-name->capacity)
+        gpu-model->total-consumed (total-gpu-resource node-name->consumed)]
+
+    (log/info "In" compute-cluster-name "compute cluster, capacity:" node-name->capacity)
+    (log/info "In" compute-cluster-name "compute cluster, consumption:" node-name->consumed)
+    (log/info "In" compute-cluster-name "compute cluster, filtering out"
+              (->> node-name->available
+                   (remove #(schedulable-node-filter node-name->node node-name->pods compute-cluster %))
+                   count)
+              "nodes as not schedulable")
+
     (monitor/set-counter! (metrics/counter "capacity-cpus" compute-cluster-name)
                           (total-resource node-name->capacity :cpus))
     (monitor/set-counter! (metrics/counter "capacity-mem" compute-cluster-name)
@@ -64,13 +80,14 @@
                           (total-resource node-name->consumed :cpus))
     (monitor/set-counter! (metrics/counter "consumption-mem" compute-cluster-name)
                           (total-resource node-name->consumed :mem))
-    (log/info "In" compute-cluster-name "compute cluster, capacity:" node-name->capacity)
-    (log/info "In" compute-cluster-name "compute cluster, consumption:" node-name->consumed)
-    (log/info "In" compute-cluster-name "compute cluster, filtering out"
-              (->> node-name->available
-                   (remove #(schedulable-node-filter node-name->node node-name->pods compute-cluster %))
-                   count)
-              "nodes as not schedulable")
+
+    (doseq [gpu-model gpu-models]
+      (monitor/set-counter! (metrics/counter (str "capacity-gpu-" gpu-model) compute-cluster-name)
+                            (get gpu-model->total-capacity gpu-model))
+      (monitor/set-counter! (metrics/counter (str "consumption-gpu-" gpu-model) compute-cluster-name)
+                            (get gpu-model->total-consumed gpu-model 0)))
+
+
     (->> node-name->available
          (filter #(schedulable-node-filter node-name->node node-name->pods compute-cluster %))
          (map (fn [[node-name available]]
@@ -80,8 +97,9 @@
                  :hostname node-name
                  :resources [{:name "mem" :type :value-scalar :scalar (max 0.0 (:mem available))}
                              {:name "cpus" :type :value-scalar :scalar (max 0.0 (:cpus available))}
-                             {:name "disk" :type :value-scalar :scalar 0.0}]
-                 :attributes []
+                             {:name "disk" :type :value-scalar :scalar 0.0}
+                             {:name "gpus" :type :value-text->scalar :text->scalar (:gpus available)}]
+                 :attributes [{:name "compute-cluster-type" :type :value-text :text "kubernetes"}]
                  :executor-ids []
                  :compute-cluster compute-cluster
                  :reject-after-match-attempt true

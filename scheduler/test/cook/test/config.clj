@@ -15,7 +15,8 @@
 ;;
 (ns cook.test.config
   (:require [clojure.test :refer :all]
-            [cook.config :refer [config config-settings config-string->fitness-calculator default-pool env read-edn-config]]
+            [cook.config :refer [config config-settings config-string->fitness-calculator default-pool env read-edn-config]
+             :as config]
             [cook.test.rest.api :as api]
             [cook.test.testutil :refer [setup]])
   (:import (clojure.lang ExceptionInfo)
@@ -96,3 +97,27 @@
                                [:config :kubernetes :controller-lock-num-shards]
                                256)]
       (is (thrown? ExceptionInfo (config-settings bad-config))))))
+
+(deftest test-valid-gpu-models-config-settings
+  (testing "empty valid-gpu-models"
+    (is (nil? (config/guard-invalid-gpu-config []))))
+  (testing "valid default model"
+    (is (nil? (config/guard-invalid-gpu-config [{:pool-regex "test-pool"
+                                                 :valid-models #{"valid-gpu-model"}
+                                                 :default-model "valid-gpu-model"}]))))
+  (testing "no valid models"
+    (is (thrown-with-msg? ExceptionInfo
+                          #"Valid GPU models for pool-regex test-pool is not defined"
+                          (config/guard-invalid-gpu-config [{:pool-regex "test-pool"
+                                                             :default-model "valid-gpu-model"}]))))
+  (testing "no default model"
+    (is (thrown-with-msg? ExceptionInfo
+                          #"Default GPU model for pool-regex test-pool is not defined"
+                          (config/guard-invalid-gpu-config [{:pool-regex "test-pool"
+                                                             :valid-models #{"valid-gpu-model"}}]))))
+  (testing "invalid default model"
+    (is (thrown-with-msg? ExceptionInfo
+                          #"Default GPU model for pool-regex test-pool is not listed as a valid GPU model"
+                          (config/guard-invalid-gpu-config [{:pool-regex "test-pool"
+                                                             :valid-models #{"valid-gpu-model"}
+                                                             :default-model "invalid-gpu-model"}])))))

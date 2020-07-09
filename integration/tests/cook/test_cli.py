@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import re
 import tempfile
 
 import nbformat
@@ -2146,9 +2147,20 @@ if __name__ == '__main__':
             self.assertIn('Encountered connection error with bar', cli.decode(cp.stderr))
 
     def test_submit_with_gpus(self):
+        settings_dict = util.settings(self.cook_url)
+        gpu_enabled = settings_dict['mesos-gpu-enabled']
+        valid_gpu_models_config_map = settings_dict.get("pools", {}).get("valid-gpu-models", [])
+        default_pool = util.default_submit_pool()
+        matching_gpu_models = [ii["valid-models"] for ii in valid_gpu_models_config_map if
+                               re.match(ii["pool-regex"], default_pool)]
         cp, uuids = cli.submit('ls', self.cook_url, submit_flags=f'--gpus 1')
-        if util.settings(self.cook_url)['mesos-gpu-enabled']:
-            self.assertEqual(0, cp.returncode, cp.stderr)
+        if gpu_enabled:
+            if valid_gpu_models_config_map and matching_gpu_models:
+                self.assertEqual(0, cp.returncode, cp.stderr)
+            else:
+                self.assertEqual(1, cp.returncode, cp.stderr)
+                self.assertIn(f"Job requested GPUs but pool {default_pool} does not have any valid GPU models",
+                              cli.stderr(cp))
         else:
             self.assertEqual(1, cp.returncode, cp.stderr)
             self.assertIn('GPU support is not enabled', cli.stderr(cp))

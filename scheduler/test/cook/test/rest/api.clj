@@ -377,46 +377,60 @@
                                 :body-params {"jobs" [job]}}))))))))))
 
 (deftest gpus-api
+  (setup)
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
+        _ (create-pool conn "test-pool")
         job (fn [gpus] (merge (basic-job) {"gpus" gpus}))
         h (basic-handler conn :gpus-enabled true)]
     (testing "negative gpus invalid"
       (is (<= 400
               (:status (h {:request-method :post
                            :scheme :http
-                           :uri "/rawscheduler"
+                           :uri "/jobs"
                            :headers {"Content-Type" "application/json"}
                            :authorization/user "dgrnbrg"
-                           :body-params {"jobs" [(job -3)]}}))
+                           :body-params {"jobs" [(job -3)] "pool" "test-pool"}}))
               499)))
     (testing "Zero gpus invalid"
       (is (<= 400
               (:status (h {:request-method :post
                            :scheme :http
-                           :uri "/rawscheduler"
+                           :uri "/jobs"
                            :headers {"Content-Type" "application/json"}
                            :authorization/user "dgrnbrg"
-                           :body-params {"jobs" [(job 0)]}}))
+                           :body-params {"jobs" [(job 0)] "pool" "test-pool"}}))
               499)))
-    (let [successful-job (job 2)]
-      (testing "Positive GPUs ok"
-        (is (<= 200
-                (:status (h {:request-method :post
-                             :scheme :http
-                             :uri "/rawscheduler"
-                             :headers {"Content-Type" "application/json"}
-                             :authorization/user "dgrnbrg"
-                             :body-params {"jobs" [successful-job]}}))
-                299)))
-      (let [resp (h {:request-method :get
-                     :scheme :http
-                     :uri "/rawscheduler"
-                     :authorization/user "dgrnbrg"
-                     :query-params {"job" (str (get successful-job "uuid"))}})
-            _ (is (<= 200 (:status resp) 299))
-            [body] (response->body-data resp)
-            trimmed-body (select-keys body (keys successful-job))]
-        (is (= (dissoc successful-job "uris") (dissoc trimmed-body "uris")))))))
+    (testing "Non-whole number of gpus invalid"
+      (is (<= 400
+              (:status (h {:request-method :post
+                           :scheme :http
+                           :uri "/jobs"
+                           :headers {"Content-Type" "application/json"}
+                           :authorization/user "dgrnbrg"
+                           :body-params {"jobs" [(job 1.5)] "pool" "test-pool"}}))
+              499)))
+    (with-redefs [config/valid-gpu-models (constantly [{:pool-regex "test-pool"
+                                                       :valid-models #{"nvidia-tesla-p100"}
+                                                       :default-model "nvidia-tesla-p100"}])]
+      (let [successful-job (job 2)]
+        (testing "Positive GPUs ok"
+          (is (<= 200
+                  (:status (h {:request-method :post
+                               :scheme :http
+                               :uri "/jobs"
+                               :headers {"Content-Type" "application/json"}
+                               :authorization/user "dgrnbrg"
+                               :body-params {"jobs" [successful-job] "pool" "test-pool"}}))
+                  299)))
+        (let [resp (h {:request-method     :get
+                       :scheme             :http
+                       :uri                "/rawscheduler"
+                       :authorization/user "dgrnbrg"
+                       :query-params       {"job" (str (get successful-job "uuid"))}})
+              _ (is (<= 200 (:status resp) 299))
+              [body] (response->body-data resp)
+              trimmed-body (select-keys body (keys successful-job))]
+          (is (= (dissoc successful-job "uris") (dissoc trimmed-body "uris"))))))))
 
 (deftest retries-api
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
@@ -689,7 +703,9 @@
           (is (= (:body update-resp) {:instance task-id :job job-uuid :message "progress update accepted"})))))))
 
 (deftest quota-api
+  (setup)
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
+        _ (create-pool conn "test-pool")
         h (basic-handler conn :gpus-enabled true)
         quota-req-attrs {:scheme :http
                          :uri "/quota"
@@ -709,7 +725,8 @@
                                   {:request-method :post
                                    :body-params {:user "foo"
                                                  :quota new-quota
-                                                 :reason "Needs custom settings"}}))
+                                                 :reason "Needs custom settings"
+                                                 :pool "test-pool"}}))
             update-body (response->body-data update-resp)
             _ (is (<= 200 (:status update-resp) 299))
             _ (is (= (kw-keys update-body) new-quota))
@@ -717,29 +734,32 @@
                                {:request-method :get
                                 :query-params {:user "foo"}}))
             get-body (response->body-data get-resp)]
-        (is (= get-body update-body))))
+        (is (= (get-in get-body ["pools" "test-pool"]) update-body))))
 
-    (testing "gpu quota is checked on job submission"
-      (let [job (assoc (basic-job) "gpus" 3.0)
-            job-resp (h (merge quota-req-attrs
-                               {:uri "/rawscheduler"
-                                :authorization/user "foo"
-                                :request-method :post
-                                :body-params {"jobs" [job]}}))]
-        (is (<= 200 (:status job-resp) 299)))
-      (let [job (assoc (basic-job) "gpus" 4.0)
-            job-resp (h (merge quota-req-attrs
-                               {:uri "/rawscheduler"
-                                :authorization/user "foo"
-                                :request-method :post
-                                :body-params {"jobs" [job]}}))]
-        (is (= 422 (:status job-resp)))))
-
+    (with-redefs [config/valid-gpu-models (constantly [{:pool-regex "test-pool"
+                                                        :valid-models #{"nvidia-tesla-p100"}
+                                                        :default-model "nvidia-tesla-p100"}])]
+      (testing "gpu quota is checked on job submission"
+        (let [job (assoc (basic-job) "gpus" 3.0)
+              job-resp (h (merge quota-req-attrs
+                                 {:uri "/jobs"
+                                  :authorization/user "foo"
+                                  :request-method :post
+                                  :body-params {"jobs" [job] "pool" "test-pool"}}))]
+          (is (<= 200 (:status job-resp) 299)))
+        (let [job (assoc (basic-job) "gpus" 4.0)
+              job-resp (h (merge quota-req-attrs
+                                 {:uri "/jobs"
+                                  :authorization/user "foo"
+                                  :request-method :post
+                                  :body-params {"jobs" [job] "pool" "test-pool"}}))]
+          (is (= 422 (:status job-resp))))))
     (testing "delete resets quota"
       (let [delete-resp (h (merge quota-req-attrs
                                   {:request-method :delete
                                    :query-params {:user "foo"
-                                                  :reason "Back to defaults"}}))
+                                                  :reason "Back to defaults"
+                                                  :pool "test-pool"}}))
             _ (is (<= 200 (:status delete-resp) 299))
             get-resp (h (merge quota-req-attrs
                                {:request-method :get
@@ -2321,30 +2341,61 @@
     (is (= (api/get-default-container-for-pool default-containers "baz") {:bar 2})))
   (is (= (api/get-default-container-for-pool [] "foo") nil)))
 
-(deftest test-validate-job-gpu-model
+(deftest test-validate-gpu-job
   (testing "no env specified"
-    (is (nil? (api/validate-job-gpu-model "test-pool" {}))))
+    (is (nil? (api/validate-gpu-job true "k8s-alpha" {}))))
 
-  (testing "invalid GPU model"
+  (testing "job requests GPUs when cluster is not gpu-enabled"
     (is (thrown-with-msg?
           ExceptionInfo
-          #"The following GPU model is not supported: invalid-gpu-model"
-          (api/validate-job-gpu-model "test-pool" {:env {"COOK_GPU_MODEL" "invalid-gpu-model"}}))))
+          #"GPU support is not enabled"
+          (let [gpu-enabled? false]
+            (api/validate-gpu-job gpu-enabled? "test-pool" {:gpus 2
+                                                            :env {"COOK_GPU_MODEL" "invalid-gpu-model"}})))))
 
-  (testing "valid GPU model"
-    (with-redefs [config/valid-gpu-models (constantly [{:pool-regex   "test-pool"
-                                                        :valid-models #{"valid-gpu-model"}}])]
-      (is (nil? (api/validate-job-gpu-model "test-pool" {:env {"COOK_GPU_MODEL" "valid-gpu-model"}}))))
-    (with-redefs [config/valid-gpu-models (constantly [{:pool-regex   "test-.+"
-                                                        :valid-models #{"valid-gpu-model"}}])]
-      (is (nil? (api/validate-job-gpu-model "test-pool" {:env {"COOK_GPU_MODEL" "valid-gpu-model"}})))))
-
-  (testing "invalid GPU model on pool"
-    (with-redefs [config/valid-gpu-models (constantly [{:pool-regex   "test-pool"
-                                                        :valid-models #{"valid-gpu-model"}}])]
+  (testing "invalid GPU model"
+    (with-redefs [config/valid-gpu-models (constantly [{:pool-regex "test-pool"
+                                                        :valid-models #{"valid-gpu-model"}
+                                                        :default-model "valid-gpu-model"}])]
       (is (thrown-with-msg?
             ExceptionInfo
-            #"The following GPU model is not supported: foo"
-            (api/validate-job-gpu-model "test-pool" {:env {"COOK_GPU_MODEL" "foo"}}))))))
+            #"The following GPU model is not supported: invalid-gpu-model"
+            (let [gpu-enabled? true]
+              (api/validate-gpu-job gpu-enabled? "test-pool" {:gpus 2
+                                                              :env {"COOK_GPU_MODEL" "invalid-gpu-model"}}))))))
+
+  (testing "valid GPU model"
+    (with-redefs [config/valid-gpu-models (constantly [{:pool-regex "test-pool"
+                                                        :valid-models #{"valid-gpu-model"}
+                                                        :default-model "valid-gpu-model"}])]
+      (is (nil? (let [gpu-enabled? true]
+                  (api/validate-gpu-job gpu-enabled? "test-pool" {:gpus 3
+                                                                  :env {"COOK_GPU_MODEL" "valid-gpu-model"}})))))
+    (with-redefs [config/valid-gpu-models (constantly [{:pool-regex "test-.+"
+                                                        :valid-models #{"valid-gpu-model"}
+                                                        :default-model "valid-gpu-model"}])]
+      (is (nil? (let [gpu-enabled? true]
+                  (api/validate-gpu-job gpu-enabled? "test-pool" {:gpus 2
+                                                                  :env {"COOK_GPU_MODEL" "valid-gpu-model"}}))))))
+
+  (testing "invalid GPU model on pool"
+    (with-redefs [config/valid-gpu-models (constantly [{:pool-regex "test-pool"
+                                                        :valid-models #{"valid-gpu-model"}
+                                                        :default-model "valid-gpu-model"}])]
+      (is (thrown-with-msg?
+            ExceptionInfo
+            #"The following GPU model is not supported: invalid-gpu-model"
+            (let [gpu-enabled? true]
+              (api/validate-gpu-job gpu-enabled? "test-pool" {:gpus 2
+                                                              :env {"COOK_GPU_MODEL" "invalid-gpu-model"}}))))))
+
+  (testing "job requests GPUs but pool doesn't have valid-models"
+    (with-redefs [config/valid-gpu-models (constantly [])]
+      (is (thrown-with-msg?
+            ExceptionInfo
+            #"Job requested GPUs but pool test-pool does not have any valid GPU models"
+            (let [gpu-enabled? true]
+              (api/validate-gpu-job gpu-enabled? "test-pool" {:gpus 2
+                                                              :env {}})))))))
 
 

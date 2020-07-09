@@ -480,7 +480,7 @@
   (let [pod (V1Pod.)
         metadata (V1ObjectMeta.)
         spec (V1PodSpec.)]
-    (doall (for [{:keys [mem cpus]} requests]
+    (doall (for [{:keys [mem cpus gpus gpu-model]} requests]
              (let [container (V1Container.)
                    resources (V1ResourceRequirements.)]
                (when mem
@@ -493,6 +493,13 @@
                                    "cpu"
                                    (Quantity. (BigDecimal. cpus)
                                               Quantity$Format/DECIMAL_SI)))
+               (when (and gpus (-> gpus Integer/parseInt pos?))
+                 (.putRequestsItem resources
+                                   "nvidia.com/gpu"
+                                   (Quantity. gpus))
+                 (.putNodeSelectorItem spec
+                                       "cloud.google.com/gke-accelerator"
+                                       (or gpu-model "nvidia-tesla-p100")))
                (.setResources container resources)
                (.addContainersItem spec container))))
     (.setNodeName spec node-name)
@@ -514,7 +521,7 @@
         (.addTolerationsItem (kapi/toleration-for-pool pool-name)))
     outstanding-synthetic-pod))
 
-(defn node-helper [node-name cpus mem pool]
+(defn node-helper [node-name cpus mem gpus gpu-model pool]
   "Make a fake node for kubernetes unit tests"
   (let [node (V1Node.)
         status (V1NodeStatus.)
@@ -530,6 +537,13 @@
                                                    Quantity$Format/DECIMAL_SI))
       (.putAllocatableItem status "memory" (Quantity. (BigDecimal. (* kapi/memory-multiplier mem))
                                                       Quantity$Format/DECIMAL_SI)))
+    (when (and gpus (pos? gpus))
+      (.putCapacityItem status "nvidia.com/gpu" (Quantity. (BigDecimal. gpus)
+                                                           Quantity$Format/DECIMAL_SI))
+      (.putAllocatableItem status "nvidia.com/gpu" (Quantity. (BigDecimal. gpus)
+                                                              Quantity$Format/DECIMAL_SI))
+      (.putLabelsItem metadata "gpu-type" (or gpu-model "nvidia-tesla-p100")))
+
     (when pool
       (let [^V1Taint taint (V1Taint.)]
         (.setKey taint kapi/cook-pool-taint)

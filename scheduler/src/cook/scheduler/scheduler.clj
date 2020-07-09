@@ -72,29 +72,31 @@
   [offer resource-name]
   (reduce into [] (offer-resource-values offer resource-name :ranges)))
 
+(defn offer-value-list-map
+  [value-list]
+  (->> value-list
+       (map #(vector (:name %) (case (:type %)
+                                 :value-scalar (:scalar %)
+                                 :value-ranges (:ranges %)
+                                 :value-set (:set %)
+                                 :value-text (:text %)
+                                 :value-text->scalar (:text->scalar %)
+                                 ; Default
+                                 (:value %))))
+       (into {})))
+
 (defn get-offer-attr-map
   "Gets all the attributes from an offer and puts them in a simple, less structured map of the form
    name->value"
-  [{:keys [attributes compute-cluster hostname] :as offer}]
-  (let [mesos-attributes (->> attributes
-                              (map #(vector (:name %) (case (:type %)
-                                                        :value-scalar (:scalar %)
-                                                        :value-ranges (:ranges %)
-                                                        :value-set (:set %)
-                                                        :value-text (:text %)
-                                                        ; Default
-                                                        (:value %))))
-                              (into {}))
+  [{:keys [attributes compute-cluster hostname resources] :as offer}]
+  (let [offer-attributes (offer-value-list-map attributes)
+        offer-resources (offer-value-list-map resources)
         cook-attributes (cond->
-                          {"HOSTNAME" hostname
-                           "COOK_GPU?" (-> offer
-                                           (offer-resource-scalar "gpus")
-                                           (or 0.0)
-                                           pos?)}
+                          {"HOSTNAME" hostname}
                           compute-cluster
                           (assoc "COOK_MAX_TASKS_PER_HOST" (cc/max-tasks-per-host compute-cluster)
                                  "COOK_NUM_TASKS_ON_HOST" (cc/num-tasks-on-host compute-cluster hostname)))]
-    (merge mesos-attributes cook-attributes)))
+    (merge offer-resources offer-attributes cook-attributes)))
 
 (timers/deftimer [cook-mesos scheduler handle-status-update-duration])
 (timers/deftimer [cook-mesos scheduler handle-framework-message-duration])
@@ -185,6 +187,20 @@
                                         (String. (.toByteArray (:data s)))))
                       (catch Exception e
                         (log/debug e "Error reading a string from mesos status data. Is it in the format we expect?")))))})
+
+(defn job->scalar-request
+  "Takes job and makes the scalar-request for TaskRequestAdapter"
+  [job]
+  (reduce (fn [result resource]
+            (let [{:keys [resource/amount resource/type]} resource]
+              ; Task request shouldn't have a scalar request for GPUs because
+              ; we are completely handling GPUs within GPU host constraint
+              ; and fenzo cannot handle scheduling for multiple GPU models
+              (if (and amount (not= type :resource.type/gpus))
+                (assoc result (name type) amount)
+                result)))
+          {}
+          (:job/resource job)))
 
 (defn update-reason-metrics!
   "Updates histograms and counters for run time, cpu time, and memory time,
@@ -452,8 +468,6 @@
                 result))
             {}
             (:resources offer)))
-  ; Some Fenzo plugins (which are included with fenzo, such as host attribute constraints) expect the "HOSTNAME"
-  ; attribute to contain the hostname of this virtual machine.
   (getAttributeMap [_] (get-offer-attr-map offer))
   (getId [_] (-> offer :id :value))
   (getOffer [_] (throw (UnsupportedOperationException.)))
@@ -467,7 +481,7 @@
                         (offer-resource-ranges offer "ports"))))
 
 
-(defrecord TaskRequestAdapter [job resources task-id assigned-resources guuid->considerable-cotask-ids constraints needs-gpus? scalar-requests]
+(defrecord TaskRequestAdapter [job resources task-id assigned-resources guuid->considerable-cotask-ids constraints scalar-requests]
   TaskRequest
   (getCPUs [_] (:cpus resources))
   (getDisk [_] 0.0)
@@ -511,15 +525,9 @@
                                         (constraints/make-fenzo-group-constraint
                                           db group #(guuid->considerable-cotask-ids (:group/uuid group)) running-cotask-cache))
                                       (:group/_job job)))))
-        needs-gpus? (constraints/job-needs-gpus? job)
-        scalar-requests (reduce (fn [result resource]
-                                  (if-let [value (:resource/amount resource)]
-                                    (assoc result (name (:resource/type resource)) value)
-                                    result))
-                                {}
-                                (:job/resource job))
+        scalar-requests (job->scalar-request job)
         pool-specific-resources ((adjust-job-resources-for-pool-fn pool-name) job resources)]
-    (->TaskRequestAdapter job pool-specific-resources task-id assigned-resources guuid->considerable-cotask-ids constraints needs-gpus? scalar-requests)))
+    (->TaskRequestAdapter job pool-specific-resources task-id assigned-resources guuid->considerable-cotask-ids constraints scalar-requests)))
 
 (defn match-offer-to-schedule
   "Given an offer and a schedule, computes all the tasks should be launched as a result.

@@ -131,6 +131,22 @@
       (throw (IllegalArgumentException.
                (str config-string " is not a VMTaskFitnessCalculator"))))))
 
+(defn guard-invalid-gpu-config
+  "Throws if either of the following is true:
+  - any one of the keys (pool-regex, valid-models, default-model) is not configured
+  - there is no gpu-model in valid-gpu-models matching the configured default"
+  [valid-gpu-models]
+  (when valid-gpu-models
+    (doseq [{:keys [default-model pool-regex valid-models] :as entry} valid-gpu-models]
+      (when-not pool-regex
+        (throw (ex-info (str "pool-regex key is missing from config") entry)))
+      (when-not valid-models
+        (throw (ex-info (str "Valid GPU models for pool-regex " pool-regex " is not defined") entry)))
+      (when-not default-model
+        (throw (ex-info (str "Default GPU model for pool-regex " pool-regex " is not defined") entry)))
+      (when-not (contains? valid-models default-model)
+        (throw (ex-info (str "Default GPU model for pool-regex " pool-regex " is not listed as a valid GPU model") entry))))))
+
 (def config-settings
   "Parses the settings out of a config file"
   (graph/eager-compile
@@ -403,6 +419,7 @@
                          (throw (ex-info "You enabled nrepl but didn't configure a port. Please configure a port in your config file." {})))
                        ((util/lazy-load-var 'clojure.tools.nrepl.server/start-server) :port port)))
      :pools (fnk [[:config {pools nil}]]
+              (guard-invalid-gpu-config (:valid-gpu-models pools))
               (cond-> pools
                 (:job-resource-adjustment pools)
                 (update :job-resource-adjustment

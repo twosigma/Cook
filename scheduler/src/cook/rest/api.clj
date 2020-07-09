@@ -39,6 +39,7 @@
             [cook.progress :as progress]
             [cook.quota :as quota]
             [cook.rate-limit :as rate-limit]
+            [cook.scheduler.constraints :as constraints]
             [cook.scheduler.data-locality :as dl]
             [cook.scheduler.share :as share]
             [cook.schema :refer [constraint-operators host-placement-types straggler-handling-types]]
@@ -912,10 +913,15 @@
                 (assoc :partitions (into #{} (walk/stringify-keys partitions))))))
        (into #{})))
 
-(defn validate-job-gpu-model
-  "Validates that GPU model entered is supported on the pool"
-  [pool-name {:keys [env]}]
-  (let [requested-gpu-model (get env "COOK_GPU_MODEL")]
+(defn validate-gpu-job
+  "Validates that a job requesting GPUs is supported on the pool"
+  [gpu-enabled? pool-name {:keys [gpus env]}]
+  (let [requested-gpu-model (get env "COOK_GPU_MODEL")
+        gpus' (or gpus 0)]
+    (when (and (pos? gpus') (not gpu-enabled?))
+      (throw (ex-info (str "GPU support is not enabled") {})))
+    (when (and (pos? gpus') (not (get-gpu-models-on-pool (config/valid-gpu-models) pool-name)))
+      (throw (ex-info (str "Job requested GPUs but pool " pool-name " does not have any valid GPU models") {})))
     (when (and requested-gpu-model
                (not (contains? (get-gpu-models-on-pool (config/valid-gpu-models) pool-name) requested-gpu-model)))
       (throw (ex-info (str "The following GPU model is not supported: " requested-gpu-model) {})))))
@@ -972,10 +978,8 @@
                                                  checkpoint)}))
         params (get-in munged [:container :docker :parameters])]
     (s/validate Job munged)
-    (when (and (:gpus munged) (not gpu-enabled?))
-      (throw (ex-info (str "GPU support is not enabled") {:gpus gpus})))
     ; Note that we are passing munged here because the function expects stringified env
-    (validate-job-gpu-model pool-name munged)
+    (validate-gpu-job gpu-enabled? pool-name munged)
     (when (> cpus (:cpus task-constraints))
       (throw (ex-info (str "Requested " cpus " cpus, but only allowed to use "
                            (:cpus task-constraints))

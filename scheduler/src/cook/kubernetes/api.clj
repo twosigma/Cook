@@ -34,6 +34,7 @@
 (def cook-job-pod-priority-class "cook-workload")
 (def cook-synthetic-pod-priority-class "synthetic-pod")
 (def cook-synthetic-pod-name-prefix "synthetic")
+(def gpu-node-taint "nvidia.com/gpu")
 (def k8s-hostname-label "kubernetes.io/hostname")
 ; This pod annotation signals to the cluster autoscaler that
 ; it's safe to remove the node on which the pod is running
@@ -352,17 +353,24 @@
   [^Quantity q]
   (-> q .getNumber .doubleValue))
 
+(defn to-int
+  "Map a quantity to an int, whether integer, double, or float."
+  [^Quantity q]
+  (-> q .getNumber .intValue))
+
 (defn convert-resource-map
-  "Converts a map of Kubernetes resources to a cook resource map {:mem double, :cpus double}"
+  "Converts a map of Kubernetes resources to a cook resource map {:mem double, :cpus double, :gpus double}"
   [m]
   {:mem (if (get m "memory")
           (-> m (get "memory") to-double (/ memory-multiplier))
           0.0)
    :cpus (if (get m "cpu")
            (-> m (get "cpu") to-double)
-           0.0)})
-
-
+           0.0)
+   ; Assumes that each Kubernetes node and each pod only contains one type of GPU model
+   :gpus (if-let [gpu-count (get m "nvidia.com/gpu")]
+           (to-int gpu-count)
+           0)})
 
 (defn pods->node-name->pods
   "Given a seq of pods, create a map of node names to pods"
@@ -384,7 +392,7 @@
     false
     (let [taints-on-node (or (some-> node .getSpec .getTaints) [])
           other-taints (remove #(contains?
-                                  #{cook-pool-taint k8s-deletion-candidate-taint}
+                                  #{cook-pool-taint k8s-deletion-candidate-taint gpu-node-taint}
                                   (.getKey %))
                                taints-on-node)
           node-name (some-> node .getMetadata .getName)
@@ -403,33 +411,45 @@
                                                      false)
              :else true))))
 
+(defn add-gpu-model-to-resource-map
+  "Given a map from node-name->resource-type->capacity, perform the following operation:
+  - if the amount of gpus on the node is positive, set the gpus capacity to model->count
+  - if the amount of gpus on the node is 0, set the gpus capacity to an empty map"
+  [gpu-model {:keys [gpus] :as resource-map}]
+  (let [gpu-model->count (if (and gpu-model (pos? gpus))
+                           {gpu-model gpus}
+                           {})]
+    (assoc resource-map :gpus gpu-model->count)))
+
 (defn get-capacity
   "Given a map from node-name to node, generate a map from node-name->resource-type-><capacity>"
   [node-name->node]
   (pc/map-vals (fn [^V1Node node]
-                 (-> node .getStatus .getAllocatable convert-resource-map))
+                 (let [resource-map (some-> node .getStatus .getAllocatable convert-resource-map)
+                       gpu-model (some-> node .getMetadata .getLabels (get "gpu-type"))]
+                   (add-gpu-model-to-resource-map gpu-model resource-map)))
                node-name->node))
 
 (defn get-consumption
   "Given a map from pod-name to pod, generate a map from node-name->resource-type->capacity
-
   When accounting for resources, we use resource requests to determine how much is used, not limits.
   See https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/#resource-requests-and-limits-of-pod-and-container"
   [node-name->pods]
   (pc/map-vals (fn [pods]
                  (->> pods
                       (map (fn [^V1Pod pod]
-                             (let [containers (-> pod .getSpec .getContainers)
+                             (let [containers (some-> pod .getSpec .getContainers)
                                    container-requests (map (fn [^V1Container c]
-                                                             (-> c
+                                                             (some-> c
                                                                  .getResources
                                                                  .getRequests
                                                                  convert-resource-map))
-                                                           containers)]
-                               (apply merge-with + container-requests))))
-                      (apply merge-with +)))
+                                                           containers)
+                                   resource-map (apply merge-with + container-requests)
+                                   gpu-model (some-> pod .getSpec .getNodeSelector (get "cloud.google.com/gke-accelerator"))]
+                               (add-gpu-model-to-resource-map gpu-model resource-map))))
+                      (apply util/deep-merge-with +)))
                node-name->pods))
-
 ; see pod->synthesized-pod-state comment for container naming conventions
 (def cook-container-name-for-job
   "required-cook-job-container")

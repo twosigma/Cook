@@ -23,6 +23,7 @@
             [cook.group :as group]
             [cook.rate-limit :as ratelimit]
             [cook.scheduler.data-locality :as dl]
+            [cook.tools :as util]
             [swiss.arrows :refer :all])
   (:import (com.netflix.fenzo ConstraintEvaluator ConstraintEvaluator$Result TaskRequest TaskTrackerState VirtualMachineCurrentState VirtualMachineLease)
            (java.util Date)))
@@ -42,16 +43,6 @@
   "Returns the attribute map of a Fenzo VirtualMachineLease."
   [^VirtualMachineLease lease]
   (.getAttributeMap lease))
-
-(defn job-needs-gpus?
-  "Returns true if the provided job needs GPUs, false otherwise."
-  [job]
-  (->> (:job/resource job)
-       (filter (fn gpu-resource? [res]
-                 (and (= (:resource/type res) :resource.type/gpus)
-                      (pos? (:resource/amount res)))))
-       (seq)
-       (boolean)))
 
 ;; Job host placement constraints
 (defprotocol JobConstraint
@@ -99,33 +90,41 @@
   (let [previous-hosts (job->previous-hosts-to-avoid job)]
     (->novel-host-constraint job previous-hosts)))
 
-(defrecord gpu-host-constraint [job needs-gpus?]
+(defrecord gpu-host-constraint [job]
   JobConstraint
   (job-constraint-name [this] (get-class-name this))
   (job-constraint-evaluate
     [this _ vm-attributes]
     (job-constraint-evaluate this nil vm-attributes []))
   (job-constraint-evaluate
-    [this _ vm-attributes target-vm-tasks-assigned]
-    (let [; Look at attribute and running jobs to determine if vm has gpus
-          vm-has-gpus? (or (get vm-attributes "COOK_GPU?") ; Set when putting attributes in cache
-                           (some (fn gpu-task? [{:keys [needs-gpus?]}]
-                                   needs-gpus?)
-                                 target-vm-tasks-assigned))
-          job (:job this)
-          passes? (or (and needs-gpus? vm-has-gpus?)
-                      (and (not needs-gpus?) (not vm-has-gpus?)))]
-      [passes? (when-not passes? (if (and needs-gpus? (not vm-has-gpus?))
-                                   "Job needs gpus, host does not have gpus."
-                                   "Job does not need gpus, host has gpus."))])))
+    [{:keys [job]} _ vm-attributes _]
+    (let [k8s-vm? (= (get vm-attributes "compute-cluster-type") "kubernetes")
+          job-gpu-count-requested (-> job util/job-ent->resources :gpus (or 0))]
+          (if k8s-vm?
+            (let [job-gpu-model-requested (when (pos? job-gpu-count-requested)
+                                            (or (-> job util/job-ent->env (get "COOK_GPU_MODEL"))
+                                                (util/match-based-on-pool-name (config/valid-gpu-models) (util/job->pool-name job) :default-model)))
+                  vm-gpu-model->count-available (get vm-attributes "gpus")
+                  vm-satisfies-constraint? (if (pos? job-gpu-count-requested)
+                                             ; If job requests GPUs, require that the VM has enough gpus available in the same model as the job requested.
+                                             (>= (get vm-gpu-model->count-available job-gpu-model-requested 0) job-gpu-count-requested)
+                                             ; If job does not request GPUs, require that the VM does not support gpus.
+                                             (-> vm-gpu-model->count-available count zero?))]
+              [vm-satisfies-constraint? (when-not vm-satisfies-constraint?
+                                          (if (not job-gpu-model-requested)
+                                            "Job does not need GPUs, kubernetes VM has GPUs."
+                                            "Job needs GPUs that are not present on kubernetes VM."))])
+            ; Mesos jobs cannot request gpus. If VM is a mesos VM, constraint passes only if job requested 0 gpus.
+            (let [vm-satisfies-constraint? (zero? job-gpu-count-requested)]
+              [vm-satisfies-constraint? (when-not vm-satisfies-constraint?
+                                          "Job needs GPUs, mesos VMs do not support GPU jobs.")])))))
 
 (defn build-gpu-host-constraint
   "Constructs a gpu-host-constraint.
-  The constraint prevents a gpu job from running on a non-gpu host (resources should also handle this)
+  The constraint prevents a gpu job from running on a host that does not have the correct number and model of gpus
   and a non-gpu job from running on a gpu host because we consider gpus scarce resources."
   [job]
-  (let [needs-gpus? (job-needs-gpus? job)]
-    (->gpu-host-constraint job needs-gpus?)))
+  (->gpu-host-constraint job))
 
 (defrecord rebalancer-reservation-constraint [reserved-hosts]
   JobConstraint
