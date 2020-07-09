@@ -12,11 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import socket
 import unittest
 
 from cookclient import JobClient
-from cookclient.containers import DockerContainer
-from cookclient.jobs import Job, Status as JobStatus
+from cookclient.containers import DockerContainer, DockerPortMapping
+from cookclient.jobs import (
+    State as JobState,
+    Status as JobStatus
+)
 
 from tests.cook import util
 
@@ -34,7 +38,8 @@ class ClientTest(util.CookTest):
         uuid = self.client.submit(command='ls',
                                   cpus=0.5,
                                   mem=1.0,
-                                  max_retries=5)
+                                  max_retries=5,
+                                  pool=util.default_submit_pool())
         try:
             self.assertTrue(uuid is not None)
         finally:
@@ -44,7 +49,8 @@ class ClientTest(util.CookTest):
         uuid = self.client.submit(command='ls',
                                   cpus=0.5,
                                   mem=1.0,
-                                  max_retries=5)
+                                  max_retries=5,
+                                  pool=util.default_submit_pool())
         try:
             job = self.client.query(uuid)
             self.assertEqual(job.command, 'ls')
@@ -58,7 +64,8 @@ class ClientTest(util.CookTest):
         uuid = self.client.submit(command=f'sleep {util.DEFAULT_TEST_TIMEOUT_SECS}',
                                   cpus=0.5,
                                   mem=1.0,
-                                  max_retries=5)
+                                  max_retries=5,
+                                  pool=util.default_submit_pool())
         killed = False
         try:
             job = self.client.query(uuid)
@@ -77,13 +84,56 @@ class ClientTest(util.CookTest):
     def test_container_submit(self):
         container = DockerContainer(util.docker_image())
         self.assertIsNotNone(container.image)
-        uuid = self.client.submit(command='ls', container=container)
+        uuid = self.client.submit(command='ls', container=container,
+                                  pool=util.default_submit_pool())
         try:
             job = self.client.query(uuid)
 
             remote_container = job.container
-            self.assertEqual(remote_container['type'].lower(), 'docker')
-            self.assertEqual(remote_container['docker']['image'], container.image)
+            self.assertEqual(remote_container.kind.lower(), 'docker')
+            self.assertEqual(remote_container.image, container.image)
+        finally:
+            self.client.kill(uuid)
+
+    @unittest.skipUnless(util.docker_tests_enabled(), "Requires setting the COOK_TEST_DOCKER_IMAGE environment variable")
+    @unittest.skipUnless(util.using_kubernetes(), "Requires running on Kubernetes")
+    @unittest.skipUnless(util.is_job_progress_supported(), "Requires progress reporting")
+    def test_container_port_submit(self):
+        """Test submitting a job with a port specification."""
+        JOB_PORT = 30030
+        progress_file_env = util.retrieve_progress_file_env(type(self).cook_url)
+        hostname_progress_cmd = util.progress_line(type(self).cook_url,
+                                                   50,  # Don't really care, we just need a val
+                                                   '$(hostname -I)',
+                                                   write_to_file=True)
+
+        container = DockerContainer(util.docker_image(), port_mapping=[
+            DockerPortMapping(host_port=0, container_port=JOB_PORT,
+                              protocol='tcp')
+        ])
+        uuid = self.client.submit(command=f'{hostname_progress_cmd} && nc -l -p {JOB_PORT} $(hostname -I)',
+                                  container=container,
+                                  env={progress_file_env: 'progress.txt'},
+                                  pool=util.default_submit_pool())
+
+        addr = None
+        try:
+            util.wait_for_instance_with_progress(type(self).cook_url, str(uuid), 50)
+            job = self.client.query(uuid)
+            addr = job.instances[0].progress_message
+
+            self.assertIsNotNone(addr)
+
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.connect((addr, JOB_PORT))
+                message = b"hello world!"
+
+                self.assertEqual(sock.send(message), len(message))
+        except Exception as e:
+            if addr is not None:
+                raise Exception(f"Could not connect to {addr}: {e}") from e
+            else:
+                raise e
         finally:
             self.client.kill(uuid)
 
@@ -92,7 +142,8 @@ class ClientTest(util.CookTest):
         uuid = self.client.submit(command=f'sleep {util.DEFAULT_TEST_TIMEOUT_SECS}',
                                   cpus=0.5,
                                   mem=1.0,
-                                  max_retries=5)
+                                  max_retries=5,
+                                  pool=util.default_submit_pool())
 
         try:
             util.wait_for_instance(type(self).cook_url, uuid)
