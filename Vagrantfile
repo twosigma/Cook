@@ -41,7 +41,7 @@ Vagrant.configure("2") do |config|
   echo "export COOK_TEST_DEFAULT_TIMEOUT_MS=480000" | tee -a $bashrc
   echo "export COOK_TEST_DEFAULT_WAIT_INTERVAL_MS=8000" | tee -a $bashrc
   cd $repo_root/integration || exit 1
-  pip3 install -r requirements.txt
+  pip3 install -r requirements-frozen.txt
 
   # Cook Scheduler CLI setup
   cli=$repo_root/cli
