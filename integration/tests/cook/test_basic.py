@@ -88,17 +88,33 @@ class CookTest(util.CookTest):
                     if len(matching_gpu_models) == 0 or len(matching_gpu_models[0]) == 0:
                         self.skipTest(f"Pool {pool} does not support GPUs")
                     else:
-                        job_executor_type = util.get_job_executor_type()
                         # Command succeeds if nvidia-smi -q gives the right number of gpus and the right model of gpus
-                        command = 'nvidia-smi -q | nvidia-smi-output && ' \
+                        command = 'nvidia-smi -q > nvidia-smi-output && ' \
                                   'expected_count=2 ; expected_model="Tesla P100" ;' \
                                   'num_gpus=$(grep "Attached GPUs" nvidia-smi-output | cut -d \':\' -f 2 | tr -d \'[:space:]\') ; ' \
                                   'num_expected_model=$(grep "Tesla P100" nvidia-smi-output | wc -1) ; ' \
-                                  'if [[ $num_gpus -eq 2 && $num_expected_model -eq  2 ]] ; then exit 0 ; else exit 1 ; fi'
+                                  'if [[ $num_gpus -eq 2 && $num_expected_model -eq 2 ]] ; then exit 0 ; else exit 1 ; fi'
                         self.logger.info(f'Submitting to {pool}')
                         job_uuid, resp = util.submit_job(
                             self.cook_url,
-                            executor=job_executor_type,
+                            command=command,
+                            pool=pool_name,
+                            gpus=2,
+                            env={'COOK_GPU_MODEL': 'nvidia-tesla-p100'},
+                            max_retries=5)
+                        self.assertEqual(resp.status_code, 201, msg=resp.content)
+                        self.assertEqual(resp.content, str.encode(f"submitted jobs {job_uuid}"))
+                        job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
+                        self.assertIn('success', [i['status'] for i in job['instances']], json.dumps(job, indent=2))
+
+                        command = 'nvidia-smi -q > nvidia-smi-output && ' \
+                                  'expected_count=2 ; expected_model="Tesla K80" ;' \
+                                  'num_gpus=$(grep "Attached GPUs" nvidia-smi-output | cut -d \':\' -f 2 | tr -d \'[:space:]\') ; ' \
+                                  'num_expected_model=$(grep "Tesla K80" nvidia-smi-output | wc -1) ; ' \
+                                  'if [[ $num_gpus -eq 2 && $num_expected_model -eq 2 ]] ; then exit 0 ; else exit 1 ; fi'
+                        self.logger.info(f'Submitting to {pool}')
+                        job_uuid, resp = util.submit_job(
+                            self.cook_url,
                             command=command,
                             pool=pool_name,
                             gpus=2,
@@ -108,8 +124,6 @@ class CookTest(util.CookTest):
                         self.assertEqual(resp.content, str.encode(f"submitted jobs {job_uuid}"))
                         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
                         self.assertIn('success', [i['status'] for i in job['instances']], json.dumps(job, indent=2))
-                        instance = job['instances'][0]
-
 
     @unittest.skipUnless(util.docker_tests_enabled(), 'requires docker')
     @pytest.mark.scheduler_not_in_docker
