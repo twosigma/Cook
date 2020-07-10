@@ -92,8 +92,8 @@ class CookTest(util.CookTest):
                         command = 'nvidia-smi -q > nvidia-smi-output && ' \
                                   'expected_count=2 ; expected_model="Tesla P100" ;' \
                                   'num_gpus=$(grep "Attached GPUs" nvidia-smi-output | cut -d \':\' -f 2 | tr -d \'[:space:]\') ; ' \
-                                  'num_expected_model=$(grep "Tesla P100" nvidia-smi-output | wc -1) ; ' \
-                                  'if [[ $num_gpus -eq 2 && $num_expected_model -eq 2 ]] ; then exit 0 ; else exit 1 ; fi'
+                                  'num_expected_model=$(grep "$expected_model" nvidia-smi-output | wc -1) ; ' \
+                                  'if [[ $num_gpus -eq 2 && $num_expected_model -eq  2 ]] ; then exit 0 ; else exit 1 ; fi'
                         self.logger.info(f'Submitting to {pool}')
                         job_uuid, resp = util.submit_job(
                             self.cook_url,
