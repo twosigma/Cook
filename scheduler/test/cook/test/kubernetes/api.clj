@@ -268,11 +268,10 @@
                          :hostname "kubehost"}
           ^V1Pod pod (api/task-metadata->pod "cook" "testing-cluster" task-metadata)
           ^V1PodSpec pod-spec (.getSpec pod)
-          ^V1Container containers (.getContainers pod-spec)]
+          ^V1Container container (-> pod-spec .getContainers first)]
       (is (= (-> pod-spec .getNodeSelector (get "cloud.google.com/gke-accelerator")) "nvidia-tesla-p100"))
-      (doseq [container containers]
-        (is (= 2 (-> container .getResources .getRequests (get "nvidia.com/gpu") api/to-int)))
-        (is (= 2 (-> container .getResources .getLimits (get "nvidia.com/gpu") api/to-int)))))))
+      (is (= 2 (-> container .getResources .getRequests (get "nvidia.com/gpu") api/to-int)))
+      (is (= 2 (-> container .getResources .getLimits (get "nvidia.com/gpu") api/to-int))))))
 
 (defn- k8s-volume->clj [^V1Volume volume]
   {:name (.getName volume)

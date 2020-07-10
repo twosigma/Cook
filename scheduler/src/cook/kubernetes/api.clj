@@ -704,11 +704,9 @@
         {:keys [image parameters port-mapping]} docker
         {:keys [environment]} command
         pool-name (some-> job :job/pool :pool/name)
-        ; gpu count is not stored in scalar-requests
+        ; gpu count is not stored in scalar-requests because Fenzo does not handle gpus in binpacking
         gpus (or (:gpus resources) 0)
-        gpu-model-requested (when (pos? gpus)
-                              (or (-> job :job/environment get-gpu-model-from-task-metadata)
-                                  (util/match-based-on-pool-name (config/valid-gpu-models) pool-name :default-model)))
+        gpu-model-requested (constraints/get-gpu-model-requested gpus (-> job :job/environment get-gpu-model-from-task-metadata) pool-name)
         pod (V1Pod.)
         pod-spec (V1PodSpec.)
         metadata (V1ObjectMeta.)

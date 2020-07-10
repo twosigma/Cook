@@ -419,6 +419,7 @@
                                  :task-request {:scalar-requests (walk/stringify-keys pool-specific-resources)
                                                 :job {:job/pool {:pool/name synthetic-task-pool-name}
                                                       :job/environment environment}
+                                                ; Need to pass in resources to task-metadata->pod for gpu count
                                                 :resources pool-specific-resources}})))
                        (take max-launchable))
                   num-synthetic-pods-to-launch (count task-metadata-seq)]
