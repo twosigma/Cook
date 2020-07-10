@@ -4,7 +4,7 @@
 #  virtualenv -p python3.6 pip_frozen
 #  source pip_frozen/bin/activate
 #  pip install -r requirements.txt
-#  pip freeze > requirements-frozen.txt
+#  pip freeze | grep -v "pkg-resources" > requirements-frozen.txt
 #  deactivate
 #  rm -rf pip_frozen
 # add in any extra lines from the end of this file
