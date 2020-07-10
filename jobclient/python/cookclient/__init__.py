@@ -109,6 +109,7 @@ class JobClient:
                priority: Optional[int] = None,
                container: Optional[AbstractContainer] = None,
                application: Application = _CLIENT_APP,
+               gpus: Optional[int] = None,
 
                pool: Optional[str] = None,
 
@@ -155,6 +156,11 @@ class JobClient:
         :param pool: Which pool the job should be submitted to, defaults to
             None.
         :type pool: str, optional
+        :param gpus: Number of GPUs to request from Cook, if any. Defaults to
+            None. If you wish to specify the GPU model, add the
+            ``COOK_GPU_MODEL`` environment variable to the environment variable
+            list.
+        :type gpus: int, optional
         :param kwargs: Request kwargs. If kwargs were specified to the client
             on construction, then these will take precedence over those.
         :return: The UUID of the newly-created job.
@@ -182,6 +188,8 @@ class JobClient:
             payload['application'] = application.to_dict()
         if container is not None:
             payload['container'] = container.to_dict()
+        if gpus is not None:
+            payload['gpus'] = gpus
         payload = {'jobs': [payload]}
 
         # Pool requests are assigned to the group payload instead of each
