@@ -91,8 +91,8 @@ class CookTest(util.CookTest):
                         # Command succeeds if nvidia-smi -q gives the right number of gpus and the right model of gpus
                         for gpu_count in [1, 2]:
                             for gpu_model in ["nvidia-tesla-k80", "nvidia-tesla-p100"]:
-                                command = f'nvidia-smi -q > nvidia-smi-output && ' \
-                                          'expected_count={gpu_count} ; expected_model={gpu_model} ;' \
+                                command = 'nvidia-smi -q > nvidia-smi-output && ' \
+                                          f'expected_count={gpu_count} ; expected_model={gpu_model} ;' \
                                           'num_gpus=$(grep "Attached GPUs" nvidia-smi-output | cut -d \':\' -f 2 | tr -d \'[:space:]\') ; ' \
                                           'num_expected_model=$(grep "$expected_model" nvidia-smi-output | wc -1) ; ' \
                                           'if [[ $num_gpus -eq 2 && $num_expected_model -eq  2 ]] ; then exit 0 ; else exit 1 ; fi'
