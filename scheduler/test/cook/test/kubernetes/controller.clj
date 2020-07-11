@@ -243,11 +243,33 @@
 
 (deftest test-synthesize-state-and-process-pod-if-changed
   (testing "gracefully handles nil pod"
-    (let [compute-cluster {:k8s-actual-state-map (atom {})
-                           :cook-expected-state-map (atom {})}
+    (let [compute-cluster {:cook-expected-state-map (atom {})
+                           :cook-starting-pods (atom {})
+                           :k8s-actual-state-map (atom {})}
           pod-name "test-pod"
           pod nil]
-      (controller/synthesize-state-and-process-pod-if-changed compute-cluster pod-name pod))))
+      (controller/synthesize-state-and-process-pod-if-changed compute-cluster pod-name pod)))
+
+  (testing "processes previously failed pod submissions"
+    (let [pod-name "test-pod"
+          compute-cluster {:cook-expected-state-map
+                           (atom {pod-name {:cook-expected-state
+                                            :cook-expected-state/starting}})
+                           :cook-starting-pods (atom {})
+                           :k8s-actual-state-map
+                           (atom {pod-name {:pod nil
+                                            :synthesized-state nil
+                                            :sandbox-file-server-container-state nil}})}
+          pod-name-launched-atom (atom nil)
+          compute-cluster-launched-atom (atom nil)]
+      (with-redefs [controller/launch-pod
+                    (fn [compute-cluster cook-expected-state-dict pod-name]
+                      (reset! pod-name-launched-atom pod-name)
+                      (reset! compute-cluster-launched-atom compute-cluster)
+                      cook-expected-state-dict)]
+        (controller/synthesize-state-and-process-pod-if-changed compute-cluster pod-name nil))
+      (is (= pod-name @pod-name-launched-atom))
+      (is (= compute-cluster @compute-cluster-launched-atom)))))
 
 (deftest test-scan-process
   (testing "gracefully handles nil pod"

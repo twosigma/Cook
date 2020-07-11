@@ -583,22 +583,31 @@
 (defn synthesize-state-and-process-pod-if-changed
   "Synthesizes the k8s-actual-state for the given
   pod and calls process if the state changed."
-  [{:keys [k8s-actual-state-map name] :as compute-cluster} pod-name ^V1Pod pod]
-  (let [new-state {:pod pod
-                   :synthesized-state (api/pod->synthesized-pod-state pod)
+  [{:keys [cook-expected-state-map k8s-actual-state-map name] :as compute-cluster} pod-name ^V1Pod pod]
+  (let [synthesized-pod-state (api/pod->synthesized-pod-state pod)
+        new-state {:pod pod
+                   :synthesized-state synthesized-pod-state
                    :sandbox-file-server-container-state (api/pod->sandbox-file-server-container-state pod)}
-        old-state (get @k8s-actual-state-map pod-name)]
+        old-state (get @k8s-actual-state-map pod-name)
+        pod-state-changed? (not (k8s-actual-state-equivalent? old-state new-state))
+        unsubmitted-pod? (and (nil? synthesized-pod-state)
+                              (= (get-in @cook-expected-state-map [pod-name :cook-expected-state])
+                                 :cook-expected-state/starting))
+        should-process? (or pod-state-changed? unsubmitted-pod?)]
     ; We always store the updated state, but only reprocess it if it is genuinely different.
     (swap! k8s-actual-state-map assoc pod-name new-state)
     (let [new-file-server-state (:sandbox-file-server-container-state new-state)
           old-file-server-state (:sandbox-file-server-container-state old-state)]
       (when (and (= new-file-server-state :running) (not= old-file-server-state :running))
         (record-sandbox-url pod-name new-state)))
-    (when-not (k8s-actual-state-equivalent? old-state new-state)
+    (when unsubmitted-pod?
+      (log/info "In" name "compute cluster, processing pod" pod-name
+                "because we want it to start and it hasn't been submitted"))
+    (when should-process?
       (try
         (process compute-cluster pod-name)
         (catch Exception e
-          (log/error e "In compute-cluster" name ", error while processing pod" pod-name))))))
+          (log/error e "In" name "compute cluster, error while processing pod" pod-name))))))
 
 (defn pod-update
   "Handles a pod update from the pod watch."
