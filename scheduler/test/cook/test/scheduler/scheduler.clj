@@ -32,6 +32,7 @@
             [cook.plugins.completion :as completion]
             [cook.plugins.definitions :as pd]
             [cook.plugins.launch :as launch-plugin]
+            [cook.pool :as pool]
             [cook.progress :as progress]
             [cook.quota :as quota]
             [cook.rate-limit :as rate-limit]
@@ -41,7 +42,7 @@
             [cook.test.testutil :as testutil
              :refer [create-dummy-group create-dummy-instance create-dummy-job create-dummy-job-with-instances create-pool
                      init-agent-attributes-cache poll-until restore-fresh-database! setup wait-for]]
-            [cook.tools :as util]
+            [cook.tools :as tools]
             [criterium.core :as crit]
             [datomic.api :as d :refer [db q]]
             [mesomatic.scheduler :as msched]
@@ -182,9 +183,9 @@
   (let [db (d/db conn)
         jobs (->> job-ids
                   (map #(d/entity db %))
-                  (map #(util/job-ent->map %)))
+                  (map #(tools/job-ent->map %)))
         task-ids (take (count jobs) (repeatedly #(str (java.util.UUID/randomUUID))))
-        guuid->considerable-cotask-ids (util/make-guuid->considerable-cotask-ids (zipmap jobs task-ids))
+        guuid->considerable-cotask-ids (tools/make-guuid->considerable-cotask-ids (zipmap jobs task-ids))
         cache (atom (cache/fifo-cache-factory {} :threshold (count job-ids)))
         tasks (map #(sched/make-task-request db %1 nil :task-id %2 :guuid->considerable-cotask-ids guuid->considerable-cotask-ids
                                              :running-cotask-cache cache)
@@ -396,7 +397,7 @@
 
 (deftest test-extract-job-resources
   (cook.test.testutil/flush-caches!)
-  (let [resources (util/job-ent->resources (d/entity (db c) j1))]
+  (let [resources (tools/job-ent->resources (d/entity (db c) j1))]
     (is (= 1.0 (:cpus resources)))
     (is (= 1000.0 (:mem resources)))))
 
@@ -679,7 +680,7 @@
         offensive-jobs-ch (sched/make-offensive-job-stifler conn)
         offensive-job-filter (partial sched/filter-offensive-jobs constraints offensive-jobs-ch)]
     (testing "enough offers for all normal jobs."
-      (is (= {"no-pool" (list (util/job-ent->map job-entity))}
+      (is (= {"no-pool" (list (tools/job-ent->map job-entity))}
              (sched/rank-jobs test-db offensive-job-filter))))))
 
 (deftest test-mesos-virtual-machine-lease-adapter
@@ -1347,7 +1348,7 @@
         test-user (System/getProperty "user.name")
         group-ent-id (create-dummy-group conn)
         entity->map (fn [entity]
-                      (util/job-ent->map entity (d/db conn)))
+                      (tools/job-ent->map entity (d/db conn)))
         job-1 (entity->map (d/entity test-db (create-dummy-job conn :group group-ent-id :ncpus 3 :memory 2048)))
         job-2 (entity->map (d/entity test-db (create-dummy-job conn :group group-ent-id :ncpus 13 :memory 1024)))
         job-3 (entity->map (d/entity test-db (create-dummy-job conn :group group-ent-id :ncpus 7 :memory 4096)))
@@ -1668,7 +1669,7 @@
                                                                                     :gpus 4
                                                                                     :pool "test-pool"))
                                           entity->map (fn [entity]
-                                                        (util/job-ent->map entity (d/db conn)))
+                                                        (tools/job-ent->map entity (d/db conn)))
                                           pool->pending-jobs (->> {"test-pool" [job-1 job-2 job-3 job-4 job-5 job-6]}
                                                                   (pc/map-vals (partial map entity->map)))
                                           pool-name->pending-jobs-atom (atom pool->pending-jobs)
@@ -1938,7 +1939,7 @@
   (setup)
   (with-redefs [config/data-local-fitness-config (constantly {:data-locality-weight 0.95
                                                               :base-calculator BinPackingFitnessCalculators/cpuMemBinPacker})
-                dl/job-uuid->dataset-maps-cache (util/new-cache)]
+                dl/job-uuid->dataset-maps-cache (tools/new-cache)]
     (let [uri "datomic:mem://test-handle-resource-offers-with-data-locality"
           conn (restore-fresh-database! uri)
           test-user (System/getProperty "user.name")
@@ -2000,7 +2001,7 @@
                                                                                                       :suitable true}}}
                                                                             [])
                                               entity->map (fn [entity]
-                                                            (util/job-ent->map entity (d/db conn)))
+                                                            (tools/job-ent->map entity (d/db conn)))
                                               pool->pending-jobs (->> {:normal [job-1 job-2]}
                                                                       (pc/map-vals (partial map entity->map)))
                                               pool-name->pending-jobs-atom (atom pool->pending-jobs)
@@ -2122,7 +2123,7 @@
           db (d/db conn)
           task-ents (->> job-ids
                          (map #(d/entity db %))
-                         (map #(util/create-task-ent %)))]
+                         (map #(tools/create-task-ent %)))]
       (is (= 25 (count (sched/limit-over-quota-jobs task-ents {:mem Double/MAX_VALUE
                                                                :cpus Double/MAX_VALUE
                                                                :count Double/MAX_VALUE}))))
@@ -2143,7 +2144,7 @@
         conn (restore-fresh-database! "datomic:mem://test-trigger-autoscaling")
         make-job-fn (fn []
                       (let [job-id (create-dummy-job conn)
-                            job (->> job-id (d/entity (d/db conn)) util/job-ent->map)]
+                            job (->> job-id (d/entity (d/db conn)) tools/job-ent->map)]
                         job))
         job-1 (make-job-fn)
         job-2 (make-job-fn)
@@ -2154,3 +2155,40 @@
     (is (= compute-cluster (-> @autoscale!-invocations first :compute-cluster)))
     (is (= "test-pool" (-> @autoscale!-invocations first :pool-name)))
     (is (= [job-1 job-2 job-3] (-> @autoscale!-invocations first :task-requests)))))
+
+(deftest test-create-datomic-scheduler
+  (testing "match-trigger-chan causes pools to match round-robin"
+    (let [send-next-chime-chan (async/chan)
+          match-trigger-chan (async/chan (async/sliding-buffer 1))
+          chimes-count-atom (atom 1)
+          output-atom (atom [])]
+      (with-redefs [sched/persist-mea-culpa-failure-limit! (fn [_ _])
+                    d/db (fn [_])
+                    pool/all-pools (fn [_] [{:pool/name "pool 1"} {:pool/name "pool 2"} {:pool/name "pool 3"}])
+                    sched/make-fenzo-scheduler (fn [_ _ _])
+                    sched/make-offer-handler (fn [_ _ _ _ _ _ _ _ trigger-chan _ _ pool-name _]
+                                               (tools/chime-at-ch
+                                                 trigger-chan
+                                                 (fn []
+                                                   (swap! output-atom conj pool-name)
+                                                   (async/>!! send-next-chime-chan :next))))
+                    sched/start-jobs-prioritizer! (fn [_ _ _ _])]
+        (sched/create-datomic-scheduler {:trigger-chans {:match-trigger-chan match-trigger-chan}})
+        (async/go (async/>! send-next-chime-chan :start))
+        (loop []
+          (if-let [_ (async/<!! send-next-chime-chan)]
+            (do
+              (async/offer! match-trigger-chan :trigger)
+              (swap! chimes-count-atom inc)
+              (when (> @chimes-count-atom 10) (async/close! send-next-chime-chan))
+              (recur))
+            (is (= ["pool 1"
+                    "pool 2"
+                    "pool 3"
+                    "pool 1"
+                    "pool 2"
+                    "pool 3"
+                    "pool 1"
+                    "pool 2"
+                    "pool 3"] @output-atom))))
+        ))))
