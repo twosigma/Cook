@@ -90,21 +90,21 @@ class CookTest(util.CookTest):
                     else:
                         # Command succeeds if nvidia-smi -q gives the right number of gpus and the right model of gpus
                         for gpu_count in [1, 2]:
-                            for gpu_model in ["nvidia-tesla-k80", "nvidia-tesla-p100"]:
+                            for gpu_model in ['nvidia-tesla-k80', 'nvidia-tesla-p100']:
                                 # nvidia-smi -q names gpu models with format of 'Tesla K80' or 'Tesla P100'
                                 query_model_name = gpu_model.lstrip('nvidia-').replace('-', ' ').title()
                                 command = 'nvidia-smi -q > nvidia-smi-output && ' \
-                                          f'expected_count={gpu_count} ; expected_model={query_model_name} ;' \
-                                          'num_gpus=$(grep "Attached GPUs" nvidia-smi-output | cut -d \':\' -f 2 | tr -d \'[:space:]\') ; ' \
+                                          f'expected_count={gpu_count} ; expected_model="{query_model_name}" ;' \
+                                  integration/tests/cook/test_basic.py        'num_gpus=$(grep "Attached GPUs" nvidia-smi-output | cut -d \':\' -f 2 | tr -d \'[:space:]\') ; ' \
                                           'num_expected_model=$(grep "$expected_model" nvidia-smi-output | wc -1) ; ' \
-                                          'if [[ $num_gpus -eq 2 && $num_expected_model -eq  2 ]] ; then exit 0 ; else exit 1 ; fi'
+                                          f'if [[ $num_gpus -eq {gpu_count} && $num_expected_model -eq  {gpu_count} ]] ; then exit 0 ; else exit 1 ; fi'
                                 self.logger.info(f'Submitting to {pool}')
                                 job_uuid, resp = util.submit_job(
                                     self.cook_url,
                                     command=command,
                                     pool=pool_name,
-                                    gpus=2,
-                                    env={'COOK_GPU_MODEL': 'nvidia-tesla-p100'},
+                                    gpus=gpu_count,
+                                    env={'COOK_GPU_MODEL': gpu_model},
                                     max_retries=5)
                                 self.assertEqual(resp.status_code, 201, msg=resp.content)
                                 self.assertEqual(resp.content, str.encode(f"submitted jobs {job_uuid}"))
