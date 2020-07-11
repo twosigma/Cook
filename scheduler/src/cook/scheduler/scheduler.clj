@@ -1560,6 +1560,13 @@
                (counters/dec! in-order-queue-counter)
                (body-fn))))))
 
+(defn prepare-match-trigger-chan
+  "Calculate the required interval for match-trigger-chan and start the chimes"
+  [match-trigger-chan pools]
+  (let [{:keys [per-pool-match-interval-millis global-min-match-interval-millis]} (config/matching-settings)
+        match-interval-millis (max (int (/ per-pool-match-interval-millis (count pools))) global-min-match-interval-millis)]
+    (async/pipe (chime-ch (tools/time-seq (time/now) (time/millis match-interval-millis))) match-trigger-chan)))
+
 (defn create-datomic-scheduler
   [{:keys [conn compute-clusters fenzo-fitness-calculator fenzo-floor-iterations-before-reset
            fenzo-floor-iterations-before-warn fenzo-max-jobs-considered fenzo-scaleback good-enough-fitness
@@ -1597,6 +1604,7 @@
                     (assoc m pool-name resources-atom)))
                 {}
                 pools')]
+    (prepare-match-trigger-chan match-trigger-chan pools')
     (tools/chime-at-ch
       match-trigger-chan
       (fn process-match-chime []

@@ -483,7 +483,11 @@
                              :pod-condition-unschedulable-seconds 60
                              :reconnect-delay-ms 60000
                              :set-container-cpu-limit? true}
-                            kubernetes)))}))
+                            kubernetes)))
+     :matching-settings (fnk [[:config {matching-settings {}}]]
+                          (merge {:per-pool-match-interval-millis 3000
+                                  :global-min-match-interval-millis 100}
+                                 matching-settings))}))
 
 (defn read-config
   "Given a config file path, reads the config and returns the map"
@@ -614,3 +618,7 @@
 (defn task-constraints
   []
   (get-in config [:settings :task-constraints]))
+
+(defn matching-settings
+  []
+  (-> config :settings :matching-settings))

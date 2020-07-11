@@ -15,7 +15,8 @@
 ;;
 
 (ns cook.test.scheduler.scheduler
-  (:require [clj-time.coerce :as tc]
+  (:require [chime :as chime]
+            [clj-time.coerce :as tc]
             [clj-time.core :as t]
             [clojure.core.async :as async]
             [clojure.core.cache :as cache]
@@ -2172,7 +2173,8 @@
                                                  (fn []
                                                    (swap! output-atom conj pool-name)
                                                    (async/>!! send-next-chime-chan :next))))
-                    sched/start-jobs-prioritizer! (fn [_ _ _ _])]
+                    sched/start-jobs-prioritizer! (fn [_ _ _ _])
+                    sched/prepare-match-trigger-chan (fn [_ _])]
         (sched/create-datomic-scheduler {:trigger-chans {:match-trigger-chan match-trigger-chan}})
         (async/go (async/>! send-next-chime-chan :start))
         (loop []
@@ -2190,5 +2192,25 @@
                     "pool 3"
                     "pool 1"
                     "pool 2"
-                    "pool 3"] @output-atom))))
-        ))))
+                    "pool 3"] @output-atom))))))))
+
+(defn- test-prepare-match-trigger-chan-helper
+  [settings pools expected-period]
+  (with-redefs [t/now (constantly (org.joda.time.DateTime/parse "2020-07-11T20:45:58.459Z"))
+                async/pipe (fn [_ _])
+                chime/chime-ch (fn [times]
+                                 (is (= (- (.getMillis (first (next times))) (.getMillis (first times))) expected-period)))
+                config/matching-settings (constantly settings)]
+    (sched/prepare-match-trigger-chan (async/chan 99) pools)))
+
+(deftest test-prepare-match-trigger-chan
+  (testing "Match period is a function of # of pools"
+    (test-prepare-match-trigger-chan-helper {:per-pool-match-interval-millis 3000
+                                             :global-min-match-interval-millis 100}
+                                            [1 2 3]
+                                            1000))
+  (testing "Match period does not go below global min"
+    (test-prepare-match-trigger-chan-helper {:per-pool-match-interval-millis 3000
+                                             :global-min-match-interval-millis 100}
+                                            (repeat 40 "x")
+                                            100)))

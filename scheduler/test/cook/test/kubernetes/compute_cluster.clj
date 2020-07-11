@@ -58,7 +58,7 @@
                                    (reset! launched-pod-atom launch-pod))
                   api/make-security-context (constantly (V1PodSecurityContext.))]
       (testing "static namespace"
-        (let [compute-cluster (kcc/->KubernetesComputeCluster nil "kubecompute" nil nil nil
+        (let [compute-cluster (kcc/->KubernetesComputeCluster nil "kubecompute" nil nil
                                                               (atom {}) (atom {}) (atom {}) (atom {}) (atom {}) (atom {}) (atom {}) (atom nil)
                                                               {:kind :static :namespace "cook"} nil nil nil nil
                                                               (Executors/newSingleThreadExecutor))
@@ -74,7 +74,7 @@
                             .getNamespace)))))
 
       (testing "per-user namespace"
-        (let [compute-cluster (kcc/->KubernetesComputeCluster nil "kubecompute" nil nil nil
+        (let [compute-cluster (kcc/->KubernetesComputeCluster nil "kubecompute" nil nil
                                                               (atom {}) (atom {}) (atom {}) (atom {}) (atom {}) (atom {}) (atom {}) (atom nil)
                                                               {:kind :per-user} nil nil nil nil
                                                               (Executors/newSingleThreadExecutor))
@@ -92,7 +92,7 @@
   (tu/setup)
   (with-redefs [api/launch-pod (constantly true)]
     (let [conn (tu/restore-fresh-database! "datomic:mem://test-generate-offers")
-          compute-cluster (kcc/->KubernetesComputeCluster nil "kubecompute" nil nil nil
+          compute-cluster (kcc/->KubernetesComputeCluster nil "kubecompute" nil nil
                                                           (atom {}) (atom {}) (atom {}) (atom {}) (atom {}) (atom {}) (atom {}) (atom nil)
                                                           {:kind :static :namespace "cook"} nil 3 nil nil
                                                           (Executors/newSingleThreadExecutor))
