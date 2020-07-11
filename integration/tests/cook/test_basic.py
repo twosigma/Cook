@@ -95,7 +95,7 @@ class CookTest(util.CookTest):
                                 query_model_name = gpu_model.lstrip('nvidia-').replace('-', ' ').title()
                                 command = 'nvidia-smi -q > nvidia-smi-output && ' \
                                           f'expected_count={gpu_count} ; expected_model="{query_model_name}" ;' \
-                                  integration/tests/cook/test_basic.py        'num_gpus=$(grep "Attached GPUs" nvidia-smi-output | cut -d \':\' -f 2 | tr -d \'[:space:]\') ; ' \
+                                          'num_gpus=$(grep "Attached GPUs" nvidia-smi-output | cut -d \':\' -f 2 | tr -d \'[:space:]\') ; ' \
                                           'num_expected_model=$(grep "$expected_model" nvidia-smi-output | wc -1) ; ' \
                                           f'if [[ $num_gpus -eq {gpu_count} && $num_expected_model -eq  {gpu_count} ]] ; then exit 0 ; else exit 1 ; fi'
                                 self.logger.info(f'Submitting to {pool}')
