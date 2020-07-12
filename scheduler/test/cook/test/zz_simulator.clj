@@ -88,7 +88,7 @@
                                :retry-limit 5})
 
 (defmacro with-cook-scheduler
-  [conn make-mesos-driver-fn scheduler-config trigger-matching & body]
+  [conn make-mesos-driver-fn scheduler-config trigger-matching? & body]
   `(let [conn# ~conn
          [zookeeper-server# curator-framework#] (setup-test-curator-framework)
          mesos-mult# (or (:mesos-datomic-mult ~scheduler-config)
@@ -159,7 +159,7 @@
                      datomic/conn conn#
                      sched/prepare-match-trigger-chan (fn [match-trigger-chan# pools#]
                                                         (when
-                                                          ~trigger-matching
+                                                          ~trigger-matching?
                                                           (prepare-match-trigger-chan-orig# match-trigger-chan# pools#)))]
          (testutil/fake-test-compute-cluster-with-driver conn#
                                                          testutil/fake-test-compute-cluster-name
