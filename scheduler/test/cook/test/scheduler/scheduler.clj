@@ -2178,21 +2178,20 @@
         (sched/create-datomic-scheduler {:trigger-chans {:match-trigger-chan match-trigger-chan}})
         (async/go (async/>! send-next-chime-chan :start))
         (loop []
-          (if-let [_ (async/<!! send-next-chime-chan)]
-            (do
-              (async/offer! match-trigger-chan :trigger)
-              (swap! chimes-count-atom inc)
-              (when (> @chimes-count-atom 10) (async/close! send-next-chime-chan))
-              (recur))
-            (is (= ["pool 1"
-                    "pool 2"
-                    "pool 3"
-                    "pool 1"
-                    "pool 2"
-                    "pool 3"
-                    "pool 1"
-                    "pool 2"
-                    "pool 3"] @output-atom))))))))
+          (when (async/<!! send-next-chime-chan)
+            (async/offer! match-trigger-chan :trigger)
+            (swap! chimes-count-atom inc)
+            (when (< @chimes-count-atom 10) (recur))))
+        (async/<!! send-next-chime-chan)
+        (is (= ["pool 1"
+                "pool 2"
+                "pool 3"
+                "pool 1"
+                "pool 2"
+                "pool 3"
+                "pool 1"
+                "pool 2"
+                "pool 3"] @output-atom))))))
 
 (defn- test-prepare-match-trigger-chan-helper
   [settings pools expected-period]

@@ -25,6 +25,7 @@
             [cook.mesos.mesos-mock :as mm]
             [cook.plugins.completion :as completion]
             [cook.progress :as progress]
+            [cook.scheduler.scheduler :as sched]
             [cook.scheduler.share :as share]
             [cook.test.testutil :as testutil :refer [poll-until restore-fresh-database!]]
             [cook.tools :as util]
@@ -154,7 +155,8 @@
                      ; registration responses matches the configured cook scheduler passes simulator
                      ; and mesos-mock unit tests. (cook.scheduler, lines 1428 create-mesos-scheduler)
                      mcc/make-mesos-driver ~make-mesos-driver-fn
-                     datomic/conn conn#]
+                     datomic/conn conn#
+                     sched/prepare-match-trigger-chan ~(fn [_ _])]
          (testutil/fake-test-compute-cluster-with-driver conn#
                                                          testutil/fake-test-compute-cluster-name
                                                          nil ; no dummy driver - simulator is going to call initialize
