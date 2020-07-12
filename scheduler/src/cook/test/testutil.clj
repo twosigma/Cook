@@ -566,7 +566,6 @@
     (kcc/->KubernetesComputeCluster nil ; api-client
                                     "kubecompute" ; name
                                     nil ; entity-id
-                                    nil ; match-trigger-chan
                                     nil ; exit-code-syncer-state
                                     (atom namespaced-pod-name->pod) ; all-pods-atom
                                     (atom {}) ; current-nodes-atom

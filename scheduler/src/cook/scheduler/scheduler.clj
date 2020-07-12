@@ -1583,34 +1583,23 @@
                  [{:pool/name "no-pool"}])
         pool-name->fenzo (pool-map pools' (fn [_] (make-fenzo-scheduler offer-incubate-time-ms
                                                                         fenzo-fitness-calculator good-enough-fitness)))
-        pool->match-trigger-chan (reduce
-                                   (fn [m pool-ent]
-                                     (let [pool-name (:pool/name pool-ent)]
-                                       (assoc m pool-name (async/chan (async/sliding-buffer 1)))))
-                                   {}
-                                   pools')
+        pool->match-trigger-chan (pool-map pools' (fn [_] (async/chan (async/sliding-buffer 1))))
         pool-names-array-list (ArrayList. (map :pool/name pools'))
         pool-name-iterator-atom (atom (.iterator pool-names-array-list))
-        pool->resources-atom
-        (reduce (fn [m pool-ent]
-                  (let [pool-name (:pool/name pool-ent)
-                        fenzo (pool-name->fenzo pool-name)
-                        resources-atom
-                        (make-offer-handler
-                          conn fenzo pool-name->pending-jobs-atom agent-attributes-cache fenzo-max-jobs-considered
-                          fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset
-                          (get pool->match-trigger-chan pool-name)
-                          rebalancer-reservation-atom mesos-run-as-user pool-name compute-clusters)]
-                    (assoc m pool-name resources-atom)))
-                {}
-                pools')]
+        pool->resources-atom (pool-map
+                               pools'
+                               (fn [{:keys [pool/name]}]
+                                 (make-offer-handler
+                                   conn (pool-name->fenzo name) pool-name->pending-jobs-atom agent-attributes-cache
+                                   fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn
+                                   fenzo-floor-iterations-before-reset (get pool->match-trigger-chan name)
+                                   rebalancer-reservation-atom mesos-run-as-user name compute-clusters)))]
     (prepare-match-trigger-chan match-trigger-chan pools')
-    (tools/chime-at-ch
-      match-trigger-chan
-      (fn process-match-chime []
+    (async/go-loop []
+      (when-let [x (async/<! match-trigger-chan)]
         (let [iterator (swap! pool-name-iterator-atom #(if (.hasNext %) % (.iterator pool-names-array-list)))]
-          (async/offer! (get pool->match-trigger-chan (.next iterator)) :trigger)))
-      {:error-handler (fn [ex] (log/error ex "Error forwarding match-trigger-chan to pool"))})
+          (async/offer! (get pool->match-trigger-chan (.next iterator)) x))
+        (recur)))
     (log/info "Pool name to fenzo scheduler map:" pool-name->fenzo)
     (start-jobs-prioritizer! conn pool-name->pending-jobs-atom task-constraints rank-trigger-chan)
     {:pool-name->fenzo pool-name->fenzo
