@@ -1564,7 +1564,10 @@
   "Calculate the required interval for match-trigger-chan and start the chimes"
   [match-trigger-chan pools]
   (let [{:keys [per-pool-match-interval-millis global-min-match-interval-millis]} (config/matching-settings)
-        match-interval-millis (max (int (/ per-pool-match-interval-millis (count pools))) global-min-match-interval-millis)]
+        match-interval-millis (-> per-pool-match-interval-millis 
+                                  (/ (count pools)) 
+                                  int 
+                                  (max global-min-match-interval-millis))]
     (async/pipe (chime-ch (tools/time-seq (time/now) (time/millis match-interval-millis))) match-trigger-chan)))
 
 (defn create-datomic-scheduler
