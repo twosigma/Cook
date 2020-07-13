@@ -1602,6 +1602,30 @@ def are_pools_enabled():
     return len(active_pools(cook_url)[0]) > 1
 
 
+def are_gpus_enabled():
+    """Returns true if GPU jobs can be submitted to this cluster."""
+    cook_url = retrieve_cook_url()
+    settings_dict = settings(cook_url)
+    return settings_dict['mesos-gpu-enabled']
+
+
+def active_pools_support_gpus():
+    """Returns true if the active pools support GPUs."""
+    cook_url = retrieve_cook_url()
+    settings_dict = settings(cook_url)
+    pools, _ = active_pools(cook_url)
+    valid_gpu_models_config_map = settings_dict.get("pools", {}).get("valid_gpu_models", [])
+    if len(pools) == 0:
+        return False
+    for pool in pools:
+        pool_name = pool['name']
+        matching_gpu_models = [ii['valid-models'] for ii in valid_gpu_models_config_map
+                               if re.match(ii['pool-regex'], pool_name)]
+        if len(matching_gpu_models) == 0 or len(matching_gpu_models[0]) == 0:
+            return False
+    return True
+
+
 def mesos_hostnames_to_consider(cook_url, mesos_url):
     """
     Returns the hostnames in the default pool, or all hosts if the cluster is not using pools
