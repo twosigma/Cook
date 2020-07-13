@@ -2135,7 +2135,8 @@
                                 pool-name (->> queue
                                                (util/filter-pending-jobs-for-autoscaling
                                                  (pool->user->quota pool-name)
-                                                 (pool->user->usage pool-name))
+                                                 (pool->user->usage pool-name)
+                                                 (util/get-quota-for-pool (config/pool-quotas) pool-name))
                                                (take (::limit ctx)))))))))
 
 ;;

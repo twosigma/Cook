@@ -642,7 +642,6 @@
         user->number-jobs (atom {})
         user->rate-limit-count (atom {})
         ; Use the already precomputed user->usage map and just aggregate by users.
-        pool-usage (reduce (partial merge-with +) (vals user->usage))
         user-within-launch-rate-limit?-fn
         (fn
           [{:keys [job/user]}]
@@ -656,9 +655,7 @@
             (not (and is-rate-limited? enforcing-job-launch-rate-limit?))))
         considerable-jobs
         (->> pending-jobs
-             (tools/filter-based-on-pool-quota (tools/get-quota-for-pool (config/pool-quotas) pool-name)
-                                               pool-usage)
-             (tools/filter-based-on-user-quota user->quota user->usage)
+             (tools/filter-pending-jobs-for-autoscaling user->quota user->usage (tools/get-quota-for-pool (config/pool-quotas) pool-name))
              (filter (fn [job] (tools/job-allowed-to-start? db job)))
              (filter user-within-launch-rate-limit?-fn)
              (filter launch-plugin/filter-job-launches)
@@ -920,7 +917,7 @@
                 autoscalable-jobs (->> pool-name
                                        (get @pool-name->pending-jobs-atom)
                                        (tools/filter-pending-jobs-for-autoscaling
-                                         user->quota user->usage))]
+                                         user->quota user->usage (tools/get-quota-for-pool (config/pool-quotas) pool-name)))]
             ;; This call needs to happen *after* launch-matched-tasks!
             ;; in order to avoid autoscaling tasks taking up available
             ;; capacity that was already matched for real Cook tasks.

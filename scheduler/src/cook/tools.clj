@@ -935,13 +935,6 @@
               [user->usage' (below-quota? (user->quota user) (get user->usage' user))]))]
     (filter-sequential filter-with-quota user->usage queue)))
 
-(defn filter-pending-jobs-for-autoscaling
-  "Lazily filters jobs to those that should be considered
-  for autoscaling purposes. Note that this is used in two
-  places: the /queue endpoint (Mesos only) and as an
-  argument to scheduler/trigger-autoscaling! (k8s only)."
-  [user->quota user->usage queue]
-  (filter-based-on-quota user->quota user->usage queue))
 (defn filter-based-on-pool-quota
   "Lazily filters jobs for which the sum of running jobs and jobs earlier in the queue exceeds one of the constraints,
    max-jobs, max-cpus or max-mem"
@@ -956,6 +949,17 @@
                                                :quota quota})
                 [usage' (below-quota? quota usage')]))]
       (filter-sequential filter-with-quota usage queue))))
+
+(defn filter-pending-jobs-for-autoscaling
+  "Lazily filters jobs to those that should be considered
+  for autoscaling purposes. Note that this is used in two
+  places: the /queue endpoint (Mesos only) and as an
+  argument to scheduler/trigger-autoscaling! (k8s only)."
+  [user->quota user->usage pool-quota queue]
+  (let [pool-usage (reduce (partial merge-with +) (vals user->usage))]
+  (->> queue
+       (filter-based-on-pool-quota pool-quota pool-usage)
+       (filter-based-on-user-quota user->quota user->usage))))
 
 (defn pool->user->usage
   "Returns a map from pool name to user name to usage for all users in all pools."
