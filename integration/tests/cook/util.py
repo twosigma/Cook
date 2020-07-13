@@ -1614,6 +1614,7 @@ def active_pools_support_gpus():
     cook_url = retrieve_cook_url()
     settings_dict = settings(cook_url)
     pools, _ = active_pools(cook_url)
+    valid_gpu_models_config_map = settings_dict.get("pools", {}).get("valid_gpu_models", [])
     if len(pools) == 0:
         return False
     for pool in pools:
