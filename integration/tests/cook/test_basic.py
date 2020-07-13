@@ -72,10 +72,12 @@ class CookTest(util.CookTest):
         gpu_enabled = settings_dict['mesos-gpu-enabled']
         if not gpu_enabled:
             self.skipTest("Cluster is not gpu-enabled")
+            self.logger.info("Cluster is not gpu-enabled")
         else:
             valid_gpu_models_config_map = settings_dict.get("pools", {}).get("valid-gpu-models", [])
             if not valid_gpu_models_config_map:
                 self.skipTest("No pools have valid-gpu-models")
+                self.logger.info("No pools have valid-gpu-models")
             else:
                 active_pools, _ = util.active_pools(self.cook_url)
                 if len(active_pools) == 0:
