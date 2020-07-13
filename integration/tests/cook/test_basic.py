@@ -88,7 +88,7 @@ class CookTest(util.CookTest):
                     matching_gpu_models = [ii["valid-models"] for ii in valid_gpu_models_config_map if
                                            re.match(ii["pool-regex"], pool_name)]
                     if len(matching_gpu_models) == 0 or len(matching_gpu_models[0]) == 0:
-                        self.skipTest(f"Pool {pool} does not support GPUs")
+                        self.logger.info(f"Pool {pool} does not support GPUs")
                     else:
                         # Command succeeds if nvidia-smi -q gives the right number of gpus and the right model of gpus
                         for gpu_count in [1, 2]:
