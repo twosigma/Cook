@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import re
 import socket
 import unittest
 
@@ -154,3 +155,40 @@ class ClientTest(util.CookTest):
             self.assertIsNotNone(job.instances[0])
         finally:
             self.client.kill(uuid)
+
+    @unittest.skipUnless(util.are_gpus_enabled(), "Requires GPUs")
+    @unittest.skipUnless(util.active_pools_support_gpus(), "Requires active pools to support GPUs")
+    def test_gpu_submit(self):
+        """Test submitting a job with a GPU specified."""
+        settings_dict = util.settings(type(self).cook_url)
+        active_pools, _ = util.active_pools(type(self).cook_url)
+        valid_gpu_models_config_map = settings_dict.get('pools', {}).get('valid-gpu-models', [])
+        for pool in active_pools:
+            pool_name = pool['name']
+            matching_gpu_models = [ii['valid-models'] for ii in valid_gpu_models_config_map
+                                   if re.match(ii['pool-regex'], pool_name)]
+            gpu_model = matching_gpu_models[0][0]
+            gpu_count = 1
+            command = (
+                'nvidia-smi -q > nvidia-smi-output && '
+                f'expected_count={gpu_count}; expected_model="{gpu_model}";'
+                'num_gpus=$(grep "Attached GPUs" nvidia-smi-output | cut -d \':\' -f 2 | tr -d \'[:space:]\'); '
+                'num_expected_model=$(grep "$expected_model" nvidia-smi-output | wc -1); '
+                f'if [[ $num_gpus -eq {gpu_count} && $num_expected_model -eq {gpu_count} ]]; then exit 0; else exit 1; fi'
+            )
+            uuid = self.client.submit(command=command,
+                                      cpus=0.5,
+                                      mem=256.0,
+                                      pool=pool_name,
+                                      gpus=gpu_count,
+                                      env={'COOK_GPU_MODEL': gpu_model},
+                                      max_retries=5)
+
+            try:
+                util.wait_for_job(type(self).cook_url, uuid, 'completed')
+                job = self.client.query(uuid)
+                self.assertEqual(JobState.SUCCESS, job.state)
+            except Exception as e:
+                raise Exception(f"Submitting job with GPU {gpu_model} to pool {pool_name} failed") from e
+            finally:
+                self.client.kill(uuid)
