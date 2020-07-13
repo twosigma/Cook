@@ -2629,10 +2629,45 @@ class CookTest(util.CookTest):
 
     @unittest.skipUnless(util.pool_quota_test_pool() is not None, 'Test requires a test pool.')
     def test_pool_quota(self):
-        job_count = 10
-        self.logger.info(f'Submitting {job_count} jobs')
+        settings = util.settings(self.cook_url)
+        quotas_map = settings.get("pools", {}).get("quotas", [])
+        pool_name = util.pool_quota_test_pool()
+        match_quota = [ii["quota"] for ii in quotas_map if
+                                   re.match(ii["pool-regex"], pool_name)]
+        # If there are no supported GPU models for pool, assert submission gets rejected
+        logging.info("Quota: " + repr(match_quota))
+        if(len(match_quota) == 0):
+            self.skipTest(f"Pool {pool_name} lacks quota assignment.")
+        quota = match_quota[0]
+        logging.info(f"Pool quota: {quota}")
+        if (quota["count"] >= 10):
+            self.skipTest(f"Job count quota too large for test")
+        quota_count = quota["count"]
+        job_count = quota_count + 2
+        job_mem = 16
+        job_cpus = .01
+
+        if quota["mem"] < job_mem * (job_count + 3):
+            self.skipTest("Quota memory too small for test")
+        if quota["cpus"] < job_cpus * (job_count + 3):
+            self.skipTest("Quota cpus to small for test")
+
+        # Now lookup the user quota and make sure it fits.
+        pools, resp = util.all_pools(self.cook_url)
+
+        user = self.determine_user()
+        resp = util.get_limit(self.cook_url, 'quota', user)
+        user_quota = resp.json()['pools'][pool_name]
+        logging.info(f"User quota {user_quota}")
+        if user_quota["count"] < job_count + 3:
+            self.skipTest("User quota count too small for test")
+        if user_quota["mem"] < job_mem * (job_count + 3):
+            self.skipTest("User quota memory too small for test")
+        if user_quota["cpus"] < job_cpus * (job_count + 3):
+            self.skipTest("User Quota cpus to small for test")
+
         sleep_command = f'sleep {util.DEFAULT_TEST_TIMEOUT_SECS}'
-        job_resources = {'cpus': 0.01, 'mem': 16}
+        job_resources = {'cpus': job_cpus, 'mem': job_mem}
         job_specs = util.minimal_jobs(job_count, command=sleep_command, **job_resources)
         job_uuids, resp = util.submit_jobs(self.cook_url, job_specs, pool=util.pool_quota_test_pool())
         self.assertEqual(resp.status_code, 201, resp.content)
@@ -2642,7 +2677,8 @@ class CookTest(util.CookTest):
 
             def predicate(resp):
                 jobs = resp.json()
-                logging.info("Job statuses", str([(job['uuid'], job['status']) for job in jobs]))
+                str([(job['uuid'], job['status']) for job in jobs])
+                logging.info("Job statuses: " + str([(job['uuid'], job['status']) for job in jobs]))
                 return len([job for job in jobs if job['status'] == 'running']) >= 2
 
             # Wait until at least 2 are running.

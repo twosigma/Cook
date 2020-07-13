@@ -87,11 +87,11 @@
          :job-resource-adjustment {:adjust-job-resources-fn cook.kubernetes.api/adjust-job-resources
                                    :pool-regex "^k8s-.+"}
          :default-containers
-         [{:pool-regex "k8s-.*" :container {:type "docker"
-                                            :docker {:image "python:3.6",
-                                                     :network "HOST"
-                                                     :force-pull-image false
-                                                     :parameters []}}}]
+         [{:pool-regex "k8s-(alpha|gamma)" :container {:type "docker"
+                                                      :docker {:image "python:3.6",
+                                                               :network "HOST"
+                                                               :force-pull-image false
+                                                               :parameters []}}}]
          :quotas [{:pool-regex "k8s-quota"
                    :quota {:count 2 :cpus 10000.0 :mem 20000.0}}
                   {:pool-regex "k8s-.*"
