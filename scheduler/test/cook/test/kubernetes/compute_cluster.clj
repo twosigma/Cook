@@ -44,6 +44,13 @@
     (is (= {} (kcc/get-pods-in-pool in :pool-e)))
     (is (= {} (kcc/get-pods-in-pool in :pool-f)))))
 
+(deftest test-get-name->node-for-pool
+  (let [in (atom {:pool-a {:node-1 1 :node-2 2}
+                  :pool-b {}})]
+    (is (= {:node-1 1 :node-2 2} (kcc/get-name->node-for-pool @in :pool-a)))
+    (is (= {} (kcc/get-name->node-for-pool @in :pool-b)))
+    (is (= {} (kcc/get-name->node-for-pool @in nil)))))
+
 (deftest test-namespace-config
   (tu/setup)
   (let [conn (tu/restore-fresh-database! "datomic:mem://test-namespace-config")
