@@ -67,53 +67,6 @@ class CookTest(util.CookTest):
         else:
             self.logger.info(f'Exit code not checked because cook executor was not used for {instance}')
 
-    def test_submit_requesting_gpus(self):
-        settings_dict = util.settings(self.cook_url)
-        gpu_enabled = settings_dict['mesos-gpu-enabled']
-        if not gpu_enabled:
-            self.skipTest("Cluster is not gpu-enabled")
-            self.logger.info("Cluster is not gpu-enabled")
-        else:
-            valid_gpu_models_config_map = settings_dict.get("pools", {}).get("valid-gpu-models", [])
-            if not valid_gpu_models_config_map:
-                self.skipTest("No pools have valid-gpu-models")
-                self.logger.info("No pools have valid-gpu-models")
-            else:
-                active_pools, _ = util.active_pools(self.cook_url)
-                if len(active_pools) == 0:
-                    self.logger.info('There are no pools to submit jobs to')
-                    self.skipTest("There are no active pools that support GPUs")
-                for pool in active_pools:
-                    pool_name = pool['name']
-                    matching_gpu_models = [ii["valid-models"] for ii in valid_gpu_models_config_map if
-                                           re.match(ii["pool-regex"], pool_name)]
-                    if len(matching_gpu_models) == 0 or len(matching_gpu_models[0]) == 0:
-                        self.logger.info(f"Pool {pool} does not support GPUs")
-                    else:
-                        # Command succeeds if nvidia-smi -q gives the right number of gpus and the right model of gpus
-                        for gpu_count in [1, 2]:
-                            for gpu_model in ['nvidia-tesla-k80', 'nvidia-tesla-p100']:
-                                # nvidia-smi -q names gpu models with format of 'Tesla K80' or 'Tesla P100'
-                                query_model_name = gpu_model.lstrip('nvidia-').replace('-', ' ').title()
-                                command = '/usr/bin/nvidia-smi -q > nvidia-smi-output && ' \
-                                          f'expected_count={gpu_count} ; expected_model="{query_model_name}" ;' \
-                                          'num_gpus=$(grep "Attached GPUs" nvidia-smi-output | cut -d \':\' -f 2 | tr -d \'[:space:]\') ; ' \
-                                          'num_expected_model=$(grep "$expected_model" nvidia-smi-output | wc -l) ; ' \
-                                          f'if [[ $num_gpus -eq {gpu_count} && $num_expected_model -eq  {gpu_count} ]] ; then exit 0 ; else exit 1 ; fi'
-                                self.logger.info(f'Submitting to {pool}')
-                                job_uuid, resp = util.submit_job(
-                                    self.cook_url,
-                                    command=command,
-                                    pool=pool_name,
-                                    gpus=gpu_count,
-                                    env={'COOK_GPU_MODEL': gpu_model},
-                                    max_retries=5)
-                                self.assertEqual(resp.status_code, 201, msg=resp.content)
-                                self.assertEqual(resp.content, str.encode(f"submitted jobs {job_uuid}"))
-                                job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
-                                self.assertIn('success', [i['status'] for i in job['instances']],
-                                              json.dumps(job, indent=2))
-
     @unittest.skipUnless(util.docker_tests_enabled(), 'requires docker')
     @pytest.mark.scheduler_not_in_docker
     # If the cook scheduler is running in a docker container, it won't be able to lookup UID's or GID's. Under those circumstances,
