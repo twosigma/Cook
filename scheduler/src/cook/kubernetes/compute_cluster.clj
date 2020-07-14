@@ -247,10 +247,15 @@
                     :pod-namespace pod-namespace
                     :task-metadata task-metadata})))))
 
+(defn get-name->node-for-pool
+  "Given a pool->node-name->node and pool, return a node-name->pool, for any pool"
+  [pool->node-name->node pool]
+  (get pool->node-name->node pool {}))
+
 (defn get-pods-in-pool
   "Given a compute cluster and a pool name, extract the pods that are in the current pool only."
   [{:keys [pool->node-name->node node-name->pod-name->pod]} pool]
-  (->> (get @pool->node-name->node pool {})
+  (->> (get-name->node-for-pool @pool->node-name->node pool)
        keys
        (map #(get @node-name->pod-name->pod % {}))
        (reduce into {})))
@@ -335,7 +340,7 @@
     (let [timer (timers/start (metrics/timer "cc-pending-offers-compute" name))
           pods (add-starting-pods this @all-pods-atom)
           nodes @current-nodes-atom
-          offers-this-pool (generate-offers this (get @pool->node-name->node pool-name {})
+          offers-this-pool (generate-offers this (get-name->node-for-pool @pool->node-name->node pool-name)
                                             (->> (get-pods-in-pool this pool-name)
                                                  (add-starting-pods this)
                                                  (api/pods->node-name->pods)))
