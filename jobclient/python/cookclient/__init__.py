@@ -197,6 +197,12 @@ class JobClient:
                    **kwargs) -> List[UUID]:
         """Submit several jobs to Cook.
 
+        Each entry in the iterable of jobspecs should contain the parameters
+        shown in :py:meth:`JobSpec.submit`, save for ``pool``, which is exposed
+        as a parameter to this function. This means that all jobs submitted
+        with this function will share a pool. This is a restriction of Cook's
+        REST API for bulk submissions.
+
         :param jobspecs: Jobspecs to submit to Cook. For information on
             jobspec structure, see :py:meth:`JobSpec.submit`.
         :type jobspecs: iterable of dict
@@ -209,7 +215,8 @@ class JobClient:
         """
         jobspecs = list(jobspecs)
         for jobspec in jobspecs:
-            self._convert_jobspec(jobspec)
+            util.apply_jobspec_defaults(jobspec)
+            util.convert_jobspec(jobspec)
         payload = {'jobs': jobspecs}
 
         if pool is not None:
@@ -333,25 +340,6 @@ class JobClient:
         """
         if self.__session is not None:
             self.__session.close()
-
-    def _convert_jobspec(self, jobspec: dict):
-        """Convert a Python jobspec into a JSON jobspec.
-
-        This function will convert the higher-level Python types used in job
-        submissions into their JSON primitive counterparts (e.g., timedelta is
-        converted into the number of milliseconds). This will also assign a
-        temporal UUID to the job if it does not already have a UUID.
-
-        The provided jobspec is modified in-place.
-        """
-        if 'uuid' not in jobspec:
-            jobspec['uuid'] = str(util.make_temporal_uuid())
-        if 'max-runtime' in jobspec:
-            jobspec['max-runtime'] = jobspec['max-runtime'].total_seconds() * 1000  # noqa: E501
-        if 'application' in jobspec:
-            jobspec['application'] = jobspec['application'].to_dict()
-        if 'container' in jobspec:
-            jobspec['container'] = jobspec['container'].to_dict()
 
     def __enter__(self):
         return self
