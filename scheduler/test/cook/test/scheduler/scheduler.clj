@@ -2199,7 +2199,7 @@
                 async/pipe (fn [_ _])
                 chime/chime-ch (fn [times]
                                  (is (= (- (.getMillis (first (next times))) (.getMillis (first times))) expected-period)))
-                config/matching-settings (constantly settings)]
+                config/offer-matching (constantly settings)]
     (sched/prepare-match-trigger-chan (async/chan 99) pools)))
 
 (deftest test-prepare-match-trigger-chan

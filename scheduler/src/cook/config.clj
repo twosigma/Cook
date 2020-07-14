@@ -484,10 +484,10 @@
                              :reconnect-delay-ms 60000
                              :set-container-cpu-limit? true}
                             kubernetes)))
-     :matching-settings (fnk [[:config {matching-settings {}}]]
+     :offer-matching (fnk [[:config {offer-matching {}}]]
                           (merge {:per-pool-match-interval-millis 3000
                                   :global-min-match-interval-millis 100}
-                                 matching-settings))}))
+                                 offer-matching))}))
 
 (defn read-config
   "Given a config file path, reads the config and returns the map"
@@ -619,6 +619,6 @@
   []
   (get-in config [:settings :task-constraints]))
 
-(defn matching-settings
+(defn offer-matching
   []
-  (-> config :settings :matching-settings))
+  (-> config :settings :offer-matching))
