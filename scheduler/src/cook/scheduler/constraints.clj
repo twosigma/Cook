@@ -95,6 +95,7 @@
   [gpu-count gpu-model-in-env pool-name]
   (when (pos? gpu-count)
     (or gpu-model-in-env
+        ; lookup the GPU model from the pool defaults defined in config.edn
         (util/match-based-on-pool-name (config/valid-gpu-models) pool-name :default-model))))
 
 (defrecord gpu-host-constraint [job]
