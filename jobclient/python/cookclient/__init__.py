@@ -19,7 +19,7 @@ import logging
 import requests
 
 from datetime import timedelta
-from typing import Dict, Optional, Union
+from typing import Dict, Iterable, List, Optional, Union
 from urllib.parse import urlencode, urlparse, urlunparse
 from uuid import UUID
 
@@ -167,7 +167,7 @@ class JobClient:
         :rtype: UUID
         """
         uuid = str(uuid or util.make_temporal_uuid())
-        payload = {
+        jobspec = {
             'command': command,
             'cpus': cpus,
             'mem': mem,
@@ -175,25 +175,50 @@ class JobClient:
             'max-retries': max_retries
         }
         if env is not None:
-            payload['env'] = env
+            jobspec['env'] = env
         if labels is not None:
-            payload['labels'] = labels
+            jobspec['labels'] = labels
         if max_runtime is not None:
-            payload['max-runtime'] = max_runtime.total_seconds() * 1000
+            jobspec['max-runtime'] = max_runtime
         if name is not None:
-            payload['name'] = name
+            jobspec['name'] = name
         if priority is not None:
-            payload['priority'] = priority
+            jobspec['priority'] = priority
         if application is not None:
-            payload['application'] = application.to_dict()
+            jobspec['application'] = application
         if container is not None:
-            payload['container'] = container.to_dict()
+            jobspec['container'] = container
         if gpus is not None:
-            payload['gpus'] = gpus
-        payload = {'jobs': [payload]}
+            jobspec['gpus'] = gpus
+        return self.submit_all([jobspec], pool=pool, **kwargs)[0]
 
-        # Pool requests are assigned to the group payload instead of each
-        # individual job submission's payload.
+    def submit_all(self, jobspecs: Iterable[dict], *,
+                   pool: Optional[str] = None,
+                   **kwargs) -> List[UUID]:
+        """Submit several jobs to Cook.
+
+        Each entry in the iterable of jobspecs should contain the parameters
+        shown in :py:meth:`JobSpec.submit`, save for ``pool``, which is exposed
+        as a parameter to this function. This means that all jobs submitted
+        with this function will share a pool. This is a restriction of Cook's
+        REST API for bulk submissions.
+
+        :param jobspecs: Jobspecs to submit to Cook. For information on
+            jobspec structure, see :py:meth:`JobSpec.submit`.
+        :type jobspecs: iterable of dict
+        :param pool: Which pool to submit the jobs to. Defaults to None.
+        :type pool: str, optional
+        :param kwargs: Request kwargs. If kwargs were specified to the client
+            on construction, then these will take precedence over those.
+        :return: The UUIDs of the created jobs.
+        :rtype: List[UUID]
+        """
+        jobspecs = list(jobspecs)
+        for jobspec in jobspecs:
+            JobClient._apply_jobspec_defaults(jobspec)
+            JobClient._convert_jobspec(jobspec)
+        payload = {'jobs': jobspecs}
+
         if pool is not None:
             payload['pool'] = pool
 
@@ -211,7 +236,7 @@ class JobClient:
             _LOG.error(f"Could not submit job: {resp.status_code} {resp.text}")
             resp.raise_for_status()
 
-        return UUID(uuid)
+        return [UUID(jobspec['uuid']) for jobspec in jobspecs]
 
     def query(self, uuid: Union[str, UUID], **kwargs) -> Job:
         """Query Cook for a job's status.
@@ -227,8 +252,24 @@ class JobClient:
         :return: A Job object containing the job's information.
         :rtype: Job
         """
-        uuid = str(uuid)
-        query = urlencode([('uuid', uuid)])
+        return self.query_all([uuid], **kwargs)[0]
+
+    def query_all(self, uuids: Iterable[Union[str, UUID]],
+                  **kwargs) -> List[Job]:
+        """Query Cook for a job's status.
+
+        If an error occurs when issuing the query request to the remote Cook
+        instance, an error message will be printed to the logger, and the
+        ``raise_for_status`` method will be invoked on the response object.
+
+        :param uuids: The UUIDs to query.
+        :type uuid: iterable of str or UUID
+        :param kwargs: Request kwargs. If kwargs were specified to the client
+            on construction, then these will take precedence over those.
+        :return: A list of Job objects containing the jobs' information.
+        :rtype: List[Job]
+        """
+        query = urlencode([('uuid', str(uuid)) for uuid in uuids])
         url = urlunparse((self.__scheme, self.__netloc, self.__job_endpoint,
                           '', query, ''))
         _LOG.debug(f'Sending GET to {url}')
@@ -240,7 +281,7 @@ class JobClient:
         if not resp.ok:
             _LOG.error(f"Could not query job: {resp.status_code} {resp.text}")
             resp.raise_for_status()
-        return Job.from_dict(resp.json()[0])
+        return list(map(Job.from_dict, resp.json()))
 
     def kill(self, uuid: Union[str, UUID], **kwargs):
         """Stop a job on Cook.
@@ -254,8 +295,21 @@ class JobClient:
         :param kwargs: Request kwargs. If kwargs were specified to the client
             on construction, then these will take precedence over those.
         """
-        uuid = str(uuid)
-        query = urlencode([('job', uuid)])
+        self.kill_all([uuid], **kwargs)
+
+    def kill_all(self, uuids: Iterable[Union[str, UUID]], **kwargs):
+        """Stop several jobs on Cook.
+
+        If an error occurs when issuing the delete request to the remote Cook
+        instance, an error message will be printed to the logger, and the
+        ``raise_for_status`` method will be invoked on the response object.
+
+        :param uuids: The UUIDs of the job to kill.
+        :type uuids: iterable of str or UUID
+        :param kwargs: Request kwargs. If kwargs were specified to the client
+            on construction, then these will take precedence over those.
+        """
+        query = urlencode([('job', str(uuid)) for uuid in uuids])
         url = urlunparse((self.__scheme, self.__netloc, self.__delete_endpoint,
                           '', query, ''))
         _LOG.debug(f'Sending DELETE to {url}')
@@ -286,6 +340,47 @@ class JobClient:
         """
         if self.__session is not None:
             self.__session.close()
+
+    @staticmethod
+    def _apply_jobspec_defaults(jobspec: dict):
+        """Apply default values to a jobspec.
+
+        This function will add default values to a jobspec if no value is
+        provided. The provided jobspec will be modified in-place.
+        """
+        if 'uuid' not in jobspec:
+            jobspec['uuid'] = str(util.make_temporal_uuid())
+        if 'cpus' not in jobspec:
+            jobspec['cpus'] = 1.0
+        if 'mem' not in jobspec:
+            jobspec['mem'] = 128.0
+        if 'max-retries' not in jobspec:
+            jobspec['max-retries'] = 1
+        if 'max-runtime' not in jobspec:
+            jobspec['max-runtime'] = timedelta(days=1)
+        if 'name' not in jobspec:
+            jobspec['name'] = f'{getpass.getuser()}-job'
+        if 'application' not in jobspec:
+            jobspec['application'] = _CLIENT_APP
+
+    @staticmethod
+    def _convert_jobspec(jobspec: dict):
+        """Convert a Python jobspec into a JSON jobspec.
+
+        This function will convert the higher-level Python types used in job
+        submissions into their JSON primitive counterparts (e.g., timedelta is
+        converted into the number of milliseconds).
+
+        The provided jobspec is modified in-place.
+        """
+        if 'max-runtime' in jobspec:
+            jobspec['max-runtime'] = (
+                jobspec['max-runtime'].total_seconds() * 1000
+            )
+        if 'application' in jobspec:
+            jobspec['application'] = jobspec['application'].to_dict()
+        if 'container' in jobspec:
+            jobspec['container'] = jobspec['container'].to_dict()
 
     def __enter__(self):
         return self
