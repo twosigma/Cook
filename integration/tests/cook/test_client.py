@@ -193,3 +193,25 @@ class ClientTest(util.CookTest):
                         raise Exception(f"Submitting job with GPU {gpu_model} to pool {pool_name} failed") from e
                     finally:
                         self.client.kill(uuid)
+
+    def test_bulk_ops(self):
+        jobspecs = [
+            {'command': 'ls'},
+            {
+                'command': 'echo "Hello World!"',
+                'mem': 256.0
+            }
+        ]
+        uuids = self.client.submit_all(jobspecs,
+                                       pool=util.default_submit_pool())
+        try:
+            jobs = self.client.query_all(uuids)
+
+            self.assertEqual(jobs[0].uuid, uuids[0])
+            self.assertEqual(jobs[0].command, jobspecs[0]['command'])
+
+            self.assertEqual(jobs[1].uuid, uuids[1])
+            self.assertEqual(jobs[1].command, jobspecs[1]['command'])
+            self.assertEqual(jobs[1].mem, jobspecs[1]['mem'])
+        finally:
+            self.client.kill_all(uuids)
