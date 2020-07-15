@@ -56,7 +56,11 @@
   [compute-cluster node-name->node node-name->pods]
   (let [compute-cluster-name (cc/compute-cluster-name compute-cluster)
         node-name->capacity (api/get-capacity node-name->node)
-        node-name->consumed (api/get-consumption node-name->pods)
+        ; Note that node-name->pods may include extra pods that are from other pools. So, we filter out only
+        ; nodes that have a capacity.
+        node-name->consumed (->> (api/get-consumption node-name->pods)
+                                 (filter #(node-name->capacity (first %)))
+                                 (into {}))
         node-name->available (tools/deep-merge-with - node-name->capacity node-name->consumed)
         ; Grab every unique GPU model being represented so that we can set counters for capacity and consumed for each GPU model
         gpu-models (->> node-name->capacity vals (map :gpus) (apply merge) keys set)
@@ -64,6 +68,7 @@
         gpu-model->total-capacity (total-gpu-resource node-name->capacity)
         gpu-model->total-consumed (total-gpu-resource node-name->consumed)]
 
+    (log/info "In" compute-cluster-name "compute cluster, all node names:" (keys node-name->node))
     (log/info "In" compute-cluster-name "compute cluster, capacity:" node-name->capacity)
     (log/info "In" compute-cluster-name "compute cluster, consumption:" node-name->consumed)
     (log/info "In" compute-cluster-name "compute cluster, filtering out"
