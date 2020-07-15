@@ -2626,45 +2626,42 @@ class CookTest(util.CookTest):
                 job_uuid, resp = util.submit_job(self.cook_url, pool=pool_name, mem=mem_over_quota)
                 self.assertEqual(422, resp.status_code, msg=resp.content)
 
-
     @unittest.skipUnless(util.pool_quota_test_pool() is not None, 'Test requires a test pool.')
     def test_pool_quota(self):
         settings = util.settings(self.cook_url)
         quotas_map = settings.get("pools", {}).get("quotas", [])
         pool_name = util.pool_quota_test_pool()
         match_quota = [ii["quota"] for ii in quotas_map if
-                                   re.match(ii["pool-regex"], pool_name)]
-        # If there are no supported GPU models for pool, assert submission gets rejected
+                       re.match(ii["pool-regex"], pool_name)]
+        # If the pool doesn't have the right quota constraints, fail the test.
         logging.info("Quota: " + repr(match_quota))
-        if(len(match_quota) == 0):
-            self.skipTest(f"Pool {pool_name} lacks quota assignment.")
+        if (len(match_quota) == 0):
+            self.fail(f"Pool {pool_name} lacks quota assignment.")
         quota = match_quota[0]
         logging.info(f"Pool quota: {quota}")
         if (quota["count"] >= 10):
-            self.skipTest(f"Job count quota too large for test")
+            self.fail(f"Job count quota too large for test")
         quota_count = quota["count"]
         job_count = quota_count + 2
         job_mem = 16
         job_cpus = .01
 
         if quota["mem"] < job_mem * (job_count + 3):
-            self.skipTest("Quota memory too small for test")
+            self.fail("Quota memory too small for test")
         if quota["cpus"] < job_cpus * (job_count + 3):
-            self.skipTest("Quota cpus to small for test")
+            self.fail("Quota cpus to small for test")
 
-        # Now lookup the user quota and make sure it fits.
-        pools, resp = util.all_pools(self.cook_url)
-
+        # Now lookup the user quota and make sure it fits and fail if otherwise.
         user = self.determine_user()
         resp = util.get_limit(self.cook_url, 'quota', user)
         user_quota = resp.json()['pools'][pool_name]
         logging.info(f"User quota {user_quota}")
         if user_quota["count"] < job_count + 3:
-            self.skipTest("User quota count too small for test")
+            self.fail("User quota count too small for test")
         if user_quota["mem"] < job_mem * (job_count + 3):
-            self.skipTest("User quota memory too small for test")
+            self.fail("User quota memory too small for test")
         if user_quota["cpus"] < job_cpus * (job_count + 3):
-            self.skipTest("User Quota cpus to small for test")
+            self.fail("User Quota cpus to small for test")
 
         sleep_command = f'sleep {util.DEFAULT_TEST_TIMEOUT_SECS}'
         job_resources = {'cpus': job_cpus, 'mem': job_mem}
@@ -2677,7 +2674,6 @@ class CookTest(util.CookTest):
 
             def predicate(resp):
                 jobs = resp.json()
-                str([(job['uuid'], job['status']) for job in jobs])
                 logging.info("Job statuses: " + str([(job['uuid'], job['status']) for job in jobs]))
                 return len([job for job in jobs if job['status'] == 'running']) >= 2
 

@@ -906,7 +906,7 @@
   (let [{:keys [cpus gpus mem]} (job-ent->resources job-ent)]
     (cond-> {:count 1 :cpus cpus :mem mem}
       gpus (assoc :gpus gpus))))
-      
+
 (defn match-based-on-pool-name
   "Given a list of dictionaries [{:pool-regexp .. :field ...} {:pool-regexp .. :field ...}
    a pool name and a <field> name, return the first matching <field> where the regexp matches the pool name."
@@ -916,7 +916,7 @@
        first
        field))
 
-(defn get-quota-for-pool
+(defn global-pool-quota
   "Given a pool name, determine the quota for that pool."
   [quotas effective-pool-name]
   (match-based-on-pool-name quotas effective-pool-name :quota))
@@ -937,7 +937,10 @@
 
 (defn filter-based-on-pool-quota
   "Lazily filters jobs for which the sum of running jobs and jobs earlier in the queue exceeds one of the constraints,
-   max-jobs, max-cpus or max-mem"
+   max-jobs, max-cpus or max-mem. If quota is nil, do no filtering.
+
+   The input is a quota consisting of a map from resources to values:  {:mem 123 :cpus 456 ...}
+   usage is a similar map containing the usage of all running jobs in this pool."
   [quota usage queue]
   (log/debug "Pool quota and usage:" {:quota quota :usage usage})
   (if (nil? quota)
@@ -950,16 +953,20 @@
                 [usage' (below-quota? quota usage')]))]
       (filter-sequential filter-with-quota usage queue))))
 
-(defn filter-pending-jobs-for-autoscaling
+(defn filter-pending-jobs-for-quota
   "Lazily filters jobs to those that should be considered
   for autoscaling purposes. Note that this is used in two
   places: the /queue endpoint (Mesos only) and as an
-  argument to scheduler/trigger-autoscaling! (k8s only)."
+  argument to scheduler/trigger-autoscaling! (k8s only).
+
+  user->quota is a map from user to a quota dictionary which is {:mem 123 :cpus 456 ...}
+  user->usage is a map from user to a usage dictionary which is {:mem 123 :cpus 456 ...}
+  pool-quota is the quota for the current pool, a quota dictionary which is {:mem 123 :cpus 456 ...}"
   [user->quota user->usage pool-quota queue]
   (let [pool-usage (reduce (partial merge-with +) (vals user->usage))]
-  (->> queue
-       (filter-based-on-pool-quota pool-quota pool-usage)
-       (filter-based-on-user-quota user->quota user->usage))))
+    (->> queue
+         (filter-based-on-pool-quota pool-quota pool-usage)
+         (filter-based-on-user-quota user->quota user->usage))))
 
 (defn pool->user->usage
   "Returns a map from pool name to user name to usage for all users in all pools."
