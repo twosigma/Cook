@@ -215,8 +215,8 @@ class JobClient:
         """
         jobspecs = list(jobspecs)
         for jobspec in jobspecs:
-            util.apply_jobspec_defaults(jobspec)
-            util.convert_jobspec(jobspec)
+            JobClient.apply_jobspec_defaults(jobspec)
+            JobClient.convert_jobspec(jobspec)
         payload = {'jobs': jobspecs}
 
         if pool is not None:
@@ -340,6 +340,48 @@ class JobClient:
         """
         if self.__session is not None:
             self.__session.close()
+
+    @staticmethod
+    def _apply_jobspec_defaults(jobspec: dict):
+        """Apply default values to a jobspec.
+
+        This function will add default values to a jobspec if no value is
+        provided. The provided jobspec will be modified in-place.
+        """
+        if 'uuid' not in jobspec:
+            jobspec['uuid'] = str(util.make_temporal_uuid())
+        if 'cpus' not in jobspec:
+            jobspec['cpus'] = 1.0
+        if 'mem' not in jobspec:
+            jobspec['mem'] = 128.0
+        if 'max-retries' not in jobspec:
+            jobspec['max-retries'] = 1
+        if 'max-runtime' not in jobspec:
+            jobspec['max-runtime'] = timedelta(days=1)
+        if 'name' not in jobspec:
+            jobspec['name'] = f'{getpass.getuser()}-job'
+        if 'application' not in jobspec:
+            jobspec['application'] = _CLIENT_APP
+
+    @staticmethod
+    def _convert_jobpec(jobspec: dict):
+        """Convert a Python jobspec into a JSON jobspec.
+
+        This function will convert the higher-level Python types used in job
+        submissions into their JSON primitive counterparts (e.g., timedelta is
+        converted into the number of milliseconds).
+
+        The provided jobspec is modified in-place.
+        """
+        if 'max-runtime' in jobspec:
+            jobspec['max-runtime'] = (
+                jobspec['max-runtime'].total_seconds() * 1000
+            )
+        if 'application' in jobspec:
+            jobspec['application'] = jobspec['application'].to_dict()
+        if 'container' in jobspec:
+            jobspec['container'] = jobspec['container'].to_dict()
+
 
     def __enter__(self):
         return self
