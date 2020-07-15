@@ -1604,8 +1604,8 @@
     (async/go-loop []
       (when-let [x (async/<! match-trigger-chan)]
         (try
-          (let [pool-name (.removeFirst pool-names-linked-list)
-                _ (.addLast pool-names-linked-list pool-name)]
+          (let [pool-name (.removeFirst pool-names-linked-list)]
+            (.addLast pool-names-linked-list pool-name)
             (async/offer! (get pool->match-trigger-chan pool-name) x))
           (catch Exception e
             (log/error e "Exception in match-trigger-chan chime handler ")
