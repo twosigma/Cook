@@ -39,13 +39,15 @@
          (constraints/group-constraint-name (constraints/->attribute-equals-host-placement-group-constraint nil)))))
 
 (deftest test-user-defined-constraint
+  (setup)
   (let [constraints [{:constraint/attribute "is_spot"
                       :constraint/operator :constraint.operator/equals
                       :constraint/pattern "true"}
                      {:constraint/attribute "instance_type"
                       :constraint/operator :constraint.operator/equals
                       :constraint/pattern "mem.large"}]
-        user-defined-constraint (constraints/->user-defined-constraint constraints)]
+        job {:job/constraint constraints}
+        user-defined-constraint (constraints/->user-defined-constraint job)]
     (is (= true (first (constraints/job-constraint-evaluate user-defined-constraint nil {"is_spot" "true" "instance_type" "mem.large"}))))
     (is (= false (first (constraints/job-constraint-evaluate user-defined-constraint nil {"is_spot" "true" "instance_type" "cpu.large"}))))
     (is (= false (first (constraints/job-constraint-evaluate user-defined-constraint nil {"is_spot" "false" "instance_type" "mem.large"}))))

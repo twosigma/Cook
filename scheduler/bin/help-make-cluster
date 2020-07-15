@@ -18,9 +18,25 @@ CLUSTERNAME=$3
 COOK_KUBECONFIG=$4
 GKE_CLUSTER_OWNER=${GKE_CLUSTER_OWNER:-$USER}
 
-VERSION=1.15.11-gke.12
+VERSION=1.15.11-gke.15
 
 gcloud="gcloud --project $PROJECT"
+
+function create_node_pool {
+  local cook_pool=$1
+  local machine_type=$2
+  echo "---- Creating $machine_type node pool for Cook pool $cook_pool"
+  $gcloud container node-pools create "cook-pool-$cook_pool-$machine_type" \
+         --zone "$ZONE" \
+         --cluster="$CLUSTERNAME" \
+         --disk-size=20gb \
+         --machine-type="$machine_type" \
+         --node-taints="cook-pool=$cook_pool:NoSchedule" \
+         --enable-autoscaling \
+         --min-nodes=0 \
+         --max-nodes=6 \
+         --node-labels="cook-pool=$cook_pool,test-label=true,node-type=$machine_type"
+}
 
 echo "---- Building kubernetes cluster for project=$PROJECT zone=$ZONE clustername=$CLUSTERNAME kubeconfig=$COOK_KUBECONFIG"
 
@@ -48,26 +64,10 @@ KUBECONFIG=${COOK_KUBECONFIG} kubectl create -f "${DIR}/priority-class-synthetic
 
 # Make some node-pools --- this takes a while, but it helps guarantee that we have nodes with the appropriate cook-pool taints.
 echo "---- Making extra k8s-alpha and k8s-gamma nodepools for cook pools (please wait 5-10 minutes)"
-$gcloud container node-pools create cook-pool-k8s-gamma \
-       --zone "$ZONE" \
-       --cluster="$CLUSTERNAME" \
-       --disk-size=20gb \
-       --machine-type=g1-small \
-       --node-taints=cook-pool=k8s-gamma:NoSchedule \
-       --enable-autoscaling \
-       --min-nodes=0 \
-       --max-nodes=6 \
-       --node-labels=cook-pool=k8s-gamma,test-label=true
-$gcloud container node-pools create cook-pool-k8s-alpha \
-       --zone "$ZONE" \
-       --cluster="$CLUSTERNAME" \
-       --disk-size=20gb \
-       --machine-type=g1-small \
-       --node-taints=cook-pool=k8s-alpha:NoSchedule \
-       --enable-autoscaling \
-       --min-nodes=0 \
-       --max-nodes=6 \
-       --node-labels=cook-pool=k8s-alpha,test-label=true
+create_node_pool k8s-alpha g1-small
+create_node_pool k8s-gamma g1-small
+create_node_pool k8s-alpha e2-small
+create_node_pool k8s-gamma e2-small
 
 echo "---- Setting up cook namespace in kubernetes"
 KUBECONFIG=${COOK_KUBECONFIG} kubectl create -f docs/make-kubernetes-namespace.json

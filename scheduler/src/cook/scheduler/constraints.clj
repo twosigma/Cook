@@ -167,11 +167,35 @@
     (when (and (not (empty? datasets)) (= fitness-calculator dl/data-local-fitness-calculator))
       (->data-locality-constraint job launch-wait-seconds))))
 
-(defrecord user-defined-constraint [constraints]
+(defn job->default-constraints
+  "Returns the list of default constraints configured for the job's pool"
+  [job]
+  (util/match-based-on-pool-name
+    (config/default-job-constraints)
+    (util/job->pool-name job)
+    :default-constraints))
+
+(defn job->constraints
+  "Given a job, returns all job constraints that should be in effect,
+  either specified on the job submission or defaulted via configuration"
+  [{:keys [job/constraint] :as job}]
+  (let [user-specified-constraints constraint
+        user-specified-constraint-attributes (map :constraint/attribute
+                                                  user-specified-constraints)
+        default-constraints (->> job
+                                 job->default-constraints
+                                 ; Remove any default constraints for which the user
+                                 ; has specified a constraint on the same attribute
+                                 (remove (fn [{:keys [constraint/attribute]}]
+                                           (some #{attribute}
+                                                 user-specified-constraint-attributes))))]
+    (concat user-specified-constraints default-constraints)))
+
+(defrecord user-defined-constraint [job]
   JobConstraint
   (job-constraint-name [this] (get-class-name this))
   (job-constraint-evaluate
-    [this _ vm-attributes]
+    [_ _ vm-attributes]
     (let [vm-passes-constraint?
           (fn vm-passes-constraint? [{attribute :constraint/attribute
                                       pattern :constraint/pattern
@@ -183,6 +207,7 @@
                         (log/error (str "Unknown operator " operator
                                         " api.clj should have prevented this from happening."))
                         true))))
+          constraints (job->constraints job)
           passes? (every? vm-passes-constraint? constraints)]
       [passes? (when-not passes?
                  "Host doesn't pass at least one user supplied constraint.")]))
@@ -194,7 +219,7 @@
   "Constructs a user-defined-constraint.
    The constraint asserts that the vm passes the constraints the user supplied as host constraints"
   [job]
-  (->user-defined-constraint (:job/constraint job)))
+  (->user-defined-constraint job))
 
 (defrecord estimated-completion-constraint [estimated-end-time host-lifetime-mins]
   JobConstraint

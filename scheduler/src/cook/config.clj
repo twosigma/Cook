@@ -551,6 +551,18 @@
   []
   (-> config :settings :pools :job-resource-adjustment))
 
+(defn default-job-constraints
+  "Returns the per-pool-regex default job constraints.
+  This function returns a list with the following shape:
+  [{:pool-regex ...
+    :default-constraints [{:constraint/attribute ...
+                           :constraint/operator ...
+                           :constraint/pattern ...}
+                          ...]}
+   ...]"
+  []
+  (-> config :settings :pools :default-job-constraints))
+
 (defn api-only-mode?
   "Returns true if api-only? mode is turned on"
   []
