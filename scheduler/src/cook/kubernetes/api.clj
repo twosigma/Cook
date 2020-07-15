@@ -431,25 +431,28 @@
                node-name->node))
 
 (defn get-consumption
-  "Given a map from pod-name to pod, generate a map from node-name->resource-type->capacity
+  "Given a map from pod-name to pod, generate a map from node-name->resource-type->capacity.
+  Ignores pods that do not have an assigned node.
   When accounting for resources, we use resource requests to determine how much is used, not limits.
   See https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/#resource-requests-and-limits-of-pod-and-container"
   [node-name->pods]
-  (pc/map-vals (fn [pods]
-                 (->> pods
-                      (map (fn [^V1Pod pod]
-                             (let [containers (some-> pod .getSpec .getContainers)
-                                   container-requests (map (fn [^V1Container c]
-                                                             (some-> c
-                                                                 .getResources
-                                                                 .getRequests
-                                                                 convert-resource-map))
-                                                           containers)
-                                   resource-map (apply merge-with + container-requests)
-                                   gpu-model (some-> pod .getSpec .getNodeSelector (get "cloud.google.com/gke-accelerator"))]
-                               (add-gpu-model-to-resource-map gpu-model resource-map))))
-                      (apply util/deep-merge-with +)))
-               node-name->pods))
+  (->> node-name->pods
+       (filter first) ; Keep those with non-nil node names.
+       (pc/map-vals (fn [pods]
+                      (->> pods
+                           (map (fn [^V1Pod pod]
+                                  (let [containers (some-> pod .getSpec .getContainers)
+                                        container-requests (map (fn [^V1Container c]
+                                                                  (some-> c
+                                                                          .getResources
+                                                                          .getRequests
+                                                                          convert-resource-map))
+                                                                containers)
+                                        resource-map (apply merge-with + container-requests)
+                                        gpu-model (some-> pod .getSpec .getNodeSelector (get "cloud.google.com/gke-accelerator"))]
+                                    (add-gpu-model-to-resource-map gpu-model resource-map))))
+                           (apply util/deep-merge-with +))))))
+
 ; see pod->synthesized-pod-state comment for container naming conventions
 (def cook-container-name-for-job
   "required-cook-job-container")
