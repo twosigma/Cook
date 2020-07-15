@@ -1608,7 +1608,7 @@
                 _ (.addLast pool-names-linked-list pool-name)]
             (async/offer! (get pool->match-trigger-chan pool-name) x))
           (catch Exception e
-            (log/error e "Exception in match-trigger-chan chime handler ")
+            (log/error e "Exception in match-trigger-chan chime handler")
             (throw e)))
         (recur)))
     (log/info "Pool name to fenzo scheduler map:" pool-name->fenzo)
