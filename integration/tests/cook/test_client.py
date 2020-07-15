@@ -162,6 +162,7 @@ class ClientTest(util.CookTest):
         settings_dict = util.settings(type(self).cook_url)
         active_pools, _ = util.active_pools(type(self).cook_url)
         valid_gpu_models_config_map = settings_dict.get('pools', {}).get('valid-gpu-models', [])
+        pools_with_gpus = []
         for pool in active_pools:
             pool_name = pool['name']
             matching_gpu_models = [ii['valid-models'] for ii in valid_gpu_models_config_map
