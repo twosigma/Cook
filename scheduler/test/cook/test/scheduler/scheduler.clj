@@ -2204,12 +2204,12 @@
 
 (deftest test-prepare-match-trigger-chan
   (testing "Match period is a function of # of pools"
-    (test-prepare-match-trigger-chan-helper {:per-pool-match-interval-millis 3000
-                                             :global-min-match-interval-millis 100}
+    (test-prepare-match-trigger-chan-helper {:global-min-match-interval-millis 100
+                                             :target-per-pool-match-interval-millis 3000}
                                             [1 2 3]
                                             1000))
   (testing "Match period does not go below global min"
-    (test-prepare-match-trigger-chan-helper {:per-pool-match-interval-millis 3000
-                                             :global-min-match-interval-millis 100}
+    (test-prepare-match-trigger-chan-helper {:global-min-match-interval-millis 100
+                                             :target-per-pool-match-interval-millis 3000}
                                             (repeat 40 "x")
                                             100)))

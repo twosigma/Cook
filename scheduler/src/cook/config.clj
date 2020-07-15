@@ -485,8 +485,8 @@
                              :set-container-cpu-limit? true}
                             kubernetes)))
      :offer-matching (fnk [[:config {offer-matching {}}]]
-                          (merge {:per-pool-match-interval-millis 3000
-                                  :global-min-match-interval-millis 100}
+                          (merge {:global-min-match-interval-millis 100
+                                  :target-per-pool-match-interval-millis 3000}
                                  offer-matching))}))
 
 (defn read-config
