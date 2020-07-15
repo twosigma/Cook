@@ -641,7 +641,6 @@
   (let [enforcing-job-launch-rate-limit? (ratelimit/enforce? ratelimit/job-launch-rate-limiter)
         user->number-jobs (atom {})
         user->rate-limit-count (atom {})
-        ; Use the already precomputed user->usage map and just aggregate by users.
         user-within-launch-rate-limit?-fn
         (fn
           [{:keys [job/user]}]
