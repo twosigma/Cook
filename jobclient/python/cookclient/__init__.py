@@ -215,8 +215,8 @@ class JobClient:
         """
         jobspecs = list(jobspecs)
         for jobspec in jobspecs:
-            JobClient.apply_jobspec_defaults(jobspec)
-            JobClient.convert_jobspec(jobspec)
+            JobClient._apply_jobspec_defaults(jobspec)
+            JobClient._convert_jobspec(jobspec)
         payload = {'jobs': jobspecs}
 
         if pool is not None:
@@ -364,7 +364,7 @@ class JobClient:
             jobspec['application'] = _CLIENT_APP
 
     @staticmethod
-    def _convert_jobpec(jobspec: dict):
+    def _convert_jobspec(jobspec: dict):
         """Convert a Python jobspec into a JSON jobspec.
 
         This function will convert the higher-level Python types used in job
@@ -381,7 +381,6 @@ class JobClient:
             jobspec['application'] = jobspec['application'].to_dict()
         if 'container' in jobspec:
             jobspec['container'] = jobspec['container'].to_dict()
-
 
     def __enter__(self):
         return self
