@@ -2646,9 +2646,12 @@ class CookTest(util.CookTest):
         job_mem = 16
         job_cpus = .01
 
-        if quota["mem"] < job_mem * (job_count + 3):
+        total_cpus_requested = job_count * job_cpus
+        total_mem_requested = job_count * job_mem
+
+        if quota["mem"] < total_mem_requested:
             self.fail("Quota memory too small for test")
-        if quota["cpus"] < job_cpus * (job_count + 3):
+        if quota["cpus"] < total_cpus_requested:
             self.fail("Quota cpus to small for test")
 
         # Now lookup the user quota and make sure it fits and fail if otherwise.
@@ -2656,11 +2659,11 @@ class CookTest(util.CookTest):
         resp = util.get_limit(self.cook_url, 'quota', user)
         user_quota = resp.json()['pools'][pool_name]
         logging.info(f"User quota {user_quota}")
-        if user_quota["count"] < job_count + 3:
+        if user_quota["count"] < job_count:
             self.fail("User quota count too small for test")
-        if user_quota["mem"] < job_mem * (job_count + 3):
+        if user_quota["mem"] < total_mem_requested:
             self.fail("User quota memory too small for test")
-        if user_quota["cpus"] < job_cpus * (job_count + 3):
+        if user_quota["cpus"] < total_cpus_requested:
             self.fail("User Quota cpus to small for test")
 
         sleep_command = f'sleep {util.DEFAULT_TEST_TIMEOUT_SECS}'
