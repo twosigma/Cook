@@ -1609,7 +1609,20 @@ def are_gpus_enabled():
     return settings_dict['mesos-gpu-enabled']
 
 
-def get_valid_gpu_models_on_pool(pool_name):
+def gpu_enabled_pools():
+    """"Returns a list of pools that support GPUs."""
+    cook_url = retrieve_cook_url()
+    active_pools, _ = util.active_pools(cook_url)
+    pools_with_gpus = []
+    for pool in active_pools:
+        pool_name = pool['name']
+        matching_gpu_models = util.get_valid_gpu_models_on_pool(pool_name)
+        if not (len(matching_gpu_models) == 0 or len(matching_gpu_models[0]) == 0):
+            pools_with_gpus.append(pool_name)
+    return pools_with_gpus
+
+
+def valid_gpu_models_on_pool(pool_name):
     """Returns a list of valid GPU models given a pool name."""
     settings_dict = util.settings(self.cook_url)
     valid_gpu_models_config_map = settings_dict.get('pools', {}).get('valid-gpu-models', [])

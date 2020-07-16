@@ -91,12 +91,13 @@
     (->novel-host-constraint job previous-hosts)))
 
 (defn job->gpu-model-requested
-  "Get GPU model requested from job environment or use default GPU model on pool"
-  [gpu-count gpu-model-in-env pool-name]
-  (when (pos? gpu-count)
-    (or gpu-model-in-env
-        ; lookup the GPU model from the pool defaults defined in config.edn
-        (util/match-based-on-pool-name (config/valid-gpu-models) pool-name :default-model))))
+  "Get GPU model requested from job or use default GPU model on pool"
+  [gpu-count job pool-name]
+  (let [gpu-model-in-env (-> job util/job-ent->env (get "COOK_GPU_MODEL"))]
+    (when (pos? gpu-count)
+      (or gpu-model-in-env
+          ; lookup the GPU model from the pool defaults defined in config.edn
+          (util/match-based-on-pool-name (config/valid-gpu-models) pool-name :default-model)))))
 
 (defrecord gpu-host-constraint [job]
   JobConstraint
@@ -110,7 +111,7 @@
           job-gpu-count-requested (-> job util/job-ent->resources :gpus (or 0))]
           (if k8s-vm?
             (let [job-gpu-model-requested (job->gpu-model-requested
-                                            job-gpu-count-requested (-> job util/job-ent->env (get "COOK_GPU_MODEL")) (util/job->pool-name job))
+                                            job-gpu-count-requested job (util/job->pool-name job))
                   vm-gpu-model->count-available (get vm-attributes "gpus")
                   vm-satisfies-constraint? (if (pos? job-gpu-count-requested)
                                              ; If job requests GPUs, require that the VM has enough gpus available in the same model as the job requested.

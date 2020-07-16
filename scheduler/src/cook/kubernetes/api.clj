@@ -679,15 +679,6 @@
             checkpoint))
         checkpoint))))
 
-(defn get-gpu-model-from-task-metadata
-  "Given the job's environment from task-metadata (set of maps), find the gpu model requested."
-  [job-env]
-  (->> job-env
-       (filter (fn [{:keys [environment/name]}]
-                 (= name "COOK_GPU_MODEL")))
-       first
-       :environment/value))
-
 (defn ^V1Pod task-metadata->pod
   "Given a task-request and other data generate the kubernetes V1Pod to launch that task."
   [namespace compute-cluster-name
@@ -706,7 +697,7 @@
         pool-name (some-> job :job/pool :pool/name)
         ; gpu count is not stored in scalar-requests because Fenzo does not handle gpus in binpacking
         gpus (or (:gpus resources) 0)
-        gpu-model-requested (constraints/job->gpu-model-requested gpus (-> job :job/environment get-gpu-model-from-task-metadata) pool-name)
+        gpu-model-requested (constraints/job->gpu-model-requested gpus job pool-name)
         pod (V1Pod.)
         pod-spec (V1PodSpec.)
         metadata (V1ObjectMeta.)
