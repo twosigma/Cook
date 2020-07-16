@@ -352,23 +352,28 @@
     (async/chan 1))
 
   (pending-offers [this pool-name]
-    (log/info "In" name "compute cluster, looking for offers for pool" pool-name)
-    (let [timer (timers/start (metrics/timer "cc-pending-offers-compute" name))
-          pods (add-starting-pods this @all-pods-atom)
-          nodes @current-nodes-atom
-          offers-this-pool (generate-offers this (get-name->node-for-pool @pool->node-name->node pool-name)
-                                            (->> (get-pods-in-pool this pool-name)
-                                                 (add-starting-pods this)
-                                                 (api/pods->node-name->pods)))
-          offers-this-pool-for-logging (into #{}
-                                             (map #(into {} (select-keys % [:hostname :resources]))
-                                                  offers-this-pool))]
-      (log/info "In" name "compute cluster, generated" (count offers-this-pool) "offers for pool" pool-name
-                {:num-total-nodes-in-compute-cluster (count nodes)
-                 :num-total-pods-in-compute-cluster (count pods)
-                 :offers-this-pool offers-this-pool-for-logging})
-      (timers/stop timer)
-      offers-this-pool))
+    (let [node-name->node (get @pool->node-name->node pool-name)]
+      (if-not (or (cc/autoscaling? this pool-name) node-name->node)
+        (log/info "In" name "compute cluster, not looking for offers for pool" pool-name
+                  ". Skipping pool because it is not a known Kubernetes pool.")
+        (do
+          (log/info "In" name "compute cluster, looking for offers for pool" pool-name)
+          (let [timer (timers/start (metrics/timer "cc-pending-offers-compute" name))
+                pods (add-starting-pods this @all-pods-atom)
+                nodes @current-nodes-atom
+                offers-this-pool (generate-offers this (or node-name->node {})
+                                                  (->> (get-pods-in-pool this pool-name)
+                                                       (add-starting-pods this)
+                                                       (api/pods->node-name->pods)))
+                offers-this-pool-for-logging (into #{}
+                                                   (map #(into {} (select-keys % [:hostname :resources]))
+                                                        offers-this-pool))]
+            (log/info "In" name "compute cluster, generated" (count offers-this-pool) "offers for pool" pool-name
+                      {:num-total-nodes-in-compute-cluster (count nodes)
+                       :num-total-pods-in-compute-cluster (count pods)
+                       :offers-this-pool offers-this-pool-for-logging})
+            (timers/stop timer)
+            offers-this-pool)))))
 
   (restore-offers [this pool-name offers])
 
