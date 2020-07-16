@@ -1616,7 +1616,7 @@ def gpu_enabled_pools():
     pools_with_gpus = []
     for pool in all_active_pools:
         pool_name = pool['name']
-        matching_gpu_models = get_valid_gpu_models_on_pool(pool_name)
+        matching_gpu_models = valid_gpu_models_on_pool(pool_name)
         if not (len(matching_gpu_models) == 0 or len(matching_gpu_models[0]) == 0):
             pools_with_gpus.append(pool_name)
     return pools_with_gpus
