@@ -156,7 +156,7 @@ class ClientTest(util.CookTest):
         finally:
             self.client.kill(uuid)
 
-    def gpu_submit_helper(pool_name, gpu_count, gpu_model):
+    def gpu_submit_helper(self, pool_name, gpu_count, gpu_model):
         query_model_name = gpu_model.lstrip('nvidia-').replace('-', ' ').title()
         command = (
             '/usr/bin/nvidia-smi && /usr/bin/nvidia-smi -q > nvidia-smi-output && '
@@ -191,7 +191,7 @@ class ClientTest(util.CookTest):
             for pool_name in pools_with_gpus:
                 matching_gpu_models = util.valid_gpu_models_on_pool(pool_name)
                 gpu_model = matching_gpu_models[0][0]
-                gpu_submit_helper(pool_name, 1, gpu_model)
+                self.gpu_submit_helper(pool_name, 1, gpu_model)
 
     @unittest.skipUnless(util.are_gpus_enabled(), "Requires GPUs")
     def test_gpu_submit_c2(self):
@@ -203,7 +203,7 @@ class ClientTest(util.CookTest):
             for pool_name in pools_with_gpus:
                 matching_gpu_models = util.valid_gpu_models_on_pool(pool_name)
                 gpu_model = matching_gpu_models[0][0]
-                gpu_submit_helper(pool_name, 2, gpu_model)
+                self.gpu_submit_helper(pool_name, 2, gpu_model)
 
     def test_bulk_ops(self):
         jobspecs = [
