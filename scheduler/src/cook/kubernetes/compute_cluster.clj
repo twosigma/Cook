@@ -56,8 +56,19 @@
   [compute-cluster node-name->node node-name->pods]
   (let [compute-cluster-name (cc/compute-cluster-name compute-cluster)
         node-name->capacity (api/get-capacity node-name->node)
-        ; Note that node-name->pods may include extra pods that are from other pools. So, we filter out only
-        ; nodes that have a capacity.
+        ; node-name->node map, used to calculate node-name->capacity includes nodes from the one pool,
+        ; gotten via the pools->node-name->node map.
+        ;
+        ; node-name->pods used to calculate node-name->consumption can include starting pods from all pools as it
+        ; unions starting pods across all nodes and all pods in the pool (made via composing
+        ; node-name->pod-name->pod map and the pool->node-name->node map)
+        ;
+        ; node-name->available can include extra nodes that are wrong-pool. However, when those wrong-pool nodes
+        ; are passed to node-schedulable? they're not found when it looks at the node-name->node map, so it logs an ERROR.
+        ;
+        ; If we have consumption calculation on a node that doesn't have a capacity calculated, there's not not much
+        ; point in further computation on it. We won't make an offer in any case. So we filter them out.
+        ; This also cleanly avoids the logged ERROR.
         node-name->consumed (->> (api/get-consumption node-name->pods)
                                  (filter #(node-name->capacity (first %)))
                                  (into {}))
