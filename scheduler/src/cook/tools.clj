@@ -954,10 +954,7 @@
       (filter-sequential filter-with-quota usage queue))))
 
 (defn filter-pending-jobs-for-quota
-  "Lazily filters jobs to those that should be considered
-  for autoscaling purposes. Note that this is used in two
-  places: the /queue endpoint (Mesos only) and as an
-  argument to scheduler/trigger-autoscaling! (k8s only).
+  "Lazily filters jobs to those that that are in quota.
 
   user->quota is a map from user to a quota dictionary which is {:mem 123 :cpus 456 ...}
   user->usage is a map from user to a usage dictionary which is {:mem 123 :cpus 456 ...}

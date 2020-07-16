@@ -2680,7 +2680,7 @@ class CookTest(util.CookTest):
             # Wait until at least 2 are running.
             util.wait_until(query, predicate)
             # Wait an extra 60 seconds to see if anything else starts.
-            time.sleep(60.0)
+            time.sleep(20.0)
             jobs = util.query_jobs(self.cook_url, True, uuid=job_uuids).json()
             running = [job for job in jobs if job['status'] == 'running']
             self.assertEqual(2, len(running), jobs)
