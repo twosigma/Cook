@@ -392,7 +392,8 @@
      (loop []
        (when-not (pred)
          (if (< (.getTime (java.util.Date.)) (+ start-ms max-wait-ms))
-           (recur)
+           (do (java.lang.Thread/sleep interval-ms)
+               (recur))
            (throw (ex-info (str "pred not true : " (on-exceed-str-fn))
                            {:interval-ms interval-ms
                             :max-wait-ms max-wait-ms}))))))))
@@ -566,7 +567,6 @@
     (kcc/->KubernetesComputeCluster nil ; api-client
                                     "kubecompute" ; name
                                     nil ; entity-id
-                                    nil ; match-trigger-chan
                                     nil ; exit-code-syncer-state
                                     (atom namespaced-pod-name->pod) ; all-pods-atom
                                     (atom {}) ; current-nodes-atom

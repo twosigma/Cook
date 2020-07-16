@@ -54,7 +54,8 @@
   (:import (com.netflix.fenzo
              TaskAssignmentResult TaskRequest TaskScheduler TaskScheduler$Builder VirtualMachineCurrentState
              VirtualMachineLease VirtualMachineLease$Range)
-           (com.netflix.fenzo.functions Action1 Func1)))
+           (com.netflix.fenzo.functions Action1 Func1)
+           (java.util LinkedList)))
 
 (defn now
   []
@@ -1559,6 +1560,20 @@
                (counters/dec! in-order-queue-counter)
                (body-fn))))))
 
+(defn prepare-match-trigger-chan
+  "Calculate the required interval for match-trigger-chan and start the chimes"
+  [match-trigger-chan pools]
+  (let [{:keys [global-min-match-interval-millis target-per-pool-match-interval-millis]} (config/offer-matching)
+        match-interval-millis (-> target-per-pool-match-interval-millis
+                                  (/ (count pools)) 
+                                  int 
+                                  (max global-min-match-interval-millis))]
+    (when (= match-interval-millis global-min-match-interval-millis)
+      (log/warn "match-trigger-chan is set to the global minimum interval of " global-min-match-interval-millis " ms. "
+                "This is a sign that we have more pools, " (count pools) " than we expect to have and we will "
+                "schedule each pool less often than the desired setting of every " target-per-pool-match-interval-millis " ms."))
+    (async/pipe (chime-ch (tools/time-seq (time/now) (time/millis match-interval-millis))) match-trigger-chan)))
+
 (defn create-datomic-scheduler
   [{:keys [conn compute-clusters fenzo-fitness-calculator fenzo-floor-iterations-before-reset
            fenzo-floor-iterations-before-warn fenzo-max-jobs-considered fenzo-scaleback good-enough-fitness
@@ -1569,27 +1584,33 @@
   (persist-mea-culpa-failure-limit! conn mea-culpa-failure-limit)
 
   (let [{:keys [match-trigger-chan rank-trigger-chan]} trigger-chans
-        match-trigger-chan-mult (async/mult match-trigger-chan)
         pools (pool/all-pools (d/db conn))
         pools' (if (-> pools count pos?)
                  pools
                  [{:pool/name "no-pool"}])
         pool-name->fenzo (pool-map pools' (fn [_] (make-fenzo-scheduler offer-incubate-time-ms
                                                                         fenzo-fitness-calculator good-enough-fitness)))
-        {:keys [pool->resources-atom]}
-        (reduce (fn [m pool-ent]
-                  (let [pool-name (:pool/name pool-ent)
-                        fenzo (pool-name->fenzo pool-name)
-                        resources-atom
-                        (make-offer-handler
-                          conn fenzo pool-name->pending-jobs-atom agent-attributes-cache fenzo-max-jobs-considered
-                          fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset
-                          (async/tap match-trigger-chan-mult (async/chan (async/sliding-buffer 1)))
-                          rebalancer-reservation-atom mesos-run-as-user pool-name compute-clusters)]
-                    (-> m
-                        (assoc-in [:pool->resources-atom pool-name] resources-atom))))
-                {}
-                pools')]
+        pool->match-trigger-chan (pool-map pools' (fn [_] (async/chan (async/sliding-buffer 1))))
+        pool-names-linked-list (LinkedList. (map :pool/name pools'))
+        pool->resources-atom (pool-map
+                               pools'
+                               (fn [{:keys [pool/name]}]
+                                 (make-offer-handler
+                                   conn (pool-name->fenzo name) pool-name->pending-jobs-atom agent-attributes-cache
+                                   fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn
+                                   fenzo-floor-iterations-before-reset (get pool->match-trigger-chan name)
+                                   rebalancer-reservation-atom mesos-run-as-user name compute-clusters)))]
+    (prepare-match-trigger-chan match-trigger-chan pools')
+    (async/go-loop []
+      (when-let [x (async/<! match-trigger-chan)]
+        (try
+          (let [pool-name (.removeFirst pool-names-linked-list)]
+            (.addLast pool-names-linked-list pool-name)
+            (async/offer! (get pool->match-trigger-chan pool-name) x))
+          (catch Exception e
+            (log/error e "Exception in match-trigger-chan chime handler")
+            (throw e)))
+        (recur)))
     (log/info "Pool name to fenzo scheduler map:" pool-name->fenzo)
     (start-jobs-prioritizer! conn pool-name->pending-jobs-atom task-constraints rank-trigger-chan)
     {:pool-name->fenzo pool-name->fenzo

@@ -483,7 +483,11 @@
                              :pod-condition-unschedulable-seconds 60
                              :reconnect-delay-ms 60000
                              :set-container-cpu-limit? true}
-                            kubernetes)))}))
+                            kubernetes)))
+     :offer-matching (fnk [[:config {offer-matching {}}]]
+                          (merge {:global-min-match-interval-millis 100
+                                  :target-per-pool-match-interval-millis 3000}
+                                 offer-matching))}))
 
 (defn read-config
   "Given a config file path, reads the config and returns the map"
@@ -614,3 +618,7 @@
 (defn task-constraints
   []
   (get-in config [:settings :task-constraints]))
+
+(defn offer-matching
+  []
+  (-> config :settings :offer-matching))

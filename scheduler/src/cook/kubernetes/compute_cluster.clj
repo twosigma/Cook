@@ -260,7 +260,7 @@
        (map #(get @node-name->pod-name->pod % {}))
        (reduce into {})))
 
-(defrecord KubernetesComputeCluster [^ApiClient api-client name entity-id match-trigger-chan exit-code-syncer-state
+(defrecord KubernetesComputeCluster [^ApiClient api-client name entity-id exit-code-syncer-state
                                      all-pods-atom current-nodes-atom pool->node-name->node
                                      node-name->pod-name->pod cook-expected-state-map cook-starting-pods k8s-actual-state-map
                                      pool->fenzo-atom namespace-config scan-frequency-seconds-config max-pods-per-node
@@ -570,8 +570,7 @@
          scan-frequency-seconds 120
          use-google-service-account? true}
     :as compute-cluster-config}
-   {:keys [exit-code-syncer-state
-           trigger-chans]}]
+   {:keys [exit-code-syncer-state]}]
   (guard-invalid-synthetic-pods-config compute-cluster-name synthetic-pods)
   (when (not (< 0 launch-task-num-threads 64))
     (throw
@@ -585,7 +584,6 @@
         compute-cluster (->KubernetesComputeCluster api-client 
                                                     compute-cluster-name
                                                     cluster-entity-id
-                                                    (:match-trigger-chan trigger-chans)
                                                     exit-code-syncer-state
                                                     (atom {})
                                                     (atom {})
