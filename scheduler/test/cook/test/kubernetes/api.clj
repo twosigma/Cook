@@ -72,7 +72,9 @@
                                 :gpus "1"
                                 :gpu-model "nvidia-tesla-k80"})
                 (tu/pod-helper "podD" "hostC"
-                               {:cpus 1.0})]
+                               {:cpus 1.0})
+                (tu/pod-helper "podD" nil ; nil host should be skipped and not included in output.
+                               {:cpus 12.0})]
           node-name->pods (api/pods->node-name->pods pods)]
       (is (= {"hostA" {:cpus 2.0 :mem 100.0 :gpus {"nvidia-tesla-p100" 3}}
               "hostB" {:cpus 3.0 :mem 130.0 :gpus {"nvidia-tesla-k80" 1}}

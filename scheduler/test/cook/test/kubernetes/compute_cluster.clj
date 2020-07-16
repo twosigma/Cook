@@ -123,6 +123,8 @@
                                                                 {:cpus 0.25 :mem 250.0 :gpus "1" :gpu-model "nvidia-tesla-p100"})
                 {:namespace "cook" :name "podC"} (tu/pod-helper "podC" "nodeB"
                                                                 {:cpus 1.0 :mem 1100.0 :gpus "10" :gpu-model "nvidia-tesla-p100"})
+                {:namespace "cook" :name "podD"} (tu/pod-helper "podD" "nodeD"
+                                                                {:cpus 1.0 :mem 1100.0 :gpus "10" :gpu-model "nvidia-tesla-p100"})
                 {:namespace "cook" :name task-1-id} (tu/pod-helper task-1-id "my.fake.host"
                                                                    {:cpus 0.1 :mem 10.0})}
           node-name->pods (api/pods->node-name->pods (kcc/add-starting-pods compute-cluster pods))
