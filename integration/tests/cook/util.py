@@ -1608,6 +1608,16 @@ def are_gpus_enabled():
     settings_dict = settings(cook_url)
     return settings_dict['mesos-gpu-enabled']
 
+
+def get_valid_gpu_models_on_pool(pool_name):
+    """Returns a list of valid GPU models given a pool name."""
+    settings_dict = util.settings(self.cook_url)
+    valid_gpu_models_config_map = settings_dict.get('pools', {}).get('valid-gpu-models', [])
+    valid_models_on_pool = [ii['valid-models'] for ii in valid_gpu_models_config_map
+                            if re.match(ii['pool-regex'], pool_name)]
+    return valid_models_on_pool
+
+
 def mesos_hostnames_to_consider(cook_url, mesos_url):
     """
     Returns the hostnames in the default pool, or all hosts if the cluster is not using pools

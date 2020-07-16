@@ -156,45 +156,66 @@ class ClientTest(util.CookTest):
         finally:
             self.client.kill(uuid)
 
+    def test_gpu_submit_helper(pool_name, gpu_count, gpu_model):
+        query_model_name = gpu_model.lstrip('nvidia-').replace('-', ' ').title()
+        command = (
+            '/usr/bin/nvidia-smi && /usr/bin/nvidia-smi -q > nvidia-smi-output && '
+            f'cat nvidia-smi-output; expected_model="{query_model_name}"; '
+            'num_gpus=$(grep "Attached GPUs" nvidia-smi-output | cut -d \':\' -f 2 | tr -d \'[:space:]\'); echo "num_gpus=$num_gpus"; '
+            'num_expected_model=$(grep "$expected_model" nvidia-smi-output | wc -l); echo "num_expected_model=$num_expected_model"; '
+            f'if [[ $num_gpus -eq {gpu_count} && $num_expected_model -eq {gpu_count} ]]; then exit 0; else exit 1; fi'
+        )
+        uuid = self.client.submit(command=command,
+                                  cpus=0.5,
+                                  mem=256.0,
+                                  pool=pool_name,
+                                  gpus=gpu_count,
+                                  env={'COOK_GPU_MODEL': gpu_model},
+                                  max_retries=5)
+        try:
+            util.wait_for_job(type(self).cook_url, uuid, 'completed')
+            job = self.client.query(uuid)
+            self.assertEqual(JobState.SUCCESS, job.state)
+        except Exception as e:
+            raise Exception(f"Submitting job with GPU {gpu_model} to pool {pool_name} failed") from e
+        finally:
+            self.client.kill(uuid)
+
     @unittest.skipUnless(util.are_gpus_enabled(), "Requires GPUs")
-    def test_gpu_submit(self):
-        """Test submitting a job with a GPU specified."""
-        settings_dict = util.settings(type(self).cook_url)
+    def test_gpu_submit_c1(self):
+        """Test submitting a job with 1 GPU specified."""
         active_pools, _ = util.active_pools(type(self).cook_url)
-        valid_gpu_models_config_map = settings_dict.get('pools', {}).get('valid-gpu-models', [])
         pools_with_gpus = []
         for pool in active_pools:
             pool_name = pool['name']
-            matching_gpu_models = [ii['valid-models'] for ii in valid_gpu_models_config_map
-                                   if re.match(ii['pool-regex'], pool_name)]
+            matching_gpu_models = util.get_valid_gpu_models_on_pool(pool_name)
             if not (len(matching_gpu_models) == 0 or len(matching_gpu_models[0]) == 0):
                 pools_with_gpus.append(pool_name)
-        for pool_name in pools_with_gpus:
-            for gpu_model in matching_gpu_models[0]:
-                for gpu_count in [1, 2]:
-                    query_model_name = gpu_model.lstrip('nvidia-').replace('-', ' ').title()
-                    command = (
-                        '/usr/bin/nvidia-smi && /usr/bin/nvidia-smi -q > nvidia-smi-output && '
-                        f'cat nvidia-smi-output; expected_model="{query_model_name}"; '
-                        'num_gpus=$(grep "Attached GPUs" nvidia-smi-output | cut -d \':\' -f 2 | tr -d \'[:space:]\'); echo "num_gpus=$num_gpus"; '
-                        'num_expected_model=$(grep "$expected_model" nvidia-smi-output | wc -l); echo "num_expected_model=$num_expected_model"; '
-                        f'if [[ $num_gpus -eq {gpu_count} && $num_expected_model -eq {gpu_count} ]]; then exit 0; else exit 1; fi'
-                    )
-                    uuid = self.client.submit(command=command,
-                                              cpus=0.5,
-                                              mem=256.0,
-                                              pool=pool_name,
-                                              gpus=gpu_count,
-                                              env={'COOK_GPU_MODEL': gpu_model},
-                                              max_retries=5)
-                    try:
-                        util.wait_for_job(type(self).cook_url, uuid, 'completed')
-                        job = self.client.query(uuid)
-                        self.assertEqual(JobState.SUCCESS, job.state)
-                    except Exception as e:
-                        raise Exception(f"Submitting job with GPU {gpu_model} to pool {pool_name} failed") from e
-                    finally:
-                        self.client.kill(uuid)
+        if len(pools_with_gpus) == 0:
+            self.skipTest("No active pools support GPUs")
+        else:
+            for pool_name in pools_with_gpus:
+                matching_gpu_models = util.get_valid_gpu_models_on_pool(pool_name)
+                gpu_model = matching_gpu_models[0][0]
+                test_gpu_submit_helper(pool_name, 1, gpu_model)
+
+    @unittest.skipUnless(util.are_gpus_enabled(), "Requires GPUs")
+    def test_gpu_submit_c2(self):
+        """Test submitting a job with 2 GPUs specified."""
+        active_pools, _ = util.active_pools(type(self).cook_url)
+        pools_with_gpus = []
+        for pool in active_pools:
+            pool_name = pool['name']
+            matching_gpu_models = util.get_valid_gpu_models_on_pool(pool_name)
+            if not (len(matching_gpu_models) == 0 or len(matching_gpu_models[0]) == 0):
+                pools_with_gpus.append(pool_name)
+        if len(pools_with_gpus) == 0:
+            self.skipTest("No active pools support GPUs")
+        else:
+            for pool_name in pools_with_gpus:
+                matching_gpu_models = util.get_valid_gpu_models_on_pool(pool_name)
+                gpu_model = matching_gpu_models[0][0]
+                test_gpu_submit_helper(pool_name, 2, gpu_model)
 
     def test_bulk_ops(self):
         jobspecs = [
