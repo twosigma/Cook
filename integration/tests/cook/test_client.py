@@ -176,8 +176,8 @@ class ClientTest(util.CookTest):
                     command = (
                         '/usr/bin/nvidia-smi && /usr/bin/nvidia-smi -q > nvidia-smi-output && '
                         f'cat nvidia-smi-output; expected_model="{query_model_name}"; '
-                        'num_gpus=$(grep "Attached GPUs" nvidia-smi-output | cut -d \':\' -f 2 | tr -d \'[:space:]\'); echo "num_gpus=$num_gpus" '
-                        'num_expected_model=$(grep "$expected_model" nvidia-smi-output | wc -l); echo "num_expected_model=$num_expected_model;" '
+                        'num_gpus=$(grep "Attached GPUs" nvidia-smi-output | cut -d \':\' -f 2 | tr -d \'[:space:]\'); echo "num_gpus=$num_gpus"; '
+                        'num_expected_model=$(grep "$expected_model" nvidia-smi-output | wc -l); echo "num_expected_model=$num_expected_model"; '
                         f'if [[ $num_gpus -eq {gpu_count} && $num_expected_model -eq {gpu_count} ]]; then exit 0; else exit 1; fi'
                     )
                     uuid = self.client.submit(command=command,
