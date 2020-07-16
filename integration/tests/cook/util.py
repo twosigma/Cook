@@ -1612,9 +1612,9 @@ def are_gpus_enabled():
 def gpu_enabled_pools():
     """"Returns a list of pools that support GPUs."""
     cook_url = retrieve_cook_url()
-    active_pools, _ = active_pools(cook_url)
+    all_active_pools, _ = active_pools(cook_url)
     pools_with_gpus = []
-    for pool in active_pools:
+    for pool in all_active_pools:
         pool_name = pool['name']
         matching_gpu_models = get_valid_gpu_models_on_pool(pool_name)
         if not (len(matching_gpu_models) == 0 or len(matching_gpu_models[0]) == 0):
