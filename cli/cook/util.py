@@ -15,8 +15,8 @@ from cook import terminal
 
 quit_running = False
 
-TRUE_STRINGS = ('yes', 'true', 'y')
-FALSE_STRINGS = ('no', 'false', 'n')
+TRUE_STRINGS = {'yes', 'true', 'y'}
+FALSE_STRINGS = {'no', 'false', 'n'}
 
 
 def deep_merge(a, b):
@@ -165,7 +165,7 @@ def load_target_clusters(config_map, url=None, cluster=None):
     config_clusters = config_map.get('clusters')
     if url:
         if urlparse(url).scheme == '':
-            url = 'http://%s' % url
+            url = f'http://{url}'
         clusters = [{'name': url, 'url': url}]
     elif config_clusters:
         if cluster:

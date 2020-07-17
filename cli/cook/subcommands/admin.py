@@ -128,8 +128,8 @@ def register(add_parser, _):
         copy_limits_parser = limits_subparsers.add_parser('copy', help='copy limits from another cluster')
         copy_limits_parser.add_argument('--user', '-u', help='the user to copy limits for', default='default')
         copy_limits_parser.add_argument('--from', '-f', help='the name of the Cook scheduler cluster to copy from')
-        copy_limits_parser.add_argument('--from-url', '-fu', help='the URL of the Cook scheduler cluster to copy from')
+        copy_limits_parser.add_argument('--from-url', help='the URL of the Cook scheduler cluster to copy from')
         copy_limits_parser.add_argument('--to', '-t', help='the name of the Cook scheduler cluster to copy to')
-        copy_limits_parser.add_argument('--to-url', '-tu', help='the URL of the Cook scheduler cluster to copy to')
+        copy_limits_parser.add_argument('--to-url', help='the URL of the Cook scheduler cluster to copy to')
 
         return admin
