@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
 import getpass
 import json
 import logging
@@ -213,10 +214,15 @@ class JobClient:
         :return: The UUIDs of the created jobs.
         :rtype: List[UUID]
         """
-        jobspecs = list(jobspecs)
-        for jobspec in jobspecs:
-            JobClient._apply_jobspec_defaults(jobspec)
-            JobClient._convert_jobspec(jobspec)
+        jobspecs = list(
+            map(
+                JobClient._convert_jobspec,
+                map(
+                    JobClient._apply_jobspec_defaults,
+                    jobspecs
+                )
+            )
+        )
         payload = {'jobs': jobspecs}
 
         if pool is not None:
@@ -342,12 +348,14 @@ class JobClient:
             self.__session.close()
 
     @staticmethod
-    def _apply_jobspec_defaults(jobspec: dict):
+    def _apply_jobspec_defaults(jobspec: dict) -> dict:
         """Apply default values to a jobspec.
 
         This function will add default values to a jobspec if no value is
-        provided. The provided jobspec will be modified in-place.
+        provided. The provided jobspec will not be touched and a copy will be
+        returned.
         """
+        jobspec = copy.deepcopy(jobspec)
         if 'uuid' not in jobspec:
             jobspec['uuid'] = str(util.make_temporal_uuid())
         if 'cpus' not in jobspec:
@@ -362,17 +370,19 @@ class JobClient:
             jobspec['name'] = f'{getpass.getuser()}-job'
         if 'application' not in jobspec:
             jobspec['application'] = _CLIENT_APP
+        return jobspec
 
     @staticmethod
-    def _convert_jobspec(jobspec: dict):
+    def _convert_jobspec(jobspec: dict) -> dict:
         """Convert a Python jobspec into a JSON jobspec.
 
         This function will convert the higher-level Python types used in job
         submissions into their JSON primitive counterparts (e.g., timedelta is
         converted into the number of milliseconds).
 
-        The provided jobspec is modified in-place.
+        The provided jobspec will not be touched and a copy will be returned.
         """
+        jobspec = copy.deepcopy(jobspec)
         if 'max-runtime' in jobspec:
             jobspec['max-runtime'] = (
                 jobspec['max-runtime'].total_seconds() * 1000
@@ -381,6 +391,7 @@ class JobClient:
             jobspec['application'] = jobspec['application'].to_dict()
         if 'container' in jobspec:
             jobspec['container'] = jobspec['container'].to_dict()
+        return jobspec
 
     def __enter__(self):
         return self
