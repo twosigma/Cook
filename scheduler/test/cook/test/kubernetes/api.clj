@@ -12,28 +12,12 @@
                                                 V1VolumeMount)))
 
 (deftest test-get-consumption
-<<<<<<< HEAD
-  (testing "correctly computes consumption for a single pod"
-    (let [pods [(tu/pod-helper "podA" "hostA" {:cpus 1.0 :mem 100.0 :gpus "2"})]
-||||||| merged common ancestors
-  (testing "correctly computes consumption for a single pod"
-    (let [pods [(tu/pod-helper "podA" "hostA" {:cpus 1.0 :mem 100.0})]
-=======
   (testing "correctly computes consumption for a single pod without gpus"
-
     (let [pods [(tu/pod-helper "podA" "hostA" {:cpus 1.0 :mem 100.0})]
->>>>>>> origin/master
           node-name->pods (api/pods->node-name->pods pods)]
       (is (= {"hostA" {:cpus 1.0
-<<<<<<< HEAD
-                       :mem 100.0
-                       :gpus {"nvidia-tesla-p100" 2}}}
-||||||| merged common ancestors
-                       :mem 100.0}}
-=======
                        :mem 100.0
                        :gpus {}}}
->>>>>>> origin/master
              (api/get-consumption node-name->pods)))))
 
   (testing "correctly computes consumption for a single pod with gpus"
@@ -47,25 +31,11 @@
 
   (testing "correctly computes consumption for a pod with multiple containers without gpus"
     (let [pods [(tu/pod-helper "podA" "hostA"
-<<<<<<< HEAD
-                               {:cpus 1.0 :mem 100.0 :gpus "1"}
-                               {:cpus 1.0 :mem 0.0 :gpus "4"}
-||||||| merged common ancestors
-                               {:cpus 1.0 :mem 100.0}
-                               {:cpus 1.0 :mem 0.0}
-=======
                                {:cpus 1.0 :mem 100.0 :gpus "0"}
                                {:cpus 1.0 :mem 0.0}
->>>>>>> origin/master
                                {:mem 100.0})]
           node-name->pods (api/pods->node-name->pods pods)]
       (is (= {"hostA" {:cpus 2.0
-<<<<<<< HEAD
-                       :mem 200.0
-                       :gpus {"nvidia-tesla-p100" 5}}}
-||||||| merged common ancestors
-                       :mem 200.0}}
-=======
                        :mem 200.0
                        :gpus {}}}
              (api/get-consumption node-name->pods)))))
@@ -79,90 +49,38 @@
       (is (= {"hostA" {:cpus 2.0
                        :mem 200.0
                        :gpus {"nvidia-tesla-p100" 5}}}
->>>>>>> origin/master
              (api/get-consumption node-name->pods)))))
 
   (testing "correctly aggregates pods by node name"
     (let [pods [(tu/pod-helper "podA" "hostA"
-<<<<<<< HEAD
-                               {:cpus 1.0
-                                :mem 100.0
-                                :gpus "2"})
-||||||| merged common ancestors
-                               {:cpus 1.0 :mem 100.0})
-=======
                                {:cpus 1.0
                                 :mem 100.0
                                 :gpus "2"
                                 :gpu-model "nvidia-tesla-p100"})
->>>>>>> origin/master
                 (tu/pod-helper "podB" "hostA"
                                {:cpus 1.0})
-<<<<<<< HEAD
-                (tu/pod-helper "podA" "hostA"
-                               {:gpus "1"})
-||||||| merged common ancestors
-=======
                 (tu/pod-helper "podA" "hostA"
                                {:gpus "1"
                                 :gpu-model "nvidia-tesla-p100"})
->>>>>>> origin/master
                 (tu/pod-helper "podC" "hostB"
                                {:cpus 1.0}
                                {:mem 100.0})
-<<<<<<< HEAD
-                (tu/pod-helper "podC" "hostB"
-                               {:cpus 2.0}
-                               {:mem 30.0
-                                :gpus "1"})
-||||||| merged common ancestors
-=======
                 (tu/pod-helper "podC" "hostB"
                                {:cpus 2.0}
                                {:mem 30.0
                                 :gpus "1"
                                 :gpu-model "nvidia-tesla-k80"})
->>>>>>> origin/master
                 (tu/pod-helper "podD" "hostC"
                                {:cpus 1.0})
                 (tu/pod-helper "podD" nil ; nil host should be skipped and not included in output.
                                {:cpus 12.0})]
           node-name->pods (api/pods->node-name->pods pods)]
-<<<<<<< HEAD
-      (is (= {"hostA" {:cpus 2.0 :mem 100.0 :gpus {"nvidia-tesla-p100" 3}}
-              "hostB" {:cpus 3.0 :mem 130.0 :gpus {"nvidia-tesla-p100" 1}}
-              "hostC" {:cpus 1.0 :mem 0.0 :gpus {}}}
-||||||| merged common ancestors
-      (is (= {"hostA" {:cpus 2.0 :mem 100.0}
-              "hostB" {:cpus 1.0 :mem 100.0}
-              "hostC" {:cpus 1.0 :mem 0.0}}
-=======
       (is (= {"hostA" {:cpus 2.0 :mem 100.0 :gpus {"nvidia-tesla-p100" 3}}
               "hostB" {:cpus 3.0 :mem 130.0 :gpus {"nvidia-tesla-k80" 1}}
               "hostC" {:cpus 1.0 :mem 0.0 :gpus {}}}
->>>>>>> origin/master
              (api/get-consumption node-name->pods))))))
 
 (deftest test-get-capacity
-<<<<<<< HEAD
-  (let [node-name->node {"nodeA" (tu/node-helper "nodeA" 1.0 100.0 "2" nil)
-                         "nodeB" (tu/node-helper "nodeB" 1.0 nil nil nil)
-                         "nodeC" (tu/node-helper "nodeC" nil 100.0 "5" nil)
-                         "nodeD" (tu/node-helper "nodeD" nil nil "7" nil)}]
-    (is (= {"nodeA" {:cpus 1.0 :mem 100.0 :gpus {"nvidia-tesla-p100" 2}}
-            "nodeB" {:cpus 1.0 :mem 0.0 :gpus {}}
-            "nodeC" {:cpus 0.0 :mem 100.0 :gpus {"nvidia-tesla-p100" 5}}
-            "nodeD" {:cpus 0.0 :mem 0.0 :gpus {"nvidia-tesla-p100" 7}}}
-||||||| merged common ancestors
-  (let [node-name->node {"nodeA" (tu/node-helper "nodeA" 1.0 100.0 nil)
-                         "nodeB" (tu/node-helper "nodeB" 1.0 nil nil)
-                         "nodeC" (tu/node-helper "nodeC" nil 100.0 nil)
-                         "nodeD" (tu/node-helper "nodeD" nil nil nil)}]
-    (is (= {"nodeA" {:cpus 1.0 :mem 100.0}
-            "nodeB" {:cpus 1.0 :mem 0.0}
-            "nodeC" {:cpus 0.0 :mem 100.0}
-            "nodeD" {:cpus 0.0 :mem 0.0}}
-=======
   (let [node-name->node {"nodeA" (tu/node-helper "nodeA" 1.0 100.0 2 "nvidia-tesla-p100" nil)
                          "nodeB" (tu/node-helper "nodeB" 1.0 nil nil nil nil)
                          "nodeC" (tu/node-helper "nodeC" nil 100.0 5 "nvidia-tesla-p100" nil)
@@ -171,7 +89,6 @@
             "nodeB" {:cpus 1.0 :mem 0.0 :gpus {}}
             "nodeC" {:cpus 0.0 :mem 100.0 :gpus {"nvidia-tesla-p100" 5}}
             "nodeD" {:cpus 0.0 :mem 0.0 :gpus {"nvidia-tesla-p100" 7}}}
->>>>>>> origin/master
            (api/get-capacity node-name->node)))))
 
 (defn assert-env-var-value
