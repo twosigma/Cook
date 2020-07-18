@@ -652,6 +652,13 @@ def kill_jobs(cook_url, jobs, assert_response=True, expected_status_code=204, lo
             assert expected_status_code == response.status_code, response.text
     return response
 
+def kill_instance(cook_url, instance, assert_response=True, expected_status_code=204):
+    """Kill an instance"""
+    params = {'instance': [instance]}
+    response = session.delete(f'{cook_url}/rawscheduler', params=params)
+    if assert_response:
+        assert expected_status_code == response.status_code, response.text
+    return response
 
 def kill_groups(cook_url, groups, assert_response=True, expected_status_code=204):
     """Kill one or more groups of jobs"""
@@ -1572,7 +1579,6 @@ def is_preemption_enabled():
     """Returns true if task preemption is enabled on the cluster"""
     max_preemption = rebalancer_settings().get('max-preemption')
     return max_preemption is not None
-
 
 @functools.lru_cache()
 def rebalancer_settings():

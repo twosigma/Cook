@@ -1,14 +1,10 @@
 (ns cook.test.group
-  (:use clojure.test)
   (:require [clj-time.coerce :as tc]
             [clj-time.core :as t]
+            [clojure.test :refer :all]
             [cook.group :as group]
-            [cook.tools :as util]
-            [cook.test.testutil :refer (restore-fresh-database!
-                                         create-dummy-group
-                                         create-dummy-job
-                                         create-dummy-instance)]
-            [datomic.api :as d :refer (q db)]))
+            [cook.test.testutil :refer [create-dummy-group create-dummy-instance create-dummy-job restore-fresh-database!]]
+            [datomic.api :as d :refer [db q]]))
 
 (deftest test-find-stragglers
   (let [uri "datomic:mem://test-find-stragglers"

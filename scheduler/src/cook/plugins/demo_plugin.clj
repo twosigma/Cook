@@ -16,7 +16,6 @@
 (ns cook.plugins.demo-plugin
   (:require [clj-time.core :as t]
             [clojure.string :as str]
-            [clojure.tools.logging :as log]
             [cook.plugins.definitions :as chd]))
 
 (def uuid-seen-counts (atom {}))

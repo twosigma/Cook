@@ -14,10 +14,9 @@
 ;; limitations under the License.
 ;;
 (ns cook.task
-  (:require
-    [cook.compute-cluster :as cc]
-    [cook.config :as config]
-    [datomic.api :as d]))
+  (:require [cook.compute-cluster :as cc]
+            [cook.config :as config]
+            [datomic.api :as d]))
 
 (defn task-entity-id->task-id
   "Given a task entity, what is the task-id associated with it?"

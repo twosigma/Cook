@@ -14,13 +14,13 @@
 ;; limitations under the License.
 ;;
 (ns cook.test.scheduler.dru
- (:use clojure.test)
- (:require [cook.scheduler.dru :as dru]
-           [cook.scheduler.share :as share]
-           [cook.tools :as util]
-           [cook.test.testutil :refer (restore-fresh-database! create-dummy-job create-dummy-instance)]
-           [datomic.api :as d :refer (q db)]
-           [plumbing.core :refer [map-vals]]))
+  (:require [clojure.test :refer :all]
+            [cook.scheduler.dru :as dru]
+            [cook.scheduler.share :as share]
+            [cook.test.testutil :refer [create-dummy-instance create-dummy-job restore-fresh-database!]]
+            [cook.tools :as util]
+            [datomic.api :as d :refer [db q]]
+            [plumbing.core :refer [map-vals]]))
 
 (deftest test-compute-task-scored-task-pairs
   (testing "return empty set on input empty set"

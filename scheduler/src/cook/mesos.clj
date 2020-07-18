@@ -20,25 +20,24 @@
             [clojure.tools.logging :as log]
             [cook.compute-cluster :as cc]
             [cook.config :as config]
-            [cook.datomic :refer (transact-with-retries)]
-            [cook.scheduler.data-locality :as dl]
+            [cook.datomic :refer [transact-with-retries]]
             [cook.mesos.heartbeat]
-            [cook.mesos.mesos-compute-cluster :as mcc]
             [cook.monitor]
-            [cook.scheduler.optimizer]
             [cook.rebalancer]
+            [cook.scheduler.data-locality :as dl]
+            [cook.scheduler.optimizer]
             [cook.scheduler.scheduler :as sched]
             [cook.tools :as util]
             [cook.util]
-            [datomic.api :as d :refer (q)]
+            [datomic.api :as d :refer [q]]
             [mesomatic.scheduler]
             [mesomatic.types]
-            [metatransaction.core :as mt :refer (db)]
+            [metatransaction.core :refer [db]]
             [metatransaction.utils :as dutils]
             [metrics.counters :as counters]
             [swiss.arrows :refer :all])
-  (:import [org.apache.curator.framework.recipes.leader LeaderSelector LeaderSelectorListener]
-           org.apache.curator.framework.state.ConnectionState))
+  (:import (org.apache.curator.framework.recipes.leader LeaderSelector LeaderSelectorListener)
+           (org.apache.curator.framework.state ConnectionState)))
 
 ;; ============================================================================
 ;; mesos scheduler etc.
@@ -100,7 +99,7 @@
     (cond->
         {:cancelled-task-trigger-chan (prepare-trigger-chan (time/seconds 3))
          :lingering-task-trigger-chan (prepare-trigger-chan (time/minutes timeout-interval-minutes))
-         :match-trigger-chan (prepare-trigger-chan (time/seconds 1))
+         :match-trigger-chan (async/chan (async/sliding-buffer 1))
          :optimizer-trigger-chan (prepare-trigger-chan (time/seconds (:optimizer-interval-seconds optimizer-config 10)))
          :progress-updater-trigger-chan (prepare-trigger-chan (time/millis (:publish-interval-ms progress-config)))
          :rank-trigger-chan (prepare-trigger-chan (time/seconds 5))

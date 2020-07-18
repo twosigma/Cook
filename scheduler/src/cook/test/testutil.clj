@@ -15,36 +15,35 @@
 ;;
 
 (ns cook.test.testutil
-  (:use clojure.test)
   (:require [clj-logging-config.log4j :as log4j-conf]
             [clj-time.core :as t]
             [clojure.core.async :as async]
             [clojure.core.cache :as cache]
             [clojure.string :as str]
+            [clojure.test :refer :all]
             [clojure.tools.logging :as log]
             [cook.compute-cluster :as cc]
             [cook.kubernetes.api :as kapi]
             [cook.kubernetes.compute-cluster :as kcc]
             [cook.mesos.mesos-compute-cluster :as mcc]
-            [cook.plugins.definitions :refer (JobSubmissionValidator JobLaunchFilter)]
-            [cook.rest.impersonation :refer (create-impersonation-middleware)]
+            [cook.mesos.task :as task]
+            [cook.plugins.definitions :refer [JobLaunchFilter JobSubmissionValidator]]
+            [cook.rate-limit :as rate-limit]
             [cook.rest.api :as api]
+            [cook.rest.impersonation :refer [create-impersonation-middleware]]
+            [cook.scheduler.scheduler :as sched]
             [cook.schema :as schema]
             [cook.tools :as util]
-            [cook.rate-limit :as rate-limit]
-            [datomic.api :as d :refer (q db)]
+            [datomic.api :as d :refer [db q]]
             [mount.core :as mount]
             [plumbing.core :refer [mapply]]
-            [qbits.jet.server :refer (run-jetty)]
-            [ring.middleware.params :refer (wrap-params)]
-            [cook.scheduler.scheduler :as sched]
-            [cook.mesos.task :as task])
+            [qbits.jet.server :refer [run-jetty]]
+            [ring.middleware.params :refer [wrap-params]])
   (:import (com.netflix.fenzo SimpleAssignmentResult)
-           (io.kubernetes.client.custom Quantity$Format Quantity)
-           (io.kubernetes.client.openapi.models V1Container V1ResourceRequirements V1Pod V1ObjectMeta V1PodSpec V1Node
-                                                V1NodeStatus V1NodeSpec V1Taint)
-           (java.util UUID)
+           (io.kubernetes.client.custom Quantity Quantity$Format)
+           (io.kubernetes.client.openapi.models V1Container V1Node V1NodeSpec V1NodeStatus V1ObjectMeta V1Pod V1PodSpec V1ResourceRequirements V1Taint)
            (java.util.concurrent Executors)
+           (java.util UUID)
            (org.apache.log4j ConsoleAppender Logger PatternLayout)))
 
 (defn create-dummy-mesos-compute-cluster
@@ -393,7 +392,8 @@
      (loop []
        (when-not (pred)
          (if (< (.getTime (java.util.Date.)) (+ start-ms max-wait-ms))
-           (recur)
+           (do (java.lang.Thread/sleep interval-ms)
+               (recur))
            (throw (ex-info (str "pred not true : " (on-exceed-str-fn))
                            {:interval-ms interval-ms
                             :max-wait-ms max-wait-ms}))))))))
@@ -481,7 +481,7 @@
   (let [pod (V1Pod.)
         metadata (V1ObjectMeta.)
         spec (V1PodSpec.)]
-    (doall (for [{:keys [mem cpus]} requests]
+    (doall (for [{:keys [mem cpus gpus gpu-model]} requests]
              (let [container (V1Container.)
                    resources (V1ResourceRequirements.)]
                (when mem
@@ -494,6 +494,13 @@
                                    "cpu"
                                    (Quantity. (BigDecimal. cpus)
                                               Quantity$Format/DECIMAL_SI)))
+               (when (and gpus (-> gpus Integer/parseInt pos?))
+                 (.putRequestsItem resources
+                                   "nvidia.com/gpu"
+                                   (Quantity. gpus))
+                 (.putNodeSelectorItem spec
+                                       "cloud.google.com/gke-accelerator"
+                                       (or gpu-model "nvidia-tesla-p100")))
                (.setResources container resources)
                (.addContainersItem spec container))))
     (.setNodeName spec node-name)
@@ -515,7 +522,7 @@
         (.addTolerationsItem (kapi/toleration-for-pool pool-name)))
     outstanding-synthetic-pod))
 
-(defn node-helper [node-name cpus mem pool]
+(defn node-helper [node-name cpus mem gpus gpu-model pool]
   "Make a fake node for kubernetes unit tests"
   (let [node (V1Node.)
         status (V1NodeStatus.)
@@ -531,9 +538,16 @@
                                                    Quantity$Format/DECIMAL_SI))
       (.putAllocatableItem status "memory" (Quantity. (BigDecimal. (* kapi/memory-multiplier mem))
                                                       Quantity$Format/DECIMAL_SI)))
+    (when (and gpus (pos? gpus))
+      (.putCapacityItem status "nvidia.com/gpu" (Quantity. (BigDecimal. gpus)
+                                                           Quantity$Format/DECIMAL_SI))
+      (.putAllocatableItem status "nvidia.com/gpu" (Quantity. (BigDecimal. gpus)
+                                                              Quantity$Format/DECIMAL_SI))
+      (.putLabelsItem metadata "gpu-type" (or gpu-model "nvidia-tesla-p100")))
+
     (when pool
       (let [^V1Taint taint (V1Taint.)]
-        (.setKey taint "cook-pool")
+        (.setKey taint kapi/cook-pool-taint)
         (.setValue taint pool)
         (.setEffect taint "NoSchedule")
         (-> spec (.addTaintsItem taint))
@@ -544,19 +558,22 @@
   node))
 
 (defn make-kubernetes-compute-cluster
-  [namespaced-pod-name->pod pool-names synthetic-pods-user node-blocklist-labels]
-  (let [synthetic-pods-config {:image "image"
-                               :user synthetic-pods-user
-                               :max-pods-outstanding 4
-                               :pools pool-names}]
+  [namespaced-pod-name->pod pool-names node-blocklist-labels additional-synthetic-pods-config]
+  (let [synthetic-pods-config (merge {:image "image"
+                                      :user nil
+                                      :max-pods-outstanding 4
+                                      :pools pool-names} 
+                                     additional-synthetic-pods-config)]
     (kcc/->KubernetesComputeCluster nil ; api-client
                                     "kubecompute" ; name
                                     nil ; entity-id
-                                    nil ; match-trigger-chan
                                     nil ; exit-code-syncer-state
                                     (atom namespaced-pod-name->pod) ; all-pods-atom
                                     (atom {}) ; current-nodes-atom
+                                    (atom {}) ; pool->node-name->node
+                                    (atom {}) ; node-name->pod-name->pod
                                     (atom {}) ; cook-expected-state-map
+                                    (atom {}) ; cook-starting-pods
                                     (atom {}) ; k8s-actual-state-map
                                     (atom nil) ; pool->fenzo-atom
                                     {:kind :per-user} ; namespace-config

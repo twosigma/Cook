@@ -14,16 +14,13 @@
 ;; limitations under the License.
 ;;
 (ns cook.test.scheduler.fenzo-utils
-  (:use clojure.test)
-  (:require [cook.scheduler.fenzo-utils :as fenzo]
+  (:require [clojure.test :refer :all]
+            [cook.scheduler.fenzo-utils :as fenzo]
             [cook.scheduler.scheduler :as scheduler]
+            [cook.test.testutil :refer [create-dummy-job restore-fresh-database!]]
             [cook.tools :as util]
-            [cook.test.testutil :refer (restore-fresh-database! create-dummy-job)]
             [datomic.api :as d])
-  (import com.netflix.fenzo.SimpleAssignmentResult
-          com.netflix.fenzo.AssignmentFailure
-          com.netflix.fenzo.ConstraintFailure
-          com.netflix.fenzo.VMResource))
+  (:import (com.netflix.fenzo AssignmentFailure ConstraintFailure SimpleAssignmentResult VMResource)))
 
 ;; Fenzo is aware of other resources as well; just limiting it to ones
 ;; Cook will usually encounter

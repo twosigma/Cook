@@ -3,7 +3,7 @@
 set -e
 
 # Install the current version of the jobclient
-pushd ${TRAVIS_BUILD_DIR}/jobclient
+pushd ${TRAVIS_BUILD_DIR}/jobclient/java
 mvn install
 popd
 

@@ -14,8 +14,8 @@
 ;; limitations under the License.
 ;;
 (ns cook.test.mesos
-  (:use clojure.test)
   (:require [clojure.core.async :as async]
+            [clojure.test :refer :all]
             [cook.config :as config]
             [cook.datomic]
             [cook.mesos :as mesos]

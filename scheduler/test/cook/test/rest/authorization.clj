@@ -14,8 +14,8 @@
 ;; limitations under the License.
 ;;
 (ns cook.test.rest.authorization
-  (:use clojure.test)
-  (:require [cook.rest.authorization :as auth]))
+  (:require [clojure.test :refer :all]
+            [cook.rest.authorization :as auth]))
 
 (def test-job-owner "the-job-owner")
 (def admin-user "admin")

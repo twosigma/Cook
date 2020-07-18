@@ -19,12 +19,12 @@
             [clojure.core.async :as async]
             [clojure.tools.logging :as log]
             [cook.tools :as util]
-            [datomic.api :refer (q)]
+            [datomic.api :refer [q]]
             [mesomatic.scheduler :as mesos]
             [mesomatic.types :as mesos-type]
-            [plumbing.core :refer (map-vals map-from-vals)])
-  (import org.apache.mesos.Protos$Status
-          org.apache.mesos.SchedulerDriver))
+            [metrics.timers :as timers]
+            [plumbing.core :refer [map-from-vals map-vals]])
+  (:import (org.apache.mesos Protos$Status SchedulerDriver)))
 
 (def resource->type {:cpus :scalar
                      :mem :scalar
@@ -434,7 +434,9 @@
                    offer-trigger-chan (let [[new-offers state'] (prepare-new-offers state)]
                                         (log/debug "Sending offers" {:offers new-offers})
                                         (when (seq new-offers)
-                                          (.resourceOffers scheduler driver (mapv (partial mesos-type/->pb :Offer) new-offers)))
+                                          (->>
+                                            (.resourceOffers scheduler driver (mapv (partial mesos-type/->pb :Offer) new-offers))
+                                            (map #(assoc % :offer-match-timer (timers/start (timers/timer "mock-mesos"))))))
                                         (util/close-when-ch! v)
                                         state')
                    complete-trigger-chan (let [state' (complete-tasks! (assoc state :now (t/now)) scheduler driver)]
