@@ -6,6 +6,7 @@ import sys
 import time
 import uuid
 from datetime import datetime, timedelta
+from urllib.parse import urlparse
 
 import arrow
 import humanfriendly
@@ -13,6 +14,9 @@ import humanfriendly
 from cook import terminal
 
 quit_running = False
+
+TRUE_STRINGS = {'yes', 'true', 'y'}
+FALSE_STRINGS = {'no', 'false', 'n'}
 
 
 def deep_merge(a, b):
@@ -150,3 +154,37 @@ def partition(l, n):
     """Yield successive n-sized chunks from l"""
     for i in range(0, len(l), n):
         yield l[i:i + n]
+
+
+def load_target_clusters(config_map, url=None, cluster=None):
+    """Given the config and (optional) url and cluster flags, returns the list of clusters to target"""
+    if cluster and url:
+        raise Exception('You cannot specify both a cluster name and a cluster url at the same time')
+
+    clusters = None
+    config_clusters = config_map.get('clusters')
+    if url:
+        if urlparse(url).scheme == '':
+            url = f'http://{url}'
+        clusters = [{'name': url, 'url': url}]
+    elif config_clusters:
+        if cluster:
+            clusters = [c for c in config_clusters if c.get('name').lower() == cluster.lower()]
+            if len(clusters) == 0 and len(config_clusters) > 0:
+                config_cluster_names = ', '.join([c.get('name') for c in config_clusters])
+                raise Exception(f'You specified cluster {cluster}, which was not present in your config.' +
+                                f' You have the following clusters configured: {config_cluster_names}.')
+        else:
+            clusters = [c for c in config_clusters if 'disabled' not in c or not c['disabled']]
+
+    return clusters
+
+
+def str2bool(v):
+    """Converts the given string to a boolean, or returns None"""
+    if v.lower() in TRUE_STRINGS:
+        return True
+    elif v.lower() in FALSE_STRINGS:
+        return False
+    else:
+        return None
