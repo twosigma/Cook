@@ -108,16 +108,14 @@
   (job-constraint-evaluate
     [{:keys [job]} _ vm-attributes _]
     (let [k8s-vm? (= (get vm-attributes "compute-cluster-type") "kubernetes")
-          ; cast to int because the API allows both float and int gpu values
-          job-gpu-count-requested (-> job util/job-ent->resources :gpus (or 0) int)]
+          job-gpu-count-requested (-> job util/job-ent->resources :gpus (or 0))]
           (if k8s-vm?
             (let [job-gpu-model-requested (job->gpu-model-requested
                                             job-gpu-count-requested job (util/job->pool-name job))
                   vm-gpu-model->count-available (get vm-attributes "gpus")
                   vm-satisfies-constraint? (if (pos? job-gpu-count-requested)
                                              ; If job requests GPUs, require that the VM has enough gpus available in the same model as the job requested.
-                                             ; cast to int because the API allows both float and int gpu values
-                                             (= (int (get vm-gpu-model->count-available job-gpu-model-requested 0)) job-gpu-count-requested)
+                                             (== (get vm-gpu-model->count-available job-gpu-model-requested 0) job-gpu-count-requested)
                                              ; If job does not request GPUs, require that the VM does not support gpus.
                                              (-> vm-gpu-model->count-available count zero?))]
               [vm-satisfies-constraint? (when-not vm-satisfies-constraint?
