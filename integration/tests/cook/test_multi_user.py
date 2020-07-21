@@ -895,11 +895,11 @@ class MultiUserCookTest(util.CookTest):
                         self.assertEqual(resp.status_code, 200, resp.text)
 
     def test_queue_endpoint(self):
+        bad_constraints = [["HOSTNAME",
+                           "EQUALS",
+                           "won't get scheduled"]]
         group = {'uuid': str(util.make_temporal_uuid())}
-        job_spec = {'group': group['uuid'],
-                    'command': 'sleep 30',
-                    'cpus': util.max_cpus()}
-        uuids, resp = util.submit_jobs(self.cook_url, job_spec, clones=100, groups=[group])
+        uuid, resp = util.submit_job(self.cook_url, command='sleep 30', group=group['uuid'], constraints=bad_constraints)
         self.assertEqual(201, resp.status_code, resp.content)
         try:
             default_pool = util.default_submit_pool() or util.default_pool(self.cook_url)
@@ -911,10 +911,10 @@ class MultiUserCookTest(util.CookTest):
                     return util.query_queue(self.cook_url)
 
                 def queue_predicate(resp):
-                    return any([job['job/uuid'] in uuids for job in resp.json()[pool]])
+                    return any([job['job/uuid'] == uuid for job in resp.json()[pool]])
 
                 resp = util.wait_until(query_queue, queue_predicate)
-                job = [job for job in resp.json()[pool] if job['job/uuid'] in uuids][0]
+                job = [job for job in resp.json()[pool] if job['job/uuid'] == uuid][0]
                 job_group = job['group/_job'][0]
                 self.assertEqual(200, resp.status_code, resp.content)
                 self.assertTrue('group/_job' in job.keys())
@@ -922,7 +922,7 @@ class MultiUserCookTest(util.CookTest):
                 self.assertTrue('group/host-placement' in job_group.keys())
                 self.assertFalse('group/job' in job_group.keys())
         finally:
-            util.kill_jobs(self.cook_url, uuids)
+            util.kill_jobs(self.cook_url, [uuid])
 
     @unittest.skipUnless(util.pool_mover_plugin_configured(), 'Requires the "pool mover" job adjuster plugin')
     def test_pool_mover_plugin(self):

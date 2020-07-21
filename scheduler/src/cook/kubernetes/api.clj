@@ -3,39 +3,39 @@
             [clojure.set :as set]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
-            [cook.kubernetes.metrics :as metrics]
-            [datomic.api :as d]
             [cook.config :as config]
+            [cook.kubernetes.metrics :as metrics]
+            [cook.scheduler.constraints :as constraints]
             [cook.task :as task]
             [cook.tools :as util]
+            [datomic.api :as d]
             [metrics.meters :as meters]
             [metrics.timers :as timers]
             [plumbing.core :as pc])
-  (:import
-    (com.google.gson JsonSyntaxException)
-    (com.twosigma.cook.kubernetes WatchHelper)
-    (io.kubernetes.client.custom Quantity Quantity$Format IntOrString)
-    (io.kubernetes.client.openapi ApiClient ApiException JSON)
-    (io.kubernetes.client.openapi.apis CoreV1Api)
-    (io.kubernetes.client.openapi.models V1Affinity V1Container V1ContainerPort V1ContainerState V1ContainerStatus
-                                         V1DeleteOptions V1DeleteOptionsBuilder V1EmptyDirVolumeSource V1EnvVar
-                                         V1Event V1HostPathVolumeSource V1HTTPGetAction V1Node V1NodeAffinity
-                                         V1NodeSelector V1NodeSelectorRequirement V1NodeSelectorTerm V1ObjectMeta
-                                         V1ObjectReference V1Pod V1PodCondition V1PodSecurityContext V1PodSpec
-                                         V1PodStatus V1Probe V1ResourceRequirements V1Toleration V1VolumeBuilder
-                                         V1Volume V1VolumeMount)
-    (io.kubernetes.client.util Watch)
-    (java.net SocketTimeoutException)
-    (java.util.concurrent Executors ExecutorService)))
+  (:import (com.google.gson JsonSyntaxException)
+           (com.twosigma.cook.kubernetes WatchHelper)
+           (io.kubernetes.client.custom IntOrString Quantity Quantity$Format)
+           (io.kubernetes.client.openapi ApiClient ApiException JSON)
+           (io.kubernetes.client.openapi.apis CoreV1Api)
+           (io.kubernetes.client.openapi.models
+             V1Affinity V1Container V1ContainerPort V1ContainerState V1ContainerStatus V1DeleteOptions V1DeleteOptionsBuilder
+             V1EmptyDirVolumeSource V1EnvVar V1Event V1HostPathVolumeSource V1HTTPGetAction V1Node V1NodeAffinity V1NodeSelector
+             V1NodeSelectorRequirement V1NodeSelectorTerm V1ObjectMeta V1ObjectReference V1Pod V1PodCondition V1PodSecurityContext
+             V1PodSpec V1PodStatus V1Probe V1ResourceRequirements V1Toleration V1Volume V1VolumeBuilder V1VolumeMount)
+           (io.kubernetes.client.util Watch)
+           (java.net SocketTimeoutException)
+           (java.util.concurrent Executors ExecutorService)))
 
 
 (def cook-pod-label "twosigma.com/cook-scheduler-job")
 (def cook-synthetic-pod-job-uuid-label "twosigma.com/cook-scheduler-synthetic-pod-job-uuid")
 (def cook-pool-label "cook-pool")
+(def cook-pool-taint "cook-pool")
 (def cook-sandbox-volume-name "cook-sandbox-volume")
 (def cook-job-pod-priority-class "cook-workload")
 (def cook-synthetic-pod-priority-class "synthetic-pod")
 (def cook-synthetic-pod-name-prefix "synthetic")
+(def gpu-node-taint "nvidia.com/gpu")
 (def k8s-hostname-label "kubernetes.io/hostname")
 ; This pod annotation signals to the cluster autoscaler that
 ; it's safe to remove the node on which the pod is running
@@ -72,15 +72,11 @@
   [^V1Pod pod compute-cluster-name]
   (= compute-cluster-name (some-> pod .getMetadata .getLabels (.get cook-pod-label))))
 
-(defn make-atom-updater
-  "Given a state atom, returns a callback that updates that state-atom when called with a key, prev item, and item."
-  [state-atom]
-  (fn
-    [key prev-item item]
-    (cond
-      (and (nil? prev-item) (not (nil? item))) (swap! state-atom (fn [m] (assoc m key item)))
-      (and (not (nil? prev-item)) (not (nil? item))) (swap! state-atom (fn [m] (assoc m key item)))
-      (and (not (nil? prev-item)) (nil? item)) (swap! state-atom (fn [m] (dissoc m key))))))
+(defn pod->node-name
+  "Given a pod, returns the node name on the pod spec"
+  [^V1Pod pod]
+  (or (some-> pod .getSpec .getNodeName)
+      (some-> pod .getSpec .getNodeSelector (get k8s-hostname-label))))
 
 (defn cook-pod-callback-wrap
   "A special wrapping function that, given a callback, key, prev-item, and item, will invoke the callback only
@@ -166,11 +162,11 @@
 (declare initialize-pod-watch)
 (defn ^Callable initialize-pod-watch-helper
   "Help creating pod watch. Returns a new watch Callable"
-  [^ApiClient api-client compute-cluster-name all-pods-atom cook-pod-callback]
+  [{:keys [^ApiClient api-client all-pods-atom node-name->pod-name->pod] compute-cluster-name :name :as compute-cluster} cook-pod-callback]
   (let [[current-pods namespaced-pod-name->pod] (get-all-pods-in-kubernetes api-client compute-cluster-name)
-        ; 2 callbacks;
         callbacks
-        [(make-atom-updater all-pods-atom) ; Update the set of all pods.
+        [(util/make-atom-updater all-pods-atom) ; Update the set of all pods.
+         (util/make-nested-atom-updater node-name->pod-name->pod pod->node-name get-pod-namespaced-key)
          (partial cook-pod-callback-wrap cook-pod-callback compute-cluster-name)] ; Invoke the cook-pod-callback if its a cook pod.
         old-all-pods @all-pods-atom]
     (log/info "In" compute-cluster-name "compute cluster, pod watch processing pods:" (keys namespaced-pod-name->pod))
@@ -201,18 +197,18 @@
                 (log/error e "In" compute-cluster-name "compute cluster, error during pod watch"))))
           (finally
             (.close watch)
-            (initialize-pod-watch api-client compute-cluster-name all-pods-atom cook-pod-callback)))))))
+            (initialize-pod-watch compute-cluster cook-pod-callback)))))))
 
 (defn initialize-pod-watch
   "Initialize the pod watch. This fills all-pods-atom with data and invokes the callback on pod changes."
-  [^ApiClient api-client compute-cluster-name all-pods-atom cook-pod-callback]
+  [{compute-cluster-name :name :as compute-cluster} cook-pod-callback]
   (log/info "In" compute-cluster-name "compute cluster, initializing pod watch")
   ; We'll iterate trying to connect to k8s until the initialize-pod-watch-helper returns a watch function.
   (let [{:keys [reconnect-delay-ms]} (config/kubernetes)
         tmpfn (fn []
                 (try
                   (log/info "In" compute-cluster-name "compute cluster, initializing pod watch helper")
-                  (initialize-pod-watch-helper api-client compute-cluster-name all-pods-atom cook-pod-callback)
+                  (initialize-pod-watch-helper compute-cluster cook-pod-callback)
                   (catch Exception e
                     (log/error e "Error during pod watch initial setup of looking at pods for" compute-cluster-name
                                "and sleeping" reconnect-delay-ms "milliseconds before reconnect")
@@ -221,12 +217,27 @@
         ^Callable first-success (->> tmpfn repeatedly (some identity))]
     (.submit kubernetes-executor ^Callable first-success)))
 
+(defn node->node-name
+  "Given a V1Node, return the name of the node"
+  [^V1Node node]
+  (-> node .getMetadata .getName))
+
+(defn get-node-pool
+  "Get the pool for a node. In the case of no pool, return 'no-pool"
+  [^V1Node node]
+  ; In the case of nil, we have taints-on-node == [], and we'll map to no-pool.
+  (let [taints-on-node (or (some-> node .getSpec .getTaints) [])
+        found-cook-pool-taint (filter #(= cook-pool-taint (.getKey %)) taints-on-node)]
+    (if (= 1 (count found-cook-pool-taint))
+      (-> found-cook-pool-taint first .getValue)
+      "no-pool")))
+
 (declare initialize-node-watch)
 (defn initialize-node-watch-helper
   "Help creating node watch. Returns a new watch Callable"
-  [^ApiClient api-client compute-cluster-name current-nodes-atom]
+  [{:keys [^ApiClient api-client current-nodes-atom pool->node-name->node] compute-cluster-name :name :as compute-cluster}]
   (let [api (CoreV1Api. api-client)
-        current-nodes
+        current-nodes-raw
         (timers/time! (metrics/timer "get-all-nodes" compute-cluster-name)
           (.listNode api
                      nil ; includeUninitialized
@@ -239,32 +250,46 @@
                      nil ; timeoutSeconds
                      nil ; watch
                      ))
-        node-name->node (pc/map-from-vals (fn [^V1Node node]
-                                            (-> node .getMetadata .getName))
-                                          (.getItems current-nodes))]
-    (reset! current-nodes-atom node-name->node)
-    (let [watch (WatchHelper/createNodeWatch api-client (-> current-nodes .getMetadata .getResourceVersion))]
+        current-nodes (pc/map-from-vals node->node-name (.getItems current-nodes-raw))
+        callbacks
+        [(util/make-atom-updater current-nodes-atom) ; Update the set of all pods.
+         (util/make-nested-atom-updater pool->node-name->node get-node-pool node->node-name)]
+         old-current-nodes @current-nodes-atom]
+    (log/info "In" compute-cluster-name "compute cluster, node watch processing nodes:" (keys @current-nodes-atom))
+    ; We want to process all changes through the callback process.
+    ; So compute the delta between the old and new and process those via the callbacks.
+    ; Note as a side effect, the callbacks mutate current-nodes-atom
+    (doseq [node-name (set/union (set (keys current-nodes)) (set (keys old-current-nodes)))]
+      (log/info "In" compute-cluster-name "compute cluster, node watch doing (startup) callback for" node-name)
+      (doseq [callback callbacks]
+        (try
+          (callback node-name (get old-current-nodes node-name) (get current-nodes node-name))
+          (catch Exception e
+            (log/error e "In" compute-cluster-name
+                       "compute cluster, node watch error while processing callback for" node-name)))))
+
+    (let [watch (WatchHelper/createNodeWatch api-client (-> current-nodes-raw .getMetadata .getResourceVersion))]
       (fn []
         (try
           (log/info "In" compute-cluster-name "compute cluster, handling node watch updates")
-          (handle-watch-updates current-nodes-atom watch (fn [n] (-> n .getMetadata .getName))
-                                [(make-atom-updater current-nodes-atom)]) ; Update the set of all nodes.
+          (handle-watch-updates current-nodes-atom watch node->node-name
+                                callbacks) ; Update the set of all nodes.
           (catch Exception e
             (log/warn e "Error during node watch for compute cluster" compute-cluster-name))
           (finally
             (.close watch)
-            (initialize-node-watch api-client compute-cluster-name current-nodes-atom)))))))
+            (initialize-node-watch compute-cluster)))))))
 
 (defn initialize-node-watch
   "Initialize the node watch. This fills current-nodes-atom with data and invokes the callback on pod changes."
-  [^ApiClient api-client compute-cluster-name current-nodes-atom]
+  [{:keys [^ApiClient api-client current-nodes-atom] compute-cluster-name :name :as compute-cluster}]
   (log/info "In" compute-cluster-name "compute cluster, initializing node watch")
   ; We'll iterate trying to connect to k8s until the initialize-node-watch-helper returns a watch function.
   (let [{:keys [reconnect-delay-ms]} (config/kubernetes)
         tmpfn (fn []
                 (try
                   (log/info "In" compute-cluster-name "compute cluster, initializing node watch helper")
-                  (initialize-node-watch-helper api-client compute-cluster-name current-nodes-atom)
+                  (initialize-node-watch-helper compute-cluster)
                   (catch Exception e
                     (log/error e "Error during node watch initial setup of looking at nodes for" compute-cluster-name
                                "and sleeping" reconnect-delay-ms "milliseconds before reconnect")
@@ -343,27 +368,10 @@
    :cpus (if (get m "cpu")
            (-> m (get "cpu") to-double)
            0.0)
-   ;; For the purposes of simplified operations on the resource maps, we only look at number of GPUs in this function
-   ;; If GKE supports multiple GPU models on the same node in the future, this function must be modified
-   :gpus (if (get m "nvidia.com/gpu")
-          (-> m (get "nvidia.com/gpu") to-int)
-          0)})
-
-(defn get-node-pool
-  "Get the pool for a node. In the case of no pool, return 'no-pool"
-  [^V1Node node]
-  ; In the case of nil, we have taints-on-node == [], and we'll map to no-pool.
-  (let [taints-on-node (or (some-> node .getSpec .getTaints) [])
-        cook-pool-taint (filter #(= "cook-pool" (.getKey %)) taints-on-node)]
-    (if (= 1 (count cook-pool-taint))
-      (-> cook-pool-taint first .getValue)
-      "no-pool")))
-
-(defn pod->node-name
-  "Given a pod, returns the node name on the pod spec"
-  [^V1Pod pod]
-  (or (some-> pod .getSpec .getNodeName)
-      (some-> pod .getSpec .getNodeSelector (get k8s-hostname-label))))
+   ; Assumes that each Kubernetes node and each pod only contains one type of GPU model
+   :gpus (if-let [gpu-count (get m "nvidia.com/gpu")]
+           (to-int gpu-count)
+           0)})
 
 (defn pods->node-name->pods
   "Given a seq of pods, create a map of node names to pods"
@@ -385,7 +393,7 @@
     false
     (let [taints-on-node (or (some-> node .getSpec .getTaints) [])
           other-taints (remove #(contains?
-                                  #{"cook-pool" k8s-deletion-candidate-taint}
+                                  #{cook-pool-taint k8s-deletion-candidate-taint gpu-node-taint}
                                   (.getKey %))
                                taints-on-node)
           node-name (some-> node .getMetadata .getName)
@@ -404,55 +412,47 @@
                                                      false)
              :else true))))
 
-(defn merge-resource-maps
-  "Given a function and two resource-maps, merge into a single resource map"
-  [f resource-map-a resource-map-b]
-  {:cpus (f (:cpus resource-map-a) (or (:cpus resource-map-b) 0))
-   :mem (f (:mem resource-map-a) (or (:mem resource-map-b) 0))
-   :gpus (merge-with f (:gpus resource-map-a) (:gpus resource-map-b))})
-
-(defn merge-resource-map-collection
-  "Given a function and multiple resource-maps, merge into a single resource map"
-  [f & resource-maps]
-  (reduce (fn [resource-map-a resource-map-b]
-            (merge-resource-maps f resource-map-a resource-map-b))
-          resource-maps))
+(defn add-gpu-model-to-resource-map
+  "Given a map from node-name->resource-type->capacity, perform the following operation:
+  - if the amount of gpus on the node is positive, set the gpus capacity to model->count
+  - if the amount of gpus on the node is 0, set the gpus capacity to an empty map"
+  [gpu-model {:keys [gpus] :as resource-map}]
+  (let [gpu-model->count (if (and gpu-model (pos? gpus))
+                           {gpu-model gpus}
+                           {})]
+    (assoc resource-map :gpus gpu-model->count)))
 
 (defn get-capacity
   "Given a map from node-name to node, generate a map from node-name->resource-type-><capacity>"
   [node-name->node]
   (pc/map-vals (fn [^V1Node node]
-                 (let [{:keys [gpus] :as resource-map} (-> node .getStatus .getAllocatable convert-resource-map)
-                       gpu-model (-> node .getMetadata .getLabels (get "gpu-type"))]
-                   (if (and gpu-model (pos? gpus))
-                     (assoc resource-map :gpus {gpu-model (:gpus resource-map)})
-                     (assoc resource-map :gpus {}))))
+                 (let [resource-map (some-> node .getStatus .getAllocatable convert-resource-map)
+                       gpu-model (some-> node .getMetadata .getLabels (get "gpu-type"))]
+                   (add-gpu-model-to-resource-map gpu-model resource-map)))
                node-name->node))
 
 (defn get-consumption
-  "Given a map from pod-name to pod, generate a map from node-name->resource-type->capacity
+  "Given a map from pod-name to pod, generate a map from node-name->resource-type->capacity.
+  Ignores pods that do not have an assigned node.
   When accounting for resources, we use resource requests to determine how much is used, not limits.
   See https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/#resource-requests-and-limits-of-pod-and-container"
   [node-name->pods]
-  (pc/map-vals (fn [pods]
-                 (->> pods
-                      (map (fn [^V1Pod pod]
-                             (let [containers (-> pod .getSpec .getContainers)
-                                   container-requests (map (fn [^V1Container c]
-                                                             (-> c
-                                                                 .getResources
-                                                                 .getRequests
-                                                                 convert-resource-map))
-                                                           containers)
-                                   {:keys [gpus] :as resource-map} (apply merge-with + container-requests)
-                                   gpu-model (-> pod .getSpec .getNodeSelector (get "cloud.google.com/gke-accelerator"))]
-                               (if (and gpu-model (pos? gpus))
-                                 (assoc resource-map :gpus {gpu-model gpus})
-                                 (assoc resource-map :gpus {})))))
-                       ;; sum-resources will need to handle the unlikely case where
-                       ;; two pods on the same node asked for different models
-                      (apply merge-resource-map-collection +)))
-               node-name->pods))
+  (->> node-name->pods
+       (filter first) ; Keep those with non-nil node names.
+       (pc/map-vals (fn [pods]
+                      (->> pods
+                           (map (fn [^V1Pod pod]
+                                  (let [containers (some-> pod .getSpec .getContainers)
+                                        container-requests (map (fn [^V1Container c]
+                                                                  (some-> c
+                                                                          .getResources
+                                                                          .getRequests
+                                                                          convert-resource-map))
+                                                                containers)
+                                        resource-map (apply merge-with + container-requests)
+                                        gpu-model (some-> pod .getSpec .getNodeSelector (get "cloud.google.com/gke-accelerator"))]
+                                    (add-gpu-model-to-resource-map gpu-model resource-map))))
+                           (apply util/deep-merge-with +))))))
 
 ; see pod->synthesized-pod-state comment for container naming conventions
 (def cook-container-name-for-job
@@ -526,7 +526,7 @@
   "For a given cook pool name, create the right V1Toleration so that Cook will ignore that cook-pool taint."
   [pool-name]
   (let [^V1Toleration toleration (V1Toleration.)]
-    (.setKey toleration "cook-pool")
+    (.setKey toleration cook-pool-taint)
     (.setValue toleration pool-name)
     (.setOperator toleration "Equal")
     (.setEffect toleration "NoSchedule")
@@ -690,20 +690,23 @@
     :or {pod-priority-class cook-job-pod-priority-class
          pod-supports-cook-init? true
          pod-supports-cook-sidecar? true}}]
-  (let [{:keys [scalar-requests job]} task-request
+  (let [{:keys [scalar-requests job resources]} task-request
         ;; NOTE: The scheduler's adjust-job-resources-for-pool-fn may modify :resources,
         ;; whereas :scalar-requests always contains the unmodified job resource values.
         {:strs [mem cpus]} scalar-requests
         {:keys [docker volumes]} container
-        {:keys [image parameters]} docker
+        {:keys [image parameters port-mapping]} docker
         {:keys [environment]} command
+        pool-name (some-> job :job/pool :pool/name)
+        ; gpu count is not stored in scalar-requests because Fenzo does not handle gpus in binpacking
+        gpus (or (:gpus resources) 0)
+        gpu-model-requested (constraints/job->gpu-model-requested gpus job pool-name)
         pod (V1Pod.)
         pod-spec (V1PodSpec.)
         metadata (V1ObjectMeta.)
         container (V1Container.)
         resources (V1ResourceRequirements.)
         labels (assoc pod-labels cook-pod-label compute-cluster-name)
-        pool-name (some-> job :job/pool :pool/name)
         security-context (make-security-context parameters (:user command))
         sandbox-dir (:default-workdir (config/kubernetes))
         workdir (get-workdir parameters sandbox-dir)
@@ -761,6 +764,15 @@
                        (:value command)))
     (.setEnv container main-env-vars)
     (.setImage container image)
+    (doseq [{:keys [container-port host-port protocol]} port-mapping]
+      (when container-port
+        (let [port (V1ContainerPort.)]
+          (.containerPort port (int container-port))
+          (when host-port
+            (.hostPort port (int host-port)))
+          (when protocol
+            (.protocol port protocol))
+          (.addPortsItem container port))))
 
     ; allocate a TTY to support tools that need to read from stdin
     (.setTty container true)
@@ -773,6 +785,10 @@
       ; Some environments may need pods to run in the "Guaranteed"
       ; QoS, which requires limits for both memory and cpu
       (.putLimitsItem resources "cpu" (double->quantity cpus)))
+    (when (pos? gpus)
+      (.putLimitsItem resources "nvidia.com/gpu" (double->quantity gpus))
+      (.putRequestsItem resources "nvidia.com/gpu" (double->quantity gpus))
+      (add-node-selector pod-spec "cloud.google.com/gke-accelerator" gpu-model-requested))
     (.setResources container resources)
     (.setVolumeMounts container (filterv some? (conj (concat volume-mounts main-container-checkpoint-volume-mounts)
                                                      (init-container-workdir-volume-mount-fn true)

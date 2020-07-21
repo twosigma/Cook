@@ -14,31 +14,14 @@
 ;; limitations under the License.
 ;;
 (ns cook.test.jobclient.jobclient
-  (:use clojure.test)
   (:require [clojure.core.async :as async]
-            [cook.rest.authorization :as auth]
-            [cook.components :as components]
-            [cook.test.testutil :refer (with-test-server restore-fresh-database! create-dummy-instance)]
+            [clojure.test :refer :all]
+            [cook.test.testutil :refer [create-dummy-instance restore-fresh-database! with-test-server]]
             [datomic.api :as d])
-  (:import com.twosigma.cook.jobclient.FetchableURI
-           com.twosigma.cook.jobclient.FetchableURI$Builder
-           com.twosigma.cook.jobclient.Group
-           com.twosigma.cook.jobclient.Group$Builder
-           com.twosigma.cook.jobclient.Group$Status
-           com.twosigma.cook.jobclient.GroupListener
-           com.twosigma.cook.jobclient.HostPlacement
-           com.twosigma.cook.jobclient.HostPlacement$Builder
-           com.twosigma.cook.jobclient.HostPlacement$Type
-           com.twosigma.cook.jobclient.Job
-           com.twosigma.cook.jobclient.Job$Builder
-           com.twosigma.cook.jobclient.Job$Status
-           com.twosigma.cook.jobclient.JobClient
-           com.twosigma.cook.jobclient.JobClient$Builder
-           com.twosigma.cook.jobclient.JobListener
-           com.twosigma.cook.jobclient.StragglerHandling
-           com.twosigma.cook.jobclient.StragglerHandling$Builder
-           com.twosigma.cook.jobclient.StragglerHandling$Type
-           (java.util UUID ArrayList)))
+  (:import (com.twosigma.cook.jobclient FetchableURI FetchableURI$Builder Group Group$Builder Group$Status GroupListener HostPlacement
+                                        HostPlacement$Builder HostPlacement$Type Job Job$Builder Job$Status JobClient JobClient$Builder
+                                        JobListener StragglerHandling StragglerHandling$Builder StragglerHandling$Type)
+           (java.util ArrayList UUID)))
 
 (def port 3001)
 

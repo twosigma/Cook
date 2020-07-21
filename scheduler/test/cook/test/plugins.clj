@@ -14,18 +14,15 @@
 ;; limitations under the License.
 ;;
 (ns cook.test.plugins
-  (:use clojure.test)
   (:require [clj-time.core :as t]
+            [clojure.test :refer :all]
             [cook.cache :as ccache]
             [cook.config :as config]
-            [cook.plugins.submission :as submission-plugin]
-            [cook.plugins.launch :as launch-plugin]
             [cook.plugins.definitions :as chd]
+            [cook.plugins.launch :as launch-plugin]
+            [cook.test.testutil :as testutil :refer [create-dummy-job restore-fresh-database!]]
             [cook.tools :as util]
-            [cook.test.testutil :refer [create-dummy-job
-                                        restore-fresh-database!] :as testutil]
             [datomic.api :as d]))
-
 
 (deftest test-aged-out?
   (with-redefs

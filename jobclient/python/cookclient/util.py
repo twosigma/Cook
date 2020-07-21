@@ -15,7 +15,7 @@
 import time
 import uuid
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import UUID
 
 
@@ -58,3 +58,18 @@ def unix_ms_to_datetime(timestamp: int) -> datetime:
     timestamps.
     """
     return datetime.fromtimestamp(timestamp / 1000)
+
+
+def clamped_ms_to_timedelta(ms: int) -> timedelta:
+    """Convert a number of milliseconds into a Python ``timedelta`` object.
+
+    This function will handle overflows if the millisecond count is too large,
+    as is the case with Cook's default max job runtime (which holds the
+    ``Long.MAX_VALUE`` value from Java). If an overflow condition is hit, then
+    this function will clamp the value to either the max timedelta value or the
+    min timedelta value, depending on the sign of the parameter.
+    """
+    try:
+        return timedelta(milliseconds=ms)
+    except OverflowError:
+        return timedelta.max if ms > 0 else timedelta.min

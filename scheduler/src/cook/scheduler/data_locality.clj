@@ -12,12 +12,9 @@
             [datomic.api :as d]
             [metrics.histograms :as histograms]
             [metrics.timers :as timers]
-            [mount.core :as mount]
             [plumbing.core :as pc])
-  (:import com.google.common.cache.Cache
-           com.netflix.fenzo.VMTaskFitnessCalculator
-           com.netflix.fenzo.plugins.BinPackingFitnessCalculators
-           java.util.UUID))
+  (:import (com.netflix.fenzo VMTaskFitnessCalculator)
+           (java.util UUID)))
 
 (def partition-date-format (:basic-date tf/formatters))
 

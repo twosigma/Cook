@@ -25,36 +25,37 @@
             [cook.compute-cluster :as cc]
             [cook.config :as config]
             [cook.datomic :as datomic]
+            [cook.group :as group]
+            [cook.mesos.reason :as reason]
+            [cook.mesos.task :as task]
             [cook.plugins.completion :as completion]
             [cook.plugins.definitions :as plugins]
             [cook.plugins.launch :as launch-plugin]
+            [cook.pool :as pool]
+            [cook.quota :as quota]
+            [cook.rate-limit :as ratelimit]
             [cook.scheduler.constraints :as constraints]
             [cook.scheduler.data-locality :as dl]
             [cook.scheduler.dru :as dru]
             [cook.scheduler.fenzo-utils :as fenzo]
-            [cook.group :as group]
-            [cook.pool :as pool]
-            [cook.quota :as quota]
-            [cook.mesos.reason :as reason]
             [cook.scheduler.share :as share]
-            [cook.mesos.task :as task]
+            [cook.task]
             [cook.tools :as tools]
             [cook.util :as util]
-            [cook.rate-limit :as ratelimit]
-            [cook.task]
-            [datomic.api :as d :refer (q)]
+            [datomic.api :as d :refer [q]]
             [mesomatic.scheduler :as mesos]
-            [metatransaction.core :refer (db)]
+            [metatransaction.core :refer [db]]
             [metrics.counters :as counters]
             [metrics.gauges :as gauges]
             [metrics.histograms :as histograms]
             [metrics.meters :as meters]
             [metrics.timers :as timers]
             [plumbing.core :as pc])
-  (import [com.netflix.fenzo TaskAssignmentResult TaskRequest TaskScheduler TaskScheduler$Builder
-                             VirtualMachineLease VirtualMachineLease$Range
-                             VirtualMachineCurrentState]
-          [com.netflix.fenzo.functions Action1 Func1]))
+  (:import (com.netflix.fenzo
+             TaskAssignmentResult TaskRequest TaskScheduler TaskScheduler$Builder VirtualMachineCurrentState
+             VirtualMachineLease VirtualMachineLease$Range)
+           (com.netflix.fenzo.functions Action1 Func1)
+           (java.util LinkedList)))
 
 (defn now
   []
@@ -72,11 +73,6 @@
   [offer resource-name]
   (reduce into [] (offer-resource-values offer resource-name :ranges)))
 
-(defn offer-resource-available-types
-  [offer resource-name]
-  (log/info "*****" (offer-resource-values offer resource-name :available-types))
-  (merge-with + (offer-resource-values offer resource-name :available-types)))
-
 (defn offer-value-list-map
   [value-list]
   (->> value-list
@@ -85,7 +81,7 @@
                                  :value-ranges (:ranges %)
                                  :value-set (:set %)
                                  :value-text (:text %)
-                                 :value-available-types (:available-types %)
+                                 :value-text->scalar (:text->scalar %)
                                  ; Default
                                  (:value %))))
        (into {})))
@@ -192,6 +188,20 @@
                                         (String. (.toByteArray (:data s)))))
                       (catch Exception e
                         (log/debug e "Error reading a string from mesos status data. Is it in the format we expect?")))))})
+
+(defn job->scalar-request
+  "Takes job and makes the scalar-request for TaskRequestAdapter"
+  [job]
+  (reduce (fn [result resource]
+            (let [{:keys [resource/amount resource/type]} resource]
+              ; Task request shouldn't have a scalar request for GPUs because
+              ; we are completely handling GPUs within GPU host constraint
+              ; and fenzo cannot handle scheduling for multiple GPU models
+              (if (and amount (not= type :resource.type/gpus))
+                (assoc result (name type) amount)
+                result)))
+          {}
+          (:job/resource job)))
 
 (defn update-reason-metrics!
   "Updates histograms and counters for run time, cpu time, and memory time,
@@ -459,15 +469,6 @@
                 result))
             {}
             (:resources offer)))
-  ;TODO: UPDATE THIS
-  ;(getAvailableTypesValues [_]
-  ;  (reduce (fn [result resource] (if-let [value (:available-types resource)]
-  ;                                  (assoc result (:name resource) value)
-  ;                                  result))
-  ;          {}
-  ;          (:resources offer)))
-  ; Some Fenzo plugins (which are included with fenzo, such as host attribute constraints) expect the "HOSTNAME"
-  ; attribute to contain the hostname of this virtual machine.
   (getAttributeMap [_] (get-offer-attr-map offer))
   (getId [_] (-> offer :id :value))
   (getOffer [_] (throw (UnsupportedOperationException.)))
@@ -525,17 +526,7 @@
                                         (constraints/make-fenzo-group-constraint
                                           db group #(guuid->considerable-cotask-ids (:group/uuid group)) running-cotask-cache))
                                       (:group/_job job)))))
-        scalar-requests (reduce (fn [result resource]
-                                  (let [value (:resource/amount resource)
-                                        type (:resource/type resource)]
-                                    ; Task request shouldn't have a scalar request for GPUs because
-                                    ; we are completely handling GPUs within GPU host constraint
-                                    ; and fenzo cannot handle scheduling for GPU models
-                                    (if (and value (not= type :resource.type/gpus))
-                                      (assoc result (name type) value)
-                                      result)))
-                                {}
-                                (:job/resource job))
+        scalar-requests (job->scalar-request job)
         pool-specific-resources ((adjust-job-resources-for-pool-fn pool-name) job resources)]
     (->TaskRequestAdapter job pool-specific-resources task-id assigned-resources guuid->considerable-cotask-ids constraints scalar-requests)))
 
@@ -919,11 +910,17 @@
                                @pool-name->pending-jobs-atom)
                     (launch-matched-tasks! matches conn db fenzo mesos-run-as-user pool-name)
                     (update-host-reservations! rebalancer-reservation-atom matched-job-uuids)
-                    matched-considerable-jobs-head?))]
+                    matched-considerable-jobs-head?))
+                ;; We need to filter pending jobs based on quota so that we don't
+                ;; trigger autoscaling beyond what users have quota to actually run
+                autoscalable-jobs (->> pool-name
+                                       (get @pool-name->pending-jobs-atom)
+                                       (tools/filter-pending-jobs-for-autoscaling
+                                         user->quota user->usage))]
             ;; This call needs to happen *after* launch-matched-tasks!
             ;; in order to avoid autoscaling tasks taking up available
             ;; capacity that was already matched for real Cook tasks.
-            (trigger-autoscaling! (get @pool-name->pending-jobs-atom pool-name) pool-name compute-clusters)
+            (trigger-autoscaling! autoscalable-jobs pool-name compute-clusters)
             matched-head-or-no-matches?))
         (catch Throwable t
           (meters/mark! handle-resource-offer!-errors)
@@ -956,6 +953,7 @@
 (counters/defcounter [cook-mesos scheduler offer-chan-depth])
 
 (defn make-offer-handler
+  "Make the core scheduling loop for a pool"
   [conn fenzo pool-name->pending-jobs-atom agent-attributes-cache max-considerable scaleback
    floor-iterations-before-warn floor-iterations-before-reset trigger-chan rebalancer-reservation-atom
    mesos-run-as-user pool-name compute-clusters]
@@ -1562,6 +1560,20 @@
                (counters/dec! in-order-queue-counter)
                (body-fn))))))
 
+(defn prepare-match-trigger-chan
+  "Calculate the required interval for match-trigger-chan and start the chimes"
+  [match-trigger-chan pools]
+  (let [{:keys [global-min-match-interval-millis target-per-pool-match-interval-millis]} (config/offer-matching)
+        match-interval-millis (-> target-per-pool-match-interval-millis
+                                  (/ (count pools)) 
+                                  int 
+                                  (max global-min-match-interval-millis))]
+    (when (= match-interval-millis global-min-match-interval-millis)
+      (log/warn "match-trigger-chan is set to the global minimum interval of " global-min-match-interval-millis " ms. "
+                "This is a sign that we have more pools, " (count pools) " than we expect to have and we will "
+                "schedule each pool less often than the desired setting of every " target-per-pool-match-interval-millis " ms."))
+    (async/pipe (chime-ch (tools/time-seq (time/now) (time/millis match-interval-millis))) match-trigger-chan)))
+
 (defn create-datomic-scheduler
   [{:keys [conn compute-clusters fenzo-fitness-calculator fenzo-floor-iterations-before-reset
            fenzo-floor-iterations-before-warn fenzo-max-jobs-considered fenzo-scaleback good-enough-fitness
@@ -1578,19 +1590,27 @@
                  [{:pool/name "no-pool"}])
         pool-name->fenzo (pool-map pools' (fn [_] (make-fenzo-scheduler offer-incubate-time-ms
                                                                         fenzo-fitness-calculator good-enough-fitness)))
-        {:keys [pool->resources-atom]}
-        (reduce (fn [m pool-ent]
-                  (let [pool-name (:pool/name pool-ent)
-                        fenzo (pool-name->fenzo pool-name)
-                        resources-atom
-                        (make-offer-handler
-                          conn fenzo pool-name->pending-jobs-atom agent-attributes-cache fenzo-max-jobs-considered
-                          fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset
-                          match-trigger-chan rebalancer-reservation-atom mesos-run-as-user pool-name compute-clusters)]
-                    (-> m
-                        (assoc-in [:pool->resources-atom pool-name] resources-atom))))
-                {}
-                pools')]
+        pool->match-trigger-chan (pool-map pools' (fn [_] (async/chan (async/sliding-buffer 1))))
+        pool-names-linked-list (LinkedList. (map :pool/name pools'))
+        pool->resources-atom (pool-map
+                               pools'
+                               (fn [{:keys [pool/name]}]
+                                 (make-offer-handler
+                                   conn (pool-name->fenzo name) pool-name->pending-jobs-atom agent-attributes-cache
+                                   fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn
+                                   fenzo-floor-iterations-before-reset (get pool->match-trigger-chan name)
+                                   rebalancer-reservation-atom mesos-run-as-user name compute-clusters)))]
+    (prepare-match-trigger-chan match-trigger-chan pools')
+    (async/go-loop []
+      (when-let [x (async/<! match-trigger-chan)]
+        (try
+          (let [pool-name (.removeFirst pool-names-linked-list)]
+            (.addLast pool-names-linked-list pool-name)
+            (async/offer! (get pool->match-trigger-chan pool-name) x))
+          (catch Exception e
+            (log/error e "Exception in match-trigger-chan chime handler")
+            (throw e)))
+        (recur)))
     (log/info "Pool name to fenzo scheduler map:" pool-name->fenzo)
     (start-jobs-prioritizer! conn pool-name->pending-jobs-atom task-constraints rank-trigger-chan)
     {:pool-name->fenzo pool-name->fenzo

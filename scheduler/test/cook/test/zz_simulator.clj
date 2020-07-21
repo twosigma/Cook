@@ -2,39 +2,40 @@
 ;; It seems to leave behind a thread that changes job states; maybe restoring consistency between task state and
 ;; job state?
 (ns cook.test.zz-simulator
-  (:use clojure.test)
+  (:gen-class)
   (:require [cheshire.core :as cheshire]
             [chime :refer [chime-ch]]
-            [clj-time.core :as t]
             [clj-time.coerce :as tc]
+            [clj-time.core :as t]
             [clojure.core.async :as async]
             [clojure.core.cache :as cache]
-            [clojure.edn :as edn]
             [clojure.data.csv :as csv]
             [clojure.data.json :as json]
+            [clojure.edn :as edn]
             [clojure.java.io :as io]
+            [clojure.test :refer :all]
             [clojure.tools.cli :refer [parse-opts]]
             [clojure.tools.logging :as log]
-            [clojure.walk :refer (keywordize-keys)]
-            [com.rpl.specter :refer (transform ALL MAP-VALS MAP-KEYS select FIRST)]
-            [cook.config :refer (executor-config, init-logger)]
+            [clojure.walk :refer [keywordize-keys]]
+            [com.rpl.specter :refer [ALL FIRST MAP-KEYS MAP-VALS select transform]]
+            [cook.config :refer [executor-config init-logger]]
             [cook.datomic :as datomic]
             [cook.mesos :as c]
+            [cook.mesos.mesos-compute-cluster :as mcc]
             [cook.mesos.mesos-mock :as mm]
-            [cook.progress :as progress]
-            [cook.scheduler.share :as share]
-            [cook.tools :as util]
             [cook.plugins.completion :as completion]
-            [cook.test.testutil :as testutil :refer (restore-fresh-database! poll-until)]
+            [cook.progress :as progress]
+            [cook.scheduler.scheduler :as sched]
+            [cook.scheduler.share :as share]
+            [cook.test.testutil :as testutil :refer [poll-until restore-fresh-database!]]
+            [cook.tools :as util]
             [datomic.api :as d]
-            [plumbing.core :refer (map-vals map-keys map-from-vals)]
-            [cook.mesos.mesos-compute-cluster :as mcc])
-  (:import java.util.Date
-           org.apache.curator.framework.CuratorFrameworkFactory
-           org.apache.curator.framework.state.ConnectionStateListener
-           org.apache.curator.retry.BoundedExponentialBackoffRetry
-           org.joda.time.DateTimeUtils)
-  (:gen-class))
+            [plumbing.core :refer [map-from-vals map-keys map-vals]])
+  (:import (java.util Date)
+           (org.apache.curator.framework CuratorFrameworkFactory)
+           (org.apache.curator.framework.state ConnectionStateListener)
+           (org.apache.curator.retry BoundedExponentialBackoffRetry)
+           (org.joda.time DateTimeUtils)))
 
 ;;; This namespace contains a simulator for cook scheduler that accepts a trace file
 ;;; (defined later on) of jobs to "run" through the simulation as well as how much
@@ -87,7 +88,7 @@
                                :retry-limit 5})
 
 (defmacro with-cook-scheduler
-  [conn make-mesos-driver-fn scheduler-config & body]
+  [conn make-mesos-driver-fn scheduler-config trigger-matching? & body]
   `(let [conn# ~conn
          [zookeeper-server# curator-framework#] (setup-test-curator-framework)
          mesos-mult# (or (:mesos-datomic-mult ~scheduler-config)
@@ -146,7 +147,8 @@
                                                               trigger-chans#
                                                               {}
                                                               {"no-pool" (async/chan 100)}
-                                                              {}))]
+                                                              {}))
+         prepare-match-trigger-chan-orig# ~sched/prepare-match-trigger-chan]
      (try
        (with-redefs [executor-config (constantly executor-config#)
                      completion/plugin completion/no-op
@@ -154,7 +156,11 @@
                      ; registration responses matches the configured cook scheduler passes simulator
                      ; and mesos-mock unit tests. (cook.scheduler, lines 1428 create-mesos-scheduler)
                      mcc/make-mesos-driver ~make-mesos-driver-fn
-                     datomic/conn conn#]
+                     datomic/conn conn#
+                     sched/prepare-match-trigger-chan (fn [match-trigger-chan# pools#]
+                                                        (when
+                                                          ~trigger-matching?
+                                                          (prepare-match-trigger-chan-orig# match-trigger-chan# pools#)))]
          (testutil/fake-test-compute-cluster-with-driver conn#
                                                          testutil/fake-test-compute-cluster-name
                                                          nil ; no dummy driver - simulator is going to call initialize
@@ -415,6 +421,7 @@
       mesos-datomic-conn
       make-mesos-driver-fn
       scheduler-config
+      false
       (try
         (doseq [{:keys [user mem cpus gpus]} (:shares config)]
           (share/set-share! mesos-datomic-conn user nil "simulation" :mem mem :cpus cpus :gpus gpus))

@@ -14,7 +14,7 @@
 ;; limitations under the License.
 ;;
 (ns cook.rest.api
-  (:require [camel-snake-kebab.core :refer [->snake_case ->kebab-case]]
+  (:require [camel-snake-kebab.core :refer [->kebab-case ->snake_case]]
             [cheshire.core :as cheshire]
             [clj-time.coerce :as tc]
             [clj-time.core :as t]
@@ -28,27 +28,26 @@
             [compojure.core :refer [ANY GET POST routes]]
             [cook.compute-cluster :as cc]
             [cook.config :as config]
-            [cook.scheduler.constraints :as constraints]
-            [cook.rest.cors :as cors]
             [cook.datomic :as datomic]
-            [cook.scheduler.data-locality :as dl]
-            [cook.pool :as pool]
-            [cook.quota :as quota]
-            [cook.mesos.reason :as reason]
-            [cook.schema :refer [constraint-operators host-placement-types straggler-handling-types]]
-            [cook.scheduler.share :as share]
-            [cook.task-stats :as task-stats]
-            [cook.unscheduled :as unscheduled]
-            [cook.tools :as util]
             [cook.mesos]
+            [cook.mesos.reason :as reason]
             [cook.plugins.adjustment :as adjustment]
             [cook.plugins.definitions :as plugins]
             [cook.plugins.file :as file-plugin]
             [cook.plugins.submission :as submission-plugin]
+            [cook.pool :as pool]
             [cook.progress :as progress]
+            [cook.quota :as quota]
             [cook.rate-limit :as rate-limit]
+            [cook.scheduler.constraints :as constraints]
+            [cook.scheduler.data-locality :as dl]
+            [cook.scheduler.share :as share]
+            [cook.schema :refer [constraint-operators host-placement-types straggler-handling-types]]
             [cook.task :as task]
-            [cook.util :refer [ZeroInt PosNum NonNegNum PosInt NonNegInt PosDouble UserName NonEmptyString]]
+            [cook.task-stats :as task-stats]
+            [cook.tools :as util]
+            [cook.unscheduled :as unscheduled]
+            [cook.util :refer [NonEmptyString NonNegInt NonNegNum PosDouble PosInt PosNum UserName ZeroInt]]
             [datomic.api :as d :refer [q]]
             [liberator.core :as liberator]
             [liberator.util :refer [combine]]
@@ -63,17 +62,16 @@
             [schema.core :as s]
             [swiss.arrows :refer :all])
   (:import (clojure.lang Atom Var)
-           com.codahale.metrics.ScheduledReporter
-           com.netflix.fenzo.VMTaskFitnessCalculator
+           (com.codahale.metrics ScheduledReporter)
+           (com.netflix.fenzo VMTaskFitnessCalculator)
            (java.io OutputStreamWriter)
            (java.net ServerSocket)
            (java.util Date UUID)
-           javax.servlet.ServletResponse
+           (javax.servlet ServletResponse)
            (org.apache.curator.framework.recipes.leader LeaderSelector)
-           org.apache.curator.test.TestingServer
+           (org.apache.curator.test TestingServer)
            (org.joda.time DateTime Minutes)
-           schema.core.OptionalKey))
-
+           (schema.core OptionalKey)))
 
 ;; We use Liberator to handle requests on our REST endpoints.
 ;; The control flow among Liberator's handler functions is described here:
@@ -683,15 +681,12 @@
 (defn get-default-container-for-pool
   "Given a pool name, determine a default container that should be run on it."
   [default-containers effective-pool-name]
-  (->> default-containers
-       (filter (fn [{:keys [pool-regex]}] (re-find (re-pattern pool-regex) effective-pool-name)))
-       first
-       :container))
+  (util/match-based-on-pool-name default-containers effective-pool-name :container))
 
 (defn get-gpu-models-on-pool
-  "Given a pool name, determine the supported GPU models on that pool."
-  [valid-gpu-models effective-pool-name]
-  (:valid-models (constraints/get-gpu-models-entry-on-pool valid-gpu-models effective-pool-name)))
+   "Given a pool name, determine the supported GPU models on that pool."
+   [valid-gpu-models effective-pool-name]
+   (util/match-based-on-pool-name valid-gpu-models effective-pool-name :valid-models))
 
 (s/defn make-job-txn
   "Creates the necessary txn data to insert a job into the database"
@@ -925,6 +920,8 @@
         gpus' (or gpus 0)]
     (when (and (pos? gpus') (not gpu-enabled?))
       (throw (ex-info (str "GPU support is not enabled") {})))
+    (when (and (pos? gpus') (not (get-gpu-models-on-pool (config/valid-gpu-models) pool-name)))
+      (throw (ex-info (str "Job requested GPUs but pool " pool-name " does not have any valid GPU models") {})))
     (when (and requested-gpu-model
                (not (contains? (get-gpu-models-on-pool (config/valid-gpu-models) pool-name) requested-gpu-model)))
       (throw (ex-info (str "The following GPU model is not supported: " requested-gpu-model) {})))
@@ -2139,8 +2136,9 @@
                         pool->user->usage (util/pool->user->usage db)]
                     (pc/for-map [[pool-name queue] pool->queue]
                                 pool-name (->> queue
-                                               (util/filter-based-on-quota (pool->user->quota pool-name)
-                                                                           (pool->user->usage pool-name))
+                                               (util/filter-pending-jobs-for-autoscaling
+                                                 (pool->user->quota pool-name)
+                                                 (pool->user->usage pool-name))
                                                (take (::limit ctx)))))))))
 
 ;;

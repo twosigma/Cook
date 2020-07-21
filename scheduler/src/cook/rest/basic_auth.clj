@@ -15,7 +15,7 @@
 ;;
 (ns cook.rest.basic-auth
   (:require [clojure.tools.logging :as log]
-            [ring.util.response :refer (header status response)]))
+            [ring.util.response :refer [header response status]]))
 
 (defn parse-auth-from-request
   "Given a request, extracts the HTTP basic auth username & password"

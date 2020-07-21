@@ -19,24 +19,23 @@
             [clj-time.core :as t]
             [clj-time.format :as tf]
             [clj-time.periodic :as tp]
+            [clojure.core.async :as async]
+            [clojure.core.cache :as cache]
             [clojure.java.shell :as sh]
             [clojure.string :as str]
+            [clojure.tools.logging :as log]
             [cook.cache :as ccache]
             [cook.config :as config]
             [cook.pool :as pool]
             [cook.schema :as schema]
-            [clojure.core.async :as async]
-            [clojure.core.cache :as cache]
-            [clojure.tools.logging :as log]
-            [datomic.api :as d :refer (q)]
-            [metatransaction.core :refer (db)]
+            [datomic.api :as d :refer [q]]
+            [metatransaction.core :refer [db]]
             [metrics.timers :as timers]
-            [plumbing.core :as pc :refer (map-vals map-keys)])
-  (:import
-    [com.google.common.cache Cache CacheBuilder]
-    [java.util.concurrent TimeUnit]
-    [java.util Date]
-    [org.joda.time DateTime ReadablePeriod]))
+            [plumbing.core :as pc :refer [map-keys map-vals]])
+  (:import (com.google.common.cache Cache CacheBuilder)
+           (java.util.concurrent TimeUnit)
+           (java.util Date)
+           (org.joda.time DateTime ReadablePeriod)))
 
 (defn retrieve-system-id
   "Executes a shell command to retrieve the user/group id for the specified user"
@@ -143,6 +142,20 @@
                 (into {} xf x)
                 x))
             m))
+
+(defn deep-merge-with
+  "Like merge-with, but merges maps recursively, applying the given fn
+  only when there's a non-map at a particular level.
+  (deep-merge-with + {:a {:b {:c 1 :d {:x 1 :y 2}} :e 3} :f 4}
+               {:a {:b {:c 2 :d {:z 9} :z 3} :e 100}})
+  -> {:a {:b {:z 3, :c 3, :d {:z 9, :x 1, :y 2}}, :e 103}, :f 4}"
+  [f & maps]
+  (apply
+    (fn m [& maps]
+      (if (every? map? maps)
+        (apply merge-with m maps)
+        (apply f maps)))
+    maps))
 
 (defn entity->map
   "Takes a datomic entity and converts it along with any nested entities
@@ -894,6 +907,15 @@
     (cond-> {:count 1 :cpus cpus :mem mem}
       gpus (assoc :gpus gpus))))
 
+(defn match-based-on-pool-name
+  "Given a list of dictionaries [{:pool-regexp .. :field ...} {:pool-regexp .. :field ...}
+   a pool name and a <field> name, return the first matching <field> where the regexp matches the pool name."
+  [match-list effective-pool-name field]
+  (->> match-list
+       (filter (fn [{:keys [pool-regex]}] (re-find (re-pattern pool-regex) effective-pool-name)))
+       first
+       field))
+
 (defn filter-based-on-quota
   "Lazily filters jobs for which the sum of running jobs and jobs earlier in the queue exceeds one of the constraints,
    max-jobs, max-cpus or max-mem"
@@ -908,6 +930,13 @@
               [user->usage' (below-quota? (user->quota user) (get user->usage' user))]))]
     (filter-sequential filter-with-quota user->usage queue)))
 
+(defn filter-pending-jobs-for-autoscaling
+  "Lazily filters jobs to those that should be considered
+  for autoscaling purposes. Note that this is used in two
+  places: the /queue endpoint (Mesos only) and as an
+  argument to scheduler/trigger-autoscaling! (k8s only)."
+  [user->quota user->usage queue]
+  (filter-based-on-quota user->quota user->usage queue))
 
 (defn pool->user->usage
   "Returns a map from pool name to user name to usage for all users in all pools."
@@ -923,3 +952,45 @@
                                          (reduce (partial merge-with +))))
                                   user->jobs)))
                  pool->jobs)))
+
+(defn make-atom-updater
+  "Given a state atom, returns a callback that updates that state-atom when called with a key, prev item, and item."
+  [state-atom]
+  (fn
+    [key prev-item item]
+    (cond
+      (and (nil? prev-item) (not (nil? item))) (swap! state-atom (fn [m] (assoc m key item)))
+      (and (not (nil? prev-item)) (not (nil? item))) (swap! state-atom (fn [m] (assoc m key item)))
+      (and (not (nil? prev-item)) (nil? item)) (swap! state-atom (fn [m] (dissoc m key))))))
+
+(defn dissoc-in
+  "Disassociate a nested key. Delete any intermediate dictionaries."
+  [m [k1 k2]]
+  (if (get-in m [k1 k2])
+    (let [inner (dissoc (get m k1 {}) k2)]
+      (if (empty? inner)
+        (dissoc m k1)
+        (assoc m k1 inner)))
+    m))
+
+(defn make-nested-atom-updater
+  "Given a state atom, returns a callback that updates that nested-state-atom when called with a key, prev item, and
+  item. Automatically deletes now empty dictionaries."
+  [state-atom k1-extract-fn k2-extract-fn]
+  (fn
+    [_ prev-item item] ; Key is unused here.
+    (cond
+      (and (nil? prev-item) (not (nil? item)))
+      (let [k1 (k1-extract-fn item)
+            k2 (k2-extract-fn item)]
+        (swap! state-atom (fn [m] (assoc-in m [k1 k2] item))))
+      (and (not (nil? prev-item)) (not (nil? item)))
+      (let [k1 (k1-extract-fn item)
+            k2 (k2-extract-fn item)
+            prev-k1 (k1-extract-fn prev-item)
+            prev-k2 (k2-extract-fn prev-item)]
+        (swap! state-atom (fn [m] (assoc-in (dissoc-in m [prev-k1 prev-k2]) [k1 k2] item))))
+      (and (not (nil? prev-item)) (nil? item))
+      (let [prev-k1 (k1-extract-fn prev-item)
+            prev-k2 (k2-extract-fn prev-item)]
+        (swap! state-atom (fn [m] (dissoc-in m [prev-k1 prev-k2])))))))

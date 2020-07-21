@@ -14,16 +14,14 @@
 ;; limitations under the License.
 ;;
 (ns cook.test.rest.impersonation
-  (:use clojure.test)
-  (:require [cook.rest.authorization :as auth]
-            [cook.rest.impersonation :as imp]
-            [cook.rest.api :as api]))
+  (:require [clojure.test :refer :all]
+            [cook.rest.authorization :as auth]
+            [cook.rest.impersonation :as imp]))
 
 (deftest impersonated-is-authorized
   (let [test-job-owner "the-job-owner"
         test-job {:owner test-job-owner :item :job}
         impersonator-user "the-impersonator"
-        impersonator-job {:owner impersonator-user :item :job}
         admin-user "admin"
         auth-settings {:authorization-fn 'cook.rest.authorization/configfile-admins-auth-open-gets
                        :admins #{admin-user "other-admin"}}

@@ -4,6 +4,31 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.42.6] - 2020-07-17
+### Added
+- Rapid pool skipping in k8s, from @nsinkov.
+- Enhanced offer generation and updated GPU constraints for k8s, from @kathryn-zhou
+### Fixed
+- Fixed some errors that caused NPE and ERROR logs, from @scrosby
+- Replaced chime logic with less aggressive chime logic, from @nsinkov
+
+## [1.42.5] - 2020-07-08
+### Added
+- Port mapping support for k8s, from @dposada
+- Total number of pods and nodes quota for k8s, from @scrosby
+### Fixed
+- Fixed several O(#pods * #nodes) bugs in k8s code, from @scrosby
+- Limit autoscaling to quota of what's allowed to run, from @dposada
+- Improved pool scheduling by fixing chime logic, from @nsinkov
+
+## [1.42.4] - 2020-06-15
+### Added
+- Validation for GPU model requests, from @kathryn-zhou
+### Changed
+- Added extra metrics and logging around match cycle, from @scrosby
+### Fixed
+- Fixed O(#pods * #nodes) bug in calculating k8s offers, from @scrosby
+
 ## [1.42.3] - 2020-06-02
 ### Changed
 - Update checkpointing settings, from @nsinkov

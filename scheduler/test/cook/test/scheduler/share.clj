@@ -14,12 +14,11 @@
 ;; limitations under the License.
 ;;
 (ns cook.test.scheduler.share
-  (:use clojure.test)
-  (:require [cook.config :as config]
+  (:require [clojure.test :refer :all]
+            [cook.config :as config]
             [cook.scheduler.share :as share]
-            [cook.test.testutil :refer (restore-fresh-database! create-pool)]
-            [metatransaction.core :as mt]
-            [datomic.api :as d]))
+            [cook.test.testutil :refer [create-pool restore-fresh-database!]]
+            [metatransaction.core :as mt]))
 
 (deftest test'
   (let [uri "datomic:mem://test"

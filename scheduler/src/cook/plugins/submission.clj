@@ -17,12 +17,12 @@
   (:require [clj-time.coerce :as tc]
             [clj-time.core :as t]
             [clj-time.periodic]
-            [cook.config :as config]
-            [cook.plugins.definitions :refer [JobSubmissionValidator check-job-submission check-job-submission-default]]
-            [cook.plugins.util]
-            [mount.core :as mount]
+            [clojure.string :as str]
             [clojure.tools.logging :as log]
-            [clojure.string :as str])
+            [cook.config :as config]
+            [cook.plugins.definitions :refer [check-job-submission check-job-submission-default JobSubmissionValidator]]
+            [cook.plugins.util]
+            [mount.core :as mount])
   (:import (com.google.common.cache Cache CacheBuilder)
            (java.util.concurrent TimeUnit)))
 

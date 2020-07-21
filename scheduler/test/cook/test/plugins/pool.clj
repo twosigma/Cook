@@ -1,6 +1,6 @@
 (ns cook.test.plugins.pool
-  (:use clojure.test)
-  (:require [cook.plugins.definitions :as plugins]
+  (:require [clojure.test :refer :all]
+            [cook.plugins.definitions :as plugins]
             [cook.plugins.pool :as pool]))
 
 (deftest test-attribute-pool-selector

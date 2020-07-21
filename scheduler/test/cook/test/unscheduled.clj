@@ -14,17 +14,13 @@
 ;; limitations under the License.
 ;;
 (ns cook.test.unscheduled
-  (:use clojure.test)
-  (:require [cook.unscheduled :as u]
-            [datomic.api :as d]
-            [cook.scheduler.scheduler :as scheduler]
-            [cook.tools :as util]
+  (:require [clojure.test :refer :all]
+            [cook.quota :as quota]
             [cook.rate-limit :as rate-limit]
-            [cook.test.testutil :refer (create-dummy-instance
-                                        create-dummy-job
-                                        restore-fresh-database!
-                                        setup)]
-            [cook.quota :as quota]))
+            [cook.scheduler.scheduler :as scheduler]
+            [cook.test.testutil :refer [create-dummy-instance create-dummy-job restore-fresh-database! setup]]
+            [cook.unscheduled :as u]
+            [datomic.api :as d]))
 
 (defn resource-map->list
   [m]

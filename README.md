@@ -12,7 +12,7 @@ What is Cook?
 - Cook is a powerful batch scheduler, specifically designed to provide a great user experience when there are more jobs to run than your cluster has capacity for.
 - Cook is able to intelligently preempt jobs to ensure that no user ever needs to wait long to get quick answers, while simultaneously helping you to achieve 90%+ utilization for massive workloads.
 - Cook has been battle-hardened to automatically recover after dozens of classes of cluster failures.
-- Cook can act as a Spark scheduler, and it comes with a REST API and Java client.
+- Cook can act as a Spark scheduler, and it comes with a [REST API](https://github.com/twosigma/Cook/blob/master/scheduler/docs/scheduler-rest-api.adoc), [Java client](https://github.com/twosigma/Cook/tree/master/jobclient/java/src/main/java/com/twosigma/cook/jobclient), [Python client](https://github.com/twosigma/Cook/tree/master/jobclient/python), and [CLI](https://github.com/twosigma/Cook/tree/master/cli).
 
 [Core concepts](scheduler/docs/concepts.md) is a good place to start to learn more.
 
@@ -47,6 +47,7 @@ The quickest way to get Cook running locally against [GKE](https://cloud.google.
 1. Run `gcloud auth login` to login to Google cloud
 1. Run `bin/make-gke-test-clusters` to create GKE clusters
 1. Run `bin/start-datomic.sh` to start Datomic (Cook database)
+1. Run `lein exec -p datomic/data/seed_k8s_pools.clj $COOK_DATOMIC_URI` to seed some Cook pools in the database
 1. Run `bin/run-local-kubernetes.sh` to start the Cook scheduler
 1. Cook should now be listening locally on port 12321
 
