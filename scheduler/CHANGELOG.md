@@ -132,7 +132,7 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/) and this p
 
 ## [1.38.3] - 2020-02-13
 ### Added
-- Support to blacklist nodes in k8s that have certain labels, from @scrosby
+- Support to blocklist nodes in k8s that have certain labels, from @scrosby
 ### Fixed
 - Bug in reading default pool from config when using k8s sidecar, from @nsinkov
 - Bug in job progress aggregation, from @DaoWen
@@ -469,7 +469,7 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/) and this p
 
 ## [1.7.0] - 2017-10-19
 ### Changed
-- Renamed user whitelist to users allowed, from @dposada
+- Renamed to users allowed, from @dposada
 - Fixes for stderr/out file handling in Cook executor, from @shamsimam
 - Fixed bug with /unscheduled_jobs endpoint, from @pschorf
 
@@ -493,7 +493,7 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/) and this p
 ### Added
 - Added JVM metric reporting, from @pschorf
 - Added support for partial results when querying for groups, from @dposada
-- Added support for user whitelisting, from @dposada
+- Added support for user allowlisting, from @dposada
 
 ## [1.5.4] - 2017-07-31
 ### Added
