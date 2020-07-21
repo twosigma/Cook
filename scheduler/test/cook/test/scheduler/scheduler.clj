@@ -1895,8 +1895,8 @@
           offer-3 (offer-maker 30 8192 {})
           offer-4 (offer-maker 4 2048 {})
           offer-5 (offer-maker 4 1024 {})
-          offer-6 (offer-maker 10 4096 {"nvidia-tesla-p100" 10})
-          offer-7 (offer-maker 20 4096 {"nvidia-tesla-p100" 5})
+          offer-6 (offer-maker 10 4096 {"nvidia-tesla-p100" 2})
+          offer-7 (offer-maker 20 4096 {"nvidia-tesla-p100" 4})
           offer-8 (offer-maker 30 16384 {"nvidia-tesla-p100" 1})
           offer-9 (offer-maker 100 200000 {})
           offers [offer-1 offer-2 offer-3 offer-4 offer-5 offer-6 offer-7 offer-8 offer-9]]
