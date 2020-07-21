@@ -252,7 +252,28 @@
                                                               (->> (filter #(= (.getName %) "cook-checkpointing-tools-volume")))
                                                               (->> (map #(str (.getMountPath %) (.getSubPath %))))))]
         (is (= #{"/abc/xyz"} init-container-paths))
-        (is (= #{"/abc/xyz" "/qed/bbqefg/hij"} main-container-paths))))))
+        (is (= #{"/abc/xyz" "/qed/bbqefg/hij"} main-container-paths)))))
+  (testing "gpu task-metadata"
+    (let [task-metadata {:task-id "my-task"
+                         :command {:value "foo && bar"
+                                   :environment {"FOO" "BAR"}
+                                   :user (System/getProperty "user.name")}
+                         :container {:type :docker
+                                     :docker {:image "alpine:latest"}}
+                         :task-request {:resources {:mem 576
+                                                    :cpus 1.1
+                                                    :gpus 2}
+                                        :scalar-requests {"mem" 512
+                                                          "cpus" 1.0}
+                                        :job {:job/environment #{{:environment/name "COOK_GPU_MODEL"
+                                                                  :environment/value "nvidia-tesla-p100"}}}}
+                         :hostname "kubehost"}
+          ^V1Pod pod (api/task-metadata->pod "cook" "testing-cluster" task-metadata)
+          ^V1PodSpec pod-spec (.getSpec pod)
+          ^V1Container container (-> pod-spec .getContainers first)]
+      (is (= (-> pod-spec .getNodeSelector (get "cloud.google.com/gke-accelerator")) "nvidia-tesla-p100"))
+      (is (= 2 (-> container .getResources .getRequests (get "nvidia.com/gpu") api/to-int)))
+      (is (= 2 (-> container .getResources .getLimits (get "nvidia.com/gpu") api/to-int))))))
 
 (defn- k8s-volume->clj [^V1Volume volume]
   {:name (.getName volume)

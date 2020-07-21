@@ -5,6 +5,7 @@
             [clojure.tools.logging :as log]
             [cook.config :as config]
             [cook.kubernetes.metrics :as metrics]
+            [cook.scheduler.constraints :as constraints]
             [cook.task :as task]
             [cook.tools :as util]
             [datomic.api :as d]
@@ -689,20 +690,23 @@
     :or {pod-priority-class cook-job-pod-priority-class
          pod-supports-cook-init? true
          pod-supports-cook-sidecar? true}}]
-  (let [{:keys [scalar-requests job]} task-request
+  (let [{:keys [scalar-requests job resources]} task-request
         ;; NOTE: The scheduler's adjust-job-resources-for-pool-fn may modify :resources,
         ;; whereas :scalar-requests always contains the unmodified job resource values.
         {:strs [mem cpus]} scalar-requests
         {:keys [docker volumes]} container
         {:keys [image parameters port-mapping]} docker
         {:keys [environment]} command
+        pool-name (some-> job :job/pool :pool/name)
+        ; gpu count is not stored in scalar-requests because Fenzo does not handle gpus in binpacking
+        gpus (or (:gpus resources) 0)
+        gpu-model-requested (constraints/job->gpu-model-requested gpus job pool-name)
         pod (V1Pod.)
         pod-spec (V1PodSpec.)
         metadata (V1ObjectMeta.)
         container (V1Container.)
         resources (V1ResourceRequirements.)
         labels (assoc pod-labels cook-pod-label compute-cluster-name)
-        pool-name (some-> job :job/pool :pool/name)
         security-context (make-security-context parameters (:user command))
         sandbox-dir (:default-workdir (config/kubernetes))
         workdir (get-workdir parameters sandbox-dir)
@@ -781,6 +785,10 @@
       ; Some environments may need pods to run in the "Guaranteed"
       ; QoS, which requires limits for both memory and cpu
       (.putLimitsItem resources "cpu" (double->quantity cpus)))
+    (when (pos? gpus)
+      (.putLimitsItem resources "nvidia.com/gpu" (double->quantity gpus))
+      (.putRequestsItem resources "nvidia.com/gpu" (double->quantity gpus))
+      (add-node-selector pod-spec "cloud.google.com/gke-accelerator" gpu-model-requested))
     (.setResources container resources)
     (.setVolumeMounts container (filterv some? (conj (concat volume-mounts main-container-checkpoint-volume-mounts)
                                                      (init-container-workdir-volume-mount-fn true)
