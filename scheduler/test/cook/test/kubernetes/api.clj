@@ -272,6 +272,7 @@
           ^V1PodSpec pod-spec (.getSpec pod)
           ^V1Container container (-> pod-spec .getContainers first)]
       (is (= (-> pod-spec .getNodeSelector (get "cloud.google.com/gke-accelerator")) "nvidia-tesla-p100"))
+      (is (= (-> pod-spec .getNodeSelector (get "gpu-count")) "2"))
       (is (= 2 (-> container .getResources .getRequests (get "nvidia.com/gpu") api/to-int)))
       (is (= 2 (-> container .getResources .getLimits (get "nvidia.com/gpu") api/to-int))))))
 

@@ -64,7 +64,7 @@
                                    {:name "mem", :type :value-scalar, :scalar 5000.0, :ranges [], :set #{}, :role "*"}
                                    {:name "disk", :type :value-scalar, :scalar 6000.0, :ranges [], :set #{}, :role "*"}
                                    {:name "ports", :type :value-ranges, :scalar 0.0, :ranges [{:begin 31000, :end 32000}], :set #{}, :role "*"}
-                                   {:name "gpus", :type :value-text->scalar :text->scalar {"nvidia-tesla-p100" 5} :role "*"}],
+                                   {:name "gpus", :type :value-text->scalar :text->scalar {"nvidia-tesla-p100" 4} :role "*"}],
                        :attributes [{:name "compute-cluster-type", :type :value-text, :text "kubernetes" :role "*"}],
                        :executor-ids []}
         k8s-non-gpu-offer {:id "my-offer-id"
@@ -83,9 +83,9 @@
         _ (create-pool conn "test-pool")
         _ (create-pool conn "mesos-pool")
         gpu-job-id-1 (create-dummy-job conn :user "ljin" :ncpus 5.0 :memory 5.0 :gpus 1 :pool "test-pool" :env {"COOK_GPU_MODEL" "nvidia-tesla-p100"})
-        gpu-job-id-2 (create-dummy-job conn :user "ljin" :ncpus 5.0 :memory 5.0 :gpus 10 :pool "test-pool" :env {"COOK_GPU_MODEL" "nvidia-tesla-p100"})
-        gpu-job-id-3 (create-dummy-job conn :user "ljin" :ncpus 5.0 :memory 5.0 :gpus 2 :pool "test-pool" :env {"COOK_GPU_MODEL" "nvidia-tesla-k80"})
-        gpu-job-id-4 (create-dummy-job conn :user "ljin" :ncpus 5.0 :memory 5.0 :gpus 3 :pool "test-pool")
+        gpu-job-id-2 (create-dummy-job conn :user "ljin" :ncpus 5.0 :memory 5.0 :gpus 8 :pool "test-pool" :env {"COOK_GPU_MODEL" "nvidia-tesla-p100"})
+        gpu-job-id-3 (create-dummy-job conn :user "ljin" :ncpus 5.0 :memory 5.0 :gpus 4 :pool "test-pool" :env {"COOK_GPU_MODEL" "nvidia-tesla-k80"})
+        gpu-job-id-4 (create-dummy-job conn :user "ljin" :ncpus 5.0 :memory 5.0 :gpus 4 :pool "test-pool")
         non-gpu-job-id (create-dummy-job conn :user "ljin" :ncpus 5.0 :memory 5.0 :gpus 0 :pool "test-pool")
         mesos-gpu-job-id (create-dummy-job conn :user "ljin" :ncpus 5.0 :memory 5.0 :gpus 1.0 :pool "mesos-pool")
         mesos-non-gpu-job-id (create-dummy-job conn :user "ljin" :ncpus 5.0 :memory 5.0 :gpus 0.0 :pool "mesos-pool")
@@ -101,16 +101,16 @@
     (with-redefs [config/valid-gpu-models (constantly [{:pool-regex "test-pool"
                                                         :valid-models #{"nvidia-tesla-p100"}
                                                         :default-model "nvidia-tesla-p100"}])]
-      (is (.isSuccessful
-            (.evaluate (constraints/fenzoize-job-constraint (constraints/build-gpu-host-constraint gpu-job-1))
-                       (sched/make-task-request db gpu-job-1 nil)
-                       (reify com.netflix.fenzo.VirtualMachineCurrentState
-                         (getHostname [_] "test-host")
-                         (getRunningTasks [_] [])
-                         (getTasksCurrentlyAssigned [_] [])
-                         (getCurrAvailableResources [_] (sched/->VirtualMachineLeaseAdapter k8s-gpu-offer 0)))
-                       nil))
-          (str "GPU task on GPU host with enough available GPUs should succeed"))
+      (is (not (.isSuccessful
+                 (.evaluate (constraints/fenzoize-job-constraint (constraints/build-gpu-host-constraint gpu-job-1))
+                            (sched/make-task-request db gpu-job-1 nil)
+                            (reify com.netflix.fenzo.VirtualMachineCurrentState
+                              (getHostname [_] "test-host")
+                              (getRunningTasks [_] [])
+                              (getTasksCurrentlyAssigned [_] [])
+                              (getCurrAvailableResources [_] (sched/->VirtualMachineLeaseAdapter k8s-gpu-offer 0)))
+                            nil)))
+          (str "GPU task on GPU host with too many GPUs should fail"))
       (is (not (.isSuccessful
                  (.evaluate (constraints/fenzoize-job-constraint (constraints/build-gpu-host-constraint gpu-job-2))
                             (sched/make-task-request db gpu-job-2 nil)
@@ -120,7 +120,7 @@
                               (getTasksCurrentlyAssigned [_] [])
                               (getCurrAvailableResources [_] (sched/->VirtualMachineLeaseAdapter k8s-gpu-offer 0)))
                             nil)))
-          (str "GPU task on GPU host without enough available GPUs should fail"))
+          (str "GPU task on GPU host with too little GPUs should fail"))
       (is (not (.isSuccessful
                  (.evaluate (constraints/fenzoize-job-constraint (constraints/build-gpu-host-constraint gpu-job-3))
                             (sched/make-task-request db gpu-job-3 nil)
@@ -130,7 +130,7 @@
                               (getTasksCurrentlyAssigned [_] [])
                               (getCurrAvailableResources [_] (sched/->VirtualMachineLeaseAdapter k8s-gpu-offer 0)))
                             nil)))
-          (str "GPU task on GPU host without correct GPU models should fail"))
+          (str "GPU task on GPU host with correct number of GPUs but without correct GPU models should fail"))
       (is (.isSuccessful
             (.evaluate (constraints/fenzoize-job-constraint (constraints/build-gpu-host-constraint gpu-job-4))
                        (sched/make-task-request db gpu-job-4 nil)
@@ -140,7 +140,7 @@
                          (getTasksCurrentlyAssigned [_] [])
                          (getCurrAvailableResources [_] (sched/->VirtualMachineLeaseAdapter k8s-gpu-offer 0)))
                        nil))
-          (str "GPU task on GPU host with enough available GPUs should succeed"))
+          (str "GPU task on GPU host with the correct number of GPUs should succeed"))
       (is (not (.isSuccessful
                  (.evaluate (constraints/fenzoize-job-constraint (constraints/build-gpu-host-constraint non-gpu-job))
                             (sched/make-task-request db non-gpu-job nil)
