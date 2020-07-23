@@ -4,9 +4,13 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.43.0] - 2020-07-23
+### Added
+- GPU job support in k8s, from @kathryn-zhou
+
 ## [1.42.6] - 2020-07-17
 ### Added
-- Rapid pool skipping in k8s, from @nsinkov.
+- Rapid pool skipping in k8s, from @nsinkov
 - Enhanced offer generation and updated GPU constraints for k8s, from @kathryn-zhou
 ### Fixed
 - Fixed some errors that caused NPE and ERROR logs, from @scrosby
