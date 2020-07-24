@@ -582,23 +582,27 @@
 
 (defn synthesize-state-and-process-pod-if-changed
   "Synthesizes the k8s-actual-state for the given
-  pod and calls process if the state changed."
-  [{:keys [k8s-actual-state-map name] :as compute-cluster} pod-name ^V1Pod pod]
-  (let [new-state {:pod pod
-                   :synthesized-state (api/pod->synthesized-pod-state pod)
-                   :sandbox-file-server-container-state (api/pod->sandbox-file-server-container-state pod)}
-        old-state (get @k8s-actual-state-map pod-name)]
-    ; We always store the updated state, but only reprocess it if it is genuinely different.
-    (swap! k8s-actual-state-map assoc pod-name new-state)
-    (let [new-file-server-state (:sandbox-file-server-container-state new-state)
-          old-file-server-state (:sandbox-file-server-container-state old-state)]
-      (when (and (= new-file-server-state :running) (not= old-file-server-state :running))
-        (record-sandbox-url pod-name new-state)))
-    (when-not (k8s-actual-state-equivalent? old-state new-state)
-      (try
-        (process compute-cluster pod-name)
-        (catch Exception e
-          (log/error e "In compute-cluster" name ", error while processing pod" pod-name))))))
+  pod and calls process if the state changed, or
+  if force-process? is true."
+  ([compute-cluster pod-name ^V1Pod pod]
+   (synthesize-state-and-process-pod-if-changed compute-cluster pod-name pod false))
+  ([{:keys [k8s-actual-state-map name] :as compute-cluster} pod-name ^V1Pod pod force-process?]
+   (let [new-state {:pod pod
+                    :synthesized-state (api/pod->synthesized-pod-state pod)
+                    :sandbox-file-server-container-state (api/pod->sandbox-file-server-container-state pod)}
+         old-state (get @k8s-actual-state-map pod-name)]
+     ; We always store the updated state, but only reprocess it if it is genuinely different.
+     (swap! k8s-actual-state-map assoc pod-name new-state)
+     (let [new-file-server-state (:sandbox-file-server-container-state new-state)
+           old-file-server-state (:sandbox-file-server-container-state old-state)]
+       (when (and (= new-file-server-state :running) (not= old-file-server-state :running))
+         (record-sandbox-url pod-name new-state)))
+     (when (or force-process?
+               (not (k8s-actual-state-equivalent? old-state new-state)))
+       (try
+         (process compute-cluster pod-name)
+         (catch Exception e
+           (log/error e "In compute-cluster" name ", error while processing pod" pod-name)))))))
 
 (defn pod-update
   "Handles a pod update from the pod watch."
@@ -667,4 +671,4 @@
       name
       pod-name
       (let [{:keys [pod]} (get @k8s-actual-state-map pod-name)]
-        (synthesize-state-and-process-pod-if-changed compute-cluster pod-name pod)))))
+        (synthesize-state-and-process-pod-if-changed compute-cluster pod-name pod true)))))
