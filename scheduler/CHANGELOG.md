@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.43.1] - 2020-07-24
+### Added
+- Per-pool global quotas, from @scrosby
+### Fixed
+- Accounting for GPU tasks assigned to nodes in the current matching cycle, from @kathryn-zhou
+- Force processing when state scanning in k8s, from @dposada
+
 ## [1.43.0] - 2020-07-23
 ### Added
 - GPU job support in k8s, from @kathryn-zhou
