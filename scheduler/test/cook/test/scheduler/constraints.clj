@@ -23,7 +23,7 @@
             [cook.scheduler.data-locality :as dl]
             [cook.scheduler.scheduler :as sched]
             [cook.test.testutil :refer [create-dummy-group create-dummy-instance create-dummy-job create-dummy-job-with-instances create-pool
-                                         restore-fresh-database! setup]]
+                                        make-task-assignment-result make-task-request restore-fresh-database! setup]]
             [cook.tools :as util]
             [datomic.api :as d :refer [db]])
   (:import (java.util Date UUID)
@@ -85,7 +85,8 @@
         gpu-job-id-1 (create-dummy-job conn :user "ljin" :ncpus 5.0 :memory 5.0 :gpus 1 :pool "test-pool" :env {"COOK_GPU_MODEL" "nvidia-tesla-p100"})
         gpu-job-id-2 (create-dummy-job conn :user "ljin" :ncpus 5.0 :memory 5.0 :gpus 8 :pool "test-pool" :env {"COOK_GPU_MODEL" "nvidia-tesla-p100"})
         gpu-job-id-3 (create-dummy-job conn :user "ljin" :ncpus 5.0 :memory 5.0 :gpus 4 :pool "test-pool" :env {"COOK_GPU_MODEL" "nvidia-tesla-k80"})
-        gpu-job-id-4 (create-dummy-job conn :user "ljin" :ncpus 5.0 :memory 5.0 :gpus 4 :pool "test-pool")
+        gpu-job-id-4 (create-dummy-job conn :user "ljin" :ncpus 5.0 :memory 5.0 :gpus 4 :pool "test-pool" :env {"COOK_GPU_MODEL" "nvidia-tesla-p100"})
+        gpu-job-id-5 (create-dummy-job conn :user "ljin" :ncpus 5.0 :memory 5.0 :gpus 4 :pool "test-pool")
         non-gpu-job-id (create-dummy-job conn :user "ljin" :ncpus 5.0 :memory 5.0 :gpus 0 :pool "test-pool")
         mesos-gpu-job-id (create-dummy-job conn :user "ljin" :ncpus 5.0 :memory 5.0 :gpus 1.0 :pool "mesos-pool")
         mesos-non-gpu-job-id (create-dummy-job conn :user "ljin" :ncpus 5.0 :memory 5.0 :gpus 0.0 :pool "mesos-pool")
@@ -94,9 +95,13 @@
         gpu-job-2 (d/entity db gpu-job-id-2)
         gpu-job-3 (d/entity db gpu-job-id-3)
         gpu-job-4 (d/entity db gpu-job-id-4)
+        gpu-job-5 (d/entity db gpu-job-id-5)
         non-gpu-job (d/entity db non-gpu-job-id)
         mesos-gpu-job (d/entity db mesos-gpu-job-id)
-        mesos-non-gpu-job (d/entity db mesos-non-gpu-job-id)]
+        mesos-non-gpu-job (d/entity db mesos-non-gpu-job-id)
+        gpu-task-assignment (-> gpu-job-5
+                                make-task-request
+                                make-task-assignment-result)]
 
     (with-redefs [config/valid-gpu-models (constantly [{:pool-regex "test-pool"
                                                         :valid-models #{"nvidia-tesla-p100"}
@@ -141,6 +146,16 @@
                          (getCurrAvailableResources [_] (sched/->VirtualMachineLeaseAdapter k8s-gpu-offer 0)))
                        nil))
           (str "GPU task on GPU host with the correct number of GPUs should succeed"))
+      (is (not (.isSuccessful
+                 (.evaluate (constraints/fenzoize-job-constraint (constraints/build-gpu-host-constraint gpu-job-4))
+                            (sched/make-task-request db gpu-job-4 nil)
+                            (reify com.netflix.fenzo.VirtualMachineCurrentState
+                              (getHostname [_] "test-host")
+                              (getRunningTasks [_] [])
+                              (getTasksCurrentlyAssigned [_] [gpu-task-assignment])
+                              (getCurrAvailableResources [_] (sched/->VirtualMachineLeaseAdapter k8s-gpu-offer 0)))
+                            nil)))
+          (str "GPU task on GPU host with the correct number of GPUs but already has task assigned should fail"))
       (is (not (.isSuccessful
                  (.evaluate (constraints/fenzoize-job-constraint (constraints/build-gpu-host-constraint non-gpu-job))
                             (sched/make-task-request db non-gpu-job nil)
