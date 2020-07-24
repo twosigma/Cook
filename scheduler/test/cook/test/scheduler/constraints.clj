@@ -155,7 +155,7 @@
                               (getTasksCurrentlyAssigned [_] [gpu-task-assignment])
                               (getCurrAvailableResources [_] (sched/->VirtualMachineLeaseAdapter k8s-gpu-offer 0)))
                             nil)))
-          (str "GPU task on GPU host with the correct number of GPUs but already has task assigned should fail"))
+          (str "We only allow one GPU job per VM. This VM already has a GPU job assigned to it, so it should not get any additional GPU tasks."))
       (is (not (.isSuccessful
                  (.evaluate (constraints/fenzoize-job-constraint (constraints/build-gpu-host-constraint non-gpu-job))
                             (sched/make-task-request db non-gpu-job nil)
