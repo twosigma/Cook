@@ -14,8 +14,8 @@
 ;; limitations under the License.
 ;;
 (ns cook.test.rate-limit.token-bucket-filter
-  (:use clojure.test)
-  (:require [cook.rate-limit.token-bucket-filter :as tbf]))
+  (:require [clojure.test :refer :all]
+            [cook.rate-limit.token-bucket-filter :as tbf]))
 
 (defn approx=
   "Approximately equal"

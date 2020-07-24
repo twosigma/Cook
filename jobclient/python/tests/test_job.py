@@ -18,6 +18,12 @@ import uuid
 from datetime import datetime, timedelta
 from unittest import TestCase
 
+from cookclient.containers import (
+    AbstractContainer,
+    DockerContainer,
+    DockerPortMapping,
+    Volume
+)
 from cookclient.instance import Instance, Executor
 from cookclient.jobs import Application, Job
 from cookclient.jobs import Status as JobStatus
@@ -44,7 +50,42 @@ JOB_DICT_NO_OPTIONALS = {
 
 JOB_DICT_WITH_OPTIONALS = {**JOB_DICT_NO_OPTIONALS, **{
     'executor': 'cook',
-    'container': {},
+    'container': {
+        'type': 'docker',
+        'volumes': [
+            {
+                'host-path': '/home/user1/bin',
+                'container-path': '/usr/local/bin',
+                'mode': 'rw'
+            },
+            {
+                'host-path': '/home/user1/include',
+                'container-path': '/usr/local/include',
+                'mode': 'r'
+            }
+        ],
+        'docker': {
+            'image': 'alpine:latest',
+            'network': 'my-network',
+            'force-pull-image': True,
+            'parameters': [
+                {'key': 'key1', 'value': 'value1'},
+                {'key': 'key2', 'value': 'value2'}
+            ],
+            'port-mapping': [
+                {
+                    'host-port': 80,
+                    'container-port': 8080,
+                    'protocol': 'tcp'
+                },
+                {
+                    'host-port': 443,
+                    'container-port': 443,
+                    'protocol': 'tcp'
+                }
+            ]
+        }
+    },
     'disable_mea_culpa_retries': True,
     'expected_runtime': 1000,
     'pool': 'default',
@@ -161,7 +202,28 @@ JOB_EXAMPLE = Job(
     user='vagrant',
 
     executor=Executor.COOK,
-    container={},
+    container=DockerContainer('alpine:latest', network='my-network',
+                              force_pull_image=True,
+                              parameters=[
+                                  {'key': 'key1', 'value': 'value1'},
+                                  {'key': 'key2', 'value': 'value2'}
+                              ],
+                              port_mapping=[
+                                  DockerPortMapping(host_port=80,
+                                                    container_port=8080,
+                                                    protocol='tcp'),
+                                  DockerPortMapping(host_port=443,
+                                                    container_port=443,
+                                                    protocol='tcp')
+                              ],
+                              volumes=[
+                                  Volume(host_path='/home/user1/bin',
+                                         container_path='/usr/local/bin',
+                                         mode='rw'),
+                                  Volume(host_path='/home/user1/include',
+                                         container_path='/usr/local/include',
+                                         mode='r'),
+                              ]),
     disable_mea_culpa_retries=True,
     expected_runtime=timedelta(seconds=1000),
     pool='default',
@@ -229,7 +291,34 @@ class JobTest(TestCase):
 
         self.assertEqual(str(job.executor).lower(),
                          jobdict['executor'].lower())
-        self.assertEqual(job.container, jobdict['container'])
+        self.assertTrue(isinstance(job.container, AbstractContainer))
+        self.assertEqual(len(job.container.volumes),
+                         len(jobdict['container']['volumes']))
+        for vol, voldict in zip(job.container.volumes,
+                                jobdict['container']['volumes']):
+            self.assertTrue(isinstance(vol, Volume))
+            self.assertEqual(vol.host_path, voldict['host-path'])
+            self.assertEqual(vol.container_path,
+                             voldict['container-path'])
+            self.assertEqual(vol.mode, voldict['mode'])
+        if jobdict['container']['type'] == 'docker':
+            docdict = jobdict['container']['docker']
+            self.assertTrue(isinstance(job.container, DockerContainer))
+            self.assertEqual(job.container.image, docdict['image'])
+            self.assertEqual(job.container.network, docdict['network'])
+            self.assertEqual(job.container.force_pull_image,
+                             docdict['force-pull-image'])
+            self.assertEqual(job.container.parameters,
+                             docdict['parameters'])
+            self.assertEqual(len(job.container.port_mapping),
+                             len(docdict['port-mapping']))
+            for pm, pmdict in zip(job.container.port_mapping,
+                                  docdict['port-mapping']):
+                self.assertTrue(isinstance(pm, DockerPortMapping))
+                self.assertEqual(pm.host_port, pmdict['host-port'])
+                self.assertEqual(pm.container_port,
+                                 pmdict['container-port'])
+                self.assertEqual(pm.protocol, pmdict['protocol'])
         self.assertEqual(job.disable_mea_culpa_retries,
                          jobdict['disable_mea_culpa_retries'])
         self.assertEqual(int(job.expected_runtime.total_seconds() * 1000),

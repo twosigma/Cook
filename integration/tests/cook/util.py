@@ -652,6 +652,13 @@ def kill_jobs(cook_url, jobs, assert_response=True, expected_status_code=204, lo
             assert expected_status_code == response.status_code, response.text
     return response
 
+def kill_instance(cook_url, instance, assert_response=True, expected_status_code=204):
+    """Kill an instance"""
+    params = {'instance': [instance]}
+    response = session.delete(f'{cook_url}/rawscheduler', params=params)
+    if assert_response:
+        assert expected_status_code == response.status_code, response.text
+    return response
 
 def kill_groups(cook_url, groups, assert_response=True, expected_status_code=204):
     """Kill one or more groups of jobs"""
@@ -1595,6 +1602,36 @@ def are_pools_enabled():
     return len(active_pools(cook_url)[0]) > 1
 
 
+def are_gpus_enabled():
+    """Returns true if GPU jobs can be submitted to this cluster."""
+    cook_url = retrieve_cook_url()
+    settings_dict = settings(cook_url)
+    return settings_dict['mesos-gpu-enabled']
+
+
+def gpu_enabled_pools():
+    """"Returns a list of pools that support GPUs."""
+    cook_url = retrieve_cook_url()
+    all_active_pools, _ = active_pools(cook_url)
+    pools_with_gpus = []
+    for pool in all_active_pools:
+        pool_name = pool['name']
+        matching_gpu_models = valid_gpu_models_on_pool(pool_name)
+        if not (len(matching_gpu_models) == 0 or len(matching_gpu_models[0]) == 0):
+            pools_with_gpus.append(pool_name)
+    return pools_with_gpus
+
+
+def valid_gpu_models_on_pool(pool_name):
+    """Returns a list of valid GPU models given a pool name."""
+    cook_url = retrieve_cook_url()
+    settings_dict = settings(cook_url)
+    valid_gpu_models_config_map = settings_dict.get('pools', {}).get('valid-gpu-models', [])
+    valid_models_on_pool = [ii['valid-models'] for ii in valid_gpu_models_config_map
+                            if re.match(ii['pool-regex'], pool_name)]
+    return valid_models_on_pool
+
+
 def mesos_hostnames_to_consider(cook_url, mesos_url):
     """
     Returns the hostnames in the default pool, or all hosts if the cluster is not using pools
@@ -1773,6 +1810,8 @@ def has_one_agent():
 def supports_exit_code():
     return using_kubernetes() or is_cook_executor_in_use()
 
+def pool_quota_test_pool():
+    return os.getenv("COOK_TEST_POOL_QUOTA_TEST_POOL", None)
 
 def kill_running_and_waiting_jobs(cook_url, user):
     one_hour_in_millis = 60 * 60 * 1000

@@ -15,12 +15,11 @@
 ;;
 
 (ns cook.test.mesos.heartbeat
-  (:use clojure.test)
-  (:require [clj-time.core :as time]
-            [clojure.core.async :as async]
+  (:require [clojure.core.async :as async]
+            [clojure.test :refer :all]
             [cook.mesos.heartbeat :as heartbeat]
-            [cook.test.testutil :refer (restore-fresh-database! create-dummy-job create-dummy-instance)]
-            [datomic.api :as d :refer (q)]))
+            [cook.test.testutil :refer [create-dummy-instance create-dummy-job restore-fresh-database!]]
+            [datomic.api :as d :refer [q]]))
 
 (deftest test-update-heartbeat
   (testing

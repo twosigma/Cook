@@ -13,61 +13,56 @@
 ;; limitations under the License.
 ;;
 (ns cook.components
+  (:gen-class)
   (:require [clojure.core.async :as async]
             [clojure.core.cache :as cache]
-            [clojure.pprint :refer (pprint)]
+            [clojure.pprint :refer [pprint]]
             [clojure.tools.logging :as log]
-            [compojure.core :refer (GET POST routes context)]
+            [compojure.core :refer [context GET POST routes]]
             [compojure.route :as route]
-            [congestion.middleware :refer (wrap-rate-limit ip-rate-limit)]
+            [congestion.middleware :refer [ip-rate-limit wrap-rate-limit]]
             [congestion.storage :as storage]
-            [cook.config :refer (config)]
-            [cook.rest.cors :as cors]
+            [cook.config :refer [config]]
             [cook.datomic :as datomic]
             ; This explicit require is needed so that mount can see the defstate defined in the cook.plugins.adjustment namespace.
             [cook.plugins.adjustment]
             ; This explicit require is needed so that mount can see the defstate defined in the cook.plugins.completion namespace.
             [cook.plugins.completion]
-            ; This explicit require is needed so that mount can see the defstate defined in the cook.plugins.submission namespace.
-            [cook.plugins.submission]
             ; This explicit require is needed so that mount can see the defstate defined in the cook.plugins.file namespace.
             [cook.plugins.file]
             ; This explicit require is needed so that mount can see the defstate defined in the cook.plugins.launch namespace.
             [cook.plugins.launch]
             ; This explicit require is needed so that mount can see the defstate defined in the cook.plugins.pool namespace.
             [cook.plugins.pool]
-            [cook.rest.impersonation :refer (impersonation-authorized-wrapper)]
+            ; This explicit require is needed so that mount can see the defstate defined in the cook.plugins.submission namespace.
+            [cook.plugins.submission]
             [cook.pool :as pool]
-            ; This explicit require is needed so that mount can see the defstate defined in the cook.rate-limit namespace.
-            ; cook.rate-limit and everything else under cook.rest.api is normally hidden from mount's defstate because
-            ; cook.rest.api is loaded via util/lazy-load-var, not via 'ns :require'
             [cook.rate-limit]
+            [cook.rest.cors :as cors]
+            [cook.rest.impersonation :refer [impersonation-authorized-wrapper]]
             [cook.util :as util]
             [datomic.api :as d]
             [metrics.jvm.core :as metrics-jvm]
-            [metrics.ring.instrument :refer (instrument)]
+            [metrics.ring.instrument :refer [instrument]]
             [mount.core :as mount]
-            [plumbing.core :refer (fnk)]
+            [plumbing.core :refer [fnk]]
             [plumbing.graph :as graph]
-            [ring.middleware.cookies :refer (wrap-cookies)]
-            [ring.middleware.params :refer (wrap-params)]
-            [ring.middleware.stacktrace :refer (wrap-stacktrace)]
+            [ring.middleware.cookies :refer [wrap-cookies]]
+            [ring.middleware.params :refer [wrap-params]]
+            [ring.middleware.stacktrace :refer [wrap-stacktrace]]
             [ring.util.mime-type]
-            [ring.util.response :refer (response)])
-  (:import clojure.core.async.impl.channels.ManyToManyChannel
-           java.io.IOException
-           java.security.Principal
-           javax.security.auth.Subject
-           javax.servlet.ServletInputStream
-           org.apache.curator.framework.CuratorFrameworkFactory
-           org.apache.curator.framework.state.ConnectionStateListener
-           org.apache.curator.retry.BoundedExponentialBackoffRetry
-           org.eclipse.jetty.security.DefaultUserIdentity
-           org.eclipse.jetty.security.UserAuthentication
-           org.eclipse.jetty.server.NCSARequestLog
-           org.eclipse.jetty.server.handler.HandlerCollection
-           org.eclipse.jetty.server.handler.RequestLogHandler)
-  (:gen-class))
+            [ring.util.response :refer [response]])
+  (:import (clojure.core.async.impl.channels ManyToManyChannel)
+           (java.io IOException)
+           (java.security Principal)
+           (javax.security.auth Subject)
+           (javax.servlet ServletInputStream)
+           (org.apache.curator.framework CuratorFrameworkFactory)
+           (org.apache.curator.framework.state ConnectionStateListener)
+           (org.apache.curator.retry BoundedExponentialBackoffRetry)
+           (org.eclipse.jetty.security DefaultUserIdentity UserAuthentication)
+           (org.eclipse.jetty.server.handler HandlerCollection RequestLogHandler)
+           (org.eclipse.jetty.server NCSARequestLog)))
 
 (defn wrap-no-cache
   [handler]

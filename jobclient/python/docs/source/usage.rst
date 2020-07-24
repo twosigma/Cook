@@ -66,6 +66,37 @@ shows how.
     client = JobClient(COOK_URL)
     client.kill('123e4567-e89b-12d3-a456-426614174000')
 
+.. py:module:: cookclient
+
+Bulk Operations
+---------------
+
+In addition to the aforementioned single-job operations, the client also
+supports bulk operations. These are bulk submit, bulk query, and bulk kill,
+accessible through the :py:meth:`JobClient.submit_all`,
+:py:meth:`JobClient.query_all`, and :py:meth:`JobClient.kill_all` methods.
+The following is an example of a workflow using these bulk methods:
+
+::
+
+    from cookclient import JobClient
+
+    COOK_URL = 'http://localhost:12321'
+
+    client = JobClient(COOK_URL)
+    job1 = {'command': 'ls'}
+    job2 = {
+        'command': 'echo "Hello World!"',
+        'mem': 256.0
+    }
+    uuids = client.submit_all([job1, job2])
+    jobs = client.query_all(uuids)
+    for job in jobs:
+        print(job)
+
+    client.kill_all(jobs)
+
+
 Using a Requests Session Object
 -------------------------------
 
@@ -112,6 +143,5 @@ errors, you must wrap requests in a ``try`` block like so:
 JobClient Reference
 -------------------
 
-.. py:module:: cookclient
 .. autoclass:: JobClient
    :members:

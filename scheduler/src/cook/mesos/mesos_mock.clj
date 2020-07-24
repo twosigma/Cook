@@ -19,13 +19,12 @@
             [clojure.core.async :as async]
             [clojure.tools.logging :as log]
             [cook.tools :as util]
-            [datomic.api :refer (q)]
+            [datomic.api :refer [q]]
             [mesomatic.scheduler :as mesos]
             [mesomatic.types :as mesos-type]
             [metrics.timers :as timers]
-            [plumbing.core :refer (map-vals map-from-vals)])
-  (import org.apache.mesos.Protos$Status
-          org.apache.mesos.SchedulerDriver))
+            [plumbing.core :refer [map-from-vals map-vals]])
+  (:import (org.apache.mesos Protos$Status SchedulerDriver)))
 
 (def resource->type {:cpus :scalar
                      :mem :scalar

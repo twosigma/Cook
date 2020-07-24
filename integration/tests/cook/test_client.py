@@ -12,11 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import re
+import socket
 import unittest
 
 from cookclient import JobClient
-from cookclient.containers import DockerContainer
-from cookclient.jobs import Job, Status as JobStatus
+from cookclient.containers import DockerContainer, DockerPortMapping
+from cookclient.jobs import (
+    State as JobState,
+    Status as JobStatus
+)
 
 from tests.cook import util
 
@@ -34,7 +39,8 @@ class ClientTest(util.CookTest):
         uuid = self.client.submit(command='ls',
                                   cpus=0.5,
                                   mem=1.0,
-                                  max_retries=5)
+                                  max_retries=5,
+                                  pool=util.default_submit_pool())
         try:
             self.assertTrue(uuid is not None)
         finally:
@@ -44,7 +50,8 @@ class ClientTest(util.CookTest):
         uuid = self.client.submit(command='ls',
                                   cpus=0.5,
                                   mem=1.0,
-                                  max_retries=5)
+                                  max_retries=5,
+                                  pool=util.default_submit_pool())
         try:
             job = self.client.query(uuid)
             self.assertEqual(job.command, 'ls')
@@ -58,7 +65,8 @@ class ClientTest(util.CookTest):
         uuid = self.client.submit(command=f'sleep {util.DEFAULT_TEST_TIMEOUT_SECS}',
                                   cpus=0.5,
                                   mem=1.0,
-                                  max_retries=5)
+                                  max_retries=5,
+                                  pool=util.default_submit_pool())
         killed = False
         try:
             job = self.client.query(uuid)
@@ -77,13 +85,56 @@ class ClientTest(util.CookTest):
     def test_container_submit(self):
         container = DockerContainer(util.docker_image())
         self.assertIsNotNone(container.image)
-        uuid = self.client.submit(command='ls', container=container)
+        uuid = self.client.submit(command='ls', container=container,
+                                  pool=util.default_submit_pool())
         try:
             job = self.client.query(uuid)
 
             remote_container = job.container
-            self.assertEqual(remote_container['type'].lower(), 'docker')
-            self.assertEqual(remote_container['docker']['image'], container.image)
+            self.assertEqual(remote_container.kind.lower(), 'docker')
+            self.assertEqual(remote_container.image, container.image)
+        finally:
+            self.client.kill(uuid)
+
+    @unittest.skipUnless(util.docker_tests_enabled(), "Requires setting the COOK_TEST_DOCKER_IMAGE environment variable")
+    @unittest.skipUnless(util.using_kubernetes(), "Requires running on Kubernetes")
+    @unittest.skipUnless(util.is_job_progress_supported(), "Requires progress reporting")
+    def test_container_port_submit(self):
+        """Test submitting a job with a port specification."""
+        JOB_PORT = 30030
+        progress_file_env = util.retrieve_progress_file_env(type(self).cook_url)
+        hostname_progress_cmd = util.progress_line(type(self).cook_url,
+                                                   50,  # Don't really care, we just need a val
+                                                   '$(hostname -I)',
+                                                   write_to_file=True)
+
+        container = DockerContainer(util.docker_image(), port_mapping=[
+            DockerPortMapping(host_port=0, container_port=JOB_PORT,
+                              protocol='tcp')
+        ])
+        uuid = self.client.submit(command=f'{hostname_progress_cmd} && nc -l -p {JOB_PORT} $(hostname -I)',
+                                  container=container,
+                                  env={progress_file_env: 'progress.txt'},
+                                  pool=util.default_submit_pool())
+
+        addr = None
+        try:
+            util.wait_for_instance_with_progress(type(self).cook_url, str(uuid), 50)
+            job = self.client.query(uuid)
+            addr = job.instances[0].progress_message
+
+            self.assertIsNotNone(addr)
+
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.connect((addr, JOB_PORT))
+                message = b"hello world!"
+
+                self.assertEqual(sock.send(message), len(message))
+        except Exception as e:
+            if addr is not None:
+                raise Exception(f"Could not connect to {addr}: {e}") from e
+            else:
+                raise e
         finally:
             self.client.kill(uuid)
 
@@ -92,7 +143,8 @@ class ClientTest(util.CookTest):
         uuid = self.client.submit(command=f'sleep {util.DEFAULT_TEST_TIMEOUT_SECS}',
                                   cpus=0.5,
                                   mem=1.0,
-                                  max_retries=5)
+                                  max_retries=5,
+                                  pool=util.default_submit_pool())
 
         try:
             util.wait_for_instance(type(self).cook_url, uuid)
@@ -103,3 +155,74 @@ class ClientTest(util.CookTest):
             self.assertIsNotNone(job.instances[0])
         finally:
             self.client.kill(uuid)
+
+    def gpu_submit_helper(self, pool_name, gpu_count, gpu_model):
+        query_model_name = gpu_model.lstrip('nvidia-').replace('-', ' ').title()
+        command = (
+            '/usr/bin/nvidia-smi && /usr/bin/nvidia-smi -q > nvidia-smi-output && '
+            f'cat nvidia-smi-output; expected_model="{query_model_name}"; '
+            'num_gpus=$(grep "Attached GPUs" nvidia-smi-output | cut -d \':\' -f 2 | tr -d \'[:space:]\'); echo "num_gpus=$num_gpus"; '
+            'num_expected_model=$(grep "$expected_model" nvidia-smi-output | wc -l); echo "num_expected_model=$num_expected_model"; '
+            f'if [[ $num_gpus -eq {gpu_count} && $num_expected_model -eq {gpu_count} ]]; then exit 0; else exit 1; fi'
+        )
+        uuid = self.client.submit(command=command,
+                                  cpus=0.5,
+                                  mem=256.0,
+                                  pool=pool_name,
+                                  gpus=gpu_count,
+                                  env={'COOK_GPU_MODEL': gpu_model},
+                                  max_retries=5)
+        try:
+            util.wait_for_job(type(self).cook_url, uuid, 'completed')
+            job = self.client.query(uuid)
+            self.assertEqual(JobState.SUCCESS, job.state)
+        except Exception as e:
+            raise Exception(f"Submitting job with GPU {gpu_model} to pool {pool_name} failed") from e
+        finally:
+            self.client.kill(uuid)
+
+    @unittest.skipUnless(util.are_gpus_enabled(), "Requires GPUs")
+    def test_gpu_submit_c1(self):
+        """Test submitting a job with 1 GPU specified."""
+        pools_with_gpus = util.gpu_enabled_pools()
+        if len(pools_with_gpus) == 0:
+            self.skipTest("No active pools support GPUs")
+        else:
+            for pool_name in pools_with_gpus:
+                matching_gpu_models = util.valid_gpu_models_on_pool(pool_name)
+                gpu_model = matching_gpu_models[0][0]
+                self.gpu_submit_helper(pool_name, 1, gpu_model)
+
+    @unittest.skipUnless(util.are_gpus_enabled(), "Requires GPUs")
+    def test_gpu_submit_c2(self):
+        """Test submitting a job with 2 GPUs specified."""
+        pools_with_gpus = util.gpu_enabled_pools()
+        if len(pools_with_gpus) == 0:
+            self.skipTest("No active pools support GPUs")
+        else:
+            for pool_name in pools_with_gpus:
+                matching_gpu_models = util.valid_gpu_models_on_pool(pool_name)
+                gpu_model = matching_gpu_models[0][0]
+                self.gpu_submit_helper(pool_name, 2, gpu_model)
+
+    def test_bulk_ops(self):
+        jobspecs = [
+            {'command': 'ls'},
+            {
+                'command': 'echo "Hello World!"',
+                'mem': 256.0
+            }
+        ]
+        uuids = self.client.submit_all(jobspecs,
+                                       pool=util.default_submit_pool())
+        try:
+            jobs = self.client.query_all(uuids)
+
+            self.assertEqual(jobs[0].uuid, uuids[0])
+            self.assertEqual(jobs[0].command, jobspecs[0]['command'])
+
+            self.assertEqual(jobs[1].uuid, uuids[1])
+            self.assertEqual(jobs[1].command, jobspecs[1]['command'])
+            self.assertEqual(jobs[1].mem, jobspecs[1]['mem'])
+        finally:
+            self.client.kill_all(uuids)

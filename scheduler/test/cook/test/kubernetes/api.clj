@@ -12,48 +12,84 @@
                                                 V1VolumeMount)))
 
 (deftest test-get-consumption
-  (testing "correctly computes consumption for a single pod"
+  (testing "correctly computes consumption for a single pod without gpus"
+
     (let [pods [(tu/pod-helper "podA" "hostA" {:cpus 1.0 :mem 100.0})]
           node-name->pods (api/pods->node-name->pods pods)]
       (is (= {"hostA" {:cpus 1.0
-                       :mem 100.0}}
+                       :mem 100.0
+                       :gpus {}}}
              (api/get-consumption node-name->pods)))))
 
-  (testing "correctly computes consumption for a pod with multiple containers"
+  (testing "correctly computes consumption for a single pod with gpus"
+
+    (let [pods [(tu/pod-helper "podA" "hostA" {:cpus 1.0 :mem 100.0 :gpus "2" :gpu-model "nvidia-tesla-p100"})]
+          node-name->pods (api/pods->node-name->pods pods)]
+      (is (= {"hostA" {:cpus 1.0
+                       :mem 100.0
+                       :gpus {"nvidia-tesla-p100" 2}}}
+             (api/get-consumption node-name->pods)))))
+
+  (testing "correctly computes consumption for a pod with multiple containers without gpus"
     (let [pods [(tu/pod-helper "podA" "hostA"
-                               {:cpus 1.0 :mem 100.0}
+                               {:cpus 1.0 :mem 100.0 :gpus "0"}
                                {:cpus 1.0 :mem 0.0}
                                {:mem 100.0})]
           node-name->pods (api/pods->node-name->pods pods)]
       (is (= {"hostA" {:cpus 2.0
-                       :mem 200.0}}
+                       :mem 200.0
+                       :gpus {}}}
+             (api/get-consumption node-name->pods)))))
+
+  (testing "correctly computes consumption for a pod with multiple containers with gpus"
+    (let [pods [(tu/pod-helper "podA" "hostA"
+                               {:cpus 1.0 :mem 100.0 :gpus "1" :gpu-model "nvidia-tesla-p100"}
+                               {:cpus 1.0 :mem 0.0 :gpus "4" :gpu-model "nvidia-tesla-p100"}
+                               {:mem 100.0})]
+          node-name->pods (api/pods->node-name->pods pods)]
+      (is (= {"hostA" {:cpus 2.0
+                       :mem 200.0
+                       :gpus {"nvidia-tesla-p100" 5}}}
              (api/get-consumption node-name->pods)))))
 
   (testing "correctly aggregates pods by node name"
     (let [pods [(tu/pod-helper "podA" "hostA"
-                               {:cpus 1.0 :mem 100.0})
+                               {:cpus 1.0
+                                :mem 100.0
+                                :gpus "2"
+                                :gpu-model "nvidia-tesla-p100"})
                 (tu/pod-helper "podB" "hostA"
                                {:cpus 1.0})
+                (tu/pod-helper "podA" "hostA"
+                               {:gpus "1"
+                                :gpu-model "nvidia-tesla-p100"})
                 (tu/pod-helper "podC" "hostB"
                                {:cpus 1.0}
                                {:mem 100.0})
+                (tu/pod-helper "podC" "hostB"
+                               {:cpus 2.0}
+                               {:mem 30.0
+                                :gpus "1"
+                                :gpu-model "nvidia-tesla-k80"})
                 (tu/pod-helper "podD" "hostC"
-                               {:cpus 1.0})]
+                               {:cpus 1.0})
+                (tu/pod-helper "podD" nil ; nil host should be skipped and not included in output.
+                               {:cpus 12.0})]
           node-name->pods (api/pods->node-name->pods pods)]
-      (is (= {"hostA" {:cpus 2.0 :mem 100.0}
-              "hostB" {:cpus 1.0 :mem 100.0}
-              "hostC" {:cpus 1.0 :mem 0.0}}
+      (is (= {"hostA" {:cpus 2.0 :mem 100.0 :gpus {"nvidia-tesla-p100" 3}}
+              "hostB" {:cpus 3.0 :mem 130.0 :gpus {"nvidia-tesla-k80" 1}}
+              "hostC" {:cpus 1.0 :mem 0.0 :gpus {}}}
              (api/get-consumption node-name->pods))))))
 
 (deftest test-get-capacity
-  (let [node-name->node {"nodeA" (tu/node-helper "nodeA" 1.0 100.0 nil)
-                         "nodeB" (tu/node-helper "nodeB" 1.0 nil nil)
-                         "nodeC" (tu/node-helper "nodeC" nil 100.0 nil)
-                         "nodeD" (tu/node-helper "nodeD" nil nil nil)}]
-    (is (= {"nodeA" {:cpus 1.0 :mem 100.0}
-            "nodeB" {:cpus 1.0 :mem 0.0}
-            "nodeC" {:cpus 0.0 :mem 100.0}
-            "nodeD" {:cpus 0.0 :mem 0.0}}
+  (let [node-name->node {"nodeA" (tu/node-helper "nodeA" 1.0 100.0 2 "nvidia-tesla-p100" nil)
+                         "nodeB" (tu/node-helper "nodeB" 1.0 nil nil nil nil)
+                         "nodeC" (tu/node-helper "nodeC" nil 100.0 5 "nvidia-tesla-p100" nil)
+                         "nodeD" (tu/node-helper "nodeD" nil nil 7 "nvidia-tesla-p100" nil)}]
+    (is (= {"nodeA" {:cpus 1.0 :mem 100.0 :gpus {"nvidia-tesla-p100" 2}}
+            "nodeB" {:cpus 1.0 :mem 0.0 :gpus {}}
+            "nodeC" {:cpus 0.0 :mem 100.0 :gpus {"nvidia-tesla-p100" 5}}
+            "nodeD" {:cpus 0.0 :mem 0.0 :gpus {"nvidia-tesla-p100" 7}}}
            (api/get-capacity node-name->node)))))
 
 (defn assert-env-var-value
@@ -216,7 +252,29 @@
                                                               (->> (filter #(= (.getName %) "cook-checkpointing-tools-volume")))
                                                               (->> (map #(str (.getMountPath %) (.getSubPath %))))))]
         (is (= #{"/abc/xyz"} init-container-paths))
-        (is (= #{"/abc/xyz" "/qed/bbqefg/hij"} main-container-paths))))))
+        (is (= #{"/abc/xyz" "/qed/bbqefg/hij"} main-container-paths)))))
+  (testing "gpu task-metadata"
+    (let [task-metadata {:task-id "my-task"
+                         :command {:value "foo && bar"
+                                   :environment {"FOO" "BAR"}
+                                   :user (System/getProperty "user.name")}
+                         :container {:type :docker
+                                     :docker {:image "alpine:latest"}}
+                         :task-request {:resources {:mem 576
+                                                    :cpus 1.1
+                                                    :gpus 2}
+                                        :scalar-requests {"mem" 512
+                                                          "cpus" 1.0}
+                                        :job {:job/environment #{{:environment/name "COOK_GPU_MODEL"
+                                                                  :environment/value "nvidia-tesla-p100"}}}}
+                         :hostname "kubehost"}
+          ^V1Pod pod (api/task-metadata->pod "cook" "testing-cluster" task-metadata)
+          ^V1PodSpec pod-spec (.getSpec pod)
+          ^V1Container container (-> pod-spec .getContainers first)]
+      (is (= (-> pod-spec .getNodeSelector (get "cloud.google.com/gke-accelerator")) "nvidia-tesla-p100"))
+      (is (= (-> pod-spec .getNodeSelector (get "gpu-count")) "2"))
+      (is (= 2 (-> container .getResources .getRequests (get "nvidia.com/gpu") api/to-int)))
+      (is (= 2 (-> container .getResources .getLimits (get "nvidia.com/gpu") api/to-int))))))
 
 (defn- k8s-volume->clj [^V1Volume volume]
   {:name (.getName volume)
@@ -445,7 +503,7 @@
             metadata (V1ObjectMeta.)
             ^V1NodeSpec spec (V1NodeSpec.)
             ^V1Taint taint (V1Taint.)]
-        (.setKey taint "cook-pool")
+        (.setKey taint api/cook-pool-taint)
         (.setValue taint "a-pool")
         (.setEffect taint "NoSchedule")
         (.addTaintsItem spec taint)
@@ -469,7 +527,22 @@
         (.setNamespace metadata "cook")
         (.setMetadata node metadata)
         (.setSpec node spec)
-        (is (not (api/node-schedulable? node 30 nil ["blocklist-1"])))))))
+        (is (not (api/node-schedulable? node 30 nil ["blocklist-1"])))))
+    (testing "GPU Taint"
+      (let [^V1Node node (V1Node.)
+            metadata (V1ObjectMeta.)
+            ^V1NodeSpec spec (V1NodeSpec.)
+            ^V1Taint taint (V1Taint.)]
+        (.setKey taint "nvidia.com/gpu")
+        (.setValue taint "present")
+        (.setEffect taint "NoSchedule")
+        (.addTaintsItem spec taint)
+
+        (.setName metadata "NodeName")
+        (.setNamespace metadata "cook")
+        (.setMetadata node metadata)
+        (.setSpec node spec)
+        (is (api/node-schedulable? node 30 nil ["blocklist-1"]))))))
 
 (deftest test-initialize-pod-watch-helper
   (testing "only processes each pod once"
@@ -485,7 +558,7 @@
           all-pods-atom (atom {namespaced-pod-name pod})]
       (with-redefs [api/get-all-pods-in-kubernetes (constantly [pod-list {namespaced-pod-name pod}])
                     api/create-pod-watch (constantly nil)]
-        (api/initialize-pod-watch-helper nil compute-cluster-name all-pods-atom callback-fn))
+        (api/initialize-pod-watch-helper {:name compute-cluster-name :all-pods-atom all-pods-atom :node-name->pod-name->pod (atom {})} callback-fn))
       (is (= 1 (count @namespaced-pod-names-visited)))
       (is (= [namespaced-pod-name] @namespaced-pod-names-visited)))))
 

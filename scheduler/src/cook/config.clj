@@ -20,13 +20,12 @@
             [clojure.stacktrace :as stacktrace]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
-            [congestion.limits :refer (RateLimit)]
-            [cook.rest.impersonation :refer (impersonation-authorized-wrapper)]
+            [congestion.limits :refer [RateLimit]]
+            [cook.rest.impersonation :refer [impersonation-authorized-wrapper]]
             [cook.util :as util]
             [mount.core :as mount]
-            [plumbing.core :refer (fnk)]
-            [plumbing.graph :as graph]
-            [schema.core :as s])
+            [plumbing.core :refer [fnk]]
+            [plumbing.graph :as graph])
   (:import (com.google.common.io Files)
            (com.netflix.fenzo VMTaskFitnessCalculator)
            (java.io File)
@@ -131,6 +130,22 @@
       calculator
       (throw (IllegalArgumentException.
                (str config-string " is not a VMTaskFitnessCalculator"))))))
+
+(defn guard-invalid-gpu-config
+  "Throws if either of the following is true:
+  - any one of the keys (pool-regex, valid-models, default-model) is not configured
+  - there is no gpu-model in valid-gpu-models matching the configured default"
+  [valid-gpu-models]
+  (when valid-gpu-models
+    (doseq [{:keys [default-model pool-regex valid-models] :as entry} valid-gpu-models]
+      (when-not pool-regex
+        (throw (ex-info (str "pool-regex key is missing from config") entry)))
+      (when-not valid-models
+        (throw (ex-info (str "Valid GPU models for pool-regex " pool-regex " is not defined") entry)))
+      (when-not default-model
+        (throw (ex-info (str "Default GPU model for pool-regex " pool-regex " is not defined") entry)))
+      (when-not (contains? valid-models default-model)
+        (throw (ex-info (str "Default GPU model for pool-regex " pool-regex " is not listed as a valid GPU model") entry))))))
 
 (def config-settings
   "Parses the settings out of a config file"
@@ -404,13 +419,16 @@
                          (throw (ex-info "You enabled nrepl but didn't configure a port. Please configure a port in your config file." {})))
                        ((util/lazy-load-var 'clojure.tools.nrepl.server/start-server) :port port)))
      :pools (fnk [[:config {pools nil}]]
+              (guard-invalid-gpu-config (:valid-gpu-models pools))
               (cond-> pools
                 (:job-resource-adjustment pools)
                 (update :job-resource-adjustment
                         #(-> %
                              (update :pool-regex re-pattern)))
                 (not (:default-containers pools))
-                (assoc :default-containers [])))
+                (assoc :default-containers [])
+                (not (:quotas pools))
+                (assoc :quotas [])))
      :api-only? (fnk [[:config {api-only? false}]]
                   api-only?)
      :estimated-completion-constraint (fnk [[:config {estimated-completion-constraint nil}]]
@@ -467,7 +485,11 @@
                              :pod-condition-unschedulable-seconds 60
                              :reconnect-delay-ms 60000
                              :set-container-cpu-limit? true}
-                            kubernetes)))}))
+                            kubernetes)))
+     :offer-matching (fnk [[:config {offer-matching {}}]]
+                          (merge {:global-min-match-interval-millis 100
+                                  :target-per-pool-match-interval-millis 3000}
+                                 offer-matching))}))
 
 (defn read-config
   "Given a config file path, reads the config and returns the map"
@@ -598,3 +620,11 @@
 (defn task-constraints
   []
   (get-in config [:settings :task-constraints]))
+
+(defn pool-quotas
+  []
+  (get-in config [:settings :pools :quotas]))
+
+(defn offer-matching
+  []
+  (-> config :settings :offer-matching))
