@@ -106,7 +106,7 @@
     [this _ vm-attributes]
     (job-constraint-evaluate this nil vm-attributes []))
   (job-constraint-evaluate
-    [{:keys [job]} _ vm-attributes _]
+    [{:keys [job]} _ vm-attributes vm-tasks-assigned]
     (let [k8s-vm? (= (get vm-attributes "compute-cluster-type") "kubernetes")
           job-gpu-count-requested (-> job util/job-ent->resources :gpus (or 0))]
           (if k8s-vm?
@@ -115,7 +115,9 @@
                   vm-gpu-model->count-available (get vm-attributes "gpus")
                   vm-satisfies-constraint? (if (pos? job-gpu-count-requested)
                                              ; If job requests GPUs, require that the VM has the same number of gpus available in the same model as the job requested.
-                                             (== (get vm-gpu-model->count-available job-gpu-model-requested 0) job-gpu-count-requested)
+                                             (and (== (get vm-gpu-model->count-available job-gpu-model-requested 0) job-gpu-count-requested)
+                                                  ; Only one GPU job can be assigned to each VM
+                                                  (-> vm-tasks-assigned count zero?))
                                              ; If job does not request GPUs, require that the VM does not support gpus.
                                              (-> vm-gpu-model->count-available count zero?))]
               [vm-satisfies-constraint? (when-not vm-satisfies-constraint?
