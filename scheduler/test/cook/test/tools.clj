@@ -755,7 +755,24 @@
            (util/job->usage {:job/resource [{:resource/type :cpus, :resource/amount 2}
                                             {:resource/type :gpus, :resource/amount 10}]})))))
 
-(deftest test-filter-based-on-quota
+(deftest test-filter-based-on-pool-quota
+  (let [usage {:count 1, :cpus 2, :mem 1024}
+        make-job (fn [id cpus mem]
+                   {:db/id id
+                    :job/resource [{:resource/type :cpus, :resource/amount cpus}
+                                   {:resource/type :mem, :resource/amount mem}]})
+        queue [(make-job 1 2 2048) (make-job 2 1 1024) (make-job 3 3 4096) (make-job 4 1 1024)]]
+    (testing "no jobs included"
+      (is (= []
+             (util/filter-based-on-pool-quota {:count 1, :cpus 2, :mem 1024} usage queue))))
+    (testing "all jobs included"
+      (is (= [(make-job 1 2 2048) (make-job 2 1 1024) (make-job 3 3 4096) (make-job 4 1 1024)]
+             (util/filter-based-on-pool-quota {:count 10, :cpus 20, :mem 32768} usage queue))))
+    (testing "room for later jobs not included"
+      (is (= [(make-job 1 2 2048) (make-job 2 1 1024)]
+             (util/filter-based-on-pool-quota {:count 4, :cpus 20, :mem 6144} usage queue))))))
+
+(deftest test-filter-based-on-user-quota
   (let [test-user "john"
         user->usage {test-user {:count 1, :cpus 2, :mem 1024}}
         make-job (fn [id cpus mem]
@@ -766,13 +783,13 @@
         queue [(make-job 1 2 2048) (make-job 2 1 1024) (make-job 3 3 4096) (make-job 4 1 1024)]]
     (testing "no jobs included"
       (is (= []
-             (util/filter-based-on-quota {test-user {:count 1, :cpus 2, :mem 1024}} user->usage queue))))
+             (util/filter-based-on-user-quota {test-user {:count 1, :cpus 2, :mem 1024}} user->usage queue))))
     (testing "all jobs included"
       (is (= [(make-job 1 2 2048) (make-job 2 1 1024) (make-job 3 3 4096) (make-job 4 1 1024)]
-             (util/filter-based-on-quota {test-user {:count 10, :cpus 20, :mem 32768}} user->usage queue))))
+             (util/filter-based-on-user-quota {test-user {:count 10, :cpus 20, :mem 32768}} user->usage queue))))
     (testing "room for later jobs not included"
       (is (= [(make-job 1 2 2048) (make-job 2 1 1024)]
-             (util/filter-based-on-quota {test-user {:count 4, :cpus 20, :mem 6144}} user->usage queue))))))
+             (util/filter-based-on-user-quota {test-user {:count 4, :cpus 20, :mem 6144}} user->usage queue))))))
 
 (deftest test-pool->user->usage
   (let [uri "datomic:mem://test-pool-user-usage"
