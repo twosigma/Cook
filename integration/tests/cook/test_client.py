@@ -193,18 +193,6 @@ class ClientTest(util.CookTest):
                 gpu_model = matching_gpu_models[0][0]
                 self.gpu_submit_helper(pool_name, 1, gpu_model)
 
-    @unittest.skipUnless(util.are_gpus_enabled(), "Requires GPUs")
-    def test_gpu_submit_c2(self):
-        """Test submitting a job with 2 GPUs specified."""
-        pools_with_gpus = util.gpu_enabled_pools()
-        if len(pools_with_gpus) == 0:
-            self.skipTest("No active pools support GPUs")
-        else:
-            for pool_name in pools_with_gpus:
-                matching_gpu_models = util.valid_gpu_models_on_pool(pool_name)
-                gpu_model = matching_gpu_models[0][0]
-                self.gpu_submit_helper(pool_name, 2, gpu_model)
-
     def test_bulk_ops(self):
         jobspecs = [
             {'command': 'ls'},
