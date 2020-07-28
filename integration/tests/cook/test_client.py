@@ -115,6 +115,7 @@ class ClientTest(util.CookTest):
         uuid = self.client.submit(command=f'{hostname_progress_cmd} && nc -l -p {JOB_PORT} $(hostname -I)',
                                   container=container,
                                   env={progress_file_env: 'progress.txt'},
+                                  max_retries=5,
                                   pool=util.default_submit_pool())
 
         addr = None
