@@ -319,3 +319,7 @@
                    (kcc/factory-fn {:launch-task-num-threads 64
                                     :use-google-service-account? false}
                                    nil))))))
+
+(deftest test-total-resource
+  (testing "gracefully handles missing resource"
+    (= 3 (kcc/total-resource {"node-a" {:cpus 1} "node-b" {} "node-c" {:cpus 2}} :cpus))))

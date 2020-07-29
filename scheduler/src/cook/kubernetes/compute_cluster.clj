@@ -43,7 +43,7 @@
   "Given a map from node-name->resource-keyword->amount and a resource-keyword,
   returns the total amount of that resource for all nodes."
   [node-name->resource-map resource-keyword]
-  (->> node-name->resource-map vals (map resource-keyword) (reduce +)))
+  (->> node-name->resource-map vals (map resource-keyword) (filter some?) (reduce +)))
 
 (defn total-gpu-resource
   "Given a map from node-name->resource-keyword->amount,
