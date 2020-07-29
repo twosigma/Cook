@@ -63,9 +63,10 @@
 
 (def ^ExecutorService kubernetes-executor (Executors/newCachedThreadPool))
 
-; Cook, Fenzo, and Mesos use MB for memory. Convert bytes from k8s to MB when passing to fenzo, and MB back to bytes
-; when submitting to k8s.
-(def memory-multiplier (* 1000 1000))
+; Cook, Fenzo, and Mesos use mebibytes (MiB) for memory.
+; Convert bytes from k8s to MiB when passing to Fenzo,
+; and MiB back to bytes when submitting to k8s.
+(def memory-multiplier (* 1024 1024))
 
 (defn is-cook-scheduler-pod
   "Is this a cook pod? Uses some-> so is null-safe."
