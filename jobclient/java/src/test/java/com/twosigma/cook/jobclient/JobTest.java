@@ -53,7 +53,9 @@ public class JobTest {
         jobBuilder.setCommand("sleep 10s");
         jobBuilder.setMemory(100.0);
         jobBuilder.setCpus(1.0);
+        jobBuilder.setGpus(2);
         jobBuilder.addEnv("FOO", "test");
+        jobBuilder.addEnv("COOK_GPU_MODEL", "nvidia-tesla-p100");
         jobBuilder.addLabel("foobar", "frobnicator");
         jobBuilder.setMaxRuntime(1000L);
         jobBuilder.disableMeaCulpaRetries();
@@ -82,6 +84,7 @@ public class JobTest {
         final Job basicJob = jobBuilder.build();
 
         final JSONObject jsonJob = Job.jsonizeJob(basicJob);
+        Assert.assertEquals(jsonJob.getInt("gpus"), basicJob.getGpus().intValue());
         Assert.assertEquals(jsonJob.getString("uuid"), basicJob.getUUID().toString());
         Assert.assertEquals(
             jsonJob.getJSONObject("application").toString(),
@@ -92,6 +95,9 @@ public class JobTest {
         Assert.assertEquals(constraints.length(), 2);
         Assert.assertEquals(constraints.getJSONArray(0).toString(), _constraint1.toJson().toString());
         Assert.assertEquals(constraints.getJSONArray(1).toString(), _constraint2.toJson().toString());
+        Assert.assertEquals(
+                jsonJob.getJSONObject("env").toString(),
+                new JSONObject().put("COOK_GPU_MODEL", "nvidia-tesla-p100").put("FOO", "test").toString());
     }
 
     @Test
@@ -108,11 +114,14 @@ public class JobTest {
         final Job job = jobs.get(0);
         Assert.assertEquals(basicJob, job);
         Assert.assertEquals(basicJob.getExecutor(), job.getExecutor());
-        Assert.assertEquals(job.getMaxRuntime(), new Long(1000L));
+        Assert.assertEquals(job.getMaxRuntime(), Long.valueOf(1000L));
         Assert.assertEquals(job.getApplication().getName(), "baz-app");
         Assert.assertEquals(job.getApplication().getVersion(), "1.2.3");
-        Assert.assertEquals(job.getExpectedRuntime(), new Long(500L));
+        Assert.assertEquals(job.getExpectedRuntime(), Long.valueOf(500L));
         Assert.assertEquals(job.getPool(), "dummy-pool");
+        Assert.assertEquals(Integer.valueOf(2), job.getGpus());
+        Assert.assertEquals("nvidia-tesla-p100", job.getEnv().get("COOK_GPU_MODEL"));
+        Assert.assertEquals("test", job.getEnv().get("FOO"));
 
         final Set<Constraint> constraints = job.getConstraints();
         Assert.assertEquals(constraints.size(), 2);
