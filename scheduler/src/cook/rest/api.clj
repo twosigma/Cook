@@ -213,6 +213,7 @@
   {:status s/Str
    :task_id s/Uuid
    :executor_id s/Uuid
+   :agent_id s/Str
    :slave_id s/Str
    :hostname s/Str
    :preempted s/Bool
@@ -1105,6 +1106,7 @@
                :hostname hostname
                :ports (vec (sort (:instance/ports instance)))
                :preempted (:instance/preempted? instance false)
+               :agent_id (:instance/slave-id instance)
                :slave_id (:instance/slave-id instance)
                :status (name (:instance/status instance))
                :task_id task-id}
