@@ -947,7 +947,8 @@ final public class Job {
         }
         object.put("mem", job.getMemory());
         object.put("cpus", job.getCpus());
-        if (job.getGpus() != null) {
+        // only include gpus in the job submission if gpus requested are positive
+        if (job.getGpus() > 0) {
             object.put("gpus", job.getGpus());
         }
         object.put("priority", job.getPriority());
