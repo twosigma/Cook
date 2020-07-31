@@ -29,6 +29,9 @@
 
 (def cook-pod-label "twosigma.com/cook-scheduler-job")
 (def cook-synthetic-pod-job-uuid-label "twosigma.com/cook-scheduler-synthetic-pod-job-uuid")
+(def workload-class-label "workload-class")
+(def workload-id-label "workload-id")
+(def resource-owner-label "resource-owner")
 (def cook-pool-label "cook-pool")
 (def cook-pool-taint "cook-pool")
 (def cook-sandbox-volume-name "cook-sandbox-volume")
