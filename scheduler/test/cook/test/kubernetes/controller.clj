@@ -103,6 +103,16 @@
     (is (= :reason-slave-removed @reason))
 
     (is (= :cook-expected-state/starting (do-process :cook-expected-state/starting :missing)))
+    (is (nil? (do-process :cook-expected-state/starting :missing :custom-test-state {:state :missing
+                                                                                    :reason "Pod was explicitly deleted"
+                                                                                    :pod-deleted? true
+                                                                                    :pod-preempted-timestamp 1589084484537})))
+    (is (= :reason-slave-removed @reason))
+    (is (nil? (do-process :cook-expected-state/starting :missing :custom-test-state {:state :missing
+                                                                                    :reason "Pod was explicitly deleted"
+                                                                                    :pod-deleted? true}
+                          :force-nil-pod? true)))
+    (is (= :reason-killed-externally @reason))
     (is (nil? (do-process :cook-expected-state/starting :missing :create-namespaced-pod-fn
                           (fn [_ _ _] (throw (ApiException. nil nil 422 nil nil))))))
     (is (= :cook-expected-state/completed (do-process :cook-expected-state/starting :pod/succeeded)))

@@ -530,7 +530,9 @@
                                                    (do
                                                      (log/info "In compute cluster" name ", pod" pod-name
                                                                "was deleted while it was expected starting")
-                                                     (handle-pod-killed compute-cluster pod-name))
+                                                     (if (some-> synthesized-state :pod-preempted-timestamp)
+                                                       (handle-pod-preemption compute-cluster pod-name)
+                                                       (handle-pod-externally-deleted compute-cluster pod-name)))
                                                    (launch-pod compute-cluster cook-expected-state-dict pod-name))
                                           ; TODO: May need to mark mea culpa retry
                                           :pod/failed (handle-pod-completed compute-cluster pod-name k8s-actual-state-dict) ; Finished or failed fast.
