@@ -1737,10 +1737,11 @@
         compute-cluster (testutil/setup-fake-test-compute-cluster conn)
         job-entity-id (create-dummy-job conn :user "test-user" :job-state :job.state/completed)
         basic-instance-properties {:executor-id (str job-entity-id "-executor-1")
-                                   :slave-id "slave-1"
+                                   :slave-id "agent-1"
                                    :task-id (str job-entity-id "-executor-1")}
         basic-instance-map {:executor_id (str job-entity-id "-executor-1")
-                            :slave_id "slave-1"
+                            :agent_id "agent-1"
+                            :slave_id "agent-1"
                             :task_id (str job-entity-id "-executor-1")
                             :compute-cluster
                             {:name "unittest-default-compute-cluster-name"

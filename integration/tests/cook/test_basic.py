@@ -60,6 +60,11 @@ class CookTest(util.CookTest):
         self.assertIn('success', [i['status'] for i in job['instances']], json.dumps(job, indent=2))
         self.assertEqual(False, job['disable_mea_culpa_retries'])
         instance = job['instances'][0]
+
+        # agent_id is a preferred alternative to slave_id with the same value
+        self.assertIn('agent_id', instance)
+        self.assertEqual(instance['slave_id'], instance['agent_id'])
+
         if instance['executor'] == 'cook':
             instance = util.wait_for_exit_code(self.cook_url, job_uuid)
             message = json.dumps(instance, sort_keys=True)
