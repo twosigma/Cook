@@ -199,7 +199,7 @@ class ClientTest(util.CookTest):
             {'command': 'ls'},
             {
                 'command': 'echo "Hello World!"',
-                'mem': 256.0,
+                'mem': 256.0
             }
         ]
         uuids = self.client.submit_all(jobspecs,
@@ -220,8 +220,8 @@ class ClientTest(util.CookTest):
         jobspecs = [
             {
                 'command': 'echo "Hello World!"',
-                'mem': 256.0
-                'container': None,
+                'mem': 256.0,
+                'container': None
             }
         ]
         uuids = self.client.submit_all(jobspecs,
