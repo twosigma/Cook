@@ -356,19 +356,19 @@ class JobClient:
         returned.
         """
         jobspec = copy.deepcopy(jobspec)
-        if 'uuid' not in jobspec:
+        if jobspec.get('uuid', None) is None:
             jobspec['uuid'] = str(util.make_temporal_uuid())
-        if 'cpus' not in jobspec:
+        if jobspec.get('cpus', None) is None:
             jobspec['cpus'] = 1.0
-        if 'mem' not in jobspec:
+        if jobspec.get('mem', None) is None:
             jobspec['mem'] = 128.0
-        if 'max-retries' not in jobspec:
+        if jobspec.get('max-retries', None) is None:
             jobspec['max-retries'] = 1
-        if 'max-runtime' not in jobspec:
+        if jobspec.get('max-runtime', None) is None:
             jobspec['max-runtime'] = timedelta(days=1)
-        if 'name' not in jobspec:
+        if jobspec.get('name', None) is None:
             jobspec['name'] = f'{getpass.getuser()}-job'
-        if 'application' not in jobspec:
+        if jobspec.get('application', None) is None:
             jobspec['application'] = _CLIENT_APP
         return jobspec
 
@@ -383,13 +383,13 @@ class JobClient:
         The provided jobspec will not be touched and a copy will be returned.
         """
         jobspec = copy.deepcopy(jobspec)
-        if 'max-runtime' in jobspec:
+        if jobspec.get('max-runtime', None) is not None:
             jobspec['max-runtime'] = (
                 jobspec['max-runtime'].total_seconds() * 1000
             )
-        if 'application' in jobspec:
+        if jobspec.get('application', None) is not None:
             jobspec['application'] = jobspec['application'].to_dict()
-        if 'container' in jobspec:
+        if jobspec.get('container', None) is not None:
             jobspec['container'] = jobspec['container'].to_dict()
         return jobspec
 
