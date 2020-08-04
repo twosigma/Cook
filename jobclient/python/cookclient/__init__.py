@@ -378,7 +378,8 @@ class JobClient:
 
         This function will convert the higher-level Python types used in job
         submissions into their JSON primitive counterparts (e.g., timedelta is
-        converted into the number of milliseconds).
+        converted into the number of milliseconds). Additionally, this function
+        will also remove all keys with a value of ``None``.
 
         The provided jobspec will not be touched and a copy will be returned.
         """
@@ -391,7 +392,7 @@ class JobClient:
             jobspec['application'] = jobspec['application'].to_dict()
         if util.is_field_set(jobspec, 'container'):
             jobspec['container'] = jobspec['container'].to_dict()
-        return jobspec
+        return util.prune_nones(jobspec)
 
     def __enter__(self):
         return self

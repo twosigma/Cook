@@ -78,3 +78,12 @@ def clamped_ms_to_timedelta(ms: int) -> timedelta:
 def is_field_set(d: dict, key: str) -> bool:
     """Check whether d has key set to a non-None value."""
     return d.get(key, None) is not None
+
+
+def prune_nones(d: dict) -> dict:
+    """Remove all None values in d."""
+    return {
+        key: value
+        for key, value in d.items()
+        if value is not None
+    }
