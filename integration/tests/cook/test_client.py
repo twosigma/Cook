@@ -215,3 +215,21 @@ class ClientTest(util.CookTest):
             self.assertEqual(jobs[1].mem, jobspecs[1]['mem'])
         finally:
             self.client.kill_all(uuids)
+
+    def test_bulk_submit_explicit_none(self):
+        jobspecs = [
+            {
+                'command': 'echo "Hello World!"',
+                'mem': 256.0,
+                'container': None
+            }
+        ]
+        uuids = self.client.submit_all(jobspecs,
+                                       pool=util.default_submit_pool())
+        try:
+            jobs = self.client.query_all(uuids)
+
+            self.assertEqual(jobs[0].uuid, uuids[0])
+            self.assertEqual(jobs[0].command, jobspecs[0]['command'])
+        finally:
+            self.client.kill_all(uuids)
