@@ -231,6 +231,5 @@ class ClientTest(util.CookTest):
 
             self.assertEqual(jobs[0].uuid, uuids[0])
             self.assertEqual(jobs[0].command, jobspecs[0]['command'])
-            self.assertIsNone(jobs[0].container)
         finally:
             self.client.kill_all(uuids)
