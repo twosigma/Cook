@@ -1,5 +1,4 @@
 import collections
-import datetime
 import json
 import logging
 import time
@@ -10,7 +9,8 @@ from tabulate import tabulate
 from cook import terminal, http
 from cook.format import format_job_memory, format_job_attempts, format_job_status
 from cook.querying import query_across_clusters
-from cook.util import current_user, print_info, millis_to_date_string, check_positive, guard_no_cluster
+from cook.util import check_positive, current_user, date_time_string_to_ms_since_epoch, guard_no_cluster, \
+    millis_to_date_string, print_info
 
 MILLIS_PER_HOUR = 60 * 60 * 1000
 DEFAULT_LOOKBACK_HOURS = 6
@@ -109,23 +109,6 @@ def print_as_table(query_result):
 def print_as_json(query_result):
     """Prints the query result as raw JSON"""
     print(json.dumps(query_result))
-
-
-def date_time_string_to_ms_since_epoch(date_time_string):
-    """Converts the given date_time_string (e.g. '5 minutes ago') to milliseconds since epoch"""
-    import tzlocal
-    from cook import dateparser
-    local_tz = tzlocal.get_localzone()
-    dt = dateparser.parse(date_time_string, local_tz)
-    if dt:
-        import pytz
-        logging.debug(f'parsed "{date_time_string}" as {dt}')
-        epoch = datetime.datetime(1970, 1, 1, tzinfo=pytz.utc)
-        ms_since_epoch = int((dt - epoch).total_seconds() * 1000)
-        logging.debug(f'converted "{date_time_string}" to ms {ms_since_epoch}')
-        return ms_since_epoch
-    else:
-        raise Exception(f'"{date_time_string}" is not a valid date / time string.')
 
 
 def lookback_hours_to_range(lookback_hours):
