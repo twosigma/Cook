@@ -1206,8 +1206,8 @@ class CookTest(util.CookTest):
         jobs = []
         name = str(util.make_temporal_uuid())
         pools, _ = util.active_pools(self.cook_url)
-        # Running this for the first two pools only is enough
-        pools = pools[:2]
+        # Running this for the first pool only is enough
+        pools = pools[:1]
         start = util.current_milli_time()
         sleep_command = f'sleep {util.DEFAULT_TEST_TIMEOUT_SECS}'
         for pool in pools:
