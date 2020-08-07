@@ -963,8 +963,8 @@
   ; Use the already precomputed user->usage map and just aggregate by users to get pool usage.
   (let [pool-usage (reduce (partial merge-with +) (vals user->usage))]
     (->> queue
-         (filter-based-on-pool-quota pool-quota pool-usage)
-         (filter-based-on-user-quota user->quota user->usage))))
+         (filter-based-on-user-quota user->quota user->usage)
+         (filter-based-on-pool-quota pool-quota pool-usage))))
 
 (defn pool->user->usage
   "Returns a map from pool name to user name to usage for all users in all pools."
