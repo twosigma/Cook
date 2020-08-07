@@ -477,16 +477,17 @@ def make_temporal_uuid():
 def job_label():
     return os.getenv('COOK_TEST_JOB_LABEL')
 
-def get_caller():
+
+def get_caller(depth=2):
     """Get the name of the function that called the caller of this function."""
-    startFrame = sys._getframe(2)
-    while startFrame is not None:
-        name = startFrame.f_code.co_name
+    start_frame = sys._getframe(depth)
+    while start_frame is not None:
+        name = start_frame.f_code.co_name
         if name == '<listcomp>':
             pass
         else:
-            return startFrame.f_code.co_name
-        startFrame = startFrame.f_back
+            return start_frame.f_code.co_name
+        start_frame = start_frame.f_back
     return ""
 
 
@@ -637,6 +638,21 @@ def retry_jobs(cook_url, assert_response=True, use_deprecated_post=False, **kwar
     return response
 
 
+def user_agent_header(caller_depth=4):
+    """
+    Returns a dictionary with a single User-Agent header that includes the
+    name of the calling function at the specified depth in the call stack
+    """
+    headers = {'User-Agent': f"{get_caller(caller_depth)} ({session.headers['User-Agent']})"}
+    return headers
+
+
+def __delete(url, params):
+    """Makes a DELETE request with the given URL and params"""
+    response = session.delete(url, params=params, headers=user_agent_header())
+    return response
+
+
 def kill_jobs(cook_url, jobs, assert_response=True, expected_status_code=204, log_before_killing=False):
     """Kill one or more jobs"""
     if log_before_killing:
@@ -647,7 +663,7 @@ def kill_jobs(cook_url, jobs, assert_response=True, expected_status_code=204, lo
     response = []
     for chunk in chunks:
         params = {'job': [unpack_uuid(j) for j in chunk]}
-        response = session.delete(f'{cook_url}/rawscheduler', params=params)
+        response = __delete(f'{cook_url}/rawscheduler', params=params)
         if assert_response:
             assert expected_status_code == response.status_code, response.text
     return response

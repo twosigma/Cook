@@ -79,7 +79,9 @@ if 'TEST_METRICS_URL' in os.environ:
                 'build-id': os.getenv('TEST_METRICS_BUILD_ID', None),
                 'result': result,
                 'runtime-milliseconds': (end - start) * 1000,
-                'expected-to-fail': expected_to_fail
+                'expected-to-fail': expected_to_fail,
+                'compute-cluster-type': os.getenv('TEST_METRICS_COMPUTE_CLUSTER_TYPE', None),
+                'url': os.getenv('COOK_SCHEDULER_URL', None)
             }
             timeout = os.getenv('TEST_METRICS_POST_TIMEOUT_SECONDS', 10)
             logging.info(f'Updating test metrics (timeout = {timeout} seconds): {json.dumps(metrics, indent=2)}')

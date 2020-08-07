@@ -29,6 +29,9 @@
 
 (def cook-pod-label "twosigma.com/cook-scheduler-job")
 (def cook-synthetic-pod-job-uuid-label "twosigma.com/cook-scheduler-synthetic-pod-job-uuid")
+(def workload-class-label "workload-class")
+(def workload-id-label "workload-id")
+(def resource-owner-label "resource-owner")
 (def cook-pool-label "cook-pool")
 (def cook-pool-taint "cook-pool")
 (def cook-sandbox-volume-name "cook-sandbox-volume")
@@ -63,9 +66,10 @@
 
 (def ^ExecutorService kubernetes-executor (Executors/newCachedThreadPool))
 
-; Cook, Fenzo, and Mesos use MB for memory. Convert bytes from k8s to MB when passing to fenzo, and MB back to bytes
-; when submitting to k8s.
-(def memory-multiplier (* 1000 1000))
+; Cook, Fenzo, and Mesos use mebibytes (MiB) for memory.
+; Convert bytes from k8s to MiB when passing to Fenzo,
+; and MiB back to bytes when submitting to k8s.
+(def memory-multiplier (* 1024 1024))
 
 (defn is-cook-scheduler-pod
   "Is this a cook pod? Uses some-> so is null-safe."

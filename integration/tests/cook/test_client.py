@@ -115,6 +115,7 @@ class ClientTest(util.CookTest):
         uuid = self.client.submit(command=f'{hostname_progress_cmd} && nc -l -p {JOB_PORT} $(hostname -I)',
                                   container=container,
                                   env={progress_file_env: 'progress.txt'},
+                                  max_retries=5,
                                   pool=util.default_submit_pool())
 
         addr = None
@@ -193,18 +194,6 @@ class ClientTest(util.CookTest):
                 gpu_model = matching_gpu_models[0][0]
                 self.gpu_submit_helper(pool_name, 1, gpu_model)
 
-    @unittest.skipUnless(util.are_gpus_enabled(), "Requires GPUs")
-    def test_gpu_submit_c2(self):
-        """Test submitting a job with 2 GPUs specified."""
-        pools_with_gpus = util.gpu_enabled_pools()
-        if len(pools_with_gpus) == 0:
-            self.skipTest("No active pools support GPUs")
-        else:
-            for pool_name in pools_with_gpus:
-                matching_gpu_models = util.valid_gpu_models_on_pool(pool_name)
-                gpu_model = matching_gpu_models[0][0]
-                self.gpu_submit_helper(pool_name, 2, gpu_model)
-
     def test_bulk_ops(self):
         jobspecs = [
             {'command': 'ls'},
@@ -224,5 +213,23 @@ class ClientTest(util.CookTest):
             self.assertEqual(jobs[1].uuid, uuids[1])
             self.assertEqual(jobs[1].command, jobspecs[1]['command'])
             self.assertEqual(jobs[1].mem, jobspecs[1]['mem'])
+        finally:
+            self.client.kill_all(uuids)
+
+    def test_bulk_submit_explicit_none(self):
+        jobspecs = [
+            {
+                'command': 'echo "Hello World!"',
+                'mem': 256.0,
+                'container': None
+            }
+        ]
+        uuids = self.client.submit_all(jobspecs,
+                                       pool=util.default_submit_pool())
+        try:
+            jobs = self.client.query_all(uuids)
+
+            self.assertEqual(jobs[0].uuid, uuids[0])
+            self.assertEqual(jobs[0].command, jobspecs[0]['command'])
         finally:
             self.client.kill_all(uuids)

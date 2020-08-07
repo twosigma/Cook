@@ -368,6 +368,13 @@
     (update-or-delete! cook-starting-pods pod-name new-cook-expected-state-dict)
     (update-or-delete! cook-starting-pods pod-name nil)))
 
+(defn- handle-pod-missing-unexpectedly
+  "Handle case when pod was running but then was removed unexpectedly"
+  [synthesized-state compute-cluster pod-name]
+  (if (some-> synthesized-state :pod-preempted-timestamp)
+    (handle-pod-preemption compute-cluster pod-name)
+    (handle-pod-externally-deleted compute-cluster pod-name)))
+
 (defn process
   "Visit this pod-name, processing the new level-state. Returns the new cook expected state. Returns
   empty dictionary to indicate that the result should be deleted. NOTE: Must be invoked with the lock."
@@ -498,9 +505,7 @@
                                         :cook-expected-state/running
                                         (case pod-synthesized-state-modified
                                           ; This indicates that something deleted it behind our back
-                                          :missing (if (some-> synthesized-state :pod-preempted-timestamp)
-                                                     (handle-pod-preemption compute-cluster pod-name)
-                                                     (handle-pod-externally-deleted compute-cluster pod-name))
+                                          :missing (handle-pod-missing-unexpectedly synthesized-state compute-cluster pod-name)
                                           ; TODO: May need to mark mea culpa retry
                                           :pod/failed (handle-pod-completed compute-cluster pod-name k8s-actual-state-dict)
                                           :pod/running cook-expected-state-dict
@@ -530,7 +535,7 @@
                                                    (do
                                                      (log/info "In compute cluster" name ", pod" pod-name
                                                                "was deleted while it was expected starting")
-                                                     (handle-pod-killed compute-cluster pod-name))
+                                                     (handle-pod-missing-unexpectedly synthesized-state compute-cluster pod-name))
                                                    (launch-pod compute-cluster cook-expected-state-dict pod-name))
                                           ; TODO: May need to mark mea culpa retry
                                           :pod/failed (handle-pod-completed compute-cluster pod-name k8s-actual-state-dict) ; Finished or failed fast.

@@ -1246,11 +1246,11 @@
     (fn cancelled-task-killer-event []
       (timers/time!
         killing-cancelled-tasks-duration
-        (doseq [task (killable-cancelled-tasks (d/db conn))]
-          (log/warn "killing cancelled task " (:instance/task-id task))
-          @(d/transact conn [[:db/add (:db/id task) :instance/reason
+        (doseq [{:keys [db/id instance/task-id] :as task} (killable-cancelled-tasks (d/db conn))]
+          (log/info "Killing cancelled task" task-id)
+          @(d/transact conn [[:db/add id :instance/reason
                               [:reason/name :reason-killed-by-user]]])
-          (cc/kill-task-if-possible (cook.task/task-ent->ComputeCluster task) (:instance/task-id task)))))
+          (cc/kill-task-if-possible (cook.task/task-ent->ComputeCluster task) task-id))))
     {:error-handler (fn [e]
                       (log/error e "Failed to kill cancelled tasks!"))}))
 

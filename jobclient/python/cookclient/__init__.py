@@ -28,7 +28,7 @@ from . import util
 from .containers import AbstractContainer
 from .jobs import Application, Job
 
-CLIENT_VERSION = '0.3.0'
+CLIENT_VERSION = '0.3.1'
 
 _LOG = logging.getLogger(__name__)
 _LOG.addHandler(logging.StreamHandler())
@@ -356,19 +356,19 @@ class JobClient:
         returned.
         """
         jobspec = copy.deepcopy(jobspec)
-        if 'uuid' not in jobspec:
+        if not util.is_field_set(jobspec, 'uuid'):
             jobspec['uuid'] = str(util.make_temporal_uuid())
-        if 'cpus' not in jobspec:
+        if not util.is_field_set(jobspec, 'cpus'):
             jobspec['cpus'] = 1.0
-        if 'mem' not in jobspec:
+        if not util.is_field_set(jobspec, 'mem'):
             jobspec['mem'] = 128.0
-        if 'max-retries' not in jobspec:
+        if not util.is_field_set(jobspec, 'max-retries'):
             jobspec['max-retries'] = 1
-        if 'max-runtime' not in jobspec:
+        if not util.is_field_set(jobspec, 'max-runtime'):
             jobspec['max-runtime'] = timedelta(days=1)
-        if 'name' not in jobspec:
+        if not util.is_field_set(jobspec, 'name'):
             jobspec['name'] = f'{getpass.getuser()}-job'
-        if 'application' not in jobspec:
+        if not util.is_field_set(jobspec, 'application'):
             jobspec['application'] = _CLIENT_APP
         return jobspec
 
@@ -378,20 +378,21 @@ class JobClient:
 
         This function will convert the higher-level Python types used in job
         submissions into their JSON primitive counterparts (e.g., timedelta is
-        converted into the number of milliseconds).
+        converted into the number of milliseconds). Additionally, this function
+        will also remove all keys with a value of ``None``.
 
         The provided jobspec will not be touched and a copy will be returned.
         """
         jobspec = copy.deepcopy(jobspec)
-        if 'max-runtime' in jobspec:
+        if util.is_field_set(jobspec, 'max-runtime'):
             jobspec['max-runtime'] = (
                 jobspec['max-runtime'].total_seconds() * 1000
             )
-        if 'application' in jobspec:
+        if util.is_field_set(jobspec, 'application'):
             jobspec['application'] = jobspec['application'].to_dict()
-        if 'container' in jobspec:
+        if util.is_field_set(jobspec, 'container'):
             jobspec['container'] = jobspec['container'].to_dict()
-        return jobspec
+        return util.prune_nones(jobspec)
 
     def __enter__(self):
         return self

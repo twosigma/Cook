@@ -43,7 +43,7 @@
   "Given a map from node-name->resource-keyword->amount and a resource-keyword,
   returns the total amount of that resource for all nodes."
   [node-name->resource-map resource-keyword]
-  (->> node-name->resource-map vals (map resource-keyword) (reduce +)))
+  (->> node-name->resource-map vals (map resource-keyword) (filter some?) (reduce +)))
 
 (defn total-gpu-resource
   "Given a map from node-name->resource-keyword->amount,
@@ -428,8 +428,13 @@
                                  :pod-hostnames-to-avoid (constraints/job->previous-hosts-to-avoid job)
                                  ; We need to label the synthetic pods so that we
                                  ; can opt them out of some of the normal plumbing,
-                                 ; like mapping status back to a job instance
-                                 :pod-labels {api/cook-synthetic-pod-job-uuid-label (str uuid)}
+                                 ; like mapping status back to a job instance. We
+                                 ; also want to label the workload as infrastructure
+                                 ; and associate the user as the resource owner.
+                                 :pod-labels {api/cook-synthetic-pod-job-uuid-label (str uuid)
+                                              api/workload-class-label "infrastructure"
+                                              api/workload-id-label "synthetic-pod"
+                                              api/resource-owner-label user}
                                  ; We need to give synthetic pods a lower priority than
                                  ; actual job pods so that the job pods can preempt them
                                  ; (https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/);
