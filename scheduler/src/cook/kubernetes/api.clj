@@ -686,6 +686,17 @@
             checkpoint))
         checkpoint))))
 
+(defn job->pod-labels
+  "Returns the dictionary of labels that should be
+  added to the job's pod based on the job's labels."
+  [job]
+  (if-let [prefix (:add-job-label-to-pod-prefix (config/kubernetes))]
+    (->> job
+         util/job-ent->label
+         (filter (fn [[k _]] (str/starts-with? k prefix)))
+         (into {}))
+    {}))
+
 (defn ^V1Pod task-metadata->pod
   "Given a task-request and other data generate the kubernetes V1Pod to launch that task."
   [namespace compute-cluster-name
@@ -710,6 +721,7 @@
         metadata (V1ObjectMeta.)
         container (V1Container.)
         resources (V1ResourceRequirements.)
+        pod-labels (merge (job->pod-labels job) pod-labels)
         labels (assoc pod-labels cook-pod-label compute-cluster-name)
         security-context (make-security-context parameters (:user command))
         sandbox-dir (:default-workdir (config/kubernetes))
