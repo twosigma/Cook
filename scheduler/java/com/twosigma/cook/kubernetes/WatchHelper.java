@@ -14,7 +14,7 @@ public class WatchHelper {
     public static Watch<V1Pod> createPodWatch(ApiClient apiClient, String resourceVersion) throws ApiException {
         CoreV1Api api = new CoreV1Api(apiClient);
         return Watch.createWatch(apiClient,
-                api.listPodForAllNamespacesCall(null, null, null, null, null, null,
+                api.listNamespacedPodCall("tsram", null, null, null, null, null, null,
                         resourceVersion, null, true, null),
                 new TypeToken<Watch.Response<V1Pod>>() {}.getType());
     }
