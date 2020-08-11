@@ -348,6 +348,152 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db
     :db/doc "For a mesos compute cluster, what framework-id did it run under?"}
+   ;; Dynamic compute cluster specification
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :dynamic-cluster/id
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db
+    :db/doc "ID - should be unique for each compute cluster lifetime. e.g. cluster name + cluster create time."}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :dynamic-cluster/template
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db
+    :db/doc "Name of the template to use to augment the cluster configuration."}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :dynamic-cluster/config
+    :db/valueType :db.type/ref
+    :db/isComponent true
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db
+    :db/doc "Computer cluster configuration to use when instantiating a compute cluster from this
+             dynamic compute cluster specification. This configuration might be augmented by a configuration
+             template. See :dynamic-cluster/template."}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :dynamic-cluster-config/base-path
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db
+    :db/doc "URL of compute cluster. e.g. URL of Kubernetes cluster API server."}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :dynamic-cluster-config/ca-cert
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db
+    :db/doc "Base 64 encoded CA certificate of compute cluster. e.g. Kubernetes server certificate."}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :dynamic-cluster-config/verifying-ssl?
+    :db/valueType :db.type/boolean
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db
+    :db/doc "Verifies SSL certificate (need the CA certificate for this)."}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :dynamic-cluster-config/api-client-config-file
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db
+    :db/doc "Optional path of config file to initialize the api client."}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :dynamic-cluster-config/use-google-service-account?
+    :db/valueType :db.type/boolean
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db
+    :db/doc "If true, gets google application default credentials and generates a bearer token
+             for authenticating with kubernetes."}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :dynamic-cluster-config/bearer-token-refresh-seconds
+    :db/valueType :db.type/long
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db
+    :db/doc "Interval to refresh the bearer token after connecting to compute cluster."}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :dynamic-cluster-config/launch-task-num-threads
+    :db/valueType :db.type/long
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db
+    :db/doc "Number of threads to launch tasks."}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :dynamic-cluster-config/max-pods-per-node
+    :db/valueType :db.type/long
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db
+    :db/doc "Maximum number of pods per node."}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :dynamic-cluster-config/scan-frequency-seconds
+    :db/valueType :db.type/long
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db
+    :db/doc "Task scan frequency."}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :dynamic-cluster-config/synthetic-pods
+    :db/valueType :db.type/ref
+    :db/isComponent true
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db
+    :db/doc "Synthetic pods configuration. Synthetic pods are used to force scaling up."}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :dynamic-cluster-config-synthetic-pods/image
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :dynamic-cluster-config-synthetic-pods/user
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :dynamic-cluster-config-synthetic-pods/command
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :dynamic-cluster-config-synthetic-pods/max-pods-outstanding
+    :db/valueType :db.type/long
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :dynamic-cluster-config-synthetic-pods/max-total-pods
+    :db/valueType :db.type/long
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :dynamic-cluster-config-synthetic-pods/max-total-nodes
+    :db/valueType :db.type/long
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :dynamic-cluster-config-synthetic-pods/pools
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/many
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :dynamic-cluster/state
+    :db/valueType :db.type/ref
+    :db/isComponent true
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db
+    :db/doc "Last known desired state of the compute cluster."}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :dynamic-cluster-state/locked?
+    :db/valueType :db.type/boolean
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db
+    :db/doc "If true, the state value can't be changed unless forced when calling update function.
+             The background dynamic cluster update process does not force changes."}
+   ; compute cluster states
+   {:db/id (d/tempid :db.part/user)
+    :db/ident :dynamic-cluster-state.value/running}
+   {:db/id (d/tempid :db.part/user)
+    :db/ident :dynamic-cluster-state.value/draining}
+   {:db/id (d/tempid :db.part/user)
+    :db/ident :dynamic-cluster-state.value/deleted}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :dynamic-cluster-state/value
+    :db/valueType :db.type/ref
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db
+    :db/doc "The state value."}
    ;; Container Attributes
    {:db/id (d/tempid :db.part/db)
     :db/doc "variant records based on container/type"
