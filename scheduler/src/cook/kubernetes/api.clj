@@ -921,7 +921,7 @@
                                                sidecar-workdir-volume
                                                checkpoint-volume)))
     (.setSecurityContext pod-spec security-context)
-    (.setPriorityClassName pod-spec pod-priority-class)
+    ;(.setPriorityClassName pod-spec pod-priority-class)
 
     ; pod
     (.setMetadata pod metadata)
