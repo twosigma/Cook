@@ -108,6 +108,8 @@
       update-interval-ms
       (assoc :update-data-local-costs-trigger-chan (prepare-trigger-chan (time/millis update-interval-ms))))))
 
+(defn )
+
 (defn start-leader-selector
   "Starts a leader elector. When the process is leader, it starts the mesos
    scheduler and associated threads to interact with mesos.
@@ -158,22 +160,22 @@
                                 (try
                                   (let [{:keys [pool-name->fenzo view-incubating-offers]}
                                         (sched/create-datomic-scheduler
-                                         {:conn mesos-datomic-conn
-                                          :compute-clusters (vals @cook.compute-cluster/cluster-name->compute-cluster-atom)
-                                          :fenzo-fitness-calculator fenzo-fitness-calculator
-                                          :fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-reset
-                                          :fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-warn
-                                          :fenzo-max-jobs-considered fenzo-max-jobs-considered
-                                          :fenzo-scaleback fenzo-scaleback
-                                          :good-enough-fitness good-enough-fitness
-                                          :mea-culpa-failure-limit mea-culpa-failure-limit
-                                          :mesos-run-as-user mesos-run-as-user
-                                          :agent-attributes-cache agent-attributes-cache
-                                          :offer-incubate-time-ms offer-incubate-time-ms
-                                          :pool-name->pending-jobs-atom pool-name->pending-jobs-atom
-                                          :rebalancer-reservation-atom rebalancer-reservation-atom
-                                          :task-constraints task-constraints
-                                          :trigger-chans trigger-chans})
+                                          {:conn mesos-datomic-conn
+                                           :cluster-name->compute-cluster-atom cook.compute-cluster/cluster-name->compute-cluster-atom
+                                           :fenzo-fitness-calculator fenzo-fitness-calculator
+                                           :fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-reset
+                                           :fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-warn
+                                           :fenzo-max-jobs-considered fenzo-max-jobs-considered
+                                           :fenzo-scaleback fenzo-scaleback
+                                           :good-enough-fitness good-enough-fitness
+                                           :mea-culpa-failure-limit mea-culpa-failure-limit
+                                           :mesos-run-as-user mesos-run-as-user
+                                           :agent-attributes-cache agent-attributes-cache
+                                           :offer-incubate-time-ms offer-incubate-time-ms
+                                           :pool-name->pending-jobs-atom pool-name->pending-jobs-atom
+                                           :rebalancer-reservation-atom rebalancer-reservation-atom
+                                           :task-constraints task-constraints
+                                           :trigger-chans trigger-chans})
                                         running-tasks-ents (cook.tools/get-running-task-ents (d/db mesos-datomic-conn))
                                         cluster-connected-chans (->> cluster-name->compute-cluster
                                                                      (map (fn [[compute-cluster-name compute-cluster]]

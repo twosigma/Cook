@@ -956,7 +956,7 @@
   "Make the core scheduling loop for a pool"
   [conn fenzo pool-name->pending-jobs-atom agent-attributes-cache max-considerable scaleback
    floor-iterations-before-warn floor-iterations-before-reset trigger-chan rebalancer-reservation-atom
-   mesos-run-as-user pool-name compute-clusters]
+   mesos-run-as-user pool-name cluster-name->compute-cluster-atom]
   (let [resources-atom (atom (view-incubating-offers fenzo))]
     (reset! fenzo-num-considerable-atom max-considerable)
     (tools/chime-at-ch
@@ -989,6 +989,7 @@
                         user->usage-future (future (generate-user-usage-map (d/db conn) pool-name))
                         ;; Try to clear the channel
                         ;; Merge the pending offers from all compute clusters.
+                        compute-clusters (vals @cook.compute-cluster/cluster-name->compute-cluster-atom)
                         offers (apply concat (map (fn [compute-cluster]
                                                     (try
                                                       (cc/pending-offers compute-cluster pool-name)
@@ -1575,7 +1576,7 @@
     (async/pipe (chime-ch (tools/time-seq (time/now) (time/millis match-interval-millis))) match-trigger-chan)))
 
 (defn create-datomic-scheduler
-  [{:keys [conn compute-clusters fenzo-fitness-calculator fenzo-floor-iterations-before-reset
+  [{:keys [conn cluster-name->compute-cluster-atom fenzo-fitness-calculator fenzo-floor-iterations-before-reset
            fenzo-floor-iterations-before-warn fenzo-max-jobs-considered fenzo-scaleback good-enough-fitness
            mea-culpa-failure-limit mesos-run-as-user agent-attributes-cache offer-incubate-time-ms
            pool-name->pending-jobs-atom rebalancer-reservation-atom task-constraints
@@ -1599,7 +1600,7 @@
                                    conn (pool-name->fenzo name) pool-name->pending-jobs-atom agent-attributes-cache
                                    fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn
                                    fenzo-floor-iterations-before-reset (get pool->match-trigger-chan name)
-                                   rebalancer-reservation-atom mesos-run-as-user name compute-clusters)))]
+                                   rebalancer-reservation-atom mesos-run-as-user name cluster-name->compute-cluster-atom)))]
     (prepare-match-trigger-chan match-trigger-chan pools')
     (async/go-loop []
       (when-let [x (async/<! match-trigger-chan)]

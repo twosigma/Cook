@@ -156,3 +156,7 @@
                                 (map (fn [{:keys [config]}] (:compute-cluster-name config)))
                                 first)]
     (compute-cluster-name->ComputeCluster first-cluster-name)))
+
+(defn update-dynamic-clusters
+  ""
+  [])

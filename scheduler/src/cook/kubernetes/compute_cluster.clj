@@ -281,7 +281,8 @@
                                      node-name->pod-name->pod cook-expected-state-map cook-starting-pods k8s-actual-state-map
                                      pool->fenzo-atom namespace-config scan-frequency-seconds-config max-pods-per-node
                                      synthetic-pods-config node-blocklist-labels
-                                     ^ExecutorService launch-task-executor-service]
+                                     ^ExecutorService launch-task-executor-service
+                                     compute-cluster-config state-atom]
   cc/ComputeCluster
   (launch-tasks [this pool-name matches process-task-post-launch-fn]
     (let [task-metadata-seq (mapcat :task-metadata-seq matches)]
@@ -538,7 +539,7 @@
 
 (defn make-api-client
   "Builds an ApiClient from the given configuration parameters:
-    - If config-file is specified, initializes the api file from the file at config-file
+    - If config-file is specified, initializes the api client from the file at config-file
     - If base-path is specified, sets the cluster base path
     - If verifying-ssl is specified, sets verifying ssl
     - If use-google-service-account? is true, gets google application default credentials and generates
@@ -587,6 +588,7 @@
            namespace
            node-blocklist-labels
            scan-frequency-seconds
+           state
            synthetic-pods
            use-google-service-account?
            verifying-ssl]
@@ -597,6 +599,8 @@
                     :namespace "cook"}
          node-blocklist-labels (list)
          scan-frequency-seconds 120
+         state {:locked? false
+                :value :running}
          use-google-service-account? true}
     :as compute-cluster-config}
    {:keys [exit-code-syncer-state]}]
@@ -604,7 +608,7 @@
   (when (not (< 0 launch-task-num-threads 64))
     (throw
       (ex-info
-        "Please configure :launch-task-num-threads to > 0 and < 64 in your config file."
+        "Please configure :launch-task-num-threads to > 0 and < 64 in your config."
         compute-cluster-config)))
   (let [conn cook.datomic/conn
         cluster-entity-id (get-or-create-cluster-entity-id conn compute-cluster-name)
@@ -627,6 +631,8 @@
                                                     max-pods-per-node
                                                     synthetic-pods
                                                     node-blocklist-labels
-                                                    launch-task-executor-service)]
+                                                    launch-task-executor-service
+                                                    compute-cluster-config
+                                                    (atom state))]
     (cc/register-compute-cluster! compute-cluster)
     compute-cluster))
