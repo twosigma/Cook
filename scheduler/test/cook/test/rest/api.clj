@@ -2305,7 +2305,16 @@
               {:keys [status] :as response} (handler request)]
           ; Assert that the request succeeded and that the pool in the database is pool-2
           (is (= 201 status) (str response))
-          (is (= "pool-2" (-> conn d/db (d/entity [:job/uuid job-uuid]) util/job->pool-name))))))))
+          (is (= "pool-2" (-> conn d/db (d/entity [:job/uuid job-uuid]) util/job->pool-name)))))
+
+      (testing "job labels with slashes are preserved"
+        (let [handler (api/create-jobs-handler conn task-constraints gpu-enabled? is-authorized-fn)
+              job-with-label (-> (minimal-job) (assoc :labels {:foo.bar/baz "qux"}))
+              request (-> (new-request) (assoc-in [:body-params :jobs] [job-with-label]))
+              job-uuid (-> request :body-params :jobs first :uuid)
+              {:keys [status]} (handler request)]
+          (is (= 201 status))
+          (is (= {"foo.bar/baz" "qux"} (-> conn d/db (d/entity [:job/uuid job-uuid]) util/job-ent->label))))))))
 
 (deftest test-validate-partitions
   (is (api/validate-partitions {:dataset {"foo" "bar"}}))

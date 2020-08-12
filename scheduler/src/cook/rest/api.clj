@@ -963,7 +963,12 @@
                                                  (when cache {:cache? cache})
                                                  (when extract {:extract? extract})))
                                         uris)})
-                 (when labels {:labels (walk/stringify-keys labels)})
+                 ; We need to convert job label keys to strings, but
+                 ; walk/stringify-keys removes the namespace, which would mean
+                 ; that jobs submitted with a label key like "platform/thing"
+                 ; would lose the "platform/" part. Instead we just call str and
+                 ; remove the leading ':'.
+                 (when labels {:labels (pc/map-keys #(-> % str (subs 1)) labels)})
                  ;; Rest framework keywordifies all keys, we want these to be strings!
                  (when constraints {:constraints constraints})
                  (when group-uuid {:group group-uuid})
