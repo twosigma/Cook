@@ -1744,47 +1744,70 @@
                        (comp first))]
     (base-read-instances-handler conn is-authorized-fn {:handle-ok handle-ok})))
 
+(defn redirect-to-leader
+  "Returns a map of Liberator resource attribute functions to
+   be used when only the Cook leader should handle the request"
+  [leadership-atom leader-selector]
+  {:exists?
+   ;; triggers path for moved-temporarily?
+   (constantly false)
+
+   :handle-moved-temporarily
+   (fn redirect-to-leader-handle-moved-temporarily
+     [ctx]
+     {:location (:location ctx)
+      :message "redirecting to master"})
+
+   :handle-service-not-available
+   (fn redirect-to-leader-handle-service-not-available
+     [{:keys [::message]}]
+     {:message message})
+
+   :moved-temporarily?
+   (fn redirect-to-leader-moved-temporarily?
+     [ctx]
+     ;; the client is expected to cache the redirect location
+     (if-let [leader-url (::leader-url ctx)]
+       (let [request-path (get-in ctx [:request :uri])]
+         [true {:location (str leader-url request-path)}])
+       [false {}]))
+
+   :service-available?
+   (fn redirect-to-leader-service-available?
+     [_]
+     (if @leadership-atom
+       [true {}]
+       (try
+         ;; recording target leader-url for redirect
+         [true {::leader-url (leader-selector->leader-url leader-selector)}]
+         ;; handle leader-not-found errors by responding 503
+         (catch IllegalStateException e
+           [false {::message (.getMessage e)}]))))})
+
 (defn update-instance-progress-handler
   [conn is-authorized-fn leadership-atom leader-selector progress-aggregator-chan]
   (base-cook-handler
-    {:allowed-methods [:post]
-     :initialize-context (fn [ctx]
-                           ;; injecting ::instances into ctx for later handlers
-                           {::instances [(get-in ctx [:request :params :uuid])]})
-     :service-available? (fn [ctx]
-                           (if @leadership-atom
-                             [true {}]
-                             (try
-                               ;; recording target leader-url for redirect
-                               [true {::leader-url (leader-selector->leader-url leader-selector)}]
-                               ;; handle leader-not-found errors by responding 503
-                               (catch IllegalStateException e
-                                 [false {::message (.getMessage e)}]))))
-     :handle-service-not-available (fn [ctx] {:message (::message ctx)})
-     :allowed? (partial instance-request-allowed? conn is-authorized-fn)
-     :exists? (constantly false)  ;; triggers path for moved-temporarily?
-     :existed? instance-request-exists?
-     :can-post-to-missing? (constantly false)
-     :moved-temporarily? (fn [ctx]
-                           ;; only the leader handles progress updates
-                           ;; the client is expected to cache the redirect location
-                           (if-let [leader-url (::leader-url ctx)]
-                             (let [request-path (get-in ctx [:request :uri])]
-                               [true {:location (str leader-url request-path)}])
-                             [false {}]))
-     :handle-moved-temporarily (fn [ctx] {:location (:location ctx)
-                                          :message "redirecting to master"})
-     :can-post-to-gone? (constantly true)
-     :post! (fn [ctx]
-              (let [progress-message-map (get-in ctx [:request :body-params])
-                    task-id (-> ctx ::instances first)]
-                (progress/handle-progress-message!
-                  (d/db conn) task-id progress-aggregator-chan progress-message-map)))
-     :post-enacted? (constantly false)  ;; triggers http 202 "accepted" response
-     :handle-accepted (fn [ctx]
-                        (let [instance (-> ctx ::instances first)
-                              job (-> ctx ::jobs first)]
-                          {:instance instance :job job :message "progress update accepted"}))}))
+    (merge
+      ;; only the leader handles progress updates
+      (redirect-to-leader leadership-atom leader-selector)
+      {:allowed-methods [:post]
+       :initialize-context (fn [ctx]
+                             ;; injecting ::instances into ctx for later handlers
+                             {::instances [(get-in ctx [:request :params :uuid])]})
+       :allowed? (partial instance-request-allowed? conn is-authorized-fn)
+       :existed? instance-request-exists?
+       :can-post-to-missing? (constantly false)
+       :can-post-to-gone? (constantly true)
+       :post! (fn [ctx]
+                (let [progress-message-map (get-in ctx [:request :body-params])
+                      task-id (-> ctx ::instances first)]
+                  (progress/handle-progress-message!
+                    (d/db conn) task-id progress-aggregator-chan progress-message-map)))
+       :post-enacted? (constantly false)  ;; triggers http 202 "accepted" response
+       :handle-accepted (fn [ctx]
+                          (let [instance (-> ctx ::instances first)
+                                job (-> ctx ::jobs first)]
+                            {:instance instance :job job :message "progress update accepted"}))})))
 
 ;;; On DELETE; use repeated job argument
 (defn destroy-jobs-handler
@@ -2992,6 +3015,8 @@
             "draining"
             ; The cluster is gone
             "deleted")
+   ; The state can't be modified when it's locked
+   (s/optional-key :state-locked?) s/Bool
    ; Key used to look up the configuration template
    :template s/Str})
 
@@ -3026,15 +3051,20 @@
       true)))
 
 (defn base-compute-cluster-handler
-  [is-authorized-fn resource-attrs]
+  [is-authorized-fn leadership-atom leader-selector resource-attrs]
   (base-cook-handler
-    (merge {:allowed? (partial check-compute-cluster-allowed is-authorized-fn)}
-           resource-attrs)))
+    (merge
+      ;; only the leader handles compute-cluster requests
+      (redirect-to-leader leadership-atom leader-selector)
+      {:allowed? (partial check-compute-cluster-allowed is-authorized-fn)}
+      resource-attrs)))
 
 (defn post-compute-clusters-handler
-  [conn is-authorized-fn]
+  [conn is-authorized-fn leadership-atom leader-selector]
   (base-compute-cluster-handler
     is-authorized-fn
+    leadership-atom
+    leader-selector
     {:allowed-methods [:post]
      :conflict? (partial check-compute-cluster-conflict conn)
      ; TODO(DPO) Make the response here meaningful
@@ -3046,9 +3076,11 @@
   nil)
 
 (defn get-compute-clusters-handler
-  [conn is-authorized-fn]
+  [conn is-authorized-fn leadership-atom leader-selector]
   (base-compute-cluster-handler
     is-authorized-fn
+    leadership-atom
+    leader-selector
     {:allowed-methods [:get]
      :handle-ok (partial read-compute-clusters conn)}))
 
@@ -3427,14 +3459,20 @@
            :post
            {:summary "TODO(DPO) POST summary"
             :parameters {:body-params InsertComputeClusterRequest}
-            :handler (post-compute-clusters-handler conn is-authorized-fn)
+            :handler (post-compute-clusters-handler conn
+                                                    is-authorized-fn
+                                                    leadership-atom
+                                                    leader-selector)
             :responses {201 {:description "TODO(DPO) POST 201 description"}
                         403 {:description "TODO(DPO) POST 403 description"}
                         409 {:description "TODO(DPO) POST 409 description"}}}
 
            :get
            {:summary "TODO(DPO) GET summary"
-            :handler (get-compute-clusters-handler conn is-authorized-fn)
+            :handler (get-compute-clusters-handler conn
+                                                   is-authorized-fn
+                                                   leadership-atom
+                                                   leader-selector)
             :responses {200 {:description "TODO(DPO) GET 201 description"}
                         403 {:description "TODO(DPO) GET 403 description"}}}}))
 

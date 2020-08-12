@@ -2436,7 +2436,13 @@
               {:keys [status] :as response} (handler request-from-non-admin)]
           (is (= 403 status))
           (is (= "You are not authorized to access compute cluster information"
-                 (-> response response->body-data (get "error"))))))))
+                 (-> response response->body-data (get "error"))))))
+
+      (testing "specifying state-locked? succeeds"
+        (with-redefs [api/compute-cluster-exists? (constantly false)]
+          (let [request-with-state-locked-false (assoc-in request [:body-params "state-locked?"] false)
+                {:keys [status]} (handler request-with-state-locked-false)]
+            (is (= 201 status)))))))
 
   (deftest test-read-compute-clusters
     (let [conn (restore-fresh-database! "datomic:mem://test-read-compute-clusters")
@@ -2446,10 +2452,16 @@
                    :scheme :http
                    :uri "/compute-clusters"}]
 
-      (let [compute-clusters [{:base-path "base-path-1"
-                               :name "name-1"
-                               :state "running"
-                               :template "template-1"}]]
+      (let [compute-clusters [{:current {:base-path "base-path-1"
+                                         :ca-cert "ca-cert-1"
+                                         :name "name-1"
+                                         :state "running"
+                                         :template "template-1"}
+                               :pending {:base-path "base-path-1"
+                                         :ca-cert "ca-cert-1"
+                                         :name "name-1"
+                                         :state "running"
+                                         :template "template-1"}}]]
         (with-redefs [api/read-compute-clusters (constantly compute-clusters)]
           (testing "successful query"
             (let [{:keys [status] :as response} (handler request)
