@@ -2972,6 +2972,86 @@
      :handle-ok (fn [{:keys [costs]}]
                   costs)}))
 
+;;
+;; /compute-clusters
+;;
+
+(def InsertComputeClusterRequest
+  {; IP address / URL of the cluster
+   :base-path s/Str
+   ; base-64-encoded certificate
+   :ca-cert s/Str
+   ; Unique name of the cluster
+   :name s/Str
+   ; State of the cluster
+   :state (s/enum
+            ; Jobs will get scheduled on this cluster
+            "running"
+            ; No new jobs / synthetic pods will
+            ; get scheduled on this cluster
+            "draining"
+            ; The cluster is gone
+            "deleted")
+   ; Key used to look up the configuration template
+   :template s/Str})
+
+(defn create-compute-cluster!
+  [conn ctx]
+  nil)
+
+(defn compute-cluster-exists?
+  [db name]
+  (throw (ex-info "Not yet implemented" {})))
+
+(defn check-compute-cluster-conflict
+  [conn ctx]
+  (let [db (d/db conn)
+        name (-> ctx :request :body-params :name)
+        exists? (compute-cluster-exists? db name)]
+    (if exists?
+      [true {::error (str "Compute cluster with name " name " already exists")}]
+      false)))
+
+(defn check-compute-cluster-allowed
+  [is-authorized-fn ctx]
+  (let [request-user (get-in ctx [:request :authorization/user])
+        impersonator (get-in ctx [:request :authorization/impersonator])
+        request-method (get-in ctx [:request :request-method])]
+    (if-not (is-authorized-fn request-user
+                              request-method
+                              impersonator
+                              {:owner ::system :item :compute-clusters})
+      [false {::error
+              (str "You are not authorized to access compute cluster information")}]
+      true)))
+
+(defn base-compute-cluster-handler
+  [is-authorized-fn resource-attrs]
+  (base-cook-handler
+    (merge {:allowed? (partial check-compute-cluster-allowed is-authorized-fn)}
+           resource-attrs)))
+
+(defn post-compute-clusters-handler
+  [conn is-authorized-fn]
+  (base-compute-cluster-handler
+    is-authorized-fn
+    {:allowed-methods [:post]
+     :conflict? (partial check-compute-cluster-conflict conn)
+     ; TODO(DPO) Make the response here meaningful
+     :handle-created (constantly {:success true})
+     :post! (partial create-compute-cluster! conn)}))
+
+(defn read-compute-clusters
+  [conn ctx]
+  nil)
+
+(defn get-compute-clusters-handler
+  [conn is-authorized-fn]
+  (base-compute-cluster-handler
+    is-authorized-fn
+    {:allowed-methods [:get]
+     :handle-ok (partial read-compute-clusters conn)}))
+
 (defn streaming-json-encoder
   "Takes as input the response body which can be converted into JSON,
   and returns a function which takes a ServletResponse and writes the JSON
@@ -3339,6 +3419,24 @@
            :responses {200 {:schema DataLocalUpdateTimeResponse}}
            :get {:summary "Returns summary information on the current data locality status"
                  :handler (data-local-update-time-handler conn)}}))
+
+      (c-api/context
+        "/compute-clusters" []
+        (c-api/resource
+          {:produces ["application/json"]
+           :post
+           {:summary "TODO(DPO) POST summary"
+            :parameters {:body-params InsertComputeClusterRequest}
+            :handler (post-compute-clusters-handler conn is-authorized-fn)
+            :responses {201 {:description "TODO(DPO) POST 201 description"}
+                        403 {:description "TODO(DPO) POST 403 description"}
+                        409 {:description "TODO(DPO) POST 409 description"}}}
+
+           :get
+           {:summary "TODO(DPO) GET summary"
+            :handler (get-compute-clusters-handler conn is-authorized-fn)
+            :responses {200 {:description "TODO(DPO) GET 201 description"}
+                        403 {:description "TODO(DPO) GET 403 description"}}}}))
 
       (ANY "/queue" []
         (waiting-jobs conn mesos-pending-jobs-fn is-authorized-fn leadership-atom leader-selector))
