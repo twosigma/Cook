@@ -108,8 +108,6 @@
       update-interval-ms
       (assoc :update-data-local-costs-trigger-chan (prepare-trigger-chan (time/millis update-interval-ms))))))
 
-(defn )
-
 (defn start-leader-selector
   "Starts a leader elector. When the process is leader, it starts the mesos
    scheduler and associated threads to interact with mesos.

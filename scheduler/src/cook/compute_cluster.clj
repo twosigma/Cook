@@ -14,10 +14,11 @@
 ;; limitations under the License.
 ;;
 (ns cook.compute-cluster
-  (:require [clojure.tools.logging :as log]
+  (:require [clojure.set :refer [difference union]]
+            [clojure.tools.logging :as log]
             [cook.config :as config]
             [datomic.api :as d]
-            [plumbing.core :refer (map-vals)]))
+            [plumbing.core :refer [map-from-vals map-vals]]))
 
 ; There's an ugly race where the core cook scheduler can kill a job before it tries to launch it.
 ; What happens is:
@@ -158,6 +159,34 @@
                                 first)]
     (compute-cluster-name->ComputeCluster first-cluster-name)))
 
+(defn get-current-db-configs
+  "Get the current dynamic cluster configurations from the database"
+  [conn]
+  (let [db (d/db conn)
+        configs (map #(let [ent (d/entity db %)]
+                        {:name (:compute-cluster-config/name ent)
+                         :template (:compute-cluster-config/template ent)
+                         :base-path (:compute-cluster-config/base-path ent)
+                         :ca-cert (:compute-cluster-config/ca-cert ent)})
+                     (d/q '[:find [?compute-cluster-config ...]
+                            :where
+                            [?compute-cluster-config :compute-cluster-config/name ?name]]
+                          db))]
+    (map-from-vals :name configs)))
+
+(defn compute-current-configs
+  "Synthesize the current view of cluster configurations by looking at the current configurations in the database
+  and the current configurations in memory. Alert on any inconsistencies. In memory wins on inconsistencies."
+  [current-db-configs current-in-mem-configs]
+  (let [db-keys (set (keys current-db-configs))
+        in-mem-keys (set (keys current-in-mem-configs))
+        only-db-keys (difference db-keys in-mem-keys)
+        only-in-mem-keys (difference in-mem-keys db-keys)
+        both-keys (union db-keys in-mem-keys)])
+  (doseq [only-db-key only-db-keys]
+    )
+  )
+
 (defn update-dynamic-clusters
   "This function allows adding or updating the current compute cluster configurations. It takes
   in a single configuration, or a collection of configurations. Passing in a collection of configurations
@@ -170,11 +199,20 @@
                                        #(update % (:name updated-cluster-configuration-info)
                                                 (constantly updated-cluster-configuration-info)))
         config-update-fn (fn [current-cluster-name->compute-cluster]
-                           (let [current-configs (map (partial d/entity db)
+                           (let [db (d/db conn)
+                                 current-configs (map (partial d/entity db)
                                                       (d/q '[:find [?compute-cluster-config ...]
                                                              :where
                                                              [?compute-cluster-config :compute-cluster-config/name ?name]]
-                                                           (d/db conn) compute-cluster-name))
+                                                           db))
                                  new-configs (current-configs->new-configs current-configs)]
                              ))]
+
+    (locking cluster-name->compute-cluster-atom
+      (let [cluster-name->compute-cluster @cluster-name->compute-cluster-atom
+            current-db-configs (get-current-db-configs conn)
+            current-in-mem-configs (map-vals #(let [current-config (:compute-cluster-config %)]
+                                                (update current-config :state @(:state-atom current-config)))
+                                             cluster-name->compute-cluster)]
+        ))
     (swap! cluster-name->compute-cluster-atom config-update-fn)))

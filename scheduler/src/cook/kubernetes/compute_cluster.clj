@@ -632,8 +632,7 @@
                     :namespace "cook"}
          node-blocklist-labels (list)
          scan-frequency-seconds 120
-         state {:locked? false
-                :value :running}
+         state :running
          use-google-service-account? true}
     :as compute-cluster-config}
    {:keys [exit-code-syncer-state]}]
