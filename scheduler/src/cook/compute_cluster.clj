@@ -16,7 +16,8 @@
 (ns cook.compute-cluster
   (:require [clojure.tools.logging :as log]
             [cook.config :as config]
-            [datomic.api :as d]))
+            [datomic.api :as d]
+            [plumbing.core :refer (map-vals)]))
 
 ; There's an ugly race where the core cook scheduler can kill a job before it tries to launch it.
 ; What happens is:
@@ -158,5 +159,22 @@
     (compute-cluster-name->ComputeCluster first-cluster-name)))
 
 (defn update-dynamic-clusters
-  ""
-  [])
+  "This function allows adding or updating the current compute cluster configurations. It takes
+  in a single configuration, or a collection of configurations. Passing in a collection of configurations
+  implies that these are the only known configurations, and clusters that are missing from this
+  list should be removed.
+  Only the state of an existing cluster and its configuration can be changed unless force? is set to true."
+  [conn updated-cluster-configuration-info force?]
+  (let [current-configs->new-configs (if (seq? updated-cluster-configuration-info)
+                                       (constantly updated-cluster-configuration-info)
+                                       #(update % (:name updated-cluster-configuration-info)
+                                                (constantly updated-cluster-configuration-info)))
+        config-update-fn (fn [current-cluster-name->compute-cluster]
+                           (let [current-configs (map (partial d/entity db)
+                                                      (d/q '[:find [?compute-cluster-config ...]
+                                                             :where
+                                                             [?compute-cluster-config :compute-cluster-config/name ?name]]
+                                                           (d/db conn) compute-cluster-name))
+                                 new-configs (current-configs->new-configs current-configs)]
+                             ))]
+    (swap! cluster-name->compute-cluster-atom config-update-fn)))
