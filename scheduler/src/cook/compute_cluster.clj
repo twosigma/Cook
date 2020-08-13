@@ -208,7 +208,10 @@
 (defn in-mem-configs
   "Get the current in-memory dynamic cluster configurations"
   []
-  (map-vals compute-cluster->compute-cluster-config @cluster-name->compute-cluster-atom))
+  ;TODO fix this. sharing dynamic with not dynamic
+  (map-vals compute-cluster->compute-cluster-config
+            (select-keys @cluster-name->compute-cluster-atom
+                         (keep (fn [[k,v]] (when (v :state) k)) @cluster-name->compute-cluster-atom))))
 
 (defn diff-map-keys
   "Return triple of keys from two maps: [only in left, only in right, in both]"
