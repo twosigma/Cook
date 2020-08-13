@@ -544,7 +544,7 @@
     - If use-google-service-account? is true, gets google application default credentials and generates
       a bearer token for authenticating with kubernetes
     - bearer-token-refresh-seconds: interval to refresh the bearer token"
-  [^String config-file base-path ^String use-google-service-account? bearer-token-refresh-seconds verifying-ssl ^String ca-cert]
+  [^String config-file base-path ^String use-google-service-account? bearer-token-refresh-seconds verifying-ssl ^String ca-cert ^String ca-cert-path]
   (log/info "API Client config file" config-file)
   (let [^ApiClient api-client (if (some? config-file)
                                 (let [^KubeConfig kubeconfig
@@ -570,6 +570,9 @@
     ; See explanation in comments in https://github.com/kubernetes-client/java/pull/200
     (when (some? ca-cert)
       (.setSslCaCert api-client (-> (.getBytes ca-cert) (ByteArrayInputStream.))))
+    (when (some? ca-cert-path)
+      (.setSslCaCert api-client
+                     (FileInputStream. (File. ca-cert-path))))
     (when use-google-service-account?
       (set-credentials api-client (GoogleCredentials/getApplicationDefault) bearer-token-refresh-seconds))
     api-client))
@@ -590,6 +593,8 @@
   [{:keys [base-path
            bearer-token-refresh-seconds
            ca-cert
+           ;TODO temp hack
+           ca-cert-path
            ^String config-file
            launch-task-num-threads
            max-pods-per-node
@@ -622,7 +627,7 @@
         compute-cluster-config)))
   (let [conn cook.datomic/conn
         cluster-entity-id (get-or-create-cluster-entity-id conn name)
-        api-client (make-api-client config-file base-path use-google-service-account? bearer-token-refresh-seconds verifying-ssl ca-cert)
+        api-client (make-api-client config-file base-path use-google-service-account? bearer-token-refresh-seconds verifying-ssl ca-cert ca-cert-path)
         launch-task-executor-service (Executors/newFixedThreadPool launch-task-num-threads)
         compute-cluster (->KubernetesComputeCluster api-client 
                                                     name
