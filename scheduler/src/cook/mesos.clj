@@ -156,7 +156,7 @@
                               ;; TODO: get the framework ID and try to reregister
                               (let [normal-exit (atom true)]
                                 (try
-                                  (let [{:keys [pool-name->fenzo view-incubating-offers]}
+                                  (let [{:keys [pool-name->fenzo view-incubating-offers] :as scheduler}
                                         (sched/create-datomic-scheduler
                                           {:conn mesos-datomic-conn
                                            :cluster-name->compute-cluster-atom cook.compute-cluster/cluster-name->compute-cluster-atom
@@ -174,13 +174,11 @@
                                            :rebalancer-reservation-atom rebalancer-reservation-atom
                                            :task-constraints task-constraints
                                            :trigger-chans trigger-chans})
-                                        running-tasks-ents (cook.tools/get-running-task-ents (d/db mesos-datomic-conn))
                                         cluster-connected-chans (->> cluster-name->compute-cluster
                                                                      (map (fn [[compute-cluster-name compute-cluster]]
                                                                             (try
                                                                               (cc/initialize-cluster compute-cluster
-                                                                                                     pool-name->fenzo
-                                                                                                     running-tasks-ents)
+                                                                                                     pool-name->fenzo)
                                                                               (catch Throwable t
                                                                                 (log/error t "Error launching compute cluster" compute-cluster-name)
                                                                                 ; Return a chan that never gets a message on it.
@@ -188,6 +186,7 @@
                                                                      ; Note: This doall has a critical side effect of actually initializing
                                                                      ; all of the clusters.
                                                                      doall)]
+                                    (deliver cc/scheduler-promise scheduler)
                                     (cook.monitor/start-collecting-stats)
                                     ; Many of these should look at the compute-cluster of the underlying jobs, and not use driver at all.
                                     (cook.scheduler.scheduler/lingering-task-killer mesos-datomic-conn
@@ -232,7 +231,7 @@
                                     ; WARNING: This code is very misleading. It looks like we'll suicide if ANY of the clusters lose leadership.
                                     ; However, the kubernetes compute clusters never put anything on their chan, so this is the equivalent of only looking at mesos.
                                     ; We didn't want to implement the special case for mesos.
-                                    (let [res (async/<!! (async/merge cluster-connected-chans))]
+                                    (let [res (async/<!! (async/merge (or (seq cluster-connected-chans) [(async/chan 1)])))]
                                       (when (instance? Throwable res)
                                         (throw res))))
                                   (catch Throwable e

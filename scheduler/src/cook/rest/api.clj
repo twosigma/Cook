@@ -19,7 +19,6 @@
             [clj-time.coerce :as tc]
             [clj-time.core :as t]
             [clj-time.format :as tf]
-            [clojure.core.async :as async]
             [clojure.set :as set]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
@@ -964,12 +963,7 @@
                                                  (when cache {:cache? cache})
                                                  (when extract {:extract? extract})))
                                         uris)})
-                 ; We need to convert job label keys to strings, but
-                 ; walk/stringify-keys removes the namespace, which would mean
-                 ; that jobs submitted with a label key like "platform/thing"
-                 ; would lose the "platform/" part. Instead we just call str and
-                 ; remove the leading ':'.
-                 (when labels {:labels (pc/map-keys #(-> % str (subs 1)) labels)})
+                 (when labels {:labels (walk/stringify-keys labels)})
                  ;; Rest framework keywordifies all keys, we want these to be strings!
                  (when constraints {:constraints constraints})
                  (when group-uuid {:group group-uuid})
@@ -1757,17 +1751,11 @@
   {:can-post-to-gone?
    (constantly true)
 
-   :existed?
-   (constantly true)
-
-   ;; triggers path for moved-temporarily?
-   :exists? (fn [_] @leadership-atom)
-
    :handle-moved-temporarily
    (fn redirect-to-leader-handle-moved-temporarily
      [ctx]
      {:location (:location ctx)
-      :message "redirecting to leader"})
+      :message "redirecting to master"})
 
    :handle-service-not-available
    (fn redirect-to-leader-handle-service-not-available
@@ -3007,13 +2995,48 @@
                   costs)}))
 
 ;;
-;; /shutdown-leader
+;; /compute-clusters
 ;;
 
-(def ShutdownLeaderRequest
-  {:reason s/Str})
+(def InsertComputeClusterRequest
+  {; IP address / URL of the cluster
+   :base-path s/Str
+   ; base-64-encoded certificate
+   :ca-cert s/Str
+   ; Unique name of the cluster
+   :name s/Str
+   ; State of the cluster
+   :state (s/enum
+            ; Jobs will get scheduled on this cluster
+            "running"
+            ; No new jobs / synthetic pods will
+            ; get scheduled on this cluster
+            "draining"
+            ; The cluster is gone
+            "deleted")
+   ; The state can't be modified when it's locked
+   (s/optional-key :state-locked?) s/Bool
+   ; Key used to look up the configuration template
+   :template s/Str})
 
-(defn check-shutdown-leader-allowed
+(defn create-compute-cluster!
+  [conn ctx]
+  nil)
+
+(defn compute-cluster-exists?
+  [db name]
+  (throw (ex-info "Not yet implemented" {})))
+
+(defn check-compute-cluster-conflict
+  [conn ctx]
+  (let [db (d/db conn)
+        name (-> ctx :request :body-params :name)
+        exists? (compute-cluster-exists? db name)]
+    (if exists?
+      [true {::error (str "Compute cluster with name " name " already exists")}]
+      false)))
+
+(defn check-compute-cluster-allowed
   [is-authorized-fn ctx]
   (let [request-user (get-in ctx [:request :authorization/user])
         impersonator (get-in ctx [:request :authorization/impersonator])
@@ -3021,36 +3044,47 @@
     (if-not (is-authorized-fn request-user
                               request-method
                               impersonator
-                              {:owner ::system :item :shutdown-leader})
+                              {:owner ::system :item :compute-clusters})
       [false {::error
-              (str "You are not authorized to shutdown the leader")}]
+              (str "You are not authorized to access compute cluster information")}]
       true)))
 
-(defn shutdown!
-  []
-  (async/thread
-    (log/info "Sleeping for 5 seconds before exiting")
-    (Thread/sleep 5000)
-    (log/info "Exiting now")
-    (System/exit 0)))
-
-(defn post-shutdown-leader!
-  [ctx]
-  (let [reason (get-in ctx [:request :body-params :reason])
-        request-user (get-in ctx [:request :authorization/user])]
-    (log/info "Exiting due to /shutdown-leader request from" request-user "with reason:" reason)
-    (shutdown!)))
-
-(defn post-shutdown-leader-handler
-  [is-authorized-fn leadership-atom leader-selector]
+(defn base-compute-cluster-handler
+  [is-authorized-fn leadership-atom leader-selector resource-attrs]
   (base-cook-handler
     (merge
-      ;; only the leader handles shutdown-leader requests
+      ;; only the leader handles compute-cluster requests
       (redirect-to-leader leadership-atom leader-selector)
-      {:allowed-methods [:post]
-       :allowed? (partial check-shutdown-leader-allowed is-authorized-fn)
-       :post-enacted? (constantly false)
-       :post! post-shutdown-leader!})))
+      {:allowed? (partial check-compute-cluster-allowed is-authorized-fn)
+       :existed? (constantly true)
+       ;; triggers path for moved-temporarily?
+       :exists? (fn [_] @leadership-atom)}
+      resource-attrs)))
+
+(defn post-compute-clusters-handler
+  [conn is-authorized-fn leadership-atom leader-selector]
+  (base-compute-cluster-handler
+    is-authorized-fn
+    leadership-atom
+    leader-selector
+    {:allowed-methods [:post]
+     :conflict? (partial check-compute-cluster-conflict conn)
+     ; TODO(DPO) Make the response here meaningful
+     :handle-created (constantly {:success true})
+     :post! (partial create-compute-cluster! conn)}))
+
+(defn read-compute-clusters
+  [conn ctx]
+  nil)
+
+(defn get-compute-clusters-handler
+  [conn is-authorized-fn leadership-atom leader-selector]
+  (base-compute-cluster-handler
+    is-authorized-fn
+    leadership-atom
+    leader-selector
+    {:allowed-methods [:get]
+     :handle-ok (partial read-compute-clusters conn)}))
 
 (defn streaming-json-encoder
   "Takes as input the response body which can be converted into JSON,
@@ -3383,21 +3417,6 @@
              :get {:summary "Returns the pools."
                    :handler (pools-handler)}}))
 
-        (c-api/context
-          "/shutdown-leader" []
-          (c-api/resource
-            {:produces ["application/json"]
-
-             :post
-             {:summary "Shutdown the Cook leader"
-              :parameters {:body-params ShutdownLeaderRequest}
-              :handler (post-shutdown-leader-handler is-authorized-fn
-                                                     leadership-atom
-                                                     leader-selector)
-              :responses {202 {:description "The shutdown request was accepted."}
-                          307 {:description "Redirecting request to leader node."}
-                          400 {:description "Invalid request format."}}}}))
-
         (c-api/undocumented
           ;; internal api endpoints (don't include in swagger)
           (c-api/context
@@ -3434,6 +3453,30 @@
            :responses {200 {:schema DataLocalUpdateTimeResponse}}
            :get {:summary "Returns summary information on the current data locality status"
                  :handler (data-local-update-time-handler conn)}}))
+
+      (c-api/context
+        "/compute-clusters" []
+        (c-api/resource
+          {:produces ["application/json"]
+           :post
+           {:summary "TODO(DPO) POST summary"
+            :parameters {:body-params InsertComputeClusterRequest}
+            :handler (post-compute-clusters-handler conn
+                                                    is-authorized-fn
+                                                    leadership-atom
+                                                    leader-selector)
+            :responses {201 {:description "TODO(DPO) POST 201 description"}
+                        403 {:description "TODO(DPO) POST 403 description"}
+                        409 {:description "TODO(DPO) POST 409 description"}}}
+
+           :get
+           {:summary "TODO(DPO) GET summary"
+            :handler (get-compute-clusters-handler conn
+                                                   is-authorized-fn
+                                                   leadership-atom
+                                                   leader-selector)
+            :responses {200 {:description "TODO(DPO) GET 201 description"}
+                        403 {:description "TODO(DPO) GET 403 description"}}}}))
 
       (ANY "/queue" []
         (waiting-jobs conn mesos-pending-jobs-fn is-authorized-fn leadership-atom leader-selector))

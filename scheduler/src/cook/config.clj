@@ -168,6 +168,8 @@
                                       :principal (:principal mesos)
                                       :role (:role mesos)
                                       :framework-name (:framework-name mesos)}}]))
+     :compute-cluster-templates (fnk [[:config {compute-cluster-templates {}}]]
+                                  compute-cluster-templates)
      :cors-origins (fnk [[:config {cors-origins nil}]]
                      (map re-pattern (or cors-origins [])))
      :exit-code-syncer (fnk [[:config {exit-code-syncer nil}]]
@@ -424,7 +426,7 @@
                 (:job-resource-adjustment pools)
                 (update :job-resource-adjustment
                         #(-> %
-                             (update :pool-regex re-pattern)))
+                           (update :pool-regex re-pattern)))
                 (not (:default-containers pools))
                 (assoc :default-containers [])
                 (not (:quotas pools))
@@ -487,9 +489,9 @@
                              :set-container-cpu-limit? true}
                             kubernetes)))
      :offer-matching (fnk [[:config {offer-matching {}}]]
-                          (merge {:global-min-match-interval-millis 100
-                                  :target-per-pool-match-interval-millis 3000}
-                                 offer-matching))}))
+                       (merge {:global-min-match-interval-millis 100
+                               :target-per-pool-match-interval-millis 3000}
+                              offer-matching))}))
 
 (defn read-config
   "Given a config file path, reads the config and returns the map"
@@ -606,6 +608,10 @@
 (defn compute-clusters
   []
   (get-in config [:settings :compute-clusters]))
+
+(defn compute-cluster-templates
+  []
+  (get-in config [:settings :compute-cluster-templates]))
 
 (defn kubernetes
   []
