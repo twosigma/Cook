@@ -2417,6 +2417,7 @@
                                  "name" name
                                  "state" "running"
                                  "template" "test-template"}
+                   :headers {"Content-Type" "application/json"}
                    :request-method :post
                    :scheme :http
                    :uri endpoint}]
@@ -2450,7 +2451,14 @@
         (with-redefs [api/leader-selector->leader-url (constantly sample-leader-base-url)]
           (let [{:keys [location status]} (handler request :leader? false)]
             (is (= 307 status))
-            (is (= location (str sample-leader-base-url endpoint))))))))
+            (is (= location (str sample-leader-base-url endpoint))))))
+
+      (testing "no cluster name fails"
+        (let [request-with-no-name (assoc request :body-params (-> request :body-params (dissoc "name")))
+              {:keys [status] :as response} (handler request-with-no-name)]
+          (is (= 400 status))
+          (is (= {"name" "missing-required-key"}
+                 (-> response response->body-data (get "errors"))))))))
 
   (deftest test-read-compute-clusters
     (let [conn (restore-fresh-database! "datomic:mem://test-read-compute-clusters")
