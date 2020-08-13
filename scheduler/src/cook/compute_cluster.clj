@@ -209,9 +209,10 @@
   "Get the current in-memory dynamic cluster configurations"
   []
   ;TODO fix this. sharing dynamic with not dynamic
+  ; TODO: why can't you call (v :state) on a record????
   (map-vals compute-cluster->compute-cluster-config
             (select-keys @cluster-name->compute-cluster-atom
-                         (keep (fn [[k,v]] (when (v :state) k)) @cluster-name->compute-cluster-atom))))
+                         (keep (fn [[k,v]] (when (:state v) k)) @cluster-name->compute-cluster-atom))))
 
 (defn diff-map-keys
   "Return triple of keys from two maps: [only in left, only in right, in both]"
