@@ -3025,7 +3025,8 @@
 
 (defn compute-cluster-exists?
   [db name]
-  (throw (ex-info "Not yet implemented" {})))
+  ;TODO might not need this. this is checked in the main update function
+  false)
 
 (defn check-compute-cluster-conflict
   [conn ctx]
