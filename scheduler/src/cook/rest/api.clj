@@ -3021,7 +3021,7 @@
 
 (defn create-compute-cluster!
   [conn ctx]
-  nil)
+  (cc/update-dynamic-clusters conn (-> ctx :request :body-params) nil true))
 
 (defn compute-cluster-exists?
   [db name]
