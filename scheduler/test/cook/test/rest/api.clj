@@ -2403,7 +2403,9 @@
       is-authorized-fn
       (fn [user verb _ object]
         (auth/admins-open-gets-allowed-users-auth
-          #{admin-user} user verb object true))]
+          #{admin-user} user verb object true))
+      sample-leader-base-url "http://cook-scheduler.example:12321"
+      endpoint "/compute-clusters"]
 
   (deftest test-create-compute-cluster
     (let [conn (restore-fresh-database! "datomic:mem://test-create-compute-cluster")
@@ -2417,17 +2419,17 @@
                                  "template" "test-template"}
                    :request-method :post
                    :scheme :http
-                   :uri "/compute-clusters"}]
+                   :uri endpoint}]
 
       (testing "successful insert"
         (with-redefs [api/compute-cluster-exists? (constantly false)]
-          (let [{:keys [status]} (handler request)]
-            (is (= 201 status)))))
+          (let [{:keys [status] :as response} (handler request)]
+            (is (= 201 status) (str response)))))
 
       (testing "insert with existing name fails"
         (with-redefs [api/compute-cluster-exists? (constantly true)]
           (let [{:keys [status] :as response} (handler request)]
-            (is (= 409 status))
+            (is (= 409 status) (str response))
             (is (= (str "Compute cluster with name " name " already exists")
                    (-> response response->body-data (get "error")))))))
 
@@ -2442,7 +2444,13 @@
         (with-redefs [api/compute-cluster-exists? (constantly false)]
           (let [request-with-state-locked-false (assoc-in request [:body-params "state-locked?"] false)
                 {:keys [status]} (handler request-with-state-locked-false)]
-            (is (= 201 status)))))))
+            (is (= 201 status)))))
+
+      (testing "non-leader redirects"
+        (with-redefs [api/leader-selector->leader-url (constantly sample-leader-base-url)]
+          (let [{:keys [location status]} (handler request :leader? false)]
+            (is (= 307 status))
+            (is (= location (str sample-leader-base-url endpoint))))))))
 
   (deftest test-read-compute-clusters
     (let [conn (restore-fresh-database! "datomic:mem://test-read-compute-clusters")
@@ -2473,4 +2481,10 @@
             (let [{:keys [status] :as response} (handler request)
                   response-data (response->body-data response)]
               (is (= 200 status))
-              (is (= (clojure.walk/stringify-keys compute-clusters) response-data)))))))))
+              (is (= (clojure.walk/stringify-keys compute-clusters) response-data))))
+
+          (testing "non-leader redirects"
+            (with-redefs [api/leader-selector->leader-url (constantly sample-leader-base-url)]
+              (let [{:keys [location status]} (handler request :leader? false)]
+                (is (= 307 status))
+                (is (= location (str sample-leader-base-url endpoint)))))))))))

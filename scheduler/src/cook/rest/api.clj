@@ -1748,9 +1748,8 @@
   "Returns a map of Liberator resource attribute functions to
    be used when only the Cook leader should handle the request"
   [leadership-atom leader-selector]
-  {:exists?
-   ;; triggers path for moved-temporarily?
-   (constantly false)
+  {:can-post-to-gone?
+   (constantly true)
 
    :handle-moved-temporarily
    (fn redirect-to-leader-handle-moved-temporarily
@@ -1795,9 +1794,9 @@
                              ;; injecting ::instances into ctx for later handlers
                              {::instances [(get-in ctx [:request :params :uuid])]})
        :allowed? (partial instance-request-allowed? conn is-authorized-fn)
+       :exists? (constantly false)  ;; triggers path for moved-temporarily?
        :existed? instance-request-exists?
        :can-post-to-missing? (constantly false)
-       :can-post-to-gone? (constantly true)
        :post! (fn [ctx]
                 (let [progress-message-map (get-in ctx [:request :body-params])
                       task-id (-> ctx ::instances first)]
@@ -3056,7 +3055,10 @@
     (merge
       ;; only the leader handles compute-cluster requests
       (redirect-to-leader leadership-atom leader-selector)
-      {:allowed? (partial check-compute-cluster-allowed is-authorized-fn)}
+      {:allowed? (partial check-compute-cluster-allowed is-authorized-fn)
+       :existed? (constantly true)
+       ;; triggers path for moved-temporarily?
+       :exists? (fn [_] @leadership-atom)}
       resource-attrs)))
 
 (defn post-compute-clusters-handler
