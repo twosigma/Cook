@@ -25,7 +25,7 @@
            (io.kubernetes.client.openapi.models V1Node V1Pod)
            (io.kubernetes.client.util Config KubeConfig)
            (java.nio.charset StandardCharsets)
-           (java.io File FileInputStream InputStreamReader)
+           (java.io ByteArrayInputStream File FileInputStream InputStreamReader)
            (java.util.concurrent Executors ExecutorService ScheduledExecutorService TimeUnit)
            (java.util UUID)
            (okhttp3 OkHttpClient$Builder)))
@@ -206,16 +206,14 @@
 
 (defn determine-cook-expected-state-on-startup
   "We need to determine everything we should be tracking when we construct the cook expected state. We should be tracking
-  all tasks that are in the running state as well as all pods in kubernetes. We're given an already existing list of
-  all running tasks entities (via (->> (cook.tools/get-running-task-ents)."
-  [conn api-client compute-cluster-name running-tasks-ents]
+  all tasks that are in the running state as well as all pods in kubernetes. We query for a list of
+  all running tasks entities."
+  [conn api-client compute-cluster-name]
   (let [db (d/db conn)
         [_ pod-name->pod] (api/try-forever-get-all-pods-in-kubernetes api-client compute-cluster-name)
         all-tasks-ids-in-pods (into #{} (keys pod-name->pod))
         _ (log/debug "All tasks in pods (for initializing cook expected state): " all-tasks-ids-in-pods)
-        running-tasks-in-cc-ents (filter
-                                   #(-> % cook.task/task-entity->compute-cluster-name (= compute-cluster-name))
-                                   running-tasks-ents)
+        running-tasks-in-cc-ents (map #(d/entity db %) (cc/get-job-instance-ids-for-cluster-name db compute-cluster-name))
         running-task-id->task (task-ents->map-by-task-id running-tasks-in-cc-ents)
         cc-running-tasks-ids (->> running-task-id->task keys (into #{}))
         _ (log/debug "Running tasks in compute cluster in datomic: " cc-running-tasks-ids)
@@ -300,7 +298,7 @@
                                      pool->fenzo-atom namespace-config scan-frequency-seconds-config max-pods-per-node
                                      synthetic-pods-config node-blocklist-labels
                                      ^ExecutorService launch-task-executor-service
-                                     compute-cluster-config state-atom]
+                                     compute-cluster-config state-atom state-locked?-atom]
   cc/ComputeCluster
   (launch-tasks [this pool-name matches process-task-post-launch-fn]
     (let [task-metadata-seq (mapcat :task-metadata-seq matches)]
@@ -334,7 +332,7 @@
   (compute-cluster-name [this]
     name)
 
-  (initialize-cluster [this pool->fenzo running-task-ents]
+  (initialize-cluster [this pool->fenzo]
     ; We may iterate forever trying to bring up kubernetes. However, our caller expects us to eventually return,
     ; so we launch within a future so that our caller can continue initializing other clusters.
     (future
@@ -352,7 +350,7 @@
               cook-pod-callback (make-cook-pod-watch-callback this)]
           ; We set cook expected state first because initialize-pod-watch sets (and invokes callbacks on and reacts to) the
           ; expected and the gradually discovered existing pods.
-          (reset! cook-expected-state-map (determine-cook-expected-state-on-startup conn api-client name running-task-ents))
+          (reset! cook-expected-state-map (determine-cook-expected-state-on-startup conn api-client name))
 
           (api/initialize-pod-watch this cook-pod-callback)
           (if scan-frequency-seconds-config
@@ -567,7 +565,7 @@
     - If use-google-service-account? is true, gets google application default credentials and generates
       a bearer token for authenticating with kubernetes
     - bearer-token-refresh-seconds: interval to refresh the bearer token"
-  [^String config-file base-path ^String use-google-service-account? bearer-token-refresh-seconds verifying-ssl ^String ssl-cert-path]
+  [^String config-file base-path ^String use-google-service-account? bearer-token-refresh-seconds verifying-ssl ^String ca-cert]
   (log/info "API Client config file" config-file)
   (let [^ApiClient api-client (if (some? config-file)
                                 (let [^KubeConfig kubeconfig
@@ -591,9 +589,8 @@
       (.setVerifyingSsl api-client verifying-ssl))
     ; Loading ssl-cert-path must be last SSL operation we do in setting up API Client. API bug.
     ; See explanation in comments in https://github.com/kubernetes-client/java/pull/200
-    (when (some? ssl-cert-path)
-      (.setSslCaCert api-client
-                     (FileInputStream. (File. ssl-cert-path))))
+    (when (some? ca-cert)
+      (.setSslCaCert api-client (-> (.getBytes ca-cert) (ByteArrayInputStream.))))
     (when use-google-service-account?
       (set-credentials api-client (GoogleCredentials/getApplicationDefault) bearer-token-refresh-seconds))
     api-client))
@@ -613,15 +610,16 @@
 (defn factory-fn
   [{:keys [base-path
            bearer-token-refresh-seconds
-           ca-cert-path
-           compute-cluster-name
+           ca-cert
            ^String config-file
            launch-task-num-threads
            max-pods-per-node
+           name
            namespace
            node-blocklist-labels
            scan-frequency-seconds
            state
+           state-locked?
            synthetic-pods
            use-google-service-account?
            verifying-ssl]
@@ -633,21 +631,22 @@
          node-blocklist-labels (list)
          scan-frequency-seconds 120
          state :running
+         state-locked? false
          use-google-service-account? true}
     :as compute-cluster-config}
    {:keys [exit-code-syncer-state]}]
-  (guard-invalid-synthetic-pods-config compute-cluster-name synthetic-pods)
+  (guard-invalid-synthetic-pods-config name synthetic-pods)
   (when (not (< 0 launch-task-num-threads 64))
     (throw
       (ex-info
         "Please configure :launch-task-num-threads to > 0 and < 64 in your config."
         compute-cluster-config)))
   (let [conn cook.datomic/conn
-        cluster-entity-id (get-or-create-cluster-entity-id conn compute-cluster-name)
-        api-client (make-api-client config-file base-path use-google-service-account? bearer-token-refresh-seconds verifying-ssl ca-cert-path)
+        cluster-entity-id (get-or-create-cluster-entity-id conn name)
+        api-client (make-api-client config-file base-path use-google-service-account? bearer-token-refresh-seconds verifying-ssl ca-cert)
         launch-task-executor-service (Executors/newFixedThreadPool launch-task-num-threads)
         compute-cluster (->KubernetesComputeCluster api-client 
-                                                    compute-cluster-name
+                                                    name
                                                     cluster-entity-id
                                                     exit-code-syncer-state
                                                     (atom {})
@@ -665,6 +664,7 @@
                                                     node-blocklist-labels
                                                     launch-task-executor-service
                                                     compute-cluster-config
-                                                    (atom state))]
+                                                    (atom state)
+                                                    (atom state-locked?))]
     (cc/register-compute-cluster! compute-cluster)
     compute-cluster))

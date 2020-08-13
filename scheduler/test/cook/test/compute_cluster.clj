@@ -32,7 +32,9 @@
         xx @(d/transact conn (into [] (map #(into [] (concat [:db/add db-id] %)) new-config)))
         db-id (d/tempid :db.part/user)]
     (println xx)
-    (println @(d/transact conn [{:db/id db-id :compute-cluster-config/name "cluster-2" :compute-cluster-config/template "cluster-2-template"}]))
+
+
+    (println @(d/transact conn [{:db/id (d/tempid :db.part/user) :compute-cluster-config/name "cluster-2" :compute-cluster-config/template "cluster-2-template"}]))
     (let [db (d/db conn)
           current-configs (map #(let [e (d/entity db %)]
                                   {:name (:compute-cluster-config/name e)
@@ -44,4 +46,28 @@
           ]
       (println current-configs)
       )
+
+    (let [db (d/db conn)
+          zzz (d/q '[:find [?compute-cluster-config ...]
+                     :in $ ?cluster-name
+                     :where
+                     [?compute-cluster-config :compute-cluster-config/name ?cluster-name]]
+                   db "cluster-2")]
+
+      (println zzz)
+
+      (println @(d/transact conn [{:db/id (first zzz) :compute-cluster-config/name "cluster-2" :compute-cluster-config/template "cxxxluster-2-template"}]))
+      (let [db (d/db conn)
+            current-configs (map #(let [e (d/entity db %)]
+                                    {:name (:compute-cluster-config/name e)
+                                     :template (:compute-cluster-config/template e)
+                                     :xxx (:db/id e)})
+                                 (d/q '[:find [?compute-cluster-config ...]
+                                        :where
+                                        [?compute-cluster-config :compute-cluster-config/name ?name]]
+                                      db))
+            ]
+        (println current-configs)
+        ))
+
     ))

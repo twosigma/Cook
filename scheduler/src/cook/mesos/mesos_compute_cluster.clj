@@ -256,7 +256,7 @@
   (db-id [this]
     db-id)
 
-  (initialize-cluster [this pool->fenzo _]
+  (initialize-cluster [this pool->fenzo]
     (log/info "Initializing Mesos compute cluster" compute-cluster-name)
     (let [conn cook.datomic/conn
           {:keys [match-trigger-chan]} trigger-chans
