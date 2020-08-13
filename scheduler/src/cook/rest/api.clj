@@ -3021,7 +3021,11 @@
 
 (defn create-compute-cluster!
   [conn ctx]
-  (cc/update-dynamic-clusters conn (-> ctx :request :body-params) nil true))
+  (let [result (cc/update-dynamic-clusters conn (-> ctx :request :body-params) nil true)]
+    ; TODO replace with real result handling with error checks
+    (log/info "Result of create-compute-cluster! REST API call"
+              {:input (-> ctx :request :body-params)
+               :result result})))
 
 (defn compute-cluster-exists?
   [db name]
