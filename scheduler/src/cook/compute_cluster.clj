@@ -212,7 +212,7 @@
   ; TODO: why can't you call (v :state) on a record????
   (map-vals compute-cluster->compute-cluster-config
             (select-keys @cluster-name->compute-cluster-atom
-                         (keep (fn [[k,v]] (when (:state v) k)) @cluster-name->compute-cluster-atom))))
+                         (keep (fn [[k, v]] (when (:state v) k)) @cluster-name->compute-cluster-atom))))
 
 (defn diff-map-keys
   "Return triple of keys from two maps: [only in left, only in right, in both]"
@@ -325,10 +325,10 @@
   [db current-configs new-configs force?]
   (let [[deletes inserts updates] (diff-map-keys current-configs new-configs)]
     (->> (concat
-           (map deletes #(let [current (current-configs %)]
-                           (compute-dynamic-config-update db current (assoc current :state :deleted) force?)))
-           (map inserts #(compute-dynamic-config-insert (new-configs %)))
-           (map updates #(compute-dynamic-config-update db (current-configs %) (new-configs %) force?)))
+           (map #(let [current (current-configs %)]
+                   (compute-dynamic-config-update db current (assoc current :state :deleted) force?)) deletes)
+           (map #(compute-dynamic-config-insert (new-configs %)) inserts)
+           (map #(compute-dynamic-config-update db (current-configs %) (new-configs %) force?) updates))
          (filter :changed))))
 
 ;TODO temp hack
