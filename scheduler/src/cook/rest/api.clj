@@ -1751,6 +1751,12 @@
   {:can-post-to-gone?
    (constantly true)
 
+   :existed?
+   (constantly true)
+
+   ;; triggers path for moved-temporarily?
+   :exists? (fn [_] @leadership-atom)
+
    :handle-moved-temporarily
    (fn redirect-to-leader-handle-moved-temporarily
      [ctx]
@@ -3032,8 +3038,6 @@
       (redirect-to-leader leadership-atom leader-selector)
       {:allowed-methods [:post]
        :allowed? (partial check-shutdown-leader-allowed is-authorized-fn)
-       ;; triggers path for moved-temporarily?
-       :exists? (fn [_] @leadership-atom)
        :post! post-shutdown-leader!})))
 
 (defn streaming-json-encoder
@@ -3373,13 +3377,13 @@
             {:produces ["application/json"]
 
              :post
-             {:summary "TODO(DPO) POST summary"
+             {:summary "Shutdown the Cook leader"
               :parameters {:body-params ShutdownLeaderRequest}
               :handler (post-shutdown-leader-handler is-authorized-fn
                                                      leadership-atom
                                                      leader-selector)
-              :responses {400 {:description "TODO(DPO) POST 400 description"}
-                          403 {:description "TODO(DPO) POST 403 description"}}}}))
+              :responses {307 {:description "Redirecting request to leader node."}
+                          400 {:description "Invalid request format."}}}}))
 
         (c-api/undocumented
           ;; internal api endpoints (don't include in swagger)

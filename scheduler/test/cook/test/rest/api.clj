@@ -2399,4 +2399,48 @@
               (api/validate-gpu-job gpu-enabled? "test-pool" {:gpus 2
                                                               :env {}})))))))
 
+(let [admin-user "alice"
+      is-authorized-fn
+      (fn [user verb _ object]
+        (auth/admins-open-gets-allowed-users-auth
+          #{admin-user} user verb object true))
+      sample-leader-base-url "http://cook-scheduler.example:12321"
+      endpoint "/shutdown-leader"]
 
+  (deftest test-shutdown-leader
+    (let [conn (restore-fresh-database! "datomic:mem://test-shutdown-leader")
+          handler (basic-handler conn :is-authorized-fn is-authorized-fn)
+          request {:authorization/user admin-user
+                   :body-params {"reason" "test-reason"}
+                   :headers {"Content-Type" "application/json"}
+                   :request-method :post
+                   :scheme :http
+                   :uri endpoint}]
+
+      (testing "successful shutdown"
+        (let [called-shutdown? (atom false)]
+          (with-redefs [api/shutdown! #(reset! called-shutdown? true)]
+            (handler request)
+            (is (true? @called-shutdown?)))))
+
+      (testing "request from non-admin fails"
+        (let [request-from-non-admin (assoc request :authorization/user "non-admin")
+              {:keys [status] :as response} (handler request-from-non-admin)]
+          (is (= 403 status))
+          (is (= "You are not authorized to shutdown the leader"
+                 (-> response response->body-data (get "error"))))))
+
+      (testing "non-leader redirects"
+        (with-redefs [api/leader-selector->leader-url (constantly sample-leader-base-url)
+                      api/shutdown! #(throw (ex-info "Unexpected shutdown on non-leader" {}))]
+          (let [{:keys [location status]} (handler request :leader? false)]
+            (is (= 307 status))
+            (is (= location (str sample-leader-base-url endpoint))))))
+
+      (testing "no reason fails"
+        (with-redefs [api/shutdown! #(throw (ex-info "Unexpected shutdown with missing reason" {}))]
+          (let [request-with-no-reason (assoc request :body-params (-> request :body-params (dissoc "reason")))
+                {:keys [status] :as response} (handler request-with-no-reason)]
+            (is (= 400 status))
+            (is (= {"reason" "missing-required-key"}
+                   (-> response response->body-data (get "errors"))))))))))
