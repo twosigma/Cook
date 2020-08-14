@@ -19,6 +19,77 @@
             [cook.test.testutil :refer [restore-fresh-database!]]
             [datomic.api :as d]))
 
+(deftest test-cluster-state-change-valid?
+  (with-redefs [get-job-instance-ids-for-cluster-name (fn [db cluster-name])]
+
+    (test-compute-dynamic-config-updates-state-transition
+      partial-update-fn [true false] :running :running true false)
+    (test-compute-dynamic-config-updates-state-transition
+      partial-update-fn [true false] :running :draining true false)
+    (test-compute-dynamic-config-updates-state-transition
+      partial-update-fn [true false] :running :deleted false true)
+    (test-compute-dynamic-config-updates-state-transition
+      partial-update-fn [true false] :draining :running true false)
+    (test-compute-dynamic-config-updates-state-transition
+      partial-update-fn [true false] :draining :draining true false)
+    (test-compute-dynamic-config-updates-state-transition
+      partial-update-fn [true false] :draining :deleted true false)
+    (test-compute-dynamic-config-updates-state-transition
+      partial-update-fn [true false] :deleted :running false true)
+    (test-compute-dynamic-config-updates-state-transition
+      partial-update-fn [true false] :deleted :draining false true)
+    (test-compute-dynamic-config-updates-state-transition
+      partial-update-fn [true false] :deleted :deleted true false)
+    ))
+
+(defn test-compute-dynamic-config-updates-state-transition
+  [partial-update-fn force-opts from-state to-state expect-valid? expect-error?]
+  (doseq [force? force-opts]
+    (testing (str (if force? "force" "don't force") " - state from " from-state " to " to-state)
+      (let [current-configs {"c1" {:state from-state}}
+            new-configs {"c2" {:state to-state}}
+            force? true]
+        (is (= [] (partial-update-fn current-configs new-configs force?)))))))
+
+(deftest test-compute-dynamic-config-updates
+  (let [uri "datomic:mem://test-compute-cluster-config"
+        conn (restore-fresh-database! uri)
+        db (d/db conn)
+        partial-update-fn (partial compute-dynamic-config-updates db)]
+    (testing "empty"
+      (let [current-configs {}
+            new-configs {}
+            force? true]
+        (is (= [] (compute-dynamic-config-updates db current-configs new-configs force?)))))
+    (test-compute-dynamic-config-updates-state-transition
+      partial-update-fn [true false] :running :running true false)
+    (test-compute-dynamic-config-updates-state-transition
+      partial-update-fn [true false] :running :draining true false)
+    (test-compute-dynamic-config-updates-state-transition
+      partial-update-fn [true false] :running :deleted false true)
+    (test-compute-dynamic-config-updates-state-transition
+      partial-update-fn [true false] :draining :running true false)
+    (test-compute-dynamic-config-updates-state-transition
+      partial-update-fn [true false] :draining :draining true false)
+    (test-compute-dynamic-config-updates-state-transition
+      partial-update-fn [true false] :draining :deleted true false)
+    (test-compute-dynamic-config-updates-state-transition
+      partial-update-fn [true false] :deleted :running false true)
+    (test-compute-dynamic-config-updates-state-transition
+      partial-update-fn [true false] :deleted :draining false true)
+    (test-compute-dynamic-config-updates-state-transition
+      partial-update-fn [true false] :deleted :deleted true false)
+    (testing "force - "
+      (let [current-configs {"c1" {:state :running}}
+            new-configs {}
+            force? true]
+        (is (= [] (compute-dynamic-config-updates db current-configs new-configs force?)))))
+    (testing "don't force - state "
+      (let [current-configs {}
+            new-configs {}
+            force? false]
+        (is (= [] (compute-dynamic-config-updates db current-configs new-configs force?)))))))
+
 (deftest test-add-config
   (let [uri "datomic:mem://test-compute-cluster-config"
         conn (restore-fresh-database! uri)
