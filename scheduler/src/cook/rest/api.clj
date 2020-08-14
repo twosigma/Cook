@@ -3061,6 +3061,7 @@
       {:allowed? (partial check-compute-cluster-allowed is-authorized-fn)
        ;; TODO(DPO) This should move to redirect-to-leader
        :existed? (constantly true)
+       ;; TODO(DPO) This should move to redirect-to-leader
        ;; triggers path for moved-temporarily?
        :exists? (fn [_] @leadership-atom)}
       resource-attrs)))
