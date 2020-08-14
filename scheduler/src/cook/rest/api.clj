@@ -3059,6 +3059,7 @@
       ;; only the leader handles compute-cluster requests
       (redirect-to-leader leadership-atom leader-selector)
       {:allowed? (partial check-compute-cluster-allowed is-authorized-fn)
+       ;; TODO(DPO) This should move to redirect-to-leader
        :existed? (constantly true)
        ;; triggers path for moved-temporarily?
        :exists? (fn [_] @leadership-atom)}
