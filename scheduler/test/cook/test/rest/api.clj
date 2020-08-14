@@ -693,7 +693,7 @@
               redirect-location (str sample-leader-base-url target-endpoint)]
           (is (= (:status update-resp) 307))
           (is (= (:location update-resp) redirect-location))
-          (is (= (:body update-resp) {:location redirect-location, :message "redirecting to master"})))))
+          (is (= (:body update-resp) {:location redirect-location, :message "redirecting to leader"})))))
 
     (testing "Valid progress update posted to leader results 202 Accepted"
       (with-redefs [api/streaming-json-encoder identity]
@@ -2420,7 +2420,8 @@
       (testing "successful shutdown"
         (let [called-shutdown? (atom false)]
           (with-redefs [api/shutdown! #(reset! called-shutdown? true)]
-            (handler request)
+            (let [{:keys [status]} (handler request)]
+              (is (= 202 status)))
             (is (true? @called-shutdown?)))))
 
       (testing "request from non-admin fails"

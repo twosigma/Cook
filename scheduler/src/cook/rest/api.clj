@@ -19,6 +19,7 @@
             [clj-time.coerce :as tc]
             [clj-time.core :as t]
             [clj-time.format :as tf]
+            [clojure.core.async :as async]
             [clojure.set :as set]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
@@ -1761,7 +1762,7 @@
    (fn redirect-to-leader-handle-moved-temporarily
      [ctx]
      {:location (:location ctx)
-      :message "redirecting to master"})
+      :message "redirecting to leader"})
 
    :handle-service-not-available
    (fn redirect-to-leader-handle-service-not-available
@@ -3022,12 +3023,17 @@
 
 (defn shutdown!
   []
-  (System/exit 0))
+  (async/thread
+    (log/info "Sleeping for 5 seconds before exiting")
+    (Thread/sleep 5000)
+    (log/info "Exiting now")
+    (System/exit 0)))
 
 (defn post-shutdown-leader!
   [ctx]
-  (let [reason (-> ctx :request :body-params :reason)]
-    (log/info "Exiting from /shutdown-leader request with reason" reason)
+  (let [reason (get-in ctx [:request :body-params :reason])
+        request-user (get-in ctx [:request :authorization/user])]
+    (log/info "Exiting due to /shutdown-leader request from" request-user "with reason:" reason)
     (shutdown!)))
 
 (defn post-shutdown-leader-handler
@@ -3038,6 +3044,7 @@
       (redirect-to-leader leadership-atom leader-selector)
       {:allowed-methods [:post]
        :allowed? (partial check-shutdown-leader-allowed is-authorized-fn)
+       :post-enacted? (constantly false)
        :post! post-shutdown-leader!})))
 
 (defn streaming-json-encoder
@@ -3382,7 +3389,8 @@
               :handler (post-shutdown-leader-handler is-authorized-fn
                                                      leadership-atom
                                                      leader-selector)
-              :responses {307 {:description "Redirecting request to leader node."}
+              :responses {202 {:description "The shutdown request was accepted."}
+                          307 {:description "Redirecting request to leader node."}
                           400 {:description "Invalid request format."}}}}))
 
         (c-api/undocumented
