@@ -1469,8 +1469,10 @@
         offensive-job-filter (partial filter-offensive-jobs task-constraints offensive-jobs-ch)]
     (tools/chime-at-ch trigger-chan
                       (fn rank-jobs-event []
+                        (log/info "Starting pending job ranking")
                         (reset! pool-name->pending-jobs-atom
-                                (rank-jobs (d/db conn) offensive-job-filter))))))
+                                (rank-jobs (d/db conn) offensive-job-filter))
+                        (log/info "Done with pending job ranking")))))
 
 (meters/defmeter [cook-mesos scheduler mesos-error])
 (meters/defmeter [cook-mesos scheduler offer-chan-full-error])
