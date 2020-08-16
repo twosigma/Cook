@@ -662,7 +662,14 @@
              ; Force this to be taken eagerly so that the log line is accurate.
              (doall))]
     (swap! pool->user->num-rate-limited-jobs update pool-name (constantly @user->rate-limit-count))
-    (log/info "Users whose job launches are rate-limited " @user->rate-limit-count "( enforcing =" enforcing-job-launch-rate-limit? ")")
+    (when (seq @user->rate-limit-count)
+      (log/info "In" pool-name "pool, job launch rate-limiting"
+                {:count-considerable-jobs (count considerable-jobs)
+                 :enforcing-job-launch-rate-limit? enforcing-job-launch-rate-limit?
+                 :num-considerable num-considerable
+                 :total-rate-limit-count (->> @user->rate-limit-count vals (reduce +))
+                 :user->number-jobs @user->number-jobs
+                 :user->rate-limit-count @user->rate-limit-count}))
     considerable-jobs))
 
 
