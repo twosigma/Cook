@@ -127,13 +127,13 @@
   [api-client compute-cluster-name]
   (timers/time! (metrics/timer "get-all-pods" compute-cluster-name)
     (let [api (CoreV1Api. api-client)
-          current-pods (.listNamespacedPod api "tsram"
-                                           nil ; pretty
-                                           nil ; allowWatchBookmarks
+          current-pods (.listPodForAllNamespaces api
                                                  nil ; continue
                                                  nil ; fieldSelector
-                                           nil ; labelSelector
-                                           nil ; limit
+                                                 nil ; includeUninitialized
+                                                 nil ; labelSelector
+                                                 nil ; limit
+                                                 nil ; pretty
                                                  nil ; resourceVersion
                                                  nil ; timeoutSeconds
                                                  nil ; watch
