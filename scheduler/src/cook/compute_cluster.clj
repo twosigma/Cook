@@ -342,7 +342,7 @@
         factory-fn (:factory-fn config-from-template)
         resolved (cook.util/lazy-load-var factory-fn)
         config (merge (:config config-from-template) dynamic-config)
-        - (log/info "Calling compute cluster factory fn" factory-fn "with config" config)
+        _ (log/info "Calling compute cluster factory fn" factory-fn "with config" config)
         cluster (resolved config {:exit-code-syncer-state @exit-code-syncer-state-promise})]
     (initialize-cluster cluster (:pool-name->fenzo @scheduler-promise)))
 
@@ -375,6 +375,7 @@
           new-configs (or new-configs current-configs)
           new-configs (if new-config (assoc new-configs (:name new-config) new-config) new-configs)
           updates (compute-dynamic-config-updates db current-configs new-configs force?)
+          _ (log/info "Updating dynamic clusters." {:new-config new-config :new-configs new-configs :force? force? :updates updates})
           ;TODO check for IP collisions
           errors (seq (filter :error updates))
           updates (filter :valid? updates)]
