@@ -100,6 +100,7 @@ final public class Job {
         // Use LinkedHashSet to ensure the insertion order will be kept.
         private Set<Constraint> _constraints = new LinkedHashSet<>();
         private Application _application;
+        private Checkpoint _checkpoint;
         private String _progressOutputFile;
         private String _progressRegexString;
         private String _user;
@@ -146,7 +147,7 @@ final public class Job {
             }
             return new Job(_uuid, _name, _command, _executor, _memory, _cpus, _gpus, _retries, _maxRuntime, _expectedRuntime, _status,
                     _priority, _pool, _isMeaCulpaRetriesDisabled, _instances, _env, _uris, _container, _labels, _constraints,
-                    _groups, _application, _progressOutputFile, _progressRegexString, _user, _datasets);
+                    _groups, _application, _checkpoint, _progressOutputFile, _progressRegexString, _user, _datasets);
         }
 
         /**
@@ -565,6 +566,17 @@ final public class Job {
         }
 
         /**
+         * Sets the checkpointing configuration of the job.
+         *
+         * @param checkpoint {@link Checkpoint} specifies the checkpointing configuration of the job.
+         * @return this builder.
+         */
+        public Builder setCheckpoint(Checkpoint checkpoint) {
+            _checkpoint = checkpoint;
+            return this;
+        }
+
+        /**
          * Set the progress output file of the job expected to build.
          * It can be an absolute path or a path relative to the sandbox directory.
          *
@@ -636,6 +648,7 @@ final public class Job {
     // the future, jobs will be allowed to belong to multiple groups.
     final private List<UUID> _groups;
     final private Application _application;
+    final private Checkpoint _checkpoint;
     final private String _progressOutputFile;
     final private String _progressRegexString;
     final private String _user;
@@ -644,7 +657,7 @@ final public class Job {
     private Job(UUID uuid, String name, String command, Executor executor, Double memory, Double cpus, Integer gpus, Integer retries,
                 Long maxRuntime, Long expectedRuntime, Status status, Integer priority, String pool, Boolean isMeaCulpaRetriesDisabled,
                 List<Instance> instances, Map<String, String> env, List<FetchableURI> uris, JSONObject container,
-                Map<String, String> labels, Set<Constraint> constraints, List<UUID> groups, Application application,
+                Map<String, String> labels, Set<Constraint> constraints, List<UUID> groups, Application application, Checkpoint checkpoint,
                 String progressOutputFile, String progressRegexString, String user, JSONArray datasets) {
         _uuid = uuid;
         _name = name;
@@ -664,6 +677,7 @@ final public class Job {
         _env = ImmutableMap.copyOf(env);
         _uris = ImmutableList.copyOf(uris);
         _application = application;
+        _checkpoint = checkpoint;
         _progressOutputFile = progressOutputFile;
         _progressRegexString = progressRegexString;
         _user = user;
@@ -858,6 +872,13 @@ final public class Job {
     }
 
     /**
+     * @return the job checkpointing configuration
+     */
+    public Checkpoint getCheckpoint() {
+        return _checkpoint;
+    }
+
+    /**
      * The progress output file configured for the job.
      * It is either an absolute path or a path relative to the sandbox directory.
      *
@@ -973,6 +994,9 @@ final public class Job {
         }
         if (job._application != null) {
             object.put("application", Application.jsonizeApplication(job._application));
+        }
+        if (job._checkpoint != null) {
+            object.put("checkpoint", job._checkpoint.toJSONObject());
         }
         if (job._progressOutputFile != null) {
             object.put("progress_output_file", job._progressOutputFile);
@@ -1146,6 +1170,10 @@ final public class Job {
             if (json.has("application")) {
                 JSONObject applicationJson = json.getJSONObject("application");
                 jobBuilder.setApplication(Application.parseFromJSON(applicationJson));
+            }
+            if (json.has("checkpoint")) {
+                JSONObject checkpointJson = json.getJSONObject("checkpoint");
+                jobBuilder.setCheckpoint(Checkpoint.parseFromJSON(checkpointJson));
             }
             if (json.has("expected_runtime")) {
                 jobBuilder.setExpectedRuntime(json.getLong("expected_runtime"));

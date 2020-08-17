@@ -18,6 +18,9 @@ package com.twosigma.cook.jobclient;
 
 import com.twosigma.cook.jobclient.constraint.Constraint;
 import com.twosigma.cook.jobclient.constraint.Constraints;
+import com.twosigma.cook.jobclient.Checkpoint.CheckpointOptions;
+import com.twosigma.cook.jobclient.Checkpoint.Mode;
+import com.twosigma.cook.jobclient.Checkpoint.PeriodicCheckpointOptions;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -25,7 +28,9 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
@@ -61,6 +66,9 @@ public class JobTest {
         jobBuilder.disableMeaCulpaRetries();
         jobBuilder.addUri(new FetchableURI.Builder().setValue("http://example.com/my_resource").build());
         jobBuilder.setApplication(new Application("baz-app", "1.2.3"));
+        jobBuilder.setCheckpoint(new Checkpoint(Mode.auto,
+                new CheckpointOptions(new HashSet<String>(Arrays.asList("path1", "path2", "path2"))),
+                new PeriodicCheckpointOptions(5)));
         jobBuilder.setExpectedRuntime(500L);
         jobBuilder.addConstraint(_constraint1);
         jobBuilder.addConstraint(Collections.singletonList(_constraint2));
@@ -89,6 +97,8 @@ public class JobTest {
         Assert.assertEquals(
             jsonJob.getJSONObject("application").toString(),
             new JSONObject().put("name", "baz-app").put("version", "1.2.3").toString());
+        Assert.assertEquals(jsonJob.getJSONObject("checkpoint").getString("mode"),
+                basicJob.getCheckpoint().getMode().toString());
         Assert.assertEquals(500L, jsonJob.getLong("expected_runtime"));
         Assert.assertEquals(true, jsonJob.getBoolean("disable_mea_culpa_retries"));
         JSONArray constraints = jsonJob.getJSONArray("constraints");
@@ -117,6 +127,10 @@ public class JobTest {
         Assert.assertEquals(job.getMaxRuntime(), Long.valueOf(1000L));
         Assert.assertEquals(job.getApplication().getName(), "baz-app");
         Assert.assertEquals(job.getApplication().getVersion(), "1.2.3");
+        Assert.assertEquals(job.getCheckpoint().getMode(), Mode.auto);
+        Assert.assertEquals(job.getCheckpoint().getCheckpointOptions().getPreservePaths(),
+                new HashSet<String>(Arrays.asList("path1", "path2")));
+        Assert.assertEquals(job.getCheckpoint().getPeriodicCheckpointOptions().getPeriodSec(), 5);
         Assert.assertEquals(job.getExpectedRuntime(), Long.valueOf(500L));
         Assert.assertEquals(job.getPool(), "dummy-pool");
         Assert.assertEquals(Integer.valueOf(2), job.getGpus());
