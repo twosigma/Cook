@@ -114,7 +114,7 @@ public class Checkpoint {
         CheckpointOptions checkpointOptions = null;
         PeriodicCheckpointOptions periodicCheckpointOptions = null;
         if (object.has("options")) {
-            checkpointOptions = CheckpointOptions.parseFromJSON(object.getJSONObject("container"));
+            checkpointOptions = CheckpointOptions.parseFromJSON(object.getJSONObject("options"));
         }
         if (object.has("periodic-options")) {
             periodicCheckpointOptions = PeriodicCheckpointOptions.parseFromJSON(object.getJSONObject("periodic-options"));
