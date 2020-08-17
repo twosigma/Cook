@@ -2,6 +2,7 @@ package com.twosigma.cook.jobclient;
 
 import java.util.HashSet;
 import java.util.Set;
+import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -84,7 +85,7 @@ public class Checkpoint {
         this._periodicCheckpointOptions = periodicCheckpointOptions;
     }
 
-    public String getMode() {
+    public Mode getMode() {
         return _mode;
     }
 
@@ -113,10 +114,10 @@ public class Checkpoint {
         CheckpointOptions checkpointOptions = null;
         PeriodicCheckpointOptions periodicCheckpointOptions = null;
         if (object.has("options")) {
-            checkpointOptions = CheckpointOptions.parseFromJSON(json.getJSONObject("container"));
+            checkpointOptions = CheckpointOptions.parseFromJSON(object.getJSONObject("container"));
         }
         if (object.has("periodic-options")) {
-            periodicCheckpointOptions = PeriodicCheckpointOptions.parseFromJSON(json.getJSONObject("periodic-options"));
+            periodicCheckpointOptions = PeriodicCheckpointOptions.parseFromJSON(object.getJSONObject("periodic-options"));
         }
         return new Checkpoint(mode, checkpointOptions, periodicCheckpointOptions);
     }
