@@ -18,6 +18,9 @@ package com.twosigma.cook.jobclient;
 
 import com.twosigma.cook.jobclient.constraint.Constraint;
 import com.twosigma.cook.jobclient.constraint.Constraints;
+import com.twosigma.cook.jobclient.Checkpoint.CheckpointOptions;
+import com.twosigma.cook.jobclient.Checkpoint.Mode;
+import com.twosigma.cook.jobclient.Checkpoint.PeriodicCheckpointOptions;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -27,6 +30,7 @@ import org.junit.Test;
 
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
