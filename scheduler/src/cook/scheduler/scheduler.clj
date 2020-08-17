@@ -535,10 +535,15 @@
   [offers]
   (->> offers
        (map (fn offer->resource-map
-              [{:keys [resources] :as offer}]
+              [{:keys [resources]}]
               (reduce
                 (fn [resource-map {:keys [name type scalar text->scalar] :as resource}]
                   (case type
+                    ; Range types (e.g. port ranges) aren't
+                    ; amenable to summing across offers
+                    :value-ranges
+                    resource-map
+
                     :value-scalar
                     (assoc resource-map name scalar)
 
@@ -553,9 +558,7 @@
 
                     (do
                       (log/warn "Encountered unexpected resource type"
-                                {:offer offer
-                                 :resource resource
-                                 :type type})
+                                {:resource resource :type type})
                       resource-map)))
                 {}
                 resources)))
