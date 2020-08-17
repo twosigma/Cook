@@ -2213,3 +2213,69 @@
                                              :target-per-pool-match-interval-millis 3000}
                                             (repeat 40 "x")
                                             100)))
+
+(deftest test-offers->resource-totals
+  (testing "adds up resources by type"
+    (is (= {"cpus" 3.5
+            "mem" 79
+            "gpus/nvidia-tesla-k80" 6
+            "gpus/nvidia-tesla-p100" 12}
+           (sched/offers->resource-totals
+             [{:resources [{:name "cpus" :type :value-scalar :scalar 1.2}
+                           {:name "mem" :type :value-scalar :scalar 34}
+                           {:name "gpus"
+                            :type :value-text->scalar
+                            :text->scalar {"nvidia-tesla-k80" 2 "nvidia-tesla-p100" 4}}]}
+              {:resources [{:name "cpus" :type :value-scalar :scalar 2.3}
+                           {:name "mem" :type :value-scalar :scalar 45}
+                           {:name "gpus"
+                            :type :value-text->scalar
+                            :text->scalar {"nvidia-tesla-k80" 4 "nvidia-tesla-p100" 8}}]}]))))
+
+  (testing "gracefully handles unexpected resource type"
+    (is (= {"cpus" 3.5
+            "mem" 79
+            "gpus/nvidia-tesla-k80" 6
+            "gpus/nvidia-tesla-p100" 12}
+           (sched/offers->resource-totals
+             [{:resources [{:name "cpus" :type :value-scalar :scalar 1.2}
+                           {:name "mem" :type :value-scalar :scalar 34}
+                           {:name "gpus"
+                            :type :value-text->scalar
+                            :text->scalar {"nvidia-tesla-k80" 2 "nvidia-tesla-p100" 4}}]}
+              {:resources [{:name "bogus-name" :type :bogus-type}]}
+              {:resources [{:name "cpus" :type :value-scalar :scalar 2.3}
+                           {:name "mem" :type :value-scalar :scalar 45}
+                           {:name "gpus"
+                            :type :value-text->scalar
+                            :text->scalar {"nvidia-tesla-k80" 4 "nvidia-tesla-p100" 8}}]}])))))
+
+(deftest test-job->resource-totals
+  (testing "adds up resources by type"
+    (is (= {:cpus 3.5
+            :mem 79
+            :gpus/nvidia-tesla-k80 2
+            :gpus/nvidia-tesla-p100 4}
+           (sched/jobs->resource-totals
+             [{:job/environment [{:environment/name "COOK_GPU_MODEL"
+                                  :environment/value "nvidia-tesla-k80"}]
+               :job/resource [{:resource/type :cpus :resource/amount 1.2}
+                              {:resource/type :mem :resource/amount 34}
+                              {:resource/type :gpus :resource/amount 2}]}
+              {:job/environment [{:environment/name "COOK_GPU_MODEL"
+                                  :environment/value "nvidia-tesla-p100"}]
+               :job/resource [{:resource/type :cpus :resource/amount 2.3}
+                              {:resource/type :mem :resource/amount 45}
+                              {:resource/type :gpus :resource/amount 4}]}]))))
+
+  (testing "gracefully handles unspecified gpu model"
+    (is (= {:cpus 3.5
+            :mem 79
+            :gpus/unspecified-gpu-model 6}
+           (sched/jobs->resource-totals
+             [{:job/resource [{:resource/type :cpus :resource/amount 1.2}
+                              {:resource/type :mem :resource/amount 34}
+                              {:resource/type :gpus :resource/amount 2}]}
+              {:job/resource [{:resource/type :cpus :resource/amount 2.3}
+                              {:resource/type :mem :resource/amount 45}
+                              {:resource/type :gpus :resource/amount 4}]}])))))

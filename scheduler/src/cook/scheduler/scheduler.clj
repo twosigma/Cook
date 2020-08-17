@@ -530,6 +530,64 @@
         pool-specific-resources ((adjust-job-resources-for-pool-fn pool-name) job resources)]
     (->TaskRequestAdapter job pool-specific-resources task-id assigned-resources guuid->considerable-cotask-ids constraints scalar-requests)))
 
+(defn offers->resource-totals
+  "Given a collection of offers, returns a map from resource type to total amount"
+  [offers]
+  (->> offers
+       (map (fn offer->resource-map
+              [{:keys [resources] :as offer}]
+              (reduce
+                (fn [resource-map {:keys [name type scalar text->scalar] :as resource}]
+                  (case type
+                    :value-scalar
+                    (assoc resource-map name scalar)
+
+                    :value-text->scalar
+                    (reduce
+                      (fn [resource-map-inner [text scalar]]
+                        (assoc resource-map-inner
+                          (str name "/" text)
+                          scalar))
+                      resource-map
+                      text->scalar)
+
+                    (do
+                      (log/warn "Encountered unexpected resource type"
+                                {:offer offer
+                                 :resource resource
+                                 :type type})
+                      resource-map)))
+                {}
+                resources)))
+       (reduce (partial merge-with +))))
+
+(defn jobs->resource-totals
+  "Given a collection of jobs, returns a map from resource type to total amount"
+  [jobs]
+  (->> jobs
+       (map (fn job->resource-map
+              [job]
+              (let [{:keys [gpus] :as resource-map}
+                    (-> job tools/job-ent->resources (dissoc :ports))]
+                (if gpus
+                  (let [env (tools/job-ent->env job)
+                        gpu-model (get env "COOK_GPU_MODEL" "unspecified-gpu-model")
+                        gpus-resource-key (keyword "gpus" gpu-model)]
+                    (-> resource-map
+                        (assoc gpus-resource-key gpus)
+                        (dissoc :gpus)))
+                  resource-map))))
+       (reduce (partial merge-with +))))
+
+(defn format-resource-map
+  "Given a map from resource type to amount,
+   formats the amount values for logging"
+  [resource-map]
+  (pc/map-vals #(if (float? %)
+                  (format "%.3f" %)
+                  (str %))
+               resource-map))
+
 (defn match-offer-to-schedule
   "Given an offer and a schedule, computes all the tasks should be launched as a result.
 
@@ -539,8 +597,18 @@
    Returns {:matches (list of tasks that got matched to the offer)
             :failures (list of unmatched tasks, and why they weren't matched)}"
   [db ^TaskScheduler fenzo considerable offers rebalancer-reservation-atom pool-name]
-  (log/info "In" pool-name "pool, matching" (count offers) "offers to"
-            (count considerable) "considerable jobs with fenzo")
+  (log/info "In" pool-name "pool, matching offers to considerable jobs"
+            {:count-considerable-jobs (count considerable)
+             :count-offers (count offers)
+             :resource-type->total-considerable (-> considerable
+                                                    jobs->resource-totals
+                                                    format-resource-map)
+             :resource-type->total-offered (-> offers
+                                               offers->resource-totals
+                                               format-resource-map)
+             :user->number-jobs (->> considerable
+                                     (map tools/job-ent->user)
+                                     frequencies)})
   (if (and (-> considerable count zero?)
            (-> offers count pos?)
            (every? :reject-after-match-attempt offers))
