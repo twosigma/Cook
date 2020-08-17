@@ -19,6 +19,7 @@
             [clj-time.coerce :as tc]
             [clj-time.core :as t]
             [clj-time.format :as tf]
+            [clojure.core.async :as async]
             [clojure.set :as set]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
@@ -1749,47 +1750,75 @@
                        (comp first))]
     (base-read-instances-handler conn is-authorized-fn {:handle-ok handle-ok})))
 
+(defn redirect-to-leader
+  "Returns a map of Liberator resource attribute functions to
+   be used when only the Cook leader should handle the request"
+  [leadership-atom leader-selector]
+  {:can-post-to-gone?
+   (constantly true)
+
+   :existed?
+   (constantly true)
+
+   ;; triggers path for moved-temporarily?
+   :exists? (fn [_] @leadership-atom)
+
+   :handle-moved-temporarily
+   (fn redirect-to-leader-handle-moved-temporarily
+     [ctx]
+     {:location (:location ctx)
+      :message "redirecting to leader"})
+
+   :handle-service-not-available
+   (fn redirect-to-leader-handle-service-not-available
+     [{:keys [::message]}]
+     {:message message})
+
+   :moved-temporarily?
+   (fn redirect-to-leader-moved-temporarily?
+     [ctx]
+     ;; the client is expected to cache the redirect location
+     (if-let [leader-url (::leader-url ctx)]
+       (let [request-path (get-in ctx [:request :uri])]
+         [true {:location (str leader-url request-path)}])
+       [false {}]))
+
+   :service-available?
+   (fn redirect-to-leader-service-available?
+     [_]
+     (if @leadership-atom
+       [true {}]
+       (try
+         ;; recording target leader-url for redirect
+         [true {::leader-url (leader-selector->leader-url leader-selector)}]
+         ;; handle leader-not-found errors by responding 503
+         (catch IllegalStateException e
+           [false {::message (.getMessage e)}]))))})
+
 (defn update-instance-progress-handler
   [conn is-authorized-fn leadership-atom leader-selector progress-aggregator-chan]
   (base-cook-handler
-    {:allowed-methods [:post]
-     :initialize-context (fn [ctx]
-                           ;; injecting ::instances into ctx for later handlers
-                           {::instances [(get-in ctx [:request :params :uuid])]})
-     :service-available? (fn [ctx]
-                           (if @leadership-atom
-                             [true {}]
-                             (try
-                               ;; recording target leader-url for redirect
-                               [true {::leader-url (leader-selector->leader-url leader-selector)}]
-                               ;; handle leader-not-found errors by responding 503
-                               (catch IllegalStateException e
-                                 [false {::message (.getMessage e)}]))))
-     :handle-service-not-available (fn [ctx] {:message (::message ctx)})
-     :allowed? (partial instance-request-allowed? conn is-authorized-fn)
-     :exists? (constantly false)  ;; triggers path for moved-temporarily?
-     :existed? instance-request-exists?
-     :can-post-to-missing? (constantly false)
-     :moved-temporarily? (fn [ctx]
-                           ;; only the leader handles progress updates
-                           ;; the client is expected to cache the redirect location
-                           (if-let [leader-url (::leader-url ctx)]
-                             (let [request-path (get-in ctx [:request :uri])]
-                               [true {:location (str leader-url request-path)}])
-                             [false {}]))
-     :handle-moved-temporarily (fn [ctx] {:location (:location ctx)
-                                          :message "redirecting to master"})
-     :can-post-to-gone? (constantly true)
-     :post! (fn [ctx]
-              (let [progress-message-map (get-in ctx [:request :body-params])
-                    task-id (-> ctx ::instances first)]
-                (progress/handle-progress-message!
-                  (d/db conn) task-id progress-aggregator-chan progress-message-map)))
-     :post-enacted? (constantly false)  ;; triggers http 202 "accepted" response
-     :handle-accepted (fn [ctx]
-                        (let [instance (-> ctx ::instances first)
-                              job (-> ctx ::jobs first)]
-                          {:instance instance :job job :message "progress update accepted"}))}))
+    (merge
+      ;; only the leader handles progress updates
+      (redirect-to-leader leadership-atom leader-selector)
+      {:allowed-methods [:post]
+       :initialize-context (fn [ctx]
+                             ;; injecting ::instances into ctx for later handlers
+                             {::instances [(get-in ctx [:request :params :uuid])]})
+       :allowed? (partial instance-request-allowed? conn is-authorized-fn)
+       :exists? (constantly false)  ;; triggers path for moved-temporarily?
+       :existed? instance-request-exists?
+       :can-post-to-missing? (constantly false)
+       :post! (fn [ctx]
+                (let [progress-message-map (get-in ctx [:request :body-params])
+                      task-id (-> ctx ::instances first)]
+                  (progress/handle-progress-message!
+                    (d/db conn) task-id progress-aggregator-chan progress-message-map)))
+       :post-enacted? (constantly false)  ;; triggers http 202 "accepted" response
+       :handle-accepted (fn [ctx]
+                          (let [instance (-> ctx ::instances first)
+                                job (-> ctx ::jobs first)]
+                            {:instance instance :job job :message "progress update accepted"}))})))
 
 ;;; On DELETE; use repeated job argument
 (defn destroy-jobs-handler
@@ -2977,6 +3006,52 @@
      :handle-ok (fn [{:keys [costs]}]
                   costs)}))
 
+;;
+;; /shutdown-leader
+;;
+
+(def ShutdownLeaderRequest
+  {:reason s/Str})
+
+(defn check-shutdown-leader-allowed
+  [is-authorized-fn ctx]
+  (let [request-user (get-in ctx [:request :authorization/user])
+        impersonator (get-in ctx [:request :authorization/impersonator])
+        request-method (get-in ctx [:request :request-method])]
+    (if-not (is-authorized-fn request-user
+                              request-method
+                              impersonator
+                              {:owner ::system :item :shutdown-leader})
+      [false {::error
+              (str "You are not authorized to shutdown the leader")}]
+      true)))
+
+(defn shutdown!
+  []
+  (async/thread
+    (log/info "Sleeping for 5 seconds before exiting")
+    (Thread/sleep 5000)
+    (log/info "Exiting now")
+    (System/exit 0)))
+
+(defn post-shutdown-leader!
+  [ctx]
+  (let [reason (get-in ctx [:request :body-params :reason])
+        request-user (get-in ctx [:request :authorization/user])]
+    (log/info "Exiting due to /shutdown-leader request from" request-user "with reason:" reason)
+    (shutdown!)))
+
+(defn post-shutdown-leader-handler
+  [is-authorized-fn leadership-atom leader-selector]
+  (base-cook-handler
+    (merge
+      ;; only the leader handles shutdown-leader requests
+      (redirect-to-leader leadership-atom leader-selector)
+      {:allowed-methods [:post]
+       :allowed? (partial check-shutdown-leader-allowed is-authorized-fn)
+       :post-enacted? (constantly false)
+       :post! post-shutdown-leader!})))
+
 (defn streaming-json-encoder
   "Takes as input the response body which can be converted into JSON,
   and returns a function which takes a ServletResponse and writes the JSON
@@ -3307,6 +3382,21 @@
                               :description "The pools were returned."}}
              :get {:summary "Returns the pools."
                    :handler (pools-handler)}}))
+
+        (c-api/context
+          "/shutdown-leader" []
+          (c-api/resource
+            {:produces ["application/json"]
+
+             :post
+             {:summary "Shutdown the Cook leader"
+              :parameters {:body-params ShutdownLeaderRequest}
+              :handler (post-shutdown-leader-handler is-authorized-fn
+                                                     leadership-atom
+                                                     leader-selector)
+              :responses {202 {:description "The shutdown request was accepted."}
+                          307 {:description "Redirecting request to leader node."}
+                          400 {:description "Invalid request format."}}}}))
 
         (c-api/undocumented
           ;; internal api endpoints (don't include in swagger)
