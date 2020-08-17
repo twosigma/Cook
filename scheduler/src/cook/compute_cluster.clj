@@ -301,7 +301,7 @@
                          (pr-str (data/diff (dissoc current :state) (dissoc new :state))))}
            :else
            {:valid? true})
-    :update-value new :changed (not= current new)))
+    :update-value new :changed? (not= current new)))
 
 (defn compute-dynamic-config-insert
   "Add validation info to a new dynamic cluster configuration."
@@ -317,7 +317,7 @@
               :reason (str "Template for cluster has no factory-fn: " config-from-template)}
              :else
              {:valid? true})
-      :insert-value new :changed true)))
+      :insert-value new :changed? true)))
 
 (defn compute-dynamic-config-updates
   "Take the current and desired configurations and compute the changes. Alert on invalid changes."
@@ -328,7 +328,7 @@
                    (compute-dynamic-config-update db current (assoc current :state :deleted) force?)) deletes)
            (map #(compute-dynamic-config-insert (new-configs %)) inserts)
            (map #(compute-dynamic-config-update db (current-configs %) (new-configs %) force?) updates))
-         (filter :changed))))
+         (filter :changed?))))
 
 ;TODO temp hack
 (def exit-code-syncer-state-promise (promise))
