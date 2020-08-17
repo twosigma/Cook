@@ -16,6 +16,7 @@
 (ns cook.test.compute-cluster
   (:require [clojure.test :refer :all]
             [cook.compute-cluster :refer :all]
+            [cook.config :as config]
             [cook.test.testutil :refer [create-dummy-job-with-instances restore-fresh-database!]]
             [datomic.api :as d]))
 
@@ -75,94 +76,115 @@
     (with-redefs [cluster-state-change-valid? (fn [db current-state new-state cluster-name] @state-change-valid-atom)]
       (testing "invalid state change"
         (reset! state-change-valid-atom false)
-        (is (= {:changed false
+        (is (= {:changed? false
                 :error true
                 :reason "Cluster state transition from  to  is not valid."
                 :update-value {}
                 :valid? false} (compute-dynamic-config-update nil {} {} false)))
         (reset! state-change-valid-atom true))
       (testing "locked state"
-        (is (= {:changed true
+        (is (= {:changed? true
                 :error false
                 :reason "Attempting to change cluster state from :running to :draining but not able because it is locked."
                 :update-value {:state :draining}
                 :valid? false} (compute-dynamic-config-update nil {:state-locked? true :state :running} {:state :draining} false))))
       (testing "non-state change"
-        (is (= {:changed true
+        (is (= {:changed? true
                 :error true
                 :reason "Attempting to change something other than state when force? is false. Diff is ({:a :a} {:a :b} nil)"
                 :update-value {:a :b}
                 :valid? false} (compute-dynamic-config-update nil {:a :a} {:a :b} false))))
       (testing "locked state - forced"
-        (is (= {:changed true
+        (is (= {:changed? true
                 :update-value {:state :draining}
                 :valid? true} (compute-dynamic-config-update nil {:state-locked? true :state :running} {:state :draining} true))))
       (testing "non-state change - forced"
-        (is (= {:changed true
+        (is (= {:changed? true
                 :update-value {:a :b}
                 :valid? true} (compute-dynamic-config-update nil {:a :a} {:a :b} true))))
       (testing "valid changed"
-        (is (= {:changed true
+        (is (= {:changed? true
                 :update-value {:a :a :state :draining}
                 :valid? true} (compute-dynamic-config-update nil {:a :a :state :running} {:a :a :state :draining} false)))
-        (is (= {:changed true
+        (is (= {:changed? true
                 :update-value {:a :b}
                 :valid? true} (compute-dynamic-config-update nil {:a :a} {:a :b} true))))
       (testing "valid unchanged"
-        (is (= {:changed false
+        (is (= {:changed? false
                 :update-value {:a :a}
                 :valid? true} (compute-dynamic-config-update nil {:a :a} {:a :a} false)))
-        (is (= {:changed false
+        (is (= {:changed? false
                 :update-value {:a :a}
                 :valid? true} (compute-dynamic-config-update nil {:a :a} {:a :a} true)))))))
 
-(defn test-compute-dynamic-config-updates-state-transition
-  [partial-update-fn force-opts from-state to-state expect-valid? expect-error?]
-  (doseq [force? force-opts]
-    (testing (str (if force? "force" "don't force") " - state from " from-state " to " to-state)
-      (let [current-configs {"c1" {:state from-state}}
-            new-configs {"c2" {:state to-state}}
-            force? true]
-        (is (= [] (partial-update-fn current-configs new-configs force?)))))))
+(deftest test-compute-dynamic-config-insert
+  (with-redefs [config/compute-cluster-templates (constantly {"template1" {:a :bb :c :dd}
+                                                              "template2" {:a :bb :c :dd :factory-fn :factory-fn}})]
+    (testing "bad template"
+      (is (= {:changed? true
+              :error true
+              :insert-value {:a :b}
+              :reason "Attempting to create cluster with unknown template: "
+              :valid? false}
+             (compute-dynamic-config-insert {:a :b})))
+      (is (= {:changed? true
+              :error true
+              :insert-value {:a :b
+                             :template "missing"}
+              :reason "Attempting to create cluster with unknown template: missing"
+              :valid? false}
+             (compute-dynamic-config-insert {:a :b :template "missing"}))))
+    (testing "bad template"
+      (is (= {:changed? true
+              :error true
+              :insert-value {:a :b
+                             :template "template1"}
+              :reason "Template for cluster has no factory-fn: {:a :bb, :c :dd}"
+              :valid? false}
+             (compute-dynamic-config-insert {:a :b :template "template1"}))))
+    (testing "good template"
+      (is (= {:changed? true
+              :insert-value {:a :b
+                             :template "template2"}
+              :valid? true}
+             (compute-dynamic-config-insert {:a :b :template "template2"}))))))
+
 
 (deftest test-compute-dynamic-config-updates
-  (let [uri "datomic:mem://test-compute-cluster-config"
-        conn (restore-fresh-database! uri)
-        db (d/db conn)
-        partial-update-fn (partial compute-dynamic-config-updates db)]
-    (testing "empty"
-      (let [current-configs {}
-            new-configs {}
-            force? true]
-        (is (= [] (compute-dynamic-config-updates db current-configs new-configs force?)))))
-    (test-compute-dynamic-config-updates-state-transition
-      partial-update-fn [true false] :running :running true false)
-    (test-compute-dynamic-config-updates-state-transition
-      partial-update-fn [true false] :running :draining true false)
-    (test-compute-dynamic-config-updates-state-transition
-      partial-update-fn [true false] :running :deleted false true)
-    (test-compute-dynamic-config-updates-state-transition
-      partial-update-fn [true false] :draining :running true false)
-    (test-compute-dynamic-config-updates-state-transition
-      partial-update-fn [true false] :draining :draining true false)
-    (test-compute-dynamic-config-updates-state-transition
-      partial-update-fn [true false] :draining :deleted true false)
-    (test-compute-dynamic-config-updates-state-transition
-      partial-update-fn [true false] :deleted :running false true)
-    (test-compute-dynamic-config-updates-state-transition
-      partial-update-fn [true false] :deleted :draining false true)
-    (test-compute-dynamic-config-updates-state-transition
-      partial-update-fn [true false] :deleted :deleted true false)
-    (testing "force - "
-      (let [current-configs {"c1" {:state :running}}
-            new-configs {}
-            force? true]
-        (is (= [] (compute-dynamic-config-updates db current-configs new-configs force?)))))
-    (testing "don't force - state "
-      (let [current-configs {}
-            new-configs {}
-            force? false]
-        (is (= [] (compute-dynamic-config-updates db current-configs new-configs force?)))))))
+  (with-redefs [compute-dynamic-config-update (fn [_ current new _] {:changed? (not= current new)
+                                                                     :update-value new
+                                                                     :valid? true})
+                compute-dynamic-config-insert (fn [new] {:changed? true
+                                                         :insert-value new
+                                                         :valid? true})]
+    (is (= (set [{:changed? true
+                  :update-value {:a :a
+                                 :name :left
+                                 :state :deleted}
+                  :valid? true}
+                 {:changed? true
+                  :update-value {:a :b
+                                 :name :both2}
+                  :valid? true}
+                 {:changed? true
+                  :insert-value {:a :a
+                                 :name :right}
+                  :valid? true}])
+           (set (compute-dynamic-config-updates
+                  nil
+                  {:left {:name :left
+                          :a :a}
+                   :both1 {:name :both1
+                           :a :a}
+                   :both2 {:name :both2
+                           :a :a}}
+                  {:both1 {:name :both1
+                           :a :a}
+                   :both2 {:name :both2
+                           :a :b}
+                   :right {:name :right
+                           :a :a}}
+                  nil))))))
 
 (deftest test-add-config
   (let [uri "datomic:mem://test-compute-cluster-config"
