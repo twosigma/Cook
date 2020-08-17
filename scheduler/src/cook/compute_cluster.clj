@@ -160,7 +160,7 @@
                                 first)]
     (compute-cluster-name->ComputeCluster first-cluster-name)))
 
-;TODO rename compute-cluster-config strings to dynamic-compute-cluster-config including schema OR call it "partial"
+;TODO rename compute-cluster-config strings to dynamic-compute-cluster-config, including renaming the schema OR call it "partial"
 (defn compute-cluster-config-ent->compute-cluster-config
   "Convert Datomic dynamic cluster configuration entity to an object"
   [compute-cluster-config-ent]
@@ -175,7 +175,6 @@
             (:compute-cluster-config/state compute-cluster-config-ent))
    :state-locked? (:compute-cluster-config/state-locked? compute-cluster-config-ent)})
 
-;TODO pass in db instead of conn
 (defn db-config-ents
   ;TODO is it ok to fail to connect to the db and return empty list?
   "Get the current dynamic cluster configurations from the database"
@@ -299,7 +298,7 @@
            (not= (dissoc current :state) (dissoc new :state))
            {:valid? false :error true
             :reason (str "Attempting to change something other than state when force? is false. Diff is "
-                         (data/diff (dissoc current :state) (dissoc new :state)))}
+                         (pr-str (data/diff (dissoc current :state) (dissoc new :state))))}
            :else
            {:valid? true})
     :update-value new :changed (not= current new)))

@@ -16,31 +16,105 @@
 (ns cook.test.compute-cluster
   (:require [clojure.test :refer :all]
             [cook.compute-cluster :refer :all]
-            [cook.test.testutil :refer [restore-fresh-database!]]
+            [cook.test.testutil :refer [create-dummy-job-with-instances restore-fresh-database!]]
             [datomic.api :as d]))
 
-(deftest test-cluster-state-change-valid?
-  (with-redefs [get-job-instance-ids-for-cluster-name (fn [db cluster-name])]
+(deftest test-get-job-instance-ids-for-cluster-name
+  (let [uri "datomic:mem://test-compute-cluster-config"
+        conn (restore-fresh-database! uri)
+        name "cluster1"
+        cluster-db-id (write-compute-cluster conn {:compute-cluster/cluster-name name})
+        make-instance (fn [status]
+                        (let [[_ [inst]] (create-dummy-job-with-instances
+                                           conn
+                                           :job-state :job.state/running
+                                           :instances [{:instance-status status
+                                                        :compute-cluster (reify ComputeCluster
+                                                                           (db-id [_] cluster-db-id)
+                                                                           (compute-cluster-name [_] name))}])]
+                          inst))]
+    (let [_ (make-instance :instance.status/success)
+          db (d/db conn)]
+      (is (= [] (get-job-instance-ids-for-cluster-name db name))))
+    (let [inst (make-instance :instance.status/running)
+          db (d/db conn)]
+      (is (= [inst] (get-job-instance-ids-for-cluster-name db name))))))
 
-    (test-compute-dynamic-config-updates-state-transition
-      partial-update-fn [true false] :running :running true false)
-    (test-compute-dynamic-config-updates-state-transition
-      partial-update-fn [true false] :running :draining true false)
-    (test-compute-dynamic-config-updates-state-transition
-      partial-update-fn [true false] :running :deleted false true)
-    (test-compute-dynamic-config-updates-state-transition
-      partial-update-fn [true false] :draining :running true false)
-    (test-compute-dynamic-config-updates-state-transition
-      partial-update-fn [true false] :draining :draining true false)
-    (test-compute-dynamic-config-updates-state-transition
-      partial-update-fn [true false] :draining :deleted true false)
-    (test-compute-dynamic-config-updates-state-transition
-      partial-update-fn [true false] :deleted :running false true)
-    (test-compute-dynamic-config-updates-state-transition
-      partial-update-fn [true false] :deleted :draining false true)
-    (test-compute-dynamic-config-updates-state-transition
-      partial-update-fn [true false] :deleted :deleted true false)
-    ))
+(deftest test-cluster-state-change-valid?
+  (with-redefs [get-job-instance-ids-for-cluster-name
+                (fn [_ _] [])]
+    (let [test-fn (fn [current-state new-state] (cluster-state-change-valid? nil current-state new-state nil))]
+      (is (= false (test-fn :running :invalid)))
+      (is (= false (test-fn :invalid :running)))
+      (is (= true (test-fn :running :running)))
+      (is (= true (test-fn :running :draining)))
+      (is (= false (test-fn :running :deleted)))
+      (is (= true (test-fn :draining :running)))
+      (is (= true (test-fn :draining :draining)))
+      (is (= true (test-fn :draining :deleted)))
+      (is (= false (test-fn :deleted :running)))
+      (is (= false (test-fn :deleted :draining)))
+      (is (= true (test-fn :deleted :deleted)))))
+  (with-redefs [get-job-instance-ids-for-cluster-name
+                (fn [_ _] [1])]
+    (let [test-fn (fn [current-state new-state] (cluster-state-change-valid? nil current-state new-state nil))]
+      (is (= false (test-fn :running :invalid)))
+      (is (= false (test-fn :invalid :running)))
+      (is (= true (test-fn :running :running)))
+      (is (= true (test-fn :running :draining)))
+      (is (= false (test-fn :running :deleted)))
+      (is (= true (test-fn :draining :running)))
+      (is (= true (test-fn :draining :draining)))
+      (is (= false (test-fn :draining :deleted)))
+      (is (= false (test-fn :deleted :running)))
+      (is (= false (test-fn :deleted :draining)))
+      (is (= true (test-fn :deleted :deleted))))))
+
+(deftest test-compute-dynamic-config-update
+  (let [state-change-valid-atom (atom true)]
+    (with-redefs [cluster-state-change-valid? (fn [db current-state new-state cluster-name] @state-change-valid-atom)]
+      (testing "invalid state change"
+        (reset! state-change-valid-atom false)
+        (is (= {:changed false
+                :error true
+                :reason "Cluster state transition from  to  is not valid."
+                :update-value {}
+                :valid? false} (compute-dynamic-config-update nil {} {} false)))
+        (reset! state-change-valid-atom true))
+      (testing "locked state"
+        (is (= {:changed true
+                :error false
+                :reason "Attempting to change cluster state from :running to :draining but not able because it is locked."
+                :update-value {:state :draining}
+                :valid? false} (compute-dynamic-config-update nil {:state-locked? true :state :running} {:state :draining} false))))
+      (testing "non-state change"
+        (is (= {:changed true
+                :error true
+                :reason "Attempting to change something other than state when force? is false. Diff is ({:a :a} {:a :b} nil)"
+                :update-value {:a :b}
+                :valid? false} (compute-dynamic-config-update nil {:a :a} {:a :b} false))))
+      (testing "locked state - forced"
+        (is (= {:changed true
+                :update-value {:state :draining}
+                :valid? true} (compute-dynamic-config-update nil {:state-locked? true :state :running} {:state :draining} true))))
+      (testing "non-state change - forced"
+        (is (= {:changed true
+                :update-value {:a :b}
+                :valid? true} (compute-dynamic-config-update nil {:a :a} {:a :b} true))))
+      (testing "valid changed"
+        (is (= {:changed true
+                :update-value {:a :a :state :draining}
+                :valid? true} (compute-dynamic-config-update nil {:a :a :state :running} {:a :a :state :draining} false)))
+        (is (= {:changed true
+                :update-value {:a :b}
+                :valid? true} (compute-dynamic-config-update nil {:a :a} {:a :b} true))))
+      (testing "valid unchanged"
+        (is (= {:changed false
+                :update-value {:a :a}
+                :valid? true} (compute-dynamic-config-update nil {:a :a} {:a :a} false)))
+        (is (= {:changed false
+                :update-value {:a :a}
+                :valid? true} (compute-dynamic-config-update nil {:a :a} {:a :a} true)))))))
 
 (defn test-compute-dynamic-config-updates-state-transition
   [partial-update-fn force-opts from-state to-state expect-valid? expect-error?]
@@ -113,7 +187,7 @@
                                (d/q '[:find [?compute-cluster-config ...]
                                       :where
                                       [?compute-cluster-config :compute-cluster-config/name ?name]]
-                                    db ))
+                                    db))
           ]
       (println current-configs)
       )
