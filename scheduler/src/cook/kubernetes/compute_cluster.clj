@@ -24,11 +24,11 @@
            (io.kubernetes.client.openapi ApiClient)
            (io.kubernetes.client.openapi.models V1Node V1Pod)
            (io.kubernetes.client.util Config KubeConfig)
+           (java.nio.charset StandardCharsets)
            (java.io File FileInputStream InputStreamReader)
            (java.util.concurrent Executors ExecutorService ScheduledExecutorService TimeUnit)
            (java.util UUID)
-           (okhttp3 OkHttpClient$Builder)
-           (java.nio.charset StandardCharsets)))
+           (okhttp3 OkHttpClient$Builder)))
 
 (defn schedulable-node-filter
   "Is a node schedulable?"
@@ -553,7 +553,11 @@
                                           (FileInputStream.)
                                           (InputStreamReader. (.name (StandardCharsets/UTF_8)))
                                           (KubeConfig/loadKubeConfig))]
-                                  (.setFile kubeconfig (File. config-file)) ; Workaround client library bug. Needed to avoid a NPE. Use an absolute path so this isn't used.
+                                  ; Workaround client library bug. The library attempts to resolve paths
+                                  ; against the Kubeconfig filename. We are using an absolute path so we
+                                  ; don't need the functionality. But we need to set the file anyways
+                                  ; to avoid a NPE.
+                                  (.setFile kubeconfig (File. config-file))
                                   (Config/fromConfig kubeconfig))
                                 (ApiClient.))
         ; Reset to a more sane timeout from the default 10 seconds.
