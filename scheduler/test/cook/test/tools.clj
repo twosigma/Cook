@@ -791,6 +791,27 @@
       (is (= [(make-job 1 2 2048) (make-job 2 1 1024)]
              (util/filter-based-on-user-quota {test-user {:count 4, :cpus 20, :mem 6144}} user->usage queue))))))
 
+(deftest test-filter-pending-jobs-for-quota
+  (let [test-user-1 "john"
+        test-user-2 "bob"
+        user->usage {test-user-1 {:count 1, :cpus 1, :mem 1} test-user-2 {:count 1, :cpus 1, :mem 1}}
+        pool-quota {:count 4, :cpus 100, :mem 100}
+        job-user (atom 0)
+        make-job (fn [user]
+                   (swap! job-user inc)
+                   {:db/id @job-user
+                    :job/user user
+                    :job/resource [{:resource/type :cpus, :resource/amount 1}
+                                   {:resource/type :mem, :resource/amount 1}]})
+        queue [(make-job test-user-1) (make-job test-user-1) (make-job test-user-1) (make-job test-user-2)]
+        user->quota {test-user-1 {:count 2, :cpus 100, :mem 100} test-user-2 {:count 2, :cpus 100, :mem 100}}
+        [job-1 job-2 job-3 job-4] queue]
+    ; If we filtered pool quota first, only the first two jobs in the
+    ; queue would be seen by the user quota and we'd only launch job-1.
+    (testing "User quota filters first."
+      (is (= [job-1 job-4]
+             (util/filter-pending-jobs-for-quota user->quota user->usage pool-quota queue))))))
+
 (deftest test-pool->user->usage
   (let [uri "datomic:mem://test-pool-user-usage"
         conn (restore-fresh-database! uri)]
