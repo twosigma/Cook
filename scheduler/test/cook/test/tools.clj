@@ -796,11 +796,8 @@
         test-user-2 "bob"
         user->usage {test-user-1 {:count 1, :cpus 1, :mem 1} test-user-2 {:count 1, :cpus 1, :mem 1}}
         pool-quota {:count 4, :cpus 100, :mem 100}
-        job-user (atom 0)
         make-job (fn [user]
-                   (swap! job-user inc)
-                   {:db/id @job-user
-                    :job/user user
+                   {:job/user user
                     :job/resource [{:resource/type :cpus, :resource/amount 1}
                                    {:resource/type :mem, :resource/amount 1}]})
         queue [(make-job test-user-1) (make-job test-user-1) (make-job test-user-1) (make-job test-user-2)]
