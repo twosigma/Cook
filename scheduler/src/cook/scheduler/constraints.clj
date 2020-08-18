@@ -81,7 +81,8 @@
   (->> (:job/instance job)
        (remove #(true? (:instance/preempted? %)))
        (mapv :instance/hostname)
-       distinct))
+       distinct
+       doall))
 
 (defn build-novel-host-constraint
   "Constructs a novel-host-constraint.
