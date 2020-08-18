@@ -91,7 +91,7 @@ def tabulate_instance(cluster_name, instance_job_pair):
 
     left = [['Cluster', cluster_name],
             ['Host', instance['hostname']],
-            ['Slave', instance['slave_id']],
+            ['Agent', instance['slave_id']],
             ['Job', '%s (%s)' % (job['name'], job['uuid'])]]
     if len(instance['ports']) > 0:
         left.append(['Ports Allocated', format_list(instance['ports'])])

@@ -5,6 +5,7 @@
             [clojure.tools.logging :as log]
             [cook.config :as config]
             [cook.kubernetes.metrics :as metrics]
+            [cook.scheduler.constraints :as constraints]
             [cook.task :as task]
             [cook.tools :as util]
             [datomic.api :as d]
@@ -28,6 +29,9 @@
 
 (def cook-pod-label "twosigma.com/cook-scheduler-job")
 (def cook-synthetic-pod-job-uuid-label "twosigma.com/cook-scheduler-synthetic-pod-job-uuid")
+(def workload-class-label "workload-class")
+(def workload-id-label "workload-id")
+(def resource-owner-label "resource-owner")
 (def cook-pool-label "cook-pool")
 (def cook-pool-taint "cook-pool")
 (def cook-sandbox-volume-name "cook-sandbox-volume")
@@ -62,9 +66,10 @@
 
 (def ^ExecutorService kubernetes-executor (Executors/newCachedThreadPool))
 
-; Cook, Fenzo, and Mesos use MB for memory. Convert bytes from k8s to MB when passing to fenzo, and MB back to bytes
-; when submitting to k8s.
-(def memory-multiplier (* 1000 1000))
+; Cook, Fenzo, and Mesos use mebibytes (MiB) for memory.
+; Convert bytes from k8s to MiB when passing to Fenzo,
+; and MiB back to bytes when submitting to k8s.
+(def memory-multiplier (* 1024 1024))
 
 (defn is-cook-scheduler-pod
   "Is this a cook pod? Uses some-> so is null-safe."
@@ -431,25 +436,28 @@
                node-name->node))
 
 (defn get-consumption
-  "Given a map from pod-name to pod, generate a map from node-name->resource-type->capacity
+  "Given a map from pod-name to pod, generate a map from node-name->resource-type->capacity.
+  Ignores pods that do not have an assigned node.
   When accounting for resources, we use resource requests to determine how much is used, not limits.
   See https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/#resource-requests-and-limits-of-pod-and-container"
   [node-name->pods]
-  (pc/map-vals (fn [pods]
-                 (->> pods
-                      (map (fn [^V1Pod pod]
-                             (let [containers (some-> pod .getSpec .getContainers)
-                                   container-requests (map (fn [^V1Container c]
-                                                             (some-> c
-                                                                 .getResources
-                                                                 .getRequests
-                                                                 convert-resource-map))
-                                                           containers)
-                                   resource-map (apply merge-with + container-requests)
-                                   gpu-model (some-> pod .getSpec .getNodeSelector (get "cloud.google.com/gke-accelerator"))]
-                               (add-gpu-model-to-resource-map gpu-model resource-map))))
-                      (apply util/deep-merge-with +)))
-               node-name->pods))
+  (->> node-name->pods
+       (filter first) ; Keep those with non-nil node names.
+       (pc/map-vals (fn [pods]
+                      (->> pods
+                           (map (fn [^V1Pod pod]
+                                  (let [containers (some-> pod .getSpec .getContainers)
+                                        container-requests (map (fn [^V1Container c]
+                                                                  (some-> c
+                                                                          .getResources
+                                                                          .getRequests
+                                                                          convert-resource-map))
+                                                                containers)
+                                        resource-map (apply merge-with + container-requests)
+                                        gpu-model (some-> pod .getSpec .getNodeSelector (get "cloud.google.com/gke-accelerator"))]
+                                    (add-gpu-model-to-resource-map gpu-model resource-map))))
+                           (apply util/deep-merge-with +))))))
+
 ; see pod->synthesized-pod-state comment for container naming conventions
 (def cook-container-name-for-job
   "required-cook-job-container")
@@ -678,6 +686,17 @@
             checkpoint))
         checkpoint))))
 
+(defn job->pod-labels
+  "Returns the dictionary of labels that should be
+  added to the job's pod based on the job's labels."
+  [job]
+  (if-let [prefix (:add-job-label-to-pod-prefix (config/kubernetes))]
+    (->> job
+         util/job-ent->label
+         (filter (fn [[k _]] (str/starts-with? k prefix)))
+         (into {}))
+    {}))
+
 (defn ^V1Pod task-metadata->pod
   "Given a task-request and other data generate the kubernetes V1Pod to launch that task."
   [namespace compute-cluster-name
@@ -686,20 +705,24 @@
     :or {pod-priority-class cook-job-pod-priority-class
          pod-supports-cook-init? true
          pod-supports-cook-sidecar? true}}]
-  (let [{:keys [scalar-requests job]} task-request
+  (let [{:keys [scalar-requests job resources]} task-request
         ;; NOTE: The scheduler's adjust-job-resources-for-pool-fn may modify :resources,
         ;; whereas :scalar-requests always contains the unmodified job resource values.
         {:strs [mem cpus]} scalar-requests
         {:keys [docker volumes]} container
         {:keys [image parameters port-mapping]} docker
         {:keys [environment]} command
+        pool-name (some-> job :job/pool :pool/name)
+        ; gpu count is not stored in scalar-requests because Fenzo does not handle gpus in binpacking
+        gpus (or (:gpus resources) 0)
+        gpu-model-requested (constraints/job->gpu-model-requested gpus job pool-name)
         pod (V1Pod.)
         pod-spec (V1PodSpec.)
         metadata (V1ObjectMeta.)
         container (V1Container.)
         resources (V1ResourceRequirements.)
+        pod-labels (merge (job->pod-labels job) pod-labels)
         labels (assoc pod-labels cook-pod-label compute-cluster-name)
-        pool-name (some-> job :job/pool :pool/name)
         security-context (make-security-context parameters (:user command))
         sandbox-dir (:default-workdir (config/kubernetes))
         workdir (get-workdir parameters sandbox-dir)
@@ -778,6 +801,12 @@
       ; Some environments may need pods to run in the "Guaranteed"
       ; QoS, which requires limits for both memory and cpu
       (.putLimitsItem resources "cpu" (double->quantity cpus)))
+    (when (pos? gpus)
+      (.putLimitsItem resources "nvidia.com/gpu" (double->quantity gpus))
+      (.putRequestsItem resources "nvidia.com/gpu" (double->quantity gpus))
+      (add-node-selector pod-spec "cloud.google.com/gke-accelerator" gpu-model-requested)
+      ; GKE nodes with GPUs have gpu-count label, so synthetic pods need a matching node selector
+      (add-node-selector pod-spec "gpu-count" (-> gpus int str)))
     (.setResources container resources)
     (.setVolumeMounts container (filterv some? (conj (concat volume-mounts main-container-checkpoint-volume-mounts)
                                                      (init-container-workdir-volume-mount-fn true)

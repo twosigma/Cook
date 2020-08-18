@@ -25,6 +25,7 @@
             [cook.mesos.mesos-mock :as mm]
             [cook.plugins.completion :as completion]
             [cook.progress :as progress]
+            [cook.scheduler.scheduler :as sched]
             [cook.scheduler.share :as share]
             [cook.test.testutil :as testutil :refer [poll-until restore-fresh-database!]]
             [cook.tools :as util]
@@ -87,7 +88,7 @@
                                :retry-limit 5})
 
 (defmacro with-cook-scheduler
-  [conn make-mesos-driver-fn scheduler-config & body]
+  [conn make-mesos-driver-fn scheduler-config trigger-matching? & body]
   `(let [conn# ~conn
          [zookeeper-server# curator-framework#] (setup-test-curator-framework)
          mesos-mult# (or (:mesos-datomic-mult ~scheduler-config)
@@ -146,7 +147,8 @@
                                                               trigger-chans#
                                                               {}
                                                               {"no-pool" (async/chan 100)}
-                                                              {}))]
+                                                              {}))
+         prepare-match-trigger-chan-orig# ~sched/prepare-match-trigger-chan]
      (try
        (with-redefs [executor-config (constantly executor-config#)
                      completion/plugin completion/no-op
@@ -154,7 +156,11 @@
                      ; registration responses matches the configured cook scheduler passes simulator
                      ; and mesos-mock unit tests. (cook.scheduler, lines 1428 create-mesos-scheduler)
                      mcc/make-mesos-driver ~make-mesos-driver-fn
-                     datomic/conn conn#]
+                     datomic/conn conn#
+                     sched/prepare-match-trigger-chan (fn [match-trigger-chan# pools#]
+                                                        (when
+                                                          ~trigger-matching?
+                                                          (prepare-match-trigger-chan-orig# match-trigger-chan# pools#)))]
          (testutil/fake-test-compute-cluster-with-driver conn#
                                                          testutil/fake-test-compute-cluster-name
                                                          nil ; no dummy driver - simulator is going to call initialize
@@ -415,6 +421,7 @@
       mesos-datomic-conn
       make-mesos-driver-fn
       scheduler-config
+      false
       (try
         (doseq [{:keys [user mem cpus gpus]} (:shares config)]
           (share/set-share! mesos-datomic-conn user nil "simulation" :mem mem :cpus cpus :gpus gpus))

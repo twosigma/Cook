@@ -693,7 +693,7 @@
               redirect-location (str sample-leader-base-url target-endpoint)]
           (is (= (:status update-resp) 307))
           (is (= (:location update-resp) redirect-location))
-          (is (= (:body update-resp) {:location redirect-location, :message "redirecting to master"})))))
+          (is (= (:body update-resp) {:location redirect-location, :message "redirecting to leader"})))))
 
     (testing "Valid progress update posted to leader results 202 Accepted"
       (with-redefs [api/streaming-json-encoder identity]
@@ -1737,10 +1737,11 @@
         compute-cluster (testutil/setup-fake-test-compute-cluster conn)
         job-entity-id (create-dummy-job conn :user "test-user" :job-state :job.state/completed)
         basic-instance-properties {:executor-id (str job-entity-id "-executor-1")
-                                   :slave-id "slave-1"
+                                   :slave-id "agent-1"
                                    :task-id (str job-entity-id "-executor-1")}
         basic-instance-map {:executor_id (str job-entity-id "-executor-1")
-                            :slave_id "slave-1"
+                            :agent_id "agent-1"
+                            :slave_id "agent-1"
                             :task_id (str job-entity-id "-executor-1")
                             :compute-cluster
                             {:name "unittest-default-compute-cluster-name"
@@ -2304,7 +2305,16 @@
               {:keys [status] :as response} (handler request)]
           ; Assert that the request succeeded and that the pool in the database is pool-2
           (is (= 201 status) (str response))
-          (is (= "pool-2" (-> conn d/db (d/entity [:job/uuid job-uuid]) util/job->pool-name))))))))
+          (is (= "pool-2" (-> conn d/db (d/entity [:job/uuid job-uuid]) util/job->pool-name)))))
+
+      (testing "job labels with slashes are preserved"
+        (let [handler (api/create-jobs-handler conn task-constraints gpu-enabled? is-authorized-fn)
+              job-with-label (-> (minimal-job) (assoc :labels {:foo.bar/baz "qux"}))
+              request (-> (new-request) (assoc-in [:body-params :jobs] [job-with-label]))
+              job-uuid (-> request :body-params :jobs first :uuid)
+              {:keys [status]} (handler request)]
+          (is (= 201 status))
+          (is (= {"foo.bar/baz" "qux"} (-> conn d/db (d/entity [:job/uuid job-uuid]) util/job-ent->label))))))))
 
 (deftest test-validate-partitions
   (is (api/validate-partitions {:dataset {"foo" "bar"}}))
@@ -2398,4 +2408,49 @@
               (api/validate-gpu-job gpu-enabled? "test-pool" {:gpus 2
                                                               :env {}})))))))
 
+(let [admin-user "alice"
+      is-authorized-fn
+      (fn [user verb _ object]
+        (auth/admins-open-gets-allowed-users-auth
+          #{admin-user} user verb object true))
+      sample-leader-base-url "http://cook-scheduler.example:12321"
+      endpoint "/shutdown-leader"]
 
+  (deftest test-shutdown-leader
+    (let [conn (restore-fresh-database! "datomic:mem://test-shutdown-leader")
+          handler (basic-handler conn :is-authorized-fn is-authorized-fn)
+          request {:authorization/user admin-user
+                   :body-params {"reason" "test-reason"}
+                   :headers {"Content-Type" "application/json"}
+                   :request-method :post
+                   :scheme :http
+                   :uri endpoint}]
+
+      (testing "successful shutdown"
+        (let [called-shutdown? (atom false)]
+          (with-redefs [api/shutdown! #(reset! called-shutdown? true)]
+            (let [{:keys [status]} (handler request)]
+              (is (= 202 status)))
+            (is (true? @called-shutdown?)))))
+
+      (testing "request from non-admin fails"
+        (let [request-from-non-admin (assoc request :authorization/user "non-admin")
+              {:keys [status] :as response} (handler request-from-non-admin)]
+          (is (= 403 status))
+          (is (= "You are not authorized to shutdown the leader"
+                 (-> response response->body-data (get "error"))))))
+
+      (testing "non-leader redirects"
+        (with-redefs [api/leader-selector->leader-url (constantly sample-leader-base-url)
+                      api/shutdown! #(throw (ex-info "Unexpected shutdown on non-leader" {}))]
+          (let [{:keys [location status]} (handler request :leader? false)]
+            (is (= 307 status))
+            (is (= location (str sample-leader-base-url endpoint))))))
+
+      (testing "no reason fails"
+        (with-redefs [api/shutdown! #(throw (ex-info "Unexpected shutdown with missing reason" {}))]
+          (let [request-with-no-reason (assoc request :body-params (-> request :body-params (dissoc "reason")))
+                {:keys [status] :as response} (handler request-with-no-reason)]
+            (is (= 400 status))
+            (is (= {"reason" "missing-required-key"}
+                   (-> response response->body-data (get "errors"))))))))))

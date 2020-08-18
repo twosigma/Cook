@@ -53,7 +53,8 @@
                                :age-out-seen-count 10
                                :factory-fn "cook.plugins.demo-plugin/launch-factory"}}
  :hostname #config/env "COOK_HOSTNAME"
- :kubernetes {:disallowed-container-paths #{"/mnt/bad"}
+ :kubernetes {:add-job-label-to-pod-prefix "platform/"
+              :disallowed-container-paths #{"/mnt/bad"}
               :disallowed-var-names #{"BADVAR"}
               :init-container {:command ["/bin/sh" "-c" "echo sample init container running"]
                                :image "byrnedo/alpine-curl:latest"}

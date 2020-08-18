@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
 import getpass
 import json
 import logging
@@ -19,7 +20,7 @@ import logging
 import requests
 
 from datetime import timedelta
-from typing import Dict, Optional, Union
+from typing import Dict, Iterable, List, Optional, Union
 from urllib.parse import urlencode, urlparse, urlunparse
 from uuid import UUID
 
@@ -27,7 +28,7 @@ from . import util
 from .containers import AbstractContainer
 from .jobs import Application, Job
 
-CLIENT_VERSION = '0.2.1'
+CLIENT_VERSION = '0.3.1'
 
 _LOG = logging.getLogger(__name__)
 _LOG.addHandler(logging.StreamHandler())
@@ -109,6 +110,7 @@ class JobClient:
                priority: Optional[int] = None,
                container: Optional[AbstractContainer] = None,
                application: Application = _CLIENT_APP,
+               gpus: Optional[int] = None,
 
                pool: Optional[str] = None,
 
@@ -155,13 +157,18 @@ class JobClient:
         :param pool: Which pool the job should be submitted to, defaults to
             None.
         :type pool: str, optional
+        :param gpus: Number of GPUs to request from Cook, if any. Defaults to
+            None. If you wish to specify the GPU model, add the
+            ``COOK_GPU_MODEL`` environment variable to the environment variable
+            list.
+        :type gpus: int, optional
         :param kwargs: Request kwargs. If kwargs were specified to the client
             on construction, then these will take precedence over those.
         :return: The UUID of the newly-created job.
         :rtype: UUID
         """
         uuid = str(uuid or util.make_temporal_uuid())
-        payload = {
+        jobspec = {
             'command': command,
             'cpus': cpus,
             'mem': mem,
@@ -169,23 +176,55 @@ class JobClient:
             'max-retries': max_retries
         }
         if env is not None:
-            payload['env'] = env
+            jobspec['env'] = env
         if labels is not None:
-            payload['labels'] = labels
+            jobspec['labels'] = labels
         if max_runtime is not None:
-            payload['max-runtime'] = max_runtime.total_seconds() * 1000
+            jobspec['max-runtime'] = max_runtime
         if name is not None:
-            payload['name'] = name
+            jobspec['name'] = name
         if priority is not None:
-            payload['priority'] = priority
+            jobspec['priority'] = priority
         if application is not None:
-            payload['application'] = application.to_dict()
+            jobspec['application'] = application
         if container is not None:
-            payload['container'] = container.to_dict()
-        payload = {'jobs': [payload]}
+            jobspec['container'] = container
+        if gpus is not None:
+            jobspec['gpus'] = gpus
+        return self.submit_all([jobspec], pool=pool, **kwargs)[0]
 
-        # Pool requests are assigned to the group payload instead of each
-        # individual job submission's payload.
+    def submit_all(self, jobspecs: Iterable[dict], *,
+                   pool: Optional[str] = None,
+                   **kwargs) -> List[UUID]:
+        """Submit several jobs to Cook.
+
+        Each entry in the iterable of jobspecs should contain the parameters
+        shown in :py:meth:`JobSpec.submit`, save for ``pool``, which is exposed
+        as a parameter to this function. This means that all jobs submitted
+        with this function will share a pool. This is a restriction of Cook's
+        REST API for bulk submissions.
+
+        :param jobspecs: Jobspecs to submit to Cook. For information on
+            jobspec structure, see :py:meth:`JobSpec.submit`.
+        :type jobspecs: iterable of dict
+        :param pool: Which pool to submit the jobs to. Defaults to None.
+        :type pool: str, optional
+        :param kwargs: Request kwargs. If kwargs were specified to the client
+            on construction, then these will take precedence over those.
+        :return: The UUIDs of the created jobs.
+        :rtype: List[UUID]
+        """
+        jobspecs = list(
+            map(
+                JobClient._convert_jobspec,
+                map(
+                    JobClient._apply_jobspec_defaults,
+                    jobspecs
+                )
+            )
+        )
+        payload = {'jobs': jobspecs}
+
         if pool is not None:
             payload['pool'] = pool
 
@@ -203,7 +242,7 @@ class JobClient:
             _LOG.error(f"Could not submit job: {resp.status_code} {resp.text}")
             resp.raise_for_status()
 
-        return UUID(uuid)
+        return [UUID(jobspec['uuid']) for jobspec in jobspecs]
 
     def query(self, uuid: Union[str, UUID], **kwargs) -> Job:
         """Query Cook for a job's status.
@@ -219,8 +258,24 @@ class JobClient:
         :return: A Job object containing the job's information.
         :rtype: Job
         """
-        uuid = str(uuid)
-        query = urlencode([('uuid', uuid)])
+        return self.query_all([uuid], **kwargs)[0]
+
+    def query_all(self, uuids: Iterable[Union[str, UUID]],
+                  **kwargs) -> List[Job]:
+        """Query Cook for a job's status.
+
+        If an error occurs when issuing the query request to the remote Cook
+        instance, an error message will be printed to the logger, and the
+        ``raise_for_status`` method will be invoked on the response object.
+
+        :param uuids: The UUIDs to query.
+        :type uuid: iterable of str or UUID
+        :param kwargs: Request kwargs. If kwargs were specified to the client
+            on construction, then these will take precedence over those.
+        :return: A list of Job objects containing the jobs' information.
+        :rtype: List[Job]
+        """
+        query = urlencode([('uuid', str(uuid)) for uuid in uuids])
         url = urlunparse((self.__scheme, self.__netloc, self.__job_endpoint,
                           '', query, ''))
         _LOG.debug(f'Sending GET to {url}')
@@ -232,7 +287,7 @@ class JobClient:
         if not resp.ok:
             _LOG.error(f"Could not query job: {resp.status_code} {resp.text}")
             resp.raise_for_status()
-        return Job.from_dict(resp.json()[0])
+        return list(map(Job.from_dict, resp.json()))
 
     def kill(self, uuid: Union[str, UUID], **kwargs):
         """Stop a job on Cook.
@@ -246,8 +301,21 @@ class JobClient:
         :param kwargs: Request kwargs. If kwargs were specified to the client
             on construction, then these will take precedence over those.
         """
-        uuid = str(uuid)
-        query = urlencode([('job', uuid)])
+        self.kill_all([uuid], **kwargs)
+
+    def kill_all(self, uuids: Iterable[Union[str, UUID]], **kwargs):
+        """Stop several jobs on Cook.
+
+        If an error occurs when issuing the delete request to the remote Cook
+        instance, an error message will be printed to the logger, and the
+        ``raise_for_status`` method will be invoked on the response object.
+
+        :param uuids: The UUIDs of the job to kill.
+        :type uuids: iterable of str or UUID
+        :param kwargs: Request kwargs. If kwargs were specified to the client
+            on construction, then these will take precedence over those.
+        """
+        query = urlencode([('job', str(uuid)) for uuid in uuids])
         url = urlunparse((self.__scheme, self.__netloc, self.__delete_endpoint,
                           '', query, ''))
         _LOG.debug(f'Sending DELETE to {url}')
@@ -278,6 +346,53 @@ class JobClient:
         """
         if self.__session is not None:
             self.__session.close()
+
+    @staticmethod
+    def _apply_jobspec_defaults(jobspec: dict) -> dict:
+        """Apply default values to a jobspec.
+
+        This function will add default values to a jobspec if no value is
+        provided. The provided jobspec will not be touched and a copy will be
+        returned.
+        """
+        jobspec = copy.deepcopy(jobspec)
+        if not util.is_field_set(jobspec, 'uuid'):
+            jobspec['uuid'] = str(util.make_temporal_uuid())
+        if not util.is_field_set(jobspec, 'cpus'):
+            jobspec['cpus'] = 1.0
+        if not util.is_field_set(jobspec, 'mem'):
+            jobspec['mem'] = 128.0
+        if not util.is_field_set(jobspec, 'max-retries'):
+            jobspec['max-retries'] = 1
+        if not util.is_field_set(jobspec, 'max-runtime'):
+            jobspec['max-runtime'] = timedelta(days=1)
+        if not util.is_field_set(jobspec, 'name'):
+            jobspec['name'] = f'{getpass.getuser()}-job'
+        if not util.is_field_set(jobspec, 'application'):
+            jobspec['application'] = _CLIENT_APP
+        return jobspec
+
+    @staticmethod
+    def _convert_jobspec(jobspec: dict) -> dict:
+        """Convert a Python jobspec into a JSON jobspec.
+
+        This function will convert the higher-level Python types used in job
+        submissions into their JSON primitive counterparts (e.g., timedelta is
+        converted into the number of milliseconds). Additionally, this function
+        will also remove all keys with a value of ``None``.
+
+        The provided jobspec will not be touched and a copy will be returned.
+        """
+        jobspec = copy.deepcopy(jobspec)
+        if util.is_field_set(jobspec, 'max-runtime'):
+            jobspec['max-runtime'] = (
+                jobspec['max-runtime'].total_seconds() * 1000
+            )
+        if util.is_field_set(jobspec, 'application'):
+            jobspec['application'] = jobspec['application'].to_dict()
+        if util.is_field_set(jobspec, 'container'):
+            jobspec['container'] = jobspec['container'].to_dict()
+        return util.prune_nones(jobspec)
 
     def __enter__(self):
         return self

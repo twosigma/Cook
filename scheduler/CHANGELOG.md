@@ -4,6 +4,44 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.44.0] - 2020-08-17
+### Added
+- Support for prefixed job labels to become k8s pod labels, from @dposada
+- Attribution labels to k8s synthetic pods, from @dposada
+- `agent_id` as a preferred alternative to `slave_id` on job instances, from @dposada
+- `/shutdown-leader` admin-only API endpoint, from @dposada
+### Changed
+- Improved matching log, from @dposada
+- Improved per-user launch-rate-limit log, from @dposada
+- Added log at start and end of job ranking, from @dposada
+- Made "killing cancelled task" log INFO-level, from @dposada
+### Fixed
+- Handling of preemption on k8s pod initialization, from @nsinkov
+
+## [1.43.2] - 2020-07-30
+### Fixed
+- Using 1024*1024 (mebibytes) as the k8s memory multiplier, from @dposada
+- Avoiding NPE due to missing resources when totaling resources for metrics, from @dposada 
+
+## [1.43.1] - 2020-07-24
+### Added
+- Per-pool global quotas, from @scrosby
+### Fixed
+- Accounting for GPU tasks assigned to nodes in the current matching cycle, from @kathryn-zhou
+- Force processing when state scanning in k8s, from @dposada
+
+## [1.43.0] - 2020-07-23
+### Added
+- GPU job support in k8s, from @kathryn-zhou
+
+## [1.42.6] - 2020-07-17
+### Added
+- Rapid pool skipping in k8s, from @nsinkov
+- Enhanced offer generation and updated GPU constraints for k8s, from @kathryn-zhou
+### Fixed
+- Fixed some errors that caused NPE and ERROR logs, from @scrosby
+- Replaced chime logic with less aggressive chime logic, from @nsinkov
+
 ## [1.42.5] - 2020-07-08
 ### Added
 - Port mapping support for k8s, from @dposada
@@ -124,7 +162,7 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/) and this p
 
 ## [1.38.3] - 2020-02-13
 ### Added
-- Support to blacklist nodes in k8s that have certain labels, from @scrosby
+- Support to blocklist nodes in k8s that have certain labels, from @scrosby
 ### Fixed
 - Bug in reading default pool from config when using k8s sidecar, from @nsinkov
 - Bug in job progress aggregation, from @DaoWen
@@ -461,7 +499,7 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/) and this p
 
 ## [1.7.0] - 2017-10-19
 ### Changed
-- Renamed user whitelist to users allowed, from @dposada
+- Renamed to users allowed, from @dposada
 - Fixes for stderr/out file handling in Cook executor, from @shamsimam
 - Fixed bug with /unscheduled_jobs endpoint, from @pschorf
 
@@ -485,7 +523,7 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/) and this p
 ### Added
 - Added JVM metric reporting, from @pschorf
 - Added support for partial results when querying for groups, from @dposada
-- Added support for user whitelisting, from @dposada
+- Added support for user allowlisting, from @dposada
 
 ## [1.5.4] - 2017-07-31
 ### Added

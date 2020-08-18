@@ -916,7 +916,12 @@
        first
        field))
 
-(defn filter-based-on-quota
+(defn global-pool-quota
+  "Given a pool name, determine the quota for that pool."
+  [quotas effective-pool-name]
+  (match-based-on-pool-name quotas effective-pool-name :quota))
+
+(defn filter-based-on-user-quota
   "Lazily filters jobs for which the sum of running jobs and jobs earlier in the queue exceeds one of the constraints,
    max-jobs, max-cpus or max-mem"
   [user->quota user->usage queue]
@@ -924,19 +929,42 @@
             (let [user (:job/user job)
                   job-usage (job->usage job)
                   user->usage' (update-in user->usage [user] #(merge-with + job-usage %))]
-              (log/debug "Quota check" {:user user
-                                        :usage (get user->usage' user)
-                                        :quota (user->quota user)})
+              (log/debug "User quota check" {:user user
+                                             :usage (get user->usage' user)
+                                             :quota (user->quota user)})
               [user->usage' (below-quota? (user->quota user) (get user->usage' user))]))]
     (filter-sequential filter-with-quota user->usage queue)))
 
-(defn filter-pending-jobs-for-autoscaling
-  "Lazily filters jobs to those that should be considered
-  for autoscaling purposes. Note that this is used in two
-  places: the /queue endpoint (Mesos only) and as an
-  argument to scheduler/trigger-autoscaling! (k8s only)."
-  [user->quota user->usage queue]
-  (filter-based-on-quota user->quota user->usage queue))
+(defn filter-based-on-pool-quota
+  "Lazily filters jobs for which the sum of running jobs and jobs earlier in the queue exceeds one of the constraints,
+   max-jobs, max-cpus or max-mem. If quota is nil, do no filtering.
+
+   The input is a quota consisting of a map from resources to values:  {:mem 123 :cpus 456 ...}
+   usage is a similar map containing the usage of all running jobs in this pool."
+  [quota usage queue]
+  (log/debug "Pool quota and usage:" {:quota quota :usage usage})
+  (if (nil? quota)
+    queue
+    (letfn [(filter-with-quota [usage job]
+              (let [job-usage (job->usage job)
+                    usage' (merge-with + job-usage usage)]
+                (log/debug "Pool quota check" {:usage usage'
+                                               :quota quota})
+                [usage' (below-quota? quota usage')]))]
+      (filter-sequential filter-with-quota usage queue))))
+
+(defn filter-pending-jobs-for-quota
+  "Lazily filters jobs to those that that are in quota.
+
+  user->quota is a map from user to a quota dictionary which is {:mem 123 :cpus 456 ...}
+  user->usage is a map from user to a usage dictionary which is {:mem 123 :cpus 456 ...}
+  pool-quota is the quota for the current pool, a quota dictionary which is {:mem 123 :cpus 456 ...}"
+  [user->quota user->usage pool-quota queue]
+  ; Use the already precomputed user->usage map and just aggregate by users to get pool usage.
+  (let [pool-usage (reduce (partial merge-with +) (vals user->usage))]
+    (->> queue
+         (filter-based-on-pool-quota pool-quota pool-usage)
+         (filter-based-on-user-quota user->quota user->usage))))
 
 (defn pool->user->usage
   "Returns a map from pool name to user name to usage for all users in all pools."

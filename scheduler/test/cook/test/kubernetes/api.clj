@@ -72,7 +72,9 @@
                                 :gpus "1"
                                 :gpu-model "nvidia-tesla-k80"})
                 (tu/pod-helper "podD" "hostC"
-                               {:cpus 1.0})]
+                               {:cpus 1.0})
+                (tu/pod-helper "podD" nil ; nil host should be skipped and not included in output.
+                               {:cpus 12.0})]
           node-name->pods (api/pods->node-name->pods pods)]
       (is (= {"hostA" {:cpus 2.0 :mem 100.0 :gpus {"nvidia-tesla-p100" 3}}
               "hostB" {:cpus 3.0 :mem 130.0 :gpus {"nvidia-tesla-k80" 1}}
@@ -227,6 +229,7 @@
       (with-redefs [config/kubernetes (constantly {})]
         (let [^V1Pod pod (api/task-metadata->pod nil nil task-metadata)]
           (is (nil? (pod->cpu-limit-fn pod)))))))
+
   (testing "checkpointing volumes"
     (with-redefs [config/kubernetes (constantly {:default-checkpoint-config {:volume-name "cook-checkpointing-tools-volume"
                                                                              :init-container-volume-mounts [{:path "/abc/xyz"}]
@@ -250,7 +253,61 @@
                                                               (->> (filter #(= (.getName %) "cook-checkpointing-tools-volume")))
                                                               (->> (map #(str (.getMountPath %) (.getSubPath %))))))]
         (is (= #{"/abc/xyz"} init-container-paths))
-        (is (= #{"/abc/xyz" "/qed/bbqefg/hij"} main-container-paths))))))
+        (is (= #{"/abc/xyz" "/qed/bbqefg/hij"} main-container-paths)))))
+
+  (testing "gpu task-metadata"
+    (let [task-metadata {:task-id "my-task"
+                         :command {:value "foo && bar"
+                                   :environment {"FOO" "BAR"}
+                                   :user (System/getProperty "user.name")}
+                         :container {:type :docker
+                                     :docker {:image "alpine:latest"}}
+                         :task-request {:resources {:mem 576
+                                                    :cpus 1.1
+                                                    :gpus 2}
+                                        :scalar-requests {"mem" 512
+                                                          "cpus" 1.0}
+                                        :job {:job/environment #{{:environment/name "COOK_GPU_MODEL"
+                                                                  :environment/value "nvidia-tesla-p100"}}}}
+                         :hostname "kubehost"}
+          ^V1Pod pod (api/task-metadata->pod "cook" "testing-cluster" task-metadata)
+          ^V1PodSpec pod-spec (.getSpec pod)
+          ^V1Container container (-> pod-spec .getContainers first)]
+      (is (= (-> pod-spec .getNodeSelector (get "cloud.google.com/gke-accelerator")) "nvidia-tesla-p100"))
+      (is (= (-> pod-spec .getNodeSelector (get "gpu-count")) "2"))
+      (is (= 2 (-> container .getResources .getRequests (get "nvidia.com/gpu") api/to-int)))
+      (is (= 2 (-> container .getResources .getLimits (get "nvidia.com/gpu") api/to-int)))))
+
+  (testing "job labels -> pod labels"
+    (let [task-metadata {:command {:user "test-user"}
+                         :task-request {:job {:job/label [{:label/key "not-platform/foo"
+                                                           :label/value "bar"}
+                                                          {:label/key "platform/baz"
+                                                           :label/value "qux"}
+                                                          {:label/key "platform/another"
+                                                           :label/value "included"}]}
+                                        :scalar-requests {"mem" 512 "cpus" 1.0}}}]
+
+      ; With a prefix configured
+      (with-redefs [config/kubernetes
+                    (constantly {:add-job-label-to-pod-prefix "platform/"})]
+        (let [^V1Pod pod (api/task-metadata->pod "test-namespace"
+                                                 "test-compute-cluster"
+                                                 task-metadata)
+              pod-labels (-> pod .getMetadata .getLabels)]
+          (is (= "qux" (get pod-labels "platform/baz")))
+          (is (= "included" (get pod-labels "platform/another")))
+          (is (not (contains? pod-labels "not-platform/foo")))))
+
+      ; With no prefix configured
+      (with-redefs [config/kubernetes (constantly {})]
+        (let [^V1Pod pod (api/task-metadata->pod "test-namespace"
+                                                 "test-compute-cluster"
+                                                 task-metadata)
+              pod-labels (-> pod .getMetadata .getLabels)]
+          (is (not (contains? pod-labels "platform/baz")))
+          (is (not (contains? pod-labels "platform/another")))
+          (is (not (contains? pod-labels "not-platform/foo"))))))))
 
 (defn- k8s-volume->clj [^V1Volume volume]
   {:name (.getName volume)

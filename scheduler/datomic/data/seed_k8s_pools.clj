@@ -32,6 +32,7 @@
     (create-pool conn "k8s-beta" :pool.state/inactive)
     (create-pool conn "k8s-gamma" :pool.state/active)
     (create-pool conn "k8s-delta" :pool.state/inactive)
+    (create-pool conn "k8s-quota" :pool.state/active)
     (quota/set-quota! conn "default" "k8s-alpha" "For quota-related testing." :cpus 8 :mem 1024)
     (quota/set-quota! conn "default" "k8s-gamma" "For quota-related testing." :cpus 9 :mem 2048)
     (println "Pools & Quotas:")

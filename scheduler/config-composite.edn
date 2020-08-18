@@ -29,7 +29,7 @@
                                                :max-total-nodes 3000
                                                :user #config/env "USER"
                                                :command "exit 0"
-                                               :pools #{"k8s-alpha" "k8s-gamma"}}
+                                               :pools #{"k8s-alpha" "k8s-gamma" "k8s-quota"}}
                               :node-blocklist-labels ["blocklist-nodes-with-this-label-key"]
                               :use-google-service-account? false
                               ;; Used to work around auth problems after upgrading k8s client library to 7.0.0
@@ -87,11 +87,17 @@
          :job-resource-adjustment {:adjust-job-resources-fn cook.kubernetes.api/adjust-job-resources
                                    :pool-regex "^k8s-.+"}
          :default-containers
-         [{:pool-regex "k8s-.*" :container {:type "docker"
-                                            :docker {:image "python:3.6",
-                                                     :network "HOST"
-                                                     :force-pull-image false
-                                                     :parameters []}}}]}
+         [{:pool-regex "k8s-(alpha|gamma)" :container {:type "docker"
+                                                      :docker {:image "python:3.6",
+                                                               :network "HOST"
+                                                               :force-pull-image false
+                                                               :parameters []}}}]
+         :quotas [{:pool-regex "k8s-quota"
+                   :quota {:count 2 :cpus 10000.0 :mem 20000.0}}
+                  {:pool-regex "k8s-.*"
+                   :quota {:count 10000 :cpus 10000.0 :mem 20000.0}}
+                  {:pool-regex ".*"
+                   :quota {:count 10000 :cpus 10000.0 :mem 20000.0}}]}
  :port #config/env-int "COOK_PORT"
  :ssl {:port #config/env-int "COOK_SSL_PORT"
        :keystore-path #config/env "COOK_KEYSTORE_PATH"

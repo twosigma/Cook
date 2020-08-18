@@ -54,7 +54,8 @@
   (:import (com.netflix.fenzo
              TaskAssignmentResult TaskRequest TaskScheduler TaskScheduler$Builder VirtualMachineCurrentState
              VirtualMachineLease VirtualMachineLease$Range)
-           (com.netflix.fenzo.functions Action1 Func1)))
+           (com.netflix.fenzo.functions Action1 Func1)
+           (java.util LinkedList)))
 
 (defn now
   []
@@ -529,6 +530,67 @@
         pool-specific-resources ((adjust-job-resources-for-pool-fn pool-name) job resources)]
     (->TaskRequestAdapter job pool-specific-resources task-id assigned-resources guuid->considerable-cotask-ids constraints scalar-requests)))
 
+(defn offers->resource-totals
+  "Given a collection of offers, returns a map from resource type to total amount"
+  [offers]
+  (->> offers
+       (map (fn offer->resource-map
+              [{:keys [resources]}]
+              (reduce
+                (fn [resource-map {:keys [name type scalar text->scalar] :as resource}]
+                  (case type
+                    ; Range types (e.g. port ranges) aren't
+                    ; amenable to summing across offers
+                    :value-ranges
+                    resource-map
+
+                    :value-scalar
+                    (assoc resource-map name scalar)
+
+                    :value-text->scalar
+                    (reduce
+                      (fn [resource-map-inner [text scalar]]
+                        (assoc resource-map-inner
+                          (str name "/" text)
+                          scalar))
+                      resource-map
+                      text->scalar)
+
+                    (do
+                      (log/warn "Encountered unexpected resource type"
+                                {:resource resource :type type})
+                      resource-map)))
+                {}
+                resources)))
+       (reduce (partial merge-with +))))
+
+(defn jobs->resource-totals
+  "Given a collection of jobs, returns a map from resource type to total amount"
+  [jobs]
+  (->> jobs
+       (map (fn job->resource-map
+              [job]
+              (let [{:keys [gpus] :as resource-map}
+                    (-> job tools/job-ent->resources (dissoc :ports))]
+                (if gpus
+                  (let [env (tools/job-ent->env job)
+                        gpu-model (get env "COOK_GPU_MODEL" "unspecified-gpu-model")
+                        gpus-resource-key (keyword "gpus" gpu-model)]
+                    (-> resource-map
+                        (assoc gpus-resource-key gpus)
+                        (dissoc :gpus)))
+                  resource-map))))
+       (reduce (partial merge-with +))))
+
+(defn format-resource-map
+  "Given a map from resource type to amount,
+   formats the amount values for logging"
+  [resource-map]
+  (pc/map-vals #(if (float? %)
+                  (format "%.3f" %)
+                  (str %))
+               resource-map))
+
 (defn match-offer-to-schedule
   "Given an offer and a schedule, computes all the tasks should be launched as a result.
 
@@ -538,8 +600,18 @@
    Returns {:matches (list of tasks that got matched to the offer)
             :failures (list of unmatched tasks, and why they weren't matched)}"
   [db ^TaskScheduler fenzo considerable offers rebalancer-reservation-atom pool-name]
-  (log/info "In" pool-name "pool, matching" (count offers) "offers to"
-            (count considerable) "considerable jobs with fenzo")
+  (log/info "In" pool-name "pool, matching offers to considerable jobs"
+            {:count-considerable-jobs (count considerable)
+             :count-offers (count offers)
+             :resource-type->total-considerable (-> considerable
+                                                    jobs->resource-totals
+                                                    format-resource-map)
+             :resource-type->total-offered (-> offers
+                                               offers->resource-totals
+                                               format-resource-map)
+             :user->number-jobs (->> considerable
+                                     (map tools/job-ent->user)
+                                     frequencies)})
   (if (and (-> considerable count zero?)
            (-> offers count pos?)
            (every? :reject-after-match-attempt offers))
@@ -653,7 +725,7 @@
             (not (and is-rate-limited? enforcing-job-launch-rate-limit?))))
         considerable-jobs
         (->> pending-jobs
-             (tools/filter-based-on-quota user->quota user->usage)
+             (tools/filter-pending-jobs-for-quota user->quota user->usage (tools/global-pool-quota (config/pool-quotas) pool-name))
              (filter (fn [job] (tools/job-allowed-to-start? db job)))
              (filter user-within-launch-rate-limit?-fn)
              (filter launch-plugin/filter-job-launches)
@@ -661,7 +733,14 @@
              ; Force this to be taken eagerly so that the log line is accurate.
              (doall))]
     (swap! pool->user->num-rate-limited-jobs update pool-name (constantly @user->rate-limit-count))
-    (log/info "Users whose job launches are rate-limited " @user->rate-limit-count "( enforcing =" enforcing-job-launch-rate-limit? ")")
+    (when (seq @user->rate-limit-count)
+      (log/info "In" pool-name "pool, job launch rate-limiting"
+                {:count-considerable-jobs (count considerable-jobs)
+                 :enforcing-job-launch-rate-limit? enforcing-job-launch-rate-limit?
+                 :num-considerable num-considerable
+                 :total-rate-limit-count (->> @user->rate-limit-count vals (reduce +))
+                 :user->number-jobs @user->number-jobs
+                 :user->rate-limit-count @user->rate-limit-count}))
     considerable-jobs))
 
 
@@ -914,8 +993,8 @@
                 ;; trigger autoscaling beyond what users have quota to actually run
                 autoscalable-jobs (->> pool-name
                                        (get @pool-name->pending-jobs-atom)
-                                       (tools/filter-pending-jobs-for-autoscaling
-                                         user->quota user->usage))]
+                                       (tools/filter-pending-jobs-for-quota
+                                         user->quota user->usage (tools/global-pool-quota (config/pool-quotas) pool-name)))]
             ;; This call needs to happen *after* launch-matched-tasks!
             ;; in order to avoid autoscaling tasks taking up available
             ;; capacity that was already matched for real Cook tasks.
@@ -1245,11 +1324,11 @@
     (fn cancelled-task-killer-event []
       (timers/time!
         killing-cancelled-tasks-duration
-        (doseq [task (killable-cancelled-tasks (d/db conn))]
-          (log/warn "killing cancelled task " (:instance/task-id task))
-          @(d/transact conn [[:db/add (:db/id task) :instance/reason
+        (doseq [{:keys [db/id instance/task-id] :as task} (killable-cancelled-tasks (d/db conn))]
+          (log/info "Killing cancelled task" task-id)
+          @(d/transact conn [[:db/add id :instance/reason
                               [:reason/name :reason-killed-by-user]]])
-          (cc/kill-task-if-possible (cook.task/task-ent->ComputeCluster task) (:instance/task-id task)))))
+          (cc/kill-task-if-possible (cook.task/task-ent->ComputeCluster task) task-id))))
     {:error-handler (fn [e]
                       (log/error e "Failed to kill cancelled tasks!"))}))
 
@@ -1468,8 +1547,10 @@
         offensive-job-filter (partial filter-offensive-jobs task-constraints offensive-jobs-ch)]
     (tools/chime-at-ch trigger-chan
                       (fn rank-jobs-event []
+                        (log/info "Starting pending job ranking")
                         (reset! pool-name->pending-jobs-atom
-                                (rank-jobs (d/db conn) offensive-job-filter))))))
+                                (rank-jobs (d/db conn) offensive-job-filter))
+                        (log/info "Done with pending job ranking")))))
 
 (meters/defmeter [cook-mesos scheduler mesos-error])
 (meters/defmeter [cook-mesos scheduler offer-chan-full-error])
@@ -1559,6 +1640,20 @@
                (counters/dec! in-order-queue-counter)
                (body-fn))))))
 
+(defn prepare-match-trigger-chan
+  "Calculate the required interval for match-trigger-chan and start the chimes"
+  [match-trigger-chan pools]
+  (let [{:keys [global-min-match-interval-millis target-per-pool-match-interval-millis]} (config/offer-matching)
+        match-interval-millis (-> target-per-pool-match-interval-millis
+                                  (/ (count pools)) 
+                                  int 
+                                  (max global-min-match-interval-millis))]
+    (when (= match-interval-millis global-min-match-interval-millis)
+      (log/warn "match-trigger-chan is set to the global minimum interval of " global-min-match-interval-millis " ms. "
+                "This is a sign that we have more pools, " (count pools) " than we expect to have and we will "
+                "schedule each pool less often than the desired setting of every " target-per-pool-match-interval-millis " ms."))
+    (async/pipe (chime-ch (tools/time-seq (time/now) (time/millis match-interval-millis))) match-trigger-chan)))
+
 (defn create-datomic-scheduler
   [{:keys [conn compute-clusters fenzo-fitness-calculator fenzo-floor-iterations-before-reset
            fenzo-floor-iterations-before-warn fenzo-max-jobs-considered fenzo-scaleback good-enough-fitness
@@ -1569,27 +1664,33 @@
   (persist-mea-culpa-failure-limit! conn mea-culpa-failure-limit)
 
   (let [{:keys [match-trigger-chan rank-trigger-chan]} trigger-chans
-        match-trigger-chan-mult (async/mult match-trigger-chan)
         pools (pool/all-pools (d/db conn))
         pools' (if (-> pools count pos?)
                  pools
                  [{:pool/name "no-pool"}])
         pool-name->fenzo (pool-map pools' (fn [_] (make-fenzo-scheduler offer-incubate-time-ms
                                                                         fenzo-fitness-calculator good-enough-fitness)))
-        {:keys [pool->resources-atom]}
-        (reduce (fn [m pool-ent]
-                  (let [pool-name (:pool/name pool-ent)
-                        fenzo (pool-name->fenzo pool-name)
-                        resources-atom
-                        (make-offer-handler
-                          conn fenzo pool-name->pending-jobs-atom agent-attributes-cache fenzo-max-jobs-considered
-                          fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset
-                          (async/tap match-trigger-chan-mult (async/chan (async/sliding-buffer 1)))
-                          rebalancer-reservation-atom mesos-run-as-user pool-name compute-clusters)]
-                    (-> m
-                        (assoc-in [:pool->resources-atom pool-name] resources-atom))))
-                {}
-                pools')]
+        pool->match-trigger-chan (pool-map pools' (fn [_] (async/chan (async/sliding-buffer 1))))
+        pool-names-linked-list (LinkedList. (map :pool/name pools'))
+        pool->resources-atom (pool-map
+                               pools'
+                               (fn [{:keys [pool/name]}]
+                                 (make-offer-handler
+                                   conn (pool-name->fenzo name) pool-name->pending-jobs-atom agent-attributes-cache
+                                   fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn
+                                   fenzo-floor-iterations-before-reset (get pool->match-trigger-chan name)
+                                   rebalancer-reservation-atom mesos-run-as-user name compute-clusters)))]
+    (prepare-match-trigger-chan match-trigger-chan pools')
+    (async/go-loop []
+      (when-let [x (async/<! match-trigger-chan)]
+        (try
+          (let [pool-name (.removeFirst pool-names-linked-list)]
+            (.addLast pool-names-linked-list pool-name)
+            (async/offer! (get pool->match-trigger-chan pool-name) x))
+          (catch Exception e
+            (log/error e "Exception in match-trigger-chan chime handler")
+            (throw e)))
+        (recur)))
     (log/info "Pool name to fenzo scheduler map:" pool-name->fenzo)
     (start-jobs-prioritizer! conn pool-name->pending-jobs-atom task-constraints rank-trigger-chan)
     {:pool-name->fenzo pool-name->fenzo

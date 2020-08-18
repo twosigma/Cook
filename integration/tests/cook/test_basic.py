@@ -60,6 +60,11 @@ class CookTest(util.CookTest):
         self.assertIn('success', [i['status'] for i in job['instances']], json.dumps(job, indent=2))
         self.assertEqual(False, job['disable_mea_culpa_retries'])
         instance = job['instances'][0]
+
+        # agent_id is a preferred alternative to slave_id with the same value
+        self.assertIn('agent_id', instance)
+        self.assertEqual(instance['slave_id'], instance['agent_id'])
+
         if instance['executor'] == 'cook':
             instance = util.wait_for_exit_code(self.cook_url, job_uuid)
             message = json.dumps(instance, sort_keys=True)
@@ -1201,8 +1206,8 @@ class CookTest(util.CookTest):
         jobs = []
         name = str(util.make_temporal_uuid())
         pools, _ = util.active_pools(self.cook_url)
-        # Running this for the first two pools only is enough
-        pools = pools[:2]
+        # Running this for the first pool only is enough
+        pools = pools[:1]
         start = util.current_milli_time()
         sleep_command = f'sleep {util.DEFAULT_TEST_TIMEOUT_SECS}'
         for pool in pools:
@@ -2626,6 +2631,71 @@ class CookTest(util.CookTest):
                 job_uuid, resp = util.submit_job(self.cook_url, pool=pool_name, mem=mem_over_quota)
                 self.assertEqual(422, resp.status_code, msg=resp.content)
 
+    @unittest.skipUnless(util.pool_quota_test_pool() is not None, 'Test requires a test pool.')
+    def test_pool_quota(self):
+        settings = util.settings(self.cook_url)
+        quotas_map = settings.get("pools", {}).get("quotas", [])
+        pool_name = util.pool_quota_test_pool()
+        match_quota = [ii["quota"] for ii in quotas_map if
+                       re.match(ii["pool-regex"], pool_name)]
+        # If the pool doesn't have the right quota constraints, fail the test.
+        logging.info("Quota: " + repr(match_quota))
+        if (len(match_quota) == 0):
+            self.fail(f"Pool {pool_name} lacks quota assignment.")
+        quota = match_quota[0]
+        logging.info(f"Pool quota: {quota}")
+        if (quota["count"] >= 10):
+            self.fail(f"Job count quota too large for test")
+        quota_count = quota["count"]
+        job_count = quota_count + 2
+        job_mem = 16
+        job_cpus = .01
+
+        total_cpus_requested = job_count * job_cpus
+        total_mem_requested = job_count * job_mem
+
+        if quota["mem"] < total_mem_requested:
+            self.fail("Quota memory too small for test")
+        if quota["cpus"] < total_cpus_requested:
+            self.fail("Quota cpus to small for test")
+
+        # Now lookup the user quota and make sure it fits and fail if otherwise.
+        user = self.determine_user()
+        resp = util.get_limit(self.cook_url, 'quota', user)
+        user_quota = resp.json()['pools'][pool_name]
+        logging.info(f"User quota {user_quota}")
+        if user_quota["count"] < job_count:
+            self.fail("User quota count too small for test")
+        if user_quota["mem"] < total_mem_requested:
+            self.fail("User quota memory too small for test")
+        if user_quota["cpus"] < total_cpus_requested:
+            self.fail("User Quota cpus to small for test")
+
+        sleep_command = f'sleep {util.DEFAULT_TEST_TIMEOUT_SECS}'
+        job_resources = {'cpus': job_cpus, 'mem': job_mem}
+        job_specs = util.minimal_jobs(job_count, command=sleep_command, **job_resources)
+        job_uuids, resp = util.submit_jobs(self.cook_url, job_specs, pool=util.pool_quota_test_pool())
+        self.assertEqual(resp.status_code, 201, resp.content)
+        try:
+            def query():
+                return util.query_jobs(self.cook_url, True, uuid=job_uuids)
+
+            def predicate(resp):
+                jobs = resp.json()
+                logging.info("Job statuses: " + str([(job['uuid'], job['status']) for job in jobs]))
+                return len([job for job in jobs if job['status'] == 'running']) >= 2
+
+            # Wait until at least 2 are running.
+            util.wait_until(query, predicate)
+            # Wait an extra 60 seconds to see if anything else starts.
+            time.sleep(20.0)
+            jobs = util.query_jobs(self.cook_url, True, uuid=job_uuids).json()
+            running = [job for job in jobs if job['status'] == 'running']
+            self.assertEqual(2, len(running), jobs)
+        finally:
+            util.kill_jobs(self.cook_url, job_uuids)
+
+
     @unittest.skipIf(util.has_one_agent(), 'Test requires multiple agents')
     def test_decrease_retries_below_attempts(self):
         uuid, resp = util.submit_job(self.cook_url, command='exit 1', max_retries=2)
@@ -3247,3 +3317,16 @@ class CookTest(util.CookTest):
                                  for i in job['instances']]))
         finally:
             util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
+
+    @unittest.skipUnless(util.docker_tests_enabled(), "Requires we're in an environment that requires docker images.")
+    def test_memory_multiplier(self):
+        mem = 64
+        command = f'mem_limit_bytes=$(cat /sys/fs/cgroup/memory/memory.limit_in_bytes) ; ' \
+                  f'echo "mem_limit_bytes = $mem_limit_bytes" ; ' \
+                  f'[ $mem_limit_bytes -eq {mem*1024*1024} ]'
+        job_uuid, resp = util.submit_job(self.cook_url, command=command, max_retries=5, mem=mem)
+        self.assertEqual(resp.status_code, 201, msg=resp.content)
+        job = util.wait_for_job_in_statuses(self.cook_url, job_uuid, ['completed'])
+        self.assertEqual('success', job['state'], job)
+        self.assertLessEqual(1, len(job['instances']))
+        self.assertIn('success', [i['status'] for i in job['instances']], job)

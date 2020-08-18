@@ -499,7 +499,8 @@ if __name__ == '__main__':
         waiting_uuid = uuids[0]
 
         # Submit a long-running job
-        cp, uuids = cli.submit('sleep 300', self.cook_url, submit_flags='--name %s' % name)
+        sleep_command = f'sleep {util.DEFAULT_TEST_TIMEOUT_SECS}'
+        cp, uuids = cli.submit(sleep_command, self.cook_url, submit_flags='--name %s' % name)
         self.assertEqual(0, cp.returncode, cp.stderr)
         running_uuid = uuids[0]
 

@@ -65,7 +65,7 @@
                                    (reset! launched-pod-atom launch-pod))
                   api/make-security-context (constantly (V1PodSecurityContext.))]
       (testing "static namespace"
-        (let [compute-cluster (kcc/->KubernetesComputeCluster nil "kubecompute" nil nil nil
+        (let [compute-cluster (kcc/->KubernetesComputeCluster nil "kubecompute" nil nil
                                                               (atom {}) (atom {}) (atom {}) (atom {}) (atom {}) (atom {}) (atom {}) (atom nil)
                                                               {:kind :static :namespace "cook"} nil nil nil nil
                                                               (Executors/newSingleThreadExecutor))
@@ -81,7 +81,7 @@
                             .getNamespace)))))
 
       (testing "per-user namespace"
-        (let [compute-cluster (kcc/->KubernetesComputeCluster nil "kubecompute" nil nil nil
+        (let [compute-cluster (kcc/->KubernetesComputeCluster nil "kubecompute" nil nil
                                                               (atom {}) (atom {}) (atom {}) (atom {}) (atom {}) (atom {}) (atom {}) (atom nil)
                                                               {:kind :per-user} nil nil nil nil
                                                               (Executors/newSingleThreadExecutor))
@@ -99,7 +99,7 @@
   (tu/setup)
   (with-redefs [api/launch-pod (constantly true)]
     (let [conn (tu/restore-fresh-database! "datomic:mem://test-generate-offers")
-          compute-cluster (kcc/->KubernetesComputeCluster nil "kubecompute" nil nil nil
+          compute-cluster (kcc/->KubernetesComputeCluster nil "kubecompute" nil nil
                                                           (atom {}) (atom {}) (atom {}) (atom {}) (atom {}) (atom {}) (atom {}) (atom nil)
                                                           {:kind :static :namespace "cook"} nil 3 nil nil
                                                           (Executors/newSingleThreadExecutor))
@@ -122,6 +122,8 @@
                 {:namespace "cook" :name "podB"} (tu/pod-helper "podB" "nodeA"
                                                                 {:cpus 0.25 :mem 250.0 :gpus "1" :gpu-model "nvidia-tesla-p100"})
                 {:namespace "cook" :name "podC"} (tu/pod-helper "podC" "nodeB"
+                                                                {:cpus 1.0 :mem 1100.0 :gpus "10" :gpu-model "nvidia-tesla-p100"})
+                {:namespace "cook" :name "podD"} (tu/pod-helper "podD" "nodeD"
                                                                 {:cpus 1.0 :mem 1100.0 :gpus "10" :gpu-model "nvidia-tesla-p100"})
                 {:namespace "cook" :name task-1-id} (tu/pod-helper task-1-id "my.fake.host"
                                                                    {:cpus 0.1 :mem 10.0})}
@@ -169,7 +171,6 @@
                        :job/user user
                        :job/uuid job-uuid
                        :job/pool pool-name})]
-
     (testing "synthetic pods basics"
       (let [job-uuid-1 (str (UUID/randomUUID))
             job-uuid-2 (str (UUID/randomUUID))
@@ -270,7 +271,34 @@
                    :pod
                    .getMetadata
                    .getAnnotations
-                   (get api/k8s-safe-to-evict-annotation))))))))
+                   (get api/k8s-safe-to-evict-annotation))))))
+    (testing "synthetic pods with gpus"
+      (let [job-uuid-1 (str (UUID/randomUUID))
+            pool-name "test-pool"
+            compute-cluster (tu/make-kubernetes-compute-cluster {} #{pool-name} nil nil)
+            pending-jobs [(-> (make-job-fn job-uuid-1 "user-1")
+                              (assoc :job/environment
+                                     #{{:environment/name "COOK_GPU_MODEL"
+                                        :environment/value "nvidia-tesla-p100"}}
+                                     :job/resource [{:resource/type :cpus, :resource/amount 0.1}
+                                                    {:resource/type :mem, :resource/amount 32}
+                                                    {:resource/type :gpus, :resource/amount 1}]))]
+            launched-pods-atom (atom [])]
+        (with-redefs [api/launch-pod (fn [_ _ cook-expected-state-dict _]
+                                       (swap! launched-pods-atom conj cook-expected-state-dict))]
+          (cc/autoscale! compute-cluster pool-name pending-jobs sched/adjust-job-resources-for-pool-fn))
+        (is (= 1 (count @launched-pods-atom)))
+        (is (= job-uuid-1 (-> @launched-pods-atom (nth 0) :launch-pod :pod kcc/synthetic-pod->job-uuid)))
+        (let [container-resources (-> @launched-pods-atom
+                                      (nth 0)
+                                      :launch-pod
+                                      :pod
+                                      .getSpec
+                                      .getContainers
+                                      first
+                                      .getResources)]
+        (is (= 1 (-> container-resources .getRequests (get "nvidia.com/gpu") (api/to-int))))
+        (is (= 1 (-> container-resources .getLimits (get "nvidia.com/gpu") (api/to-int)))))))))
 
 (deftest test-factory-fn
   (testing "guards against inappropriate number of threads"
@@ -291,3 +319,7 @@
                    (kcc/factory-fn {:launch-task-num-threads 64
                                     :use-google-service-account? false}
                                    nil))))))
+
+(deftest test-total-resource
+  (testing "gracefully handles missing resource"
+    (= 3 (kcc/total-resource {"node-a" {:cpus 1} "node-b" {} "node-c" {:cpus 2}} :cpus))))

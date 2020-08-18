@@ -426,7 +426,9 @@
                         #(-> %
                              (update :pool-regex re-pattern)))
                 (not (:default-containers pools))
-                (assoc :default-containers [])))
+                (assoc :default-containers [])
+                (not (:quotas pools))
+                (assoc :quotas [])))
      :api-only? (fnk [[:config {api-only? false}]]
                   api-only?)
      :estimated-completion-constraint (fnk [[:config {estimated-completion-constraint nil}]]
@@ -483,7 +485,11 @@
                              :pod-condition-unschedulable-seconds 60
                              :reconnect-delay-ms 60000
                              :set-container-cpu-limit? true}
-                            kubernetes)))}))
+                            kubernetes)))
+     :offer-matching (fnk [[:config {offer-matching {}}]]
+                          (merge {:global-min-match-interval-millis 100
+                                  :target-per-pool-match-interval-millis 3000}
+                                 offer-matching))}))
 
 (defn read-config
   "Given a config file path, reads the config and returns the map"
@@ -626,3 +632,11 @@
 (defn task-constraints
   []
   (get-in config [:settings :task-constraints]))
+
+(defn pool-quotas
+  []
+  (get-in config [:settings :pools :quotas]))
+
+(defn offer-matching
+  []
+  (-> config :settings :offer-matching))

@@ -18,7 +18,7 @@ CLUSTERNAME=$3
 COOK_KUBECONFIG=$4
 GKE_CLUSTER_OWNER=${GKE_CLUSTER_OWNER:-$USER}
 
-VERSION=1.15.11-gke.15
+VERSION=1.15.11-gke.17
 
 gcloud="gcloud --project $PROJECT"
 
@@ -66,6 +66,7 @@ KUBECONFIG=${COOK_KUBECONFIG} kubectl create -f "${DIR}/priority-class-synthetic
 echo "---- Making extra k8s-alpha and k8s-gamma nodepools for cook pools (please wait 5-10 minutes)"
 create_node_pool k8s-alpha g1-small
 create_node_pool k8s-gamma g1-small
+create_node_pool k8s-quota g1-small
 create_node_pool k8s-alpha e2-small
 create_node_pool k8s-gamma e2-small
 

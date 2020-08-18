@@ -23,8 +23,9 @@
   (:import (com.google.auth.oauth2 GoogleCredentials)
            (io.kubernetes.client.openapi ApiClient)
            (io.kubernetes.client.openapi.models V1Node V1Pod)
-           (io.kubernetes.client.util Config)
-           (java.io File FileInputStream)
+           (io.kubernetes.client.util Config KubeConfig)
+           (java.nio.charset StandardCharsets)
+           (java.io File FileInputStream InputStreamReader)
            (java.util.concurrent Executors ExecutorService ScheduledExecutorService TimeUnit)
            (java.util UUID)
            (okhttp3 OkHttpClient$Builder)))
@@ -43,7 +44,7 @@
   "Given a map from node-name->resource-keyword->amount and a resource-keyword,
   returns the total amount of that resource for all nodes."
   [node-name->resource-map resource-keyword]
-  (->> node-name->resource-map vals (map resource-keyword) (reduce +)))
+  (->> node-name->resource-map vals (map resource-keyword) (filter some?) (reduce +)))
 
 (defn total-gpu-resource
   "Given a map from node-name->resource-keyword->amount,
@@ -56,7 +57,22 @@
   [compute-cluster node-name->node node-name->pods]
   (let [compute-cluster-name (cc/compute-cluster-name compute-cluster)
         node-name->capacity (api/get-capacity node-name->node)
-        node-name->consumed (api/get-consumption node-name->pods)
+        ; node-name->node map, used to calculate node-name->capacity includes nodes from the one pool,
+        ; gotten via the pools->node-name->node map.
+        ;
+        ; node-name->pods used to calculate node-name->consumption can include starting pods from all pools as it
+        ; unions starting pods across all nodes and all pods in the pool (made via composing
+        ; node-name->pod-name->pod map and the pool->node-name->node map)
+        ;
+        ; node-name->available can include extra nodes that are wrong-pool. However, when those wrong-pool nodes
+        ; are passed to node-schedulable? they're not found when it looks at the node-name->node map, so it logs an ERROR.
+        ;
+        ; If we have consumption calculation on a node that doesn't have a capacity calculated, there's not not much
+        ; point in further computation on it. We won't make an offer in any case. So we filter them out.
+        ; This also cleanly avoids the logged ERROR.
+        node-name->consumed (->> (api/get-consumption node-name->pods)
+                                 (filter #(node-name->capacity (first %)))
+                                 (into {}))
         node-name->available (tools/deep-merge-with - node-name->capacity node-name->consumed)
         ; Grab every unique GPU model being represented so that we can set counters for capacity and consumed for each GPU model
         gpu-models (->> node-name->capacity vals (map :gpus) (apply merge) keys set)
@@ -64,6 +80,7 @@
         gpu-model->total-capacity (total-gpu-resource node-name->capacity)
         gpu-model->total-consumed (total-gpu-resource node-name->consumed)]
 
+    (log/info "In" compute-cluster-name "compute cluster, all node names:" (keys node-name->node))
     (log/info "In" compute-cluster-name "compute cluster, capacity:" node-name->capacity)
     (log/info "In" compute-cluster-name "compute cluster, consumption:" node-name->consumed)
     (log/info "In" compute-cluster-name "compute cluster, filtering out"
@@ -277,7 +294,7 @@
        (map #(get @node-name->pod-name->pod % {}))
        (reduce into {})))
 
-(defrecord KubernetesComputeCluster [^ApiClient api-client name entity-id match-trigger-chan exit-code-syncer-state
+(defrecord KubernetesComputeCluster [^ApiClient api-client name entity-id exit-code-syncer-state
                                      all-pods-atom current-nodes-atom pool->node-name->node
                                      node-name->pod-name->pod cook-expected-state-map cook-starting-pods k8s-actual-state-map
                                      pool->fenzo-atom namespace-config scan-frequency-seconds-config max-pods-per-node
@@ -353,23 +370,28 @@
     (async/chan 1))
 
   (pending-offers [this pool-name]
-    (log/info "In" name "compute cluster, looking for offers for pool" pool-name)
-    (let [timer (timers/start (metrics/timer "cc-pending-offers-compute" name))
-          pods (add-starting-pods this @all-pods-atom)
-          nodes @current-nodes-atom
-          offers-this-pool (generate-offers this (get-name->node-for-pool @pool->node-name->node pool-name)
-                                            (->> (get-pods-in-pool this pool-name)
-                                                 (add-starting-pods this)
-                                                 (api/pods->node-name->pods)))
-          offers-this-pool-for-logging (into #{}
-                                             (map #(into {} (select-keys % [:hostname :resources]))
-                                                  offers-this-pool))]
-      (log/info "In" name "compute cluster, generated" (count offers-this-pool) "offers for pool" pool-name
-                {:num-total-nodes-in-compute-cluster (count nodes)
-                 :num-total-pods-in-compute-cluster (count pods)
-                 :offers-this-pool offers-this-pool-for-logging})
-      (timers/stop timer)
-      offers-this-pool))
+    (let [node-name->node (get @pool->node-name->node pool-name)]
+      (if-not (or (cc/autoscaling? this pool-name) node-name->node)
+        (log/info "In" name "compute cluster, not looking for offers for pool" pool-name
+                  ". Skipping pool because it is not a known Kubernetes pool.")
+        (do
+          (log/info "In" name "compute cluster, looking for offers for pool" pool-name)
+          (let [timer (timers/start (metrics/timer "cc-pending-offers-compute" name))
+                pods (add-starting-pods this @all-pods-atom)
+                nodes @current-nodes-atom
+                offers-this-pool (generate-offers this (or node-name->node {})
+                                                  (->> (get-pods-in-pool this pool-name)
+                                                       (add-starting-pods this)
+                                                       (api/pods->node-name->pods)))
+                offers-this-pool-for-logging (into #{}
+                                                   (map #(into {} (select-keys % [:hostname :resources]))
+                                                        offers-this-pool))]
+            (log/info "In" name "compute cluster, generated" (count offers-this-pool) "offers for pool" pool-name
+                      {:num-total-nodes-in-compute-cluster (count nodes)
+                       :num-total-pods-in-compute-cluster (count pods)
+                       :offers-this-pool offers-this-pool-for-logging})
+            (timers/stop timer)
+            offers-this-pool)))))
 
   (restore-offers [this pool-name offers])
 
@@ -407,7 +429,7 @@
                   user-from-synthetic-pods-config user
                   task-metadata-seq
                   (->> new-jobs
-                       (map (fn [{:keys [job/user job/uuid] :as job}]
+                       (map (fn [{:keys [job/user job/uuid job/environment] :as job}]
                               (let [pool-specific-resources
                                     ((adjust-job-resources-for-pool-fn pool-name) job (tools/job-ent->resources job))]
                                 {:command {:user (or user-from-synthetic-pods-config user)
@@ -428,8 +450,13 @@
                                  :pod-hostnames-to-avoid (constraints/job->previous-hosts-to-avoid job)
                                  ; We need to label the synthetic pods so that we
                                  ; can opt them out of some of the normal plumbing,
-                                 ; like mapping status back to a job instance
-                                 :pod-labels {api/cook-synthetic-pod-job-uuid-label (str uuid)}
+                                 ; like mapping status back to a job instance. We
+                                 ; also want to label the workload as infrastructure
+                                 ; and associate the user as the resource owner.
+                                 :pod-labels {api/cook-synthetic-pod-job-uuid-label (str uuid)
+                                              api/workload-class-label "infrastructure"
+                                              api/workload-id-label "synthetic-pod"
+                                              api/resource-owner-label user}
                                  ; We need to give synthetic pods a lower priority than
                                  ; actual job pods so that the job pods can preempt them
                                  ; (https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/);
@@ -443,7 +470,10 @@
                                  :pod-supports-cook-sidecar? false
                                  :task-id (str api/cook-synthetic-pod-name-prefix "-" pool-name "-" uuid)
                                  :task-request {:scalar-requests (walk/stringify-keys pool-specific-resources)
-                                                :job {:job/pool {:pool/name synthetic-task-pool-name}}}})))
+                                                :job {:job/pool {:pool/name synthetic-task-pool-name}
+                                                      :job/environment environment}
+                                                ; Need to pass in resources to task-metadata->pod for gpu count
+                                                :resources pool-specific-resources}})))
                        (take max-launchable))
                   num-synthetic-pods-to-launch (count task-metadata-seq)]
               (meters/mark! (metrics/meter "cc-synthetic-pod-submit-rate" name) num-synthetic-pods-to-launch)
@@ -537,9 +567,20 @@
       a bearer token for authenticating with kubernetes
     - bearer-token-refresh-seconds: interval to refresh the bearer token"
   [^String config-file base-path ^String use-google-service-account? bearer-token-refresh-seconds verifying-ssl ^String ssl-cert-path]
-  (let [api-client (if (some? config-file)
-                     (Config/fromConfig config-file)
-                     (ApiClient.))
+  (log/info "API Client config file" config-file)
+  (let [^ApiClient api-client (if (some? config-file)
+                                (let [^KubeConfig kubeconfig
+                                      (-> config-file
+                                          (FileInputStream.)
+                                          (InputStreamReader. (.name (StandardCharsets/UTF_8)))
+                                          (KubeConfig/loadKubeConfig))]
+                                  ; Workaround client library bug. The library attempts to resolve paths
+                                  ; against the Kubeconfig filename. We are using an absolute path so we
+                                  ; don't need the functionality. But we need to set the file anyways
+                                  ; to avoid a NPE.
+                                  (.setFile kubeconfig (File. config-file))
+                                  (Config/fromConfig kubeconfig))
+                                (ApiClient.))
         ; Reset to a more sane timeout from the default 10 seconds.
         http-client (-> (OkHttpClient$Builder.) (.readTimeout 120 TimeUnit/SECONDS) .build)]
     (.setHttpClient api-client http-client)
@@ -591,8 +632,7 @@
          scan-frequency-seconds 120
          use-google-service-account? true}
     :as compute-cluster-config}
-   {:keys [exit-code-syncer-state
-           trigger-chans]}]
+   {:keys [exit-code-syncer-state]}]
   (guard-invalid-synthetic-pods-config compute-cluster-name synthetic-pods)
   (when (not (< 0 launch-task-num-threads 64))
     (throw
@@ -606,7 +646,6 @@
         compute-cluster (->KubernetesComputeCluster api-client 
                                                     compute-cluster-name
                                                     cluster-entity-id
-                                                    (:match-trigger-chan trigger-chans)
                                                     exit-code-syncer-state
                                                     (atom {})
                                                     (atom {})

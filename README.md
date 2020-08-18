@@ -47,6 +47,7 @@ The quickest way to get Cook running locally against [GKE](https://cloud.google.
 1. Run `gcloud auth login` to login to Google cloud
 1. Run `bin/make-gke-test-clusters` to create GKE clusters
 1. Run `bin/start-datomic.sh` to start Datomic (Cook database)
+1. Run `lein exec -p datomic/data/seed_k8s_pools.clj $COOK_DATOMIC_URI` to seed some Cook pools in the database
 1. Run `bin/run-local-kubernetes.sh` to start the Cook scheduler
 1. Cook should now be listening locally on port 12321
 
