@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.44.0] - 2020-08-17
+### Added
+- Support for prefixed job labels to become k8s pod labels, from @dposada
+- Attribution labels to k8s synthetic pods, from @dposada
+- `agent_id` as a preferred alternative to `slave_id` on job instances, from @dposada
+- `/shutdown-leader` admin-only API endpoint, from @dposada
+### Changed
+- Improved matching log, from @dposada
+- Improved per-user launch-rate-limit log, from @dposada
+- Added log at start and end of job ranking, from @dposada
+- Made "killing cancelled task" log INFO-level, from @dposada
+### Fixed
+- Handling of preemption on k8s pod initialization, from @nsinkov
+
 ## [1.43.2] - 2020-07-30
 ### Fixed
 - Using 1024*1024 (mebibytes) as the k8s memory multiplier, from @dposada
