@@ -526,9 +526,10 @@
                                         (constraints/make-fenzo-group-constraint
                                           db group #(guuid->considerable-cotask-ids (:group/uuid group)) running-cotask-cache))
                                       (:group/_job job)))))
+        constraints-list (into (list) constraints)
         scalar-requests (job->scalar-request job)
         pool-specific-resources ((adjust-job-resources-for-pool-fn pool-name) job resources)]
-    (->TaskRequestAdapter job pool-specific-resources task-id assigned-resources guuid->considerable-cotask-ids constraints scalar-requests)))
+    (->TaskRequestAdapter job pool-specific-resources task-id assigned-resources guuid->considerable-cotask-ids constraints-list scalar-requests)))
 
 (defn match-offer-to-schedule
   "Given an offer and a schedule, computes all the tasks should be launched as a result.
