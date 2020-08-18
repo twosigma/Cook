@@ -23,8 +23,9 @@
   (:import (com.google.auth.oauth2 GoogleCredentials)
            (io.kubernetes.client.openapi ApiClient)
            (io.kubernetes.client.openapi.models V1Node V1Pod)
-           (io.kubernetes.client.util Config)
-           (java.io File FileInputStream)
+           (io.kubernetes.client.util Config KubeConfig)
+           (java.nio.charset StandardCharsets)
+           (java.io File FileInputStream InputStreamReader)
            (java.util.concurrent Executors ExecutorService ScheduledExecutorService TimeUnit)
            (java.util UUID)
            (okhttp3 OkHttpClient$Builder)))
@@ -545,9 +546,20 @@
       a bearer token for authenticating with kubernetes
     - bearer-token-refresh-seconds: interval to refresh the bearer token"
   [^String config-file base-path ^String use-google-service-account? bearer-token-refresh-seconds verifying-ssl ^String ssl-cert-path]
-  (let [api-client (if (some? config-file)
-                     (Config/fromConfig config-file)
-                     (ApiClient.))
+  (log/info "API Client config file" config-file)
+  (let [^ApiClient api-client (if (some? config-file)
+                                (let [^KubeConfig kubeconfig
+                                      (-> config-file
+                                          (FileInputStream.)
+                                          (InputStreamReader. (.name (StandardCharsets/UTF_8)))
+                                          (KubeConfig/loadKubeConfig))]
+                                  ; Workaround client library bug. The library attempts to resolve paths
+                                  ; against the Kubeconfig filename. We are using an absolute path so we
+                                  ; don't need the functionality. But we need to set the file anyways
+                                  ; to avoid a NPE.
+                                  (.setFile kubeconfig (File. config-file))
+                                  (Config/fromConfig kubeconfig))
+                                (ApiClient.))
         ; Reset to a more sane timeout from the default 10 seconds.
         http-client (-> (OkHttpClient$Builder.) (.readTimeout 120 TimeUnit/SECONDS) .build)]
     (.setHttpClient api-client http-client)
