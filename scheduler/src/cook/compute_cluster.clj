@@ -359,10 +359,9 @@
       (check-for-unique-constraint-violations resulting-configs :base-path)
       (check-for-unique-constraint-violations resulting-configs :ca-cert))))
 
-;TODO temp hack
-(def exit-code-syncer-state-promise (promise))
 ;TODO see if this is ok or need a better way
 (def scheduler-promise (promise))
+(def exit-code-syncer-state-promise (promise))
 
 (defn add-new-cluster!
   "Add a new cluster from a dynamic cluster config"
