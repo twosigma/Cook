@@ -502,13 +502,6 @@ class CookTest(util.CookTest):
 
     def test_compute_cluster(self):
         settings_dict = util.settings(self.cook_url)
-        compute_cluster_names = [compute_cluster['config']['compute-cluster-name'] for compute_cluster in settings_dict['compute-clusters']]
-        in_mem_compute_clusters = []
-        try:
-            in_mem_compute_clusters = util.compute_clusters(self.cook_url)['in-mem-configs']
-            compute_cluster_names.extend([cc['name'] for cc in in_mem_compute_clusters])
-        finally:
-            pass
         job_uuid, resp = util.submit_job(self.cook_url)
 
         try:
@@ -522,8 +515,15 @@ class CookTest(util.CookTest):
             instance_compute_cluster_name = instance['compute-cluster']['name']
             instance_compute_cluster_type = instance['compute-cluster']['type']
             self.assertEqual(instance_compute_cluster_type, util.get_compute_cluster_test_mode(), message)
-            filtered_compute_clusters = [name for name in compute_cluster_names
-                                         if name == instance_compute_cluster_name]
+            filtered_compute_clusters = [compute_cluster for compute_cluster in settings_dict['compute-clusters']
+                                         if compute_cluster['config']['compute-cluster-name'] == instance_compute_cluster_name]
+            try:
+                in_mem_compute_clusters = util.compute_clusters(self.cook_url)['in-mem-configs']
+                filtered_compute_clusters.extend(
+                    [{'config': cc, 'factory-fn': cc['factory-fn']} for cc in [m['compute-cluster-starting-config'] for m in in_mem_compute_clusters]
+                     if cc['name'] == instance_compute_cluster_name])
+            finally:
+                pass
             self.assertEqual(1, len(filtered_compute_clusters), "Unable to find " + instance_compute_cluster_name + " in compute clusters")
             found_compute_cluster = filtered_compute_clusters[0]
 

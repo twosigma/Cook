@@ -1464,14 +1464,15 @@ def get_kubernetes_compute_clusters():
     cook_url = retrieve_cook_url()
     _wait_for_cook(cook_url)
     init_cook_session(cook_url)
-    compute_cluster_factory_fns = [cc['factory-fn'] for cc in settings(cook_url)['compute-clusters']]
+    kubernetes_compute_clusters = [cc for cc in settings(cook_url)['compute-clusters']
+                                   if cc['factory-fn'] == 'cook.kubernetes.compute-cluster/factory-fn']
     try:
         in_mem_compute_clusters = compute_clusters(cook_url)['in-mem-configs']
-        compute_cluster_factory_fns.extend([cc['compute-cluster-starting-config']['factory-fn'] for cc in in_mem_compute_clusters])
+        kubernetes_compute_clusters.extend(
+            [{'config': cc, 'factory-fn': cc['factory-fn']} for cc in [m['compute-cluster-starting-config'] for m in in_mem_compute_clusters]
+             if cc['factory-fn'] == 'cook.kubernetes.compute-cluster/factory-fn'])
     finally:
         pass
-    kubernetes_compute_clusters = [ff for ff in compute_cluster_factory_fns
-                                   if ff == 'cook.kubernetes.compute-cluster/factory-fn']
     return kubernetes_compute_clusters
 
 
