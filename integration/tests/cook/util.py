@@ -437,6 +437,9 @@ def init_cook_session(*cook_urls):
 def settings(cook_url):
     return session.get(f'{cook_url}/settings').json()
 
+def compute_clusters(cook_url):
+    return session.get(f'{cook_url}/compute-clusters').json()
+
 
 @functools.lru_cache()
 def scheduler_info(cook_url):
@@ -1461,9 +1464,14 @@ def get_kubernetes_compute_clusters():
     cook_url = retrieve_cook_url()
     _wait_for_cook(cook_url)
     init_cook_session(cook_url)
-    compute_clusters = settings(cook_url)['compute-clusters']
-    kubernetes_compute_clusters = [cc for cc in compute_clusters
-                                   if cc['factory-fn'] == 'cook.kubernetes.compute-cluster/factory-fn']
+    compute_cluster_factory_fns = [cc['factory-fn'] for cc in settings(cook_url)['compute-clusters']]
+    try:
+        in_mem_compute_clusters = compute_clusters(cook_url)['in-mem-configs']
+        compute_cluster_factory_fns.extend([cc['compute-cluster-starting-config']['factory-fn'] for cc in in_mem_compute_clusters])
+    finally:
+        pass
+    kubernetes_compute_clusters = [ff for ff in compute_cluster_factory_fns
+                                   if ff == 'cook.kubernetes.compute-cluster/factory-fn']
     return kubernetes_compute_clusters
 
 
@@ -1796,16 +1804,6 @@ def supports_mesos_containerizer_images():
         return False
     isolators = _supported_isolators()
     return 'filesystem/linux' in isolators and 'docker/runtime' in isolators
-
-
-@functools.lru_cache()
-def _get_compute_cluster_factory_fn():
-    cook_url = retrieve_cook_url()
-    _wait_for_cook(cook_url)
-    init_cook_session(cook_url)
-    compute_clusters = settings(cook_url)['compute-clusters']
-    return compute_clusters[0]['factory-fn']
-
 
 def get_compute_cluster_test_mode():
     return os.getenv("COOK_TEST_COMPUTE_CLUSTER_TYPE", "mesos")

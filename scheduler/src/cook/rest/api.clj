@@ -3021,7 +3021,7 @@
 
 (defn create-compute-cluster!
   [conn ctx]
-  (let [result (cc/update-dynamic-clusters conn (-> ctx :request :body-params) nil true)]
+  (let [result (cc/update-compute-clusters conn (-> ctx :request :body-params) nil true)]
     ; TODO replace with real result handling with error checks
     (log/info "Result of create-compute-cluster! REST API call"
               {:input (-> ctx :request :body-params)
@@ -3080,7 +3080,7 @@
 
 (defn read-compute-clusters
   [conn ctx]
-  nil)
+  (cc/get-compute-clusters conn))
 
 (defn get-compute-clusters-handler
   [conn is-authorized-fn leadership-atom leader-selector]

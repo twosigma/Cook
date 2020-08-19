@@ -205,6 +205,7 @@
 
 (defn db-config-ents
   ;TODO is it ok to fail to connect to the db and return empty list?
+  ;TODO maybe add "archived" flag and don't return archived configs for brevity
   "Get the current dynamic cluster configurations from the database"
   [db]
   (let [configs (map #(d/entity db %)
@@ -214,28 +215,37 @@
                           db))]
     (map-from-vals :compute-cluster-config/name configs)))
 
+;TODO: when all clusters have state, change the ComputeCluster protocol to add state operations
 (defn compute-cluster->compute-cluster-config
   "Calculate dynamic cluster configuration from a compute cluster"
-  [{:keys [compute-cluster-config state-atom state-locked?-atom]}]
-  {:name (:name compute-cluster-config)
-   :template (:template compute-cluster-config)
-   :base-path (:base-path compute-cluster-config)
-   :ca-cert (:ca-cert compute-cluster-config)
+  [{:keys [state-atom state-locked?-atom]
+    {:keys [name template base-path ca-cert]} :compute-cluster-starting-config}]
+  {:name name
+   :template template
+   :base-path base-path
+   :ca-cert ca-cert
    :state @state-atom
    :state-locked? @state-locked?-atom})
+
+;TODO: in the future all clusters will be dynamic and we shouldn't need this
+(defn get-dynamic-clusters
+  "Get the current in-memory dynamic clusters"
+  []
+  (->> @cluster-name->compute-cluster-atom
+       (keep (fn [[name cluster]] (when (:state-atom cluster) [name cluster])))
+       (#(for-map [[name cluster] %] name cluster))))
 
 (defn in-mem-configs
   "Get the current in-memory dynamic cluster configurations"
   []
   ; TODO: why can't you call (v :state) on a record????
-  (->> (->> @cluster-name->compute-cluster-atom
-            (keep (fn [[name cluster]] (when (:state-atom cluster) [name cluster])))
-            (#(for-map [[name cluster] %] name cluster)))
+  (->> (get-dynamic-clusters)
        (map-vals compute-cluster->compute-cluster-config)))
 
 (defn compute-current-configs
   "Synthesize the current view of cluster configurations by looking at the current configurations in the database
-  and the current configurations in memory. Alert on any inconsistencies. In memory wins on inconsistencies."
+  and the current configurations in memory. Alert on any inconsistencies. In memory wins on inconsistencies.
+  Exclude compute-cluster-config from in memory cluster - this was the starting config"
   [current-db-configs current-in-mem-configs]
   (let [[only-db-keys only-in-mem-keys both-keys] (diff-map-keys current-db-configs current-in-mem-configs)]
     (doseq [only-db-key only-db-keys]
@@ -409,7 +419,7 @@
 
 ; TODO make sure anything in "locking" path times out. like db calls
 ; TODO do alerts in callers of this function on return value
-(defn update-dynamic-clusters
+(defn update-compute-clusters
   "This function allows adding or updating the current compute cluster configurations. It takes
   in a single configuration and/or a map of configurations with cluser name as the key. Passing in a map of
   configurations implies that these are the only known configurations, and clusters that are missing from this
@@ -435,3 +445,12 @@
                          insert? (add-new-cluster! conn config)
                          update? (update-cluster! conn config current-db-config-ents current-in-mem-configs))))))
            doall))))
+
+(defn get-compute-clusters
+  "Get the current dynamic compute clusters. Returns both the in-memory cluster configs and the configurations in the database.
+  The configurations in the database might be different and will not take effect until restart."
+  [conn]
+  {:in-mem-configs (->> (get-dynamic-clusters) vals
+                        (map #(let [config (compute-cluster->compute-cluster-config %)]
+                                (assoc config :compute-cluster-starting-config (:compute-cluster-starting-config %)))))
+   :db-configs (->> (db-config-ents (d/db conn)) vals (map compute-cluster-config-ent->compute-cluster-config))})
