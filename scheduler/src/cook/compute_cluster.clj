@@ -353,7 +353,9 @@
         resulting-configs (->> changes
                                (filter :valid?)
                                (#(for-map [change %] (:cluster-name change) (:config change)))
-                               (merge current-configs))]
+                               (merge current-configs))
+        ;TODO check that number of running clusters is not less than a configured value. and make no changes if so
+        ]
     (-> changes
       (check-for-unique-constraint-violations resulting-configs :base-path)
       (check-for-unique-constraint-violations resulting-configs :ca-cert))))

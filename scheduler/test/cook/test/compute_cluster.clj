@@ -519,14 +519,14 @@
                               {:a :a
                                :name "name"
                                :template "template1"
-                               :base-path "base-path"
+                               :base-path "base-path-2"
                                :ca-cert "ca-cert"
                                :state :draining
                                :state-locked? true}
                               (db-config-ents (d/db conn))
                               (in-mem-configs))))
       (is (= ["name"] @initialize-cluster-fn-invocations-atom))
-      (is (= {:base-path "base-path"
+      (is (= {:base-path "base-path-2"
               :ca-cert "ca-cert"
               :name "name"
               :state :draining
@@ -554,7 +554,7 @@
                 (constantly {"template1" {:a :bb
                                           :c :dd
                                           :factory-fn 'cook.test.compute-cluster/cluster-factory-fn}})
-                compute-current-configs (fn [_ _] {"current" {:a :b :state :running :ca-cert 1 :base-path 1}})
+                compute-current-configs (fn [_ _] {"current" {:name "current" :a :b :state :running :ca-cert 1 :base-path 1}})
                 add-new-cluster! (fn [_ config] (if (= "fail" (:name config)) {:update-succeeded false} {:update-succeeded true}))
                 update-cluster! (fn [_ _ _ _] {:update-succeeded true})]
     (testing "single"
@@ -568,6 +568,29 @@
                 :update-result {:update-succeeded true}
                 :valid? true})
              (update-dynamic-clusters nil {:a :a :template "template1" :ca-cert 2 :base-path 2} nil false))))
+    (testing "single - error"
+      (is (= '({:changed? true
+                :cluster-name "current"
+                :config {:base-path 2
+                         :ca-cert 1
+                         :name "current"
+                         :state :running}
+                :reason "Attempting to change something other than state when force? is false. Diff is ({:base-path 1, :a :b} {:base-path 2} {:ca-cert 1, :name \"current\"})"
+                :update-result nil
+                :update? true
+                :valid? false})
+             (update-dynamic-clusters nil {:name "current" :state :running :ca-cert 1 :base-path 2} nil false))))
+    (testing "single - edit base-path"
+      (is (= '({:changed? true
+                :cluster-name "current"
+                :config {:base-path 2
+                         :ca-cert 1
+                         :name "current"
+                         :state :running}
+                :update-result {:update-succeeded true}
+                :update? true
+                :valid? true})
+             (update-dynamic-clusters nil {:name "current" :state :running :ca-cert 1 :base-path 2} nil true))))
     (testing "multiple"
       (is (= '({:changed? true
                 :cluster-name nil
@@ -582,7 +605,7 @@
                                       {"a"
                                        {:a :a :template "template1" :ca-cert 2 :base-path 2}
                                        "current"
-                                       {:a :b :state :running :ca-cert 1 :base-path 1}} false))))
+                                       {:name "current" :a :b :state :running :ca-cert 1 :base-path 1}} false))))
     (testing "single and multiple"
       (is (thrown? AssertionError (update-dynamic-clusters nil {:a :a :template "template1"} {"a" {:a :a :template "template1"}} false))))
     (testing "errors"
@@ -601,16 +624,17 @@
                 :update-result nil
                 :valid? false}
                {:changed? true
-                :cluster-name nil
-                :reason "Attempting to change something other than state when force? is false. Diff is ({:a :b} {:a :a} {:base-path 1, :ca-cert 1})"
+                :cluster-name "current"
+                :reason "Attempting to change something other than state when force? is false. Diff is ({:a :b} {:a :a} {:base-path 1, :ca-cert 1, :name \"current\"})"
                 :update? true
                 :update-result nil
-                :config {:a :a
+                :config {:name "current"
+                         :a :a
                          :base-path 1
                          :ca-cert 1
                          :state :running}
                 :valid? false})
              (update-dynamic-clusters nil nil {"a" {:a :a :template "template1"}
                                                "bad1" {:name "bad1"}
-                                               "current" {:a :a :state :running :ca-cert 1 :base-path 1}} false))))))
+                                               "current" {:name "current" :a :a :state :running :ca-cert 1 :base-path 1}} false))))))
 
