@@ -77,12 +77,12 @@
              (db-config-ents (d/db conn)))))))
 
 (deftest test-compute-cluster->compute-cluster-config
-  (let [cluster {:compute-cluster-config {:name "name"
-                                          :template "template"
-                                          :base-path "base-path"
-                                          :ca-cert "ca-cert"
-                                          :state :running
-                                          :state-locked? false}
+  (let [cluster {:compute-cluster-starting-config {:name "name"
+                                                   :template "template"
+                                                   :base-path "base-path"
+                                                   :ca-cert "ca-cert"
+                                                   :state :running
+                                                   :state-locked? false}
                  :state-atom (atom :delted)
                  :state-locked?-atom (atom true)}]
     (is (= {:base-path "base-path"
@@ -92,26 +92,26 @@
             :state-locked? true
             :template "template"}
            (compute-cluster->compute-cluster-config cluster)))))
-
+(def expected-in-mem-config
+  {"name" {:base-path "base-path"
+           :ca-cert "ca-cert"
+           :name "name"
+           :state :delted
+           :state-locked? true
+           :template "template"}})
 (deftest test-in-mem-configs
   (reset! cluster-name->compute-cluster-atom {})
   (is (= {} (in-mem-configs)))
   (reset! cluster-name->compute-cluster-atom
-          {"name" {:compute-cluster-config {:name "name"
-                                            :template "template"
-                                            :base-path "base-path"
-                                            :ca-cert "ca-cert"
-                                            :state :running
-                                            :state-locked? false}
+          {"name" {:compute-cluster-starting-config {:name "name"
+                                                     :template "template"
+                                                     :base-path "base-path"
+                                                     :ca-cert "ca-cert"
+                                                     :state :running
+                                                     :state-locked? false}
                    :state-atom (atom :delted)
                    :state-locked?-atom (atom true)}})
-  (is (= {"name" {:base-path "base-path"
-                  :ca-cert "ca-cert"
-                  :name "name"
-                  :state :delted
-                  :state-locked? true
-                  :template "template"}}
-         (in-mem-configs))))
+  (is (= expected-in-mem-config (in-mem-configs))))
 
 (deftest test-compute-current-configs
   (is (= {:a {:a :a}
@@ -131,7 +131,13 @@
            {}
            {:a {:a :a}
             :c {:c :c}})))
-  (is (= {} (compute-current-configs {} {}))))
+  (is (= {} (compute-current-configs {} {})))
+  (is (= {"name" {:base-path "base-path"
+                  :ca-cert "ca-cert"
+                  :name "name"
+                  :state :delted
+                  :state-locked? true
+                  :template "template"}} (compute-current-configs {} expected-in-mem-config))))
 
 (deftest test-get-job-instance-ids-for-cluster-name
   (let [uri "datomic:mem://test-compute-cluster-config"
@@ -416,7 +422,7 @@
   (let [backing-map {:name name
                      :state-atom (atom state)
                      :state-locked?-atom (atom state-locked?)
-                     :compute-cluster-config compute-cluster-config}
+                     :compute-cluster-starting-config compute-cluster-config}
         compute-cluster (reify ComputeCluster
                           (compute-cluster-name [cluster] (:name cluster))
                           (initialize-cluster [cluster _]
@@ -546,7 +552,7 @@
            (update-cluster! nil {:name "fail" :a :a :template "template1"} nil nil)))
     (is (= [] @initialize-cluster-fn-invocations-atom))))
 
-(deftest test-update-dynamic-clusters
+(deftest test-update-compute-clusters
   (with-redefs [d/db (fn [_])
                 db-config-ents (fn [_])
                 in-mem-configs (constantly nil)
@@ -567,7 +573,7 @@
                 :insert? true
                 :update-result {:update-succeeded true}
                 :valid? true})
-             (update-dynamic-clusters nil {:a :a :template "template1" :ca-cert 2 :base-path 2} nil false))))
+             (update-compute-clusters nil {:a :a :template "template1" :ca-cert 2 :base-path 2} nil false))))
     (testing "single - error"
       (is (= '({:changed? true
                 :cluster-name "current"
@@ -579,7 +585,7 @@
                 :update-result nil
                 :update? true
                 :valid? false})
-             (update-dynamic-clusters nil {:name "current" :state :running :ca-cert 1 :base-path 2} nil false))))
+             (update-compute-clusters nil {:name "current" :state :running :ca-cert 1 :base-path 2} nil false))))
     (testing "single - edit base-path"
       (is (= '({:changed? true
                 :cluster-name "current"
@@ -590,7 +596,7 @@
                 :update-result {:update-succeeded true}
                 :update? true
                 :valid? true})
-             (update-dynamic-clusters nil {:name "current" :state :running :ca-cert 1 :base-path 2} nil true))))
+             (update-compute-clusters nil {:name "current" :state :running :ca-cert 1 :base-path 2} nil true))))
     (testing "multiple"
       (is (= '({:changed? true
                 :cluster-name nil
@@ -601,13 +607,13 @@
                          :template "template1"}
                 :update-result {:update-succeeded true}
                 :valid? true})
-             (update-dynamic-clusters nil nil
+             (update-compute-clusters nil nil
                                       {"a"
                                        {:a :a :template "template1" :ca-cert 2 :base-path 2}
                                        "current"
                                        {:name "current" :a :b :state :running :ca-cert 1 :base-path 1}} false))))
     (testing "single and multiple"
-      (is (thrown? AssertionError (update-dynamic-clusters nil {:a :a :template "template1"} {"a" {:a :a :template "template1"}} false))))
+      (is (thrown? AssertionError (update-compute-clusters nil {:a :a :template "template1"} {"a" {:a :a :template "template1"}} false))))
     (testing "errors"
       (is (= '({:changed? true
                 :cluster-name nil
@@ -634,7 +640,36 @@
                          :ca-cert 1
                          :state :running}
                 :valid? false})
-             (update-dynamic-clusters nil nil {"a" {:a :a :template "template1"}
+             (update-compute-clusters nil nil {"a" {:a :a :template "template1"}
                                                "bad1" {:name "bad1"}
                                                "current" {:name "current" :a :a :state :running :ca-cert 1 :base-path 1}} false))))))
 
+
+(deftest testing-get-compute-clusters
+  (with-redefs [d/db (fn [_])
+                db-config-ents (fn [_] {"name" {:compute-cluster-config/name "name"
+                                                :compute-cluster-config/base-path "base-path"
+                                                :compute-cluster-config/ca-cert "ca-cert"
+                                                :compute-cluster-config/state :compute-cluster-config.state/running
+                                                :compute-cluster-config/state-locked? true
+                                                :compute-cluster-config/template "template"}})
+                in-mem-configs (constantly expected-in-mem-config)]
+    (is (= {:db-configs '({:base-path "base-path"
+                           :ca-cert "ca-cert"
+                           :name "name"
+                           :state :running
+                           :state-locked? true
+                           :template "template"})
+            :in-mem-configs '({:base-path "base-path"
+                               :ca-cert "ca-cert"
+                               :name "name"
+                               :state :delted
+                               :state-locked? true
+                               :template "template"
+                               :compute-cluster-starting-config {:base-path "base-path"
+                                                                 :ca-cert "ca-cert"
+                                                                 :name "name"
+                                                                 :state :running
+                                                                 :state-locked? false
+                                                                 :template "template"}})}
+           (get-compute-clusters nil)))))
