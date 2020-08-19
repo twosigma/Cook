@@ -574,7 +574,6 @@
       (.setSslCaCert api-client
                      (FileInputStream. (File. ca-cert-path))))
     (when use-google-service-account?
-      (log/info "Trying GoogleCredentials/getApplicationDefault " {:httptransport (com.google.api.client.http.javanet.NetHttpTransport.)})
       (set-credentials api-client (GoogleCredentials/getApplicationDefault) bearer-token-refresh-seconds))
     api-client))
 

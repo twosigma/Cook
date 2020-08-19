@@ -18,7 +18,120 @@
             [cook.compute-cluster :refer :all]
             [cook.config :as config]
             [cook.test.testutil :refer [create-dummy-job-with-instances restore-fresh-database!]]
-            [datomic.api :as d]))
+            [datomic.api :as d]
+            [plumbing.core :refer [map-vals]]))
+
+(deftest test-diff-map-keys
+  (is (= [#{:b} #{:c} #{:a :d}]
+         (diff-map-keys {:a {:a :a}
+                         :b {:b :b}
+                         :d {:d :d}}
+                        {:a {:a :a}
+                         :c {:c :c}
+                         :d {:d :e}}))))
+
+(deftest test-datomic-entity-conversion
+  (let [config {:name "name"
+                :template "template"
+                :base-path "base-path"
+                :ca-cert "ca-cert"
+                :state :running
+                :state-locked? true}
+        config-ent (compute-cluster-config->compute-cluster-config-ent config)
+        _ (is (= {:compute-cluster-config/name "name"
+                  :compute-cluster-config/base-path "base-path"
+                  :compute-cluster-config/ca-cert "ca-cert"
+                  :compute-cluster-config/state :compute-cluster-config.state/running
+                  :compute-cluster-config/state-locked? true
+                  :compute-cluster-config/template "template"} config-ent))]
+    (is (= config (compute-cluster-config-ent->compute-cluster-config config-ent)))))
+
+(deftest test-db-config-ents
+  (let [uri "datomic:mem://test-compute-cluster-config"
+        conn (restore-fresh-database! uri)
+        temp-db-id (d/tempid :db.part/user)
+        ent (compute-cluster-config->compute-cluster-config-ent
+              {:name "name"
+               :template "template"
+               :base-path "base-path"
+               :ca-cert "ca-cert"
+               :state :running
+               :state-locked? true})
+        tempids (-> @(d/transact conn [(assoc ent :db/id temp-db-id)]) :tempids)
+        db (d/db conn)]
+    (is (= {"name" {:db/id (d/resolve-tempid db tempids temp-db-id)
+                    :compute-cluster-config/name "name"
+                    :compute-cluster-config/base-path "base-path"
+                    :compute-cluster-config/ca-cert "ca-cert"
+                    :compute-cluster-config/state :compute-cluster-config.state/running
+                    :compute-cluster-config/state-locked? true
+                    :compute-cluster-config/template "template"}}
+           (map-vals
+             #(select-keys % [:db/id
+                              :compute-cluster-config/name
+                              :compute-cluster-config/base-path
+                              :compute-cluster-config/ca-cert
+                              :compute-cluster-config/state
+                              :compute-cluster-config/state-locked?
+                              :compute-cluster-config/template])
+             (db-config-ents (d/db conn)))))))
+
+(deftest test-compute-cluster->compute-cluster-config
+  (let [cluster {:compute-cluster-config {:name "name"
+                                          :template "template"
+                                          :base-path "base-path"
+                                          :ca-cert "ca-cert"
+                                          :state :running
+                                          :state-locked? false}
+                 :state-atom (atom :delted)
+                 :state-locked?-atom (atom true)}]
+    (is (= {:base-path "base-path"
+            :ca-cert "ca-cert"
+            :name "name"
+            :state :delted
+            :state-locked? true
+            :template "template"}
+           (compute-cluster->compute-cluster-config cluster)))))
+
+(deftest test-in-mem-configs
+  (reset! cluster-name->compute-cluster-atom {})
+  (is (= {} (in-mem-configs)))
+  (reset! cluster-name->compute-cluster-atom
+          {"name" {:compute-cluster-config {:name "name"
+                                            :template "template"
+                                            :base-path "base-path"
+                                            :ca-cert "ca-cert"
+                                            :state :running
+                                            :state-locked? false}
+                   :state-atom (atom :delted)
+                   :state-locked?-atom (atom true)}})
+  (is (= {"name" {:base-path "base-path"
+                  :ca-cert "ca-cert"
+                  :name "name"
+                  :state :delted
+                  :state-locked? true
+                  :template "template"}}
+         (in-mem-configs))))
+
+(deftest test-compute-current-configs
+  (is (= {:a {:a :a}
+          :b {:b :b}
+          :c {:c :c}
+          :d {:d :d}}
+         (compute-current-configs
+           {:a {:a :a}
+            :b {:b :b}
+            :d {:d :d}}
+           {:a {:a :a}
+            :c {:c :c}
+            :d {:d :e}})))
+  (is (= {:a {:a :a}
+          :c {:c :c}}
+         (compute-current-configs
+           {}
+           {:a {:a :a}
+            :c {:c :c}})))
+  (is (= {} (compute-current-configs {} {}))))
 
 (deftest test-get-job-instance-ids-for-cluster-name
   (let [uri "datomic:mem://test-compute-cluster-config"
@@ -76,115 +189,324 @@
     (with-redefs [cluster-state-change-valid? (fn [db current-state new-state cluster-name] @state-change-valid-atom)]
       (testing "invalid state change"
         (reset! state-change-valid-atom false)
-        (is (= {:changed? false
-                :error true
+        (is (= {:cluster-name nil
+                :changed? false
                 :reason "Cluster state transition from  to  is not valid."
-                :update-value {}
-                :valid? false} (compute-dynamic-config-update nil {} {} false)))
+                :update? true
+                :config {}
+                :valid? false} (compute-config-update nil {} {} false)))
         (reset! state-change-valid-atom true))
       (testing "locked state"
-        (is (= {:changed? true
-                :error false
+        (is (= {:cluster-name "name"
+                :changed? true
                 :reason "Attempting to change cluster state from :running to :draining but not able because it is locked."
-                :update-value {:state :draining}
-                :valid? false} (compute-dynamic-config-update nil {:state-locked? true :state :running} {:state :draining} false))))
+                :update? true
+                :config {:name "name" :state :draining}
+                :valid? false}
+               (compute-config-update nil {:name "name" :state-locked? true :state :running} {:name "name" :state :draining} false))))
       (testing "non-state change"
-        (is (= {:changed? true
-                :error true
-                :reason "Attempting to change something other than state when force? is false. Diff is ({:a :a} {:a :b} nil)"
-                :update-value {:a :b}
-                :valid? false} (compute-dynamic-config-update nil {:a :a} {:a :b} false))))
+        (is (= {:cluster-name "name"
+                :changed? true
+                :reason "Attempting to change something other than state when force? is false. Diff is ({:a :a} {:a :b} {:name \"name\"})"
+                :update? true
+                :config {:name "name" :a :b}
+                :valid? false} (compute-config-update nil {:name "name" :a :a} {:name "name" :a :b} false))))
       (testing "locked state - forced"
-        (is (= {:changed? true
-                :update-value {:state :draining}
-                :valid? true} (compute-dynamic-config-update nil {:state-locked? true :state :running} {:state :draining} true))))
+        (is (= {:cluster-name "name"
+                :changed? true
+                :update? true
+                :config {:name "name" :state :draining}
+                :valid? true} (compute-config-update nil {:name "name" :state-locked? true :state :running} {:name "name" :state :draining} true))))
       (testing "non-state change - forced"
-        (is (= {:changed? true
-                :update-value {:a :b}
-                :valid? true} (compute-dynamic-config-update nil {:a :a} {:a :b} true))))
+        (is (= {:cluster-name "name"
+                :changed? true
+                :update? true
+                :config {:name "name" :a :b}
+                :valid? true} (compute-config-update nil {:name "name" :a :a} {:name "name" :a :b} true))))
       (testing "valid changed"
-        (is (= {:changed? true
-                :update-value {:a :a :state :draining}
-                :valid? true} (compute-dynamic-config-update nil {:a :a :state :running} {:a :a :state :draining} false)))
-        (is (= {:changed? true
-                :update-value {:a :b}
-                :valid? true} (compute-dynamic-config-update nil {:a :a} {:a :b} true))))
+        (is (= {:cluster-name "name"
+                :changed? true
+                :update? true
+                :config {:name "name" :a :a :state :draining}
+                :valid? true} (compute-config-update nil {:name "name" :a :a :state :running} {:name "name" :a :a :state :draining} false)))
+        (is (= {:cluster-name "name"
+                :changed? true
+                :update? true
+                :config {:name "name" :a :b}
+                :valid? true} (compute-config-update nil {:name "name" :a :a} {:name "name" :a :b} true))))
       (testing "valid unchanged"
-        (is (= {:changed? false
-                :update-value {:a :a}
-                :valid? true} (compute-dynamic-config-update nil {:a :a} {:a :a} false)))
-        (is (= {:changed? false
-                :update-value {:a :a}
-                :valid? true} (compute-dynamic-config-update nil {:a :a} {:a :a} true)))))))
+        (is (= {:cluster-name "name"
+                :changed? false
+                :update? true
+                :config {:name "name" :a :a}
+                :valid? true} (compute-config-update nil {:name "name" :a :a} {:name "name" :a :a} false)))
+        (is (= {:cluster-name "name"
+                :changed? false
+                :update? true
+                :config {:name "name" :a :a}
+                :valid? true} (compute-config-update nil {:name "name" :a :a} {:name "name" :a :a} true)))))))
 
 (deftest test-compute-dynamic-config-insert
   (with-redefs [config/compute-cluster-templates (constantly {"template1" {:a :bb :c :dd}
                                                               "template2" {:a :bb :c :dd :factory-fn :factory-fn}})]
     (testing "bad template"
-      (is (= {:changed? true
-              :error true
-              :insert-value {:a :b}
+      (is (= {:cluster-name "name"
+              :changed? true
+              :insert? true
+              :config {:a :b
+                       :name "name"}
               :reason "Attempting to create cluster with unknown template: "
               :valid? false}
-             (compute-dynamic-config-insert {:a :b})))
-      (is (= {:changed? true
-              :error true
-              :insert-value {:a :b
-                             :template "missing"}
+             (compute-config-insert {:name "name" :a :b})))
+      (is (= {:cluster-name "name"
+              :changed? true
+              :insert? true
+              :config {:a :b
+                       :name "name"
+                       :template "missing"}
               :reason "Attempting to create cluster with unknown template: missing"
               :valid? false}
-             (compute-dynamic-config-insert {:a :b :template "missing"}))))
+             (compute-config-insert {:name "name" :a :b :template "missing"}))))
     (testing "bad template"
-      (is (= {:changed? true
-              :error true
-              :insert-value {:a :b
-                             :template "template1"}
+      (is (= {:cluster-name "name"
+              :changed? true
+              :insert? true
+              :config {:a :b
+                       :name "name"
+                       :template "template1"}
               :reason "Template for cluster has no factory-fn: {:a :bb, :c :dd}"
               :valid? false}
-             (compute-dynamic-config-insert {:a :b :template "template1"}))))
+             (compute-config-insert {:name "name" :a :b :template "template1"}))))
     (testing "good template"
-      (is (= {:changed? true
-              :insert-value {:a :b
-                             :template "template2"}
+      (is (= {:cluster-name "name"
+              :changed? true
+              :insert? true
+              :config {:a :b
+                       :name "name"
+                       :template "template2"}
               :valid? true}
-             (compute-dynamic-config-insert {:a :b :template "template2"}))))))
+             (compute-config-insert {:name "name" :a :b :template "template2"}))))))
 
 
 (deftest test-compute-dynamic-config-updates
-  (with-redefs [compute-dynamic-config-update (fn [_ current new _] {:changed? (not= current new)
-                                                                     :update-value new
-                                                                     :valid? true})
-                compute-dynamic-config-insert (fn [new] {:changed? true
-                                                         :insert-value new
-                                                         :valid? true})]
+  (with-redefs [compute-config-update (fn [_ current new _] {:changed? (not= current new)
+                                                             :update? true
+                                                             :config new
+                                                             :valid? true
+                                                             :cluster-name (:name new)})
+                compute-config-insert (fn [new] {:changed? true
+                                                 :insert? true
+                                                 :config new
+                                                 :valid? true
+                                                 :cluster-name (:name new)})]
     (is (= (set [{:changed? true
-                  :update-value {:a :a
-                                 :name :left
-                                 :state :deleted}
+                  :update? true
+                  :cluster-name "left"
+                  :config {:a :a
+                           :name "left"
+                           :ca-cert 1
+                           :base-path "left-base-path"
+                           :state :deleted}
                   :valid? true}
                  {:changed? true
-                  :update-value {:a :b
-                                 :name :both2}
+                  :update? true
+                  :cluster-name "both2"
+                  :config {:a :b
+                           :ca-cert 3
+                           :base-path "both2-base-path"
+                           :name "both2"}
                   :valid? true}
                  {:changed? true
-                  :insert-value {:a :a
-                                 :name :right}
-                  :valid? true}])
-           (set (compute-dynamic-config-updates
+                  :insert? true
+                  :cluster-name "right"
+                  :config {:a :a
+                           :ca-cert 12
+                           :base-path "right-base-path"
+                           :name "right"}
+                  :valid? true}
+                 {:changed? true
+                  :cluster-name "both3"
+                  :config {:a :b
+                           :ca-cert 4
+                           :base-path "both4-base-path"
+                           :name "both3"}
+                  :update? true
+                  :valid? true}
+                 {:changed? true
+                  :cluster-name "both4"
+                  :config {:a :b
+                           :ca-cert 5
+                           :base-path "both3-base-path"
+                           :name "both4"}
+                  :update? true
+                  :valid? true}
+                 {:changed? true
+                  :cluster-name "right2"
+                  :insert? true
+                  :config {:a :a
+                           :ca-cert 13
+                           :base-path "both5-base-path"
+                           :name "right2"}
+                  :reason ":base-path is not unique between clusters #{\"both5\" \"right2\"}"
+                  :valid? false}])
+           (set (compute-config-updates
                   nil
-                  {:left {:name :left
-                          :a :a}
-                   :both1 {:name :both1
-                           :a :a}
-                   :both2 {:name :both2
-                           :a :a}}
-                  {:both1 {:name :both1
-                           :a :a}
-                   :both2 {:name :both2
-                           :a :b}
-                   :right {:name :right
-                           :a :a}}
+                  {"left" {:name "left"
+                           :a :a
+                           :ca-cert 1
+                           :base-path "left-base-path"}
+                   "both1" {:name "both1"
+                            :a :a
+                            :ca-cert 2
+                            :base-path "both1-base-path"}
+                   "both2" {:name "both2"
+                            :a :a
+                            :ca-cert 3
+                            :base-path "both2-base-path"}
+                   "both3" {:name "both3"
+                            :a :b
+                            :ca-cert 4
+                            :base-path "both3-base-path"}
+                   "both4" {:name "both4"
+                            :a :b
+                            :ca-cert 5
+                            :base-path "both4-base-path"}
+                   "both5" {:name "both5"
+                            :a :b
+                            :ca-cert 6
+                            :base-path "both5-base-path"}}
+                  {"both1" {:name "both1"
+                            :a :a
+                            :ca-cert 2
+                            :base-path "both1-base-path"}
+                   "both2" {:name "both2"
+                            :a :b
+                            :ca-cert 3
+                            :base-path "both2-base-path"}
+                   "both3" {:name "both3"
+                            :a :b
+                            :ca-cert 4
+                            :base-path "both4-base-path"}
+                   "both4" {:name "both4"
+                            :a :b
+                            :ca-cert 5
+                            :base-path "both3-base-path"}
+                   "both5" {:name "both5"
+                            :a :b
+                            :ca-cert 6
+                            :base-path "both5-base-path"}
+                   "right" {:name "right"
+                            :a :a
+                            :ca-cert 12
+                            :base-path "right-base-path"}
+                   "right2" {:name "right2"
+                             :a :a
+                             :ca-cert 13
+                             :base-path "both5-base-path"}}
                   nil))))))
+
+(def cluster-factory-fn-invocations-atom (atom []))
+(defn cluster-factory-fn
+  [compute-cluster-config _]
+  (when (= "fail" (:name compute-cluster-config)) (throw (ex-info "fail" {})))
+  (swap! cluster-factory-fn-invocations-atom conj compute-cluster-config)
+  {:cluster-of compute-cluster-config})
+(def initialize-cluster-fn-invocations-atom (atom []))
+(deftest test-add-new-cluster!
+  (with-redefs [config/compute-cluster-templates
+                (constantly {"template1" {:a :bb
+                                          :c :dd
+                                          :factory-fn 'cook.test.compute-cluster/cluster-factory-fn}})
+                initialize-cluster (fn [cluster _] (swap! initialize-cluster-fn-invocations-atom conj cluster))]
+    (testing "normal add"
+      (reset! cluster-factory-fn-invocations-atom [])
+      (reset! initialize-cluster-fn-invocations-atom [])
+      (deliver exit-code-syncer-state-promise nil)
+      (deliver scheduler-promise nil)
+      (is (= {:update-succeeded true} (add-new-cluster! {:a :a :template "template1"})))
+      (is (= [{:a :a :template "template1"}] @cluster-factory-fn-invocations-atom))
+      (is (= [{:cluster-of {:a :a :template "template1"}}] @initialize-cluster-fn-invocations-atom)))
+    (testing "exception"
+      (reset! cluster-factory-fn-invocations-atom [])
+      (reset! initialize-cluster-fn-invocations-atom [])
+      (deliver exit-code-syncer-state-promise nil)
+      (deliver scheduler-promise nil)
+      (is (= {:error-message "clojure.lang.ExceptionInfo: fail {}"
+              :update-succeeded false}
+             (add-new-cluster! {:name "fail" :a :a :template "template1"})))
+      (is (= [] @cluster-factory-fn-invocations-atom))
+      (is (= [] @initialize-cluster-fn-invocations-atom)))))
+
+(deftest test-update-cluster!
+  (is (= {:update-succeeded true} (update-cluster! {:a :a :template "template1"}))))
+
+(deftest test-update-dynamic-clusters
+  (with-redefs [d/db (fn [_])
+                db-config-ents (fn [_])
+                in-mem-configs (constantly nil)
+                config/compute-cluster-templates
+                (constantly {"template1" {:a :bb
+                                          :c :dd
+                                          :factory-fn 'cook.test.compute-cluster/cluster-factory-fn}})
+                compute-current-configs (fn [_ _] {"current" {:a :b :state :running :ca-cert 1 :base-path 1}})
+                add-new-cluster! (fn [config] (if (= "fail" (:name config)) {:update-succeeded false} {:update-succeeded true}))
+                update-cluster! (fn [config] {:update-succeeded true})]
+    (testing "single"
+      (is (= '({:changed? true
+                :cluster-name nil
+                :config {:a :a
+                         :base-path 2
+                         :ca-cert 2
+                         :template "template1"}
+                :insert? true
+                :update-result {:update-succeeded true}
+                :valid? true})
+             (update-dynamic-clusters nil {:a :a :template "template1" :ca-cert 2 :base-path 2} nil false))))
+    (testing "multiple"
+      (is (= '({:changed? true
+                :cluster-name nil
+                :insert? true
+                :config {:a :a
+                         :base-path 2
+                         :ca-cert 2
+                         :template "template1"}
+                :update-result {:update-succeeded true}
+                :valid? true})
+             (update-dynamic-clusters nil nil
+                                      {"a"
+                                       {:a :a :template "template1" :ca-cert 2 :base-path 2}
+                                       "current"
+                                       {:a :b :state :running :ca-cert 1 :base-path 1}} false))))
+    (testing "single and multiple"
+      (is (thrown? AssertionError (update-dynamic-clusters nil {:a :a :template "template1"} {"a" {:a :a :template "template1"}} false))))
+    (testing "errors"
+      (is (= '({:changed? true
+                :cluster-name nil
+                :config {:a :a
+                         :template "template1"}
+                :insert? true
+                :update-result {:update-succeeded true}
+                :valid? true}
+               {:changed? true
+                :cluster-name "bad1"
+                :insert? true
+                :config {:name "bad1"}
+                :reason "Attempting to create cluster with unknown template: "
+                :update-result nil
+                :valid? false}
+               {:changed? true
+                :cluster-name nil
+                :reason "Attempting to change something other than state when force? is false. Diff is ({:a :b} {:a :a} {:base-path 1, :ca-cert 1})"
+                :update? true
+                :update-result nil
+                :config {:a :a
+                         :base-path 1
+                         :ca-cert 1
+                         :state :running}
+                :valid? false})
+             (update-dynamic-clusters nil nil {"a" {:a :a :template "template1"}
+                                               "bad1" {:name "bad1"}
+                                               "current" {:a :a :state :running :ca-cert 1 :base-path 1}} false))))))
 
 (deftest test-add-config
   (let [uri "datomic:mem://test-compute-cluster-config"
