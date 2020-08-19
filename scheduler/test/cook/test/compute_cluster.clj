@@ -17,6 +17,7 @@
   (:require [clojure.test :refer :all]
             [cook.compute-cluster :refer :all]
             [cook.config :as config]
+            [cook.kubernetes.compute-cluster :as kcc]
             [cook.test.testutil :refer [create-dummy-job-with-instances restore-fresh-database!]]
             [datomic.api :as d]
             [plumbing.core :refer [map-vals]]))
@@ -405,40 +406,170 @@
                              :base-path "both5-base-path"}}
                   nil))))))
 
-(def cluster-factory-fn-invocations-atom (atom []))
 (defn cluster-factory-fn
-  [compute-cluster-config _]
+  [{:keys [name
+           state
+           state-locked?]
+    :as compute-cluster-config} _]
   (when (= "fail" (:name compute-cluster-config)) (throw (ex-info "fail" {})))
-  (swap! cluster-factory-fn-invocations-atom conj compute-cluster-config)
-  {:cluster-of compute-cluster-config})
+  (let [compute-cluster (reify kcc/->KubernetesComputeCluster nil
+                                                        name
+                                                        nil
+                                                        nil
+                                                        (atom {})
+                                                        (atom {})
+                                                        (atom {})
+                                                        (atom {})
+                                                        (atom {})
+                                                        (atom {})
+                                                        (atom {})
+                                                        (atom nil)
+                                                        nil
+                                                        nil
+                                                        nil
+                                                        nil
+                                                        nil
+                                                        nil
+                                                        compute-cluster-config
+                                                        (atom state)
+                                                        (atom state-locked?))]
+    (register-compute-cluster! compute-cluster)
+    compute-cluster))
+
 (def initialize-cluster-fn-invocations-atom (atom []))
+
 (deftest test-add-new-cluster!
   (with-redefs [config/compute-cluster-templates
-                (constantly {"template1" {:a :bb
-                                          :c :dd
+                (constantly {"template1" {:config {:a :bb :c :dd}
+                                          :e :ff
                                           :factory-fn 'cook.test.compute-cluster/cluster-factory-fn}})
-                initialize-cluster (fn [cluster _] (swap! initialize-cluster-fn-invocations-atom conj cluster))]
+                kcc/initialize-cluster (fn [cluster _] (println "wtf") (swap! initialize-cluster-fn-invocations-atom conj cluster))]
     (testing "normal add"
-      (reset! cluster-factory-fn-invocations-atom [])
-      (reset! initialize-cluster-fn-invocations-atom [])
-      (deliver exit-code-syncer-state-promise nil)
-      (deliver scheduler-promise nil)
-      (is (= {:update-succeeded true} (add-new-cluster! {:a :a :template "template1"})))
-      (is (= [{:a :a :template "template1"}] @cluster-factory-fn-invocations-atom))
-      (is (= [{:cluster-of {:a :a :template "template1"}}] @initialize-cluster-fn-invocations-atom)))
+      (let [uri "datomic:mem://test-compute-cluster-config"
+            conn (restore-fresh-database! uri)]
+        (reset! initialize-cluster-fn-invocations-atom [])
+        (deliver exit-code-syncer-state-promise nil)
+        (deliver scheduler-promise nil)
+        (is (= {} (db-config-ents (d/db conn))))
+        (is (= {} (in-mem-configs)))
+        (is (= {:update-succeeded true}
+               (add-new-cluster! conn
+                                 {:a :a
+                                  :name "name"
+                                  :template "template1"
+                                  :base-path "base-path"
+                                  :ca-cert "ca-cert"
+                                  :state :running
+                                  :state-locked? true})))
+        (is (= [{:cluster-of {:a :a
+                              :base-path "base-path"
+                              :c :dd
+                              :ca-cert "ca-cert"
+                              :name "name"
+                              :state :running
+                              :state-locked? true
+                              :template "template1"}}]
+               @initialize-cluster-fn-invocations-atom))
+        (is (= {:base-path "base-path"
+                :ca-cert "ca-cert"
+                :name "name"
+                :state :running
+                :state-locked? true
+                :template "template1"}
+               (-> (db-config-ents (d/db conn)) (get "name") compute-cluster-config-ent->compute-cluster-config)))
+        (is (= {"name" {:base-path "base-path"
+                        :ca-cert "ca-cert"
+                        :name "name"
+                        :state :running
+                        :state-locked? true
+                        :template "template1"}} (in-mem-configs)))))
     (testing "exception"
-      (reset! cluster-factory-fn-invocations-atom [])
-      (reset! initialize-cluster-fn-invocations-atom [])
-      (deliver exit-code-syncer-state-promise nil)
-      (deliver scheduler-promise nil)
-      (is (= {:error-message "clojure.lang.ExceptionInfo: fail {}"
-              :update-succeeded false}
-             (add-new-cluster! {:name "fail" :a :a :template "template1"})))
-      (is (= [] @cluster-factory-fn-invocations-atom))
-      (is (= [] @initialize-cluster-fn-invocations-atom)))))
+      (let [uri "datomic:mem://test-compute-cluster-config"
+            conn (restore-fresh-database! uri)]
+        (reset! initialize-cluster-fn-invocations-atom [])
+        (deliver exit-code-syncer-state-promise nil)
+        (deliver scheduler-promise nil)
+        (is (= {} (db-config-ents (d/db conn))))
+        (is (= {} (in-mem-configs)))
+        (is (= {:error-message "clojure.lang.ExceptionInfo: fail {}"
+                :update-succeeded false}
+               (add-new-cluster! nil {:name "fail" :a :a :template "template1"})))
+        (is (= [] @initialize-cluster-fn-invocations-atom))
+        (is (= {} (db-config-ents (d/db conn))))
+        (is (= {} (in-mem-configs)))))))
 
 (deftest test-update-cluster!
-  (is (= {:update-succeeded true} (update-cluster! {:a :a :template "template1"}))))
+  (testing "normal insert"
+    (let [uri "datomic:mem://test-compute-cluster-config"
+          conn (restore-fresh-database! uri)]
+      (reset! initialize-cluster-fn-invocations-atom [])
+      (deliver exit-code-syncer-state-promise nil)
+      (deliver scheduler-promise nil)
+      (is (= {} (db-config-ents (d/db conn))))
+      (is (= {} (in-mem-configs)))
+      (with-redefs [config/compute-cluster-templates
+                    (constantly {"template1" {:config {:a :bb :c :dd}
+                                              :e :ff
+                                              :factory-fn 'cook.test.compute-cluster/cluster-factory-fn}})
+                    initialize-cluster (fn [cluster _] (swap! initialize-cluster-fn-invocations-atom conj cluster))]
+        (is (= {:update-succeeded true}
+               (add-new-cluster! conn
+                                 {:a :a
+                                  :name "name"
+                                  :template "template1"
+                                  :base-path "base-path"
+                                  :ca-cert "ca-cert"
+                                  :state :running
+                                  :state-locked? true}))))
+      (is (= {:base-path "base-path"
+              :ca-cert "ca-cert"
+              :name "name"
+              :state :running
+              :state-locked? true
+              :template "template1"}
+             (-> (db-config-ents (d/db conn)) (get "name") compute-cluster-config-ent->compute-cluster-config)))
+      (is (= {"name" {:base-path "base-path"
+                      :ca-cert "ca-cert"
+                      :name "name"
+                      :state :running
+                      :state-locked? true
+                      :template "template1"}} (in-mem-configs)))
+      (is (= {:update-succeeded true}
+             (update-cluster! conn
+                              {:a :a
+                               :name "name"
+                               :template "template1"
+                               :base-path "base-path"
+                               :ca-cert "ca-cert"
+                               :state :draining
+                               :state-locked? true}
+                              (db-config-ents (d/db conn))
+                              (in-mem-configs))))
+      (is (= [{:cluster-of {:a :a
+                            :base-path "base-path"
+                            :c :dd
+                            :ca-cert "ca-cert"
+                            :name "name"
+                            :state :running
+                            :state-locked? true
+                            :template "template1"}}]
+             @initialize-cluster-fn-invocations-atom))
+      (is (= {:base-path "base-path"
+              :ca-cert "ca-cert"
+              :name "name"
+              :state :running
+              :state-locked? true
+              :template "template1"}
+             (-> (db-config-ents (d/db conn)) (get "name") compute-cluster-config-ent->compute-cluster-config)))
+      (is (= {} (in-mem-configs)))))
+  (testing "exceptions"
+    (reset! initialize-cluster-fn-invocations-atom [])
+    (deliver exit-code-syncer-state-promise nil)
+    (deliver scheduler-promise nil)
+    (is (= {:error-message "clojure.lang.ExceptionInfo: fail {}"
+            :update-succeeded false}
+           (update-cluster! nil {:name "fail" :a :a :template "template1"} nil nil)))
+    (is (= [] @initialize-cluster-fn-invocations-atom))))
 
 (deftest test-update-dynamic-clusters
   (with-redefs [d/db (fn [_])
@@ -449,8 +580,8 @@
                                           :c :dd
                                           :factory-fn 'cook.test.compute-cluster/cluster-factory-fn}})
                 compute-current-configs (fn [_ _] {"current" {:a :b :state :running :ca-cert 1 :base-path 1}})
-                add-new-cluster! (fn [config] (if (= "fail" (:name config)) {:update-succeeded false} {:update-succeeded true}))
-                update-cluster! (fn [config] {:update-succeeded true})]
+                add-new-cluster! (fn [_ config] (if (= "fail" (:name config)) {:update-succeeded false} {:update-succeeded true}))
+                update-cluster! (fn [_ config _ _] {:update-succeeded true})]
     (testing "single"
       (is (= '({:changed? true
                 :cluster-name nil

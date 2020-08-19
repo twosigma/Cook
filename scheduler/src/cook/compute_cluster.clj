@@ -233,7 +233,6 @@
             (#(for-map [[name cluster] %] name cluster)))
        (map-vals compute-cluster->compute-cluster-config)))
 
-
 (defn compute-current-configs
   "Synthesize the current view of cluster configurations by looking at the current configurations in the database
   and the current configurations in memory. Alert on any inconsistencies. In memory wins on inconsistencies."
@@ -365,7 +364,7 @@
 
 (defn add-new-cluster!
   "Add a new cluster from a dynamic cluster config"
-  [config]
+  [conn config]
   (try
     (let [config-from-template ((config/compute-cluster-templates) (:template config))
           factory-fn (:factory-fn config-from-template)
@@ -373,7 +372,10 @@
           config (merge (:config config-from-template) config)
           cluster (resolved config {:exit-code-syncer-state @exit-code-syncer-state-promise})]
       (initialize-cluster cluster (:pool-name->fenzo @scheduler-promise)))
-    ;TODO insert to db
+    (let [temp-db-id (d/tempid :db.part/user)]
+      @(d/transact
+         conn
+         [(assoc (compute-cluster-config->compute-cluster-config-ent config) :db/id temp-db-id)]))
     {:update-succeeded true}
     (catch Throwable t
       (log/error t "Failed to update cluster" config)
@@ -381,11 +383,27 @@
 
 (defn update-cluster!
   "Update a cluster with a dynamic cluster config"
-  [config]
-  ;TODO update in db
-  ;TODO  alert if db-id is nil and don't update
-  ;TODO update in mem
-  {:update-succeeded true})
+  [conn {:keys [name state state-locked?] :as config} current-db-config-ents current-in-mem-configs]
+  (try
+    (let [{:keys [state-atom state-locked?-atom] :as cluster} (@cluster-name->compute-cluster-atom name)
+          current-db-config-ent (current-db-config-ents name)
+          current-in-mem-config (current-in-mem-configs name)]
+      (when (and current-in-mem-config (not (and cluster state-atom state-locked?-atom)))
+        (throw (ex-info "We know an in-memory config but we don't know the corresponding in-memory cluster.
+        This should never happen, since cluster-name->compute-cluster-atom should be locked"
+                        {:current-in-mem-config current-in-mem-config
+                         :cluster cluster})))
+      (when (and state-atom state-locked?-atom)
+        (swap! state-atom state)
+        (swap! state-locked?-atom state-locked?))
+      (when current-db-config-ent
+        @(d/transact
+           conn
+           [(assoc (compute-cluster-config->compute-cluster-config-ent config) :db/id (:db/id current-db-config-ent))])))
+    {:update-succeeded true}
+    (catch Throwable t
+      (log/error t "Failed to update cluster" config)
+      {:update-succeeded false :error-message (.toString t)})))
 
 ; TODO make sure anything in "locking" path times out. like db calls
 ; TODO do alerts in callers of this function on return value
@@ -400,8 +418,9 @@
   (locking cluster-name->compute-cluster-atom
     (let [db (d/db conn)
           current-db-config-ents (db-config-ents db)
+          current-in-mem-configs (in-mem-configs)
           current-db-configs (map-vals compute-cluster-config-ent->compute-cluster-config current-db-config-ents)
-          current-configs (compute-current-configs current-db-configs (in-mem-configs))
+          current-configs (compute-current-configs current-db-configs current-in-mem-configs)
           new-configs' (cond-> (or new-configs current-configs) new-config (assoc (:name new-config) new-config))
           updates (compute-config-updates db current-configs new-configs' force?)]
       (log/info "Updating dynamic clusters." {:current-configs current-configs :new-config new-config :new-configs new-configs :force? force? :updates updates})
@@ -411,6 +430,6 @@
                      :update-result
                      (when valid?
                        (cond
-                         insert? (add-new-cluster! config)
-                         update? (update-cluster! config))))))
+                         insert? (add-new-cluster! conn config)
+                         update? (update-cluster! conn config current-db-config-ents current-in-mem-configs))))))
            doall))))
