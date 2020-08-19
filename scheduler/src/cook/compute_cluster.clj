@@ -394,8 +394,8 @@
                         {:current-in-mem-config current-in-mem-config
                          :cluster cluster})))
       (when (and state-atom state-locked?-atom)
-        (swap! state-atom state)
-        (swap! state-locked?-atom state-locked?))
+        (reset! state-atom state)
+        (reset! state-locked?-atom state-locked?))
       (when current-db-config-ent
         @(d/transact
            conn
