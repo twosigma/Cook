@@ -27,7 +27,7 @@
            (java.nio.charset StandardCharsets)
            (java.io ByteArrayInputStream File FileInputStream InputStreamReader)
            (java.util.concurrent Executors ExecutorService ScheduledExecutorService TimeUnit)
-           (java.util UUID)
+           (java.util Base64 UUID)
            (okhttp3 OkHttpClient$Builder)))
 
 (defn schedulable-node-filter
@@ -569,7 +569,7 @@
     ; Loading ssl-cert-path must be last SSL operation we do in setting up API Client. API bug.
     ; See explanation in comments in https://github.com/kubernetes-client/java/pull/200
     (when (some? ca-cert)
-      (.setSslCaCert api-client (-> (.getBytes ca-cert) (ByteArrayInputStream.))))
+      (.setSslCaCert api-client (-> (Base64/getDecoder) (.decode ca-cert) (ByteArrayInputStream.))))
     (when (some? ca-cert-path)
       (.setSslCaCert api-client
                      (FileInputStream. (File. ca-cert-path))))
@@ -593,7 +593,6 @@
   [{:keys [base-path
            bearer-token-refresh-seconds
            ca-cert
-           ;TODO temp hack
            ca-cert-path
            ^String config-file
            launch-task-num-threads
