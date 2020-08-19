@@ -558,7 +558,7 @@
                                   ; don't need the functionality. But we need to set the file anyways
                                   ; to avoid a NPE.
                                   (.setFile kubeconfig (File. config-file))
-                                  (.setContext kubeconfig "kdft1")
+                                  (.setContext kubeconfig "kord2")
                                   (Config/fromConfig kubeconfig))
                                 (ApiClient.))
         ; Reset to a more sane timeout from the default 10 seconds.
