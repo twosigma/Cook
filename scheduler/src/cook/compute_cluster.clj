@@ -455,3 +455,10 @@
                         (map #(let [config (compute-cluster->compute-cluster-config %)]
                                 (assoc config :compute-cluster-starting-config (:compute-cluster-starting-config %)))))
    :db-configs (->> (db-config-ents (d/db conn)) vals (map compute-cluster-config-ent->compute-cluster-config))})
+
+(defn delete-compute-cluster
+  "Delete a dynamic compute clusters from the database."
+  [conn {:keys [name]}]
+  (d/transact
+    conn
+    [[:db.fn/retractEntity [:compute-cluster-config/name name]]]))

@@ -57,6 +57,7 @@
                :ca-cert "ca-cert"
                :state :running
                :state-locked? true})
+        _ (is (= {} (db-config-ents (d/db conn))))
         tempids (-> @(d/transact conn [(assoc ent :db/id temp-db-id)]) :tempids)
         db (d/db conn)]
     (is (= {"name" {:db/id (d/resolve-tempid db tempids temp-db-id)
@@ -693,3 +694,36 @@
                                                                  :state-locked? false
                                                                  :template "template"}})}
            (get-compute-clusters nil)))))
+
+(deftest test-delete-compute-cluster
+  (let [uri "datomic:mem://test-compute-cluster-config"
+        conn (restore-fresh-database! uri)
+        temp-db-id (d/tempid :db.part/user)
+        ent (compute-cluster-config->compute-cluster-config-ent
+              {:name "name"
+               :template "template"
+               :base-path "base-path"
+               :ca-cert "ca-cert"
+               :state :running
+               :state-locked? true})
+        _ (is (= {} (db-config-ents (d/db conn))))
+        tempids (-> @(d/transact conn [(assoc ent :db/id temp-db-id)]) :tempids)
+        db (d/db conn)]
+    (is (= {"name" {:db/id (d/resolve-tempid db tempids temp-db-id)
+                    :compute-cluster-config/name "name"
+                    :compute-cluster-config/base-path "base-path"
+                    :compute-cluster-config/ca-cert "ca-cert"
+                    :compute-cluster-config/state :compute-cluster-config.state/running
+                    :compute-cluster-config/state-locked? true
+                    :compute-cluster-config/template "template"}}
+           (map-vals
+             #(select-keys % [:db/id
+                              :compute-cluster-config/name
+                              :compute-cluster-config/base-path
+                              :compute-cluster-config/ca-cert
+                              :compute-cluster-config/state
+                              :compute-cluster-config/state-locked?
+                              :compute-cluster-config/template])
+             (db-config-ents (d/db conn)))))
+    (is (delete-compute-cluster conn {:name "name"}))
+    (is (= {} (db-config-ents (d/db conn))))))
