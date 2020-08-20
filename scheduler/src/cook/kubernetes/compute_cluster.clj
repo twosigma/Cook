@@ -646,7 +646,7 @@
                                                     synthetic-pods
                                                     node-blocklist-labels
                                                     launch-task-executor-service
-                                                    compute-cluster-config
+                                                    (assoc compute-cluster-config :factory-fn 'cook.kubernetes.compute-cluster/factory-fn)
                                                     (atom state)
                                                     (atom state-locked?))]
     (cc/register-compute-cluster! compute-cluster)

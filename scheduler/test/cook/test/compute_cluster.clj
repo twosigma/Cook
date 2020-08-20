@@ -19,7 +19,7 @@
             [cook.config :as config]
             [cook.test.testutil :refer [create-dummy-job-with-instances restore-fresh-database!]]
             [datomic.api :as d]
-            [plumbing.core :refer [map-vals]]))
+            [plumbing.core :refer [map-vals map-from-vals]]))
 
 (deftest test-diff-map-keys
   (is (= [#{:b} #{:c} #{:a :d}]
@@ -77,18 +77,20 @@
              (db-config-ents (d/db conn)))))))
 
 (deftest test-compute-cluster->compute-cluster-config
-  (let [cluster {:compute-cluster-starting-config {:name "name"
+  (let [cluster {:name "name"
+                 :compute-cluster-starting-config {:factory-fn 'cook.kubernetes.compute-cluster/factory-fn
+                                                   :name "name-starting"
                                                    :template "template"
                                                    :base-path "base-path"
                                                    :ca-cert "ca-cert"
                                                    :state :running
                                                    :state-locked? false}
-                 :state-atom (atom :delted)
+                 :state-atom (atom :deleted)
                  :state-locked?-atom (atom true)}]
     (is (= {:base-path "base-path"
             :ca-cert "ca-cert"
             :name "name"
-            :state :delted
+            :state :deleted
             :state-locked? true
             :template "template"}
            (compute-cluster->compute-cluster-config cluster)))))
@@ -96,22 +98,40 @@
   {"name" {:base-path "base-path"
            :ca-cert "ca-cert"
            :name "name"
-           :state :delted
+           :state :deleted
            :state-locked? true
            :template "template"}})
+(def sample-clusters
+  {"name" {:name "name"
+           :compute-cluster-starting-config {:factory-fn 'cook.kubernetes.compute-cluster/factory-fn
+                                             :name "name"
+                                             :template "template"
+                                             :base-path "base-path"
+                                             :ca-cert "ca-cert"
+                                             :state :running
+                                             :state-locked? false}
+           :state-atom (atom :deleted)
+           :state-locked?-atom (atom true)}
+   "name-no-state" {:name "name"
+                    :compute-cluster-starting-config {:factory-fn 'cook.kubernetes.compute-cluster/factory-fn
+                                                      :name "name"
+                                                      :template "template"
+                                                      :base-path "base-path"
+                                                      :ca-cert "ca-cert"
+                                                      :state :running
+                                                      :state-locked? false}}})
 (deftest test-in-mem-configs
   (reset! cluster-name->compute-cluster-atom {})
   (is (= {} (in-mem-configs)))
-  (reset! cluster-name->compute-cluster-atom
-          {"name" {:compute-cluster-starting-config {:name "name"
-                                                     :template "template"
-                                                     :base-path "base-path"
-                                                     :ca-cert "ca-cert"
-                                                     :state :running
-                                                     :state-locked? false}
-                   :state-atom (atom :delted)
-                   :state-locked?-atom (atom true)}})
+  (reset! cluster-name->compute-cluster-atom sample-clusters)
   (is (= expected-in-mem-config (in-mem-configs))))
+
+(deftest test-get-dynamic-clusters
+  (reset! cluster-name->compute-cluster-atom {})
+  (is (= {} (in-mem-configs)))
+  (reset! cluster-name->compute-cluster-atom sample-clusters)
+  (is (= (->> [(sample-clusters "name")] (map-from-vals #(-> % :name)))
+         (get-dynamic-clusters))))
 
 (deftest test-compute-current-configs
   (is (= {:a {:a :a}
@@ -135,7 +155,7 @@
   (is (= {"name" {:base-path "base-path"
                   :ca-cert "ca-cert"
                   :name "name"
-                  :state :delted
+                  :state :deleted
                   :state-locked? true
                   :template "template"}} (compute-current-configs {} expected-in-mem-config))))
 
@@ -422,7 +442,7 @@
   (let [backing-map {:name name
                      :state-atom (atom state)
                      :state-locked?-atom (atom state-locked?)
-                     :compute-cluster-starting-config compute-cluster-config}
+                     :compute-cluster-starting-config (assoc compute-cluster-config :factory-fn 'cook.kubernetes.compute-cluster/factory-fn)}
         compute-cluster (reify ComputeCluster
                           (compute-cluster-name [cluster] (:name cluster))
                           (initialize-cluster [cluster _]
@@ -644,7 +664,6 @@
                                                "bad1" {:name "bad1"}
                                                "current" {:name "current" :a :a :state :running :ca-cert 1 :base-path 1}} false))))))
 
-
 (deftest testing-get-compute-clusters
   (with-redefs [d/db (fn [_])
                 db-config-ents (fn [_] {"name" {:compute-cluster-config/name "name"
@@ -653,7 +672,7 @@
                                                 :compute-cluster-config/state :compute-cluster-config.state/running
                                                 :compute-cluster-config/state-locked? true
                                                 :compute-cluster-config/template "template"}})
-                in-mem-configs (constantly expected-in-mem-config)]
+                get-dynamic-clusters (constantly (->> [(sample-clusters "name")] (map-from-vals #(-> % :name))))]
     (is (= {:db-configs '({:base-path "base-path"
                            :ca-cert "ca-cert"
                            :name "name"
@@ -663,10 +682,11 @@
             :in-mem-configs '({:base-path "base-path"
                                :ca-cert "ca-cert"
                                :name "name"
-                               :state :delted
+                               :state :deleted
                                :state-locked? true
                                :template "template"
-                               :compute-cluster-starting-config {:base-path "base-path"
+                               :compute-cluster-starting-config {:factory-fn cook.kubernetes.compute-cluster/factory-fn
+                                                                 :base-path "base-path"
                                                                  :ca-cert "ca-cert"
                                                                  :name "name"
                                                                  :state :running

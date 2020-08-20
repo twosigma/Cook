@@ -218,8 +218,8 @@
 ;TODO: when all clusters have state, change the ComputeCluster protocol to add state operations
 (defn compute-cluster->compute-cluster-config
   "Calculate dynamic cluster configuration from a compute cluster"
-  [{:keys [state-atom state-locked?-atom]
-    {:keys [name template base-path ca-cert]} :compute-cluster-starting-config}]
+  [{:keys [state-atom state-locked?-atom name]
+    {:keys [template base-path ca-cert]} :compute-cluster-starting-config :as www}]
   {:name name
    :template template
    :base-path base-path
@@ -450,7 +450,8 @@
   "Get the current dynamic compute clusters. Returns both the in-memory cluster configs and the configurations in the database.
   The configurations in the database might be different and will not take effect until restart."
   [conn]
-  {:in-mem-configs (->> (get-dynamic-clusters) vals
+  {:in-mem-configs (->> (get-dynamic-clusters)
+                        vals
                         (map #(let [config (compute-cluster->compute-cluster-config %)]
                                 (assoc config :compute-cluster-starting-config (:compute-cluster-starting-config %)))))
    :db-configs (->> (db-config-ents (d/db conn)) vals (map compute-cluster-config-ent->compute-cluster-config))})
