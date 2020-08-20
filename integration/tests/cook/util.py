@@ -1822,8 +1822,7 @@ def using_mesos():
 
 
 def has_one_agent():
-    #return node_count() == 1
-    return True
+    return node_count() == 1
 
 
 def supports_exit_code():
