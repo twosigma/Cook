@@ -3091,6 +3091,19 @@
     {:allowed-methods [:get]
      :handle-ok (partial read-compute-clusters conn)}))
 
+(defn delete-compute-cluster!
+  [conn ctx]
+  (cc/delete-compute-cluster conn (-> ctx :request :body-params)))
+
+(defn delete-compute-clusters-handler
+  [conn is-authorized-fn leadership-atom leader-selector]
+  (base-compute-cluster-handler
+    is-authorized-fn
+    leadership-atom
+    leader-selector
+    {:allowed-methods [:delete]
+     :delete! (partial delete-compute-cluster! conn)}))
+
 (defn streaming-json-encoder
   "Takes as input the response body which can be converted into JSON,
   and returns a function which takes a ServletResponse and writes the JSON
@@ -3481,7 +3494,15 @@
                                                    leadership-atom
                                                    leader-selector)
             :responses {200 {:description "TODO(DPO) GET 201 description"}
-                        403 {:description "TODO(DPO) GET 403 description"}}}}))
+                        403 {:description "TODO(DPO) GET 403 description"}}}
+           :delete
+           {:summary "TODO(DPO) DELETE summary"
+            :handler (delete-compute-clusters-handler conn
+                                                      is-authorized-fn
+                                                      leadership-atom
+                                                      leader-selector)
+            :responses {200 {:description "TODO(DPO) DELETE 200 description"}
+                        403 {:description "TODO(DPO) DELETE 403 description"}}}}))
 
       (ANY "/queue" []
         (waiting-jobs conn mesos-pending-jobs-fn is-authorized-fn leadership-atom leader-selector))

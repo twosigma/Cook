@@ -351,6 +351,7 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
    ;; Dynamic compute cluster configuration
    {:db/id (d/tempid :db.part/db)
     :db/ident :compute-cluster-config/name
+    :db/unique :db.unique/identity
     :db/valueType :db.type/string
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db
