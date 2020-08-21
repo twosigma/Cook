@@ -429,7 +429,7 @@ if __name__ == '__main__':
         self.assertEqual(0, cp.returncode, cp.stderr)
 
     def test_quoting(self):
-        cp, uuids = cli.submit('echo "Hello; exit 1"', self.cook_url)
+        cp, uuids = cli.submit('echo "Hello; exit 1"', self.cook_url, submit_flags=f'--max-retries 5')
         self.assertEqual(0, cp.returncode, cp.stderr)
         cp = cli.wait(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
