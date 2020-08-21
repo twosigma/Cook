@@ -21,6 +21,7 @@
             [clj-time.periodic :as tp]
             [clojure.core.async :as async]
             [clojure.core.cache :as cache]
+            [clojure.data :as data]
             [clojure.java.shell :as sh]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
@@ -1022,3 +1023,8 @@
       (let [prev-k1 (k1-extract-fn prev-item)
             prev-k2 (k2-extract-fn prev-item)]
         (swap! state-atom (fn [m] (dissoc-in m [prev-k1 prev-k2])))))))
+
+(defn diff-map-keys
+  "Return triple of keys from two maps: [only in left, only in right, in both]"
+  [left right]
+  (data/diff (set (keys left)) (set (keys right))))

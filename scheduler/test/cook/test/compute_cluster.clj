@@ -22,15 +22,6 @@
             [plumbing.core :refer [map-vals map-from-vals]])
   (:import (clojure.lang ExceptionInfo)))
 
-(deftest test-diff-map-keys
-  (is (= [#{:b} #{:c} #{:a :d}]
-         (diff-map-keys {:a {:a :a}
-                         :b {:b :b}
-                         :d {:d :d}}
-                        {:a {:a :a}
-                         :c {:c :c}
-                         :d {:d :e}}))))
-
 (deftest test-datomic-entity-conversion
   (let [config {:name "name"
                 :template "template"
