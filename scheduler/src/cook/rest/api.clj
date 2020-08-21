@@ -19,6 +19,7 @@
             [clj-time.coerce :as tc]
             [clj-time.core :as t]
             [clj-time.format :as tf]
+            [clojure.core.async :as async]
             [clojure.set :as set]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
@@ -963,7 +964,12 @@
                                                  (when cache {:cache? cache})
                                                  (when extract {:extract? extract})))
                                         uris)})
-                 (when labels {:labels (walk/stringify-keys labels)})
+                 ; We need to convert job label keys to strings, but
+                 ; walk/stringify-keys removes the namespace, which would mean
+                 ; that jobs submitted with a label key like "platform/thing"
+                 ; would lose the "platform/" part. Instead we just call str and
+                 ; remove the leading ':'.
+                 (when labels {:labels (pc/map-keys #(-> % str (subs 1)) labels)})
                  ;; Rest framework keywordifies all keys, we want these to be strings!
                  (when constraints {:constraints constraints})
                  (when group-uuid {:group group-uuid})
@@ -1751,11 +1757,17 @@
   {:can-post-to-gone?
    (constantly true)
 
+   :existed?
+   (constantly true)
+
+   ;; triggers path for moved-temporarily?
+   :exists? (fn [_] @leadership-atom)
+
    :handle-moved-temporarily
    (fn redirect-to-leader-handle-moved-temporarily
      [ctx]
      {:location (:location ctx)
-      :message "redirecting to master"})
+      :message "redirecting to leader"})
 
    :handle-service-not-available
    (fn redirect-to-leader-handle-service-not-available
@@ -3101,6 +3113,53 @@
     {:allowed-methods [:delete]
      :delete! (partial delete-compute-cluster! conn)}))
 
+
+;;
+;; /shutdown-leader
+;;
+
+(def ShutdownLeaderRequest
+  {:reason s/Str})
+
+(defn check-shutdown-leader-allowed
+  [is-authorized-fn ctx]
+  (let [request-user (get-in ctx [:request :authorization/user])
+        impersonator (get-in ctx [:request :authorization/impersonator])
+        request-method (get-in ctx [:request :request-method])]
+    (if-not (is-authorized-fn request-user
+                              request-method
+                              impersonator
+                              {:owner ::system :item :shutdown-leader})
+      [false {::error
+              (str "You are not authorized to shutdown the leader")}]
+      true)))
+
+(defn shutdown!
+  []
+  (async/thread
+    (log/info "Sleeping for 5 seconds before exiting")
+    (Thread/sleep 5000)
+    (log/info "Exiting now")
+    (System/exit 0)))
+
+(defn post-shutdown-leader!
+  [ctx]
+  (let [reason (get-in ctx [:request :body-params :reason])
+        request-user (get-in ctx [:request :authorization/user])]
+    (log/info "Exiting due to /shutdown-leader request from" request-user "with reason:" reason)
+    (shutdown!)))
+
+(defn post-shutdown-leader-handler
+  [is-authorized-fn leadership-atom leader-selector]
+  (base-cook-handler
+    (merge
+      ;; only the leader handles shutdown-leader requests
+      (redirect-to-leader leadership-atom leader-selector)
+      {:allowed-methods [:post]
+       :allowed? (partial check-shutdown-leader-allowed is-authorized-fn)
+       :post-enacted? (constantly false)
+       :post! post-shutdown-leader!})))
+
 (defn streaming-json-encoder
   "Takes as input the response body which can be converted into JSON,
   and returns a function which takes a ServletResponse and writes the JSON
@@ -3431,6 +3490,21 @@
                               :description "The pools were returned."}}
              :get {:summary "Returns the pools."
                    :handler (pools-handler)}}))
+
+        (c-api/context
+          "/shutdown-leader" []
+          (c-api/resource
+            {:produces ["application/json"]
+
+             :post
+             {:summary "Shutdown the Cook leader"
+              :parameters {:body-params ShutdownLeaderRequest}
+              :handler (post-shutdown-leader-handler is-authorized-fn
+                                                     leadership-atom
+                                                     leader-selector)
+              :responses {202 {:description "The shutdown request was accepted."}
+                          307 {:description "Redirecting request to leader node."}
+                          400 {:description "Invalid request format."}}}}))
 
         (c-api/undocumented
           ;; internal api endpoints (don't include in swagger)
