@@ -3033,10 +3033,20 @@
 
 (defn create-compute-cluster!
   [conn ctx]
-  (let [result (cc/update-compute-clusters conn (-> ctx :request :body-params) nil true)]
+  (let [{:keys [name template base-path ca-cert state state-locked?] :as body-params} (-> ctx :request :body-params)
+        result (cc/update-compute-clusters
+                 conn
+                 {:name name
+                  :template template
+                  :base-path base-path
+                  :ca-cert ca-cert
+                  :state (keyword state)
+                  :state-locked? (boolean state-locked?)}
+                 nil
+                 true)]
     ; TODO replace with real result handling with error checks
     (log/info "Result of create-compute-cluster! REST API call"
-              {:input (-> ctx :request :body-params)
+              {:input body-params
                :result result})))
 
 (defn compute-cluster-exists?

@@ -693,7 +693,7 @@
               redirect-location (str sample-leader-base-url target-endpoint)]
           (is (= (:status update-resp) 307))
           (is (= (:location update-resp) redirect-location))
-          (is (= (:body update-resp) {:location redirect-location, :message "redirecting to master"})))))
+          (is (= (:body update-resp) {:location redirect-location, :message "redirecting to leader"})))))
 
     (testing "Valid progress update posted to leader results 202 Accepted"
       (with-redefs [api/streaming-json-encoder identity]
@@ -2305,7 +2305,16 @@
               {:keys [status] :as response} (handler request)]
           ; Assert that the request succeeded and that the pool in the database is pool-2
           (is (= 201 status) (str response))
-          (is (= "pool-2" (-> conn d/db (d/entity [:job/uuid job-uuid]) util/job->pool-name))))))))
+          (is (= "pool-2" (-> conn d/db (d/entity [:job/uuid job-uuid]) util/job->pool-name)))))
+
+      (testing "job labels with slashes are preserved"
+        (let [handler (api/create-jobs-handler conn task-constraints gpu-enabled? is-authorized-fn)
+              job-with-label (-> (minimal-job) (assoc :labels {:foo.bar/baz "qux"}))
+              request (-> (new-request) (assoc-in [:body-params :jobs] [job-with-label]))
+              job-uuid (-> request :body-params :jobs first :uuid)
+              {:keys [status]} (handler request)]
+          (is (= 201 status))
+          (is (= {"foo.bar/baz" "qux"} (-> conn d/db (d/entity [:job/uuid job-uuid]) util/job-ent->label))))))))
 
 (deftest test-validate-partitions
   (is (api/validate-partitions {:dataset {"foo" "bar"}}))
@@ -2405,52 +2414,104 @@
         (auth/admins-open-gets-allowed-users-auth
           #{admin-user} user verb object true))
       sample-leader-base-url "http://cook-scheduler.example:12321"
-      endpoint "/compute-clusters"]
+      endpoint "/shutdown-leader"]
 
-  (deftest test-create-compute-cluster
-    (let [conn (restore-fresh-database! "datomic:mem://test-create-compute-cluster")
+  (deftest test-shutdown-leader
+    (let [conn (restore-fresh-database! "datomic:mem://test-shutdown-leader")
           handler (basic-handler conn :is-authorized-fn is-authorized-fn)
-          name "test-name"
           request {:authorization/user admin-user
-                   :body-params {"base-path" "test-base-path"
-                                 "ca-cert" "test-ca-cert"
-                                 "name" name
-                                 "state" "running"
-                                 "template" "test-template"}
+                   :body-params {"reason" "test-reason"}
+                   :headers {"Content-Type" "application/json"}
                    :request-method :post
                    :scheme :http
                    :uri endpoint}]
 
-      (testing "successful insert"
-        (with-redefs [api/compute-cluster-exists? (constantly false)]
-          (let [{:keys [status] :as response} (handler request)]
-            (is (= 201 status) (str response)))))
+      (testing "successful shutdown"
+        (let [called-shutdown? (atom false)]
+          (with-redefs [api/shutdown! #(reset! called-shutdown? true)]
+            (let [{:keys [status]} (handler request)]
+              (is (= 202 status)))
+            (is (true? @called-shutdown?)))))
 
-      (testing "insert with existing name fails"
-        (with-redefs [api/compute-cluster-exists? (constantly true)]
-          (let [{:keys [status] :as response} (handler request)]
-            (is (= 409 status) (str response))
-            (is (= (str "Compute cluster with name " name " already exists")
-                   (-> response response->body-data (get "error")))))))
-
-      (testing "insert from non-admin fails"
+      (testing "request from non-admin fails"
         (let [request-from-non-admin (assoc request :authorization/user "non-admin")
               {:keys [status] :as response} (handler request-from-non-admin)]
           (is (= 403 status))
-          (is (= "You are not authorized to access compute cluster information"
+          (is (= "You are not authorized to shutdown the leader"
                  (-> response response->body-data (get "error"))))))
 
-      (testing "specifying state-locked? succeeds"
-        (with-redefs [api/compute-cluster-exists? (constantly false)]
-          (let [request-with-state-locked-false (assoc-in request [:body-params "state-locked?"] false)
-                {:keys [status]} (handler request-with-state-locked-false)]
-            (is (= 201 status)))))
-
       (testing "non-leader redirects"
-        (with-redefs [api/leader-selector->leader-url (constantly sample-leader-base-url)]
+        (with-redefs [api/leader-selector->leader-url (constantly sample-leader-base-url)
+                      api/shutdown! #(throw (ex-info "Unexpected shutdown on non-leader" {}))]
           (let [{:keys [location status]} (handler request :leader? false)]
             (is (= 307 status))
-            (is (= location (str sample-leader-base-url endpoint))))))))
+            (is (= location (str sample-leader-base-url endpoint))))))
+
+      (testing "no reason fails"
+        (with-redefs [api/shutdown! #(throw (ex-info "Unexpected shutdown with missing reason" {}))]
+          (let [request-with-no-reason (assoc request :body-params (-> request :body-params (dissoc "reason")))
+                {:keys [status] :as response} (handler request-with-no-reason)]
+            (is (= 400 status))
+            (is (= {"reason" "missing-required-key"}
+                   (-> response response->body-data (get "errors"))))))))))
+
+(let [admin-user "alice"
+      is-authorized-fn
+      (fn [user verb _ object]
+        (auth/admins-open-gets-allowed-users-auth
+          #{admin-user} user verb object true))
+      sample-leader-base-url "http://cook-scheduler.example:12321"
+      endpoint "/compute-clusters"]
+
+  (deftest test-create-compute-cluster
+    (with-redefs [config/compute-cluster-templates
+                  (constantly {"test-template" {:a :bb
+                                                :c :dd
+                                                :factory-fn 'cook.test.compute-cluster/cluster-factory-fn}})]
+      (let [conn (restore-fresh-database! "datomic:mem://test-create-compute-cluster")
+            handler (basic-handler conn :is-authorized-fn is-authorized-fn)
+            name "test-name"
+            request {:authorization/user admin-user
+                     :body-params {"base-path" "test-base-path"
+                                   "ca-cert" "test-ca-cert"
+                                   "name" name
+                                   "state" "running"
+                                   "template" "test-template"}
+                     :request-method :post
+                     :scheme :http
+                     :uri endpoint}]
+        (deliver cc/exit-code-syncer-state-promise nil)
+        (deliver cc/scheduler-promise nil)
+        (testing "successful insert"
+          (with-redefs [api/compute-cluster-exists? (constantly false)]
+            (let [{:keys [status] :as response} (handler request)]
+              (is (= 201 status) (str response)))))
+
+        (testing "insert with existing name fails"
+          (with-redefs [api/compute-cluster-exists? (constantly true)]
+            (let [{:keys [status] :as response} (handler request)]
+              (is (= 409 status) (str response))
+              (is (= (str "Compute cluster with name " name " already exists")
+                     (-> response response->body-data (get "error")))))))
+
+        (testing "insert from non-admin fails"
+          (let [request-from-non-admin (assoc request :authorization/user "non-admin")
+                {:keys [status] :as response} (handler request-from-non-admin)]
+            (is (= 403 status))
+            (is (= "You are not authorized to access compute cluster information"
+                   (-> response response->body-data (get "error"))))))
+
+        (testing "specifying state-locked? succeeds"
+          (with-redefs [api/compute-cluster-exists? (constantly false)]
+            (let [request-with-state-locked-false (assoc-in request [:body-params "state-locked?"] false)
+                  {:keys [status]} (handler request-with-state-locked-false)]
+              (is (= 201 status)))))
+
+        (testing "non-leader redirects"
+          (with-redefs [api/leader-selector->leader-url (constantly sample-leader-base-url)]
+            (let [{:keys [location status]} (handler request :leader? false)]
+              (is (= 307 status))
+              (is (= location (str sample-leader-base-url endpoint)))))))))
 
   (deftest test-read-compute-clusters
     (let [conn (restore-fresh-database! "datomic:mem://test-read-compute-clusters")
