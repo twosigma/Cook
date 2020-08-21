@@ -3060,10 +3060,7 @@
     (merge
       ;; only the leader handles compute-cluster requests
       (redirect-to-leader leadership-atom leader-selector)
-      {:allowed? (partial check-compute-cluster-allowed is-authorized-fn)
-       :existed? (constantly true)
-       ;; triggers path for moved-temporarily?
-       :exists? (fn [_] @leadership-atom)}
+      {:allowed? (partial check-compute-cluster-allowed is-authorized-fn)}
       resource-attrs)))
 
 (defn post-compute-clusters-handler
