@@ -170,6 +170,8 @@
                                       :framework-name (:framework-name mesos)}}]))
      :compute-cluster-templates (fnk [[:config {compute-cluster-templates {}}]]
                                   compute-cluster-templates)
+     :compute-cluster-update-options (fnk [[:config {compute-cluster-update-options {}}]]
+                                       compute-cluster-update-options)
      :cors-origins (fnk [[:config {cors-origins nil}]]
                      (map re-pattern (or cors-origins [])))
      :exit-code-syncer (fnk [[:config {exit-code-syncer nil}]]
@@ -624,6 +626,10 @@
 (defn compute-cluster-templates
   []
   (get-in config [:settings :compute-cluster-templates]))
+
+(defn compute-cluster-update-options
+  []
+  (get-in config [:settings :compute-cluster-update-options]))
 
 (defn kubernetes
   []

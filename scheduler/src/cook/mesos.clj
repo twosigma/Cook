@@ -36,7 +36,8 @@
             [metatransaction.utils :as dutils]
             [metrics.counters :as counters]
             [swiss.arrows :refer :all])
-  (:import (org.apache.curator.framework.recipes.leader LeaderSelector LeaderSelectorListener)
+  (:import (java.util.concurrent Executors ExecutorService ScheduledExecutorService TimeUnit)
+           (org.apache.curator.framework.recipes.leader LeaderSelector LeaderSelectorListener)
            (org.apache.curator.framework.state ConnectionState)))
 
 ;; ============================================================================
@@ -107,6 +108,21 @@
          :straggler-trigger-chan (prepare-trigger-chan (time/minutes timeout-interval-minutes))}
       update-interval-ms
       (assoc :update-data-local-costs-trigger-chan (prepare-trigger-chan (time/millis update-interval-ms))))))
+
+(def ^ScheduledExecutorService compute-cluster-config-updater-executor (Executors/newSingleThreadScheduledExecutor))
+
+(defn make-compute-cluster-config-updater-task
+  "Create a Runnable that periodically checks for updated compute cluster configurations"
+  [conn new-cluster-configurations-fn]
+  (let [resolved (cook.util/lazy-load-var new-cluster-configurations-fn)]
+    (reify
+      Runnable
+      (run [_]
+        (try
+          (let [new-cluster-configurations (resolved)
+                updates (cc/update-compute-clusters conn nil new-cluster-configurations false)])
+          (catch Exception ex
+            (log/error ex "Failed to get compute cluster configurations")))))))
 
 (defn start-leader-selector
   "Starts a leader elector. When the process is leader, it starts the mesos
@@ -205,8 +221,8 @@
                                     (when (seq optimizer-config)
                                       (cook.scheduler.optimizer/start-optimizer-cycles! (fn get-queue []
                                                                                       ;; TODO Use filter of queue that scheduler uses to filter to considerable.
-                                                                                      ;;      Specifically, think about filtering to jobs that are waiting and 
-                                                                                      ;;      think about how to handle quota 
+                                                                                      ;;      Specifically, think about filtering to jobs that are waiting and
+                                                                                      ;;      think about how to handle quota
                                                                                       @pool-name->pending-jobs-atom)
                                                                                     (fn get-running []
                                                                                       (cook.tools/get-running-task-ents (d/db mesos-datomic-conn)))
@@ -220,6 +236,15 @@
                                     (counters/inc! mesos-leader)
                                     (async/tap mesos-datomic-mult datomic-report-chan)
                                     (cook.scheduler.scheduler/monitor-tx-report-queue datomic-report-chan mesos-datomic-conn)
+                                    (cc/update-compute-clusters mesos-datomic-conn nil
+                                                                (cc/db-config-ents->configs (cc/db-config-ents (d/db mesos-datomic-conn)))
+                                                                false)
+                                    (when-let [{:keys [cluster-update-period-seconds new-cluster-configurations-fn]} (config/compute-cluster-update-options)]
+                                      (.scheduleAtFixedRate compute-cluster-config-updater-executor
+                                                            (make-compute-cluster-config-updater-task mesos-datomic-conn new-cluster-configurations-fn)
+                                                            cluster-update-period-seconds ;initial delay
+                                                            cluster-update-period-seconds ;period
+                                                            TimeUnit/SECONDS))
                                     ; Curator expects takeLeadership to block until voluntarily surrendering leadership.
                                     ; We need to block here until we're willing to give up leadership.
                                     ;
