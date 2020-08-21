@@ -142,6 +142,7 @@
                   "EXECUTOR_PROGRESS_OUTPUT_FILE"
                   "FOO"
                   "HOME"
+                  "HOST_IP"
                   "MESOS_DIRECTORY"
                   "MESOS_SANDBOX"
                   "SIDECAR_WORKDIR"]

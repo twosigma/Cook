@@ -18,10 +18,11 @@
            (io.kubernetes.client.openapi ApiClient ApiException JSON)
            (io.kubernetes.client.openapi.apis CoreV1Api)
            (io.kubernetes.client.openapi.models
-             V1Affinity V1Container V1ContainerPort V1ContainerState V1ContainerStatus V1DeleteOptions V1DeleteOptionsBuilder
-             V1EmptyDirVolumeSource V1EnvVar V1Event V1HostPathVolumeSource V1HTTPGetAction V1Node V1NodeAffinity V1NodeSelector
-             V1NodeSelectorRequirement V1NodeSelectorTerm V1ObjectMeta V1ObjectReference V1Pod V1PodCondition V1PodSecurityContext
-             V1PodSpec V1PodStatus V1Probe V1ResourceRequirements V1Toleration V1Volume V1VolumeBuilder V1VolumeMount)
+             V1Affinity V1Container V1ContainerPort V1ContainerState V1ContainerStatus V1DeleteOptions
+             V1DeleteOptionsBuilder V1EmptyDirVolumeSource V1EnvVar V1EnvVarSource V1Event V1HostPathVolumeSource
+             V1HTTPGetAction V1ObjectFieldSelector V1Node V1NodeAffinity V1NodeSelector V1NodeSelectorRequirement
+             V1NodeSelectorTerm V1ObjectMeta V1ObjectReference V1Pod V1PodCondition V1PodSecurityContext V1PodSpec
+             V1PodStatus V1Probe V1ResourceRequirements V1Toleration V1Volume V1VolumeBuilder V1VolumeMount)
            (io.kubernetes.client.util Watch)
            (java.net SocketTimeoutException)
            (java.util.concurrent Executors ExecutorService)))
@@ -582,6 +583,18 @@
     (.setName (str var-name))
     (.setValue (str var-value))))
 
+(def hostIpEnvVar
+  (doto
+    (V1EnvVar.)
+    (.setName "HOST_IP")
+    (.valueFrom
+      (doto
+        (V1EnvVarSource.)
+        (.fieldRef
+          (doto
+            (V1ObjectFieldSelector.)
+            (.fieldPath "status.hostIP")))))))
+
 (defn make-filtered-env-vars
   "Create a Kubernetes API compatible var list from an environment vars map,
    with variables filtered based on disallowed-var-names in the Kubernetes config."
@@ -590,7 +603,8 @@
         disallowed-var? #(contains? disallowed-var-names (key %))]
     (->> env
          (remove disallowed-var?)
-         (mapv #(apply make-env %)))))
+         (mapv #(apply make-env %))
+         (cons hostIpEnvVar))))
 
 (defn- add-as-decimals
   "Takes two doubles and adds them as decimals to avoid floating point error. Kubernetes will not be able to launch a

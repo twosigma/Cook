@@ -3330,3 +3330,13 @@ class CookTest(util.CookTest):
         self.assertEqual('success', job['state'], job)
         self.assertLessEqual(1, len(job['instances']))
         self.assertIn('success', [i['status'] for i in job['instances']], job)
+
+    @unittest.skipUnless(util.using_kubernetes(), 'Test requires kubernetes')
+    def test_host_ip(self):
+        command = '[ ! -z "$HOST_IP" ] && [ ${#HOST_IP} -ge 7 ]'
+        job_uuid, resp = util.submit_job(self.cook_url, command=command, max_retries=5)
+        self.assertEqual(resp.status_code, 201, msg=resp.content)
+        job = util.wait_for_job_in_statuses(self.cook_url, job_uuid, ['completed'])
+        self.assertEqual('success', job['state'], job)
+        self.assertLessEqual(1, len(job['instances']))
+        self.assertIn('success', [i['status'] for i in job['instances']], job)
