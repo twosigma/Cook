@@ -252,7 +252,7 @@
                   first)]
           (is (= api/k8s-hostname-label (.getKey node-selector-requirement)))
           (is (= "NotIn" (.getOperator node-selector-requirement)))
-          (is (= ["test-host-1" "test-host-2"] (.getValues node-selector-requirement))))))
+          (is (= #{"test-host-1" "test-host-2"} (set (.getValues node-selector-requirement)))))))
 
     (testing "synthetic pods have safe-to-evict annotation"
       (let [job-uuid-1 (str (UUID/randomUUID))
