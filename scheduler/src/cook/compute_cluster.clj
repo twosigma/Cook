@@ -175,8 +175,7 @@
    :state (case state
             :compute-cluster-config.state/running :running
             :compute-cluster-config.state/draining :draining
-            :compute-cluster-config.state/deleted :deleted
-            state)
+            :compute-cluster-config.state/deleted :deleted)
    :state-locked? state-locked?})
 
 (defn compute-cluster-config->compute-cluster-config-ent
@@ -189,8 +188,7 @@
    :compute-cluster-config/state (case state
                                    :running :compute-cluster-config.state/running
                                    :draining :compute-cluster-config.state/draining
-                                   :deleted :compute-cluster-config.state/deleted
-                                   :state)
+                                   :deleted :compute-cluster-config.state/deleted)
    :compute-cluster-config/state-locked? state-locked?})
 
 (defn db-config-ents
