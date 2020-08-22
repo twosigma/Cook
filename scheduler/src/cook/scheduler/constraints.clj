@@ -185,20 +185,42 @@
     (util/job->pool-name job)
     :default-constraints))
 
+(def machine-type-constraint-attributes
+  #{"cpu-architecture" "node-family" "node-type"})
+
 (defn job->constraints
   "Given a job, returns all job constraints that should be in effect,
   either specified on the job submission or defaulted via configuration"
   [{:keys [job/constraint] :as job}]
   (let [user-specified-constraints constraint
-        user-specified-constraint-attributes (map :constraint/attribute
-                                                  user-specified-constraints)
-        default-constraints (->> job
-                                 job->default-constraints
-                                 ; Remove any default constraints for which the user
-                                 ; has specified a constraint on the same attribute
-                                 (remove (fn [{:keys [constraint/attribute]}]
-                                           (some #{attribute}
-                                                 user-specified-constraint-attributes))))]
+
+        user-specified-constraint-attributes
+        (map :constraint/attribute
+             user-specified-constraints)
+
+        user-specified-machine-type-constraint?
+        (some
+          machine-type-constraint-attributes
+          user-specified-constraint-attributes)
+
+        default-constraints
+        (->> job
+             job->default-constraints
+             (remove
+               (fn [{:keys [constraint/attribute]}]
+                 (or
+                   ; Remove any default constraints for which the user
+                   ; has specified a constraint on the same attribute
+                   (some #{attribute}
+                         user-specified-constraint-attributes)
+
+                   ; Remove any default machine-type constraints if
+                   ; the user has specified any machine-type constraint
+                   ; (otherwise, they could conflict with each other)
+                   (and
+                     user-specified-machine-type-constraint?
+                     (some #{attribute}
+                           machine-type-constraint-attributes))))))]
     (concat user-specified-constraints default-constraints)))
 
 (defrecord user-defined-constraint [job]

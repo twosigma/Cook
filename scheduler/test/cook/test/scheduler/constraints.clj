@@ -438,3 +438,33 @@
                                       {:instance/hostname "host-1"}]})]
       (is (= 3 (count hostnames)))
       (is (= (set ["host-1" "host-2" "host-3"]) (set hostnames))))))
+
+(deftest test-job->constraints
+  (let [default-constraints [{:constraint/attribute "cpu-architecture"
+                              :constraint/operator :constraint.operator/equals
+                              :constraint/pattern "intel-haswell"}
+                             {:constraint/attribute "node-family"
+                              :constraint/operator :constraint.operator/equals
+                              :constraint/pattern "n1"}]]
+    (with-redefs [config/default-job-constraints
+                  (constantly [{:pool-regex ".*"
+                                :default-constraints default-constraints}])]
+
+      (testing "default constraints"
+        (is (= default-constraints (constraints/job->constraints {}))))
+
+      (testing "default constraints plus user constraint"
+        (let [user-constraints [{:constraint/attribute "foo"
+                                 :constraint/operator :constraint.operator/equals
+                                 :constraint/pattern "bar"}]]
+          (is (= (concat user-constraints default-constraints)
+                 (constraints/job->constraints
+                   {:job/constraint user-constraints})))))
+
+      (testing "removes default machine-type constraints if user specified any"
+        (let [user-constraints [{:constraint/attribute "node-type"
+                                 :constraint/operator :constraint.operator/equals
+                                 :constraint/pattern "c2-standard-30"}]]
+          (is (= user-constraints
+                 (constraints/job->constraints
+                   {:job/constraint user-constraints}))))))))
