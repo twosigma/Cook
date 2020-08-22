@@ -2465,7 +2465,8 @@
 
   (deftest test-create-compute-cluster
     (with-redefs [config/compute-cluster-templates
-                  (constantly {"test-template" {:a :bb
+                  (constantly {"test-template" {:config {:dynamic-cluster-config? true}
+                                                :a :bb
                                                 :c :dd
                                                 :factory-fn 'cook.test.compute-cluster/cluster-factory-fn}})]
       (let [conn (restore-fresh-database! "datomic:mem://test-create-compute-cluster")

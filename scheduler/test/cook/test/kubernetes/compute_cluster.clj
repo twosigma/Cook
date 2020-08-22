@@ -69,7 +69,7 @@
                                                               (atom {}) (atom {}) (atom {}) (atom {}) (atom {}) (atom {}) (atom {}) (atom nil)
                                                               {:kind :static :namespace "cook"} nil nil nil nil
                                                               (Executors/newSingleThreadExecutor)
-                                                              {} (atom :running) (atom false))
+                                                              {} (atom :running) (atom false) false)
               task-metadata (task/TaskAssignmentResult->task-metadata (d/db conn)
                                                                       nil
                                                                       compute-cluster
@@ -86,7 +86,7 @@
                                                               (atom {}) (atom {}) (atom {}) (atom {}) (atom {}) (atom {}) (atom {}) (atom nil)
                                                               {:kind :per-user} nil nil nil nil
                                                               (Executors/newSingleThreadExecutor)
-                                                              {} (atom :running) (atom false))
+                                                              {} (atom :running) (atom false) false)
               task-metadata (task/TaskAssignmentResult->task-metadata (d/db conn)
                                                                       nil
                                                                       compute-cluster
@@ -105,7 +105,7 @@
                                                           (atom {}) (atom {}) (atom {}) (atom {}) (atom {}) (atom {}) (atom {}) (atom nil)
                                                           {:kind :static :namespace "cook"} nil 3 nil nil
                                                           (Executors/newSingleThreadExecutor)
-                                                          {} (atom :running) (atom false))
+                                                          {} (atom :running) (atom false) false)
           node-name->node {"nodeA" (tu/node-helper "nodeA" 1.0 1000.0 10 "nvidia-tesla-p100" nil)
                            "nodeB" (tu/node-helper "nodeB" 1.0 1000.0 25 "nvidia-tesla-p100" nil)
                            "nodeC" (tu/node-helper "nodeC" 1.0 1000.0 nil nil nil)

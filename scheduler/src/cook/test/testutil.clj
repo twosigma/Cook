@@ -585,4 +585,5 @@
                                     {} ; config that was used to create this cluster
                                     (atom :running) ; state atom
                                     (atom false) ; state-locked? atom
+                                    false ; dynamic-cluster-config?
                                     )))

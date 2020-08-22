@@ -19,6 +19,7 @@
             [cook.config :as config]
             [cook.test.testutil :refer [create-dummy-job-with-instances restore-fresh-database!]]
             [datomic.api :as d]
+            [cook.tools]
             [plumbing.core :refer [map-vals map-from-vals]])
   (:import (clojure.lang ExceptionInfo)))
 
@@ -104,7 +105,8 @@
                                              :state :running
                                              :state-locked? false}
            :state-atom (atom :deleted)
-           :state-locked?-atom (atom true)}
+           :state-locked?-atom (atom true)
+           :dynamic-cluster-config? true}
    "name-no-state" {:name "name"
                     :compute-cluster-starting-config {:factory-fn 'cook.kubernetes.compute-cluster/factory-fn
                                                       :name "name"
@@ -171,6 +173,7 @@
       (is (= [] (get-job-instance-ids-for-cluster-name db name))))
     (let [inst (make-instance :instance.status/running)
           db (d/db conn)]
+      (is (= '("cluster1") (->> (cook.tools/get-running-task-ents db) (map (fn [e] (-> e :instance/compute-cluster :compute-cluster/cluster-name))))))
       (is (= [inst] (get-job-instance-ids-for-cluster-name db name))))))
 
 (deftest test-cluster-state-change-valid?
@@ -491,10 +494,12 @@
 (defn cluster-factory-fn
   [{:keys [name
            state
-           state-locked?]
+           state-locked?
+           dynamic-cluster-config?]
     :as compute-cluster-config} _]
   (when (= "fail" (:name compute-cluster-config)) (throw (ex-info "fail" {})))
   (let [backing-map {:name name
+                     :dynamic-cluster-config? dynamic-cluster-config?
                      :state-atom (atom state)
                      :state-locked?-atom (atom state-locked?)
                      :compute-cluster-starting-config (assoc compute-cluster-config :factory-fn 'cook.kubernetes.compute-cluster/factory-fn)}
@@ -511,7 +516,8 @@
 
 (deftest test-initialize-cluster!
   (with-redefs [config/compute-cluster-templates
-                (constantly {"template1" {:goal-config {:a :bb :c :dd}
+                (constantly {"template1" {:config {:a :bb :c :dd
+                                                   :dynamic-cluster-config? true}
                                           :e :ff
                                           :factory-fn 'cook.test.compute-cluster/cluster-factory-fn}})]
     (testing "normal initialize"
@@ -535,7 +541,8 @@
                       :name "name"
                       :state :running
                       :state-locked? true
-                      :template "template1"}} (in-mem-configs))))
+                      :template "template1"}}
+             (in-mem-configs))))
     (testing "exception"
       (reset! cluster-name->compute-cluster-atom {})
       (reset! initialize-cluster-fn-invocations-atom [])
@@ -548,7 +555,8 @@
 
 (deftest test-execute-update!
   (with-redefs [config/compute-cluster-templates
-                (constantly {"template1" {:goal-config {:a :bb :c :dd}
+                (constantly {"template1" {:config {:a :bb :c :dd
+                                                        :dynamic-cluster-config? true}
                                           :e :ff
                                           :factory-fn 'cook.test.compute-cluster/cluster-factory-fn}})]
     (testing "normal add and no change update with missing cluster"
@@ -655,7 +663,8 @@
       (is (= {} (db-config-ents (d/db conn))))
       (is (= {} (in-mem-configs)))
       (with-redefs [config/compute-cluster-templates
-                    (constantly {"template1" {:goal-config {:a :bb :c :dd}
+                    (constantly {"template1" {:config {:a :bb :c :dd
+                                                       :dynamic-cluster-config? true}
                                               :e :ff
                                               :factory-fn 'cook.test.compute-cluster/cluster-factory-fn}})]
         (is (= {:update-succeeded true}
@@ -721,7 +730,8 @@
                 config/compute-cluster-templates
                 (constantly {"template1" {:a :bb
                                           :c :dd
-                                          :factory-fn 'cook.test.compute-cluster/cluster-factory-fn}})
+                                          :factory-fn 'cook.test.compute-cluster/cluster-factory-fn
+                                          :config {:dynamic-cluster-config? true}}})
                 compute-current-configs (fn [_ _] {"current" {:name "current" :a :b :state :running :ca-cert 1 :base-path 1}})
                 execute-update! (fn [_ config _ _] (if (= "fail" (:name config)) {:update-succeeded false} {:update-succeeded true}))]
     (testing "single"
@@ -913,7 +923,8 @@
     (with-redefs [config/compute-cluster-templates
                   (constantly {"template1" {:a :bb
                                             :c :dd
-                                            :factory-fn 'cook.test.compute-cluster/cluster-factory-fn}})]
+                                            :factory-fn 'cook.test.compute-cluster/cluster-factory-fn
+                                            :config {:dynamic-cluster-config? true}}})]
       (deliver exit-code-syncer-state-promise nil)
       (deliver scheduler-promise nil)
       (is (= (set
