@@ -281,7 +281,7 @@
                                      pool->fenzo-atom namespace-config scan-frequency-seconds-config max-pods-per-node
                                      synthetic-pods-config node-blocklist-labels
                                      ^ExecutorService launch-task-executor-service
-                                     compute-cluster-starting-config state-atom state-locked?-atom]
+                                     compute-cluster-starting-config state-atom state-locked?-atom dynamic-cluster-config?]
   cc/ComputeCluster
   (launch-tasks [this pool-name matches process-task-post-launch-fn]
     (let [task-metadata-seq (mapcat :task-metadata-seq matches)]
@@ -604,6 +604,7 @@
            ca-cert
            ca-cert-path
            ^String config-file
+           dynamic-cluster-config?
            launch-task-num-threads
            max-pods-per-node
            name
@@ -616,6 +617,7 @@
            use-google-service-account?
            verifying-ssl]
     :or {bearer-token-refresh-seconds 300
+         dynamic-cluster-config? false
          launch-task-num-threads 8
          max-pods-per-node 32
          namespace {:kind :static
@@ -657,6 +659,7 @@
                                                     launch-task-executor-service
                                                     (assoc compute-cluster-config :factory-fn 'cook.kubernetes.compute-cluster/factory-fn)
                                                     (atom state)
-                                                    (atom state-locked?))]
+                                                    (atom state-locked?)
+                                                    dynamic-cluster-config?)]
     (cc/register-compute-cluster! compute-cluster)
     compute-cluster))

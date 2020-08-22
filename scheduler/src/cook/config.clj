@@ -170,7 +170,7 @@
                                       :framework-name (:framework-name mesos)}}]))
      :compute-cluster-templates (fnk [[:config {compute-cluster-templates {}}]]
                                   compute-cluster-templates)
-     :compute-cluster-update-options (fnk [[:config {compute-cluster-update-options {}}]]
+     :compute-cluster-update-options (fnk [[:config {compute-cluster-update-options nil}]]
                                        compute-cluster-update-options)
      :cors-origins (fnk [[:config {cors-origins nil}]]
                      (map re-pattern (or cors-origins [])))

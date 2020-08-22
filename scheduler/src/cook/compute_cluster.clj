@@ -225,7 +225,7 @@
   "Get the current in-memory dynamic clusters"
   []
   (->> @cluster-name->compute-cluster-atom
-       (filter (fn [[_ cluster]] (:state-atom cluster))) ;TODO: XXXX do not use :state-atom here. have explicit info that a cluster came from config!!!!
+       (filter (fn [[_ cluster]] (:dynamic-cluster-config? cluster)))
        (into {})))
 
 (defn in-mem-configs
