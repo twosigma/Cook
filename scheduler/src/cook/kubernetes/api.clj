@@ -942,8 +942,9 @@
           ; or defaulted on the Cook pool via configuration
           (add-node-selector pod-spec attribute pattern)
           :else
-          (log/error "Encountered unknown constraint operator" operator
-                     "while trying to create pod spec for task" task-id))))
+          (throw (ex-info "Encountered unexpected constraint operator"
+                          {:operator operator
+                           :task-id task-id})))))
 
     (.setVolumes pod-spec (filterv some? (conj volumes
                                                init-container-workdir-volume
