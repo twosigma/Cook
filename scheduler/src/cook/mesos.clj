@@ -130,10 +130,7 @@
   {:pre [new-cluster-configurations-fn]}
   (let [cluster-update-period-seconds (or cluster-update-period-seconds 60)
         db (d/db conn)
-        ; TODO: XXX how do db calls time out?
         saved-cluster-configurations (cc/db-config-ents->configs (cc/db-config-ents db))
-        ;updated-cluster-configurations ((util/lazy-load-var new-cluster-configurations-fn))
-        ;[] (tools/diff-map-keys updated-cluster-configurations saved-cluster-configurations)
         cluster-name->running-task-ents (->> db cook.tools/get-running-task-ents
                                              (group-by #(-> %
                                                           :instance/compute-cluster

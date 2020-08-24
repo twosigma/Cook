@@ -235,7 +235,6 @@
 (defn in-mem-configs
   "Get the current in-memory dynamic cluster configurations"
   []
-  ; TODO: why can't you call (v :state) on a record????
   (->> (get-dynamic-clusters)
        (map-vals compute-cluster->compute-cluster-config)))
 
@@ -387,11 +386,10 @@
   Reflect changes in the database."
   [conn
    {:keys [valid? changed? active?] {:keys [name state state-locked?] :as goal-config} :goal-config}
-   current-db-config-ents current-in-mem-configs]
+   current-in-mem-configs]
   {:pre [valid?]}
   (try
     (let [{:keys [state-atom state-locked?-atom] :as cluster} (@cluster-name->compute-cluster-atom name)
-          current-db-config-ent (current-db-config-ents name)
           current-in-mem-config (current-in-mem-configs name)]
       ; TODO: keep these checks? check some other way?
       (when (and current-in-mem-config (not (and cluster state-atom state-locked?-atom)))
@@ -408,19 +406,16 @@
         (do
           (reset! state-atom state)
           (reset! state-locked?-atom state-locked?))
-        (when active? (initialize-cluster! goal-config)))
-      (when changed?
-        (let [ent (compute-cluster-config->compute-cluster-config-ent goal-config)
-              ; TODO: :db.unique/identity gives upsert behavior (update+insert), so we don't need to specify an entity ID when updating
-              db-id (if current-db-config-ent (:db/id current-db-config-ent) (d/tempid :db.part/user))]
-          @(d/transact conn [(assoc ent :db/id db-id)]))))
+        (when active? (initialize-cluster! goal-config))))
+    (when changed?
+      ; :db.unique/identity gives upsert behavior (update on insert), so we don't need to specify an entity ID when updating
+      @(d/transact conn [(assoc (compute-cluster-config->compute-cluster-config-ent goal-config)
+                           :db/id (d/tempid :db.part/user))]))
     {:update-succeeded true}
     (catch Throwable t
       (log/error t "Failed to update cluster" goal-config)
       {:update-succeeded false :error-message (.toString t)})))
 
-; TODO make sure anything in "locking" path times out. like db calls
-; TODO do alerts in callers of this function on return value
 (defn update-compute-clusters
   "This function allows adding or updating the current compute cluster configurations. It takes
   in a single configuration and/or a map of configurations with cluster name as the key. Passing in a map of
@@ -439,9 +434,16 @@
           updates (compute-config-updates db current-configs new-configs' force?)]
       (log/info "Updating dynamic clusters."
                 {:current-configs current-configs :new-config new-config :new-configs new-configs :force? force? :updates updates})
-      (->> updates
-           (map #(assoc % :update-result (when (:valid? %) (execute-update! conn % current-db-config-ents current-in-mem-configs))))
-           doall))))
+      (let [updates-with-results (map
+                             #(assoc % :update-result
+                                       (when (:valid? %) (execute-update! conn % current-in-mem-configs)))
+                             updates)]
+        (doseq [update updates-with-results
+                update-result (:update-result update)]
+          (if (:valid? update)
+            (when-not (:update-succeeded update-result) (log/error "Update failed!" update))
+            (log/error "Invalid update!" update)))
+        updates-with-results))))
 
 (defn get-compute-clusters
   "Get the current dynamic compute clusters. Returns both the in-memory cluster configs and the configurations in the database.

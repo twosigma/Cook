@@ -582,7 +582,6 @@
                                  :valid? true
                                  :changed? true
                                  :active? true}
-                                (db-config-ents (d/db conn))
                                 (in-mem-configs))))
         (is (= ["name"] @initialize-cluster-fn-invocations-atom))
         (is (= {:base-path "base-path"
@@ -614,7 +613,6 @@
                                  :valid? true
                                  :changed? false
                                  :active? true}
-                                (db-config-ents (d/db conn))
                                 (in-mem-configs))))
         (is (= ["name" "name"] @initialize-cluster-fn-invocations-atom))
         (is (= {:base-path "base-path"
@@ -642,7 +640,6 @@
         (is (= {:error-message "clojure.lang.ExceptionInfo: fail {}"
                 :update-succeeded false}
                (execute-update! nil {:goal-config {:name "fail" :a :a :template "template1"} :valid? true :changed? true :active? true}
-                                (db-config-ents (d/db conn))
                                 (in-mem-configs))))
         (is (= [] @initialize-cluster-fn-invocations-atom))
         (is (= {} (db-config-ents (d/db conn))))
@@ -651,7 +648,7 @@
         (reset! initialize-cluster-fn-invocations-atom [])
         (is (= {:error-message "java.lang.NullPointerException"
                 :update-succeeded false}
-               (execute-update! nil {:goal-config {:name "fail" :a :a :template "template1"} :valid? true :changed? true :active? true} nil nil)))
+               (execute-update! nil {:goal-config {:name "fail" :a :a :template "template1"} :valid? true :changed? true :active? true} nil)))
         (is (= [] @initialize-cluster-fn-invocations-atom)))))
 
   (testing "normal update"
@@ -679,7 +676,6 @@
                                  :valid? true
                                  :changed? true
                                  :active? true}
-                                (db-config-ents (d/db conn))
                                 (in-mem-configs)))))
       (is (= {:base-path "base-path"
               :ca-cert "ca-cert"
@@ -706,7 +702,6 @@
                                :valid? true
                                :changed? true
                                :active? true}
-                              (db-config-ents (d/db conn))
                               (in-mem-configs))))
       (is (= ["name"] @initialize-cluster-fn-invocations-atom))
       (is (= {:base-path "base-path-2"
@@ -733,7 +728,7 @@
                                           :factory-fn 'cook.test.compute-cluster/cluster-factory-fn
                                           :config {:dynamic-cluster-config? true}}})
                 compute-current-configs (fn [_ _] {"current" {:name "current" :a :b :state :running :ca-cert 1 :base-path 1}})
-                execute-update! (fn [_ config _ _] (if (= "fail" (:name config)) {:update-succeeded false} {:update-succeeded true}))]
+                execute-update! (fn [_ config _] (if (= "fail" (:name config)) {:update-succeeded false} {:update-succeeded true}))]
     (testing "single"
       (is (= '({:active? true
                 :changed? true
