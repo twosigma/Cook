@@ -17,7 +17,6 @@
   (:require [clojure.data :as data]
             [clojure.tools.logging :as log]
             [cook.config :as config]
-            [cook.tools :as tools]
             [datomic.api :as d]
             [plumbing.core :refer [map-from-vals map-vals]]))
 
@@ -160,6 +159,11 @@
                                 first)]
     (compute-cluster-name->ComputeCluster first-cluster-name)))
 
+(defn diff-map-keys-safe
+  "Return triple of keys from two maps: [only in left, only in right, in both]"
+  [left right]
+  (data/diff (set (keys left)) (set (keys right))))
+
 (defn compute-cluster-config-ent->compute-cluster-config
   "Convert Datomic dynamic cluster configuration entity to an object"
   [{:keys [compute-cluster-config/name
@@ -239,7 +243,7 @@
   "Synthesize the current view of cluster configurations by looking at the current configurations in the database
   and the current configurations in memory. Alert on any inconsistencies. Database wins on inconsistencies."
   [current-db-configs current-in-mem-configs]
-  (let [[only-db-keys only-in-mem-keys both-keys] (tools/diff-map-keys current-db-configs current-in-mem-configs)]
+  (let [[only-db-keys only-in-mem-keys both-keys] (diff-map-keys-safe current-db-configs current-in-mem-configs)]
     (doseq [only-db-key only-db-keys]
       (when (not= :deleted (-> only-db-key current-db-configs :state))
         (log/info "Database cluster configuration is missing from in-memory configs. Cluster is only in the database and is not deleted."
@@ -346,7 +350,7 @@
 (defn compute-config-updates
   "Take the current and desired configurations and compute the changes."
   [db current-configs new-configs force?]
-  (let [[deletes-keys inserts-keys updates-keys] (tools/diff-map-keys current-configs new-configs)
+  (let [[deletes-keys inserts-keys updates-keys] (diff-map-keys-safe current-configs new-configs)
         updates (->> (concat
                        (map #(let [current (current-configs %)]
                                (compute-config-update db current (assoc current :state :deleted) force?)) deletes-keys)
@@ -407,6 +411,7 @@
         (when active? (initialize-cluster! goal-config)))
       (when changed?
         (let [ent (compute-cluster-config->compute-cluster-config-ent goal-config)
+              ; TODO: :db.unique/identity gives upsert behavior (update+insert), so we don't need to specify an entity ID when updating
               db-id (if current-db-config-ent (:db/id current-db-config-ent) (d/tempid :db.part/user))]
           @(d/transact conn [(assoc ent :db/id db-id)]))))
     {:update-succeeded true}
