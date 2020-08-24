@@ -96,7 +96,7 @@
            :valid-models #{"nvidia-tesla-k80" "nvidia-tesla-p100"}
            :default-model "nvidia-tesla-p100"}]
          :default-job-constraints
-         [{:pool-regex "k8s-.*"
+         [{:pool-regex "^k8s-.*"
            :default-constraints [{:constraint/attribute "node-type"
                                   :constraint/operator :constraint.operator/equals
                                   :constraint/pattern "g1-small"}]}]}
