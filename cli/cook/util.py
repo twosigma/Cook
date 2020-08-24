@@ -1,6 +1,7 @@
 """Module containing utility functions that don't fit nicely anywhere else."""
 
 import argparse
+import logging
 import os
 import sys
 import time
@@ -188,3 +189,20 @@ def str2bool(v):
         return False
     else:
         return None
+
+
+def date_time_string_to_ms_since_epoch(date_time_string):
+    """Converts the given date_time_string (e.g. '5 minutes ago') to milliseconds since epoch"""
+    import tzlocal
+    from cook import dateparser
+    local_tz = tzlocal.get_localzone()
+    dt = dateparser.parse(date_time_string, local_tz)
+    if dt:
+        import pytz
+        logging.debug(f'parsed "{date_time_string}" as {dt}')
+        epoch = datetime(1970, 1, 1, tzinfo=pytz.utc)
+        ms_since_epoch = int((dt - epoch).total_seconds() * 1000)
+        logging.debug(f'converted "{date_time_string}" to ms {ms_since_epoch}')
+        return ms_since_epoch
+    else:
+        raise Exception(f'"{date_time_string}" is not a valid date / time string.')

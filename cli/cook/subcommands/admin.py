@@ -2,7 +2,7 @@ import os
 
 from cook import configuration, http, terminal
 from cook.subcommands.usage import filter_query_result_by_pools, print_formatted, query
-from cook.util import guard_no_cluster, load_target_clusters, print_error, str2bool
+from cook.util import date_time_string_to_ms_since_epoch, guard_no_cluster, load_target_clusters, print_error, str2bool
 
 admin_parser = None
 limits_parser = None
@@ -98,7 +98,37 @@ def limits(args, config_path):
         copy_limits(args, config_path)
 
 
-def admin(_, args, config_path):
+def query_instances_on_cluster(cluster, status, start_ms, end_ms):
+    """Queries cluster for instance stats with the given status / time"""
+    params = {'status': status, 'start': start_ms, 'end': end_ms}
+    stats = http.make_data_request(cluster, lambda: http.get(cluster, 'stats/instances', params=params))
+    overall_stats = stats['overall']
+    data = {'count': overall_stats['count'] if 'count' in overall_stats else 0}
+    return data
+
+
+def instances(clusters, args):
+    """Prints the count of instances with the given criteria"""
+    guard_no_cluster(clusters)
+
+    if len(clusters) != 1:
+        raise Exception(f'You must specify a single cluster to query.')
+
+    status = args.get('status')
+    started_after = args.get('started_after')
+    started_before = args.get('started_before')
+
+    status = status or 'success'
+    start_ms = date_time_string_to_ms_since_epoch(started_after or '10 minutes ago')
+    end_ms = date_time_string_to_ms_since_epoch(started_before or 'now')
+
+    cluster = clusters[0]
+    data = query_instances_on_cluster(cluster, status, start_ms, end_ms)
+    print(data['count'])
+    return 0
+
+
+def admin(clusters, args, config_path):
     """Entrypoint for the admin sub-command"""
     admin_action = args.get('admin-action')
     if not admin_action:
@@ -106,6 +136,8 @@ def admin(_, args, config_path):
 
     if admin_action == 'limits':
         limits(args, config_path)
+    elif admin_action == 'instances':
+        instances(clusters, args)
 
 
 def register(add_parser, _):
@@ -131,5 +163,17 @@ def register(add_parser, _):
         copy_limits_parser.add_argument('--from-url', help='the URL of the Cook scheduler cluster to copy from')
         copy_limits_parser.add_argument('--to', '-t', help='the name of the Cook scheduler cluster to copy to')
         copy_limits_parser.add_argument('--to-url', help='the URL of the Cook scheduler cluster to copy to')
+
+        # cs admin instances
+        instances_parser = admin_subparsers.add_parser('instances', help='queries instance information from a cluster')
+        instances_parser.add_argument('--started-after', '-A', help=f'include instances started after the given time')
+        instances_parser.add_argument('--started-before', '-B', help=f'include instances started before the given time')
+        group = instances_parser.add_mutually_exclusive_group()
+        group.add_argument('--running', '-r', help='running instances', dest='status',
+                           action='store_const', const='running')
+        group.add_argument('--failed', '-f', help='failed instances', dest='status',
+                           action='store_const', const='failed')
+        group.add_argument('--success', '-s', help='successful instances', dest='status',
+                           action='store_const', const='success')
 
         return admin
