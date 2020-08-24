@@ -221,7 +221,12 @@
                      user-specified-machine-type-constraint?
                      (some #{attribute}
                            machine-type-constraint-attributes))))))]
-    (concat user-specified-constraints default-constraints)))
+
+    (-> user-specified-constraints
+        (concat default-constraints)
+        ; De-lazy the output; Fenzo can call from multiple
+        ; threads and we want to avoid contention in LazySeq
+        vec)))
 
 (defrecord user-defined-constraint [job]
   JobConstraint
