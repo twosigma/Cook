@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.45.0] - 2020-08-25
+### Added
+- Support for EQUALS job constraints in k8s, from @dposada
+- `HOST_IP` environment variable for k8s, from @dposada
+### Changed
+- De-lazied the list of constraints to avoid locking in Fenzo, from @scrosby
+- Made `job->previous-hosts-to-avoid` use `set` instead of `mapv -> distinct` to reduce lock contention, from @sradack
+### Fixed
+- Order of per-user and pool-global quota application, from @scrosby
+
 ## [1.44.0] - 2020-08-17
 ### Added
 - Support for prefixed job labels to become k8s pod labels, from @dposada
