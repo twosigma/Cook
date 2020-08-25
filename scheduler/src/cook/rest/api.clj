@@ -3516,6 +3516,40 @@
                           307 {:description "Redirecting request to leader node."}
                           400 {:description "Invalid request format."}}}}))
 
+        (c-api/context
+          "/compute-clusters" []
+          (c-api/resource
+            {:produces ["application/json"]
+
+             :post
+             {:summary "Create a new compute cluster"
+              :parameters {:body-params InsertComputeClusterRequest}
+              :handler (post-compute-clusters-handler conn
+                                                      is-authorized-fn
+                                                      leadership-atom
+                                                      leader-selector)
+              :responses {201 {:description "The compute cluster was created."}
+                          307 {:description "Redirecting request to leader node."}
+                          409 {:description "There is already a compute cluster with the given name."}}}
+
+             :get
+             {:summary "Get the set of compute clusters"
+              :handler (get-compute-clusters-handler conn
+                                                     is-authorized-fn
+                                                     leadership-atom
+                                                     leader-selector)
+              :responses {200 {:description "The compute clusters were returned."}
+                          307 {:description "Redirecting request to leader node."}}}
+
+             :delete
+             {:summary "Deletes a compute cluster"
+              :handler (delete-compute-clusters-handler conn
+                                                        is-authorized-fn
+                                                        leadership-atom
+                                                        leader-selector)
+              :responses {204 {:description "The compute cluster was deleted."}
+                          307 {:description "Redirecting request to leader node."}}}}))
+
         (c-api/undocumented
           ;; internal api endpoints (don't include in swagger)
           (c-api/context
@@ -3552,38 +3586,6 @@
            :responses {200 {:schema DataLocalUpdateTimeResponse}}
            :get {:summary "Returns summary information on the current data locality status"
                  :handler (data-local-update-time-handler conn)}}))
-
-      (c-api/context
-        "/compute-clusters" []
-        (c-api/resource
-          {:produces ["application/json"]
-           :post
-           {:summary "TODO(DPO) POST summary"
-            :parameters {:body-params InsertComputeClusterRequest}
-            :handler (post-compute-clusters-handler conn
-                                                    is-authorized-fn
-                                                    leadership-atom
-                                                    leader-selector)
-            :responses {201 {:description "TODO(DPO) POST 201 description"}
-                        403 {:description "TODO(DPO) POST 403 description"}
-                        409 {:description "TODO(DPO) POST 409 description"}}}
-
-           :get
-           {:summary "TODO(DPO) GET summary"
-            :handler (get-compute-clusters-handler conn
-                                                   is-authorized-fn
-                                                   leadership-atom
-                                                   leader-selector)
-            :responses {200 {:description "TODO(DPO) GET 201 description"}
-                        403 {:description "TODO(DPO) GET 403 description"}}}
-           :delete
-           {:summary "TODO(DPO) DELETE summary"
-            :handler (delete-compute-clusters-handler conn
-                                                      is-authorized-fn
-                                                      leadership-atom
-                                                      leader-selector)
-            :responses {200 {:description "TODO(DPO) DELETE 200 description"}
-                        403 {:description "TODO(DPO) DELETE 403 description"}}}}))
 
       (ANY "/queue" []
         (waiting-jobs conn mesos-pending-jobs-fn is-authorized-fn leadership-atom leader-selector))
