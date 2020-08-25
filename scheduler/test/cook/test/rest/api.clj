@@ -2549,4 +2549,22 @@
             (with-redefs [api/leader-selector->leader-url (constantly sample-leader-base-url)]
               (let [{:keys [location status]} (handler request :leader? false)]
                 (is (= 307 status))
-                (is (= location (str sample-leader-base-url endpoint)))))))))))
+                (is (= location (str sample-leader-base-url endpoint))))))))))
+
+  (deftest test-delete-compute-cluster
+    (let [conn (restore-fresh-database! "datomic:mem://test-delete-compute-cluster")
+          handler (basic-handler conn :is-authorized-fn is-authorized-fn)
+          name "test-name"
+          request {:authorization/user admin-user
+                   :body-params {"name" name}
+                   :request-method :delete
+                   :scheme :http
+                   :uri "/compute-clusters"}
+          name-deleted-atom (atom nil)]
+      (testing "successful delete"
+        (with-redefs [cc/delete-compute-cluster
+                      (fn [_ m]
+                        (reset! name-deleted-atom (get m "name")))]
+          (let [{:keys [status]} (handler request)]
+            (is (= 204 status))
+            (is (= name @name-deleted-atom))))))))
