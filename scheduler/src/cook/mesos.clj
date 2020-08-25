@@ -119,7 +119,7 @@
     Runnable
     (run [_]
       (try
-        (cc/update-compute-clusters conn nil (new-cluster-configurations-fn) false)
+        (cc/update-compute-clusters conn (new-cluster-configurations-fn) false)
         (catch Exception ex
           (log/error ex "Failed to update cluster configurations"))))))
 
@@ -140,7 +140,7 @@
       (log/error "Can't find cluster configurations for some of the running jobs!"
                  {:missing-cluster-names missing-cluster-names
                   :instances (->> missing-cluster-names (map-from-keys #(take 10 (cluster-name->running-task-ents %))))}))
-    (cc/update-compute-clusters conn nil saved-cluster-configurations false)
+    (cc/update-compute-clusters conn saved-cluster-configurations false)
     (.scheduleAtFixedRate compute-cluster-config-updater-executor
                           (make-compute-cluster-config-updater-task conn (util/lazy-load-var new-cluster-configurations-fn))
                           cluster-update-period-seconds ;initial delay

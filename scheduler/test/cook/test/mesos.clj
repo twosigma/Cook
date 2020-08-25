@@ -282,7 +282,7 @@
       (with-redefs [log/log* (fn [_ _ _ message] (reset! log-error-invocations-atom message))
                     cc/get-db-config-ents (fn [_])
                     cc/get-db-config-ents (fn [_] {})
-                    cc/update-compute-clusters (fn [_ _ _ _])
+                    cc/update-compute-clusters (fn [_ _ _])
                     mesos/make-compute-cluster-config-updater-task (fn [_ _])
                     mesos/compute-cluster-config-updater-executor (reify ScheduledExecutorService
                                                                     (scheduleAtFixedRate [this a b c d]

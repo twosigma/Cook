@@ -749,7 +749,7 @@
                               :state :running}
                 :update-result {:update-succeeded true}
                 :valid? true})
-             (update-compute-clusters nil {:a :a :template "template1" :ca-cert 2 :base-path 2} nil false))))
+             (update-compute-cluster nil  {:a :a :template "template1" :ca-cert 2 :base-path 2} false))))
     (testing "single - error"
       (is (= '({:active? true
                 :changed? true
@@ -761,7 +761,7 @@
                 :reason "Attempting to change something other than state when force? is false. Diff is ({:base-path 1, :a :b} {:base-path 2} {:ca-cert 1, :name \"current\"})"
                 :update-result nil
                 :valid? false})
-             (update-compute-clusters nil {:name "current" :state :running :ca-cert 1 :base-path 2} nil false))))
+             (update-compute-cluster nil  {:name "current" :state :running :ca-cert 1 :base-path 2} false))))
     (testing "single - edit base-path"
       (is (= '({:active? true
                 :changed? true
@@ -772,7 +772,7 @@
                               :state :running}
                 :update-result {:update-succeeded true}
                 :valid? true})
-             (update-compute-clusters nil {:name "current" :state :running :ca-cert 1 :base-path 2} nil true))))
+             (update-compute-cluster nil  {:name "current" :state :running :ca-cert 1 :base-path 2} true))))
     (testing "multiple"
       (is (= '({:active? true
                 :changed? true
@@ -793,13 +793,13 @@
                               :state :running}
                 :update-result {:update-succeeded true}
                 :valid? true})
-             (update-compute-clusters nil nil
+             (update-compute-clusters nil
                                       {"a"
                                        {:a :a :template "template1" :ca-cert 2 :base-path 2}
                                        "current"
                                        {:name "current" :a :b :state :running :ca-cert 1 :base-path 1}} false))))
     (testing "single and multiple"
-      (is (thrown? AssertionError (update-compute-clusters nil {:a :a :template "template1"} {"a" {:a :a :template "template1"}} false))))
+      (is (thrown? AssertionError (update-compute-clusters nil  {:a :a :template "template1"} {"a" {:a :a :template "template1"}} false))))
     (testing "errors"
       (is (= '({:active? true
                 :changed? true
@@ -826,7 +826,7 @@
                               :ca-cert 1
                               :state :running}
                 :valid? false})
-             (update-compute-clusters nil nil {"a" {:a :a :template "template1"}
+             (update-compute-clusters nil {"a" {:a :a :template "template1"}
                                                "bad1" {:name "bad1"}
                                                "current" {:name "current" :a :a :state :running :ca-cert 1 :base-path 1}} false))))))
 
@@ -945,7 +945,7 @@
                                 :template "template1"}
                   :update-result {:update-succeeded true}
                   :valid? true}))
-             (set (update-compute-clusters conn nil (get-db-configs (d/db conn)) false))))
+             (set (update-compute-clusters conn (get-db-configs (d/db conn)) false))))
       (is (= {"name" new-cluster "name-2" new-cluster-2} (get-db-configs (d/db conn))))
       (is (= {"name" {:base-path "base-path"
                       :ca-cert "ca-cert"

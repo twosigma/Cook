@@ -419,32 +419,40 @@
       {:update-succeeded false :error-message (.toString t)})))
 
 (defn update-compute-clusters
-  "This function allows adding or updating the current compute cluster configurations. It takes
-  in a single configuration and/or a map of configurations with cluster name as the key. Passing in a map of
-  configurations implies that these are the only known configurations, and clusters that are missing from this
-  map should be removed.
+  "This function allows adding or updating the current compute cluster configurations. Takes
+  in a map of configurations with cluster name as the key. These configurations represent the only known
+  configurations, and clusters that are missing from this map are set to the 'deleted' state.
   Only the state of an existing cluster and its configuration can be changed unless force? is set to true."
-  [conn new-config new-configs force?]
-  {:pre [(= 1 (->> [new-config new-configs] (filter some?) count))]}
-  (locking cluster-name->compute-cluster-atom
-    (let [db (d/db conn)
-          current-in-mem-configs (get-in-mem-configs)
-          current-db-configs (get-db-configs db)
-          current-configs (compute-current-configs current-db-configs current-in-mem-configs)
-          new-configs' (cond-> (or new-configs current-configs) new-config (assoc (:name new-config) new-config))
-          updates (compute-config-updates db current-configs new-configs' force?)]
-      (log/info "Updating dynamic clusters."
-                {:current-configs current-configs :new-config new-config :new-configs new-configs :force? force? :updates updates})
-      (let [updates-with-results (map
-                                   #(assoc % :update-result
-                                             (when (:valid? %) (execute-update! conn % current-in-mem-configs)))
-                                   updates)]
-        (doseq [update updates-with-results
-                update-result (:update-result update)]
-          (if (:valid? update)
-            (when-not (:update-succeeded update-result) (log/error "Update failed!" update))
-            (log/error "Invalid update!" update)))
-        updates-with-results))))
+  ([conn new-configs force?]
+   (update-compute-clusters conn nil new-configs force?))
+  ([conn new-config new-configs force?]
+   {:pre [(= 1 (->> [new-config new-configs] (filter some?) count))]}
+   (locking cluster-name->compute-cluster-atom
+     (let [db (d/db conn)
+           current-in-mem-configs (get-in-mem-configs)
+           current-db-configs (get-db-configs db)
+           current-configs (compute-current-configs current-db-configs current-in-mem-configs)
+           new-configs' (cond-> (or new-configs current-configs) new-config (assoc (:name new-config) new-config))
+           updates (compute-config-updates db current-configs new-configs' force?)]
+       (log/info "Updating dynamic clusters."
+                 {:current-configs current-configs :new-config new-config :new-configs new-configs :force? force? :updates updates})
+       (let [updates-with-results (map
+                                    #(assoc % :update-result
+                                              (when (:valid? %) (execute-update! conn % current-in-mem-configs)))
+                                    updates)]
+         (doseq [update updates-with-results
+                 update-result (:update-result update)]
+           (if (:valid? update)
+             (when-not (:update-succeeded update-result) (log/error "Update failed!" update))
+             (log/error "Invalid update!" update)))
+         updates-with-results)))))
+
+(defn update-compute-cluster
+  "This function allows adding or updating the current compute cluster configurations. Takes
+  in a single configuration and updates or creates it.
+  Only the state of an existing cluster and its configuration can be changed unless force? is set to true."
+  [conn new-config force?]
+  (update-compute-clusters conn new-config nil force?))
 
 (defn get-compute-clusters
   "Get the current dynamic compute clusters. Returns both the in-memory cluster configs and the configurations in the database.
