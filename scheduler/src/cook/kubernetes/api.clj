@@ -942,6 +942,8 @@
           ; or defaulted on the Cook pool via configuration
           (add-node-selector pod-spec attribute pattern)
           :else
+          ; A bad constraint operator should have
+          ; been blocked at job submission time
           (throw (ex-info "Encountered unexpected constraint operator"
                           {:operator operator
                            :task-id task-id})))))
