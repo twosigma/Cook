@@ -280,15 +280,14 @@
           scheduleAtFixedRate-invocations-atom (atom [])]
       (is (= '("cluster1") (->> (cook.tools/get-running-task-ents db) (map (fn [e] (-> e :instance/compute-cluster :compute-cluster/cluster-name))))))
       (with-redefs [log/log* (fn [_ _ _ message] (reset! log-error-invocations-atom message))
-                    cc/db-config-ents (fn [_])
-                    cc/db-config-ents (fn [_] {})
+                    cc/get-db-config-ents (fn [_])
+                    cc/get-db-config-ents (fn [_] {})
                     cc/update-compute-clusters (fn [_ _ _ _])
                     mesos/make-compute-cluster-config-updater-task (fn [_ _])
                     mesos/compute-cluster-config-updater-executor (reify ScheduledExecutorService
                                                                     (scheduleAtFixedRate [this a b c d]
                                                                       (swap! scheduleAtFixedRate-invocations-atom conj (str a b c d))
                                                                       nil))]
-        (log/error "wtf" {})
         (is (thrown? AssertionError (mesos/dynamic-compute-cluster-configurations-setup nil {})))
         (is (= nil (mesos/dynamic-compute-cluster-configurations-setup
                      conn {:new-cluster-configurations-fn 'cook.test.mesos/dumy-new-cluster-configurations-fn})))

@@ -130,12 +130,12 @@
   {:pre [new-cluster-configurations-fn]}
   (let [cluster-update-period-seconds (or cluster-update-period-seconds 60)
         db (d/db conn)
-        saved-cluster-configurations (cc/db-config-ents->configs (cc/db-config-ents db))
+        saved-cluster-configurations (cc/get-db-configs db)
         cluster-name->running-task-ents (->> db cook.tools/get-running-task-ents
                                              (group-by #(-> %
                                                           :instance/compute-cluster
                                                           :compute-cluster/cluster-name)))
-        [missing-cluster-names _ _] (tools/diff-map-keys cluster-name->running-task-ents saved-cluster-configurations)]
+        [missing-cluster-names _ _] (util/diff-map-keys cluster-name->running-task-ents saved-cluster-configurations)]
     (when missing-cluster-names
       (log/error "Can't find cluster configurations for some of the running jobs!"
                  {:missing-cluster-names missing-cluster-names

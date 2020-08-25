@@ -298,7 +298,7 @@
                                      pool->fenzo-atom namespace-config scan-frequency-seconds-config max-pods-per-node
                                      synthetic-pods-config node-blocklist-labels
                                      ^ExecutorService launch-task-executor-service
-                                     compute-cluster-starting-config state-atom state-locked?-atom dynamic-cluster-config?]
+                                     cluster-definition state-atom state-locked?-atom dynamic-cluster-config?]
   cc/ComputeCluster
   (launch-tasks [this pool-name matches process-task-post-launch-fn]
     (let [task-metadata-seq (mapcat :task-metadata-seq matches)]
@@ -678,7 +678,8 @@
                                                     synthetic-pods
                                                     node-blocklist-labels
                                                     launch-task-executor-service
-                                                    (assoc compute-cluster-config :factory-fn 'cook.kubernetes.compute-cluster/factory-fn)
+                                                    {:factory-fn 'cook.kubernetes.compute-cluster/factory-fn
+                                                     :config compute-cluster-config}
                                                     (atom state)
                                                     (atom state-locked?)
                                                     dynamic-cluster-config?)]

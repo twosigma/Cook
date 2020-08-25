@@ -50,7 +50,7 @@
                :ca-cert "ca-cert"
                :state :running
                :state-locked? true})
-        _ (is (= {} (db-config-ents (d/db conn))))
+        _ (is (= {} (get-db-config-ents (d/db conn))))
         tempids (-> @(d/transact conn [(assoc ent :db/id temp-db-id)]) :tempids)
         db (d/db conn)]
     (is (= {"name" {:db/id (d/resolve-tempid db tempids temp-db-id)
@@ -68,17 +68,17 @@
                               :compute-cluster-config/state
                               :compute-cluster-config/state-locked?
                               :compute-cluster-config/template])
-             (db-config-ents (d/db conn)))))))
+             (get-db-config-ents (d/db conn)))))))
 
 (deftest test-compute-cluster->compute-cluster-config
   (let [cluster {:name "name"
-                 :compute-cluster-starting-config {:factory-fn 'cook.kubernetes.compute-cluster/factory-fn
-                                                   :name "name-starting"
-                                                   :template "template"
-                                                   :base-path "base-path"
-                                                   :ca-cert "ca-cert"
-                                                   :state :running
-                                                   :state-locked? false}
+                 :cluster-definition {:factory-fn 'cook.kubernetes.compute-cluster/factory-fn
+                                      :config {:name "name-starting"
+                                               :template "template"
+                                               :base-path "base-path"
+                                               :ca-cert "ca-cert"
+                                               :state :running
+                                               :state-locked? false}}
                  :state-atom (atom :deleted)
                  :state-locked?-atom (atom true)}]
     (is (= {:base-path "base-path"
@@ -97,33 +97,33 @@
            :template "template"}})
 (def sample-clusters
   {"name" {:name "name"
-           :compute-cluster-starting-config {:factory-fn 'cook.kubernetes.compute-cluster/factory-fn
-                                             :name "name"
-                                             :template "template"
-                                             :base-path "base-path"
-                                             :ca-cert "ca-cert"
-                                             :state :running
-                                             :state-locked? false}
+           :cluster-definition {:factory-fn 'cook.kubernetes.compute-cluster/factory-fn
+                                :config {:name "name"
+                                         :template "template"
+                                         :base-path "base-path"
+                                         :ca-cert "ca-cert"
+                                         :state :running
+                                         :state-locked? false}}
            :state-atom (atom :deleted)
            :state-locked?-atom (atom true)
            :dynamic-cluster-config? true}
    "name-no-state" {:name "name"
-                    :compute-cluster-starting-config {:factory-fn 'cook.kubernetes.compute-cluster/factory-fn
-                                                      :name "name"
-                                                      :template "template"
-                                                      :base-path "base-path"
-                                                      :ca-cert "ca-cert"
-                                                      :state :running
-                                                      :state-locked? false}}})
+                    :cluster-definition {:factory-fn 'cook.kubernetes.compute-cluster/factory-fn
+                                         :config {:name "name"
+                                                  :template "template"
+                                                  :base-path "base-path"
+                                                  :ca-cert "ca-cert"
+                                                  :state :running
+                                                  :state-locked? false}}}})
 (deftest test-in-mem-configs
   (reset! cluster-name->compute-cluster-atom {})
-  (is (= {} (in-mem-configs)))
+  (is (= {} (get-in-mem-configs)))
   (reset! cluster-name->compute-cluster-atom sample-clusters)
-  (is (= expected-in-mem-config (in-mem-configs))))
+  (is (= expected-in-mem-config (get-in-mem-configs))))
 
 (deftest test-get-dynamic-clusters
   (reset! cluster-name->compute-cluster-atom {})
-  (is (= {} (in-mem-configs)))
+  (is (= {} (get-in-mem-configs)))
   (reset! cluster-name->compute-cluster-atom sample-clusters)
   (is (= (->> [(sample-clusters "name")] (map-from-vals #(-> % :name)))
          (get-dynamic-clusters))))
@@ -502,7 +502,7 @@
                      :dynamic-cluster-config? dynamic-cluster-config?
                      :state-atom (atom state)
                      :state-locked?-atom (atom state-locked?)
-                     :compute-cluster-starting-config (assoc compute-cluster-config :factory-fn 'cook.kubernetes.compute-cluster/factory-fn)}
+                     :cluster-definition {:factory-fn 'cook.kubernetes.compute-cluster/factory-fn :config compute-cluster-config}}
         compute-cluster (reify ComputeCluster
                           (compute-cluster-name [cluster] (:name cluster))
                           (initialize-cluster [cluster _]
@@ -525,7 +525,7 @@
       (reset! initialize-cluster-fn-invocations-atom [])
       (deliver exit-code-syncer-state-promise nil)
       (deliver scheduler-promise nil)
-      (is (= {} (in-mem-configs)))
+      (is (= {} (get-in-mem-configs)))
       (is (= ["name"]
              (initialize-cluster!
                {:a :a
@@ -542,21 +542,21 @@
                       :state :running
                       :state-locked? true
                       :template "template1"}}
-             (in-mem-configs))))
+             (get-in-mem-configs))))
     (testing "exception"
       (reset! cluster-name->compute-cluster-atom {})
       (reset! initialize-cluster-fn-invocations-atom [])
       (deliver exit-code-syncer-state-promise nil)
       (deliver scheduler-promise nil)
-      (is (= {} (in-mem-configs)))
+      (is (= {} (get-in-mem-configs)))
       (is (thrown? ExceptionInfo (initialize-cluster! {:name "fail" :a :a :template "template1"})))
       (is (= [] @initialize-cluster-fn-invocations-atom))
-      (is (= {} (in-mem-configs))))))
+      (is (= {} (get-in-mem-configs))))))
 
 (deftest test-execute-update!
   (with-redefs [config/compute-cluster-templates
                 (constantly {"template1" {:config {:a :bb :c :dd
-                                                        :dynamic-cluster-config? true}
+                                                   :dynamic-cluster-config? true}
                                           :e :ff
                                           :factory-fn 'cook.test.compute-cluster/cluster-factory-fn}})]
     (testing "normal add and no change update with missing cluster"
@@ -566,8 +566,8 @@
         (reset! initialize-cluster-fn-invocations-atom [])
         (deliver exit-code-syncer-state-promise nil)
         (deliver scheduler-promise nil)
-        (is (= {} (db-config-ents (d/db conn))))
-        (is (= {} (in-mem-configs)))
+        (is (= {} (get-db-config-ents (d/db conn))))
+        (is (= {} (get-in-mem-configs)))
         ; normal add
         (is (= {:update-succeeded true}
                (execute-update! conn
@@ -582,7 +582,7 @@
                                  :valid? true
                                  :changed? true
                                  :active? true}
-                                (in-mem-configs))))
+                                (get-in-mem-configs))))
         (is (= ["name"] @initialize-cluster-fn-invocations-atom))
         (is (= {:base-path "base-path"
                 :ca-cert "ca-cert"
@@ -590,16 +590,16 @@
                 :state :running
                 :state-locked? true
                 :template "template1"}
-               (-> (db-config-ents (d/db conn)) (get "name") compute-cluster-config-ent->compute-cluster-config)))
+               (-> (get-db-config-ents (d/db conn)) (get "name") compute-cluster-config-ent->compute-cluster-config)))
         (is (= {"name" {:base-path "base-path"
                         :ca-cert "ca-cert"
                         :name "name"
                         :state :running
                         :state-locked? true
-                        :template "template1"}} (in-mem-configs)))
+                        :template "template1"}} (get-in-mem-configs)))
         ; no change update with missing cluster
         (reset! cluster-name->compute-cluster-atom {})
-        (is (= {} (in-mem-configs)))
+        (is (= {} (get-in-mem-configs)))
         (is (= {:update-succeeded true}
                (execute-update! conn
                                 {:goal-config
@@ -613,7 +613,7 @@
                                  :valid? true
                                  :changed? false
                                  :active? true}
-                                (in-mem-configs))))
+                                (get-in-mem-configs))))
         (is (= ["name" "name"] @initialize-cluster-fn-invocations-atom))
         (is (= {:base-path "base-path"
                 :ca-cert "ca-cert"
@@ -621,13 +621,13 @@
                 :state :running
                 :state-locked? true
                 :template "template1"}
-               (-> (db-config-ents (d/db conn)) (get "name") compute-cluster-config-ent->compute-cluster-config)))
+               (-> (get-db-config-ents (d/db conn)) (get "name") compute-cluster-config-ent->compute-cluster-config)))
         (is (= {"name" {:base-path "base-path"
                         :ca-cert "ca-cert"
                         :name "name"
                         :state :running
                         :state-locked? true
-                        :template "template1"}} (in-mem-configs)))))
+                        :template "template1"}} (get-in-mem-configs)))))
     (testing "exceptions"
       (let [uri "datomic:mem://test-compute-cluster-config"
             conn (restore-fresh-database! uri)]
@@ -635,15 +635,15 @@
         (reset! initialize-cluster-fn-invocations-atom [])
         (deliver exit-code-syncer-state-promise nil)
         (deliver scheduler-promise nil)
-        (is (= {} (db-config-ents (d/db conn))))
-        (is (= {} (in-mem-configs)))
+        (is (= {} (get-db-config-ents (d/db conn))))
+        (is (= {} (get-in-mem-configs)))
         (is (= {:error-message "clojure.lang.ExceptionInfo: fail {}"
                 :update-succeeded false}
                (execute-update! nil {:goal-config {:name "fail" :a :a :template "template1"} :valid? true :changed? true :active? true}
-                                (in-mem-configs))))
+                                (get-in-mem-configs))))
         (is (= [] @initialize-cluster-fn-invocations-atom))
-        (is (= {} (db-config-ents (d/db conn))))
-        (is (= {} (in-mem-configs)))
+        (is (= {} (get-db-config-ents (d/db conn))))
+        (is (= {} (get-in-mem-configs)))
 
         (reset! initialize-cluster-fn-invocations-atom [])
         (is (= {:error-message "java.lang.NullPointerException"
@@ -657,8 +657,8 @@
       (reset! initialize-cluster-fn-invocations-atom [])
       (deliver exit-code-syncer-state-promise nil)
       (deliver scheduler-promise nil)
-      (is (= {} (db-config-ents (d/db conn))))
-      (is (= {} (in-mem-configs)))
+      (is (= {} (get-db-config-ents (d/db conn))))
+      (is (= {} (get-in-mem-configs)))
       (with-redefs [config/compute-cluster-templates
                     (constantly {"template1" {:config {:a :bb :c :dd
                                                        :dynamic-cluster-config? true}
@@ -676,20 +676,20 @@
                                  :valid? true
                                  :changed? true
                                  :active? true}
-                                (in-mem-configs)))))
+                                (get-in-mem-configs)))))
       (is (= {:base-path "base-path"
               :ca-cert "ca-cert"
               :name "name"
               :state :running
               :state-locked? true
               :template "template1"}
-             (-> (db-config-ents (d/db conn)) (get "name") compute-cluster-config-ent->compute-cluster-config)))
+             (-> (get-db-config-ents (d/db conn)) (get "name") compute-cluster-config-ent->compute-cluster-config)))
       (is (= {"name" {:base-path "base-path"
                       :ca-cert "ca-cert"
                       :name "name"
                       :state :running
                       :state-locked? true
-                      :template "template1"}} (in-mem-configs)))
+                      :template "template1"}} (get-in-mem-configs)))
       (is (= {:update-succeeded true}
              (execute-update! conn
                               {:goal-config {:a :a
@@ -702,7 +702,7 @@
                                :valid? true
                                :changed? true
                                :active? true}
-                              (in-mem-configs))))
+                              (get-in-mem-configs))))
       (is (= ["name"] @initialize-cluster-fn-invocations-atom))
       (is (= {:base-path "base-path-2"
               :ca-cert "ca-cert"
@@ -710,18 +710,18 @@
               :state :draining
               :state-locked? true
               :template "template1"}
-             (-> (db-config-ents (d/db conn)) (get "name") compute-cluster-config-ent->compute-cluster-config)))
+             (-> (get-db-config-ents (d/db conn)) (get "name") compute-cluster-config-ent->compute-cluster-config)))
       (is (= {"name" {:base-path "base-path"
                       :ca-cert "ca-cert"
                       :name "name"
                       :state :draining
                       :state-locked? true
-                      :template "template1"}} (in-mem-configs))))))
+                      :template "template1"}} (get-in-mem-configs))))))
 
 (deftest test-update-compute-clusters
   (with-redefs [d/db (fn [_])
-                db-config-ents (fn [_])
-                in-mem-configs (constantly nil)
+                get-db-config-ents (fn [_])
+                get-in-mem-configs (constantly nil)
                 config/compute-cluster-templates
                 (constantly {"template1" {:a :bb
                                           :c :dd
@@ -832,12 +832,12 @@
 
 (deftest testing-get-compute-clusters
   (with-redefs [d/db (fn [_])
-                db-config-ents (fn [_] {"name" {:compute-cluster-config/name "name"
-                                                :compute-cluster-config/base-path "base-path"
-                                                :compute-cluster-config/ca-cert "ca-cert"
-                                                :compute-cluster-config/state :compute-cluster-config.state/running
-                                                :compute-cluster-config/state-locked? true
-                                                :compute-cluster-config/template "template"}})
+                get-db-config-ents (fn [_] {"name" {:compute-cluster-config/name "name"
+                                                    :compute-cluster-config/base-path "base-path"
+                                                    :compute-cluster-config/ca-cert "ca-cert"
+                                                    :compute-cluster-config/state :compute-cluster-config.state/running
+                                                    :compute-cluster-config/state-locked? true
+                                                    :compute-cluster-config/template "template"}})
                 get-dynamic-clusters (constantly (->> [(sample-clusters "name")] (map-from-vals #(-> % :name))))]
     (is (= {:db-configs '({:base-path "base-path"
                            :ca-cert "ca-cert"
@@ -851,13 +851,13 @@
                                :state :deleted
                                :state-locked? true
                                :template "template"
-                               :compute-cluster-starting-config {:factory-fn cook.kubernetes.compute-cluster/factory-fn
-                                                                 :base-path "base-path"
-                                                                 :ca-cert "ca-cert"
-                                                                 :name "name"
-                                                                 :state :running
-                                                                 :state-locked? false
-                                                                 :template "template"}})}
+                               :cluster-definition {:factory-fn cook.kubernetes.compute-cluster/factory-fn
+                                                    :config {:base-path "base-path"
+                                                             :ca-cert "ca-cert"
+                                                             :name "name"
+                                                             :state :running
+                                                             :state-locked? false
+                                                             :template "template"}}})}
            (get-compute-clusters nil)))))
 
 (deftest test-delete-compute-cluster
@@ -871,7 +871,7 @@
                :ca-cert "ca-cert"
                :state :running
                :state-locked? true})
-        _ (is (= {} (db-config-ents (d/db conn))))
+        _ (is (= {} (get-db-config-ents (d/db conn))))
         tempids (-> @(d/transact conn [(assoc ent :db/id temp-db-id)]) :tempids)
         db (d/db conn)]
     (is (= {"name" {:db/id (d/resolve-tempid db tempids temp-db-id)
@@ -889,9 +889,9 @@
                               :compute-cluster-config/state
                               :compute-cluster-config/state-locked?
                               :compute-cluster-config/template])
-             (db-config-ents (d/db conn)))))
+             (get-db-config-ents (d/db conn)))))
     (is (delete-compute-cluster conn {:name "name"}))
-    (is (= {} (db-config-ents (d/db conn))))))
+    (is (= {} (get-db-config-ents (d/db conn))))))
 
 (deftest simulate-startup
   (let [uri "datomic:mem://test-compute-cluster-config"
@@ -910,11 +910,11 @@
                        :state :deleted
                        :state-locked? true}
         ent-2 (compute-cluster-config->compute-cluster-config-ent new-cluster-2)]
-    (is (= {} (in-mem-configs)))
-    (is (= {} (db-config-ents (d/db conn))))
+    (is (= {} (get-in-mem-configs)))
+    (is (= {} (get-db-config-ents (d/db conn))))
     @(d/transact conn [(assoc ent :db/id (d/tempid :db.part/user)) (assoc ent-2 :db/id (d/tempid :db.part/user))])
-    (is (= {"name" new-cluster "name-2" new-cluster-2} (db-config-ents->configs (db-config-ents (d/db conn)))))
-    (is (= {} (in-mem-configs)))
+    (is (= {"name" new-cluster "name-2" new-cluster-2} (get-db-configs (d/db conn))))
+    (is (= {} (get-in-mem-configs)))
     (with-redefs [config/compute-cluster-templates
                   (constantly {"template1" {:a :bb
                                             :c :dd
@@ -945,12 +945,12 @@
                                 :template "template1"}
                   :update-result {:update-succeeded true}
                   :valid? true}))
-             (set (update-compute-clusters conn nil (db-config-ents->configs (db-config-ents (d/db conn))) false))))
-      (is (= {"name" new-cluster "name-2" new-cluster-2} (db-config-ents->configs (db-config-ents (d/db conn)))))
+             (set (update-compute-clusters conn nil (get-db-configs (d/db conn)) false))))
+      (is (= {"name" new-cluster "name-2" new-cluster-2} (get-db-configs (d/db conn))))
       (is (= {"name" {:base-path "base-path"
                       :ca-cert "ca-cert"
                       :name "name"
                       :state :running
                       :state-locked? true
                       :template "template1"}}
-             (in-mem-configs))))))
+             (get-in-mem-configs))))))

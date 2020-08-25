@@ -970,12 +970,3 @@
             d3 {:k1 :e :k2 :f}
             _ (testfn nil d2 d3)
             _ (is (= {:e {:f d3}} @map-atom))]))))
-
-(deftest test-diff-map-keys
-  (is (= [#{:b} #{:c} #{:a :d}]
-         (util/diff-map-keys {:a {:a :a}
-                              :b {:b :b}
-                              :d {:d :d}}
-                             {:a {:a :a}
-                              :c {:c :c}
-                              :d {:d :e}}))))
