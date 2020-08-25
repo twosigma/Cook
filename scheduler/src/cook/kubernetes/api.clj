@@ -714,8 +714,8 @@
 (defn ^V1Pod task-metadata->pod
   "Given a task-request and other data generate the kubernetes V1Pod to launch that task."
   [namespace compute-cluster-name
-   {:keys [task-id command container task-request hostname pod-annotations pod-labels pod-hostnames-to-avoid
-           pod-priority-class pod-supports-cook-init? pod-supports-cook-sidecar?]
+   {:keys [task-id command container task-request hostname pod-annotations pod-constraints pod-hostnames-to-avoid
+           pod-labels pod-priority-class pod-supports-cook-init? pod-supports-cook-sidecar?]
     :or {pod-priority-class cook-job-pod-priority-class
          pod-supports-cook-init? true
          pod-supports-cook-sidecar? true}}]
@@ -929,6 +929,25 @@
       ; synthetic pods (which don't specify a node name), but it
       ; doesn't hurt to add it for all pods we submit.
       (add-node-selector pod-spec cook-pool-label pool-name))
+
+    (when pod-constraints
+      (doseq [{:keys [constraint/attribute
+                      constraint/operator
+                      constraint/pattern]}
+              pod-constraints]
+        (condp = operator
+          :constraint.operator/equals
+          ; Add a node selector for any EQUALS constraints
+          ; either defined by the user on their job spec
+          ; or defaulted on the Cook pool via configuration
+          (add-node-selector pod-spec attribute pattern)
+          :else
+          ; A bad constraint operator should have
+          ; been blocked at job submission time
+          (throw (ex-info "Encountered unexpected constraint operator"
+                          {:operator operator
+                           :task-id task-id})))))
+
     (.setVolumes pod-spec (filterv some? (conj volumes
                                                init-container-workdir-volume
                                                scratch-space-volume

@@ -108,19 +108,36 @@
     (->> node-name->available
          (filter #(schedulable-node-filter node-name->node node-name->pods compute-cluster %))
          (map (fn [[node-name available]]
-                {:id {:value (str (UUID/randomUUID))}
-                 :framework-id compute-cluster-name
-                 :slave-id {:value node-name}
-                 :hostname node-name
-                 :resources [{:name "mem" :type :value-scalar :scalar (max 0.0 (:mem available))}
-                             {:name "cpus" :type :value-scalar :scalar (max 0.0 (:cpus available))}
-                             {:name "disk" :type :value-scalar :scalar 0.0}
-                             {:name "gpus" :type :value-text->scalar :text->scalar (:gpus available)}]
-                 :attributes [{:name "compute-cluster-type" :type :value-text :text "kubernetes"}]
-                 :executor-ids []
-                 :compute-cluster compute-cluster
-                 :reject-after-match-attempt true
-                 :offer-match-timer (timers/start (ccmetrics/timer "offer-match-timer" compute-cluster-name))})))))
+                (let [node-label-attributes
+                      ; Convert all node labels to offer
+                      ; attributes so that job constraints
+                      ; can use them in the matching process
+                      (or
+                        (some->> node-name
+                                 ^V1Node (get node-name->node)
+                                 .getMetadata
+                                 .getLabels
+                                 (map (fn [[key value]]
+                                        {:name key
+                                         :type :value-text
+                                         :text value})))
+                        [])]
+                  {:id {:value (str (UUID/randomUUID))}
+                   :framework-id compute-cluster-name
+                   :slave-id {:value node-name}
+                   :hostname node-name
+                   :resources [{:name "mem" :type :value-scalar :scalar (max 0.0 (:mem available))}
+                               {:name "cpus" :type :value-scalar :scalar (max 0.0 (:cpus available))}
+                               {:name "disk" :type :value-scalar :scalar 0.0}
+                               {:name "gpus" :type :value-text->scalar :text->scalar (:gpus available)}]
+                   :attributes (conj node-label-attributes
+                                     {:name "compute-cluster-type"
+                                      :type :value-text
+                                      :text "kubernetes"})
+                   :executor-ids []
+                   :compute-cluster compute-cluster
+                   :reject-after-match-attempt true
+                   :offer-match-timer (timers/start (ccmetrics/timer "offer-match-timer" compute-cluster-name))}))))))
 
 (defn taskids-to-scan
   "Determine all task ids to scan by union-ing task id's from cook expected state and existing task id maps. "
@@ -421,6 +438,10 @@
                                  ; We need to *not* prevent the cluster autoscaler from
                                  ; removing a node just because it's running synthetic pods
                                  :pod-annotations {api/k8s-safe-to-evict-annotation "true"}
+                                 ; Job constraints need to be expressed on synthetic
+                                 ; pods so that we trigger the cluster autoscaler to
+                                 ; spin up nodes that will end up satisfying them
+                                 :pod-constraints (constraints/job->constraints job)
                                  ; Cook has a "novel host constraint", which disallows a job from
                                  ; running on the same host twice. So, we need to avoid running a
                                  ; synthetic pod on any of the hosts that the real job won't be able
