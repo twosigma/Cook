@@ -710,7 +710,8 @@
         ;; whereas :scalar-requests always contains the unmodified job resource values.
         {:strs [mem cpus]} scalar-requests
         {:keys [docker volumes]} container
-        {:keys [image parameters port-mapping]} docker
+        {:keys [parameters port-mapping]} docker
+        image "argo/tsmcf/mcfbase250"
         {:keys [environment]} command
         pool-name (some-> job :job/pool :pool/name)
         ; gpu count is not stored in scalar-requests because Fenzo does not handle gpus in binpacking
