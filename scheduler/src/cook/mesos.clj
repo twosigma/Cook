@@ -221,7 +221,7 @@
                                                                      ; Note: This doall has a critical side effect of actually initializing
                                                                      ; all of the clusters.
                                                                      doall)]
-                                    (deliver cc/scheduler-promise scheduler)
+                                    (reset! cc/pool-name->fenzo-atom (:pool-name->fenzo scheduler))
                                     (cook.monitor/start-collecting-stats)
                                     ; Many of these should look at the compute-cluster of the underlying jobs, and not use driver at all.
                                     (cook.scheduler.scheduler/lingering-task-killer mesos-datomic-conn

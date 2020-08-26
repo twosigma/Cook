@@ -523,8 +523,6 @@
     (testing "normal initialize"
       (reset! cluster-name->compute-cluster-atom {})
       (reset! initialize-cluster-fn-invocations-atom [])
-      (deliver exit-code-syncer-state-promise nil)
-      (deliver scheduler-promise nil)
       (is (= {} (get-in-mem-configs)))
       (is (= ["name"]
              (initialize-cluster!
@@ -546,8 +544,6 @@
     (testing "exception"
       (reset! cluster-name->compute-cluster-atom {})
       (reset! initialize-cluster-fn-invocations-atom [])
-      (deliver exit-code-syncer-state-promise nil)
-      (deliver scheduler-promise nil)
       (is (= {} (get-in-mem-configs)))
       (is (thrown? ExceptionInfo (initialize-cluster! {:name "fail" :a :a :template "template1"})))
       (is (= [] @initialize-cluster-fn-invocations-atom))
@@ -564,8 +560,6 @@
             conn (restore-fresh-database! uri)]
         (reset! cluster-name->compute-cluster-atom {})
         (reset! initialize-cluster-fn-invocations-atom [])
-        (deliver exit-code-syncer-state-promise nil)
-        (deliver scheduler-promise nil)
         (is (= {} (get-db-config-ents (d/db conn))))
         (is (= {} (get-in-mem-configs)))
         ; normal add
@@ -633,8 +627,6 @@
             conn (restore-fresh-database! uri)]
         (reset! cluster-name->compute-cluster-atom {})
         (reset! initialize-cluster-fn-invocations-atom [])
-        (deliver exit-code-syncer-state-promise nil)
-        (deliver scheduler-promise nil)
         (is (= {} (get-db-config-ents (d/db conn))))
         (is (= {} (get-in-mem-configs)))
         (is (= {:error-message "clojure.lang.ExceptionInfo: fail {}"
@@ -655,8 +647,6 @@
     (let [uri "datomic:mem://test-compute-cluster-config"
           conn (restore-fresh-database! uri)]
       (reset! initialize-cluster-fn-invocations-atom [])
-      (deliver exit-code-syncer-state-promise nil)
-      (deliver scheduler-promise nil)
       (is (= {} (get-db-config-ents (d/db conn))))
       (is (= {} (get-in-mem-configs)))
       (with-redefs [config/compute-cluster-templates
@@ -920,8 +910,6 @@
                                             :c :dd
                                             :factory-fn 'cook.test.compute-cluster/cluster-factory-fn
                                             :config {:dynamic-cluster-config? true}}})]
-      (deliver exit-code-syncer-state-promise nil)
-      (deliver scheduler-promise nil)
       (is (= (set
                '({:active? true
                   :changed? false

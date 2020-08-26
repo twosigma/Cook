@@ -364,9 +364,9 @@
       (check-for-unique-constraint-violations resulting-active-configs :base-path)
       (check-for-unique-constraint-violations resulting-active-configs :ca-cert))))
 
-;TODO see if this is ok or need a better way
-(def scheduler-promise (promise))
-(def exit-code-syncer-state-promise (promise))
+; we need to save pool->fenzo and exit-code-syncer so that clusters created later have access to them
+(def exit-code-syncer-state-atom (atom nil))
+(def pool-name->fenzo-atom (atom nil))
 
 (defn initialize-cluster!
   "Create and initialize a ComputeCluster"
@@ -377,8 +377,8 @@
         _ (when-not factory-fn (throw (ex-info "Template for cluster has no factory-fn" {:config config})))
         resolved (cook.util/lazy-load-var factory-fn)
         full-cluster-config (merge (:config cluster-definition-template) config)
-        cluster (resolved full-cluster-config {:exit-code-syncer-state @exit-code-syncer-state-promise})]
-    (initialize-cluster cluster (:pool-name->fenzo @scheduler-promise))))
+        cluster (resolved full-cluster-config {:exit-code-syncer-state @exit-code-syncer-state-atom})]
+    (initialize-cluster cluster {:pool-name->fenzo @pool-name->fenzo-atom})))
 
 (defn execute-update!
   "Attempt to execute a valid cluster configuration update.

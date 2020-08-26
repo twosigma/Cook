@@ -280,7 +280,7 @@
                              settings
                              progress-update-chans
                              trigger-chans]
-                         (deliver cc/exit-code-syncer-state-promise exit-code-syncer-state)
+                         (reset! cc/exit-code-syncer-state-atom exit-code-syncer-state)
                          (doall (map (fn [{:keys [factory-fn config]}]
                                        (let [resolved (util/lazy-load-var factory-fn)]
                                          (log/info "Calling compute cluster factory fn" factory-fn "with config" config)

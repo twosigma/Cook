@@ -2481,8 +2481,6 @@
                      :request-method :post
                      :scheme :http
                      :uri endpoint}]
-        (deliver cc/exit-code-syncer-state-promise nil)
-        (deliver cc/scheduler-promise nil)
         (testing "successful insert"
           (with-redefs [api/compute-cluster-exists? (constantly false)]
             (let [{:keys [status] :as response} (handler request)]
