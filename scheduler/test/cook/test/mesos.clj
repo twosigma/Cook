@@ -275,7 +275,7 @@
                                                                            (db-id [_] cluster-db-id)
                                                                            (compute-cluster-name [_] name))}])]
                           inst))]
-    (let [inst (make-instance :instance.status/running)
+    (let [_ (make-instance :instance.status/running)
           db (d/db conn)
           log-error-invocations-atom (atom nil)
           scheduleAtFixedRate-invocations-atom (atom [])]
@@ -286,7 +286,7 @@
                     cc/update-compute-clusters (fn [_ _ _])
                     mesos/make-compute-cluster-config-updater-task (fn [_ _])
                     t/now (constantly (org.joda.time.DateTime/parse "2020-08-26T16:35:35.946Z"))
-                    chime/chime-at (fn [a b & c]
+                    chime/chime-at (fn [a _ & _]
                                      (swap! scheduleAtFixedRate-invocations-atom conj (str "chime called " (first a) (second a)))
                                      nil)]
         (is (thrown? AssertionError (mesos/dynamic-compute-cluster-configurations-setup nil {})))

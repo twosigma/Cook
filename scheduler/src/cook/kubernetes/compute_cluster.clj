@@ -405,7 +405,7 @@
   (autoscale! [this pool-name jobs adjust-job-resources-for-pool-fn]
     (let [state @state-atom]
       (if-not (= state :running)
-        (log/info "In" name "compute cluster, ignoring request to autoscale in pool" pool-name
+        (log/warn "In" name "compute cluster, ignoring request to autoscale in pool" pool-name
                   "because the current state," state ", is not :running.")
         (try
           (assert (cc/autoscaling? this pool-name)
@@ -601,8 +601,7 @@
     (when (some? ca-cert)
       (.setSslCaCert api-client (-> (Base64/getDecoder) (.decode ca-cert) (ByteArrayInputStream.))))
     (when (some? ca-cert-path)
-      (.setSslCaCert api-client
-                     (FileInputStream. (File. ca-cert-path))))
+      (.setSslCaCert api-client (FileInputStream. (File. ca-cert-path))))
     (when use-google-service-account?
       (set-credentials api-client (GoogleCredentials/getApplicationDefault) bearer-token-refresh-seconds))
     api-client))

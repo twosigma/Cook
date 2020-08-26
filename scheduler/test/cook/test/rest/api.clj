@@ -2540,7 +2540,7 @@
               (is (= (clojure.walk/stringify-keys compute-clusters) response-data))))
 
           (testing "query from non-admin succeeds"
-            (let [{:keys [status] :as response} (handler request)
+            (let [{:keys [status] :as response} (handler (assoc request :authorization/user "non-admin"))
                   response-data (response->body-data response)]
               (is (= 200 status))
               (is (= (clojure.walk/stringify-keys compute-clusters) response-data))))

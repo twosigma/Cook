@@ -425,7 +425,7 @@ def get_compute_cluster_config(cluster, compute_cluster_name):
     """
     :param cluster: cook scheduler cluster
     :param compute_cluster_name: compute cluster
-    :return: config of the compute cluster
+    :return: config of the compute cluster Looks at both /settings (for static clusters) and /compute-clusters (for dynamic clusters)
     """
     cook_cluster_settings = http.get(cluster, 'settings', params={}).json()
     cook_compute_clusters = http.get(cluster, 'compute-clusters', params={}).json()

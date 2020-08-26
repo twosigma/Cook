@@ -14,7 +14,6 @@
 ;; limitations under the License.
 ;;
 (ns cook.test.util
-
   (:require [clojure.test :refer :all]
             [cook.util :refer :all]))
 
