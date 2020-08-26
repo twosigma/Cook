@@ -212,50 +212,50 @@
       (testing "invalid state change"
         (reset! state-change-valid-atom false)
         (is (= {:cluster-name nil
-                :changed? false
+                :differs? false
                 :reason "Cluster state transition from  to  is not valid."
                 :goal-config {}
                 :valid? false} (compute-config-update nil {} {} false)))
         (reset! state-change-valid-atom true))
       (testing "locked state"
         (is (= {:cluster-name "name"
-                :changed? true
+                :differs? true
                 :reason "Attempting to change cluster state from :running to :draining but not able because it is locked."
                 :goal-config {:name "name" :state :draining}
                 :valid? false}
                (compute-config-update nil {:name "name" :state-locked? true :state :running} {:name "name" :state :draining} false))))
       (testing "non-state change"
         (is (= {:cluster-name "name"
-                :changed? true
+                :differs? true
                 :reason "Attempting to change something other than state when force? is false. Diff is ({:a :a} {:a :b} {:name \"name\"})"
                 :goal-config {:name "name" :a :b}
                 :valid? false} (compute-config-update nil {:name "name" :a :a} {:name "name" :a :b} false))))
       (testing "locked state - forced"
         (is (= {:cluster-name "name"
-                :changed? true
+                :differs? true
                 :goal-config {:name "name" :state :draining}
                 :valid? true} (compute-config-update nil {:name "name" :state-locked? true :state :running} {:name "name" :state :draining} true))))
       (testing "non-state change - forced"
         (is (= {:cluster-name "name"
-                :changed? true
+                :differs? true
                 :goal-config {:name "name" :a :b}
                 :valid? true} (compute-config-update nil {:name "name" :a :a} {:name "name" :a :b} true))))
       (testing "valid changed"
         (is (= {:cluster-name "name"
-                :changed? true
+                :differs? true
                 :goal-config {:name "name" :a :a :state :draining}
                 :valid? true} (compute-config-update nil {:name "name" :a :a :state :running} {:name "name" :a :a :state :draining} false)))
         (is (= {:cluster-name "name"
-                :changed? true
+                :differs? true
                 :goal-config {:name "name" :a :b}
                 :valid? true} (compute-config-update nil {:name "name" :a :a} {:name "name" :a :b} true))))
       (testing "valid unchanged"
         (is (= {:cluster-name "name"
-                :changed? false
+                :differs? false
                 :goal-config {:name "name" :a :a}
                 :valid? true} (compute-config-update nil {:name "name" :a :a} {:name "name" :a :a} false)))
         (is (= {:cluster-name "name"
-                :changed? false
+                :differs? false
                 :goal-config {:name "name" :a :a}
                 :valid? true} (compute-config-update nil {:name "name" :a :a} {:name "name" :a :a} true)))))))
 
@@ -264,14 +264,14 @@
                                                               "template2" {:a :bb :c :dd :factory-fn :factory-fn}})]
     (testing "bad template"
       (is (= {:cluster-name "name"
-              :changed? true
+              :differs? true
               :goal-config {:a :b
                             :name "name"}
               :reason "Attempting to create cluster with unknown template: "
               :valid? false}
              (compute-config-insert {:name "name" :a :b})))
       (is (= {:cluster-name "name"
-              :changed? true
+              :differs? true
               :goal-config {:a :b
                             :name "name"
                             :template "missing"}
@@ -280,7 +280,7 @@
              (compute-config-insert {:name "name" :a :b :template "missing"}))))
     (testing "bad template"
       (is (= {:cluster-name "name"
-              :changed? true
+              :differs? true
               :goal-config {:a :b
                             :name "name"
                             :template "template1"}
@@ -289,7 +289,7 @@
              (compute-config-insert {:name "name" :a :b :template "template1"}))))
     (testing "good template"
       (is (= {:cluster-name "name"
-              :changed? true
+              :differs? true
               :goal-config {:a :b
                             :name "name"
                             :template "template2"}
@@ -298,19 +298,19 @@
 
 
 (deftest test-compute-dynamic-config-updates
-  (with-redefs [compute-config-update (fn [_ current new _] {:changed? (not= current new)
+  (with-redefs [compute-config-update (fn [_ current new _] {:differs? (not= current new)
                                                              :update? true
                                                              :goal-config new
                                                              :valid? true
                                                              :cluster-name (:name new)})
-                compute-config-insert (fn [new] {:changed? true
+                compute-config-insert (fn [new] {:differs? true
                                                  :insert? true
                                                  :goal-config new
                                                  :valid? true
                                                  :cluster-name (:name new)})]
     (let [expected (set [
                          {:active? false
-                          :changed? false
+                          :differs? false
                           :cluster-name "base-path-collide-existing"
                           :goal-config {:base-path "path-collide"
                                         :ca-cert 7
@@ -319,7 +319,7 @@
                           :update? true
                           :valid? true}
                          {:active? false
-                          :changed? true
+                          :differs? true
                           :cluster-name "left"
                           :goal-config {:a :a
                                         :base-path "left-base-path"
@@ -329,7 +329,7 @@
                           :update? true
                           :valid? true}
                          {:active? true
-                          :changed? false
+                          :differs? false
                           :cluster-name "both1"
                           :goal-config {:a :a
                                         :base-path "both1-base-path"
@@ -338,7 +338,7 @@
                           :update? true
                           :valid? true}
                          {:active? true
-                          :changed? false
+                          :differs? false
                           :cluster-name "both5"
                           :goal-config {:a :b
                                         :base-path "both5-base-path"
@@ -348,7 +348,7 @@
                           :update? true
                           :valid? false}
                          {:active? false
-                          :changed? true
+                          :differs? true
                           :update? true
                           :cluster-name "left"
                           :goal-config {:a :a
@@ -358,7 +358,7 @@
                                         :state :deleted}
                           :valid? true}
                          {:active? true
-                          :changed? true
+                          :differs? true
                           :update? true
                           :cluster-name "both2"
                           :goal-config {:a :b
@@ -367,7 +367,7 @@
                                         :name "both2"}
                           :valid? true}
                          {:active? true
-                          :changed? true
+                          :differs? true
                           :insert? true
                           :cluster-name "right"
                           :goal-config {:a :a
@@ -376,7 +376,7 @@
                                         :name "right"}
                           :valid? true}
                          {:active? true
-                          :changed? true
+                          :differs? true
                           :cluster-name "both3"
                           :goal-config {:a :b
                                         :ca-cert 4
@@ -385,7 +385,7 @@
                           :update? true
                           :valid? true}
                          {:active? true
-                          :changed? true
+                          :differs? true
                           :cluster-name "both4"
                           :goal-config {:a :b
                                         :ca-cert 5
@@ -394,7 +394,7 @@
                           :update? true
                           :valid? true}
                          {:active? true
-                          :changed? true
+                          :differs? true
                           :cluster-name "right2"
                           :insert? true
                           :goal-config {:a :a
@@ -404,7 +404,7 @@
                           :reason ":base-path is not unique between clusters #{\"both5\" \"right2\"}"
                           :valid? false}
                          {:active? true
-                          :changed? true
+                          :differs? true
                           :cluster-name "base-path-collide-new"
                           :insert? true
                           :goal-config {:base-path "path-collide"
@@ -574,7 +574,7 @@
                                   :state :running
                                   :state-locked? true}
                                  :valid? true
-                                 :changed? true
+                                 :differs? true
                                  :active? true}
                                 (get-in-mem-configs))))
         (is (= ["name"] @initialize-cluster-fn-invocations-atom))
@@ -605,7 +605,7 @@
                                   :state :running
                                   :state-locked? true}
                                  :valid? true
-                                 :changed? false
+                                 :differs? false
                                  :active? true}
                                 (get-in-mem-configs))))
         (is (= ["name" "name"] @initialize-cluster-fn-invocations-atom))
@@ -631,7 +631,7 @@
         (is (= {} (get-in-mem-configs)))
         (is (= {:error-message "clojure.lang.ExceptionInfo: fail {}"
                 :update-succeeded false}
-               (execute-update! nil {:goal-config {:name "fail" :a :a :template "template1"} :valid? true :changed? true :active? true}
+               (execute-update! nil {:goal-config {:name "fail" :a :a :template "template1"} :valid? true :differs? true :active? true}
                                 (get-in-mem-configs))))
         (is (= [] @initialize-cluster-fn-invocations-atom))
         (is (= {} (get-db-config-ents (d/db conn))))
@@ -640,7 +640,7 @@
         (reset! initialize-cluster-fn-invocations-atom [])
         (is (= {:error-message "java.lang.NullPointerException"
                 :update-succeeded false}
-               (execute-update! nil {:goal-config {:name "fail" :a :a :template "template1"} :valid? true :changed? true :active? true} nil)))
+               (execute-update! nil {:goal-config {:name "fail" :a :a :template "template1"} :valid? true :differs? true :active? true} nil)))
         (is (= [] @initialize-cluster-fn-invocations-atom)))))
 
   (testing "normal update"
@@ -664,7 +664,7 @@
                                                :state :running
                                                :state-locked? true}
                                  :valid? true
-                                 :changed? true
+                                 :differs? true
                                  :active? true}
                                 (get-in-mem-configs)))))
       (is (= {:base-path "base-path"
@@ -690,7 +690,7 @@
                                              :state :draining
                                              :state-locked? true}
                                :valid? true
-                               :changed? true
+                               :differs? true
                                :active? true}
                               (get-in-mem-configs))))
       (is (= ["name"] @initialize-cluster-fn-invocations-atom))
@@ -721,7 +721,7 @@
                 execute-update! (fn [_ config _] (if (= "fail" (:name config)) {:update-succeeded false} {:update-succeeded true}))]
     (testing "single"
       (is (= '({:active? true
-                :changed? true
+                :differs? true
                 :cluster-name nil
                 :goal-config {:a :a
                               :base-path 2
@@ -730,7 +730,7 @@
                 :update-result {:update-succeeded true}
                 :valid? true}
                {:active? true
-                :changed? false
+                :differs? false
                 :cluster-name "current"
                 :goal-config {:a :b
                               :base-path 1
@@ -742,7 +742,7 @@
              (update-compute-cluster nil  {:a :a :template "template1" :ca-cert 2 :base-path 2} false))))
     (testing "single - error"
       (is (= '({:active? true
-                :changed? true
+                :differs? true
                 :cluster-name "current"
                 :goal-config {:base-path 2
                               :ca-cert 1
@@ -754,7 +754,7 @@
              (update-compute-cluster nil  {:name "current" :state :running :ca-cert 1 :base-path 2} false))))
     (testing "single - edit base-path"
       (is (= '({:active? true
-                :changed? true
+                :differs? true
                 :cluster-name "current"
                 :goal-config {:base-path 2
                               :ca-cert 1
@@ -765,7 +765,7 @@
              (update-compute-cluster nil  {:name "current" :state :running :ca-cert 1 :base-path 2} true))))
     (testing "multiple"
       (is (= '({:active? true
-                :changed? true
+                :differs? true
                 :cluster-name nil
                 :goal-config {:a :a
                               :base-path 2
@@ -774,7 +774,7 @@
                 :update-result {:update-succeeded true}
                 :valid? true}
                {:active? true
-                :changed? false
+                :differs? false
                 :cluster-name "current"
                 :goal-config {:a :b
                               :base-path 1
@@ -792,21 +792,21 @@
       (is (thrown? AssertionError (update-compute-clusters nil  {:a :a :template "template1"} {"a" {:a :a :template "template1"}} false))))
     (testing "errors"
       (is (= '({:active? true
-                :changed? true
+                :differs? true
                 :cluster-name nil
                 :goal-config {:a :a
                               :template "template1"}
                 :update-result {:update-succeeded true}
                 :valid? true}
                {:active? true
-                :changed? true
+                :differs? true
                 :cluster-name "bad1"
                 :goal-config {:name "bad1"}
                 :reason "Attempting to create cluster with unknown template: "
                 :update-result nil
                 :valid? false}
                {:active? true
-                :changed? true
+                :differs? true
                 :cluster-name "current"
                 :reason "Attempting to change something other than state when force? is false. Diff is ({:a :b} {:a :a} {:base-path 1, :ca-cert 1, :name \"current\"})"
                 :update-result nil
@@ -912,7 +912,7 @@
                                             :config {:dynamic-cluster-config? true}}})]
       (is (= (set
                '({:active? true
-                  :changed? false
+                  :differs? false
                   :cluster-name "name"
                   :goal-config {:base-path "base-path"
                                 :ca-cert "ca-cert"
@@ -923,7 +923,7 @@
                   :update-result {:update-succeeded true}
                   :valid? true}
                  {:active? false
-                  :changed? false
+                  :differs? false
                   :cluster-name "name-2"
                   :goal-config {:base-path "base-path"
                                 :ca-cert "ca-cert"

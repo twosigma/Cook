@@ -314,7 +314,7 @@
                          (pr-str (data/diff (dissoc current :state) (dissoc new :state))))}
            :else
            {:valid? true})
-    :goal-config new :changed? (not= current new) :cluster-name (:name new)))
+    :goal-config new :differs? (not= current new) :cluster-name (:name new)))
 
 (defn compute-config-insert
   "Add validation info to a new dynamic cluster configuration."
@@ -329,7 +329,7 @@
               :reason (str "Template for cluster has no factory-fn: " cluster-definition-template)}
              :else
              {:valid? true})
-      :goal-config new :changed? true :cluster-name (:name new))))
+      :goal-config new :differs? true :cluster-name (:name new))))
 
 (defn check-for-unique-constraint-violations
   "Check that the proposed resulting configurations don't collide on fields that should be unique, e.g. :base-path"
