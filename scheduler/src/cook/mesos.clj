@@ -37,8 +37,7 @@
             [metrics.counters :as counters]
             [plumbing.core :refer [map-from-keys]]
             [swiss.arrows :refer :all])
-  (:import (java.util.concurrent Executors ExecutorService ScheduledExecutorService TimeUnit)
-           (org.apache.curator.framework.recipes.leader LeaderSelector LeaderSelectorListener)
+  (:import (org.apache.curator.framework.recipes.leader LeaderSelector LeaderSelectorListener)
            (org.apache.curator.framework.state ConnectionState)))
 
 ;; ============================================================================
@@ -110,18 +109,14 @@
       update-interval-ms
       (assoc :update-data-local-costs-trigger-chan (prepare-trigger-chan (time/millis update-interval-ms))))))
 
-(def ^ScheduledExecutorService compute-cluster-config-updater-executor (Executors/newSingleThreadScheduledExecutor))
-
 (defn make-compute-cluster-config-updater-task
   "Create a Runnable that periodically checks for updated compute cluster configurations"
   [conn new-cluster-configurations-fn]
-  (reify
-    Runnable
-    (run [_]
-      (try
-        (cc/update-compute-clusters conn (new-cluster-configurations-fn) false)
-        (catch Exception ex
-          (log/error ex "Failed to update cluster configurations"))))))
+  (fn compute-cluster-config-updater-task [_]
+    (try
+      (cc/update-compute-clusters conn (new-cluster-configurations-fn) false)
+      (catch Exception ex
+        (log/error ex "Failed to update cluster configurations")))))
 
 (defn dynamic-compute-cluster-configurations-setup
   "Set up dynamic compute cluster configurations. This includes loading existing configurations from the database
@@ -141,11 +136,12 @@
                  {:missing-cluster-names missing-cluster-names
                   :instances (->> missing-cluster-names (map-from-keys #(take 10 (cluster-name->running-task-ents %))))}))
     (cc/update-compute-clusters conn saved-cluster-configurations false)
-    (.scheduleAtFixedRate compute-cluster-config-updater-executor
-                          (make-compute-cluster-config-updater-task conn (util/lazy-load-var new-cluster-configurations-fn))
-                          cluster-update-period-seconds ;initial delay
-                          cluster-update-period-seconds ;period
-                          TimeUnit/SECONDS)))
+    (chime/chime-at
+      (tools/time-seq (time/plus (time/now) (time/seconds cluster-update-period-seconds))
+                      (time/seconds cluster-update-period-seconds))
+      (make-compute-cluster-config-updater-task conn (util/lazy-load-var new-cluster-configurations-fn))
+      {:error-handler (fn compute-cluster-config-updater-error-handler [ex]
+                        (log/error ex "Failed to update cluster configurations"))})))
 
 (defn start-leader-selector
   "Starts a leader elector. When the process is leader, it starts the mesos
