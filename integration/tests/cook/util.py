@@ -1929,3 +1929,8 @@ def make_failed_job(cook_url, **kwargs):
 def kubernetes_settings():
     cook_url = retrieve_cook_url()
     return settings(cook_url)['kubernetes']
+
+
+def create_compute_cluster(cook_url, cluster):
+    resp = session.post(f'{cook_url}/compute-clusters', json=cluster)
+    return resp.json(), resp

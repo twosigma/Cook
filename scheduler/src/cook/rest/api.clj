@@ -3046,7 +3046,8 @@
     ; TODO replace with real result handling with error checks
     (log/info "Result of create-compute-cluster! REST API call"
               {:input body-params
-               :result result})))
+               :result result})
+    {:response result}))
 
 (defn compute-cluster-exists?
   [db name]
@@ -3084,6 +3085,14 @@
       {:allowed? (partial check-compute-cluster-allowed is-authorized-fn)}
       resource-attrs)))
 
+(defn check-valid-compute-cluster
+  [ctx]
+  (let [template-name (-> ctx :request :body-params :template)
+        template-definition ((config/compute-cluster-templates) template-name)]
+    (if template-definition
+      true
+      [false {::error (str "Attempting to create cluster with unknown template: " template-name)}])))
+
 (defn post-compute-clusters-handler
   [conn is-authorized-fn leadership-atom leader-selector]
   (base-compute-cluster-handler
@@ -3092,12 +3101,12 @@
     leader-selector
     {:allowed-methods [:post]
      :conflict? (partial check-compute-cluster-conflict conn)
-     ; TODO(DPO) Make the response here meaningful
-     :handle-created (constantly {:success true})
-     :post! (partial create-compute-cluster! conn)}))
+     :handle-created (fn [{:keys [response]}] response)
+     :post! (partial create-compute-cluster! conn)
+     :processable? check-valid-compute-cluster}))
 
 (defn read-compute-clusters
-  [conn ctx]
+  [conn _]
   (cc/get-compute-clusters conn))
 
 (defn get-compute-clusters-handler
