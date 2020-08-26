@@ -38,12 +38,18 @@ if 'TEST_METRICS_URL' in os.environ:
             expected_to_fail = xfail_mark is not None and xfail_mark.name == 'xfail'
             test_namespace = '.'.join(request_node._nodeid.split('::')[:-1]).replace('/', '.').replace('.py', '')
             test_name = request_node.name
-            setup = request_node.rep_setup
             if hasattr(request_node, 'rep_call'):
+                if hasattr(request_node, 'rep_setup'):
+                    setup_failed = request_node.rep_setup.failed
+                    setup_passed = request_node.rep_setup.passed
+                else:
+                    setup_failed = False
+                    setup_passed = True
+
                 call = request_node.rep_call
-                if setup.failed or call.failed:
+                if setup_failed or call.failed:
                     result = 'failed'
-                elif setup.passed and call.passed:
+                elif setup_passed and call.passed:
                     result = 'passed'
                 elif call.skipped:
                     # Unfortunately, tests marked as xfail that fail
