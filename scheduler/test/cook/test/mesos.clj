@@ -14,7 +14,8 @@
 ;; limitations under the License.
 ;;
 (ns cook.test.mesos
-  (:require [clojure.core.async :as async]
+  (:require [clj-time.core :as t]
+            [clojure.core.async :as async]
             [clojure.test :refer :all]
             [clojure.tools.logging :as log]
             [cook.compute-cluster :as cc]
@@ -284,13 +285,13 @@
                     cc/get-db-config-ents (fn [_] {})
                     cc/update-compute-clusters (fn [_ _ _])
                     mesos/make-compute-cluster-config-updater-task (fn [_ _])
-                    mesos/compute-cluster-config-updater-executor (reify ScheduledExecutorService
-                                                                    (scheduleAtFixedRate [this a b c d]
-                                                                      (swap! scheduleAtFixedRate-invocations-atom conj (str a b c d))
-                                                                      nil))]
+                    t/now (constantly (org.joda.time.DateTime/parse "2020-08-26T16:35:35.946Z"))
+                    chime/chime-at (fn [a b & c]
+                                     (swap! scheduleAtFixedRate-invocations-atom conj (str "chime called " (first a) (second a)))
+                                     nil)]
         (is (thrown? AssertionError (mesos/dynamic-compute-cluster-configurations-setup nil {})))
         (is (= nil (mesos/dynamic-compute-cluster-configurations-setup
                      conn {:new-cluster-configurations-fn 'cook.test.mesos/dumy-new-cluster-configurations-fn})))
         (is (re-matches #"Can't find cluster configurations for some of the running jobs! \{:missing-cluster-names #\{cluster1\}, :instances \{cluster1 \(\{:db/id \d+, :instance/compute-cluster \{:db/id \d+, :compute-cluster/cluster-name cluster1\}\}\)\}\}"
                         @log-error-invocations-atom))
-        (is (= ["6060SECONDS"] @scheduleAtFixedRate-invocations-atom))))))
+        (is (= ["chime called 2020-08-26T16:36:35.946Z2020-08-26T16:37:35.946Z"] @scheduleAtFixedRate-invocations-atom))))))
