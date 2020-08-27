@@ -155,19 +155,8 @@
                             {:max-size 5000
                              :ttl-ms (* 60 1000)}
                             agent-query-cache))
-     :compute-clusters (fnk [[:config {compute-clusters []}
-                              {mesos nil}]]
-                         (if (seq compute-clusters)
-                           compute-clusters
-                           [{:factory-fn 'cook.mesos.mesos-compute-cluster/factory-fn
-                             :config {:compute-cluster-name (or (:compute-cluster-name mesos)
-                                                                "default-compute-cluster-from-config-defaulting")
-                                      :framework-id (:framework-id mesos)
-                                      :master (:master mesos)
-                                      :failover-timeout (:failover-timeout-ms mesos)
-                                      :principal (:principal mesos)
-                                      :role (:role mesos)
-                                      :framework-name (:framework-name mesos)}}]))
+     :compute-clusters (fnk [[:config {compute-clusters []}]]
+                         compute-clusters)
      :compute-cluster-templates (fnk [[:config {compute-cluster-templates {}}]]
                                   compute-cluster-templates)
      :compute-cluster-update-options (fnk [[:config {compute-cluster-update-options nil}]]

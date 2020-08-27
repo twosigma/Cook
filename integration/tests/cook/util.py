@@ -1488,19 +1488,23 @@ def get_kubernetes_compute_cluster():
 @functools.lru_cache()
 def get_kubernetes_nodes():
     kubernetes_compute_cluster = get_kubernetes_compute_cluster()
-    if 'config-file' in kubernetes_compute_cluster['config']:
-        nodes = subprocess.check_output(['kubectl', '--kubeconfig', kubernetes_compute_cluster['config']['config-file'],
-                                         'get', 'nodes', '-o=json'])
-        node_json = json.loads(nodes)
-    elif 'base-path' in kubernetes_compute_cluster['config']:
-        authorization_header = subprocess.check_output(os.getenv('COOK_KUBERNETES_AUTH_CMD'), shell=True).decode(
-            'utf-8').strip()
-        nodes_url = kubernetes_compute_cluster['config']['base-path'] + '/api/v1/nodes'
-        node_json = requests.get(nodes_url, headers={'Authorization': authorization_header}, verify=False).json()
+    if kubernetes_compute_cluster:
+        if 'config-file' in kubernetes_compute_cluster['config']:
+            nodes = subprocess.check_output(['kubectl', '--kubeconfig', kubernetes_compute_cluster['config']['config-file'],
+                                             'get', 'nodes', '-o=json'])
+            node_json = json.loads(nodes)
+        elif 'base-path' in kubernetes_compute_cluster['config']:
+            authorization_header = subprocess.check_output(os.getenv('COOK_KUBERNETES_AUTH_CMD'), shell=True).decode(
+                'utf-8').strip()
+            nodes_url = kubernetes_compute_cluster['config']['base-path'] + '/api/v1/nodes'
+            node_json = requests.get(nodes_url, headers={'Authorization': authorization_header}, verify=False).json()
+        else:
+            raise RuntimeError(f'Unable to get node info for configured kubernetes cluster: {kubernetes_compute_cluster}')
+        logging.info(f'Retrieved kubernetes nodes: {node_json}')
+        return node_json['items']
     else:
-        raise RuntimeError(f'Unable to get node info for configured kubernetes cluster: {kubernetes_compute_cluster}')
-    logging.info(f'Retrieved kubernetes nodes: {node_json}')
-    return node_json['items']
+        logging.info('Unable to get kubernetes nodes, returning empty list')
+        return []
 
 
 @functools.lru_cache()
@@ -1934,3 +1938,8 @@ def kubernetes_settings():
 def create_compute_cluster(cook_url, cluster):
     resp = session.post(f'{cook_url}/compute-clusters', json=cluster)
     return resp.json(), resp
+
+
+def delete_compute_cluster(cook_url, cluster):
+    resp = session.delete(f'{cook_url}/compute-clusters', json={'name': cluster['name']})
+    return resp

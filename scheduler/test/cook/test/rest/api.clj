@@ -2482,16 +2482,17 @@
                      :scheme :http
                      :uri endpoint}]
         (testing "successful insert"
-          (with-redefs [api/compute-cluster-exists? (constantly false)]
+          (with-redefs [api/compute-cluster-exists? (constantly false)
+                        cc/update-compute-cluster (constantly [])]
             (let [{:keys [status] :as response} (handler request)]
-              (is (= 201 status) (str response)))))
+              (is (= 201 status) (-> response response->body-data str)))))
 
         (testing "insert with existing name fails"
           (with-redefs [api/compute-cluster-exists? (constantly true)]
             (let [{:keys [status] :as response} (handler request)]
-              (is (= 409 status) (str response))
+              (is (= 422 status) (-> response response->body-data str))
               (is (= (str "Compute cluster with name " name " already exists")
-                     (-> response response->body-data (get "error")))))))
+                     (-> response response->body-data (get-in ["error" "message"])))))))
 
         (testing "insert from non-admin fails"
           (let [request-from-non-admin (assoc request :authorization/user "non-admin")
@@ -2501,15 +2502,16 @@
                    (-> response response->body-data (get "error"))))))
 
         (testing "specifying state-locked? succeeds"
-          (with-redefs [api/compute-cluster-exists? (constantly false)]
+          (with-redefs [api/compute-cluster-exists? (constantly false)
+                        cc/update-compute-cluster (constantly [])]
             (let [request-with-state-locked-false (assoc-in request [:body-params "state-locked?"] false)
-                  {:keys [status]} (handler request-with-state-locked-false)]
-              (is (= 201 status)))))
+                  {:keys [status] :as response} (handler request-with-state-locked-false)]
+              (is (= 201 status) (-> response response->body-data str)))))
 
         (testing "non-leader redirects"
           (with-redefs [api/leader-selector->leader-url (constantly sample-leader-base-url)]
-            (let [{:keys [location status]} (handler request :leader? false)]
-              (is (= 307 status))
+            (let [{:keys [location status] :as response} (handler request :leader? false)]
+              (is (= 307 status) (-> response response->body-data str))
               (is (= location (str sample-leader-base-url endpoint)))))))))
 
   (deftest test-read-compute-clusters
@@ -2554,15 +2556,17 @@
           handler (basic-handler conn :is-authorized-fn is-authorized-fn)
           name "test-name"
           request {:authorization/user admin-user
-                   :body-params {"name" name}
+                   :body-params {:name name}
                    :request-method :delete
                    :scheme :http
                    :uri "/compute-clusters"}
           name-deleted-atom (atom nil)]
       (testing "successful delete"
         (with-redefs [cc/delete-compute-cluster
-                      (fn [_ m]
-                        (reset! name-deleted-atom (get m "name")))]
+                      (fn [_ {:keys [name]}]
+                        (reset! name-deleted-atom name))
+                      api/compute-cluster-exists?
+                      (constantly true)]
           (let [{:keys [status]} (handler request)]
             (is (= 204 status))
             (is (= name @name-deleted-atom))))))))
