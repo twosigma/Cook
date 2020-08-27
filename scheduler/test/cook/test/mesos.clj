@@ -271,6 +271,7 @@
                                            conn
                                            :job-state :job.state/running
                                            :instances [{:instance-status status
+                                                        :task-id "12345"
                                                         :compute-cluster (reify cc/ComputeCluster
                                                                            (db-id [_] cluster-db-id)
                                                                            (compute-cluster-name [_] name))}])]
@@ -292,6 +293,6 @@
         (is (thrown? AssertionError (mesos/dynamic-compute-cluster-configurations-setup nil {})))
         (is (= nil (mesos/dynamic-compute-cluster-configurations-setup
                      conn {:new-cluster-configurations-fn 'cook.test.mesos/dumy-new-cluster-configurations-fn})))
-        (is (re-matches #"Can't find cluster configurations for some of the running jobs! \{:missing-cluster-names #\{cluster1\}, :instances \{cluster1 \(\{:db/id \d+, :instance/compute-cluster \{:db/id \d+, :compute-cluster/cluster-name cluster1\}\}\)\}\}"
+        (is (re-matches #"Can't find cluster configurations for some of the running jobs! \{:missing-cluster-names #\{cluster1\}, :cluster-name->instance-ids \{cluster1 \(12345\)\}\}"
                         @log-error-invocations-atom))
         (is (= ["chime called 2020-08-26T16:36:35.946Z2020-08-26T16:37:35.946Z"] @scheduleAtFixedRate-invocations-atom))))))

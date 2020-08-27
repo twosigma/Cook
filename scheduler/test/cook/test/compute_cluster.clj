@@ -344,7 +344,7 @@
                                         :base-path "both5-base-path"
                                         :ca-cert 6
                                         :name "both5"}
-                          :reason ":base-path is not unique between clusters #{\"both5\" \"right2\"}"
+                          :reason ":base-path is not unique between clusters: #{\"both5\" \"right2\"}"
                           :update? true
                           :valid? false}
                          {:active? false
@@ -401,7 +401,7 @@
                                         :ca-cert 13
                                         :base-path "both5-base-path"
                                         :name "right2"}
-                          :reason ":base-path is not unique between clusters #{\"both5\" \"right2\"}"
+                          :reason ":base-path is not unique between clusters: #{\"both5\" \"right2\"}"
                           :valid? false}
                          {:active? true
                           :differs? true
@@ -788,8 +788,6 @@
                                        {:a :a :template "template1" :ca-cert 2 :base-path 2}
                                        "current"
                                        {:name "current" :a :b :state :running :ca-cert 1 :base-path 1}} false))))
-    (testing "single and multiple"
-      (is (thrown? AssertionError (update-compute-clusters nil  {:a :a :template "template1"} {"a" {:a :a :template "template1"}} false))))
     (testing "errors"
       (is (= '({:active? true
                 :differs? true

@@ -134,7 +134,10 @@
     (when missing-cluster-names
       (log/error "Can't find cluster configurations for some of the running jobs!"
                  {:missing-cluster-names missing-cluster-names
-                  :instances (->> missing-cluster-names (map-from-keys #(take 10 (cluster-name->running-task-ents %))))}))
+                  :cluster-name->instance-ids (->> missing-cluster-names
+                                                (map-from-keys
+                                                  #(->> (take 20 (cluster-name->running-task-ents %))
+                                                        (map :instance/task-id))))}))
     (cc/update-compute-clusters conn saved-cluster-configurations false)
     (chime/chime-at
       (tools/time-seq (time/plus (time/now) (time/seconds cluster-update-period-seconds))

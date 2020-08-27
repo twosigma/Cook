@@ -575,6 +575,7 @@
       a bearer token for authenticating with kubernetes
     - bearer-token-refresh-seconds: interval to refresh the bearer token"
   [^String config-file base-path ^String use-google-service-account? bearer-token-refresh-seconds verifying-ssl ^String ca-cert ^String ca-cert-path]
+  {:pre [(not (and ca-cert ca-cert-path))]}
   (log/info "API Client config file" config-file)
   (let [^ApiClient api-client (if (some? config-file)
                                 (let [^KubeConfig kubeconfig

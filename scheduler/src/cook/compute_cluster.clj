@@ -192,7 +192,6 @@
    :compute-cluster-config/state-locked? state-locked?})
 
 (defn get-db-config-ents
-  ;TODO is it ok to fail to connect to the db and return empty list?
   ;TODO maybe add "archived" flag and don't return archived configs for brevity
   "Get the current dynamic cluster configuration entities from the database"
   [db]
@@ -247,17 +246,23 @@
   (let [[only-db-keys only-in-mem-keys both-keys] (util/diff-map-keys current-db-configs current-in-mem-configs)]
     (doseq [only-db-key only-db-keys]
       (when (not= :deleted (-> only-db-key current-db-configs :state))
-        (log/info "Database cluster configuration is missing from in-memory configs. Cluster is only in the database and is not deleted."
+        (log/info "Database cluster configuration is missing from in-memory configs."
+                  "Cluster is only in the database and is not deleted."
+                  "This is normal at startup, but shouldn't happen otherwise."
                   {:cluster-name only-db-key :cluster (current-db-configs only-db-key)})))
     (doseq [only-in-mem-key only-in-mem-keys]
       (when (not= :deleted (-> only-in-mem-key current-in-mem-configs :state))
-        (log/error "In-memory cluster configuration is missing from the database. Cluster is only in memory and is not deleted."
+        (log/error "In-memory cluster configuration is missing from the database."
+                   "Cluster is only in memory and is not deleted."
+                   "This should not have happened! A database update was missed!"
+                   "The cluster configuration will be added to the database on the next update."
                    {:cluster-name only-in-mem-key :cluster (current-in-mem-configs only-in-mem-key)})))
     (doseq [key both-keys]
       (let [keys-to-keep-synced [:base-path :ca-cert :state]]
         (when (not= (-> key current-db-configs (select-keys keys-to-keep-synced))
                     (-> key current-in-mem-configs (select-keys keys-to-keep-synced)))
           (log/error "Base path, CA cert, or state differ between in-memory and database cluster configurations."
+                     "Ensure that the database contains the correct configuration and then change leadership."
                      {:cluster-name key
                       :in-memory-cluster (current-in-mem-configs key)
                       :db-cluster (current-db-configs key)})))))
@@ -269,9 +274,9 @@
   (d/q '[:find [?job-instance ...]
          :in $ ?cluster-name [?status ...]
          :where
+         [?job-instance :instance/status ?status]
          [?cluster :compute-cluster/cluster-name ?cluster-name]
-         [?job-instance :instance/compute-cluster ?cluster]
-         [?job-instance :instance/status ?status]]
+         [?job-instance :instance/compute-cluster ?cluster]]
        db cluster-name [:instance.status/running :instance.status/unknown]))
 
 (defn cluster-state-change-valid?
@@ -297,59 +302,68 @@
 
 (defn compute-config-update
   "Add validation info to a dynamic cluster configuration update."
-  [db current new force?]
-  (assoc (cond
-           (not (cluster-state-change-valid? db (:state current) (:state new) (:name current)))
-           {:valid? false
-            :reason (str "Cluster state transition from " (:state current) " to " (:state new) " is not valid.")}
-           force?
-           {:valid? true}
-           (and (not= (:state current) (:state new)) (:state-locked? current))
-           {:valid? false
-            :reason (str "Attempting to change cluster state from "
-                         (:state current) " to " (:state new) " but not able because it is locked.")}
-           (not= (dissoc current :state) (dissoc new :state))
-           {:valid? false
-            :reason (str "Attempting to change something other than state when force? is false. Diff is "
-                         (pr-str (data/diff (dissoc current :state) (dissoc new :state))))}
-           :else
-           {:valid? true})
-    :goal-config new :differs? (not= current new) :cluster-name (:name new)))
+  [db
+   {current-name :name current-state :state current-state-locked? :state-locked? :as current-config}
+   {new-name :name new-state :state :as new-config}
+   force?]
+  {:pre [(= current-name new-name)]}
+  (let [update
+        (cond
+          (not (cluster-state-change-valid? db current-state new-state current-name))
+          {:valid? false
+           :reason (str "Cluster state transition from " current-state " to " new-state " is not valid.")}
+          force?
+          {:valid? true}
+          (and (not= current-state new-state) current-state-locked?)
+          {:valid? false
+           :reason (str "Attempting to change cluster state from "
+                        current-state " to " new-state " but not able because it is locked.")}
+          (not= (dissoc current-config :state) (dissoc new-config :state))
+          {:valid? false
+           :reason (str "Attempting to change something other than state when force? is false. Diff is "
+                        (pr-str (data/diff (dissoc current-config :state) (dissoc new-config :state))))}
+          :else
+          {:valid? true})]
+    (assoc update :goal-config new-config :differs? (not= current-config new-config) :cluster-name new-name)))
 
 (defn compute-config-insert
   "Add validation info to a new dynamic cluster configuration."
-  [new]
-  (let [cluster-definition-template ((config/compute-cluster-templates) (:template new))]
-    (assoc (cond
-             (not cluster-definition-template)
-             {:valid? false
-              :reason (str "Attempting to create cluster with unknown template: " (:template new))}
-             (not (:factory-fn cluster-definition-template))
-             {:valid? false
-              :reason (str "Template for cluster has no factory-fn: " cluster-definition-template)}
-             :else
-             {:valid? true})
-      :goal-config new :differs? true :cluster-name (:name new))))
+  [{:keys [name template] :as new-config}]
+  (let [cluster-definition-template ((config/compute-cluster-templates) template)
+        update
+        (cond
+          (not cluster-definition-template)
+          {:valid? false
+           :reason (str "Attempting to create cluster with unknown template: " template)}
+          (not (:factory-fn cluster-definition-template))
+          {:valid? false
+           :reason (str "Template for cluster has no factory-fn: " cluster-definition-template)}
+          :else
+          {:valid? true})]
+    (assoc update :goal-config new-config :differs? true :cluster-name name)))
 
 (defn check-for-unique-constraint-violations
   "Check that the proposed resulting configurations don't collide on fields that should be unique, e.g. :base-path"
-  [changes resulting-active-configs unique-constraint-field]
-  (let [unique-constraint-value->cluster-names
-        (reduce (fn [m {:keys [cluster-name goal-config]}]
-                  (update m (goal-config unique-constraint-field) conj cluster-name))
-                {} resulting-active-configs)]
-    (->> changes
-         (map
-           #(let [{:keys [goal-config]} %
-                  unique-constraint-value (goal-config unique-constraint-field)
-                  clusters-for-unique-value (-> unique-constraint-value unique-constraint-value->cluster-names set)]
-              (cond-> %
-                (> (count clusters-for-unique-value) 1)
-                (assoc :valid? false
-                       :reason (str unique-constraint-field " is not unique between clusters " clusters-for-unique-value))))))))
+  [updates resulting-active-configs unique-constraint-field]
+  (let [unique-constraint-value->cluster-names (->> resulting-active-configs
+                                                    (group-by #(-> % :goal-config unique-constraint-field))
+                                                    (map-vals #(map :cluster-name %)))
+        duplicated-constraint-values (->> unique-constraint-value->cluster-names
+                                          (filter #(-> (second %) count (> 1)))
+                                          (map first)
+                                          set)]
+
+    (->> updates
+         (map #(let [unique-constraint-value (-> % :goal-config unique-constraint-field)]
+                 (cond-> %
+                   (contains? duplicated-constraint-values unique-constraint-value)
+                   (assoc :valid? false
+                          :reason (str unique-constraint-field " is not unique between clusters: "
+                                       (-> unique-constraint-value unique-constraint-value->cluster-names set)))))))))
 
 (defn compute-config-updates
-  "Take the current and desired configurations and compute the changes."
+  "Take the current and desired configurations and compute the updates. Validate all updates that would occur,
+  including unique constraint violations. .e.g base-path must be unique to each cluster."
   [db current-configs new-configs force?]
   (let [[deletes-keys inserts-keys updates-keys] (util/diff-map-keys current-configs new-configs)
         updates (->> (concat
@@ -359,7 +373,7 @@
                        (map #(compute-config-update db (current-configs %) (new-configs %) force?) updates-keys))
                      (map (fn [{:keys [goal-config] :as update}] (assoc update :active? (not= :deleted (:state goal-config))))))
         resulting-active-configs (->> updates (filter :valid?) (filter :active?))]
-    ;TODO check that number of running clusters is not less than a configured value. and make no changes if so
+    ;TODO check that number of running clusters is not less than a configured value. and make no updates if so
     (-> updates
       (check-for-unique-constraint-violations resulting-active-configs :base-path)
       (check-for-unique-constraint-violations resulting-active-configs :ca-cert))))
@@ -385,9 +399,9 @@
   Change cluster state if there is an existing cluster in memory.
   Create clusters if there is an active update an no corresponding cluster in memory. This can happen at startup or
   when a brand new cluster is added.
-  Reflect changes in the database."
+  Reflect updates in the database."
   [conn
-   {:keys [valid? changed? active?] {:keys [name state state-locked?] :as goal-config} :goal-config}
+   {:keys [valid? differs? active?] {:keys [name state state-locked?] :as goal-config} :goal-config}
    current-in-mem-configs]
   {:pre [valid?]}
   (try
@@ -409,7 +423,7 @@
           (reset! state-atom state)
           (reset! state-locked?-atom state-locked?))
         (when active? (initialize-cluster! goal-config))))
-    (when changed?
+    (when differs?
       ; :db.unique/identity gives upsert behavior (update on insert), so we don't need to specify an entity ID when updating
       @(d/transact conn [(assoc (compute-cluster-config->compute-cluster-config-ent goal-config)
                            :db/id (d/tempid :db.part/user))]))
@@ -418,41 +432,43 @@
       (log/error t "Failed to update cluster" goal-config)
       {:update-succeeded false :error-message (.toString t)})))
 
+(defn update-compute-clusters-helper
+  "Helper function for update-compute-cluster and update-compute-clusters. See those functions for full description."
+  [conn current-configs->new-configs force?]
+  (locking cluster-name->compute-cluster-atom
+    (let [db (d/db conn)
+          current-in-mem-configs (get-in-mem-configs)
+          current-db-configs (get-db-configs db)
+          current-configs (compute-current-configs current-db-configs current-in-mem-configs)
+          new-configs (current-configs->new-configs current-configs)
+          updates (compute-config-updates db current-configs new-configs force?)]
+      (log/info "Updating dynamic clusters."
+                {:current-configs current-configs :new-configs new-configs :force? force? :updates updates})
+      (let [updates-with-results (map
+                                   #(assoc % :update-result
+                                             (when (:valid? %) (execute-update! conn % current-in-mem-configs)))
+                                   updates)]
+        (doseq [update updates-with-results
+                update-result (:update-result update)]
+          (if (:valid? update)
+            (when-not (:update-succeeded update-result) (log/error "Update failed!" update))
+            (log/error "Invalid update!" update)))
+        updates-with-results))))
+
 (defn update-compute-clusters
   "This function allows adding or updating the current compute cluster configurations. Takes
   in a map of configurations with cluster name as the key. These configurations represent the only known
   configurations, and clusters that are missing from this map are set to the 'deleted' state.
   Only the state of an existing cluster and its configuration can be changed unless force? is set to true."
   ([conn new-configs force?]
-   (update-compute-clusters conn nil new-configs force?))
-  ([conn new-config new-configs force?]
-   {:pre [(= 1 (->> [new-config new-configs] (filter some?) count))]}
-   (locking cluster-name->compute-cluster-atom
-     (let [db (d/db conn)
-           current-in-mem-configs (get-in-mem-configs)
-           current-db-configs (get-db-configs db)
-           current-configs (compute-current-configs current-db-configs current-in-mem-configs)
-           new-configs' (cond-> (or new-configs current-configs) new-config (assoc (:name new-config) new-config))
-           updates (compute-config-updates db current-configs new-configs' force?)]
-       (log/info "Updating dynamic clusters."
-                 {:current-configs current-configs :new-config new-config :new-configs new-configs :force? force? :updates updates})
-       (let [updates-with-results (map
-                                    #(assoc % :update-result
-                                              (when (:valid? %) (execute-update! conn % current-in-mem-configs)))
-                                    updates)]
-         (doseq [update updates-with-results
-                 update-result (:update-result update)]
-           (if (:valid? update)
-             (when-not (:update-succeeded update-result) (log/error "Update failed!" update))
-             (log/error "Invalid update!" update)))
-         updates-with-results)))))
+   (update-compute-clusters-helper conn (fn [_] new-configs) force?)))
 
 (defn update-compute-cluster
   "This function allows adding or updating the current compute cluster configurations. Takes
   in a single configuration and updates or creates it.
   Only the state of an existing cluster and its configuration can be changed unless force? is set to true."
   [conn new-config force?]
-  (update-compute-clusters conn new-config nil force?))
+  (update-compute-clusters-helper conn #(assoc % (:name new-config) new-config) force?))
 
 (defn get-compute-clusters
   "Get the current dynamic compute clusters. Returns both the in-memory cluster configs and the configurations in the database.
