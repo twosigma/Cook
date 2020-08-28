@@ -159,7 +159,7 @@
                          compute-clusters)
      :compute-cluster-options (fnk [[:config {compute-cluster-options {}}]]
                                 (merge
-                                  {:load-clusters-on-startup? true
+                                  {:load-clusters-on-startup? false
                                    :compute-cluster-templates {}}
                                   compute-cluster-options))
      :cors-origins (fnk [[:config {cors-origins nil}]]
