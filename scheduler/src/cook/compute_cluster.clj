@@ -390,7 +390,11 @@
         factory-fn (:factory-fn cluster-definition-template)
         _ (when-not factory-fn (throw (ex-info "Template for cluster has no factory-fn" {:config config})))
         resolved (cook.util/lazy-load-var factory-fn)
-        full-cluster-config (merge (:config cluster-definition-template) config)
+        dynamic-cluster-config? (:dynamic-cluster-config? cluster-definition-template)
+        _ (when (and (some? dynamic-cluster-config?) (not dynamic-cluster-config?))
+            (throw (ex-info "dynamic-cluster-config? is set to false in cluster definition template but we are trying to add a cluster dynamically"
+                            {:template (:template config)})))
+        full-cluster-config (-> (:config cluster-definition-template) (merge config) (assoc :dynamic-cluster-config? true))
         cluster (resolved full-cluster-config {:exit-code-syncer-state @exit-code-syncer-state-atom})]
     (initialize-cluster cluster {:pool-name->fenzo @pool-name->fenzo-atom})))
 

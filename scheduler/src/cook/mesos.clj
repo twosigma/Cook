@@ -121,30 +121,31 @@
 (defn dynamic-compute-cluster-configurations-setup
   "Set up dynamic compute cluster configurations. This includes loading existing configurations from the database
   at startup, and launching a background worker to periodically check for new configurations"
-  [conn {:keys [cluster-update-period-seconds new-cluster-configurations-fn]}]
-  {:pre [new-cluster-configurations-fn]}
-  (let [cluster-update-period-seconds (or cluster-update-period-seconds 60)
-        db (d/db conn)
-        saved-cluster-configurations (cc/get-db-configs db)
-        cluster-name->running-task-ents (->> db cook.tools/get-running-task-ents
-                                             (group-by #(-> %
-                                                          :instance/compute-cluster
-                                                          :compute-cluster/cluster-name)))
-        [missing-cluster-names _ _] (util/diff-map-keys cluster-name->running-task-ents saved-cluster-configurations)]
-    (when missing-cluster-names
-      (log/error "Can't find cluster configurations for some of the running jobs!"
-                 {:missing-cluster-names missing-cluster-names
-                  :cluster-name->instance-ids (->> missing-cluster-names
-                                                (map-from-keys
-                                                  #(->> (take 20 (cluster-name->running-task-ents %))
-                                                        (map :instance/task-id))))}))
-    (cc/update-compute-clusters conn saved-cluster-configurations false)
-    (chime/chime-at
-      (tools/time-seq (time/plus (time/now) (time/seconds cluster-update-period-seconds))
-                      (time/seconds cluster-update-period-seconds))
-      (make-compute-cluster-config-updater-task conn (util/lazy-load-var new-cluster-configurations-fn))
-      {:error-handler (fn compute-cluster-config-updater-error-handler [ex]
-                        (log/error ex "Failed to update cluster configurations"))})))
+  [conn {:keys [load-clusters-on-startup? cluster-update-period-seconds new-cluster-configurations-fn]}]
+  (when load-clusters-on-startup?
+    (let [db (d/db conn)
+          saved-cluster-configurations (cc/get-db-configs db)
+          cluster-name->running-task-ents (->> db cook.tools/get-running-task-ents
+                                               (group-by #(-> %
+                                                            :instance/compute-cluster
+                                                            :compute-cluster/cluster-name)))
+          [missing-cluster-names _ _] (util/diff-map-keys cluster-name->running-task-ents saved-cluster-configurations)]
+      (when missing-cluster-names
+        (log/error "Can't find cluster configurations for some of the running jobs!"
+                   {:missing-cluster-names missing-cluster-names
+                    :cluster-name->instance-ids (->> missing-cluster-names
+                                                     (map-from-keys
+                                                       #(->> (take 20 (cluster-name->running-task-ents %))
+                                                             (map :instance/task-id))))}))
+      (cc/update-compute-clusters conn saved-cluster-configurations false)))
+  (when new-cluster-configurations-fn
+    (let [cluster-update-period-seconds (or cluster-update-period-seconds 60)]
+      (chime/chime-at
+        (tools/time-seq (time/plus (time/now) (time/seconds cluster-update-period-seconds))
+                        (time/seconds cluster-update-period-seconds))
+        (make-compute-cluster-config-updater-task conn (util/lazy-load-var new-cluster-configurations-fn))
+        {:error-handler (fn compute-cluster-config-updater-error-handler [ex]
+                          (log/error ex "Failed to update cluster configurations"))}))))
 
 (defn start-leader-selector
   "Starts a leader elector. When the process is leader, it starts the mesos
@@ -258,8 +259,7 @@
                                     (counters/inc! mesos-leader)
                                     (async/tap mesos-datomic-mult datomic-report-chan)
                                     (cook.scheduler.scheduler/monitor-tx-report-queue datomic-report-chan mesos-datomic-conn)
-                                    (when-let [compute-cluster-update-options (config/compute-cluster-update-options)]
-                                      (dynamic-compute-cluster-configurations-setup mesos-datomic-conn compute-cluster-update-options))
+                                    (dynamic-compute-cluster-configurations-setup mesos-datomic-conn (config/compute-cluster-options))
                                     ; Curator expects takeLeadership to block until voluntarily surrendering leadership.
                                     ; We need to block here until we're willing to give up leadership.
                                     ;

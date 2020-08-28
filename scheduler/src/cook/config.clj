@@ -168,10 +168,11 @@
                                       :principal (:principal mesos)
                                       :role (:role mesos)
                                       :framework-name (:framework-name mesos)}}]))
-     :compute-cluster-templates (fnk [[:config {compute-cluster-templates {}}]]
-                                  compute-cluster-templates)
-     :compute-cluster-update-options (fnk [[:config {compute-cluster-update-options nil}]]
-                                       compute-cluster-update-options)
+     :compute-cluster-options (fnk [[:config {compute-cluster-options {}}]]
+                                (merge
+                                  {:load-clusters-on-startup? true
+                                   :compute-cluster-templates {}}
+                                  compute-cluster-options))
      :cors-origins (fnk [[:config {cors-origins nil}]]
                      (map re-pattern (or cors-origins [])))
      :exit-code-syncer (fnk [[:config {exit-code-syncer nil}]]
@@ -623,13 +624,13 @@
   []
   (get-in config [:settings :compute-clusters]))
 
+(defn compute-cluster-options
+  []
+  (get-in config [:settings :compute-cluster-options]))
+
 (defn compute-cluster-templates
   []
-  (get-in config [:settings :compute-cluster-templates]))
-
-(defn compute-cluster-update-options
-  []
-  (get-in config [:settings :compute-cluster-update-options]))
+  (:compute-cluster-templates (compute-cluster-options)))
 
 (defn kubernetes
   []
