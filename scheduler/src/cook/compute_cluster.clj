@@ -182,20 +182,15 @@
 (defn compute-cluster-config->compute-cluster-config-ent
   "Convert dynamic cluster configuration to a Datomic entity"
   [{:keys [name template base-path ca-cert state state-locked?]}]
-  (cond->
-    {:compute-cluster-config/name name
-     :compute-cluster-config/template template
-     :compute-cluster-config/state (case state
-                                     :running :compute-cluster-config.state/running
-                                     :draining :compute-cluster-config.state/draining
-                                     :deleted :compute-cluster-config.state/deleted)
-     :compute-cluster-config/state-locked? state-locked?}
-
-    base-path
-    (assoc :compute-cluster-config/base-path base-path)
-
-    ca-cert
-    (assoc :compute-cluster-config/ca-cert ca-cert)))
+  {:compute-cluster-config/name name
+   :compute-cluster-config/template template
+   :compute-cluster-config/base-path base-path
+   :compute-cluster-config/ca-cert ca-cert
+   :compute-cluster-config/state (case state
+                                   :running :compute-cluster-config.state/running
+                                   :draining :compute-cluster-config.state/draining
+                                   :deleted :compute-cluster-config.state/deleted)
+   :compute-cluster-config/state-locked? state-locked?})
 
 (defn get-db-config-ents
   ;TODO maybe add "archived" flag and don't return archived configs for brevity

@@ -3012,9 +3012,9 @@
 
 (def InsertComputeClusterRequest
   {; IP address / URL of the cluster
-   (s/optional-key :base-path) NonEmptyString
+   :base-path NonEmptyString
    ; base-64-encoded certificate
-   (s/optional-key :ca-cert) NonEmptyString
+   :ca-cert NonEmptyString
    ; Unique name of the cluster
    :name NonEmptyString
    ; State of the cluster
