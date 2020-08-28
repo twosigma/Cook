@@ -17,6 +17,7 @@
   (:require [clojure.data :as data]
             [clojure.tools.logging :as log]
             [cook.config :as config]
+            [cook.datomic :as datomic]
             [cook.util :as util]
             [datomic.api :as d]
             [plumbing.core :refer [map-from-keys map-from-vals map-vals]]))
@@ -213,6 +214,11 @@
   (->> (get-db-config-ents db)
        (map-vals compute-cluster-config-ent->compute-cluster-config)))
 
+(defn get-db-configs-latest
+  "Delegates to get-db-configs with a fresh db"
+  []
+  (get-db-configs (d/db datomic/conn)))
+
 ;TODO: when all clusters have state, change the ComputeCluster protocol to add state operations
 (defn compute-cluster->compute-cluster-config
   "Calculate dynamic cluster configuration from a compute cluster"
@@ -326,20 +332,26 @@
           {:valid? true})]
     (assoc update :goal-config new-config :differs? (not= current-config new-config) :cluster-name new-name)))
 
+(defn validate-template
+  "Validates the given template definition"
+  [template-name {:keys [factory-fn] :as template-definition}]
+  (cond
+    (not template-definition)
+    {:valid? false
+     :reason (str "Attempting to create cluster with unknown template: " template-name)}
+
+    (not factory-fn)
+    {:valid? false
+     :reason (str "Template for cluster has no factory-fn: " template-definition)}
+
+    :else
+    {:valid? true}))
+
 (defn compute-config-insert
   "Add validation info to a new dynamic cluster configuration."
   [{:keys [name template] :as new-config}]
   (let [cluster-definition-template ((config/compute-cluster-templates) template)
-        update
-        (cond
-          (not cluster-definition-template)
-          {:valid? false
-           :reason (str "Attempting to create cluster with unknown template: " template)}
-          (not (:factory-fn cluster-definition-template))
-          {:valid? false
-           :reason (str "Template for cluster has no factory-fn: " cluster-definition-template)}
-          :else
-          {:valid? true})]
+        update (validate-template template cluster-definition-template)]
     (assoc update :goal-config new-config :differs? true :cluster-name name)))
 
 (defn check-for-unique-constraint-violations
@@ -453,7 +465,7 @@
                                              (when (:valid? %) (execute-update! conn % current-in-mem-configs)))
                                    updates)]
         (doseq [update updates-with-results
-                update-result (:update-result update)]
+                :let [update-result (:update-result update)]]
           (if (:valid? update)
             (when-not (:update-succeeded update-result) (log/error "Update failed!" update))
             (log/error "Invalid update!" update)))

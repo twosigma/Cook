@@ -3012,11 +3012,11 @@
 
 (def InsertComputeClusterRequest
   {; IP address / URL of the cluster
-   :base-path s/Str
+   :base-path NonEmptyString
    ; base-64-encoded certificate
-   :ca-cert s/Str
+   :ca-cert NonEmptyString
    ; Unique name of the cluster
-   :name s/Str
+   :name NonEmptyString
    ; State of the cluster
    :state (s/enum
             ; Jobs will get scheduled on this cluster
@@ -3029,39 +3029,52 @@
    ; The state can't be modified when it's locked
    (s/optional-key :state-locked?) s/Bool
    ; Key used to look up the configuration template
-   :template s/Str})
-
-(defn create-compute-cluster!
-  [conn ctx]
-  (let [{:keys [name template base-path ca-cert state state-locked?] :as body-params} (-> ctx :request :body-params)
-        result (cc/update-compute-cluster
-                 conn
-                 {:name name
-                  :template template
-                  :base-path base-path
-                  :ca-cert ca-cert
-                  :state (keyword state)
-                  :state-locked? (boolean state-locked?)}
-                 true)]
-    ; TODO replace with real result handling with error checks
-    (log/info "Result of create-compute-cluster! REST API call"
-              {:input body-params
-               :result result})
-    {:response result}))
+   :template NonEmptyString})
 
 (defn compute-cluster-exists?
-  [db name]
-  ;TODO might not need this. this is checked in the main update function
-  false)
+  [conn name]
+  (let [compute-cluster-names (->> (cc/get-compute-clusters conn)
+                                   :db-configs
+                                   (map :name)
+                                   set)]
+    (contains? compute-cluster-names name)))
 
-(defn check-compute-cluster-conflict
-  [conn ctx]
-  (let [db (d/db conn)
-        name (-> ctx :request :body-params :name)
-        exists? (compute-cluster-exists? db name)]
-    (if exists?
-      [true {::error (str "Compute cluster with name " name " already exists")}]
-      false)))
+(defn create-compute-cluster!
+  [conn leadership-atom ctx]
+  (if @leadership-atom
+    (let [cluster-name (-> ctx :request :body-params :name)
+          exists? (compute-cluster-exists? conn cluster-name)]
+      (if exists?
+        [false {::error {:message (str "Compute cluster with name " cluster-name " already exists")}}]
+        (let [template-name (-> ctx :request :body-params :template)
+              template-definition ((config/compute-cluster-templates) template-name)
+              {:keys [reason valid?]} (cc/validate-template template-name template-definition)]
+          (if valid?
+            (let [{:keys [name template base-path ca-cert state state-locked?] :as body-params}
+                  (-> ctx :request :body-params)
+                  result (cc/update-compute-cluster
+                           conn
+                           {:name name
+                            :template template
+                            :base-path base-path
+                            :ca-cert ca-cert
+                            :state (keyword state)
+                            :state-locked? (boolean state-locked?)}
+                           true)
+                  succeeded? (every? #(-> % :update-result :update-succeeded) result)]
+              (log/info "Result of create-compute-cluster! REST API call"
+                        {:input body-params
+                         :result result
+                         :succeeded? succeeded?
+                         :template-definition template-definition})
+              (if succeeded?
+                [true {:response result}]
+                [false {::error {:message "Cluster creation was not successful"
+                                 :details result}}]))
+            [false {::error {:message reason}}]))))
+    ; When we're not the leader, we need processable? to go down
+    ; the "true" branch in order to trigger the redirect flow
+    true))
 
 (defn check-compute-cluster-allowed
   [is-authorized-fn ctx]
@@ -3085,14 +3098,6 @@
       {:allowed? (partial check-compute-cluster-allowed is-authorized-fn)}
       resource-attrs)))
 
-(defn check-valid-compute-cluster
-  [ctx]
-  (let [template-name (-> ctx :request :body-params :template)
-        template-definition ((config/compute-cluster-templates) template-name)]
-    (if template-definition
-      true
-      [false {::error (str "Attempting to create cluster with unknown template: " template-name)}])))
-
 (defn post-compute-clusters-handler
   [conn is-authorized-fn leadership-atom leader-selector]
   (base-compute-cluster-handler
@@ -3100,10 +3105,8 @@
     leadership-atom
     leader-selector
     {:allowed-methods [:post]
-     :conflict? (partial check-compute-cluster-conflict conn)
      :handle-created (fn [{:keys [response]}] response)
-     :post! (partial create-compute-cluster! conn)
-     :processable? check-valid-compute-cluster}))
+     :processable? (partial create-compute-cluster! conn leadership-atom)}))
 
 (defn read-compute-clusters
   [conn _]
@@ -3122,6 +3125,14 @@
   [conn ctx]
   (cc/delete-compute-cluster conn (-> ctx :request :body-params)))
 
+(defn check-delete-compute-cluster-malformed
+  [conn ctx]
+  (if-let [name (-> ctx :request :body-params :name)]
+    (if (compute-cluster-exists? conn name)
+      false
+      [true {::error {:message (str "Compute cluster with name " name " does not exist")}}])
+    [true {::error {:message (str "You must specify the cluster name to delete")}}]))
+
 (defn delete-compute-clusters-handler
   [conn is-authorized-fn leadership-atom leader-selector]
   (base-compute-cluster-handler
@@ -3129,7 +3140,8 @@
     leadership-atom
     leader-selector
     {:allowed-methods [:delete]
-     :delete! (partial delete-compute-cluster! conn)}))
+     :delete! (partial delete-compute-cluster! conn)
+     :malformed? (partial check-delete-compute-cluster-malformed conn)}))
 
 
 ;;
