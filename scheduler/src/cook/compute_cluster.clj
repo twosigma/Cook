@@ -339,11 +339,9 @@
     (not template-definition)
     {:valid? false
      :reason (str "Attempting to create cluster with unknown template: " template-name)}
-
     (not factory-fn)
     {:valid? false
      :reason (str "Template for cluster has no factory-fn: " template-definition)}
-
     :else
     {:valid? true}))
 
