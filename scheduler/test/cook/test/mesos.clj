@@ -290,9 +290,12 @@
                     chime/chime-at (fn [a _ & _]
                                      (swap! scheduleAtFixedRate-invocations-atom conj (str "chime called " (first a) (second a)))
                                      nil)]
-        (is (thrown? AssertionError (mesos/dynamic-compute-cluster-configurations-setup nil {})))
+        (is (= nil (mesos/dynamic-compute-cluster-configurations-setup nil {})))
         (is (= nil (mesos/dynamic-compute-cluster-configurations-setup
                      conn {:new-cluster-configurations-fn 'cook.test.mesos/dumy-new-cluster-configurations-fn})))
+        (is (= nil @log-error-invocations-atom))
+        (is (= ["chime called 2020-08-26T16:36:35.946Z2020-08-26T16:37:35.946Z"] @scheduleAtFixedRate-invocations-atom))
+        (is (= nil (mesos/dynamic-compute-cluster-configurations-setup
+                     conn {:load-clusters-on-startup? true})))
         (is (re-matches #"Can't find cluster configurations for some of the running jobs! \{:missing-cluster-names #\{cluster1\}, :cluster-name->instance-ids \{cluster1 \(12345\)\}\}"
-                        @log-error-invocations-atom))
-        (is (= ["chime called 2020-08-26T16:36:35.946Z2020-08-26T16:37:35.946Z"] @scheduleAtFixedRate-invocations-atom))))))
+                        @log-error-invocations-atom))))))
