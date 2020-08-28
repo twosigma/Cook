@@ -371,7 +371,7 @@
   (pending-offers [this pool-name]
     (let [state @state-atom]
       (if-not (= state :running)
-        (log/info "In" name "compute cluster, not looking for offers for pool" pool-name
+        (log/info "In" name "compute cluster, skipping generating offers for pool" pool-name
                   "because the current state," state ", is not :running.")
         (let [node-name->node (get @pool->node-name->node pool-name)]
           (if-not (or (cc/autoscaling? this pool-name) node-name->node)

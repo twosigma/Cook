@@ -626,21 +626,31 @@
       (let [uri "datomic:mem://test-compute-cluster-config"
             conn (restore-fresh-database! uri)]
         (reset! cluster-name->compute-cluster-atom {})
+
+        (reset! initialize-cluster-fn-invocations-atom [])
+        (is (= {} (get-db-config-ents (d/db conn))))
+        (is (= {} (get-in-mem-configs)))
+        (is (= {:error-message "java.lang.IllegalArgumentException: No matching clause: "
+                :update-succeeded false}
+               (execute-update! nil {:goal-config {:name "fail" :a :a :template "template1"} :valid? true :differs? true :active? true}
+                                (get-in-mem-configs))))
+        (is (= [] @initialize-cluster-fn-invocations-atom))
+
         (reset! initialize-cluster-fn-invocations-atom [])
         (is (= {} (get-db-config-ents (d/db conn))))
         (is (= {} (get-in-mem-configs)))
         (is (= {:error-message "clojure.lang.ExceptionInfo: fail {}"
                 :update-succeeded false}
-               (execute-update! nil {:goal-config {:name "fail" :a :a :template "template1"} :valid? true :differs? true :active? true}
+               (execute-update! nil {:goal-config {:name "fail" :a :a :template "template1"} :valid? true :differs? false :active? true}
                                 (get-in-mem-configs))))
         (is (= [] @initialize-cluster-fn-invocations-atom))
+
         (is (= {} (get-db-config-ents (d/db conn))))
         (is (= {} (get-in-mem-configs)))
-
         (reset! initialize-cluster-fn-invocations-atom [])
         (is (= {:error-message "java.lang.NullPointerException"
                 :update-succeeded false}
-               (execute-update! nil {:goal-config {:name "fail" :a :a :template "template1"} :valid? true :differs? true :active? true} nil)))
+               (execute-update! nil {:goal-config {:name "fail" :a :a :template "template1"} :valid? true :differs? false :active? true} nil)))
         (is (= [] @initialize-cluster-fn-invocations-atom)))))
 
   (testing "normal update"

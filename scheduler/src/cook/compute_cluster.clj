@@ -193,7 +193,6 @@
    :compute-cluster-config/state-locked? state-locked?})
 
 (defn get-db-config-ents
-  ;TODO maybe add "archived" flag and don't return archived configs for brevity
   "Get the current dynamic cluster configuration entities from the database"
   [db]
   (let [configs (map #(d/entity db %)
@@ -394,8 +393,8 @@
 
 (defn initialize-cluster!
   "Create and initialize a ComputeCluster"
-  [config]
-  (let [cluster-definition-template ((config/compute-cluster-templates) (:template config))
+  [{:keys [template] :as config}]
+  (let [cluster-definition-template ((config/compute-cluster-templates) template)
         _ (when-not cluster-definition-template (throw (ex-info "Attempting to create cluster with unknown template" {:config config})))
         factory-fn (:factory-fn cluster-definition-template)
         _ (when-not factory-fn (throw (ex-info "Template for cluster has no factory-fn" {:config config})))
@@ -403,7 +402,7 @@
         dynamic-cluster-config? (:dynamic-cluster-config? cluster-definition-template)
         _ (when (and (some? dynamic-cluster-config?) (not dynamic-cluster-config?))
             (throw (ex-info "dynamic-cluster-config? is set to false in cluster definition template but we are trying to add a cluster dynamically"
-                            {:template (:template config)})))
+                            {:template template})))
         full-cluster-config (-> (:config cluster-definition-template) (merge config) (assoc :dynamic-cluster-config? true))
         cluster (resolved full-cluster-config {:exit-code-syncer-state @exit-code-syncer-state-atom})]
     (initialize-cluster cluster {:pool-name->fenzo @pool-name->fenzo-atom})))
@@ -419,9 +418,12 @@
    current-in-mem-configs]
   {:pre [valid?]}
   (try
+    (when differs?
+      ; :db.unique/identity gives upsert behavior (update on insert), so we don't need to specify an entity ID when updating
+      @(d/transact conn [(assoc (compute-cluster-config->compute-cluster-config-ent goal-config)
+                           :db/id (d/tempid :db.part/user))]))
     (let [{:keys [state-atom state-locked?-atom] :as cluster} (@cluster-name->compute-cluster-atom name)
           current-in-mem-config (current-in-mem-configs name)]
-      ; TODO: keep these checks? check some other way?
       (when (and current-in-mem-config (not (and cluster state-atom state-locked?-atom)))
         (throw (ex-info "We know an in-memory config but we don't know the corresponding in-memory cluster.
         This should never happen, since cluster-name->compute-cluster-atom should be locked"
@@ -437,10 +439,6 @@
           (reset! state-atom state)
           (reset! state-locked?-atom state-locked?))
         (when active? (initialize-cluster! goal-config))))
-    (when differs?
-      ; :db.unique/identity gives upsert behavior (update on insert), so we don't need to specify an entity ID when updating
-      @(d/transact conn [(assoc (compute-cluster-config->compute-cluster-config-ent goal-config)
-                           :db/id (d/tempid :db.part/user))]))
     {:update-succeeded true}
     (catch Throwable t
       (log/error t "Failed to update cluster" goal-config)

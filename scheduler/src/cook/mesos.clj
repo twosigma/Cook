@@ -195,85 +195,87 @@
                               ;; TODO: get the framework ID and try to reregister
                               (let [normal-exit (atom true)]
                                 (try
-                                  (let [{:keys [pool-name->fenzo view-incubating-offers] :as scheduler}
-                                        (sched/create-datomic-scheduler
-                                          {:conn mesos-datomic-conn
-                                           :cluster-name->compute-cluster-atom cook.compute-cluster/cluster-name->compute-cluster-atom
-                                           :fenzo-fitness-calculator fenzo-fitness-calculator
-                                           :fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-reset
-                                           :fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-warn
-                                           :fenzo-max-jobs-considered fenzo-max-jobs-considered
-                                           :fenzo-scaleback fenzo-scaleback
-                                           :good-enough-fitness good-enough-fitness
-                                           :mea-culpa-failure-limit mea-culpa-failure-limit
-                                           :mesos-run-as-user mesos-run-as-user
-                                           :agent-attributes-cache agent-attributes-cache
-                                           :offer-incubate-time-ms offer-incubate-time-ms
-                                           :pool-name->pending-jobs-atom pool-name->pending-jobs-atom
-                                           :rebalancer-reservation-atom rebalancer-reservation-atom
-                                           :task-constraints task-constraints
-                                           :trigger-chans trigger-chans})
-                                        cluster-connected-chans (->> cluster-name->compute-cluster
-                                                                     (map (fn [[compute-cluster-name compute-cluster]]
-                                                                            (try
-                                                                              (cc/initialize-cluster compute-cluster
-                                                                                                     pool-name->fenzo)
-                                                                              (catch Throwable t
-                                                                                (log/error t "Error launching compute cluster" compute-cluster-name)
-                                                                                ; Return a chan that never gets a message on it.
-                                                                                (async/chan 1)))))
-                                                                     ; Note: This doall has a critical side effect of actually initializing
-                                                                     ; all of the clusters.
-                                                                     doall)]
-                                    (reset! cc/pool-name->fenzo-atom (:pool-name->fenzo scheduler))
-                                    (cook.monitor/start-collecting-stats)
-                                    ; Many of these should look at the compute-cluster of the underlying jobs, and not use driver at all.
-                                    (cook.scheduler.scheduler/lingering-task-killer mesos-datomic-conn
-                                                                                    task-constraints lingering-task-trigger-chan)
-                                    (cook.scheduler.scheduler/straggler-handler mesos-datomic-conn straggler-trigger-chan)
-                                    (cook.scheduler.scheduler/cancelled-task-killer mesos-datomic-conn
-                                                                                    cancelled-task-trigger-chan)
-                                    (cook.mesos.heartbeat/start-heartbeat-watcher! mesos-datomic-conn mesos-heartbeat-chan)
-                                    (cook.rebalancer/start-rebalancer! {:config rebalancer-config
-                                                                        :conn mesos-datomic-conn
-                                                                        :agent-attributes-cache agent-attributes-cache
-                                                                        :pool-name->pending-jobs-atom pool-name->pending-jobs-atom
-                                                                        :rebalancer-reservation-atom rebalancer-reservation-atom
-                                                                        :trigger-chan rebalancer-trigger-chan
-                                                                        :view-incubating-offers view-incubating-offers})
-                                    (when (seq optimizer-config)
-                                      (cook.scheduler.optimizer/start-optimizer-cycles! (fn get-queue []
-                                                                                      ;; TODO Use filter of queue that scheduler uses to filter to considerable.
-                                                                                      ;;      Specifically, think about filtering to jobs that are waiting and
-                                                                                      ;;      think about how to handle quota
-                                                                                      @pool-name->pending-jobs-atom)
-                                                                                    (fn get-running []
-                                                                                      (tools/get-running-task-ents (d/db mesos-datomic-conn)))
-                                                                                    view-incubating-offers
-                                                                                    optimizer-config
-                                                                                    optimizer-trigger-chan))
-                                    (when (:update-data-local-costs-trigger-chan trigger-chans)
-                                      (dl/start-update-cycles! mesos-datomic-conn (:update-data-local-costs-trigger-chan trigger-chans)))
-                                    ; This counter exists so that the cook leader has a '1' and the others have a '0'.
-                                    ; So we can see who the leader is in the graphs by graphing the value.
-                                    (counters/inc! mesos-leader)
-                                    (async/tap mesos-datomic-mult datomic-report-chan)
-                                    (cook.scheduler.scheduler/monitor-tx-report-queue datomic-report-chan mesos-datomic-conn)
-                                    (dynamic-compute-cluster-configurations-setup mesos-datomic-conn (config/compute-cluster-options))
-                                    ; Curator expects takeLeadership to block until voluntarily surrendering leadership.
-                                    ; We need to block here until we're willing to give up leadership.
-                                    ;
-                                    ; We block until any of the cluster-connected-chans unblock. This happens when the compute cluster
-                                    ; loses connectivity to the backend. For now, we want to treat mesos as special. When we lose our mesos
-                                    ; driver connection to the backend, we want cook to suicide. If we lose any of our kubernetes connections
-                                    ; we ignore it and work with the remaining cluster.
-                                    ;
-                                    ; WARNING: This code is very misleading. It looks like we'll suicide if ANY of the clusters lose leadership.
-                                    ; However, the kubernetes compute clusters never put anything on their chan, so this is the equivalent of only looking at mesos.
-                                    ; We didn't want to implement the special case for mesos.
-                                    (let [res (async/<!! (async/merge (or (seq cluster-connected-chans) [(async/chan 1)])))]
-                                      (when (instance? Throwable res)
-                                        (throw res))))
+                                  (locking cc/cluster-name->compute-cluster-atom
+                                    (let [{:keys [pool-name->fenzo view-incubating-offers] :as scheduler}
+                                          (sched/create-datomic-scheduler
+                                            {:conn mesos-datomic-conn
+                                             :cluster-name->compute-cluster-atom cook.compute-cluster/cluster-name->compute-cluster-atom
+                                             :fenzo-fitness-calculator fenzo-fitness-calculator
+                                             :fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-reset
+                                             :fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-warn
+                                             :fenzo-max-jobs-considered fenzo-max-jobs-considered
+                                             :fenzo-scaleback fenzo-scaleback
+                                             :good-enough-fitness good-enough-fitness
+                                             :mea-culpa-failure-limit mea-culpa-failure-limit
+                                             :mesos-run-as-user mesos-run-as-user
+                                             :agent-attributes-cache agent-attributes-cache
+                                             :offer-incubate-time-ms offer-incubate-time-ms
+                                             :pool-name->pending-jobs-atom pool-name->pending-jobs-atom
+                                             :rebalancer-reservation-atom rebalancer-reservation-atom
+                                             :task-constraints task-constraints
+                                             :trigger-chans trigger-chans})
+                                          cluster-connected-chans (->> cluster-name->compute-cluster
+                                                                       (remove (fn [[_ compute-cluster]] (:dynamic-cluster-config? compute-cluster)))
+                                                                       (map (fn [[compute-cluster-name compute-cluster]]
+                                                                              (try
+                                                                                (cc/initialize-cluster compute-cluster
+                                                                                                       pool-name->fenzo)
+                                                                                (catch Throwable t
+                                                                                  (log/error t "Error launching compute cluster" compute-cluster-name)
+                                                                                  ; Return a chan that never gets a message on it.
+                                                                                  (async/chan 1)))))
+                                                                       ; Note: This doall has a critical side effect of actually initializing
+                                                                       ; all of the clusters.
+                                                                       doall)]
+                                      (reset! cc/pool-name->fenzo-atom (:pool-name->fenzo scheduler))
+                                      (cook.monitor/start-collecting-stats)
+                                      ; Many of these should look at the compute-cluster of the underlying jobs, and not use driver at all.
+                                      (cook.scheduler.scheduler/lingering-task-killer mesos-datomic-conn
+                                                                                      task-constraints lingering-task-trigger-chan)
+                                      (cook.scheduler.scheduler/straggler-handler mesos-datomic-conn straggler-trigger-chan)
+                                      (cook.scheduler.scheduler/cancelled-task-killer mesos-datomic-conn
+                                                                                      cancelled-task-trigger-chan)
+                                      (cook.mesos.heartbeat/start-heartbeat-watcher! mesos-datomic-conn mesos-heartbeat-chan)
+                                      (cook.rebalancer/start-rebalancer! {:config rebalancer-config
+                                                                          :conn mesos-datomic-conn
+                                                                          :agent-attributes-cache agent-attributes-cache
+                                                                          :pool-name->pending-jobs-atom pool-name->pending-jobs-atom
+                                                                          :rebalancer-reservation-atom rebalancer-reservation-atom
+                                                                          :trigger-chan rebalancer-trigger-chan
+                                                                          :view-incubating-offers view-incubating-offers})
+                                      (when (seq optimizer-config)
+                                        (cook.scheduler.optimizer/start-optimizer-cycles! (fn get-queue []
+                                                                                            ;; TODO Use filter of queue that scheduler uses to filter to considerable.
+                                                                                            ;;      Specifically, think about filtering to jobs that are waiting and
+                                                                                            ;;      think about how to handle quota
+                                                                                            @pool-name->pending-jobs-atom)
+                                                                                          (fn get-running []
+                                                                                            (tools/get-running-task-ents (d/db mesos-datomic-conn)))
+                                                                                          view-incubating-offers
+                                                                                          optimizer-config
+                                                                                          optimizer-trigger-chan))
+                                      (when (:update-data-local-costs-trigger-chan trigger-chans)
+                                        (dl/start-update-cycles! mesos-datomic-conn (:update-data-local-costs-trigger-chan trigger-chans)))
+                                      ; This counter exists so that the cook leader has a '1' and the others have a '0'.
+                                      ; So we can see who the leader is in the graphs by graphing the value.
+                                      (counters/inc! mesos-leader)
+                                      (async/tap mesos-datomic-mult datomic-report-chan)
+                                      (cook.scheduler.scheduler/monitor-tx-report-queue datomic-report-chan mesos-datomic-conn)
+                                      (dynamic-compute-cluster-configurations-setup mesos-datomic-conn (config/compute-cluster-options))
+                                      ; Curator expects takeLeadership to block until voluntarily surrendering leadership.
+                                      ; We need to block here until we're willing to give up leadership.
+                                      ;
+                                      ; We block until any of the cluster-connected-chans unblock. This happens when the compute cluster
+                                      ; loses connectivity to the backend. For now, we want to treat mesos as special. When we lose our mesos
+                                      ; driver connection to the backend, we want cook to suicide. If we lose any of our kubernetes connections
+                                      ; we ignore it and work with the remaining cluster.
+                                      ;
+                                      ; WARNING: This code is very misleading. It looks like we'll suicide if ANY of the clusters lose leadership.
+                                      ; However, the kubernetes compute clusters never put anything on their chan, so this is the equivalent of only looking at mesos.
+                                      ; We didn't want to implement the special case for mesos.
+                                      (let [res (async/<!! (async/merge (or (seq cluster-connected-chans) [(async/chan 1)])))]
+                                        (when (instance? Throwable res)
+                                          (throw res)))))
                                   (catch Throwable e
                                     (log/error e "Lost leadership due to exception")
                                     (reset! normal-exit false))
