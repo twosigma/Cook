@@ -413,28 +413,15 @@
   Create clusters if there is an active update an no corresponding cluster in memory. This can happen at startup or
   when a brand new cluster is added.
   Reflect updates in the database."
-  [conn
-   {:keys [valid? differs? active?] {:keys [name state state-locked?] :as goal-config} :goal-config}
-   current-in-mem-configs]
+  [conn {:keys [valid? differs? active?] {:keys [name state state-locked?] :as goal-config} :goal-config}]
   {:pre [valid?]}
   (try
     (when differs?
       ; :db.unique/identity gives upsert behavior (update on insert), so we don't need to specify an entity ID when updating
       @(d/transact conn [(assoc (compute-cluster-config->compute-cluster-config-ent goal-config)
                            :db/id (d/tempid :db.part/user))]))
-    (let [{:keys [state-atom state-locked?-atom] :as cluster} (@cluster-name->compute-cluster-atom name)
-          current-in-mem-config (current-in-mem-configs name)]
-      (when (and current-in-mem-config (not (and cluster state-atom state-locked?-atom)))
-        (throw (ex-info "We know an in-memory config but we don't know the corresponding in-memory cluster.
-        This should never happen, since cluster-name->compute-cluster-atom should be locked"
-                        {:current-in-mem-config current-in-mem-config
-                         :cluster cluster})))
-      (when (and (or cluster state-atom state-locked?-atom) (not current-in-mem-config))
-        (throw (ex-info "We know an in-memory cluster but we don't know the corresponding in-memory config.
-        This should never happen, since cluster-name->compute-cluster-atom should be locked"
-                        {:current-in-mem-config current-in-mem-config
-                         :cluster cluster})))
-      (if current-in-mem-config
+    (let [{:keys [state-atom state-locked?-atom] :as cluster} (@cluster-name->compute-cluster-atom name)]
+      (if cluster
         (do
           (reset! state-atom state)
           (reset! state-locked?-atom state-locked?))
@@ -458,7 +445,7 @@
                 {:current-configs current-configs :new-configs new-configs :force? force? :updates updates})
       (let [updates-with-results (map
                                    #(assoc % :update-result
-                                             (when (:valid? %) (execute-update! conn % current-in-mem-configs)))
+                                             (when (:valid? %) (execute-update! conn %)))
                                    updates)]
         (doseq [update updates-with-results
                 :let [update-result (:update-result update)]]

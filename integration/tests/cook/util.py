@@ -1937,6 +1937,7 @@ def kubernetes_settings():
 
 def create_compute_cluster(cook_url, cluster):
     resp = session.post(f'{cook_url}/compute-clusters', json=cluster)
+    logger.info(f'create_compute_cluster resp: {resp}')
     return resp.json(), resp
 
 

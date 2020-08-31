@@ -974,7 +974,7 @@ class MultiUserCookTest(util.CookTest):
                          resp.content)
 
     def test_compute_cluster_api_create_duplicate(self):
-        templates = util.settings(self.cook_url)['compute-cluster-templates']
+        templates = util.settings(self.cook_url)['compute-cluster-options']['compute-cluster-templates']
         if len(templates) == 0:
             self.skipTest('Requires at least one compute cluster template')
 

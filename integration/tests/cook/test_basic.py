@@ -520,7 +520,7 @@ class CookTest(util.CookTest):
             try:
                 in_mem_compute_clusters = util.compute_clusters(self.cook_url)['in-mem-configs']
                 filtered_compute_clusters.extend(
-                    [cc for cc in [m['cluster-definition'] for m in in_mem_compute_clusters]
+                    [cc for cc in [m['cluster-definition']['config'] for m in in_mem_compute_clusters]
                      if cc['name'] == instance_compute_cluster_name])
             finally:
                 pass
