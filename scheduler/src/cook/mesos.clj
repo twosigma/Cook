@@ -273,8 +273,7 @@
                                     ; WARNING: This code is very misleading. It looks like we'll suicide if ANY of the clusters lose leadership.
                                     ; However, the kubernetes compute clusters never put anything on their chan, so this is the equivalent of only looking at mesos.
                                     ; We didn't want to implement the special case for mesos.
-                                    (let [res (async/<!! (async/merge cluster-connected-chans))]
-                                      ; [res (async/<!! (async/merge (or (seq cluster-connected-chans) [(async/chan 1)])))]
+                                    (let [res (async/<!! (async/merge (or (seq cluster-connected-chans) [(async/chan 1)])))]
                                       (when (instance? Throwable res)
                                         (throw res))))
                                   (catch Throwable e

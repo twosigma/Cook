@@ -282,7 +282,6 @@
           scheduleAtFixedRate-invocations-atom (atom [])]
       (is (= '("cluster1") (->> (cook.tools/get-running-task-ents db) (map (fn [e] (-> e :instance/compute-cluster :compute-cluster/cluster-name))))))
       (with-redefs [log/log* (fn [_ _ _ message] (reset! log-error-invocations-atom message))
-                    cc/get-db-config-ents (fn [_])
                     cc/get-db-config-ents (fn [_] {})
                     cc/update-compute-clusters (fn [_ _ _])
                     mesos/make-compute-cluster-config-updater-task (fn [_ _])

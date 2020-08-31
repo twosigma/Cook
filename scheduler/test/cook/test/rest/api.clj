@@ -2569,4 +2569,35 @@
                       (constantly true)]
           (let [{:keys [status]} (handler request)]
             (is (= 204 status))
-            (is (= name @name-deleted-atom))))))))
+            (is (= name @name-deleted-atom)))))))
+
+  (deftest test-update-compute-cluster
+    (let [conn (restore-fresh-database! "datomic:mem://test-delete-compute-cluster")
+          handler (basic-handler conn :is-authorized-fn is-authorized-fn)
+          name "test-name"
+          request {:authorization/user admin-user
+                   :body-params {"base-path" "test-base-path"
+                                 "ca-cert" "test-ca-cert"
+                                 "name" name
+                                 "state" "running"
+                                 "template" "test-template"}
+                   :request-method :put
+                   :scheme :http
+                   :uri "/compute-clusters"}]
+      (testing "successful update"
+        (with-redefs [cc/update-compute-cluster
+                      (constantly [])
+                      api/compute-cluster-exists?
+                      (constantly true)
+                      config/compute-cluster-templates
+                      (constantly {"test-template" {:config {:dynamic-cluster-config? true}
+                                                    :a :bb
+                                                    :c :dd
+                                                    :factory-fn 'cook.test.compute-cluster/cluster-factory-fn}})]
+          (let [{:keys [status]} (handler request)]
+            (is (= 201 status)))))
+      (testing "update with missing name fails"
+        (with-redefs [api/compute-cluster-exists? (constantly false)]
+          (let [{:keys [status] :as response} (handler request)]
+            (is (= 422 status) (-> response response->body-data str))
+            (is (= (str "Compute cluster with name " name " does not exist") (-> response response->body-data (get-in ["error" "message"]))))))))))

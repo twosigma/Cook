@@ -333,14 +333,14 @@
 
 (defn validate-template
   "Validates the given template definition"
-  [template-name {:keys [factory-fn] :as template-definition}]
+  [template-name {:keys [factory-fn] :as cluster-definition-template}]
   (cond
-    (not template-definition)
+    (not cluster-definition-template)
     {:valid? false
      :reason (str "Attempting to create cluster with unknown template: " template-name)}
     (not factory-fn)
     {:valid? false
-     :reason (str "Template for cluster has no factory-fn: " template-definition)}
+     :reason (str "Template for cluster has no factory-fn: " cluster-definition-template)}
     :else
     {:valid? true}))
 
@@ -372,7 +372,19 @@
 
 (defn compute-config-updates
   "Take the current and desired configurations and compute the updates. Validate all updates that would occur,
-  including unique constraint violations. .e.g base-path must be unique to each cluster."
+  including unique constraint violations. .e.g base-path must be unique to each cluster.
+  Returns a collection of 'update' objects. Each one describes an update to a cluster:
+  [
+    {
+      :cluster-name - cluster for which we want to update the config
+      :valid? - update is valid and can be made. when there is a mix of valid and invalid updates we will still attempt
+                to make the valid updates. we will alert on any invalid updates.
+      :reason - when invalid, reason explaining why it's invalid
+      :goal-config - the config that we want the cluster to have
+      :differs? - the goal config is different from the current config in the database
+    }
+    ...
+  ]"
   [db current-configs new-configs force?]
   (let [[deletes-keys inserts-keys updates-keys] (util/diff-map-keys current-configs new-configs)
         updates (->> (concat
@@ -450,7 +462,9 @@
         (doseq [update updates-with-results
                 :let [update-result (:update-result update)]]
           (if (:valid? update)
-            (when-not (:update-succeeded update-result) (log/error "Update failed!" update))
+            (if (:update-succeeded update-result)
+              (log/info "Update for cluster" (:cluster-name update) "successful")
+              (log/error "Update failed!" update))
             (log/error "Invalid update!" update)))
         updates-with-results))))
 

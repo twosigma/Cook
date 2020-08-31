@@ -3039,6 +3039,28 @@
                                    set)]
     (contains? compute-cluster-names name)))
 
+(defn create-or-update-compute-cluster!
+  [conn body-params]
+  (let [{:keys [name template base-path ca-cert state state-locked?]}
+        body-params
+        result (cc/update-compute-cluster
+                 conn
+                 {:name name
+                  :template template
+                  :base-path base-path
+                  :ca-cert ca-cert
+                  :state (keyword state)
+                  :state-locked? (boolean state-locked?)}
+                 true)]
+    {:result result :succeeded? (every? #(-> % :update-result :update-succeeded) result)}))
+
+(defn validate-compute-cluster-definition-template
+  [ctx]
+  (let [template-name (-> ctx :request :body-params :template)
+        cluster-definition-template ((config/compute-cluster-templates) template-name)
+        {:keys [reason valid?]} (cc/validate-template template-name cluster-definition-template)]
+    {:cluster-definition-template cluster-definition-template :reason reason :valid? valid?}))
+
 (defn create-compute-cluster!
   [conn leadership-atom ctx]
   (if @leadership-atom
@@ -3046,30 +3068,43 @@
           exists? (compute-cluster-exists? conn cluster-name)]
       (if exists?
         [false {::error {:message (str "Compute cluster with name " cluster-name " already exists")}}]
-        (let [template-name (-> ctx :request :body-params :template)
-              template-definition ((config/compute-cluster-templates) template-name)
-              {:keys [reason valid?]} (cc/validate-template template-name template-definition)]
+        (let [{:keys [cluster-definition-template reason valid?]} (validate-compute-cluster-definition-template ctx)]
           (if valid?
-            (let [{:keys [name template base-path ca-cert state state-locked?] :as body-params}
-                  (-> ctx :request :body-params)
-                  result (cc/update-compute-cluster
-                           conn
-                           {:name name
-                            :template template
-                            :base-path base-path
-                            :ca-cert ca-cert
-                            :state (keyword state)
-                            :state-locked? (boolean state-locked?)}
-                           true)
-                  succeeded? (every? #(-> % :update-result :update-succeeded) result)]
+            (let [body-params (-> ctx :request :body-params)
+                  {:keys [result succeeded?]} (create-or-update-compute-cluster! conn body-params)]
               (log/info "Result of create-compute-cluster! REST API call"
                         {:input body-params
                          :result result
                          :succeeded? succeeded?
-                         :template-definition template-definition})
+                         :cluster-definition-template cluster-definition-template})
               (if succeeded?
                 [true {:response result}]
                 [false {::error {:message "Cluster creation was not successful"
+                                 :details result}}]))
+            [false {::error {:message reason}}]))))
+    ; When we're not the leader, we need processable? to go down
+    ; the "true" branch in order to trigger the redirect flow
+    true))
+
+(defn update-compute-cluster!
+  [conn leadership-atom ctx]
+  (if @leadership-atom
+    (let [cluster-name (-> ctx :request :body-params :name)
+          exists? (compute-cluster-exists? conn cluster-name)]
+      (if-not exists?
+        [false {::error {:message (str "Compute cluster with name " cluster-name " does not exist")}}]
+        (let [{:keys [cluster-definition-template reason valid?]} (validate-compute-cluster-definition-template ctx)]
+          (if valid?
+            (let [body-params (-> ctx :request :body-params)
+                  {:keys [result succeeded?]} (create-or-update-compute-cluster! conn body-params)]
+              (log/info "Result of update-compute-cluster! REST API call"
+                        {:input body-params
+                         :result result
+                         :succeeded? succeeded?
+                         :cluster-definition-template cluster-definition-template})
+              (if succeeded?
+                [true {:response result}]
+                [false {::error {:message "Cluster update was not successful"
                                  :details result}}]))
             [false {::error {:message reason}}]))))
     ; When we're not the leader, we need processable? to go down
@@ -3107,6 +3142,16 @@
     {:allowed-methods [:post]
      :handle-created (fn [{:keys [response]}] response)
      :processable? (partial create-compute-cluster! conn leadership-atom)}))
+
+(defn put-compute-clusters-handler
+  [conn is-authorized-fn leadership-atom leader-selector]
+  (base-compute-cluster-handler
+    is-authorized-fn
+    leadership-atom
+    leader-selector
+    {:allowed-methods [:put]
+     :handle-created (fn [{:keys [response]}] response)
+     :processable? (partial update-compute-cluster! conn leadership-atom)}))
 
 (defn read-compute-clusters
   [conn _]
@@ -3551,6 +3596,17 @@
               :responses {201 {:description "The compute cluster was created."}
                           307 {:description "Redirecting request to leader node."}
                           409 {:description "There is already a compute cluster with the given name."}}}
+
+             :put
+             {:summary "Update an existing compute cluster"
+              :parameters {:body-params InsertComputeClusterRequest}
+              :handler (put-compute-clusters-handler conn
+                                                     is-authorized-fn
+                                                     leadership-atom
+                                                     leader-selector)
+              :responses {201 {:description "The compute cluster was updated."}
+                          307 {:description "Redirecting request to leader node."}
+                          404 {:description "Could not find a compute cluster with the given name."}}}
 
              :get
              {:summary "Get the set of compute clusters"

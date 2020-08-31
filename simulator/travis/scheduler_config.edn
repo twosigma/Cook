@@ -21,6 +21,14 @@
          :leader-path "/cook-scheduler"
          :role "cook"
          :framework-id "cook-framework"}
+ :compute-clusters [{:factory-fn 'cook.mesos.mesos-compute-cluster/factory-fn
+                     :config {:compute-cluster-name "default-compute-cluster-from-config-defaulting"
+                              :framework-id "cook-framework"
+                              :master "zk://172.17.0.3:2181/mesos"
+                              :failover-timeout nil
+                              :principal nil
+                              :role "cook"
+                              :framework-name nil}}]
  :unhandled-exceptions {:log-level :error}
  :metrics {:jmx true}
  :nrepl {:enabled? true

@@ -567,88 +567,23 @@
                                                    :dynamic-cluster-config? true}
                                           :e :ff
                                           :factory-fn 'cook.test.compute-cluster/cluster-factory-fn}})]
-    (let [uri "datomic:mem://test-compute-cluster-config"
-          conn (restore-fresh-database! uri)]
-
-      (testing "normal update - add cluster"
-        (reset! cluster-name->compute-cluster-atom {})
-        (reset! initialize-cluster-fn-invocations-atom [])
-        (is (= {} (get-db-config-ents (d/db conn))))
-        (is (= {} (get-in-mem-configs)))
-        (is (= {:update-succeeded true}
-               (execute-update! conn
-                                {:goal-config
-                                 {:a :a
-                                  :name "name"
-                                  :template "template1"
-                                  :base-path "base-path"
-                                  :ca-cert "ca-cert"
-                                  :state :running
-                                  :state-locked? true}
-                                 :valid? true
-                                 :differs? true
-                                 :active? true})))
-        (is (= ["name"] @initialize-cluster-fn-invocations-atom))
-        (is (= {:base-path "base-path"
-                :ca-cert "ca-cert"
-                :name "name"
-                :state :running
-                :state-locked? true
-                :template "template1"}
-               (-> (get-db-config-ents (d/db conn)) (get "name") compute-cluster-config-ent->compute-cluster-config)))
-        (is (= {"name" {:base-path "base-path"
-                        :ca-cert "ca-cert"
-                        :name "name"
-                        :state :running
-                        :state-locked? true
-                        :template "template1"}} (get-in-mem-configs))))
-
-      (testing "normal update - differs? is false but cluster not in memory; cluster is created"
-        ; no change update with missing cluster
-        (reset! cluster-name->compute-cluster-atom {})
-        (is (= {} (get-in-mem-configs)))
-        (is (= {:update-succeeded true}
-               (execute-update! conn
-                                {:goal-config
-                                 {:a :a
-                                  :name "name"
-                                  :template "template1"
-                                  :base-path "base-path"
-                                  :ca-cert "ca-cert"
-                                  :state :running
-                                  :state-locked? true}
-                                 :valid? true
-                                 :differs? false
-                                 :active? true})))
-        (is (= ["name" "name"] @initialize-cluster-fn-invocations-atom))
-        (is (= {:base-path "base-path"
-                :ca-cert "ca-cert"
-                :name "name"
-                :state :running
-                :state-locked? true
-                :template "template1"}
-               (-> (get-db-config-ents (d/db conn)) (get "name") compute-cluster-config-ent->compute-cluster-config)))
-        (is (= {"name" {:base-path "base-path"
-                        :ca-cert "ca-cert"
-                        :name "name"
-                        :state :running
-                        :state-locked? true
-                        :template "template1"}} (get-in-mem-configs))))
-
-      (testing "normal update - insert then update"
-        (testing "insert"
+    (let [uri "datomic:mem://test-compute-cluster-config"]
+      (let [conn (restore-fresh-database! uri)]
+        (testing "normal update - add cluster"
+          (reset! cluster-name->compute-cluster-atom {})
           (reset! initialize-cluster-fn-invocations-atom [])
           (is (= {} (get-db-config-ents (d/db conn))))
           (is (= {} (get-in-mem-configs)))
           (is (= {:update-succeeded true}
                  (execute-update! conn
-                                  {:goal-config {:a :a
-                                                 :name "name"
-                                                 :template "template1"
-                                                 :base-path "base-path"
-                                                 :ca-cert "ca-cert"
-                                                 :state :running
-                                                 :state-locked? true}
+                                  {:goal-config
+                                   {:a :a
+                                    :name "name"
+                                    :template "template1"
+                                    :base-path "base-path"
+                                    :ca-cert "ca-cert"
+                                    :state :running
+                                    :state-locked? true}
                                    :valid? true
                                    :differs? true
                                    :active? true})))
@@ -667,54 +602,118 @@
                           :state-locked? true
                           :template "template1"}} (get-in-mem-configs))))
 
-        (testing "update - state updates in db and in mem. base-path only updates in db"
+        (testing "normal update - differs? is false but cluster not in memory; cluster is created"
+          ; no change update with missing cluster
+          (reset! cluster-name->compute-cluster-atom {})
+          (is (= {} (get-in-mem-configs)))
           (is (= {:update-succeeded true}
                  (execute-update! conn
-                                  {:goal-config {:a :a
-                                                 :name "name"
-                                                 :template "template1"
-                                                 :base-path "base-path-2"
-                                                 :ca-cert "ca-cert"
-                                                 :state :draining
-                                                 :state-locked? true}
+                                  {:goal-config
+                                   {:a :a
+                                    :name "name"
+                                    :template "template1"
+                                    :base-path "base-path"
+                                    :ca-cert "ca-cert"
+                                    :state :running
+                                    :state-locked? true}
                                    :valid? true
-                                   :differs? true
+                                   :differs? false
                                    :active? true})))
-          (is (= ["name"] @initialize-cluster-fn-invocations-atom))
-          (is (= {:base-path "base-path-2"
+          (is (= ["name" "name"] @initialize-cluster-fn-invocations-atom))
+          (is (= {:base-path "base-path"
                   :ca-cert "ca-cert"
                   :name "name"
-                  :state :draining
+                  :state :running
                   :state-locked? true
                   :template "template1"}
                  (-> (get-db-config-ents (d/db conn)) (get "name") compute-cluster-config-ent->compute-cluster-config)))
           (is (= {"name" {:base-path "base-path"
                           :ca-cert "ca-cert"
                           :name "name"
-                          :state :draining
+                          :state :running
                           :state-locked? true
                           :template "template1"}} (get-in-mem-configs)))))
+      (let [conn (restore-fresh-database! uri)]
+        (testing "normal update - insert then update"
+          (testing "insert"
+            (reset! initialize-cluster-fn-invocations-atom [])
+            (is (= {} (get-db-config-ents (d/db conn))))
+            (is (= {} (get-in-mem-configs)))
+            (is (= {:update-succeeded true}
+                   (execute-update! conn
+                                    {:goal-config {:a :a
+                                                   :name "name"
+                                                   :template "template1"
+                                                   :base-path "base-path"
+                                                   :ca-cert "ca-cert"
+                                                   :state :running
+                                                   :state-locked? true}
+                                     :valid? true
+                                     :differs? true
+                                     :active? true})))
+            (is (= ["name"] @initialize-cluster-fn-invocations-atom))
+            (is (= {:base-path "base-path"
+                    :ca-cert "ca-cert"
+                    :name "name"
+                    :state :running
+                    :state-locked? true
+                    :template "template1"}
+                   (-> (get-db-config-ents (d/db conn)) (get "name") compute-cluster-config-ent->compute-cluster-config)))
+            (is (= {"name" {:base-path "base-path"
+                            :ca-cert "ca-cert"
+                            :name "name"
+                            :state :running
+                            :state-locked? true
+                            :template "template1"}} (get-in-mem-configs))))
 
-      (testing "exceptions"
-        (reset! cluster-name->compute-cluster-atom {})
+          (testing "update - state updates in db and in mem. base-path only updates in db"
+            (is (= {:update-succeeded true}
+                   (execute-update! conn
+                                    {:goal-config {:a :a
+                                                   :name "name"
+                                                   :template "template1"
+                                                   :base-path "base-path-2"
+                                                   :ca-cert "ca-cert"
+                                                   :state :draining
+                                                   :state-locked? true}
+                                     :valid? true
+                                     :differs? true
+                                     :active? true})))
+            (is (= ["name"] @initialize-cluster-fn-invocations-atom))
+            (is (= {:base-path "base-path-2"
+                    :ca-cert "ca-cert"
+                    :name "name"
+                    :state :draining
+                    :state-locked? true
+                    :template "template1"}
+                   (-> (get-db-config-ents (d/db conn)) (get "name") compute-cluster-config-ent->compute-cluster-config)))
+            (is (= {"name" {:base-path "base-path"
+                            :ca-cert "ca-cert"
+                            :name "name"
+                            :state :draining
+                            :state-locked? true
+                            :template "template1"}} (get-in-mem-configs))))))
+      (let [conn (restore-fresh-database! uri)]
+        (testing "exceptions"
+          (reset! cluster-name->compute-cluster-atom {})
 
-        (testing "database error"
-          (reset! initialize-cluster-fn-invocations-atom [])
-          (is (= {} (get-db-config-ents (d/db conn))))
-          (is (= {} (get-in-mem-configs)))
-          (is (= {:error-message "java.lang.IllegalArgumentException: No matching clause: "
-                  :update-succeeded false}
-                 (execute-update! nil {:goal-config {:name "fail" :a :a :template "template1"} :valid? true :differs? true :active? true})))
-          (is (= [] @initialize-cluster-fn-invocations-atom)))
+          (testing "database error"
+            (reset! initialize-cluster-fn-invocations-atom [])
+            (is (= {} (get-db-config-ents (d/db conn))))
+            (is (= {} (get-in-mem-configs)))
+            (is (= {:error-message "java.lang.IllegalArgumentException: No matching clause: "
+                    :update-succeeded false}
+                   (execute-update! nil {:goal-config {:name "fail" :a :a :template "template1"} :valid? true :differs? true :active? true})))
+            (is (= [] @initialize-cluster-fn-invocations-atom)))
 
-        (testing "cluster creation error"
-          (reset! initialize-cluster-fn-invocations-atom [])
-          (is (= {} (get-db-config-ents (d/db conn))))
-          (is (= {} (get-in-mem-configs)))
-          (is (= {:error-message "clojure.lang.ExceptionInfo: fail {}"
-                  :update-succeeded false}
-                 (execute-update! nil {:goal-config {:name "fail" :a :a :template "template1"} :valid? true :differs? false :active? true})))
-          (is (= [] @initialize-cluster-fn-invocations-atom)))))))
+          (testing "cluster creation error"
+            (reset! initialize-cluster-fn-invocations-atom [])
+            (is (= {} (get-db-config-ents (d/db conn))))
+            (is (= {} (get-in-mem-configs)))
+            (is (= {:error-message "clojure.lang.ExceptionInfo: fail {}"
+                    :update-succeeded false}
+                   (execute-update! nil {:goal-config {:name "fail" :a :a :template "template1"} :valid? true :differs? false :active? true})))
+            (is (= [] @initialize-cluster-fn-invocations-atom))))))))
 
 (deftest test-update-compute-clusters
   (with-redefs [d/db (fn [_])

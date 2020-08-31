@@ -317,11 +317,16 @@
         (run! deref futures))))
 
   (kill-task [this task-id]
-    ; Note we can't use timer/time! because it wraps the body in a Callable, which rebinds 'this' to another 'this'
-    ; causing breakage.
-    (let [timer-context (timers/start (metrics/timer "cc-kill-tasks" name))]
-      (controller/update-cook-expected-state this task-id {:cook-expected-state :cook-expected-state/killed})
-      (.stop timer-context)))
+    (let [state @state-atom]
+      (if (= state :deleted)
+        (log/error "In" name "compute cluster, attempting to delete task, with ID" task-id
+                   "but the current cluster state is :deleted. Can't perform any client API calls"
+                   "when the cluster has been deleted. Will not attempt to kill task.")
+        ; Note we can't use timer/time! because it wraps the body in a Callable, which rebinds 'this' to another 'this'
+        ; causing breakage.
+        (let [timer-context (timers/start (metrics/timer "cc-kill-tasks" name))]
+          (controller/update-cook-expected-state this task-id {:cook-expected-state :cook-expected-state/killed})
+          (.stop timer-context)))))
 
   (decline-offers [this offer-ids]
     (log/debug "Rejecting offer ids" offer-ids))
