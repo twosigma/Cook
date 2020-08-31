@@ -175,6 +175,9 @@
                                           :task-constraints task-constraints
                                           :trigger-chans trigger-chans})
                                         running-tasks-ents (cook.tools/get-running-task-ents (d/db mesos-datomic-conn))
+                                        _ (doseq [[compute-cluster-name compute-cluster] cluster-name->compute-cluster]
+                                            (log/error "sim starting clusters: compute-cluster-name " compute-cluster-name)
+                                            (log/error "sim starting clusters: compute-cluster " compute-cluster))
                                         cluster-connected-chans (->> cluster-name->compute-cluster
                                                                      (map (fn [[compute-cluster-name compute-cluster]]
                                                                             (try
@@ -232,6 +235,9 @@
                                     ; WARNING: This code is very misleading. It looks like we'll suicide if ANY of the clusters lose leadership.
                                     ; However, the kubernetes compute clusters never put anything on their chan, so this is the equivalent of only looking at mesos.
                                     ; We didn't want to implement the special case for mesos.
+                                    (doseq [[cluster-connected-chan] cluster-connected-chans]
+                                      (log/error "sim starting clusters: cluster-connected-chan " cluster-connected-chan))
+                                    (throw (ex-info "sim starting clusters: throw ex" {}))
                                     (let [res (async/<!! (async/merge cluster-connected-chans))]
                                       (when (instance? Throwable res)
                                         (throw res))))
