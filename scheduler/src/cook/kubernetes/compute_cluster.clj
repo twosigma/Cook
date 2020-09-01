@@ -410,7 +410,7 @@
   (autoscale! [this pool-name jobs adjust-job-resources-for-pool-fn]
     (let [state @state-atom]
       (if-not (= state :running)
-        (log/warn "In" name "compute cluster, ignoring request to autoscale in pool" pool-name
+        (log/info "In" name "compute cluster, ignoring request to autoscale in pool" pool-name
                   "because the current state," state ", is not :running.")
         (try
           (assert (cc/autoscaling? this pool-name)
