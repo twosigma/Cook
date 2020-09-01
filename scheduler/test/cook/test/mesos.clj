@@ -23,8 +23,7 @@
             [cook.datomic]
             [cook.mesos :as mesos]
             [cook.test.testutil :refer [create-dummy-job-with-instances restore-fresh-database!]]
-            [datomic.api :as d :refer (q db)])
-  (:import (java.util.concurrent ScheduledExecutorService)))
+            [datomic.api :as d :refer (q db)]))
 
 (defn make-jobs-in-db
   "Takes a list of pairs, where the pairs are the cpu/memory of the job, and returns
