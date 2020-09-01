@@ -235,7 +235,7 @@
   "Get the current in-memory dynamic clusters"
   []
   (->> @cluster-name->compute-cluster-atom
-       (filter (fn [[_ cluster]] (:dynamic-cluster-config? cluster)))
+       (filter (fn [[_ {:keys [dynamic-cluster-config?]}]] dynamic-cluster-config?))
        (into {})))
 
 (defn get-in-mem-configs
@@ -247,31 +247,33 @@
 (defn compute-current-configs
   "Synthesize the current view of cluster configurations by looking at the current configurations in the database
   and the current configurations in memory. Alert on any inconsistencies. Database wins on inconsistencies."
-  [current-db-configs current-in-mem-configs]
-  (let [[only-db-keys only-in-mem-keys both-keys] (util/diff-map-keys current-db-configs current-in-mem-configs)]
-    (doseq [only-db-key only-db-keys]
-      (when (not= :deleted (-> only-db-key current-db-configs :state))
-        (log/info "Database cluster configuration is missing from in-memory configs."
-                  "Cluster is only in the database and is not deleted."
-                  "This is normal at startup, but shouldn't happen otherwise."
-                  {:cluster-name only-db-key :cluster (current-db-configs only-db-key)})))
-    (doseq [only-in-mem-key only-in-mem-keys]
-      (when (not= :deleted (-> only-in-mem-key current-in-mem-configs :state))
-        (log/error "In-memory cluster configuration is missing from the database."
-                   "Cluster is only in memory and is not deleted."
-                   "This should not have happened! A database update was missed!"
-                   "The cluster configuration will be added to the database on the next update."
-                   {:cluster-name only-in-mem-key :cluster (current-in-mem-configs only-in-mem-key)})))
-    (doseq [key both-keys]
-      (let [keys-to-keep-synced [:base-path :ca-cert :state]]
-        (when (not= (-> key current-db-configs (select-keys keys-to-keep-synced))
-                    (-> key current-in-mem-configs (select-keys keys-to-keep-synced)))
-          (log/error "Base path, CA cert, or state differ between in-memory and database cluster configurations."
-                     "Ensure that the database contains the correct configuration and then change leadership."
-                     {:cluster-name key
-                      :in-memory-cluster (current-in-mem-configs key)
-                      :db-cluster (current-db-configs key)})))))
-  (merge current-in-mem-configs current-db-configs))
+  ([current-db-configs current-in-mem-configs]
+   (let [[only-db-keys only-in-mem-keys both-keys] (util/diff-map-keys current-db-configs current-in-mem-configs)]
+     (doseq [only-db-key only-db-keys]
+       (when (not= :deleted (-> only-db-key current-db-configs :state))
+         (log/info "Database cluster configuration is missing from in-memory configs."
+                   "Cluster is only in the database and is not deleted."
+                   "This is normal at startup, but shouldn't happen otherwise."
+                   {:cluster-name only-db-key :cluster (current-db-configs only-db-key)})))
+     (doseq [only-in-mem-key only-in-mem-keys]
+       (when (not= :deleted (-> only-in-mem-key current-in-mem-configs :state))
+         (log/error "In-memory cluster configuration is missing from the database."
+                    "Cluster is only in memory and is not deleted."
+                    "This should not have happened! A database update was missed!"
+                    "The cluster configuration will be added to the database on the next update."
+                    {:cluster-name only-in-mem-key :cluster (current-in-mem-configs only-in-mem-key)})))
+     (doseq [key both-keys]
+       (let [keys-to-keep-synced [:base-path :ca-cert :state]]
+         (when (not= (-> key current-db-configs (select-keys keys-to-keep-synced))
+                     (-> key current-in-mem-configs (select-keys keys-to-keep-synced)))
+           (log/error "Base path, CA cert, or state differ between in-memory and database cluster configurations."
+                      "Ensure that the database contains the correct configuration and then change leadership."
+                      {:cluster-name key
+                       :in-memory-cluster (current-in-mem-configs key)
+                       :db-cluster (current-db-configs key)})))))
+   (merge current-in-mem-configs current-db-configs))
+  ([db]
+   (compute-current-configs (get-db-configs db) (get-in-mem-configs))))
 
 (defn get-job-instance-ids-for-cluster-name
   "Get the datomic ids of job instances that are running on the given compute cluster"
@@ -445,28 +447,22 @@
 
 (defn update-compute-clusters-helper
   "Helper function for update-compute-cluster and update-compute-clusters. See those functions for full description."
-  [conn current-configs->new-configs force?]
-  (locking cluster-name->compute-cluster-atom
-    (let [db (d/db conn)
-          current-in-mem-configs (get-in-mem-configs)
-          current-db-configs (get-db-configs db)
-          current-configs (compute-current-configs current-db-configs current-in-mem-configs)
-          new-configs (current-configs->new-configs current-configs)
-          updates (compute-config-updates db current-configs new-configs force?)]
-      (log/info "Updating dynamic clusters."
-                {:current-configs current-configs :new-configs new-configs :force? force? :updates updates})
-      (let [updates-with-results (map
-                                   #(assoc % :update-result
-                                             (when (:valid? %) (execute-update! conn %)))
-                                   updates)]
-        (doseq [update updates-with-results
-                :let [update-result (:update-result update)]]
-          (if (:valid? update)
-            (if (:update-succeeded update-result)
-              (log/info "Update for cluster" (:cluster-name update) "successful")
-              (log/error "Update failed!" update))
-            (log/error "Invalid update!" update)))
-        updates-with-results))))
+  [conn db current-configs new-configs force?]
+  (let [updates (compute-config-updates db current-configs new-configs force?)]
+    (log/info "Updating dynamic clusters."
+              {:current-configs current-configs :new-configs new-configs :force? force? :updates updates})
+    (let [updates-with-results (map
+                                 #(assoc % :update-result
+                                           (when (:valid? %) (execute-update! conn %)))
+                                 updates)]
+      (doseq [update updates-with-results
+              :let [update-result (:update-result update)]]
+        (if (:valid? update)
+          (if (:update-succeeded update-result)
+            (log/info "Update for cluster" (:cluster-name update) "successful")
+            (log/error "Update failed!" update))
+          (log/error "Invalid update!" update)))
+      updates-with-results)))
 
 (defn update-compute-clusters
   "This function allows adding or updating the current compute cluster configurations. Takes
@@ -474,14 +470,20 @@
   configurations, and clusters that are missing from this map are set to the 'deleted' state.
   Only the state of an existing cluster and its configuration can be changed unless force? is set to true."
   ([conn new-configs force?]
-   (update-compute-clusters-helper conn (fn [_] new-configs) force?)))
+   (locking cluster-name->compute-cluster-atom
+     (let [db (d/db conn)
+           current-configs (compute-current-configs db)]
+       (update-compute-clusters-helper conn db current-configs new-configs force?)))))
 
 (defn update-compute-cluster
   "This function allows adding or updating the current compute cluster configurations. Takes
   in a single configuration and updates or creates it.
   Only the state of an existing cluster and its configuration can be changed unless force? is set to true."
   [conn new-config force?]
-  (update-compute-clusters-helper conn #(assoc % (:name new-config) new-config) force?))
+  (locking cluster-name->compute-cluster-atom
+    (let [db (d/db conn)
+          current-configs (compute-current-configs db)]
+      (update-compute-clusters-helper conn db current-configs (assoc current-configs (:name new-config) new-config) force?))))
 
 (defn get-compute-clusters
   "Get the current dynamic compute clusters. Returns both the in-memory cluster configs and the configurations in the database.

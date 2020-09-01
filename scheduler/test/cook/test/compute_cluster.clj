@@ -724,7 +724,7 @@
                                           :c :dd
                                           :factory-fn 'cook.test.compute-cluster/cluster-factory-fn
                                           :config {:dynamic-cluster-config? true}}})
-                compute-current-configs (fn [_ _] {"current" {:name "current" :a :b :state :running :ca-cert 1 :base-path 1}})
+                compute-current-configs (fn [_] {"current" {:name "current" :a :b :state :running :ca-cert 1 :base-path 1}})
                 execute-update! (fn [_ config] (if (= "fail" (:name config)) {:update-succeeded false} {:update-succeeded true}))]
     (testing "single"
       (is (= '({:active? true
