@@ -123,21 +123,22 @@
   at startup, and launching a background worker to periodically check for new configurations"
   [conn {:keys [load-clusters-on-startup? cluster-update-period-seconds new-cluster-configurations-fn]}]
   (when load-clusters-on-startup?
-    (let [db (d/db conn)
-          saved-cluster-configurations (cc/get-db-configs db)
-          cluster-name->running-task-ents (->> db cook.tools/get-running-task-ents
-                                               (group-by #(-> %
-                                                            :instance/compute-cluster
-                                                            :compute-cluster/cluster-name)))
-          [missing-cluster-names _ _] (util/diff-map-keys cluster-name->running-task-ents saved-cluster-configurations)]
-      (when missing-cluster-names
-        (log/error "Can't find cluster configurations for some of the running jobs!"
-                   {:missing-cluster-names missing-cluster-names
-                    :cluster-name->instance-ids (->> missing-cluster-names
-                                                     (map-from-keys
-                                                       #(->> (take 20 (cluster-name->running-task-ents %))
-                                                             (map :instance/task-id))))}))
-      (cc/update-compute-clusters conn saved-cluster-configurations false)))
+    (locking cc/cluster-name->compute-cluster-atom
+      (let [db (d/db conn)
+            saved-cluster-configurations (cc/get-db-configs db)
+            cluster-name->running-task-ents (->> db cook.tools/get-running-task-ents
+                                                 (group-by #(-> %
+                                                              :instance/compute-cluster
+                                                              :compute-cluster/cluster-name)))
+            [missing-cluster-names _ _] (util/diff-map-keys cluster-name->running-task-ents saved-cluster-configurations)]
+        (when missing-cluster-names
+          (log/error "Can't find cluster configurations for some of the running jobs!"
+                     {:missing-cluster-names missing-cluster-names
+                      :cluster-name->instance-ids (->> missing-cluster-names
+                                                       (map-from-keys
+                                                         #(->> (take 20 (cluster-name->running-task-ents %))
+                                                               (map :instance/task-id))))}))
+        (cc/update-compute-clusters-helper conn db saved-cluster-configurations saved-cluster-configurations false))))
   (when new-cluster-configurations-fn
     (let [cluster-update-period-seconds (or cluster-update-period-seconds 60)]
       (chime/chime-at
