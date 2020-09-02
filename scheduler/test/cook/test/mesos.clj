@@ -283,6 +283,7 @@
       (with-redefs [log/log* (fn [_ _ _ message] (reset! log-error-invocations-atom message))
                     cc/get-db-config-ents (fn [_] {})
                     cc/update-compute-clusters (fn [_ _ _])
+                    cc/update-compute-clusters-helper (fn [_ _ _ _ _])
                     mesos/make-compute-cluster-config-updater-task (fn [_ _])
                     t/now (constantly (org.joda.time.DateTime/parse "2020-08-26T16:35:35.946Z"))
                     chime/chime-at (fn [a _ & _]
