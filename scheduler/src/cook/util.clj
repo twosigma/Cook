@@ -15,7 +15,8 @@
 ;;
 (ns cook.util
   (:refer-clojure :exclude [cast merge empty split replace])
-  (:require [clojure.java.io :as io :refer [file reader]]
+  (:require [clojure.data :as data]
+            [clojure.java.io :as io :refer [file reader]]
             [clojure.java.shell :refer :all]
             [clojure.pprint :refer :all]
             [clojure.string :refer :all]
@@ -185,3 +186,7 @@
 (def NonEmptyString
   (s/both s/Str (s/pred #(not (zero? (count %))) 'not-empty-string)))
 
+(defn diff-map-keys
+  "Return triple of keys from two maps: [only in left, only in right, in both]"
+  [left right]
+  (data/diff (set (keys left)) (set (keys right))))

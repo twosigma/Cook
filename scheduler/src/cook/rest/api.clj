@@ -3007,6 +3007,189 @@
                   costs)}))
 
 ;;
+;; /compute-clusters
+;;
+
+(def InsertComputeClusterRequest
+  {; IP address / URL of the cluster
+   :base-path NonEmptyString
+   ; base-64-encoded certificate
+   :ca-cert NonEmptyString
+   ; Unique name of the cluster
+   :name NonEmptyString
+   ; State of the cluster
+   :state (s/enum
+            ; Jobs will get scheduled on this cluster
+            "running"
+            ; No new jobs / synthetic pods will
+            ; get scheduled on this cluster
+            "draining"
+            ; The cluster is gone
+            "deleted")
+   ; The state can't be modified when it's locked
+   (s/optional-key :state-locked?) s/Bool
+   ; Key used to look up the configuration template
+   :template NonEmptyString})
+
+(defn compute-cluster-exists?
+  [conn name]
+  (let [compute-cluster-names (->> (cc/get-compute-clusters conn)
+                                   :db-configs
+                                   (map :name)
+                                   set)]
+    (contains? compute-cluster-names name)))
+
+(defn create-or-update-compute-cluster!
+  [conn body-params]
+  (let [{:keys [name template base-path ca-cert state state-locked?]}
+        body-params
+        result (cc/update-compute-cluster
+                 conn
+                 {:name name
+                  :template template
+                  :base-path base-path
+                  :ca-cert ca-cert
+                  :state (keyword state)
+                  :state-locked? (boolean state-locked?)}
+                 true)]
+    {:result result :succeeded? (every? #(-> % :update-result :update-succeeded) result)}))
+
+(defn validate-compute-cluster-definition-template
+  [ctx]
+  (let [template-name (-> ctx :request :body-params :template)
+        cluster-definition-template ((config/compute-cluster-templates) template-name)
+        {:keys [reason valid?]} (cc/validate-template template-name cluster-definition-template)]
+    {:cluster-definition-template cluster-definition-template :reason reason :valid? valid?}))
+
+(defn create-compute-cluster!
+  [conn leadership-atom ctx]
+  (if @leadership-atom
+    (let [cluster-name (-> ctx :request :body-params :name)
+          exists? (compute-cluster-exists? conn cluster-name)]
+      (if exists?
+        [false {::error {:message (str "Compute cluster with name " cluster-name " already exists")}}]
+        (let [{:keys [cluster-definition-template reason valid?]} (validate-compute-cluster-definition-template ctx)]
+          (if valid?
+            (let [body-params (-> ctx :request :body-params)
+                  {:keys [result succeeded?]} (create-or-update-compute-cluster! conn body-params)]
+              (log/info "Result of create-compute-cluster! REST API call"
+                        {:input body-params
+                         :result result
+                         :succeeded? succeeded?
+                         :cluster-definition-template cluster-definition-template})
+              (if succeeded?
+                [true {:response result}]
+                [false {::error {:message "Cluster creation was not successful"
+                                 :details result}}]))
+            [false {::error {:message reason}}]))))
+    ; When we're not the leader, we need processable? to go down
+    ; the "true" branch in order to trigger the redirect flow
+    true))
+
+(defn update-compute-cluster!
+  [conn leadership-atom ctx]
+  (if @leadership-atom
+    (let [cluster-name (-> ctx :request :body-params :name)
+          exists? (compute-cluster-exists? conn cluster-name)]
+      (if-not exists?
+        [false {::error {:message (str "Compute cluster with name " cluster-name " does not exist")}}]
+        (let [{:keys [cluster-definition-template reason valid?]} (validate-compute-cluster-definition-template ctx)]
+          (if valid?
+            (let [body-params (-> ctx :request :body-params)
+                  {:keys [result succeeded?]} (create-or-update-compute-cluster! conn body-params)]
+              (log/info "Result of update-compute-cluster! REST API call"
+                        {:input body-params
+                         :result result
+                         :succeeded? succeeded?
+                         :cluster-definition-template cluster-definition-template})
+              (if succeeded?
+                [true {:response result}]
+                [false {::error {:message "Cluster update was not successful"
+                                 :details result}}]))
+            [false {::error {:message reason}}]))))
+    ; When we're not the leader, we need processable? to go down
+    ; the "true" branch in order to trigger the redirect flow
+    true))
+
+(defn check-compute-cluster-allowed
+  [is-authorized-fn ctx]
+  (let [request-user (get-in ctx [:request :authorization/user])
+        impersonator (get-in ctx [:request :authorization/impersonator])
+        request-method (get-in ctx [:request :request-method])]
+    (if-not (is-authorized-fn request-user
+                              request-method
+                              impersonator
+                              {:owner ::system :item :compute-clusters})
+      [false {::error
+              (str "You are not authorized to access compute cluster information")}]
+      true)))
+
+(defn base-compute-cluster-handler
+  [is-authorized-fn leadership-atom leader-selector resource-attrs]
+  (base-cook-handler
+    (merge
+      ;; only the leader handles compute-cluster requests
+      (redirect-to-leader leadership-atom leader-selector)
+      {:allowed? (partial check-compute-cluster-allowed is-authorized-fn)}
+      resource-attrs)))
+
+(defn post-compute-clusters-handler
+  [conn is-authorized-fn leadership-atom leader-selector]
+  (base-compute-cluster-handler
+    is-authorized-fn
+    leadership-atom
+    leader-selector
+    {:allowed-methods [:post]
+     :handle-created (fn [{:keys [response]}] response)
+     :processable? (partial create-compute-cluster! conn leadership-atom)}))
+
+(defn put-compute-clusters-handler
+  [conn is-authorized-fn leadership-atom leader-selector]
+  (base-compute-cluster-handler
+    is-authorized-fn
+    leadership-atom
+    leader-selector
+    {:allowed-methods [:put]
+     :handle-created (fn [{:keys [response]}] response)
+     :processable? (partial update-compute-cluster! conn leadership-atom)}))
+
+(defn read-compute-clusters
+  [conn _]
+  (cc/get-compute-clusters conn))
+
+(defn get-compute-clusters-handler
+  [conn is-authorized-fn leadership-atom leader-selector]
+  (base-compute-cluster-handler
+    is-authorized-fn
+    leadership-atom
+    leader-selector
+    {:allowed-methods [:get]
+     :handle-ok (partial read-compute-clusters conn)}))
+
+(defn delete-compute-cluster!
+  [conn ctx]
+  (cc/delete-compute-cluster conn (-> ctx :request :body-params)))
+
+(defn check-delete-compute-cluster-malformed
+  [conn ctx]
+  (if-let [name (-> ctx :request :body-params :name)]
+    (if (compute-cluster-exists? conn name)
+      false
+      [true {::error {:message (str "Compute cluster with name " name " does not exist")}}])
+    [true {::error {:message (str "You must specify the cluster name to delete")}}]))
+
+(defn delete-compute-clusters-handler
+  [conn is-authorized-fn leadership-atom leader-selector]
+  (base-compute-cluster-handler
+    is-authorized-fn
+    leadership-atom
+    leader-selector
+    {:allowed-methods [:delete]
+     :delete! (partial delete-compute-cluster! conn)
+     :malformed? (partial check-delete-compute-cluster-malformed conn)}))
+
+
+;;
 ;; /shutdown-leader
 ;;
 
@@ -3397,6 +3580,51 @@
               :responses {202 {:description "The shutdown request was accepted."}
                           307 {:description "Redirecting request to leader node."}
                           400 {:description "Invalid request format."}}}}))
+
+        (c-api/context
+          "/compute-clusters" []
+          (c-api/resource
+            {:produces ["application/json"]
+
+             :post
+             {:summary "Create a new compute cluster"
+              :parameters {:body-params InsertComputeClusterRequest}
+              :handler (post-compute-clusters-handler conn
+                                                      is-authorized-fn
+                                                      leadership-atom
+                                                      leader-selector)
+              :responses {201 {:description "The compute cluster was created."}
+                          307 {:description "Redirecting request to leader node."}
+                          409 {:description "There is already a compute cluster with the given name."}}}
+
+             :put
+             {:summary "Update an existing compute cluster"
+              :parameters {:body-params InsertComputeClusterRequest}
+              :handler (put-compute-clusters-handler conn
+                                                     is-authorized-fn
+                                                     leadership-atom
+                                                     leader-selector)
+              :responses {201 {:description "The compute cluster was updated."}
+                          307 {:description "Redirecting request to leader node."}
+                          404 {:description "Could not find a compute cluster with the given name."}}}
+
+             :get
+             {:summary "Get the set of compute clusters"
+              :handler (get-compute-clusters-handler conn
+                                                     is-authorized-fn
+                                                     leadership-atom
+                                                     leader-selector)
+              :responses {200 {:description "The compute clusters were returned."}
+                          307 {:description "Redirecting request to leader node."}}}
+
+             :delete
+             {:summary "Deletes a compute cluster"
+              :handler (delete-compute-clusters-handler conn
+                                                        is-authorized-fn
+                                                        leadership-atom
+                                                        leader-selector)
+              :responses {204 {:description "The compute cluster was deleted."}
+                          307 {:description "Redirecting request to leader node."}}}}))
 
         (c-api/undocumented
           ;; internal api endpoints (don't include in swagger)

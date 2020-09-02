@@ -2454,3 +2454,150 @@
             (is (= 400 status))
             (is (= {"reason" "missing-required-key"}
                    (-> response response->body-data (get "errors"))))))))))
+
+(let [admin-user "alice"
+      is-authorized-fn
+      (fn [user verb _ object]
+        (auth/admins-open-gets-allowed-users-auth
+          #{admin-user} user verb object true))
+      sample-leader-base-url "http://cook-scheduler.example:12321"
+      endpoint "/compute-clusters"]
+
+  (deftest test-create-compute-cluster
+    (with-redefs [config/compute-cluster-templates
+                  (constantly {"test-template" {:config {:dynamic-cluster-config? true}
+                                                :a :bb
+                                                :c :dd
+                                                :factory-fn 'cook.test.compute-cluster/cluster-factory-fn}})]
+      (let [conn (restore-fresh-database! "datomic:mem://test-create-compute-cluster")
+            handler (basic-handler conn :is-authorized-fn is-authorized-fn)
+            name "test-name"
+            request {:authorization/user admin-user
+                     :body-params {"base-path" "test-base-path"
+                                   "ca-cert" "test-ca-cert"
+                                   "name" name
+                                   "state" "running"
+                                   "template" "test-template"}
+                     :request-method :post
+                     :scheme :http
+                     :uri endpoint}]
+        (testing "successful insert"
+          (with-redefs [api/compute-cluster-exists? (constantly false)
+                        cc/update-compute-cluster (constantly [])]
+            (let [{:keys [status] :as response} (handler request)]
+              (is (= 201 status) (-> response response->body-data str)))))
+
+        (testing "insert with existing name fails"
+          (with-redefs [api/compute-cluster-exists? (constantly true)]
+            (let [{:keys [status] :as response} (handler request)]
+              (is (= 422 status) (-> response response->body-data str))
+              (is (= (str "Compute cluster with name " name " already exists")
+                     (-> response response->body-data (get-in ["error" "message"])))))))
+
+        (testing "insert from non-admin fails"
+          (let [request-from-non-admin (assoc request :authorization/user "non-admin")
+                {:keys [status] :as response} (handler request-from-non-admin)]
+            (is (= 403 status))
+            (is (= "You are not authorized to access compute cluster information"
+                   (-> response response->body-data (get "error"))))))
+
+        (testing "specifying state-locked? succeeds"
+          (with-redefs [api/compute-cluster-exists? (constantly false)
+                        cc/update-compute-cluster (constantly [])]
+            (let [request-with-state-locked-false (assoc-in request [:body-params "state-locked?"] false)
+                  {:keys [status] :as response} (handler request-with-state-locked-false)]
+              (is (= 201 status) (-> response response->body-data str)))))
+
+        (testing "non-leader redirects"
+          (with-redefs [api/leader-selector->leader-url (constantly sample-leader-base-url)]
+            (let [{:keys [location status] :as response} (handler request :leader? false)]
+              (is (= 307 status) (-> response response->body-data str))
+              (is (= location (str sample-leader-base-url endpoint)))))))))
+
+  (deftest test-read-compute-clusters
+    (let [conn (restore-fresh-database! "datomic:mem://test-read-compute-clusters")
+          handler (basic-handler conn :is-authorized-fn is-authorized-fn)
+          request {:authorization/user admin-user
+                   :request-method :get
+                   :scheme :http
+                   :uri "/compute-clusters"}]
+
+      (let [compute-clusters [{:current {:base-path "base-path-1"
+                                         :ca-cert "ca-cert-1"
+                                         :name "name-1"
+                                         :state "running"
+                                         :template "template-1"}
+                               :pending {:base-path "base-path-1"
+                                         :ca-cert "ca-cert-1"
+                                         :name "name-1"
+                                         :state "running"
+                                         :template "template-1"}}]]
+        (with-redefs [api/read-compute-clusters (constantly compute-clusters)]
+          (testing "successful query"
+            (let [{:keys [status] :as response} (handler request)
+                  response-data (response->body-data response)]
+              (is (= 200 status))
+              (is (= (clojure.walk/stringify-keys compute-clusters) response-data))))
+
+          (testing "query from non-admin succeeds"
+            (let [{:keys [status] :as response} (handler (assoc request :authorization/user "non-admin"))
+                  response-data (response->body-data response)]
+              (is (= 200 status))
+              (is (= (clojure.walk/stringify-keys compute-clusters) response-data))))
+
+          (testing "non-leader redirects"
+            (with-redefs [api/leader-selector->leader-url (constantly sample-leader-base-url)]
+              (let [{:keys [location status]} (handler request :leader? false)]
+                (is (= 307 status))
+                (is (= location (str sample-leader-base-url endpoint))))))))))
+
+  (deftest test-delete-compute-cluster
+    (let [conn (restore-fresh-database! "datomic:mem://test-delete-compute-cluster")
+          handler (basic-handler conn :is-authorized-fn is-authorized-fn)
+          name "test-name"
+          request {:authorization/user admin-user
+                   :body-params {:name name}
+                   :request-method :delete
+                   :scheme :http
+                   :uri "/compute-clusters"}
+          name-deleted-atom (atom nil)]
+      (testing "successful delete"
+        (with-redefs [cc/delete-compute-cluster
+                      (fn [_ {:keys [name]}]
+                        (reset! name-deleted-atom name))
+                      api/compute-cluster-exists?
+                      (constantly true)]
+          (let [{:keys [status]} (handler request)]
+            (is (= 204 status))
+            (is (= name @name-deleted-atom)))))))
+
+  (deftest test-update-compute-cluster
+    (let [conn (restore-fresh-database! "datomic:mem://test-delete-compute-cluster")
+          handler (basic-handler conn :is-authorized-fn is-authorized-fn)
+          name "test-name"
+          request {:authorization/user admin-user
+                   :body-params {"base-path" "test-base-path"
+                                 "ca-cert" "test-ca-cert"
+                                 "name" name
+                                 "state" "running"
+                                 "template" "test-template"}
+                   :request-method :put
+                   :scheme :http
+                   :uri "/compute-clusters"}]
+      (testing "successful update"
+        (with-redefs [cc/update-compute-cluster
+                      (constantly [])
+                      api/compute-cluster-exists?
+                      (constantly true)
+                      config/compute-cluster-templates
+                      (constantly {"test-template" {:config {:dynamic-cluster-config? true}
+                                                    :a :bb
+                                                    :c :dd
+                                                    :factory-fn 'cook.test.compute-cluster/cluster-factory-fn}})]
+          (let [{:keys [status]} (handler request)]
+            (is (= 201 status)))))
+      (testing "update with missing name fails"
+        (with-redefs [api/compute-cluster-exists? (constantly false)]
+          (let [{:keys [status] :as response} (handler request)]
+            (is (= 422 status) (-> response response->body-data str))
+            (is (= (str "Compute cluster with name " name " does not exist") (-> response response->body-data (get-in ["error" "message"]))))))))))

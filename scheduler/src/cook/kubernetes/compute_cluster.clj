@@ -25,9 +25,9 @@
            (io.kubernetes.client.openapi.models V1Node V1Pod)
            (io.kubernetes.client.util Config KubeConfig)
            (java.nio.charset StandardCharsets)
-           (java.io File FileInputStream InputStreamReader)
+           (java.io ByteArrayInputStream File FileInputStream InputStreamReader)
            (java.util.concurrent Executors ExecutorService ScheduledExecutorService TimeUnit)
-           (java.util UUID)
+           (java.util Base64 UUID)
            (okhttp3 OkHttpClient$Builder)))
 
 (defn schedulable-node-filter
@@ -206,16 +206,14 @@
 
 (defn determine-cook-expected-state-on-startup
   "We need to determine everything we should be tracking when we construct the cook expected state. We should be tracking
-  all tasks that are in the running state as well as all pods in kubernetes. We're given an already existing list of
-  all running tasks entities (via (->> (cook.tools/get-running-task-ents)."
-  [conn api-client compute-cluster-name running-tasks-ents]
+  all tasks that are in the running state as well as all pods in kubernetes. We query for a list of
+  all running tasks entities."
+  [conn api-client compute-cluster-name]
   (let [db (d/db conn)
         [_ pod-name->pod] (api/try-forever-get-all-pods-in-kubernetes api-client compute-cluster-name)
         all-tasks-ids-in-pods (into #{} (keys pod-name->pod))
         _ (log/debug "All tasks in pods (for initializing cook expected state): " all-tasks-ids-in-pods)
-        running-tasks-in-cc-ents (filter
-                                   #(-> % cook.task/task-entity->compute-cluster-name (= compute-cluster-name))
-                                   running-tasks-ents)
+        running-tasks-in-cc-ents (map #(d/entity db %) (cc/get-job-instance-ids-for-cluster-name db compute-cluster-name))
         running-task-id->task (task-ents->map-by-task-id running-tasks-in-cc-ents)
         cc-running-tasks-ids (->> running-task-id->task keys (into #{}))
         _ (log/debug "Running tasks in compute cluster in datomic: " cc-running-tasks-ids)
@@ -299,7 +297,8 @@
                                      node-name->pod-name->pod cook-expected-state-map cook-starting-pods k8s-actual-state-map
                                      pool->fenzo-atom namespace-config scan-frequency-seconds-config max-pods-per-node
                                      synthetic-pods-config node-blocklist-labels
-                                     ^ExecutorService launch-task-executor-service]
+                                     ^ExecutorService launch-task-executor-service
+                                     cluster-definition state-atom state-locked?-atom dynamic-cluster-config?]
   cc/ComputeCluster
   (launch-tasks [this pool-name matches process-task-post-launch-fn]
     (let [task-metadata-seq (mapcat :task-metadata-seq matches)]
@@ -318,11 +317,16 @@
         (run! deref futures))))
 
   (kill-task [this task-id]
-    ; Note we can't use timer/time! because it wraps the body in a Callable, which rebinds 'this' to another 'this'
-    ; causing breakage.
-    (let [timer-context (timers/start (metrics/timer "cc-kill-tasks" name))]
-      (controller/update-cook-expected-state this task-id {:cook-expected-state :cook-expected-state/killed})
-      (.stop timer-context)))
+    (let [state @state-atom]
+      (if (= state :deleted)
+        (log/error "In" name "compute cluster, attempting to delete task, with ID" task-id
+                   "but the current cluster state is :deleted. Can't perform any client API calls"
+                   "when the cluster has been deleted. Will not attempt to kill task.")
+        ; Note we can't use timer/time! because it wraps the body in a Callable, which rebinds 'this' to another 'this'
+        ; causing breakage.
+        (let [timer-context (timers/start (metrics/timer "cc-kill-tasks" name))]
+          (controller/update-cook-expected-state this task-id {:cook-expected-state :cook-expected-state/killed})
+          (.stop timer-context)))))
 
   (decline-offers [this offer-ids]
     (log/debug "Rejecting offer ids" offer-ids))
@@ -333,7 +337,7 @@
   (compute-cluster-name [this]
     name)
 
-  (initialize-cluster [this pool->fenzo running-task-ents]
+  (initialize-cluster [this pool->fenzo]
     ; We may iterate forever trying to bring up kubernetes. However, our caller expects us to eventually return,
     ; so we launch within a future so that our caller can continue initializing other clusters.
     (future
@@ -351,7 +355,7 @@
               cook-pod-callback (make-cook-pod-watch-callback this)]
           ; We set cook expected state first because initialize-pod-watch sets (and invokes callbacks on and reacts to) the
           ; expected and the gradually discovered existing pods.
-          (reset! cook-expected-state-map (determine-cook-expected-state-on-startup conn api-client name running-task-ents))
+          (reset! cook-expected-state-map (determine-cook-expected-state-on-startup conn api-client name))
 
           (api/initialize-pod-watch this cook-pod-callback)
           (if scan-frequency-seconds-config
@@ -370,125 +374,134 @@
     (async/chan 1))
 
   (pending-offers [this pool-name]
-    (let [node-name->node (get @pool->node-name->node pool-name)]
-      (if-not (or (cc/autoscaling? this pool-name) node-name->node)
-        (log/info "In" name "compute cluster, not looking for offers for pool" pool-name
-                  ". Skipping pool because it is not a known Kubernetes pool.")
-        (do
-          (log/info "In" name "compute cluster, looking for offers for pool" pool-name)
-          (let [timer (timers/start (metrics/timer "cc-pending-offers-compute" name))
-                pods (add-starting-pods this @all-pods-atom)
-                nodes @current-nodes-atom
-                offers-this-pool (generate-offers this (or node-name->node {})
-                                                  (->> (get-pods-in-pool this pool-name)
-                                                       (add-starting-pods this)
-                                                       (api/pods->node-name->pods)))
-                offers-this-pool-for-logging (into #{}
-                                                   (map #(into {} (select-keys % [:hostname :resources]))
-                                                        offers-this-pool))]
-            (log/info "In" name "compute cluster, generated" (count offers-this-pool) "offers for pool" pool-name
-                      {:num-total-nodes-in-compute-cluster (count nodes)
-                       :num-total-pods-in-compute-cluster (count pods)
-                       :offers-this-pool offers-this-pool-for-logging})
-            (timers/stop timer)
-            offers-this-pool)))))
+    (let [state @state-atom]
+      (if-not (= state :running)
+        (log/info "In" name "compute cluster, skipping generating offers for pool" pool-name
+                  "because the current state," state ", is not :running.")
+        (let [node-name->node (get @pool->node-name->node pool-name)]
+          (if-not (or (cc/autoscaling? this pool-name) node-name->node)
+            (log/info "In" name "compute cluster, not looking for offers for pool" pool-name
+                      ". Skipping pool because it is not a known Kubernetes pool.")
+            (do
+              (log/info "In" name "compute cluster, looking for offers for pool" pool-name)
+              (let [timer (timers/start (metrics/timer "cc-pending-offers-compute" name))
+                    pods (add-starting-pods this @all-pods-atom)
+                    nodes @current-nodes-atom
+                    offers-this-pool (generate-offers this (or node-name->node {})
+                                                      (->> (get-pods-in-pool this pool-name)
+                                                           (add-starting-pods this)
+                                                           (api/pods->node-name->pods)))
+                    offers-this-pool-for-logging (into #{}
+                                                       (map #(into {} (select-keys % [:hostname :resources]))
+                                                            offers-this-pool))]
+                (log/info "In" name "compute cluster, generated" (count offers-this-pool) "offers for pool" pool-name
+                          {:num-total-nodes-in-compute-cluster (count nodes)
+                           :num-total-pods-in-compute-cluster (count pods)
+                           :offers-this-pool offers-this-pool-for-logging})
+                (timers/stop timer)
+                offers-this-pool)))))))
 
   (restore-offers [this pool-name offers])
 
   (autoscaling? [_ pool-name]
-    (-> synthetic-pods-config :pools (contains? pool-name)))
+    (and (-> synthetic-pods-config :pools (contains? pool-name))
+         (= @state-atom :running)))
 
   (autoscale! [this pool-name jobs adjust-job-resources-for-pool-fn]
-    (try
-      (assert (cc/autoscaling? this pool-name)
-              (str "In " name " compute cluster, request to autoscale despite invalid / missing config"))
-      (let [timer-context-autoscale (timers/start (metrics/timer "cc-synthetic-pod-autoscale" name))
-            outstanding-synthetic-pods (->> (get-pods-in-pool this pool-name)
-                                            (add-starting-pods this)
-                                            (filter synthetic-pod->job-uuid))
-            num-synthetic-pods (count outstanding-synthetic-pods)
-            total-pods (-> @all-pods-atom keys count)
-            total-nodes (-> @current-nodes-atom keys count)
-            {:keys [image user command max-pods-outstanding max-total-pods max-total-nodes]
-             :or {command "exit 0" max-total-pods 32000 max-total-nodes 1000}} synthetic-pods-config]
-        (log/info "In" name "compute cluster there are" total-pods "pods and" total-nodes
-                  "nodes of a max of" max-total-pods "pods and" max-total-nodes "nodes")
-        (log/info "In" name "compute cluster, for pool" pool-name "there are" num-synthetic-pods
-                  "outstanding synthetic pod(s), and a max of" max-pods-outstanding "are allowed")
-        (let [max-launchable (min (- max-pods-outstanding num-synthetic-pods)
-                                  (- max-total-nodes total-nodes)
-                                  (- max-total-pods total-pods))]
-          (if (not (pos? max-launchable))
-            (log/info "In" name "compute cluster, cannot launch more synthetic pods")
-            (let [using-pools? (config/default-pool)
-                  synthetic-task-pool-name (when using-pools? pool-name)
-                  new-jobs (remove (fn [{:keys [job/uuid]}]
-                                     (some #(= (str uuid) (synthetic-pod->job-uuid %))
-                                           outstanding-synthetic-pods))
-                                   jobs)
-                  user-from-synthetic-pods-config user
-                  task-metadata-seq
-                  (->> new-jobs
-                       (map (fn [{:keys [job/user job/uuid job/environment] :as job}]
-                              (let [pool-specific-resources
-                                    ((adjust-job-resources-for-pool-fn pool-name) job (tools/job-ent->resources job))]
-                                {:command {:user (or user-from-synthetic-pods-config user)
-                                           :value command}
-                                 :container {:docker {:image image}}
-                                 ; We need to *not* prevent the cluster autoscaler from
-                                 ; removing a node just because it's running synthetic pods
-                                 :pod-annotations {api/k8s-safe-to-evict-annotation "true"}
-                                 ; Job constraints need to be expressed on synthetic
-                                 ; pods so that we trigger the cluster autoscaler to
-                                 ; spin up nodes that will end up satisfying them
-                                 :pod-constraints (constraints/job->constraints job)
-                                 ; Cook has a "novel host constraint", which disallows a job from
-                                 ; running on the same host twice. So, we need to avoid running a
-                                 ; synthetic pod on any of the hosts that the real job won't be able
-                                 ; to run on. Otherwise, the synthetic pod won't trigger the cluster
-                                 ; autoscaler.
-                                 :pod-hostnames-to-avoid (constraints/job->previous-hosts-to-avoid job)
-                                 ; We need to label the synthetic pods so that we
-                                 ; can opt them out of some of the normal plumbing,
-                                 ; like mapping status back to a job instance. We
-                                 ; also want to label the workload as infrastructure
-                                 ; and associate the user as the resource owner.
-                                 :pod-labels {api/cook-synthetic-pod-job-uuid-label (str uuid)
-                                              api/workload-class-label "infrastructure"
-                                              api/workload-id-label "synthetic-pod"
-                                              api/resource-owner-label user}
-                                 ; We need to give synthetic pods a lower priority than
-                                 ; actual job pods so that the job pods can preempt them
-                                 ; (https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/);
-                                 ; if we don't do this, we run the risk of job pods
-                                 ; encountering failures when they lose scheduling races
-                                 ; against pending synthetic pods
-                                 :pod-priority-class api/cook-synthetic-pod-priority-class
-                                 ; We don't want to add in the cook-init cruft or the cook sidecar, because we
-                                 ; don't need them for synthetic pods and all they will do is slow things down.
-                                 :pod-supports-cook-init? false
-                                 :pod-supports-cook-sidecar? false
-                                 :task-id (str api/cook-synthetic-pod-name-prefix "-" pool-name "-" uuid)
-                                 :task-request {:scalar-requests (walk/stringify-keys pool-specific-resources)
-                                                :job {:job/pool {:pool/name synthetic-task-pool-name}
-                                                      :job/environment environment}
-                                                ; Need to pass in resources to task-metadata->pod for gpu count
-                                                :resources pool-specific-resources}})))
-                       (take max-launchable))
-                  num-synthetic-pods-to-launch (count task-metadata-seq)]
-              (meters/mark! (metrics/meter "cc-synthetic-pod-submit-rate" name) num-synthetic-pods-to-launch)
-              (log/info "In" name "compute cluster, launching" num-synthetic-pods-to-launch
-                        "synthetic pod(s) in" synthetic-task-pool-name "pool")
-              (let [timer-context-launch-tasks (timers/start (metrics/timer "cc-synthetic-pod-launch-tasks" name))]
-                (cc/launch-tasks this
-                                 synthetic-task-pool-name
-                                 [{:task-metadata-seq task-metadata-seq}]
-                                 (fn [_]))
-                (.stop timer-context-launch-tasks)))))
-        (.stop timer-context-autoscale))
-      (catch Throwable e
-        (log/error e "In" name "compute cluster, encountered error launching synthetic pod(s) in"
-                   pool-name "pool"))))
+    (if-not (cc/autoscaling? this pool-name)
+      (log/warn "In" name "compute cluster, ignoring request to autoscale in pool" pool-name
+                "because autoscaling? is now false. This should almost never happen. But might benignly"
+                "happen because of a race." {:state @state-atom})
+      (try
+        (assert (cc/autoscaling? this pool-name)
+                (str "In " name " compute cluster, request to autoscale despite invalid / missing config"))
+        (let [timer-context-autoscale (timers/start (metrics/timer "cc-synthetic-pod-autoscale" name))
+              outstanding-synthetic-pods (->> (get-pods-in-pool this pool-name)
+                                              (add-starting-pods this)
+                                              (filter synthetic-pod->job-uuid))
+              num-synthetic-pods (count outstanding-synthetic-pods)
+              total-pods (-> @all-pods-atom keys count)
+              total-nodes (-> @current-nodes-atom keys count)
+              {:keys [image user command max-pods-outstanding max-total-pods max-total-nodes]
+               :or {command "exit 0" max-total-pods 32000 max-total-nodes 1000}} synthetic-pods-config]
+          (log/info "In" name "compute cluster there are" total-pods "pods and" total-nodes
+                    "nodes of a max of" max-total-pods "pods and" max-total-nodes "nodes")
+          (log/info "In" name "compute cluster, for pool" pool-name "there are" num-synthetic-pods
+                    "outstanding synthetic pod(s), and a max of" max-pods-outstanding "are allowed")
+          (let [max-launchable (min (- max-pods-outstanding num-synthetic-pods)
+                                    (- max-total-nodes total-nodes)
+                                    (- max-total-pods total-pods))]
+            (if (not (pos? max-launchable))
+              (log/info "In" name "compute cluster, cannot launch more synthetic pods")
+              (let [using-pools? (config/default-pool)
+                    synthetic-task-pool-name (when using-pools? pool-name)
+                    new-jobs (remove (fn [{:keys [job/uuid]}]
+                                       (some #(= (str uuid) (synthetic-pod->job-uuid %))
+                                             outstanding-synthetic-pods))
+                                     jobs)
+                    user-from-synthetic-pods-config user
+                    task-metadata-seq
+                    (->> new-jobs
+                         (map (fn [{:keys [job/user job/uuid job/environment] :as job}]
+                                (let [pool-specific-resources
+                                      ((adjust-job-resources-for-pool-fn pool-name) job (tools/job-ent->resources job))]
+                                  {:command {:user (or user-from-synthetic-pods-config user)
+                                             :value command}
+                                   :container {:docker {:image image}}
+                                   ; We need to *not* prevent the cluster autoscaler from
+                                   ; removing a node just because it's running synthetic pods
+                                   :pod-annotations {api/k8s-safe-to-evict-annotation "true"}
+                                   ; Job constraints need to be expressed on synthetic
+                                   ; pods so that we trigger the cluster autoscaler to
+                                   ; spin up nodes that will end up satisfying them
+                                   :pod-constraints (constraints/job->constraints job)
+                                   ; Cook has a "novel host constraint", which disallows a job from
+                                   ; running on the same host twice. So, we need to avoid running a
+                                   ; synthetic pod on any of the hosts that the real job won't be able
+                                   ; to run on. Otherwise, the synthetic pod won't trigger the cluster
+                                   ; autoscaler.
+                                   :pod-hostnames-to-avoid (constraints/job->previous-hosts-to-avoid job)
+                                   ; We need to label the synthetic pods so that we
+                                   ; can opt them out of some of the normal plumbing,
+                                   ; like mapping status back to a job instance. We
+                                   ; also want to label the workload as infrastructure
+                                   ; and associate the user as the resource owner.
+                                   :pod-labels {api/cook-synthetic-pod-job-uuid-label (str uuid)
+                                                api/workload-class-label "infrastructure"
+                                                api/workload-id-label "synthetic-pod"
+                                                api/resource-owner-label user}
+                                   ; We need to give synthetic pods a lower priority than
+                                   ; actual job pods so that the job pods can preempt them
+                                   ; (https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/);
+                                   ; if we don't do this, we run the risk of job pods
+                                   ; encountering failures when they lose scheduling races
+                                   ; against pending synthetic pods
+                                   :pod-priority-class api/cook-synthetic-pod-priority-class
+                                   ; We don't want to add in the cook-init cruft or the cook sidecar, because we
+                                   ; don't need them for synthetic pods and all they will do is slow things down.
+                                   :pod-supports-cook-init? false
+                                   :pod-supports-cook-sidecar? false
+                                   :task-id (str api/cook-synthetic-pod-name-prefix "-" pool-name "-" uuid)
+                                   :task-request {:scalar-requests (walk/stringify-keys pool-specific-resources)
+                                                  :job {:job/pool {:pool/name synthetic-task-pool-name}
+                                                        :job/environment environment}
+                                                  ; Need to pass in resources to task-metadata->pod for gpu count
+                                                  :resources pool-specific-resources}})))
+                         (take max-launchable))
+                    num-synthetic-pods-to-launch (count task-metadata-seq)]
+                (meters/mark! (metrics/meter "cc-synthetic-pod-submit-rate" name) num-synthetic-pods-to-launch)
+                (log/info "In" name "compute cluster, launching" num-synthetic-pods-to-launch
+                          "synthetic pod(s) in" synthetic-task-pool-name "pool")
+                (let [timer-context-launch-tasks (timers/start (metrics/timer "cc-synthetic-pod-launch-tasks" name))]
+                  (cc/launch-tasks this
+                                   synthetic-task-pool-name
+                                   [{:task-metadata-seq task-metadata-seq}]
+                                   (fn [_]))
+                  (.stop timer-context-launch-tasks)))))
+          (.stop timer-context-autoscale))
+        (catch Throwable e
+          (log/error e "In" name "compute cluster, encountered error launching synthetic pod(s) in"
+                     pool-name "pool")))))
 
   (use-cook-executor? [_] false)
 
@@ -560,13 +573,14 @@
 
 (defn make-api-client
   "Builds an ApiClient from the given configuration parameters:
-    - If config-file is specified, initializes the api file from the file at config-file
+    - If config-file is specified, initializes the api client from the file at config-file
     - If base-path is specified, sets the cluster base path
     - If verifying-ssl is specified, sets verifying ssl
     - If use-google-service-account? is true, gets google application default credentials and generates
       a bearer token for authenticating with kubernetes
     - bearer-token-refresh-seconds: interval to refresh the bearer token"
-  [^String config-file base-path ^String use-google-service-account? bearer-token-refresh-seconds verifying-ssl ^String ssl-cert-path]
+  [^String config-file base-path ^String use-google-service-account? bearer-token-refresh-seconds verifying-ssl ^String ca-cert ^String ca-cert-path]
+  {:pre [(not (and ca-cert ca-cert-path))]}
   (log/info "API Client config file" config-file)
   (let [^ApiClient api-client (if (some? config-file)
                                 (let [^KubeConfig kubeconfig
@@ -590,9 +604,10 @@
       (.setVerifyingSsl api-client verifying-ssl))
     ; Loading ssl-cert-path must be last SSL operation we do in setting up API Client. API bug.
     ; See explanation in comments in https://github.com/kubernetes-client/java/pull/200
-    (when (some? ssl-cert-path)
-      (.setSslCaCert api-client
-                     (FileInputStream. (File. ssl-cert-path))))
+    (when (some? ca-cert)
+      (.setSslCaCert api-client (-> (Base64/getDecoder) (.decode ca-cert) (ByteArrayInputStream.))))
+    (when (some? ca-cert-path)
+      (.setSslCaCert api-client (FileInputStream. (File. ca-cert-path))))
     (when use-google-service-account?
       (set-credentials api-client (GoogleCredentials/getApplicationDefault) bearer-token-refresh-seconds))
     api-client))
@@ -612,39 +627,46 @@
 (defn factory-fn
   [{:keys [base-path
            bearer-token-refresh-seconds
+           ca-cert
            ca-cert-path
-           compute-cluster-name
            ^String config-file
+           dynamic-cluster-config?
            launch-task-num-threads
            max-pods-per-node
+           name
            namespace
            node-blocklist-labels
            scan-frequency-seconds
+           state
+           state-locked?
            synthetic-pods
            use-google-service-account?
            verifying-ssl]
     :or {bearer-token-refresh-seconds 300
+         dynamic-cluster-config? false
          launch-task-num-threads 8
          max-pods-per-node 32
          namespace {:kind :static
                     :namespace "cook"}
          node-blocklist-labels (list)
          scan-frequency-seconds 120
+         state :running
+         state-locked? false
          use-google-service-account? true}
     :as compute-cluster-config}
    {:keys [exit-code-syncer-state]}]
-  (guard-invalid-synthetic-pods-config compute-cluster-name synthetic-pods)
+  (guard-invalid-synthetic-pods-config name synthetic-pods)
   (when (not (< 0 launch-task-num-threads 64))
     (throw
       (ex-info
-        "Please configure :launch-task-num-threads to > 0 and < 64 in your config file."
+        "Please configure :launch-task-num-threads to > 0 and < 64 in your config."
         compute-cluster-config)))
   (let [conn cook.datomic/conn
-        cluster-entity-id (get-or-create-cluster-entity-id conn compute-cluster-name)
-        api-client (make-api-client config-file base-path use-google-service-account? bearer-token-refresh-seconds verifying-ssl ca-cert-path)
+        cluster-entity-id (get-or-create-cluster-entity-id conn name)
+        api-client (make-api-client config-file base-path use-google-service-account? bearer-token-refresh-seconds verifying-ssl ca-cert ca-cert-path)
         launch-task-executor-service (Executors/newFixedThreadPool launch-task-num-threads)
         compute-cluster (->KubernetesComputeCluster api-client 
-                                                    compute-cluster-name
+                                                    name
                                                     cluster-entity-id
                                                     exit-code-syncer-state
                                                     (atom {})
@@ -660,6 +682,11 @@
                                                     max-pods-per-node
                                                     synthetic-pods
                                                     node-blocklist-labels
-                                                    launch-task-executor-service)]
+                                                    launch-task-executor-service
+                                                    {:factory-fn 'cook.kubernetes.compute-cluster/factory-fn
+                                                     :config compute-cluster-config}
+                                                    (atom state)
+                                                    (atom state-locked?)
+                                                    dynamic-cluster-config?)]
     (cc/register-compute-cluster! compute-cluster)
     compute-cluster))

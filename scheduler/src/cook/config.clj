@@ -155,19 +155,13 @@
                             {:max-size 5000
                              :ttl-ms (* 60 1000)}
                             agent-query-cache))
-     :compute-clusters (fnk [[:config {compute-clusters []}
-                              {mesos nil}]]
-                         (if (seq compute-clusters)
-                           compute-clusters
-                           [{:factory-fn 'cook.mesos.mesos-compute-cluster/factory-fn
-                             :config {:compute-cluster-name (or (:compute-cluster-name mesos)
-                                                                "default-compute-cluster-from-config-defaulting")
-                                      :framework-id (:framework-id mesos)
-                                      :master (:master mesos)
-                                      :failover-timeout (:failover-timeout-ms mesos)
-                                      :principal (:principal mesos)
-                                      :role (:role mesos)
-                                      :framework-name (:framework-name mesos)}}]))
+     :compute-clusters (fnk [[:config {compute-clusters []}]]
+                         compute-clusters)
+     :compute-cluster-options (fnk [[:config {compute-cluster-options {}}]]
+                                (merge
+                                  {:load-clusters-on-startup? false
+                                   :compute-cluster-templates {}}
+                                  compute-cluster-options))
      :cors-origins (fnk [[:config {cors-origins nil}]]
                      (map re-pattern (or cors-origins [])))
      :exit-code-syncer (fnk [[:config {exit-code-syncer nil}]]
@@ -424,7 +418,7 @@
                 (:job-resource-adjustment pools)
                 (update :job-resource-adjustment
                         #(-> %
-                             (update :pool-regex re-pattern)))
+                           (update :pool-regex re-pattern)))
                 (not (:default-containers pools))
                 (assoc :default-containers [])
                 (not (:quotas pools))
@@ -487,9 +481,9 @@
                              :set-container-cpu-limit? true}
                             kubernetes)))
      :offer-matching (fnk [[:config {offer-matching {}}]]
-                          (merge {:global-min-match-interval-millis 100
-                                  :target-per-pool-match-interval-millis 3000}
-                                 offer-matching))}))
+                       (merge {:global-min-match-interval-millis 100
+                               :target-per-pool-match-interval-millis 3000}
+                              offer-matching))}))
 
 (defn read-config
   "Given a config file path, reads the config and returns the map"
@@ -618,6 +612,14 @@
 (defn compute-clusters
   []
   (get-in config [:settings :compute-clusters]))
+
+(defn compute-cluster-options
+  []
+  (get-in config [:settings :compute-cluster-options]))
+
+(defn compute-cluster-templates
+  []
+  (:compute-cluster-templates (compute-cluster-options)))
 
 (defn kubernetes
   []

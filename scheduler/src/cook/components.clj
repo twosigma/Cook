@@ -22,6 +22,7 @@
             [compojure.route :as route]
             [congestion.middleware :refer [ip-rate-limit wrap-rate-limit]]
             [congestion.storage :as storage]
+            [cook.compute-cluster :as cc]
             [cook.config :refer [config]]
             [cook.datomic :as datomic]
             ; This explicit require is needed so that mount can see the defstate defined in the cook.plugins.adjustment namespace.
@@ -279,6 +280,7 @@
                              settings
                              progress-update-chans
                              trigger-chans]
+                         (reset! cc/exit-code-syncer-state-atom exit-code-syncer-state)
                          (doall (map (fn [{:keys [factory-fn config]}]
                                        (let [resolved (util/lazy-load-var factory-fn)]
                                          (log/info "Calling compute cluster factory fn" factory-fn "with config" config)

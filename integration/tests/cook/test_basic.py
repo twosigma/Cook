@@ -517,10 +517,17 @@ class CookTest(util.CookTest):
             self.assertEqual(instance_compute_cluster_type, util.get_compute_cluster_test_mode(), message)
             filtered_compute_clusters = [compute_cluster for compute_cluster in settings_dict['compute-clusters']
                                          if compute_cluster['config']['compute-cluster-name'] == instance_compute_cluster_name]
+            try:
+                in_mem_compute_clusters = util.compute_clusters(self.cook_url)['in-mem-configs']
+                filtered_compute_clusters.extend(
+                    [cc for cc in [m['cluster-definition']['config'] for m in in_mem_compute_clusters]
+                     if cc['name'] == instance_compute_cluster_name])
+            finally:
+                pass
             self.assertEqual(1, len(filtered_compute_clusters), "Unable to find " + instance_compute_cluster_name + " in compute clusters")
             found_compute_cluster = filtered_compute_clusters[0]
 
-            self.assertIsNotNone(found_compute_cluster, message + str(settings_dict['compute-clusters']))
+            self.assertIsNotNone(found_compute_cluster, message + str(settings_dict['compute-clusters']) + str(in_mem_compute_clusters))
 
             self.assertEqual(util.get_compute_cluster_type(found_compute_cluster), instance_compute_cluster_type, message)
             if found_compute_cluster['factory-fn'] == 'cook.mesos.mesos-compute-cluster/factory-fn':

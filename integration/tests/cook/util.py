@@ -437,6 +437,9 @@ def init_cook_session(*cook_urls):
 def settings(cook_url):
     return session.get(f'{cook_url}/settings').json()
 
+def compute_clusters(cook_url):
+    return session.get(f'{cook_url}/compute-clusters').json()
+
 
 @functools.lru_cache()
 def scheduler_info(cook_url):
@@ -1461,9 +1464,15 @@ def get_kubernetes_compute_clusters():
     cook_url = retrieve_cook_url()
     _wait_for_cook(cook_url)
     init_cook_session(cook_url)
-    compute_clusters = settings(cook_url)['compute-clusters']
-    kubernetes_compute_clusters = [cc for cc in compute_clusters
+    kubernetes_compute_clusters = [cc for cc in settings(cook_url)['compute-clusters']
                                    if cc['factory-fn'] == 'cook.kubernetes.compute-cluster/factory-fn']
+    try:
+        in_mem_compute_clusters = compute_clusters(cook_url)['in-mem-configs']
+        kubernetes_compute_clusters.extend(
+            [cc for cc in [m['cluster-definition'] for m in in_mem_compute_clusters]
+             if cc['factory-fn'] == 'cook.kubernetes.compute-cluster/factory-fn'])
+    finally:
+        pass
     return kubernetes_compute_clusters
 
 
@@ -1479,19 +1488,23 @@ def get_kubernetes_compute_cluster():
 @functools.lru_cache()
 def get_kubernetes_nodes():
     kubernetes_compute_cluster = get_kubernetes_compute_cluster()
-    if 'config-file' in kubernetes_compute_cluster['config']:
-        nodes = subprocess.check_output(['kubectl', '--kubeconfig', kubernetes_compute_cluster['config']['config-file'],
-                                         'get', 'nodes', '-o=json'])
-        node_json = json.loads(nodes)
-    elif 'base-path' in kubernetes_compute_cluster['config']:
-        authorization_header = subprocess.check_output(os.getenv('COOK_KUBERNETES_AUTH_CMD'), shell=True).decode(
-            'utf-8').strip()
-        nodes_url = kubernetes_compute_cluster['config']['base-path'] + '/api/v1/nodes'
-        node_json = requests.get(nodes_url, headers={'Authorization': authorization_header}, verify=False).json()
+    if kubernetes_compute_cluster:
+        if 'config-file' in kubernetes_compute_cluster['config']:
+            nodes = subprocess.check_output(['kubectl', '--kubeconfig', kubernetes_compute_cluster['config']['config-file'],
+                                             'get', 'nodes', '-o=json'])
+            node_json = json.loads(nodes)
+        elif 'base-path' in kubernetes_compute_cluster['config']:
+            authorization_header = subprocess.check_output(os.getenv('COOK_KUBERNETES_AUTH_CMD'), shell=True).decode(
+                'utf-8').strip()
+            nodes_url = kubernetes_compute_cluster['config']['base-path'] + '/api/v1/nodes'
+            node_json = requests.get(nodes_url, headers={'Authorization': authorization_header}, verify=False).json()
+        else:
+            raise RuntimeError(f'Unable to get node info for configured kubernetes cluster: {kubernetes_compute_cluster}')
+        logging.info(f'Retrieved kubernetes nodes: {node_json}')
+        return node_json['items']
     else:
-        raise RuntimeError(f'Unable to get node info for configured kubernetes cluster: {kubernetes_compute_cluster}')
-    logging.info(f'Retrieved kubernetes nodes: {node_json}')
-    return node_json['items']
+        logging.info('Unable to get kubernetes nodes, returning empty list')
+        return []
 
 
 @functools.lru_cache()
@@ -1797,16 +1810,6 @@ def supports_mesos_containerizer_images():
     isolators = _supported_isolators()
     return 'filesystem/linux' in isolators and 'docker/runtime' in isolators
 
-
-@functools.lru_cache()
-def _get_compute_cluster_factory_fn():
-    cook_url = retrieve_cook_url()
-    _wait_for_cook(cook_url)
-    init_cook_session(cook_url)
-    compute_clusters = settings(cook_url)['compute-clusters']
-    return compute_clusters[0]['factory-fn']
-
-
 def get_compute_cluster_test_mode():
     return os.getenv("COOK_TEST_COMPUTE_CLUSTER_TYPE", "mesos")
 
@@ -1930,3 +1933,14 @@ def make_failed_job(cook_url, **kwargs):
 def kubernetes_settings():
     cook_url = retrieve_cook_url()
     return settings(cook_url)['kubernetes']
+
+
+def create_compute_cluster(cook_url, cluster):
+    resp = session.post(f'{cook_url}/compute-clusters', json=cluster)
+    logger.info(f'create_compute_cluster resp: {resp.content}')
+    return resp.json(), resp
+
+
+def delete_compute_cluster(cook_url, cluster):
+    resp = session.delete(f'{cook_url}/compute-clusters', json={'name': cluster['name']})
+    return resp

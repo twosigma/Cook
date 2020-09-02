@@ -1,8 +1,10 @@
+import base64
 import json
 import logging
 import os
 import time
 import unittest
+import uuid
 
 import pytest
 from retrying import retry
@@ -954,3 +956,59 @@ class MultiUserCookTest(util.CookTest):
             if portion == 0.5:
                 self.logger.info(f'Waiting for pool to not get moved')
                 util.wait_until(submit_job, lambda j: pool == j['pool'])
+
+    # getting 'Unauthorized' response instead of json data internally
+    @pytest.mark.xfail
+    def test_compute_cluster_api_create_invalid(self):
+        template_name = str(uuid.uuid4())
+        cluster = {"base-path": "test-base-path",
+                   "ca-cert": "test-ca-cert",
+                   "name": str(uuid.uuid4()),
+                   "state": "running",
+                   "template": template_name}
+        admin = self.user_factory.admin()
+        with admin:
+            data, resp = util.create_compute_cluster(self.cook_url, cluster)
+
+        self.assertEqual(422, resp.status_code, resp.content)
+        self.assertEqual(f'Attempting to create cluster with unknown template: {template_name}',
+                         data['error']['message'],
+                         resp.content)
+
+    # getting 'Unauthorized' response instead of json data internally
+    @pytest.mark.xfail
+    def test_compute_cluster_api_create_duplicate(self):
+        templates = util.settings(self.cook_url)['compute-cluster-options']['compute-cluster-templates']
+        if len(templates) == 0:
+            self.skipTest('Requires at least one compute cluster template')
+
+        template_name = next(iter(templates))
+        cluster_name = str(uuid.uuid4())
+        cluster = {"base-path": str(uuid.uuid4()),
+                   "ca-cert": base64.b64encode(str(uuid.uuid4()).encode()).decode(),
+                   "name": cluster_name,
+                   "state": "running",
+                   "template": template_name}
+        admin = self.user_factory.admin()
+        with admin:
+            data, resp = util.create_compute_cluster(self.cook_url, cluster)
+            try:
+                self.assertEqual(201, resp.status_code, resp.content)
+                data, resp = util.create_compute_cluster(self.cook_url, cluster)
+                self.assertEqual(422, resp.status_code, resp.content)
+                self.assertEqual(f'Compute cluster with name {cluster_name} already exists',
+                                 data['error']['message'],
+                                 resp.content)
+            finally:
+                util.delete_compute_cluster(self.cook_url, cluster)
+
+    def test_compute_cluster_api_delete_invalid(self):
+        cluster_name = str(uuid.uuid4())
+        admin = self.user_factory.admin()
+        with admin:
+            resp = util.delete_compute_cluster(self.cook_url, {'name': cluster_name})
+
+        self.assertEqual(400, resp.status_code, resp.content)
+        self.assertEqual(f'Compute cluster with name {cluster_name} does not exist',
+                         resp.json()['error']['message'],
+                         resp.content)
