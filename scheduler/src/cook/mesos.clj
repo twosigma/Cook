@@ -213,6 +213,7 @@
                                 ; after we take leadership, we should be able to create dynamic clusters, so cc/pool-name->fenzo-atom
                                 ; needs to be set
                                 (reset! cc/pool-name->fenzo-atom (:pool-name->fenzo scheduler))
+                                (dynamic-compute-cluster-configurations-setup mesos-datomic-conn (config/compute-cluster-options))
                                 (log/warn "Taking leadership")
                                 (reset! leadership-atom true)
                                 ;; TODO: get the framework ID and try to reregister
@@ -265,7 +266,6 @@
                                       (counters/inc! mesos-leader)
                                       (async/tap mesos-datomic-mult datomic-report-chan)
                                       (cook.scheduler.scheduler/monitor-tx-report-queue datomic-report-chan mesos-datomic-conn)
-                                      (dynamic-compute-cluster-configurations-setup mesos-datomic-conn (config/compute-cluster-options))
                                       ; Curator expects takeLeadership to block until voluntarily surrendering leadership.
                                       ; We need to block here until we're willing to give up leadership.
                                       ;
