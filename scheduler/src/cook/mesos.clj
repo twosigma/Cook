@@ -208,6 +208,9 @@
                                        :rebalancer-reservation-atom rebalancer-reservation-atom
                                        :task-constraints task-constraints
                                        :trigger-chans trigger-chans})]
+                                ; we need to make sure to initialize cc/pool-name->fenzo-atom before we take leadership
+                                ; after we take leadership, we should be able to create dynamic clusters, so cc/pool-name->fenzo-atom
+                                ; needs to be set
                                 (reset! cc/pool-name->fenzo-atom (:pool-name->fenzo scheduler))
                                 (log/warn "Taking leadership")
                                 (reset! leadership-atom true)
