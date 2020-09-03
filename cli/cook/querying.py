@@ -429,8 +429,8 @@ def get_compute_cluster_config(cluster, compute_cluster_name):
     """
     cook_cluster_settings = http.get(cluster, 'settings', params={}).json()
     cook_compute_clusters = http.get(cluster, 'compute-clusters', params={}).json()
-    rval = next(c for c in (s['config'] for s in cook_cluster_settings['compute-clusters']) if
-                c['compute-cluster-name'] == compute_cluster_name)
+    rval = next((c for c in (s['config'] for s in cook_cluster_settings['compute-clusters']) if
+                c['compute-cluster-name'] == compute_cluster_name), None)
     if not rval:
         rval = next(c['cluster-definition']['config'] for c in cook_compute_clusters['in-mem-configs'] if
                     c['name'] == compute_cluster_name)
