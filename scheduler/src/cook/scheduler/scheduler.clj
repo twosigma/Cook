@@ -863,12 +863,27 @@
                         "in Datomic without actually having been launched in Mesos"
                         matches)
               (throw e))))
-        (log/info "In" pool-name "pool, launching" (count task-txns) "tasks")
+
         (ratelimit/spend! ratelimit/global-job-launch-rate-limiter ratelimit/global-job-launch-rate-limiter-key (count task-txns))
-        (let [num-offers-matched (->> matches
-                                      (mapcat (comp :id :offer :leases))
-                                      (distinct)
-                                      (count))]
+        (let [offers-matched (->> matches
+                                  (mapcat :leases)
+                                  (map :offer))
+              num-offers-matched (->> offers-matched
+                                      (map (comp :value :id))
+                                      distinct
+                                      count)
+              user->num-jobs (->> matches
+                                  (mapcat :task-metadata-seq)
+                                  (map (comp tools/job-ent->user :job :task-request))
+                                  frequencies)
+              hostnames-matched (->> offers-matched
+                                     (map :hostname)
+                                     distinct)]
+          (log/info "In" pool-name "pool, launching matched tasks"
+                    {:hostnames-matched hostnames-matched
+                     :number-offers-matched num-offers-matched
+                     :number-tasks (count task-txns)
+                     :user->number-jobs user->num-jobs})
           (meters/mark! scheduler-offer-matched num-offers-matched)
           (histograms/update! number-offers-matched num-offers-matched))
         (meters/mark! (meters/meter (metric-title "matched-tasks" pool-name)) (count task-txns))
