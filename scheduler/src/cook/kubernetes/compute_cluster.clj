@@ -424,15 +424,31 @@
               total-nodes (-> @current-nodes-atom keys count)
               {:keys [image user command max-pods-outstanding max-total-pods max-total-nodes]
                :or {command "exit 0" max-total-pods 32000 max-total-nodes 1000}} synthetic-pods-config]
-          (log/info "In" name "compute cluster there are" total-pods "pods and" total-nodes
-                    "nodes of a max of" max-total-pods "pods and" max-total-nodes "nodes")
-          (log/info "In" name "compute cluster, for pool" pool-name "there are" num-synthetic-pods
-                    "outstanding synthetic pod(s), and a max of" max-pods-outstanding "are allowed")
+
+          (when (>= total-pods max-total-pods)
+            (log/warn "In" name "compute cluster, total pods are maxed out"
+                      {:max-total-pods max-total-pods
+                       :total-pods total-pods}))
+          (when (>= total-nodes max-total-nodes)
+            (log/warn "In" name "compute cluster, nodes are maxed out"
+                      {:max-total-nodes max-total-nodes
+                       :total-nodes total-nodes}))
+          (when (>= num-synthetic-pods max-pods-outstanding)
+            (log/warn "In" name "compute cluster, synthetic pods are maxed out"
+                      {:max-synthetic-pods max-pods-outstanding
+                       :synthetic-pods num-synthetic-pods}))
+
           (let [max-launchable (min (- max-pods-outstanding num-synthetic-pods)
                                     (- max-total-nodes total-nodes)
                                     (- max-total-pods total-pods))]
             (if (not (pos? max-launchable))
-              (log/info "In" name "compute cluster, cannot launch more synthetic pods")
+              (log/warn "In" name "compute cluster, cannot launch more synthetic pods"
+                        {:max-synthetic-pods max-pods-outstanding
+                         :max-total-nodes max-total-nodes
+                         :max-total-pods max-total-pods
+                         :synthetic-pods num-synthetic-pods
+                         :total-nodes total-nodes
+                         :total-pods total-pods})
               (let [using-pools? (config/default-pool)
                     synthetic-task-pool-name (when using-pools? pool-name)
                     new-jobs (remove (fn [{:keys [job/uuid]}]
