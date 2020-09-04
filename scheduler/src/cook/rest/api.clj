@@ -1062,7 +1062,7 @@
   [instance-entity]
   (if-let [sandbox-url (:instance/sandbox-url instance-entity)]
     sandbox-url
-    (when-let [compute-cluster (task/task-ent->ComputeCluster instance-entity)]
+    (when-let [compute-cluster (task/get-ComputeCluster-for-task-ent-if-present instance-entity)]
       (cc/retrieve-sandbox-url-path compute-cluster instance-entity))))
 
 (defn compute-cluster-entity->map

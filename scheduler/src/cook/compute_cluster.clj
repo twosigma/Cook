@@ -146,7 +146,9 @@
   [compute-cluster-name]
   (let [result (@cluster-name->compute-cluster-atom compute-cluster-name)]
     (when-not result
-      (log/error "Was asked to lookup db-id for" compute-cluster-name "and got nil"))
+      (try (throw (ex-info "Exception to show stack trace" {}))
+           (catch Exception e
+             (log/error e "Was asked to lookup db-id for" compute-cluster-name "and got nil"))))
     result))
 
 (defn get-default-cluster-for-legacy

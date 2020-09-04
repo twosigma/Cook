@@ -47,6 +47,13 @@
           task-entity->compute-cluster-name
           cc/compute-cluster-name->ComputeCluster))
 
+(defn get-ComputeCluster-for-task-ent-if-present
+  "Like task-ent->ComputeCluster but do not log errors when there is no cluster"
+  [task-ent]
+  (some-> task-ent
+    task-entity->compute-cluster-name
+    @cc/cluster-name->compute-cluster-atom))
+
 (def progress-meta-env-name
   "Meta environment variable name for declaring the environment variable
    that stores the path of the progress output file."
