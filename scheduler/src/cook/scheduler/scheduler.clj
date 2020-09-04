@@ -273,7 +273,7 @@
                _ (log/info "fenzo_debug_03" {:fenzo (get pool->fenzo pool-name)})
                ^TaskScheduler fenzo (get pool->fenzo pool-name)
                _ (log/info "fenzo_debug_04" {:fenzo fenzo})
-               _ (log/info "fenzo_debug_05" {:if-fenzo (if fenzo)})
+               _ (log/info "fenzo_debug_05" {:if-fenzo (if fenzo true false)})
                _ (log/info "fenzo_debug_06" {:pool-name pool-name})
                _ (log/info "fenzo_debug_07" {:pool->fenzo pool->fenzo})
                _ (log/info "fenzo_debug_08" {:fenzo (get pool->fenzo pool-name)})
@@ -293,7 +293,7 @@
                               task-id "from" (:instance/hostname instance-ent))))
                (do
                  (log/info "fenzo_debug_09" {:fenzo fenzo})
-                 (log/info "fenzo_debug_10" {:if-fenzo (if fenzo)})
+                 (log/info "fenzo_debug_10" {:if-fenzo (if fenzo true false)})
 
                  (log/error "In" pool-name "pool, unable to unassign task" task-id "from"
                             (:instance/hostname instance-ent) "because fenzo is nil:" pool->fenzo))))
