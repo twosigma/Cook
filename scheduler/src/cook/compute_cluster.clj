@@ -419,7 +419,7 @@
                             {:template template})))
         full-cluster-config (-> (:config cluster-definition-template) (merge config) (assoc :dynamic-cluster-config? true))
         cluster (resolved full-cluster-config {:exit-code-syncer-state @exit-code-syncer-state-atom})]
-    (initialize-cluster cluster {:pool-name->fenzo @pool-name->fenzo-atom})))
+    (initialize-cluster cluster @pool-name->fenzo-atom)))
 
 (defn execute-update!
   "Attempt to execute a valid cluster configuration update.
