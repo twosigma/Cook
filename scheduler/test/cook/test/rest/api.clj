@@ -1671,7 +1671,7 @@
 (deftest test-retrieve-sandbox-url-path
   (let [agent-hostname "www.mesos-agent-com"]
     ; We have a special gate that the compute cluster isn't nil, so have this return something not nil.
-    (with-redefs [task/task-ent->ComputeCluster (constantly "JustHasToBeNonNil-ComputeCluster")
+    (with-redefs [task/get-ComputeCluster-for-task-ent-if-present (constantly "JustHasToBeNonNil-ComputeCluster")
                   cc/retrieve-sandbox-url-path (fn [_ {:keys [instance/hostname instance/sandbox-directory instance/task-id]}]
                                                  (when (and hostname sandbox-directory)
                                                    (str "http://" hostname ":5051" "/" task-id "/files/read.json?path=" sandbox-directory)))]
