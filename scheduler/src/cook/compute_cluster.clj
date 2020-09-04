@@ -146,7 +146,7 @@
   [compute-cluster-name]
   (let [result (@cluster-name->compute-cluster-atom compute-cluster-name)]
     (when-not result
-      (log/error "Was asked to lookup db-id for" compute-cluster-name "and got nil"))
+      (log/error (ex-info (str "Was asked to lookup db-id for " compute-cluster-name " and got nil") {})))
     result))
 
 (defn get-default-cluster-for-legacy
@@ -419,7 +419,7 @@
                             {:template template})))
         full-cluster-config (-> (:config cluster-definition-template) (merge config) (assoc :dynamic-cluster-config? true))
         cluster (resolved full-cluster-config {:exit-code-syncer-state @exit-code-syncer-state-atom})]
-    (initialize-cluster cluster {:pool-name->fenzo @pool-name->fenzo-atom})))
+    (initialize-cluster cluster @pool-name->fenzo-atom)))
 
 (defn execute-update!
   "Attempt to execute a valid cluster configuration update.
