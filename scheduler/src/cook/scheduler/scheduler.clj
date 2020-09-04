@@ -268,7 +268,17 @@
                                    (.getTime (or (:instance/start-time instance-ent) current-time)))
                job-resources (tools/job-ent->resources job-ent)
                pool-name (tools/job->pool-name job-ent)
-               ^TaskScheduler fenzo (get pool->fenzo pool-name)]
+               _ (log/info "fenzo_debug_01" {:pool-name pool-name})
+               _ (log/info "fenzo_debug_02" {:pool->fenzo pool->fenzo})
+               _ (log/info "fenzo_debug_03" {:fenzo (get pool->fenzo pool-name)})
+               ^TaskScheduler fenzo (get pool->fenzo pool-name)
+               _ (log/info "fenzo_debug_04" {:fenzo fenzo})
+               _ (log/info "fenzo_debug_05" {:if-fenzo (if fenzo)})
+               _ (log/info "fenzo_debug_06" {:pool-name pool-name})
+               _ (log/info "fenzo_debug_07" {:pool->fenzo pool->fenzo})
+               _ (log/info "fenzo_debug_08" {:fenzo (get pool->fenzo pool-name)})
+
+               ]
            (when (#{:instance.status/success :instance.status/failed} instance-status)
              (if fenzo
                (try
@@ -281,8 +291,12 @@
                  (catch Exception e
                    (log/error e "In" pool-name "pool, failed to unassign task"
                               task-id "from" (:instance/hostname instance-ent))))
-               (log/error "In" pool-name "pool, unable to unassign task" task-id "from"
-                          (:instance/hostname instance-ent) "because fenzo is nil:" pool->fenzo)))
+               (do
+                 (log/info "fenzo_debug_09" {:fenzo fenzo})
+                 (log/info "fenzo_debug_10" {:if-fenzo (if fenzo)})
+
+                 (log/error "In" pool-name "pool, unable to unassign task" task-id "from"
+                            (:instance/hostname instance-ent) "because fenzo is nil:" pool->fenzo))))
            (when (= instance-status :instance.status/success)
              (handle-throughput-metrics job-resources instance-runtime :succeeded pool-name)
              (handle-throughput-metrics job-resources instance-runtime :completed pool-name))
