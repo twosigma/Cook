@@ -52,7 +52,7 @@
   [task-ent]
   (some-> task-ent
     task-entity->compute-cluster-name
-    @cc/cluster-name->compute-cluster-atom))
+    (@cc/cluster-name->compute-cluster-atom)))
 
 (def progress-meta-env-name
   "Meta environment variable name for declaring the environment variable
