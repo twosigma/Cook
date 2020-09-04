@@ -47,7 +47,7 @@
           task-entity->compute-cluster-name
           cc/compute-cluster-name->ComputeCluster))
 
-(defn get-ComputeCluster-for-task-ent-if-present
+(defn get-compute-cluster-for-task-ent-if-present
   "Like task-ent->ComputeCluster but do not log errors when there is no cluster"
   [task-ent]
   (some-> task-ent
