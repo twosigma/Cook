@@ -601,18 +601,6 @@
    Returns {:matches (list of tasks that got matched to the offer)
             :failures (list of unmatched tasks, and why they weren't matched)}"
   [db ^TaskScheduler fenzo considerable offers rebalancer-reservation-atom pool-name]
-  (log/info "In" pool-name "pool, matching offers to considerable jobs"
-            {:count-considerable-jobs (count considerable)
-             :count-offers (count offers)
-             :resource-type->total-considerable (-> considerable
-                                                    jobs->resource-totals
-                                                    format-resource-map)
-             :resource-type->total-offered (-> offers
-                                               offers->resource-totals
-                                               format-resource-map)
-             :user->number-jobs (->> considerable
-                                     (map tools/job-ent->user)
-                                     frequencies)})
   (if (and (-> considerable count zero?)
            (-> offers count pos?)
            (every? :reject-after-match-attempt offers))
@@ -745,12 +733,18 @@
     considerable-jobs))
 
 
+(defn matches->jobs
+  "Given a collection of matches, returns the matched jobs"
+  [matches]
+  (->> matches
+       (mapcat :tasks)
+       (map #(-> % .getRequest :job))))
+
+
 (defn matches->job-uuids
   "Returns the matched job uuids."
   [matches pool-name]
-  (let [jobs (->> matches
-                  (mapcat #(-> % :tasks))
-                  (map #(-> % .getRequest :job)))
+  (let [jobs (matches->jobs matches)
         job-uuids (set (map :job/uuid jobs))]
     (log/debug "In" pool-name "pool, matched jobs:" (count job-uuids))
     (when (seq matches)
@@ -979,7 +973,37 @@
                                   (timers/timer (metric-title "handle-resource-offer!-match-job-uuids-duration" pool-name))
                                   (matches->job-uuids matches pool-name))
               first-considerable-job-resources (-> considerable-jobs first tools/job-ent->resources)
-              matched-considerable-jobs-head? (contains? matched-job-uuids (-> considerable-jobs first :job/uuid))]
+              matched-considerable-jobs-head? (contains? matched-job-uuids (-> considerable-jobs first :job/uuid))
+              user->number-matched-considerable-jobs (->> matches
+                                                          matches->jobs
+                                                          (map tools/job-ent->user)
+                                                          frequencies)
+              user->number-total-considerable-jobs (->> considerable-jobs
+                                                        (map tools/job-ent->user)
+                                                        frequencies)]
+
+          (log/info "In" pool-name "pool, matching offers to considerable jobs"
+                    {:jobs-considerable {:head-matched? matched-considerable-jobs-head?
+                                         :head-resources first-considerable-job-resources
+                                         :number-matched (count matched-job-uuids)
+                                         :number-total (count considerable-jobs)
+                                         :number-unmatched (- (count considerable-jobs)
+                                                              (count matched-job-uuids))
+                                         :resource-type->total (-> considerable-jobs
+                                                                   jobs->resource-totals
+                                                                   format-resource-map)
+                                         :user->number-matched user->number-matched-considerable-jobs
+                                         :user->number-total user->number-total-considerable-jobs
+                                         :user->number-unmatched (merge-with
+                                                                   -
+                                                                   user->number-total-considerable-jobs
+                                                                   user->number-matched-considerable-jobs)}
+                     :offers {:number-matched (count offers-scheduled)
+                              :number-total (count offers)
+                              :number-unmatched (- (count offers) (count offers-scheduled))
+                              :resource-type->total (-> offers
+                                                        offers->resource-totals
+                                                        format-resource-map)}})
 
           (fenzo/record-placement-failures! conn failures)
 
