@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.45.1] - 2020-09-08
+### Added
+- Dynamic cluster configuration support, from @nsinkov
+### Changed
+- Improved logging for launching tasks, stop launching synthetic pods, and matching offers, from @dposada
+
 ## [1.45.0] - 2020-08-25
 ### Added
 - Support for EQUALS job constraints in k8s, from @dposada
