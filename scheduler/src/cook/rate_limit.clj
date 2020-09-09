@@ -33,7 +33,7 @@
         {:keys [rate-limit]} settings
         {:keys [expire-minutes job-submission]} rate-limit]
     (if (seq job-submission)
-        (rtg/make-token-bucket-filter (assoc job-submission :expire minutes expire minutes))
+      (rtg/make-token-bucket-filter (assoc job-submission :expire-minutes expire-minutes))
       AllowAllRateLimiter)))
 
 (mount/defstate job-submission-rate-limiter
@@ -47,7 +47,7 @@
         {:keys [rate-limit]} settings
         {:keys [expire-minutes job-launch]} rate-limit]
     (if (seq job-launch)
-      (rtg/make-token-bucket-filter (assoc job-launch :expire minutes expire minutes))
+      (rtg/make-token-bucket-filter (assoc job-launch :expire-minutes expire-minutes))
       AllowAllRateLimiter)))
 
 (mount/defstate job-launch-rate-limiter
@@ -61,7 +61,7 @@
         {:keys [rate-limit]} settings
         {:keys [expire-minutes global-job-launch]} rate-limit]
     (if (seq global-job-launch)
-      (rtg/make-token-bucket-filter (assoc global-job-launch :expire minutes expire minutes))
+      (rtg/make-token-bucket-filter (assoc global-job-launch :expire-minutes expire-minutes))
       AllowAllRateLimiter)))
 
 (mount/defstate global-job-launch-rate-limiter
