@@ -398,18 +398,19 @@
 
 (deftest test-pod->synthesized-pod-state
   (testing "returns nil for empty pod"
-    (is (nil? (api/pod->synthesized-pod-state nil))))
+    (is (nil? (api/pod->synthesized-pod-state nil nil))))
 
   (testing "no container status -> waiting"
     (let [pod (V1Pod.)
           pod-status (V1PodStatus.)
-          pod-metadata (V1ObjectMeta.)]
+          pod-metadata (V1ObjectMeta.)
+          pod-name "test-pod"]
       (.setStatus pod pod-status)
-      (.setName pod-metadata "test-pod")
+      (.setName pod-metadata pod-name)
       (.setMetadata pod pod-metadata)
       (is (= {:state :pod/waiting
               :reason "Pending"}
-             (api/pod->synthesized-pod-state pod)))))
+             (api/pod->synthesized-pod-state pod-name pod)))))
 
   (testing "waiting"
     (let [pod (V1Pod.)
@@ -427,7 +428,7 @@
       (.setMetadata pod pod-metadata)
       (is (= {:state :pod/waiting
               :reason "waiting"}
-             (api/pod->synthesized-pod-state pod)))))
+             (api/pod->synthesized-pod-state "test-pod" pod)))))
 
   (testing "pod failed phase"
     (let [pod (V1Pod.)
@@ -437,10 +438,10 @@
       (.setStatus pod pod-status)
       (is (= {:state :pod/failed
               :reason "SomeSillyReason"}
-             (api/pod->synthesized-pod-state pod)))))
+             (api/pod->synthesized-pod-state "test-pod" pod)))))
 
   (let [make-pod-with-condition-fn
-        (fn [pod-condition-type pod-condition-status
+        (fn [pod-name pod-condition-type pod-condition-status
              pod-condition-reason pod-condition-last-transition-time]
           (let [pod (V1Pod.)
                 pod-status (V1PodStatus.)
@@ -452,33 +453,54 @@
             (.setLastTransitionTime pod-condition pod-condition-last-transition-time)
             (.addConditionsItem pod-status pod-condition)
             (.setStatus pod pod-status)
-            (.setName pod-metadata "test-pod")
+            (.setName pod-metadata pod-name)
             (.setMetadata pod pod-metadata)
             pod))
 
         make-unschedulable-pod-fn
-        (fn [pod-condition-last-transition-time]
-          (make-pod-with-condition-fn "PodScheduled" "False" "Unschedulable"
+        (fn [pod-name pod-condition-last-transition-time]
+          (make-pod-with-condition-fn pod-name "PodScheduled" "False" "Unschedulable"
                                       pod-condition-last-transition-time))]
 
     (testing "unschedulable pod"
-      (let [pod (make-unschedulable-pod-fn (t/epoch))]
+      (let [pod-name "test-pod"
+            pod (make-unschedulable-pod-fn pod-name (t/epoch))]
         (with-redefs [config/kubernetes
                       (constantly {:pod-condition-unschedulable-seconds 60})]
           (is (= {:state :pod/failed
                   :reason "Unschedulable"}
-                 (api/pod->synthesized-pod-state pod))))))
+                 (api/pod->synthesized-pod-state pod-name pod))))))
 
     (testing "briefly unschedulable pod"
-      (let [pod (make-unschedulable-pod-fn (t/now))]
+      (let [pod-name "test-pod"
+            pod (make-unschedulable-pod-fn pod-name (t/now))]
         (with-redefs [config/kubernetes
                       (constantly {:pod-condition-unschedulable-seconds 60})]
           (is (= {:state :pod/waiting
                   :reason "Pending"}
-                 (api/pod->synthesized-pod-state pod))))))
+                 (api/pod->synthesized-pod-state pod-name pod))))))
+
+    (testing "unschedulable synthetic pod"
+      (let [pod-name api/cook-synthetic-pod-name-prefix
+            pod (make-unschedulable-pod-fn pod-name (t/minus (t/now) (t/minutes 16)))]
+        (with-redefs [config/kubernetes
+                      (constantly {:synthetic-pod-condition-unschedulable-seconds 900})]
+          (is (= {:state :pod/failed
+                  :reason "Unschedulable"}
+                 (api/pod->synthesized-pod-state pod-name pod))))))
+
+    (testing "briefly unschedulable synthetic pod"
+      (let [pod-name api/cook-synthetic-pod-name-prefix
+            pod (make-unschedulable-pod-fn pod-name (t/minus (t/now) (t/minutes 14)))]
+        (with-redefs [config/kubernetes
+                      (constantly {:synthetic-pod-condition-unschedulable-seconds 900})]
+          (is (= {:state :pod/waiting
+                  :reason "Pending"}
+                 (api/pod->synthesized-pod-state pod-name pod))))))
 
     (testing "containers not initialized"
-      (let [pod (make-pod-with-condition-fn "Initialized" "False" "ContainersNotInitialized" (t/epoch))
+      (let [pod-name "test-pod"
+            pod (make-pod-with-condition-fn pod-name "Initialized" "False" "ContainersNotInitialized" (t/epoch))
             container-status (V1ContainerStatus.)
             container-state (V1ContainerState.)
             waiting (V1ContainerStateWaiting.)
@@ -492,7 +514,7 @@
                       (constantly {:pod-condition-containers-not-initialized-seconds 60})]
           (is (= {:state :pod/failed
                   :reason "ContainersNotInitialized"}
-                 (api/pod->synthesized-pod-state pod))))))
+                 (api/pod->synthesized-pod-state pod-name pod))))))
 
     (testing "node preempted default label"
       (let [pod (V1Pod.)
@@ -504,7 +526,8 @@
         (is (= {:reason "Pending"
                 :state :pod/waiting
                 :pod-preempted-timestamp 1589084484537}
-               (api/pod->synthesized-pod-state pod)))))
+               (api/pod->synthesized-pod-state "test-pod" pod)))))
+
     (testing "node preempted custom label"
       (with-redefs [config/kubernetes (fn [] {:node-preempted-label "custom-node-preempted"})]
         (let [pod (V1Pod.)
@@ -516,7 +539,7 @@
           (is (= {:reason "Pending"
                   :state :pod/waiting
                   :pod-preempted-timestamp 1589084484537}
-                 (api/pod->synthesized-pod-state pod))))))))
+                 (api/pod->synthesized-pod-state "test-pod" pod))))))))
 
 (deftest test-node-schedulable
   ;; TODO: Need the 'stuck pod scanner' to detect stuck states and move them into killed.

@@ -1032,7 +1032,7 @@
    Kubernetes doesn't really have a good notion of 'pod state'. For one thing, that notion can't be universal across
    applications. Thus, we synthesize that state by looking at the containers within the pod and applying our own
    business logic."
-  [^V1Pod pod]
+  [pod-name ^V1Pod pod]
   (when pod
     (let [^V1PodStatus pod-status (.getStatus pod)
           container-statuses (.getContainerStatuses pod-status)
@@ -1061,7 +1061,7 @@
               (let [^V1ContainerState state (.getState job-status)]
                 (cond
                   (.getWaiting state)
-                  (if (pod-containers-not-initialized? (V1Pod->name pod) pod-status)
+                  (if (pod-containers-not-initialized? pod-name pod-status)
                     ; If the containers are not getting initialized,
                     ; then we should consider the pod failed. This
                     ; state can occur, for example, when volume
@@ -1103,8 +1103,14 @@
                 ; if the ToBeDeletedByClusterAutoscaler taint gets added between when we
                 ; saw available capacity on a node and when we submitted the pod to that
                 ; node, then the pod will never get scheduled.
-                (pod-unschedulable? (V1Pod->name pod) pod-status) {:state :pod/failed
-                                                                   :reason "Unschedulable"}
+                (pod-unschedulable? pod-name pod-status)
+                (let [synthesized-state {:state :pod/failed
+                                         :reason "Unschedulable"}]
+                  (log/info "Encountered unschedulable pod"
+                            {:pod-name pod-name
+                             :pod-status pod-status
+                             :synthesized-state synthesized-state})
+                  synthesized-state)
 
                 :else {:state :pod/waiting
                        :reason "Pending"})))]

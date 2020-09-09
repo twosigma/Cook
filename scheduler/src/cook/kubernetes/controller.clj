@@ -593,7 +593,7 @@
    (synthesize-state-and-process-pod-if-changed compute-cluster pod-name pod false))
   ([{:keys [k8s-actual-state-map name] :as compute-cluster} pod-name ^V1Pod pod force-process?]
    (let [new-state {:pod pod
-                    :synthesized-state (api/pod->synthesized-pod-state pod)
+                    :synthesized-state (api/pod->synthesized-pod-state pod-name pod)
                     :sandbox-file-server-container-state (api/pod->sandbox-file-server-container-state pod)}
          old-state (get @k8s-actual-state-map pod-name)]
      ; We always store the updated state, but only reprocess it if it is genuinely different.
