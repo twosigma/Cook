@@ -41,16 +41,16 @@
 
 (defn ->tbf
   "Given a tocken bucket parameters and size, create an empty tbf that has the target parameters"
-  [tokens-replenished-per-minute max-tokens]
+  [tokens-replenished-per-minute bucket-size]
     (tbf/create-tbf (/ tokens-replenished-per-minute 60000.)
-                    max-tokens
+                    bucket-size
                     (current-time-in-millis)
-                    max-tokens))
+                    bucket-size))
 
 (defn config->tbf
   "Given a configuration dictionary with a token bucket paremters, create an empty tbf that has those parameters."
-  [{:keys [tokens-replenished-per-minute max-tokens]}]
-  (->tbf tokens-replenished-per-minute max-tokens))
+  [{:keys [tokens-replenished-per-minute bucket-size]}]
+  (->tbf tokens-replenished-per-minute bucket-size))
 
 (defn make-tbf-fn-ignore-key
   "Return a function from a key to a token bucket filter. Ignores the key key, creating the same config for all tbf's."
@@ -121,19 +121,19 @@
                                   enforce?))
 
 (defn ^RateLimiter make-token-bucket-filter
-  [^long max-tokens ^double tokens-replenished-per-minute ^long bucket-expire-minutes enforce?]
-  {:pre [(> max-tokens 0)
+  [^long bucket-size ^double tokens-replenished-per-minute ^long bucket-expire-minutes enforce?]
+  {:pre [(> bucket-size 0)
          (> tokens-replenished-per-minute 0.0)
          (> bucket-expire-minutes 0)
          (or (true? enforce?) (false? enforce?))
          ; The bucket-expiration-minutes is used for GC'ing old buckets. It should be more than
-         ; max-tokens/tokens-replenished-per-minute. Otherwise, we might expire non-full buckets and a user could get
+         ; bucket-size/tokens-replenished-per-minute. Otherwise, we might expire non-full buckets and a user could get
          ; extra tokens via expiration. (New token-bucket-filter's are born with a full bucket).
-         (> bucket-expire-minutes (/ max-tokens tokens-replenished-per-minute))]}
-  (let [config {:max-tokens max-tokens
+         (> bucket-expire-minutes (/ bucket-size tokens-replenished-per-minute))]}
+  (let [config {:bucket-size bucket-size
                 :tokens-replenished-per-minute tokens-replenished-per-minute
                 :bucket-expire-minutes bucket-expire-minutes :enforce? enforce?}]
-  (make-generic-token-bucket-filter config (make-tbf-fn-ignores-key config))))
+    (make-generic-token-bucket-filter config (make-tbf-fn-ignore-key config))))
 
 
 (def AllowAllRateLimiter

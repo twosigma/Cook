@@ -53,15 +53,15 @@
 
       (is (= (.getIfPresent (:cache ratelimit nil) "Foo1") {:current-tokens 0
                                                             :last-update 1000000
-                                                            :max-tokens 20
+                                                            :bucket-size 20
                                                             :token-rate 1.0}))
       (is (= (.getIfPresent (:cache ratelimit nil) "Foo2") {:current-tokens -10
                                                             :last-update 1000000
-                                                            :max-tokens 20
+                                                            :bucket-size 20
                                                             :token-rate 1.0}))
       (is (= (.getIfPresent (:cache ratelimit nil) "Foo3") {:current-tokens -10000
                                                             :last-update 1000000
-                                                            :max-tokens 20
+                                                            :bucket-size 20
                                                             :token-rate 1.0})))
 
     (with-redefs [rtg/current-time-in-millis (fn [] 1000001)]
@@ -72,15 +72,15 @@
 
       (is (= (.getIfPresent (:cache ratelimit nil) "Foo1") {:current-tokens 1
                                                             :last-update 1000001
-                                                            :max-tokens 20
+                                                            :bucket-size 20
                                                             :token-rate 1.0}))
       (is (= (.getIfPresent (:cache ratelimit nil) "Foo2") {:current-tokens -9
                                                             :last-update 1000001
-                                                            :max-tokens 20
+                                                            :bucket-size 20
                                                             :token-rate 1.0}))
       (is (= (.getIfPresent (:cache ratelimit nil) "Foo3") {:current-tokens -9999
                                                             :last-update 1000001
-                                                            :max-tokens 20
+                                                            :bucket-size 20
                                                             :token-rate 1.0})))
 
     (with-redefs [rtg/current-time-in-millis (fn [] 1000025)]
@@ -95,27 +95,27 @@
 
       (is (= (.getIfPresent (:cache ratelimit nil) "Foo1") {:current-tokens 20
                                                             :last-update 1000025
-                                                            :max-tokens 20
+                                                            :bucket-size 20
                                                             :token-rate 1.0}))
       (is (= (.getIfPresent (:cache ratelimit nil) "Foo2") {:current-tokens 15
                                                             :last-update 1000025
-                                                            :max-tokens 20
+                                                            :bucket-size 20
                                                             :token-rate 1.0}))
       (is (= (.getIfPresent (:cache ratelimit nil) "Foo3") {:current-tokens -9975
                                                             :last-update 1000025
-                                                            :max-tokens 20
+                                                            :bucket-size 20
                                                             :token-rate 1.0}))
 
       ; Make sure Foo4 is stale.
       (is (= (.getIfPresent (:cache ratelimit nil) "Foo4") {:current-tokens 0
                                                             :last-update 1000000
-                                                            :max-tokens 20
+                                                            :bucket-size 20
                                                             :token-rate 1.0}))
       (is (= 0 (rtg/time-until-out-of-debt-millis! ratelimit "Foo4")))
       ; And not stale
       (is (= (.getIfPresent (:cache ratelimit nil) "Foo4") {:current-tokens 20
                                                             :last-update 1000025
-                                                            :max-tokens 20
+                                                            :bucket-size 20
                                                             :token-rate 1.0})))))
 
 (deftest per-key-configs
@@ -136,17 +136,17 @@
 
       (is (= (.getIfPresent (:cache ratelimit nil) "Bar1") {:current-tokens 60
                                                             :last-update 1000000
-                                                            :max-tokens 100
+                                                            :bucket-size 100
                                                             :token-rate 1.0}))
       (is (= (.getIfPresent (:cache ratelimit nil) "Bar2") {:current-tokens 170
                                                             :last-update 1000000
-                                                            :max-tokens 200
+                                                            :bucket-size 200
                                                             :token-rate 1.0}))
       (is (= (.getIfPresent (:cache ratelimit nil) "Bar3") {:current-tokens 280
                                                             :last-update 1000000
-                                                            :max-tokens 300
+                                                            :bucket-size 300
                                                             :token-rate 1.0}))
       (is (= (.getIfPresent (:cache ratelimit nil) "Bar4") {:current-tokens 390
                                                             :last-update 1000000
-                                                            :max-tokens 400
+                                                            :bucket-size 400
                                                             :token-rate 1.0})))))
