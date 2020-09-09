@@ -61,13 +61,13 @@
   [{:keys [last-update token-rate] :as tbf} ^long current-time]
   (let [current-time (max current-time last-update)]
     (cond-> tbf
-            (not (= current-time last-update))
-            (update-tbf
-              (-> current-time
-                  (- last-update)
-                  (* token-rate)
-                  long)
-              current-time))))
+      (not (= current-time last-update))
+      (update-tbf
+        (-> current-time
+            (- last-update)
+            (* token-rate)
+            long)
+        current-time))))
 
 (defn time-until
   "Assumes tokens have been dispensed. Reports how many time units until the balance is positive and a request can be granted."

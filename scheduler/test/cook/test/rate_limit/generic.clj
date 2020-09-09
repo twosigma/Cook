@@ -20,7 +20,7 @@
 (deftest independent-keys-1
   (let [ratelimit (rtg/make-token-bucket-filter {:bucket-size 60000
                                                  :tokens-replenished-per-minute 60
-                                                 :bucket-expire-minutes 10000
+                                                 :expire-minutes 10000
                                                  :enforce? true})]
     (rtg/time-until-out-of-debt-millis! ratelimit "Foo2")
     (rtg/spend! ratelimit "Foo4" 100)
@@ -29,7 +29,7 @@
 (deftest independent-keys-2
   (let [ratelimit (rtg/make-token-bucket-filter {:bucket-size 60000
                                                  :tokens-replenished-per-minute 60
-                                                 :bucket-expire-minutes 10000
+                                                 :expire-minutes 10000
                                                  :enforce? true})]
     (rtg/earn-tokens! ratelimit "Foo4")
     (rtg/earn-tokens! ratelimit "Foo1")
@@ -42,7 +42,7 @@
 (deftest earning-tokens-explicit
   (let [ratelimit (rtg/make-token-bucket-filter {:bucket-size 20
                                                  :tokens-replenished-per-minute 60000
-                                                 :bucket-expire-minutes 10
+                                                 :expire-minutes 10
                                                  :enforce? true})]
     ;; take away the full bucket it starts with... (20 tokens)
     (with-redefs [rtg/current-time-in-millis (fn [] 1000000)]
@@ -128,7 +128,7 @@
                                                             :token-rate 1.0})))))
 
 (deftest per-key-configs
-  (let [config {:bucket-expire-minutes 10 :enforce? true}
+  (let [config {:expire-minutes 10 :enforce? true}
         make-tbf-fn (fn [key]
                       (case key
                         "Bar1" (rtg/->tbf 60000 100)

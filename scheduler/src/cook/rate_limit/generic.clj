@@ -110,30 +110,27 @@
     enforce?))
 
 (defn ^RateLimiter make-generic-token-bucket-filter
-  [{:keys [bucket-expire-minutes enforce?] :as config} make-tbf-fn]
-  {:pre [(> bucket-expire-minutes 0)
+  [{:keys [expire-minutes enforce?] :as config} make-tbf-fn]
+  {:pre [(> expire-minutes 0)
          (or (true? enforce?) (false? enforce?))]}
 
   (->TokenBucketFilterRateLimiter config
                                   (-> (CacheBuilder/newBuilder)
-                                      (.expireAfterAccess bucket-expire-minutes (TimeUnit/MINUTES))
+                                      (.expireAfterAccess expire-minutes (TimeUnit/MINUTES))
                                       (.build (fn->CacheLoader make-tbf-fn)))
                                   enforce?))
 
 (defn ^RateLimiter make-token-bucket-filter
-  [{:keys [bucket-size tokens-replenished-per-minute bucket-expire-minutes enforce?]}]
+  [{:keys [bucket-size tokens-replenished-per-minute expire-minutes enforce?] :as config}]
   {:pre [(> bucket-size 0)
          (> tokens-replenished-per-minute 0.0)
-         (> bucket-expire-minutes 0)
+         (> expire-minutes 0)
          (or (true? enforce?) (false? enforce?))
          ; The bucket-expiration-minutes is used for GC'ing old buckets. It should be more than
          ; bucket-size/tokens-replenished-per-minute. Otherwise, we might expire non-full buckets and a user could get
          ; extra tokens via expiration. (New token-bucket-filter's are born with a full bucket).
-         (> bucket-expire-minutes (/ bucket-size tokens-replenished-per-minute))]}
-  (let [config {:bucket-size bucket-size
-                :tokens-replenished-per-minute tokens-replenished-per-minute
-                :bucket-expire-minutes bucket-expire-minutes :enforce? enforce?}]
-    (make-generic-token-bucket-filter config (make-tbf-fn-ignore-key config))))
+         (> expire-minutes (/ bucket-size tokens-replenished-per-minute))]}
+    (make-generic-token-bucket-filter config (make-tbf-fn-ignore-key config)))
 
 
 (def AllowAllRateLimiter
