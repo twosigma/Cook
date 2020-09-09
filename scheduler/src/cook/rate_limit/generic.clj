@@ -121,7 +121,7 @@
                                   enforce?))
 
 (defn ^RateLimiter make-token-bucket-filter
-  [^long bucket-size ^double tokens-replenished-per-minute ^long bucket-expire-minutes enforce?]
+  [{:keys [bucket-size tokens-replenished-per-minute bucket-expire-minutes enforce?]}]
   {:pre [(> bucket-size 0)
          (> tokens-replenished-per-minute 0.0)
          (> bucket-expire-minutes 0)
