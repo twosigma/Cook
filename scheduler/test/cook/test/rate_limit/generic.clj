@@ -117,3 +117,36 @@
                                                             :last-update 1000025
                                                             :max-tokens 20
                                                             :token-rate 1.0})))))
+
+(deftest per-key-configs
+  (let [config {:bucket-expire-minutes 10 :enforce? true}
+        make-tbf-fn (fn [key]
+                      (case key
+                        "Bar1" (rtg/->tbf 60000 100)
+                        "Bar2" (rtg/->tbf 60000 200)
+                        "Bar3" (rtg/->tbf 60000 300)
+                        "Bar4" (rtg/->tbf 60000 400)
+                        (print "Mismatch key " key)))
+        ratelimit (rtg/make-generic-token-bucket-filter config make-tbf-fn)]
+    (with-redefs [rtg/current-time-in-millis (fn [] 1000000)]
+      (rtg/spend! ratelimit "Bar1" 40)
+      (rtg/spend! ratelimit "Bar2" 30)
+      (rtg/spend! ratelimit "Bar3" 20)
+      (rtg/spend! ratelimit "Bar4" 10)
+
+      (is (= (.getIfPresent (:cache ratelimit nil) "Bar1") {:current-tokens 60
+                                                            :last-update 1000000
+                                                            :max-tokens 100
+                                                            :token-rate 1.0}))
+      (is (= (.getIfPresent (:cache ratelimit nil) "Bar2") {:current-tokens 170
+                                                            :last-update 1000000
+                                                            :max-tokens 200
+                                                            :token-rate 1.0}))
+      (is (= (.getIfPresent (:cache ratelimit nil) "Bar3") {:current-tokens 280
+                                                            :last-update 1000000
+                                                            :max-tokens 300
+                                                            :token-rate 1.0}))
+      (is (= (.getIfPresent (:cache ratelimit nil) "Bar4") {:current-tokens 390
+                                                            :last-update 1000000
+                                                            :max-tokens 400
+                                                            :token-rate 1.0})))))

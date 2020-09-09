@@ -156,7 +156,7 @@
                              (map #(get % user 0))
                              (reduce + 0))
         being-ratelimited? (pos? num-ratelimited)
-        {:keys [tokens-replenished-per-minute]} ratelimit/job-launch-rate-limiter]
+        tokens-replenished-per-minute (get-in ratelimit/job-launch-rate-limiter [:config :tokens-replenished-per-minute])]
     (when (and enforcing-job-launch-rate-limit? being-ratelimited?)
       ["You are currently rate limited on how many jobs you launch per minute."
        {:max-jobs-per-minute tokens-replenished-per-minute}])))
