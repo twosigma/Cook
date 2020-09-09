@@ -2259,7 +2259,7 @@
                             :type :value-text->scalar
                             :text->scalar {"nvidia-tesla-k80" 4 "nvidia-tesla-p100" 8}}]}])))))
 
-(deftest test-job->resource-totals
+(deftest test-job->resource-maps
   (testing "adds up resources by type"
     (is (= [{"cpus" 1.2
              "mem" 34

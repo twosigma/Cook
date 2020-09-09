@@ -533,38 +533,6 @@
         pool-specific-resources ((adjust-job-resources-for-pool-fn pool-name) job resources)]
     (->TaskRequestAdapter job pool-specific-resources task-id assigned-resources guuid->considerable-cotask-ids constraints-list scalar-requests)))
 
-(defn format-resource-map
-  "Given a map with resource amount values,
-   formats the amount values for logging"
-  [resource-map]
-  (pc/map-vals #(if (float? %)
-                  (format "%.3f" %)
-                  (str %))
-               resource-map))
-
-(defn resource-maps->stats
-  "Given a collection of maps, where each map is
-  resource-type -> amount, returns a map of
-  statistics with the following shape:
-
-  {:percentiles {cpus {50 ..., 95 ..., 100 ...}
-                 mem {50 ..., 95 ..., 100 ...}}
-   :totals {mem ..., cpus ..., ...}}"
-  [resource-maps]
-  {:percentiles (pc/map-from-keys
-                  (fn percentiles
-                    [resource]
-                    (let [resource-values (->> resource-maps
-                                               (map #(get % resource))
-                                               (remove nil?))]
-                      (-> resource-values
-                          (task-stats/percentiles 50 95 100)
-                          format-resource-map)))
-                  ["cpus" "mem"])
-   :totals (->> resource-maps
-                (reduce (partial merge-with +))
-                format-resource-map)})
-
 (defn offers->resource-maps
   "Given a collection of offers, returns a collection
    of maps, where each map is resource-type -> amount"
@@ -599,11 +567,6 @@
            resources))
        offers))
 
-(defn offers->stats
-  "Given a collection of offers, returns stats about the offers"
-  [offers]
-  (-> offers offers->resource-maps resource-maps->stats))
-
 (defn jobs->resource-maps
   [jobs]
   "Given a collection of jobs, returns a collection
@@ -624,6 +587,43 @@
                    (dissoc "gpus")))
              resource-map)))
        jobs))
+
+(defn format-resource-map
+  "Given a map with resource amount values,
+   formats the amount values for logging"
+  [resource-map]
+  (pc/map-vals #(if (float? %)
+                  (format "%.3f" %)
+                  (str %))
+               resource-map))
+
+(defn resource-maps->stats
+  "Given a collection of maps, where each map is
+  resource-type -> amount, returns a map of
+  statistics with the following shape:
+
+  {:percentiles {cpus {50 ..., 95 ..., 100 ...}
+                 mem {50 ..., 95 ..., 100 ...}}
+   :totals {mem ..., cpus ..., ...}}"
+  [resource-maps]
+  {:percentiles (pc/map-from-keys
+                  (fn percentiles
+                    [resource]
+                    (let [resource-values (->> resource-maps
+                                               (map #(get % resource))
+                                               (remove nil?))]
+                      (-> resource-values
+                          (task-stats/percentiles 50 95 100)
+                          format-resource-map)))
+                  ["cpus" "mem"])
+   :totals (->> resource-maps
+                (reduce (partial merge-with +))
+                format-resource-map)})
+
+(defn offers->stats
+  "Given a collection of offers, returns stats about the offers"
+  [offers]
+  (-> offers offers->resource-maps resource-maps->stats))
 
 (defn jobs->stats
   "Given a collection of jobs, returns stats about the jobs"
