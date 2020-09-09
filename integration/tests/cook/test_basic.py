@@ -650,8 +650,7 @@ class CookTest(util.CookTest):
         command = f'{line_1} && sleep 2 && {line_2} && sleep 2 && ' \
                   f'{line_3} && sleep 2 && {line_4} && sleep 2 && ' \
                   f'{line_5} && sleep 2 && echo "Done" && exit 0'
-        job_uuid, resp = util.submit_job(self.cook_url, command=command, executor=job_executor_type,
-                                         max_runtime=60000, max_retries=5)
+        job_uuid, resp = util.submit_job(self.cook_url, command=command, executor=job_executor_type, max_retries=5)
         self.assertEqual(201, resp.status_code, msg=resp.content)
         time.sleep(10) # since the job sleeps for 10 seconds, it won't be done for at least 10 seconds
         util.wait_for_job(self.cook_url, job_uuid, 'completed')

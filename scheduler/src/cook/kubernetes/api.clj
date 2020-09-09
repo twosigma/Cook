@@ -973,23 +973,28 @@
   (str/starts-with? pod-name cook-synthetic-pod-name-prefix))
 
 (defn pod-unschedulable?
-  "Returns true if the given pod name is not a synthetic
-  pod and the given pod status has a PodScheduled
+  "Returns true if the given pod status has a PodScheduled
   condition with status False and reason Unschedulable"
   [pod-name ^V1PodStatus pod-status]
-  (let [{:keys [pod-condition-unschedulable-seconds]} (config/kubernetes)]
-    (and (some->> pod-name synthetic-pod? not)
-         (some->> pod-status .getConditions
-                  (some
-                    (fn pod-condition-unschedulable?
-                      [^V1PodCondition condition]
-                      (and (-> condition .getType (= "PodScheduled"))
-                           (-> condition .getStatus (= "False"))
-                           (-> condition .getReason (= "Unschedulable"))
-                           (-> condition
-                               .getLastTransitionTime
-                               (t/plus (t/seconds pod-condition-unschedulable-seconds))
-                               (t/before? (t/now))))))))))
+  (let [{:keys [pod-condition-unschedulable-seconds
+                synthetic-pod-condition-unschedulable-seconds]}
+        (config/kubernetes)
+        unschedulable-seconds
+        (if (some-> pod-name synthetic-pod?)
+          synthetic-pod-condition-unschedulable-seconds
+          pod-condition-unschedulable-seconds)]
+    (some->> pod-status
+             .getConditions
+             (some
+               (fn pod-condition-unschedulable?
+                 [^V1PodCondition condition]
+                 (and (-> condition .getType (= "PodScheduled"))
+                      (-> condition .getStatus (= "False"))
+                      (-> condition .getReason (= "Unschedulable"))
+                      (-> condition
+                          .getLastTransitionTime
+                          (t/plus (t/seconds unschedulable-seconds))
+                          (t/before? (t/now)))))))))
 
 (defn pod-containers-not-initialized?
   "Returns true if the given pod status has an Initialized condition with status
@@ -1027,7 +1032,7 @@
    Kubernetes doesn't really have a good notion of 'pod state'. For one thing, that notion can't be universal across
    applications. Thus, we synthesize that state by looking at the containers within the pod and applying our own
    business logic."
-  [^V1Pod pod]
+  [pod-name ^V1Pod pod]
   (when pod
     (let [^V1PodStatus pod-status (.getStatus pod)
           container-statuses (.getContainerStatuses pod-status)
@@ -1056,7 +1061,7 @@
               (let [^V1ContainerState state (.getState job-status)]
                 (cond
                   (.getWaiting state)
-                  (if (pod-containers-not-initialized? (V1Pod->name pod) pod-status)
+                  (if (pod-containers-not-initialized? pod-name pod-status)
                     ; If the containers are not getting initialized,
                     ; then we should consider the pod failed. This
                     ; state can occur, for example, when volume
@@ -1091,15 +1096,21 @@
                                                      :reason (.getReason pod-status)}
 
                 ; If the pod is unschedulable, then we should consider it failed. Note that
-                ; pod-unschedulable? will never return true for synthetic pods, because
+                ; pod-unschedulable? uses a different timeout for synthetic pods, because
                 ; they will be unschedulable by design, in order to trigger the cluster
                 ; autoscaler to scale up. For non-synthetic pods, however, this state
                 ; likely means something changed about the node we matched to. For example,
                 ; if the ToBeDeletedByClusterAutoscaler taint gets added between when we
                 ; saw available capacity on a node and when we submitted the pod to that
                 ; node, then the pod will never get scheduled.
-                (pod-unschedulable? (V1Pod->name pod) pod-status) {:state :pod/failed
-                                                                   :reason "Unschedulable"}
+                (pod-unschedulable? pod-name pod-status)
+                (let [synthesized-state {:state :pod/failed
+                                         :reason "Unschedulable"}]
+                  (log/info "Encountered unschedulable pod"
+                            {:pod-name pod-name
+                             :pod-status pod-status
+                             :synthesized-state synthesized-state})
+                  synthesized-state)
 
                 :else {:state :pod/waiting
                        :reason "Pending"})))]
