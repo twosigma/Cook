@@ -42,10 +42,10 @@
 (defn ->tbf
   "Given a tocken bucket parameters and size, create an empty tbf that has the target parameters"
   [tokens-replenished-per-minute bucket-size]
-    (tbf/create-tbf (/ tokens-replenished-per-minute 60000.)
-                    bucket-size
-                    (current-time-in-millis)
-                    bucket-size))
+  (tbf/create-tbf (/ tokens-replenished-per-minute 60000.)
+                  bucket-size
+                  (current-time-in-millis)
+                  bucket-size))
 
 (defn config->tbf
   "Given a configuration dictionary with a token bucket paremters, create an empty tbf that has those parameters."
@@ -72,7 +72,7 @@
   gotten anything from them in a long time. (Assuming the TTL is set at least as high as
   (:bucket-size/:tokens-replenished-per-minute))."
   [{:keys [^LoadingCache cache] :as ratelimiter} key]
-    (.get cache key))
+  (.get cache key))
 
 (defn earn-tokens!
   "Account for any earned tokens for the requested key."
