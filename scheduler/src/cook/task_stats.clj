@@ -71,7 +71,7 @@
              (Math/ceil)
              (dec)))))
 
-(defn- percentiles
+(defn percentiles
   "Calculates the p-th percentiles of the values in coll for
   each p in p-list (where 0 < p <= 100), and returns a map of
   p -> value"

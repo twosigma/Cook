@@ -22,6 +22,7 @@
             [clojure.edn :as edn]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
+            [clojure.walk :as walk]
             [cook.compute-cluster :as cc]
             [cook.config :as config]
             [cook.datomic :as datomic]
@@ -40,6 +41,7 @@
             [cook.scheduler.fenzo-utils :as fenzo]
             [cook.scheduler.share :as share]
             [cook.task]
+            [cook.task-stats :as task-stats]
             [cook.tools :as tools]
             [cook.util :as util]
             [datomic.api :as d :refer [q]]
@@ -531,66 +533,102 @@
         pool-specific-resources ((adjust-job-resources-for-pool-fn pool-name) job resources)]
     (->TaskRequestAdapter job pool-specific-resources task-id assigned-resources guuid->considerable-cotask-ids constraints-list scalar-requests)))
 
-(defn offers->resource-totals
-  "Given a collection of offers, returns a map from resource type to total amount"
+(defn offers->resource-maps
+  "Given a collection of offers, returns a collection
+   of maps, where each map is resource-type -> amount"
   [offers]
-  (->> offers
-       (map (fn offer->resource-map
-              [{:keys [resources]}]
-              (reduce
-                (fn [resource-map {:keys [name type scalar text->scalar] :as resource}]
-                  (case type
-                    ; Range types (e.g. port ranges) aren't
-                    ; amenable to summing across offers
-                    :value-ranges
-                    resource-map
+  (map (fn offer->resource-map
+         [{:keys [resources]}]
+         (reduce
+           (fn [resource-map {:keys [name type scalar text->scalar] :as resource}]
+             (case type
+               ; Range types (e.g. port ranges) aren't
+               ; amenable to summing across offers
+               :value-ranges
+               resource-map
 
-                    :value-scalar
-                    (assoc resource-map name scalar)
+               :value-scalar
+               (assoc resource-map name scalar)
 
-                    :value-text->scalar
-                    (reduce
-                      (fn [resource-map-inner [text scalar]]
-                        (assoc resource-map-inner
-                          (str name "/" text)
-                          scalar))
-                      resource-map
-                      text->scalar)
+               :value-text->scalar
+               (reduce
+                 (fn [resource-map-inner [text scalar]]
+                   (assoc resource-map-inner
+                     (str name "/" text)
+                     scalar))
+                 resource-map
+                 text->scalar)
 
-                    (do
-                      (log/warn "Encountered unexpected resource type"
-                                {:resource resource :type type})
-                      resource-map)))
-                {}
-                resources)))
-       (reduce (partial merge-with +))))
+               (do
+                 (log/warn "Encountered unexpected resource type"
+                           {:resource resource :type type})
+                 resource-map)))
+           {}
+           resources))
+       offers))
 
-(defn jobs->resource-totals
-  "Given a collection of jobs, returns a map from resource type to total amount"
+(defn jobs->resource-maps
+  "Given a collection of jobs, returns a collection
+   of maps, where each map is resource-type -> amount"
   [jobs]
-  (->> jobs
-       (map (fn job->resource-map
-              [job]
-              (let [{:keys [gpus] :as resource-map}
-                    (-> job tools/job-ent->resources (dissoc :ports))]
-                (if gpus
-                  (let [env (tools/job-ent->env job)
-                        gpu-model (get env "COOK_GPU_MODEL" "unspecified-gpu-model")
-                        gpus-resource-key (keyword "gpus" gpu-model)]
-                    (-> resource-map
-                        (assoc gpus-resource-key gpus)
-                        (dissoc :gpus)))
-                  resource-map))))
-       (reduce (partial merge-with +))))
+  (map (fn job->resource-map
+         [job]
+         (let [{:strs [gpus] :as resource-map}
+               (-> job
+                   tools/job-ent->resources
+                   (dissoc :ports)
+                   walk/stringify-keys)]
+           (if gpus
+             (let [env (tools/job-ent->env job)
+                   gpu-model (get env "COOK_GPU_MODEL" "unspecified-gpu-model")
+                   gpus-resource-key (str "gpus/" gpu-model)]
+               (-> resource-map
+                   (assoc gpus-resource-key gpus)
+                   (dissoc "gpus")))
+             resource-map)))
+       jobs))
 
 (defn format-resource-map
-  "Given a map from resource type to amount,
+  "Given a map with resource amount values,
    formats the amount values for logging"
   [resource-map]
   (pc/map-vals #(if (float? %)
                   (format "%.3f" %)
                   (str %))
                resource-map))
+
+(defn resource-maps->stats
+  "Given a collection of maps, where each map is
+  resource-type -> amount, returns a map of
+  statistics with the following shape:
+
+  {:percentiles {cpus {50 ..., 95 ..., 100 ...}
+                 mem {50 ..., 95 ..., 100 ...}}
+   :totals {mem ..., cpus ..., ...}}"
+  [resource-maps]
+  {:percentiles (pc/map-from-keys
+                  (fn percentiles
+                    [resource]
+                    (let [resource-values (->> resource-maps
+                                               (map #(get % resource))
+                                               (remove nil?))]
+                      (-> resource-values
+                          (task-stats/percentiles 50 95 100)
+                          format-resource-map)))
+                  ["cpus" "mem"])
+   :totals (->> resource-maps
+                (reduce (partial merge-with +))
+                format-resource-map)})
+
+(defn offers->stats
+  "Given a collection of offers, returns stats about the offers"
+  [offers]
+  (-> offers offers->resource-maps resource-maps->stats))
+
+(defn jobs->stats
+  "Given a collection of jobs, returns stats about the jobs"
+  [jobs]
+  (-> jobs jobs->resource-maps resource-maps->stats))
 
 (defn match-offer-to-schedule
   "Given an offer and a schedule, computes all the tasks should be launched as a result.
@@ -989,9 +1027,7 @@
                                          :number-total (count considerable-jobs)
                                          :number-unmatched (- (count considerable-jobs)
                                                               (count matched-job-uuids))
-                                         :resource-type->total (-> considerable-jobs
-                                                                   jobs->resource-totals
-                                                                   format-resource-map)
+                                         :stats (jobs->stats considerable-jobs)
                                          :user->number-matched user->number-matched-considerable-jobs
                                          :user->number-total user->number-total-considerable-jobs
                                          :user->number-unmatched (merge-with
@@ -1001,9 +1037,7 @@
                      :offers {:number-matched (count offers-scheduled)
                               :number-total (count offers)
                               :number-unmatched (- (count offers) (count offers-scheduled))
-                              :resource-type->total (-> offers
-                                                        offers->resource-totals
-                                                        format-resource-map)}})
+                              :stats (offers->stats offers)}})
 
           (fenzo/record-placement-failures! conn failures)
 
