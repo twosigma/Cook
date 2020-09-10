@@ -226,6 +226,43 @@ final public class Job {
         }
 
         /**
+         * Adds a node-type equals constraint to the job.
+         * @param nodeType The name of the node type
+         * @return this builder
+         */
+        public Builder addNodeTypeConstraint(String nodeType) {
+            return addEqualsConstraint("node-type", nodeType);
+        }
+
+        /**
+         * Adds a node-family equals constraint to the job.
+         * @param nodeFamily The name of the node family
+         * @return this builder
+         */
+        public Builder addNodeFamilyConstraint(String nodeFamily) {
+            return addEqualsConstraint("node-family", nodeFamily);
+        }
+
+        /**
+         * Adds a cpu-architecture equals constraint to the job.
+         * @param cpuArchitecture The name of the CPU architecture
+         * @return this builder
+         */
+        public Builder addCpuArchitectureConstraint(String cpuArchitecture) {
+            return addEqualsConstraint("cpu-architecture", cpuArchitecture);
+        }
+
+        /**
+         * Adds an equals constraint to the job.
+         * @param attribute The attribute to check.
+         * @param pattern The pattern to match against.
+         * @return this builder
+         */
+        public Builder addEqualsConstraint(String attribute, String pattern) {
+            return addConstraint(Constraints.buildEqualsConstraint(attribute, pattern));
+        }
+
+        /**
          * Adds a constraint.
          *
          * @param constraint The constraint to add
@@ -257,6 +294,15 @@ final public class Job {
             _uris.clear();
             _uris.addAll(uris);
             return this;
+        }
+
+        /**
+         * Adds the COOK_GPU_MODEL env var, specifying the GPU model requested, to the job.
+         * @param gpuModel The name of the GPU model
+         * @return this builder
+         */
+        public Builder addGpuModelEnv(String gpuModel) {
+            return addEnv("COOK_GPU_MODEL", gpuModel);
         }
 
         /**
