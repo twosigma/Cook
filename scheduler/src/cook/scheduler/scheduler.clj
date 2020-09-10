@@ -568,9 +568,9 @@
        offers))
 
 (defn jobs->resource-maps
-  [jobs]
   "Given a collection of jobs, returns a collection
    of maps, where each map is resource-type -> amount"
+  [jobs]
   (map (fn job->resource-map
          [job]
          (let [{:strs [gpus] :as resource-map}
