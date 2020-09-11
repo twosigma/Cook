@@ -18,6 +18,7 @@ package com.twosigma.cook.jobclient;
 
 import com.twosigma.cook.jobclient.constraint.Constraint;
 import com.twosigma.cook.jobclient.constraint.Constraints;
+import com.twosigma.cook.jobclient.constraint.Operator;
 import com.twosigma.cook.jobclient.Checkpoint.CheckpointOptions;
 import com.twosigma.cook.jobclient.Checkpoint.Mode;
 import com.twosigma.cook.jobclient.Checkpoint.PeriodicCheckpointOptions;
@@ -60,7 +61,7 @@ public class JobTest {
         jobBuilder.setCpus(1.0);
         jobBuilder.setGpus(2);
         jobBuilder.addEnv("FOO", "test");
-        jobBuilder.addEnv("COOK_GPU_MODEL", "nvidia-tesla-p100");
+        jobBuilder.addGpuModelEnv("nvidia-tesla-p100");
         jobBuilder.addLabel("foobar", "frobnicator");
         jobBuilder.setMaxRuntime(1000L);
         jobBuilder.disableMeaCulpaRetries();
@@ -72,6 +73,9 @@ public class JobTest {
         jobBuilder.setExpectedRuntime(500L);
         jobBuilder.addConstraint(_constraint1);
         jobBuilder.addConstraint(Collections.singletonList(_constraint2));
+        jobBuilder.addNodeTypeConstraint("c2-standard-16");
+        jobBuilder.addNodeFamilyConstraint("c2");
+        jobBuilder.addCpuArchitectureConstraint("intel-cascade-lake");
     }
 
     private JSONObject convertJobToJsonObject(Job basicJob) {
@@ -102,9 +106,18 @@ public class JobTest {
         Assert.assertEquals(500L, jsonJob.getLong("expected_runtime"));
         Assert.assertEquals(true, jsonJob.getBoolean("disable_mea_culpa_retries"));
         JSONArray constraints = jsonJob.getJSONArray("constraints");
-        Assert.assertEquals(constraints.length(), 2);
-        Assert.assertEquals(constraints.getJSONArray(0).toString(), _constraint1.toJson().toString());
-        Assert.assertEquals(constraints.getJSONArray(1).toString(), _constraint2.toJson().toString());
+        Assert.assertEquals(constraints.length(), 5);
+        Assert.assertEquals(_constraint1.toJson().toString(), constraints.getJSONArray(0).toString());
+        Assert.assertEquals(_constraint2.toJson().toString(), constraints.getJSONArray(1).toString());
+        Assert.assertEquals(
+                new JSONArray(new String[]{"node-type", "EQUALS", "c2-standard-16"}).toString(),
+                constraints.getJSONArray(2).toString());
+        Assert.assertEquals(
+                new JSONArray(new String[]{"node-family", "EQUALS", "c2"}).toString(),
+                constraints.getJSONArray(3).toString());
+        Assert.assertEquals(
+                new JSONArray(new String[]{"cpu-architecture", "EQUALS", "intel-cascade-lake"}).toString(),
+                constraints.getJSONArray(4).toString());
         Assert.assertEquals(
                 jsonJob.getJSONObject("env").toString(),
                 new JSONObject().put("COOK_GPU_MODEL", "nvidia-tesla-p100").put("FOO", "test").toString());
@@ -138,12 +151,19 @@ public class JobTest {
         Assert.assertEquals("test", job.getEnv().get("FOO"));
 
         final Set<Constraint> constraints = job.getConstraints();
-        Assert.assertEquals(constraints.size(), 2);
+        Assert.assertEquals(constraints.size(), 5);
         Iterator<Constraint> iter = constraints.iterator();
+        Assert.assertEquals(_constraint1, iter.next());
+        Assert.assertEquals(_constraint2, iter.next());
         Constraint constraint = iter.next();
-        Assert.assertEquals(constraint, _constraint1);
+        Assert.assertEquals("node-type", constraint.getAttribute());
+        Assert.assertEquals(Operator.EQUALS, constraint.getOperator());
         constraint = iter.next();
-        Assert.assertEquals(constraint, _constraint2);
+        Assert.assertEquals("node-family", constraint.getAttribute());
+        Assert.assertEquals(Operator.EQUALS, constraint.getOperator());
+        constraint = iter.next();
+        Assert.assertEquals("cpu-architecture", constraint.getAttribute());
+        Assert.assertEquals(Operator.EQUALS, constraint.getOperator());
     }
 
     @Test
