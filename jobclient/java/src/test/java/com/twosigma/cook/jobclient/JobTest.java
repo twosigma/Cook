@@ -298,4 +298,20 @@ public class JobTest {
 
         Assert.assertEquals(datasets.toString(), actualJob.getDatasets().toString());
     }
+
+    @Test
+    public void testParseFromJsonNoGpus() {
+        final String jsonString = "[{" +
+                "\"uuid\": \"" + UUID.randomUUID() + "\", " +
+                "\"mem\": 1, " +
+                "\"cpus\": 0.1, " +
+                "\"command\": \"\", " +
+                "\"priority\": 1, " +
+                "\"status\": \"waiting\", " +
+                "\"max_retries\": 1, " +
+                "\"max_runtime\": 1, " +
+                "\"instances\": []" +
+                "}]";
+        Job.parseFromJSON(jsonString, null);
+    }
 }

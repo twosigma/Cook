@@ -1143,7 +1143,9 @@ final public class Job {
             jobBuilder.setUUID(UUID.fromString(json.getString("uuid")));
             jobBuilder.setMemory(json.getDouble("mem"));
             jobBuilder.setCpus(json.getDouble("cpus"));
-            jobBuilder.setGpus(json.getInt("gpus"));
+            if (json.has("gpus")) {
+                jobBuilder.setGpus(json.getInt("gpus"));
+            }
             jobBuilder.setCommand(json.getString("command"));
             if (json.has("executor")) {
                 jobBuilder.setExecutor(json.getString("executor"));
