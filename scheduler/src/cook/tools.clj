@@ -911,6 +911,7 @@
   "Given a list of dictionaries [{:<regexp-name> <regexp> :<field-name> <field>} {:<regexp-name> <regexp> :<field-name> <field>} ...], match-list,
    a key <field-name> and <regexp-name> name, return the first matching <field> where the <regexp> matches the key."
   [regexp-name field-name match-list key]
+  (try
   (-> match-list
       (->> (filter (fn [map]
                      (let [regexp (get map regexp-name)
@@ -918,12 +919,20 @@
                        (re-find pattern key)))))
       first
       (get field-name)))
+    (catch Exception e
+      (throw (ex-info "Failed matching key" {:regexp-name regexp-name :field-name field-name :match-list match-list :key key} e)))))
 
 (defn match-based-on-pool-name
   "Given a list of dictionaries [{:pool-regexp .. :field ...} {:pool-regexp .. :field ...}
    a pool name and a <field> name, return the first matching <field> where the regexp matches the pool name."
   [match-list effective-pool-name field]
   (match-based-on-regexp :pool-regex field match-list effective-pool-name))
+
+(defn match-based-on-cc-name
+  "Given a list of dictionaries [{:compute-cluster-regex .. :field ...} {:pool-regexp .. :field ...}
+   a cluster name and a <field> name, return the first matching <field> where the regexp matches the pool name."
+  [match-list effective-pool-name field]
+  (match-based-on-regexp :compute-cluster-regex field match-list effective-pool-name))
 
 (defn global-pool-quota
   "Given a pool name, determine the quota for that pool."

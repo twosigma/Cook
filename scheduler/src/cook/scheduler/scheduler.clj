@@ -818,8 +818,10 @@
       matches
       (fn process-task-post-launch!
         [{:keys [hostname task-request]}]
-        (let [user (get-in task-request [:job :job/user])]
-          (ratelimit/spend! ratelimit/job-launch-rate-limiter user 1))
+        (let [user (get-in task-request [:job :job/user])
+              compute-cluster-name (cc/compute-cluster-name compute-cluster)]
+          (ratelimit/spend! ratelimit/job-launch-rate-limiter user 1)
+          (ratelimit/spend! ratelimit/global-job-launch-rate-limiter compute-cluster-name 1))
         (locking fenzo
           (.. fenzo
               (getTaskAssigner)
@@ -853,7 +855,6 @@
                         matches)
               (throw e))))
 
-        (ratelimit/spend! ratelimit/global-job-launch-rate-limiter ratelimit/global-job-launch-rate-limiter-key (count task-txns))
         (let [offers-matched (->> matches
                                   (mapcat :leases)
                                   (map :offer))
@@ -885,14 +886,23 @@
           (->> (group-by match->compute-cluster matches)
                (map
                  (fn [[compute-cluster matches-in-compute-cluster]]
-                   (let [launch-matches-in-compute-cluster!
+                   (let [compute-cluster-name (cc/compute-cluster-name compute-cluster)
+                         _ (log/info "Doing launch-matched-tasks for" compute-cluster-name "compute cluster.")
+                         enforce? (ratelimit/enforce? ratelimit/global-job-launch-rate-limiter)
+                         token-count (ratelimit/get-token-count! ratelimit/global-job-launch-rate-limiter compute-cluster-name)
+                         resume-millis (ratelimit/time-until-out-of-debt-millis! ratelimit/global-job-launch-rate-limiter compute-cluster-name)
+                         skipping-cycle? (and enforce? (neg? token-count))
+                         launch-matches-in-compute-cluster!
                          #(launch-matches! compute-cluster pool-name
                                            matches-in-compute-cluster fenzo)]
-                     (doseq [match matches-in-compute-cluster]
-                       (timers/stop (-> match :leases first :offer :offer-match-timer)))
-                     (if (:mesos-config compute-cluster)
-                       (launch-matches-in-compute-cluster!)
-                       (future (launch-matches-in-compute-cluster!))))))
+                     (if skipping-cycle?
+                       (log/warn "Skipping matching matching cycle for" compute-cluster-name "compute cluster because we're in debt by" token-count ". Launches will resume in" resume-millis".")
+                       (do
+                         (doseq [match matches-in-compute-cluster]
+                           (timers/stop (-> match :leases first :offer :offer-match-timer)))
+                         (if (:mesos-config compute-cluster)
+                           (launch-matches-in-compute-cluster!)
+                           (future (launch-matches-in-compute-cluster!))))))))
                doall
                (run! #(when (future? %) (deref %)))))))))
 

@@ -305,10 +305,17 @@
 
 (def job-launch-rate-limit-config-for-testing
   "A basic config, designed to be big enough that everything passes, but enforcing."
-  {:settings {:rate-limit {:expire-minutes 180
-                           :job-launch {:bucket-size 500
+  {:settings
+   {:rate-limit {:expire-minutes 180
+                 :job-launch {:bucket-size 500
+                              :enforce? true
+                              :tokens-replenished-per-minute 100}}
+    :compute-cluster-launch-rate-limit {:expire-minutes 100
                                         :enforce? true
-                                        :tokens-replenished-per-minute 100}}}})
+                                        :matches [{:compute-cluster-regex "^.*$"
+                                                   :tbf-config {
+                                                                :bucket-size 1
+                                                                :tokens-replenished-per-minute 0.01}}]}}})
 
 (doseq [[t i] (mapv vector cook.schema/work-item-schema (range))]
   (deref (d/transact c (conj t
@@ -1582,6 +1589,7 @@
                         (num-tasks-on-host [_ _] nil)
                         (db-id [_] cluster-entity-id)
                         (compute-cluster-name [_] compute-cluster-name)
+                        (restore-offers [_ _ _] nil)
                         (launch-tasks [this _ matches process-task-post-launch-fn]
                           (doseq [{:keys [leases tasks]} matches]
                             (let [task-metadata-seq (->> tasks
@@ -1736,18 +1744,38 @@
             (is (= 1 (count @launched-job-names-atom)))
             (is (= #{"job-1"} (set @launched-job-names-atom))))))
 
-      (with-redefs [rate-limit/job-launch-rate-limiter
-                    (rate-limit/create-job-launch-rate-limiter job-launch-rate-limit-config-for-testing)
-                    rate-limit/get-token-count! (constantly 1)]
-        (testing "enough offers for all normal jobs, limited by num-considerable of 2, but only one token in global rate limit for one job"
-          ;; We filter so that fenzo only matches one job, so we should only launch the one job.
-          (let [num-considerable 2
+      (with-redefs [rate-limit/job-launch-rate-limiter rate-limit/AllowAllRateLimiter
+                    rate-limit/global-job-launch-rate-limiter
+                    (rate-limit/create-global-job-launch-rate-limiter job-launch-rate-limit-config-for-testing)
+                    rate-limit/get-token-count! (fn [rate-limiter key]
+                                                  (cond
+                                                    (= rate-limiter rate-limit/AllowAllRateLimiter) 1000
+                                                    :else
+                                                    (do (is (= key compute-cluster-name)) 1)))]
+        (testing "enough offers for all normal jobs but not global rate limited."
+          (let [num-considerable 10
                 offers [offer-1 offer-2 offer-3]]
             (is (run-handle-resource-offers! num-considerable offers "test-pool"))
             (is (= :end-marker (async/<!! offers-chan)))
-            (is (= 1 (count @launched-offer-ids-atom)))
-            (is (= 1 (count @launched-job-names-atom)))
-            (is (= #{"job-1"} (set @launched-job-names-atom))))))
+            (is (= 3 (count @launched-offer-ids-atom)))
+            (is (= 4 (count @launched-job-names-atom)))
+            (is (= #{"job-1" "job-2" "job-3" "job-4"} (set @launched-job-names-atom))))))
+
+      (with-redefs [rate-limit/job-launch-rate-limiter rate-limit/AllowAllRateLimiter
+                    rate-limit/global-job-launch-rate-limiter
+                    (rate-limit/create-global-job-launch-rate-limiter job-launch-rate-limit-config-for-testing)
+                    rate-limit/get-token-count! (fn [rate-limiter key]
+                                                  (cond
+                                                    (= rate-limiter rate-limit/AllowAllRateLimiter) 1000
+                                                    :else
+                                                    (do (is (= key compute-cluster-name)) -1)))]
+        (testing "enough offers for all normal jobs, but global rate limited."
+          (let [num-considerable 10
+                offers [offer-1 offer-2 offer-3]]
+            (is (run-handle-resource-offers! num-considerable offers "test-pool"))
+            (is (= :end-marker (async/<!! offers-chan)))
+            (is (= 0 (count @launched-offer-ids-atom)))
+            (is (= 0 (count @launched-job-names-atom))))))
 
       (let [total-spent (atom 0)]
         (with-redefs [rate-limit/spend! (fn [_ _ tokens] (reset! total-spent (-> @total-spent (+ tokens))))]

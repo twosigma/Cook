@@ -16,6 +16,8 @@
 (ns cook.rate-limit
   (:require [cook.config :refer [config]]
             [cook.rate-limit.generic :as rtg]
+            [cook.compute-cluster :as cc]
+            [cook.tools :as tools]
             [mount.core :as mount]))
 
 ; Import from cook.rate-limit.generic some relevant functions.
@@ -24,6 +26,17 @@
 (def get-token-count! rtg/get-token-count!)
 (def enforce? rtg/enforce?)
 (def AllowAllRateLimiter rtg/AllowAllRateLimiter)
+
+(defn initialize-rate-limit-based-on-key
+  "Method to help tocken-bucket-filter pick a default rate limit based a regexp match through a series of patterns.
+
+  Given a match-list of [{:<field> <regexp> :tbf-config {:tokens-replenished-per-minute ...}}] and a key, return a
+  token bucket filter"
+  [regexp-name {match-list :matches}]
+  (fn [key]
+    (if-let [tbf-config-dict (tools/match-based-on-regexp regexp-name :tbf-config match-list key)]
+      (rtg/config->tbf tbf-config-dict)
+      (throw (ex-info "Unable to match in matchlist." {:key key :match-list match-list})))))
 
 (defn create-job-submission-rate-limiter
   "From the configuration map, extract the keys that setup the job-submission rate limiter and return
@@ -57,14 +70,12 @@
   "From the configuration map, extract the keys that setup the job-launch rate limiter and return
   the constructed object. If the configuration map is not found, the AllowAllRateLimiter is returned."
   [config]
-  (let [{:keys [settings]} config
-        {:keys [rate-limit]} settings
-        {:keys [expire-minutes global-job-launch]} rate-limit]
-    (if (seq global-job-launch)
-      (rtg/make-tbf-rate-limiter (assoc global-job-launch :expire-minutes expire-minutes))
+  (let [ratelimit-config (some-> config :settings :compute-cluster-launch-rate-limit)]
+    (if (seq ratelimit-config)
+      (rtg/make-generic-token-bucket-filter
+        ratelimit-config
+        (initialize-rate-limit-based-on-key :compute-cluster-regex ratelimit-config))
       AllowAllRateLimiter)))
 
 (mount/defstate global-job-launch-rate-limiter
   :start (create-global-job-launch-rate-limiter config))
-
-(def global-job-launch-rate-limiter-key "*DEF*")

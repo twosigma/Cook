@@ -73,6 +73,23 @@
                                :enforce? true
                                :tokens-replenished-per-minute 600}
               :user-limit-per-m 1000000}
+ :compute-cluster-launch-rate-limit {:expire-minutes 1200
+                                     :enforce true
+                                     :matches
+                                     [{:compute-cluster-regex "^k8s-.*$"
+                                       :tbf-config {
+                                                    :bucket-size 10000
+                                                    :tokens-replenished-per-minute 5000
+                                                    }}
+                                      {:compute-cluster-regex "^secure-.*$"
+                                       :tbf-config {
+                                                    :bucket-size 10000
+                                                    :tokens-replenished-per-minute 5000
+                                                    }}
+                                      {:compute-cluster-regex "^secure-.*$"
+                                       :tbf-config {
+                                                    :bucket-size 10000
+                                                    :tokens-replenished-per-minute 5000}}]}
  :rebalancer {:dru-scale 1
               :interval-seconds 30
               :max-preemption 500.0
