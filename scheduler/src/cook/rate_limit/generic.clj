@@ -40,7 +40,7 @@
   (or key "*NULL_TBF_KEY*"))
 
 (defn ->tbf
-  "Given a tocken bucket parameters and size, create an empty tbf that has the target parameters"
+  "Given a tocken bucket parameters and size, create an empty tbf that has the target parameters."
   [tokens-replenished-per-minute bucket-size]
   (tbf/create-tbf (/ tokens-replenished-per-minute 60000.)
                   bucket-size
