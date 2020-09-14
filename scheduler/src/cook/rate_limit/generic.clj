@@ -47,18 +47,12 @@
                   (current-time-in-millis)
                   bucket-size))
 
-(defn config->tbf
+(defn config->token-bucket-filter
   "Given a configuration dictionary with a token bucket paremters, create an empty tbf that has those parameters."
   [{:keys [tokens-replenished-per-minute bucket-size]}]
   (->tbf tokens-replenished-per-minute bucket-size))
 
-(defn make-tbf-fn-ignore-key
-  "Return a function from a key to a token bucket filter. Ignores the key key, creating the same config for all tbf's."
-  [config]
-  (fn [key]
-    (config->tbf config)))
-
-(defn fn->CacheLoader
+(defn make-tbf-fn->CacheLoader
   "Given a function from a single argument, make it a CacheLoader"
   [make-tbf-fn]
   (proxy [CacheLoader] []
@@ -109,7 +103,9 @@
     [_]
     enforce?))
 
-(defn ^RateLimiter make-generic-token-bucket-filter
+(defn ^RateLimiter make-generic-tbf-rate-limiter
+  "Make a token bucket filter based rate limiter where make-tbf-fn is used to configure the default rate limit for a particular
+  key, instead of having a global configuration for each key."
   [{:keys [expire-minutes enforce?] :as config} make-tbf-fn]
   {:pre [(> expire-minutes 0)
          (or (true? enforce?) (false? enforce?))]}
@@ -117,10 +113,11 @@
   (->TokenBucketFilterRateLimiter config
                                   (-> (CacheBuilder/newBuilder)
                                       (.expireAfterAccess expire-minutes (TimeUnit/MINUTES))
-                                      (.build (fn->CacheLoader make-tbf-fn)))
+                                      (.build (make-tbf-fn->CacheLoader make-tbf-fn)))
                                   enforce?))
 
-(defn ^RateLimiter make-token-bucket-filter
+(defn ^RateLimiter make-tbf-rate-limiter
+  "Make a token bucket filter rate limiter where all keys have the same rate limit, as given in the config."
   [{:keys [bucket-size tokens-replenished-per-minute expire-minutes enforce?] :as config}]
   {:pre [(> bucket-size 0)
          (> tokens-replenished-per-minute 0.0)
@@ -130,7 +127,7 @@
          ; bucket-size/tokens-replenished-per-minute. Otherwise, we might expire non-full buckets and a user could get
          ; extra tokens via expiration. (New token-bucket-filter's are born with a full bucket).
          (> expire-minutes (/ bucket-size tokens-replenished-per-minute))]}
-    (make-generic-token-bucket-filter config (make-tbf-fn-ignore-key config)))
+    (make-generic-tbf-rate-limiter config (fn [_] (config->token-bucket-filter config))))
 
 
 (def AllowAllRateLimiter

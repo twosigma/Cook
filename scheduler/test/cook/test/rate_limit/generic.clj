@@ -18,19 +18,19 @@
             [cook.rate-limit.generic :as rtg]))
 
 (deftest independent-keys-1
-  (let [ratelimit (rtg/make-token-bucket-filter {:bucket-size 60000
-                                                 :tokens-replenished-per-minute 60
-                                                 :expire-minutes 10000
-                                                 :enforce? true})]
+  (let [ratelimit (rtg/make-tbf-rate-limiter {:bucket-size 60000
+                                              :tokens-replenished-per-minute 60
+                                              :expire-minutes 10000
+                                              :enforce? true})]
     (rtg/time-until-out-of-debt-millis! ratelimit "Foo2")
     (rtg/spend! ratelimit "Foo4" 100)
     (is (= 2 (.size (.asMap (:cache ratelimit)))))))
 
 (deftest independent-keys-2
-  (let [ratelimit (rtg/make-token-bucket-filter {:bucket-size 60000
-                                                 :tokens-replenished-per-minute 60
-                                                 :expire-minutes 10000
-                                                 :enforce? true})]
+  (let [ratelimit (rtg/make-tbf-rate-limiter {:bucket-size 60000
+                                              :tokens-replenished-per-minute 60
+                                              :expire-minutes 10000
+                                              :enforce? true})]
     (rtg/earn-tokens! ratelimit "Foo4")
     (rtg/earn-tokens! ratelimit "Foo1")
     (rtg/time-until-out-of-debt-millis! ratelimit "Foo1")
@@ -40,10 +40,10 @@
     (is (= 4 (.size (.asMap (:cache ratelimit)))))))
 
 (deftest earning-tokens-explicit
-  (let [ratelimit (rtg/make-token-bucket-filter {:bucket-size 20
-                                                 :tokens-replenished-per-minute 60000
-                                                 :expire-minutes 10
-                                                 :enforce? true})]
+  (let [ratelimit (rtg/make-tbf-rate-limiter {:bucket-size 20
+                                              :tokens-replenished-per-minute 60000
+                                              :expire-minutes 10
+                                              :enforce? true})]
     ;; take away the full bucket it starts with... (20 tokens)
     (with-redefs [rtg/current-time-in-millis (fn [] 1000000)]
       (rtg/spend! ratelimit "Foo1" 20)
@@ -136,7 +136,7 @@
                         "Bar3" (rtg/->tbf 60000 300)
                         "Bar4" (rtg/->tbf 60000 400)
                         (print "Mismatch key " key)))
-        ratelimit (rtg/make-generic-token-bucket-filter config make-tbf-fn)]
+        ratelimit (rtg/make-generic-tbf-rate-limiter config make-tbf-fn)]
     (with-redefs [rtg/current-time-in-millis (fn [] 1000000)]
       (rtg/spend! ratelimit "Bar1" 40)
       (rtg/spend! ratelimit "Bar2" 30)
