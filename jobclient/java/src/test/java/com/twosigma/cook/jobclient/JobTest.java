@@ -312,6 +312,8 @@ public class JobTest {
                 "\"max_runtime\": 1, " +
                 "\"instances\": []" +
                 "}]";
-        Job.parseFromJSON(jsonString, null);
+        final List<Job> jobs = Job.parseFromJSON(jsonString, null);
+        final Job actualJob = jobs.get(0);
+        Assert.assertEquals(0, (long) actualJob.getGpus());
     }
 }
