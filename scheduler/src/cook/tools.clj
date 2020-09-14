@@ -908,7 +908,7 @@
       gpus (assoc :gpus gpus))))
 
 (defn match-based-on-regexp
-  "Given a list of dictionaries [{:<regexp-name> regexp :<field-name> ...} {:<regexp-name> .. :<field-name> ...}
+  "Given a list of dictionaries [{:<regexp-name> <regexp> :<field-name> <field>} {:<regexp-name> <regexp> :<field-name> <field>} ...], match-list,
    a key <field-name> and <regexp-name> name, return the first matching <field> where the <regexp> matches the key."
   [regexp-name field-name match-list key]
   (->> match-list
