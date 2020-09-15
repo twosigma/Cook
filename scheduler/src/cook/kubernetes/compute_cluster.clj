@@ -91,7 +91,6 @@
     (log/info "In" compute-cluster-name "compute cluster, generating offers"
               {:first-10-capacity (take 10 node-name->capacity)
                :first-10-consumed (take 10 node-name->consumed)
-               :first-10-node-names (->> node-name->node keys (take 10))
                :number-nodes-not-schedulable (- number-nodes-total number-nodes-schedulable)
                :number-nodes-schedulable number-nodes-schedulable
                :number-nodes-total number-nodes-total})
