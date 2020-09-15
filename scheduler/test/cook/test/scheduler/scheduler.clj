@@ -2214,51 +2214,6 @@
                                             (repeat 40 "x")
                                             100)))
 
-(deftest test-offers->resource-maps
-  (testing "adds up resources by type"
-    (is (= [{"cpus" 1.2
-             "mem" 34
-             "gpus/nvidia-tesla-k80" 2
-             "gpus/nvidia-tesla-p100" 4}
-            {"cpus" 2.3
-             "mem" 45
-             "gpus/nvidia-tesla-k80" 4
-             "gpus/nvidia-tesla-p100" 8}]
-           (sched/offers->resource-maps
-             [{:resources [{:name "cpus" :type :value-scalar :scalar 1.2}
-                           {:name "mem" :type :value-scalar :scalar 34}
-                           {:name "gpus"
-                            :type :value-text->scalar
-                            :text->scalar {"nvidia-tesla-k80" 2 "nvidia-tesla-p100" 4}}]}
-              {:resources [{:name "cpus" :type :value-scalar :scalar 2.3}
-                           {:name "mem" :type :value-scalar :scalar 45}
-                           {:name "gpus"
-                            :type :value-text->scalar
-                            :text->scalar {"nvidia-tesla-k80" 4 "nvidia-tesla-p100" 8}}]}]))))
-
-  (testing "gracefully handles unexpected resource type"
-    (is (= [{"cpus" 1.2
-             "mem" 34
-             "gpus/nvidia-tesla-k80" 2
-             "gpus/nvidia-tesla-p100" 4}
-            {}
-            {"cpus" 2.3
-             "mem" 45
-             "gpus/nvidia-tesla-k80" 4
-             "gpus/nvidia-tesla-p100" 8}]
-           (sched/offers->resource-maps
-             [{:resources [{:name "cpus" :type :value-scalar :scalar 1.2}
-                           {:name "mem" :type :value-scalar :scalar 34}
-                           {:name "gpus"
-                            :type :value-text->scalar
-                            :text->scalar {"nvidia-tesla-k80" 2 "nvidia-tesla-p100" 4}}]}
-              {:resources [{:name "bogus-name" :type :bogus-type}]}
-              {:resources [{:name "cpus" :type :value-scalar :scalar 2.3}
-                           {:name "mem" :type :value-scalar :scalar 45}
-                           {:name "gpus"
-                            :type :value-text->scalar
-                            :text->scalar {"nvidia-tesla-k80" 4 "nvidia-tesla-p100" 8}}]}])))))
-
 (deftest test-job->resource-maps
   (testing "adds up resources by type"
     (is (= [{"cpus" 1.2

@@ -1031,3 +1031,46 @@
       (let [prev-k1 (k1-extract-fn prev-item)
             prev-k2 (k2-extract-fn prev-item)]
         (swap! state-atom (fn [m] (dissoc-in m [prev-k1 prev-k2])))))))
+
+(defn offers->resource-maps
+  "Given a collection of offers, returns a collection
+   of maps, where each map is resource-type -> amount"
+  [offers]
+  (map (fn offer->resource-map
+         [{:keys [resources]}]
+         (reduce
+           (fn [resource-map {:keys [name type scalar text->scalar] :as resource}]
+             (case type
+               ; Range types (e.g. port ranges) aren't
+               ; amenable to summing across offers
+               :value-ranges
+               resource-map
+
+               :value-scalar
+               (assoc resource-map name scalar)
+
+               :value-text->scalar
+               (reduce
+                 (fn [resource-map-inner [text scalar]]
+                   (assoc resource-map-inner
+                     (str name "/" text)
+                     scalar))
+                 resource-map
+                 text->scalar)
+
+               (do
+                 (log/warn "Encountered unexpected resource type"
+                           {:resource resource :type type})
+                 resource-map)))
+           {}
+           resources))
+       offers))
+
+(defn format-resource-map
+  "Given a map with resource amount values,
+   formats the amount values for logging"
+  [resource-map]
+  (pc/map-vals #(if (float? %)
+                  (format "%.3f" %)
+                  (str %))
+               resource-map))
