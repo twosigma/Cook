@@ -78,16 +78,23 @@
         gpu-models (->> node-name->capacity vals (map :gpus) (apply merge) keys set)
         ; The following variables are only being used setting counters for monitor
         gpu-model->total-capacity (total-gpu-resource node-name->capacity)
-        gpu-model->total-consumed (total-gpu-resource node-name->consumed)]
+        gpu-model->total-consumed (total-gpu-resource node-name->consumed)
+        node-name->schedulable (filter #(schedulable-node-filter
+                                          node-name->node
+                                          node-name->pods
+                                          compute-cluster
+                                          %)
+                                       node-name->available)
+        number-nodes-schedulable (count node-name->schedulable)
+        number-nodes-total (count node-name->node)]
 
-    (log/info "In" compute-cluster-name "compute cluster, all node names:" (keys node-name->node))
-    (log/info "In" compute-cluster-name "compute cluster, capacity:" node-name->capacity)
-    (log/info "In" compute-cluster-name "compute cluster, consumption:" node-name->consumed)
-    (log/info "In" compute-cluster-name "compute cluster, filtering out"
-              (->> node-name->available
-                   (remove #(schedulable-node-filter node-name->node node-name->pods compute-cluster %))
-                   count)
-              "nodes as not schedulable")
+    (log/info "In" compute-cluster-name "compute cluster, generating offers"
+              {:first-10-capacity (take 10 node-name->capacity)
+               :first-10-consumed (take 10 node-name->consumed)
+               :first-10-node-names (->> node-name->node keys (take 10))
+               :number-nodes-not-schedulable (- number-nodes-total number-nodes-schedulable)
+               :number-nodes-schedulable number-nodes-schedulable
+               :number-nodes-total number-nodes-total})
 
     (monitor/set-counter! (metrics/counter "capacity-cpus" compute-cluster-name)
                           (total-resource node-name->capacity :cpus))
@@ -105,8 +112,7 @@
                             (get gpu-model->total-consumed gpu-model 0)))
 
 
-    (->> node-name->available
-         (filter #(schedulable-node-filter node-name->node node-name->pods compute-cluster %))
+    (->> node-name->schedulable
          (map (fn [[node-name available]]
                 (let [node-label-attributes
                       ; Convert all node labels to offer
@@ -391,13 +397,17 @@
                                                       (->> (get-pods-in-pool this pool-name)
                                                            (add-starting-pods this)
                                                            (api/pods->node-name->pods)))
-                    offers-this-pool-for-logging (into #{}
-                                                       (map #(into {} (select-keys % [:hostname :resources]))
-                                                            offers-this-pool))]
-                (log/info "In" name "compute cluster, generated" (count offers-this-pool) "offers for pool" pool-name
-                          {:num-total-nodes-in-compute-cluster (count nodes)
-                           :num-total-pods-in-compute-cluster (count pods)
-                           :offers-this-pool offers-this-pool-for-logging})
+                    offers-this-pool-for-logging
+                    (->> offers-this-pool
+                         (take 10)
+                         tools/offers->resource-maps
+                         (map tools/format-resource-map))]
+                (log/info "In" name "compute cluster, generated offers for pool"
+                          {:first-10-offers-this-pool offers-this-pool-for-logging
+                           :number-offers-this-pool (count offers-this-pool)
+                           :number-total-nodes-in-compute-cluster (count nodes)
+                           :number-total-pods-in-compute-cluster (count pods)
+                           :pool-name pool-name})
                 (timers/stop timer)
                 offers-this-pool)))))))
 

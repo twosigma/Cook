@@ -533,40 +533,6 @@
         pool-specific-resources ((adjust-job-resources-for-pool-fn pool-name) job resources)]
     (->TaskRequestAdapter job pool-specific-resources task-id assigned-resources guuid->considerable-cotask-ids constraints-list scalar-requests)))
 
-(defn offers->resource-maps
-  "Given a collection of offers, returns a collection
-   of maps, where each map is resource-type -> amount"
-  [offers]
-  (map (fn offer->resource-map
-         [{:keys [resources]}]
-         (reduce
-           (fn [resource-map {:keys [name type scalar text->scalar] :as resource}]
-             (case type
-               ; Range types (e.g. port ranges) aren't
-               ; amenable to summing across offers
-               :value-ranges
-               resource-map
-
-               :value-scalar
-               (assoc resource-map name scalar)
-
-               :value-text->scalar
-               (reduce
-                 (fn [resource-map-inner [text scalar]]
-                   (assoc resource-map-inner
-                     (str name "/" text)
-                     scalar))
-                 resource-map
-                 text->scalar)
-
-               (do
-                 (log/warn "Encountered unexpected resource type"
-                           {:resource resource :type type})
-                 resource-map)))
-           {}
-           resources))
-       offers))
-
 (defn jobs->resource-maps
   "Given a collection of jobs, returns a collection
    of maps, where each map is resource-type -> amount"
@@ -623,7 +589,7 @@
 (defn offers->stats
   "Given a collection of offers, returns stats about the offers"
   [offers]
-  (-> offers offers->resource-maps resource-maps->stats))
+  (-> offers tools/offers->resource-maps resource-maps->stats))
 
 (defn jobs->stats
   "Given a collection of jobs, returns stats about the jobs"
