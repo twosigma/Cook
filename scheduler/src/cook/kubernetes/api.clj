@@ -175,13 +175,13 @@
          (partial cook-pod-callback-wrap cook-pod-callback compute-cluster-name)] ; Invoke the cook-pod-callback if its a cook pod.
         old-all-pods @all-pods-atom]
     (log/info "In" compute-cluster-name "compute cluster, pod watch processing pods"
-              {:first-10-pod-names (->> namespaced-pod-name->pod keys (take 10))
-               :number-pods (count namespaced-pod-name->pod)})
+              {:number-pods (count namespaced-pod-name->pod)
+               :pod-names (->> namespaced-pod-name->pod keys (str/join "\n"))})
     ; We want to process all changes through the callback process.
     ; So compute the delta between the old and new and process those via the callbacks.
     ; Note as a side effect, the callbacks mutate all-pods-atom
     (doseq [task (set/union (set (keys namespaced-pod-name->pod)) (set (keys old-all-pods)))]
-      (log/debug "In" compute-cluster-name "compute cluster, pod watch doing (startup) callback for" task)
+      (log/info "In" compute-cluster-name "compute cluster, pod watch doing (startup) callback for" task)
       (doseq [callback callbacks]
         (try
           (callback task (get old-all-pods task) (get namespaced-pod-name->pod task))
@@ -262,7 +262,9 @@
         [(util/make-atom-updater current-nodes-atom) ; Update the set of all pods.
          (util/make-nested-atom-updater pool->node-name->node get-node-pool node->node-name)]
          old-current-nodes @current-nodes-atom]
-    (log/info "In" compute-cluster-name "compute cluster, node watch processing nodes:" (keys @current-nodes-atom))
+    (log/info "In" compute-cluster-name "compute cluster, node watch processing nodes"
+              {:number-nodes (count current-nodes)
+               :node-names (->> current-nodes keys (str/join "\n"))})
     ; We want to process all changes through the callback process.
     ; So compute the delta between the old and new and process those via the callbacks.
     ; Note as a side effect, the callbacks mutate current-nodes-atom
