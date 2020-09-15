@@ -960,6 +960,7 @@ class MultiUserCookTest(util.CookTest):
     # getting 'Unauthorized' response instead of json data internally
     @pytest.mark.xfail
     def test_compute_cluster_api_create_invalid(self):
+        pytest.skip('The compute-cluster endpoint tests need to be updated to not log errors')
         template_name = str(uuid.uuid4())
         cluster = {"base-path": "test-base-path",
                    "ca-cert": "test-ca-cert",
@@ -978,6 +979,7 @@ class MultiUserCookTest(util.CookTest):
     # getting 'Unauthorized' response instead of json data internally
     @pytest.mark.xfail
     def test_compute_cluster_api_create_duplicate(self):
+        pytest.skip('The compute-cluster endpoint tests need to be updated to not log errors')
         templates = util.settings(self.cook_url)['compute-cluster-options']['compute-cluster-templates']
         if len(templates) == 0:
             self.skipTest('Requires at least one compute cluster template')
@@ -1003,6 +1005,7 @@ class MultiUserCookTest(util.CookTest):
                 util.delete_compute_cluster(self.cook_url, cluster)
 
     def test_compute_cluster_api_delete_invalid(self):
+        pytest.skip('The compute-cluster endpoint tests need to be updated to not log errors')
         cluster_name = str(uuid.uuid4())
         admin = self.user_factory.admin()
         with admin:
