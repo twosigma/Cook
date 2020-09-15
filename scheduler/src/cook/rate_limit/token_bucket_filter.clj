@@ -21,8 +21,8 @@
 
   This token bucket filter is a bit unusual, instead of earning tokens that you can later spend, we allow the current
   tokens to be negative. Thus, you can (in one request) spend an unbounded number of tokens. However, you will be
-  in debt until your token balance is at least 0. This design allows the tokens in a single request to exceed the max-tokens
-  in the tbf. (If we didn't do it this way, max-tokens is an implicit maximum limit on request size.) This way
+  in debt until your token balance is at least 0. This design allows the tokens in a single request to exceed the bucket-size
+  in the tbf. (If we didn't do it this way, bucket-size is an implicit maximum limit on request size.) This way
   we can independently pick the burst size in the tbf and the maximum request size.
 
   This library does not handle blocking or other operations. Typical workflows are to:
@@ -37,23 +37,23 @@
   If you want to delay requests instead of rejecting. Take the tokens the request needs, pause for the returned pause time.
   (E.g., schedule the message to be sent at that particular pause time.
   "
-  ([^double token-rate ^long max-tokens ^long current-time ^long current-tokens]
+  ([^double token-rate ^long bucket-size ^long current-time ^long current-tokens]
    {:pre [(> token-rate 0)
-          (>= max-tokens 0)]}
-   {:token-rate token-rate :max-tokens max-tokens :last-update current-time :current-tokens current-tokens})
-  ([^double token-rate ^long max-tokens ^long current-time]
-   (create-tbf token-rate max-tokens current-time 0)))
+          (>= bucket-size 0)]}
+   {:token-rate token-rate :bucket-size bucket-size :last-update current-time :current-tokens current-tokens})
+  ([^double token-rate ^long bucket-size ^long current-time]
+   (create-tbf token-rate bucket-size current-time 0)))
 
 (defn- update-tbf
   "Add tokens (if there are any). If less than a whole token added, keep the current state. Returns the current state.
-  Enforces max-tokens limit. Allows tokens to be removed or added. If no timestamp supplied, just alters the token count."
-  [{:keys [current-tokens max-tokens] :as tbf} ^long tokens-to-dispense ^long current-time]
+  Enforces bucket-size limit. Allows tokens to be removed or added. If no timestamp supplied, just alters the token count."
+  [{:keys [current-tokens bucket-size] :as tbf} ^long tokens-to-dispense ^long current-time]
   (if (zero? tokens-to-dispense)
     ; Only dispense when we have at least a whole token to add on.
     tbf
     (-> tbf
         (assoc :last-update current-time)
-        (update :current-tokens #(-> % (+ tokens-to-dispense) (min max-tokens))))))
+        (update :current-tokens #(-> % (+ tokens-to-dispense) (min bucket-size))))))
 
 (defn earn-tokens
   "Earn tokens. Helper function, takes the current timestamp and adds in any newly earned tokens. It is numerically
@@ -61,13 +61,13 @@
   [{:keys [last-update token-rate] :as tbf} ^long current-time]
   (let [current-time (max current-time last-update)]
     (cond-> tbf
-            (not (= current-time last-update))
-            (update-tbf
-              (-> current-time
-                  (- last-update)
-                  (* token-rate)
-                  long)
-              current-time))))
+      (not (= current-time last-update))
+      (update-tbf
+        (-> current-time
+            (- last-update)
+            (* token-rate)
+            long)
+        current-time))))
 
 (defn time-until
   "Assumes tokens have been dispensed. Reports how many time units until the balance is positive and a request can be granted."
