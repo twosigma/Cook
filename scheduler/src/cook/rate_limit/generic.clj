@@ -39,7 +39,7 @@
   [key]
   (or key "*NULL_TBF_KEY*"))
 
-(defn ->tbf
+(defn make-token-bucket-filter
   "Given a tocken bucket parameters and size, create an empty tbf that has the target parameters."
   [tokens-replenished-per-minute bucket-size]
   (tbf/create-tbf (/ tokens-replenished-per-minute 60000.)
@@ -50,7 +50,7 @@
 (defn config->token-bucket-filter
   "Given a configuration dictionary with a token bucket paremters, create an empty tbf that has those parameters."
   [{:keys [tokens-replenished-per-minute bucket-size]}]
-  (->tbf tokens-replenished-per-minute bucket-size))
+  (make-token-bucket-filter tokens-replenished-per-minute bucket-size))
 
 (defn make-tbf-fn->CacheLoader
   "Given a function from a single argument, make it a CacheLoader"

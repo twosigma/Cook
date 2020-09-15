@@ -131,10 +131,10 @@
   (let [config {:expire-minutes 10 :enforce? true}
         make-tbf-fn (fn [key]
                       (case key
-                        "Bar1" (rtg/->tbf 60000 100)
-                        "Bar2" (rtg/->tbf 60000 200)
-                        "Bar3" (rtg/->tbf 60000 300)
-                        "Bar4" (rtg/->tbf 60000 400)
+                        "Bar1" (rtg/make-token-bucket-filter 60000 100)
+                        "Bar2" (rtg/make-token-bucket-filter 60000 200)
+                        "Bar3" (rtg/make-token-bucket-filter 60000 300)
+                        "Bar4" (rtg/make-token-bucket-filter 60000 400)
                         (print "Mismatch key " key)))
         ratelimit (rtg/make-generic-tbf-rate-limiter config make-tbf-fn)]
     (with-redefs [rtg/current-time-in-millis (fn [] 1000000)]
