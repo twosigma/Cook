@@ -907,14 +907,23 @@
     (cond-> {:count 1 :cpus cpus :mem mem}
       gpus (assoc :gpus gpus))))
 
+(defn match-based-on-regexp
+  "Given a list of dictionaries [{:<regexp-name> <regexp> :<field-name> <field>} {:<regexp-name> <regexp> :<field-name> <field>} ...], match-list,
+   a key <field-name> and <regexp-name> name, return the first matching <field> where the <regexp> matches the key."
+  [regexp-name field-name match-list key]
+  (-> match-list
+      (->> (filter (fn [map]
+                     (let [regexp (get map regexp-name)
+                           pattern (re-pattern regexp)]
+                       (re-find pattern key)))))
+      first
+      (get field-name)))
+
 (defn match-based-on-pool-name
   "Given a list of dictionaries [{:pool-regexp .. :field ...} {:pool-regexp .. :field ...}
    a pool name and a <field> name, return the first matching <field> where the regexp matches the pool name."
   [match-list effective-pool-name field]
-  (->> match-list
-       (filter (fn [{:keys [pool-regex]}] (re-find (re-pattern pool-regex) effective-pool-name)))
-       first
-       field))
+  (match-based-on-regexp :pool-regex field match-list effective-pool-name))
 
 (defn global-pool-quota
   "Given a pool name, determine the quota for that pool."
