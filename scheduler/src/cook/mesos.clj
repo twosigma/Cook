@@ -17,6 +17,7 @@
   (:require [chime :refer [chime-ch]]
             [clj-time.core :as time]
             [clojure.core.async :as async]
+            [clojure.data :as data]
             [clojure.tools.logging :as log]
             [cook.compute-cluster :as cc]
             [cook.config :as config]
@@ -130,7 +131,9 @@
                                                  (group-by #(-> %
                                                               :instance/compute-cluster
                                                               :compute-cluster/cluster-name)))
-            [missing-cluster-names _ _] (util/diff-map-keys cluster-name->running-task-ents saved-cluster-configurations)]
+            cluster-names-for-running-tasks (set (keys cluster-name->running-task-ents))
+            known-cluster-names (set (concat (keys @cc/cluster-name->compute-cluster-atom) (keys saved-cluster-configurations)))
+            [missing-cluster-names _ _] (data/diff cluster-names-for-running-tasks known-cluster-names)]
         (when missing-cluster-names
           (log/error "Can't find cluster configurations for some of the running jobs!"
                      {:missing-cluster-names missing-cluster-names
