@@ -264,10 +264,18 @@
     true
     (catch Exception e false)))
 
+(defn valid-k8s-pod-label-value?
+  "TODO(DPO)"
+  [s]
+  (re-matches #"[a-zA-Z0-9][\.a-zA-Z0-9_-]{0,61}[a-zA-Z0-9]" s))
+
 (def Application
   "Schema for the application a job corresponds to"
   {:name (s/constrained s/Str non-empty-max-128-characters-and-alphanum?)
-   :version (s/constrained s/Str non-empty-max-128-characters-and-alphanum?)})
+   :version (s/constrained s/Str non-empty-max-128-characters-and-alphanum?)
+   (s/optional-key :workload-class) valid-k8s-pod-label-value?
+   (s/optional-key :workload-id) valid-k8s-pod-label-value?
+   (s/optional-key :workload-details) valid-k8s-pod-label-value?})
 
 ; Datasets represent the data dependencies of jobs, which can be used by the scheduler to schedule jobs
 ; on hosts to take advantage of data locality.
@@ -795,8 +803,21 @@
                      :job/user user
                      :job/uuid uuid}
                     application (assoc :job/application
-                                       {:application/name (:name application)
-                                        :application/version (:version application)})
+                                       (cond->
+                                         {:application/name (:name application)
+                                          :application/version (:version application)}
+                                         (:workload-class application)
+                                         (assoc
+                                           :application/workload-class
+                                           (:workload-class application))
+                                         (:workload-id application)
+                                         (assoc
+                                           :application/workload-id
+                                           (:workload-id application))
+                                         (:workload-details application)
+                                         (assoc
+                                           :application/workload-details
+                                           (:workload-details application))))
                     expected-runtime (assoc :job/expected-runtime expected-runtime)
                     executor (assoc :job/executor executor)
                     progress-output-file (assoc :job/progress-output-file progress-output-file)
