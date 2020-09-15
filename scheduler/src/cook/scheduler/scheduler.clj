@@ -554,15 +554,6 @@
              resource-map)))
        jobs))
 
-(defn format-resource-map
-  "Given a map with resource amount values,
-   formats the amount values for logging"
-  [resource-map]
-  (pc/map-vals #(if (float? %)
-                  (format "%.3f" %)
-                  (str %))
-               resource-map))
-
 (defn resource-maps->stats
   "Given a collection of maps, where each map is
   resource-type -> amount, returns a map of
@@ -580,11 +571,11 @@
                                                (remove nil?))]
                       (-> resource-values
                           (task-stats/percentiles 50 95 100)
-                          format-resource-map)))
+                          tools/format-resource-map)))
                   ["cpus" "mem"])
    :totals (->> resource-maps
                 (reduce (partial merge-with +))
-                format-resource-map)})
+                tools/format-resource-map)})
 
 (defn offers->stats
   "Given a collection of offers, returns stats about the offers"
