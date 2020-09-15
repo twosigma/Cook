@@ -911,13 +911,13 @@
   "Given a list of dictionaries [{:<regexp-name> <regexp> :<field-name> <field>} {:<regexp-name> <regexp> :<field-name> <field>} ...], match-list,
    a key <field-name> and <regexp-name> name, return the first matching <field> where the <regexp> matches the key."
   [regexp-name field-name match-list key]
-  (->> match-list
-       (filter (fn [map]
-                 (let [regexp (get map regexp-name)
-                       pattern (re-pattern regexp)]
-                   (re-find pattern key))))
-       first
-       field-name))
+  (-> match-list
+      (->> (filter (fn [map]
+                     (let [regexp (get map regexp-name)
+                           pattern (re-pattern regexp)]
+                       (re-find pattern key)))))
+      first
+      (get field-name)))
 
 (defn match-based-on-pool-name
   "Given a list of dictionaries [{:pool-regexp .. :field ...} {:pool-regexp .. :field ...}
