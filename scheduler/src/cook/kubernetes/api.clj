@@ -173,15 +173,19 @@
         [(util/make-atom-updater all-pods-atom) ; Update the set of all pods.
          (util/make-nested-atom-updater node-name->pod-name->pod pod->node-name get-pod-namespaced-key)
          (partial cook-pod-callback-wrap cook-pod-callback compute-cluster-name)] ; Invoke the cook-pod-callback if its a cook pod.
-        old-all-pods @all-pods-atom]
+        old-all-pods @all-pods-atom
+        new-pod-names (set (keys namespaced-pod-name->pod))
+        old-pod-names (set (keys old-all-pods))]
     (log/info "In" compute-cluster-name "compute cluster, pod watch processing pods"
-              {:number-pods (count namespaced-pod-name->pod)
-               :pod-names (->> namespaced-pod-name->pod keys (str/join "\n"))})
+              {:number-pods (count namespaced-pod-name->pod)})
     ; We want to process all changes through the callback process.
     ; So compute the delta between the old and new and process those via the callbacks.
     ; Note as a side effect, the callbacks mutate all-pods-atom
-    (doseq [task (set/union (set (keys namespaced-pod-name->pod)) (set (keys old-all-pods)))]
-      (log/info "In" compute-cluster-name "compute cluster, pod watch doing (startup) callback for" task)
+    (doseq [task (set/union new-pod-names old-pod-names)]
+      (log/info "In" compute-cluster-name "compute cluster, pod watch doing callback"
+                {:new? (contains? new-pod-names task)
+                 :old? (contains? old-pod-names task)
+                 :pod-name task})
       (doseq [callback callbacks]
         (try
           (callback task (get old-all-pods task) (get namespaced-pod-name->pod task))
@@ -261,15 +265,19 @@
         callbacks
         [(util/make-atom-updater current-nodes-atom) ; Update the set of all pods.
          (util/make-nested-atom-updater pool->node-name->node get-node-pool node->node-name)]
-         old-current-nodes @current-nodes-atom]
+        old-current-nodes @current-nodes-atom
+        new-node-names (set (keys current-nodes))
+        old-node-names (set (keys old-current-nodes))]
     (log/info "In" compute-cluster-name "compute cluster, node watch processing nodes"
-              {:number-nodes (count current-nodes)
-               :node-names (->> current-nodes keys (str/join "\n"))})
+              {:number-nodes (count current-nodes)})
     ; We want to process all changes through the callback process.
     ; So compute the delta between the old and new and process those via the callbacks.
     ; Note as a side effect, the callbacks mutate current-nodes-atom
-    (doseq [node-name (set/union (set (keys current-nodes)) (set (keys old-current-nodes)))]
-      (log/info "In" compute-cluster-name "compute cluster, node watch doing (startup) callback for" node-name)
+    (doseq [node-name (set/union new-node-names old-node-names)]
+      (log/info "In" compute-cluster-name "compute cluster, node watch doing callback"
+                {:new? (contains? new-node-names node-name)
+                 :old? (contains? old-node-names node-name)
+                 :node-name node-name})
       (doseq [callback callbacks]
         (try
           (callback node-name (get old-current-nodes node-name) (get current-nodes node-name))
