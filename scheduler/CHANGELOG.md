@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.45.2] - 2020-09-15
+### Changed
+- Reduced excessive logging for k8s, from @dposada
+- Added logging of offer and job resource percentiles, from @dposada
+### Fixed
+- Missing compute cluster check, from @nsinkov
+- Deleting unschedulable synthetic pods, from @dposada
+
 ## [1.45.1] - 2020-09-08
 ### Added
 - Dynamic cluster configuration support, from @nsinkov
