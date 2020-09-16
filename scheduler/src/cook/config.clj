@@ -236,6 +236,8 @@
                       :job-submission job-submission
                       :job-launch job-launch
                       :user-limit (->UserRateLimit :user-limit user-limit-per-m (t/minutes 1))}))
+     :compute-cluster-launch-rate-limit (fnk [[:config {compute-cluster-launch-rate-limit nil}]]
+                                         compute-cluster-launch-rate-limit)
      :sim-agent-path (fnk [] "/usr/bin/sim-agent")
      :executor (fnk [[:config {executor {}}]]
                  (if (str/blank? (:command executor))

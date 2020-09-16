@@ -914,12 +914,6 @@
   [match-list effective-pool-name field]
   (regexp-tools/match-based-on-regexp :pool-regex field match-list effective-pool-name))
 
-(defn match-based-on-cc-name
-  "Given a list of dictionaries [{:compute-cluster-regex .. :field ...} {:pool-regexp .. :field ...}
-   a cluster name and a <field> name, return the first matching <field> where the regexp matches the pool name."
-  [match-list effective-pool-name field]
-  (regexp-tools/match-based-on-regexp :compute-cluster-regex field match-list effective-pool-name))
-
 (defn global-pool-quota
   "Given a pool name, determine the quota for that pool."
   [quotas effective-pool-name]

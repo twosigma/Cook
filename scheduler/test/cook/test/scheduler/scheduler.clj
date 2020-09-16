@@ -1735,7 +1735,7 @@
         (with-redefs [rate-limit/job-launch-rate-limiter
                       (rate-limit/create-job-launch-rate-limiter job-launch-rate-limit-config-for-testing)
                       rate-limit/get-token-count! (constantly 1)]
-          ;; We do pending filtering here, so we should filter off the excess jobs and launch nothing.
+          ;; We do pending filtering here, so we should filter off the excess jobs and launch one job.
           (let [num-considerable 2
                 offers [offer-1 offer-2 offer-3]]
             (is (run-handle-resource-offers! num-considerable offers "test-pool"))
@@ -1780,15 +1780,15 @@
       (let [total-spent (atom 0)]
         (with-redefs [rate-limit/spend! (fn [_ _ tokens] (reset! total-spent (-> @total-spent (+ tokens))))]
           (testing "enough offers for all normal jobs, limited by num-considerable of 2. Make sure we spend the tokens."
-            (let [num-considerable 2
+            (let [num-considerable 10
                   offers [offer-1 offer-2 offer-3]]
               (is (run-handle-resource-offers! num-considerable offers "test-pool"))
               (is (= :end-marker (async/<!! offers-chan)))
-              (is (= 2 (count @launched-offer-ids-atom)))
-              (is (= 2 (count @launched-job-names-atom)))
-              (is (= #{"job-1" "job-2"} (set @launched-job-names-atom)))
-              ; We launch two jobs, this involves spending two tokens on per-user rate limiter and 2 on the global launch rate limiter.
-              (is (= 4 @total-spent))))))
+              (is (= 3 (count @launched-offer-ids-atom)))
+              (is (= 4 (count @launched-job-names-atom)))
+              (is (= #{"job-1" "job-2" "job-3" "job-4"} (set @launched-job-names-atom)))
+              ; We launch two jobs, this involves spending 4 tokens on per-user rate limiter and 4 on the global launch rate limiter.
+              (is (= 8 @total-spent))))))
 
       (testing "enough offers for all normal jobs, limited by quota"
         (let [num-considerable 1

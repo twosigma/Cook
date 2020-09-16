@@ -14,7 +14,8 @@
 ;; limitations under the License.
 ;;
 (ns cook.rate-limit
-  (:require [cook.config :refer [config]]
+  (:require [clojure.tools.logging :as log]
+            [cook.config :refer [config]]
             [cook.rate-limit.generic :as rtg]
             [cook.compute-cluster :as cc]
             [cook.regexp-tools :as regexp-tools]
@@ -72,10 +73,14 @@
   [config]
   (let [ratelimit-config (some-> config :settings :compute-cluster-launch-rate-limit)]
     (if (seq ratelimit-config)
-      (rtg/make-generic-tbf-rate-limiter
-        ratelimit-config
-        (initialize-rate-limit-based-on-key :compute-cluster-regex ratelimit-config))
-      AllowAllRateLimiter)))
+      (do
+        (log/info "Making global rate limit config with" ratelimit-config)
+        (rtg/make-generic-tbf-rate-limiter
+          ratelimit-config
+          (initialize-rate-limit-based-on-key :compute-cluster-regex ratelimit-config)))
+      (do
+        (log/info "Not configuring global rate limit because no configuration set")
+        AllowAllRateLimiter))))
 
 (mount/defstate global-job-launch-rate-limiter
   :start (create-global-job-launch-rate-limiter config))
