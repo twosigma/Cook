@@ -265,21 +265,28 @@
         conn (restore-fresh-database! uri)
         name "cluster1"
         cluster-db-id (cc/write-compute-cluster conn {:compute-cluster/cluster-name name})
-        make-instance (fn [status]
-                        (let [[_ [inst]] (create-dummy-job-with-instances
-                                           conn
-                                           :job-state :job.state/running
-                                           :instances [{:instance-status status
-                                                        :task-id "12345"
-                                                        :compute-cluster (reify cc/ComputeCluster
-                                                                           (db-id [_] cluster-db-id)
-                                                                           (compute-cluster-name [_] name))}])]
-                          inst))]
-    (let [_ (make-instance :instance.status/running)
-          db (d/db conn)
+        _ (create-dummy-job-with-instances
+            conn
+            :job-state :job.state/running
+            :instances [{:instance-status :instance.status/running
+                         :task-id "12345"
+                         :compute-cluster (reify cc/ComputeCluster
+                                            (db-id [_] cluster-db-id)
+                                            (compute-cluster-name [_] name))}])
+        name "cluster2"
+        cluster-db-id (cc/write-compute-cluster conn {:compute-cluster/cluster-name name})
+        _ (create-dummy-job-with-instances
+            conn
+            :job-state :job.state/running
+            :instances [{:instance-status :instance.status/unknown
+                         :task-id "12346"
+                         :compute-cluster (reify cc/ComputeCluster
+                                            (db-id [_] cluster-db-id)
+                                            (compute-cluster-name [_] name))}])]
+    (let [db (d/db conn)
           log-error-invocations-atom (atom nil)
           scheduleAtFixedRate-invocations-atom (atom [])]
-      (is (= '("cluster1") (->> (cook.tools/get-running-task-ents db) (map (fn [e] (-> e :instance/compute-cluster :compute-cluster/cluster-name))))))
+      (is (= (set '("cluster1" "cluster2")) (set (->> (cook.tools/get-running-task-ents db) (map (fn [e] (-> e :instance/compute-cluster :compute-cluster/cluster-name)))))))
       (with-redefs [log/log* (fn [_ _ _ message] (reset! log-error-invocations-atom message))
                     cc/get-db-config-ents (fn [_] {})
                     cc/update-compute-clusters (fn [_ _ _])
@@ -294,7 +301,9 @@
                      conn {:new-cluster-configurations-fn 'cook.test.mesos/dumy-new-cluster-configurations-fn})))
         (is (= nil @log-error-invocations-atom))
         (is (= ["chime called 2020-08-26T16:36:35.946Z2020-08-26T16:37:35.946Z"] @scheduleAtFixedRate-invocations-atom))
+        (reset! cc/cluster-name->compute-cluster-atom {"cluster2" nil})
         (is (= nil (mesos/dynamic-compute-cluster-configurations-setup
                      conn {:load-clusters-on-startup? true})))
+        (reset! cc/cluster-name->compute-cluster-atom {})
         (is (re-matches #"Can't find cluster configurations for some of the running jobs! \{:missing-cluster-names #\{cluster1\}, :cluster-name->instance-ids \{cluster1 \(12345\)\}\}"
                         @log-error-invocations-atom))))))
