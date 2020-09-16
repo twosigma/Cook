@@ -871,14 +871,6 @@
     (is (= (util/match-based-on-pool-name matchlist "baz" :field) {:bar 2})))
   (is (= (util/match-based-on-pool-name [] "foo" :field) nil)))
 
-(deftest test-match-generic
-  (let [key "kubernetes"
-        regexp-name :compute-cluster-regex
-        match-list [{:compute-cluster-regex "^.*$", :tbf-config {:bucket-size 1}}]]
-    (is (= {:bucket-size 1}
-           (util/match-based-on-regexp regexp-name :tbf-config match-list key)))))
-
-
 (deftest test-atom-updater
   (let [map-atom (atom {})
         testfn (util/make-atom-updater map-atom)]

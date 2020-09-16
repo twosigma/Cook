@@ -17,7 +17,7 @@
   (:require [cook.config :refer [config]]
             [cook.rate-limit.generic :as rtg]
             [cook.compute-cluster :as cc]
-            [cook.tools :as tools]
+            [cook.regexp-tools :as regexp-tools]
             [mount.core :as mount]))
 
 ; Import from cook.rate-limit.generic some relevant functions.
@@ -34,8 +34,8 @@
   token bucket filter"
   [regexp-name {match-list :matches}]
   (fn [key]
-    (if-let [tbf-config-dict (tools/match-based-on-regexp regexp-name :tbf-config match-list key)]
-      (rtg/config->tbf tbf-config-dict)
+    (if-let [tbf-config-dict (regexp-tools/match-based-on-regexp regexp-name :tbf-config match-list key)]
+      (rtg/config->token-bucket-filter tbf-config-dict)
       (throw (ex-info "Unable to match in matchlist." {:key key :match-list match-list})))))
 
 (defn create-job-submission-rate-limiter
@@ -72,7 +72,7 @@
   [config]
   (let [ratelimit-config (some-> config :settings :compute-cluster-launch-rate-limit)]
     (if (seq ratelimit-config)
-      (rtg/make-generic-token-bucket-filter
+      (rtg/make-generic-tbf-rate-limiter
         ratelimit-config
         (initialize-rate-limit-based-on-key :compute-cluster-regex ratelimit-config))
       AllowAllRateLimiter)))
