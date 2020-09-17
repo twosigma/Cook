@@ -265,7 +265,11 @@
     (catch Exception e false)))
 
 (defn valid-k8s-pod-label-value?
-  "TODO(DPO)"
+  "Returns true if s contains only '.', '_', '-' or any word or
+  number characters, has length at least 2 and at most 63, and
+  begins and ends with a word or number character. This is based
+  on the validation for k8s pod label values:
+  https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#syntax-and-character-set"
   [s]
   (re-matches #"[a-zA-Z0-9][\.a-zA-Z0-9_-]{0,61}[a-zA-Z0-9]" s))
 
@@ -273,9 +277,9 @@
   "Schema for the application a job corresponds to"
   {:name (s/constrained s/Str non-empty-max-128-characters-and-alphanum?)
    :version (s/constrained s/Str non-empty-max-128-characters-and-alphanum?)
-   (s/optional-key :workload-class) valid-k8s-pod-label-value?
-   (s/optional-key :workload-id) valid-k8s-pod-label-value?
-   (s/optional-key :workload-details) valid-k8s-pod-label-value?})
+   (s/optional-key :workload-class) (s/constrained s/Str valid-k8s-pod-label-value?)
+   (s/optional-key :workload-id) (s/constrained s/Str valid-k8s-pod-label-value?)
+   (s/optional-key :workload-details) (s/constrained s/Str valid-k8s-pod-label-value?)})
 
 ; Datasets represent the data dependencies of jobs, which can be used by the scheduler to schedule jobs
 ; on hosts to take advantage of data locality.

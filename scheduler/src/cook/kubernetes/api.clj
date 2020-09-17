@@ -3,6 +3,7 @@
             [clojure.set :as set]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
+            [clojure.walk :as walk]
             [cook.config :as config]
             [cook.kubernetes.metrics :as metrics]
             [cook.scheduler.constraints :as constraints]
@@ -714,14 +715,25 @@
 
 (defn job->pod-labels
   "Returns the dictionary of labels that should be
-  added to the job's pod based on the job's labels."
+  added to the job's pod based on the job's labels
+  and/or the job's application fields."
   [job]
-  (if-let [prefix (:add-job-label-to-pod-prefix (config/kubernetes))]
-    (->> job
-         util/job-ent->label
-         (filter (fn [[k _]] (str/starts-with? k prefix)))
-         (into {}))
-    {}))
+  (let [pod-labels-from-job-labels
+        (if-let [prefix (:add-job-label-to-pod-prefix (config/kubernetes))]
+          (->> job
+               util/job-ent->label
+               (filter (fn [[k _]] (str/starts-with? k prefix)))
+               (into {}))
+          {})
+        pod-labels-from-job-application
+        (some-> job
+                :job/application
+                (select-keys [:application/workload-class
+                              :application/workload-id
+                              :application/workload-details])
+                walk/stringify-keys)]
+    (merge pod-labels-from-job-labels
+           pod-labels-from-job-application)))
 
 (defn ^V1Pod task-metadata->pod
   "Given a task-request and other data generate the kubernetes V1Pod to launch that task."
