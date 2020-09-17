@@ -108,9 +108,6 @@
  :rate-limit {:expire-minutes 1200 ; Expire unused rate limit entries after 20 hours.
               ; Keep these job-launch and job-submission values as they are for integration tests. Making them smaller can cause
               ; spurious failures, and making them larger will cause test_rate_limit_launching_jobs to skip itself.
-              :global-job-launch {:bucket-size 10000
-                                  :enforce? true
-                                  :tokens-replenished-per-minute 5000}
               :job-launch {:bucket-size 10000
                            :enforce? true
                            :tokens-replenished-per-minute 5000}
