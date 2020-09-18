@@ -837,8 +837,7 @@
                                (group-by match->compute-cluster)
                                (map
                                  (fn [[compute-cluster matches-in-compute-cluster]]
-                                   (let [compute-cluster (or compute-cluster )
-                                         compute-cluster-name (if compute-cluster
+                                   (let [compute-cluster-name (if compute-cluster
                                                                 (cc/compute-cluster-name compute-cluster)
                                                                 ; In unit tests we may not have a compute cluster.
                                                                 ; If so, swap this compute cluster in.
