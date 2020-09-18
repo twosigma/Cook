@@ -837,11 +837,7 @@
                                (group-by match->compute-cluster)
                                (map
                                  (fn [[compute-cluster matches-in-compute-cluster]]
-                                   (let [compute-cluster-name (if compute-cluster
-                                                                (cc/compute-cluster-name compute-cluster)
-                                                                ; In unit tests we may not have a compute cluster.
-                                                                ; If so, swap this compute cluster in.
-                                                                "fake-compute-cluster-name")
+                                   (let [compute-cluster-name (cc/compute-cluster-name compute-cluster)
                                          enforce? (ratelimit/enforce? ratelimit/global-job-launch-rate-limiter)
                                          token-count (ratelimit/get-token-count! ratelimit/global-job-launch-rate-limiter compute-cluster-name)
                                          resume-millis (ratelimit/time-until-out-of-debt-millis! ratelimit/global-job-launch-rate-limiter compute-cluster-name)
@@ -855,17 +851,17 @@
                                               :resume-millis resume-millis}}
                                        {:skip-rate-limit false
                                         :matches matches-in-compute-cluster})))))
-        compute-clusters-throttled (->> augmented-matches
-                                        (filter :skip-rate-limit)
-                                        (map :why)
-                                        (reduce conj [] ))
-        compute-clusters-kept (->> augmented-matches
-                                   (remove :skip-rate-limit)
-                                   (map :matches)
-                                   (reduce concat []))]
-    (when-not (empty? compute-clusters-throttled)
-      (log/warn "Skipping a subset of compute clusters because of rate-limit:" compute-clusters-throttled))
-    compute-clusters-kept))
+        matches-throttled (->> augmented-matches
+                               (filter :skip-rate-limit)
+                               (map :why)
+                               (reduce conj [] ))
+        matches-kept (->> augmented-matches
+                          (remove :skip-rate-limit)
+                          (map :matches)
+                          (reduce concat []))]
+    (when-not (empty? matches-throttled)
+      (log/warn "Skipping a subset of matches because of rate-limit:" matches-throttled))
+    matches-kept))
 
 (defn launch-matched-tasks!
   "Updates the state of matched tasks in the database and then launches them."
@@ -924,15 +920,15 @@
                (map
                  (fn [[compute-cluster matches-in-compute-cluster]]
                    (let [compute-cluster-name (cc/compute-cluster-name compute-cluster)
-                         _ (log/info "Doing launch-matched-tasks for" compute-cluster-name "compute cluster.")
+                         _ (log/info "In" pool-name "pool, launching matched tasks for" compute-cluster-name "compute cluster.")
                          launch-matches-in-compute-cluster!
                          #(launch-matches! compute-cluster pool-name
                                            matches-in-compute-cluster fenzo)]
-                         (doseq [match matches-in-compute-cluster]
-                           (timers/stop (-> match :leases first :offer :offer-match-timer)))
-                         (if (:mesos-config compute-cluster)
-                           (launch-matches-in-compute-cluster!)
-                           (future (launch-matches-in-compute-cluster!))))))
+                     (doseq [match matches-in-compute-cluster]
+                       (timers/stop (-> match :leases first :offer :offer-match-timer)))
+                     (if (:mesos-config compute-cluster)
+                       (launch-matches-in-compute-cluster!)
+                       (future (launch-matches-in-compute-cluster!))))))
                doall
                (run! #(when (future? %) (deref %)))))))))
 

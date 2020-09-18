@@ -16,8 +16,8 @@
 (ns cook.rate-limit
   (:require [clojure.tools.logging :as log]
             [cook.config :refer [config]]
-            [cook.rate-limit.generic :as rtg]
             [cook.compute-cluster :as cc]
+            [cook.rate-limit.generic :as rtg]
             [cook.regexp-tools :as regexp-tools]
             [mount.core :as mount]))
 
@@ -29,7 +29,7 @@
 (def AllowAllRateLimiter rtg/AllowAllRateLimiter)
 
 (defn initialize-rate-limit-based-on-key
-  "Method to help tocken-bucket-filter pick a default rate limit based a regexp match through a series of patterns.
+  "Method to help token-bucket-filter pick a default rate limit based a regexp match through a series of patterns.
 
   Given a match-list of [{:<field> <regexp> :tbf-config {:tokens-replenished-per-minute ...}}] and a key, return a
   token bucket filter"

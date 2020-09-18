@@ -40,7 +40,7 @@
   (or key "*NULL_TBF_KEY*"))
 
 (defn make-token-bucket-filter
-  "Given a tocken bucket parameters and size, create an empty tbf that has the target parameters."
+  "Given a token bucket parameters and size, create an empty tbf that has the target parameters."
   [tokens-replenished-per-minute bucket-size]
   {:pre [(> bucket-size 0)
          (> tokens-replenished-per-minute 0.0)]}
