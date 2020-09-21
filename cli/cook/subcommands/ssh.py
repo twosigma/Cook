@@ -16,7 +16,7 @@ def kubectl_exec_to_instance(instance_uuid, _):
               '--', '/bin/sh', '-c', 'cd $HOME; exec /bin/sh')
 
 
-def ssh_to_instance(job, instance, sandbox_dir_fn, cluster, command=None):
+def ssh_to_instance(job, instance, sandbox_dir_fn, cluster, command_to_run=None):
     """
     When using Mesos, attempts to ssh (using os.execlp) to the Mesos agent corresponding to the given instance.
     When using Kubernetes, calls the exec command of the kubectl cli.
@@ -25,7 +25,7 @@ def ssh_to_instance(job, instance, sandbox_dir_fn, cluster, command=None):
     compute_cluster = instance["compute-cluster"]
     compute_cluster_type = compute_cluster["type"]
     compute_cluster_name = compute_cluster["name"]
-    command = command or 'exec /bin/bash'
+    command_to_run = command_to_run or 'exec /bin/bash'
     if compute_cluster_type == "kubernetes":
         kubectl_exec_to_instance_fn = plugins.get_fn('kubectl-exec-to-instance', kubectl_exec_to_instance)
         compute_cluster_config = get_compute_cluster_config(cluster, compute_cluster_name)
@@ -36,7 +36,8 @@ def ssh_to_instance(job, instance, sandbox_dir_fn, cluster, command=None):
         logging.info(f'using ssh command: {command}')
         hostname = instance['hostname']
         print_info(f'Executing ssh to {terminal.bold(hostname)}.')
-        os.execlp(command, 'ssh', '-t', hostname, f'cd "{sandbox_dir}" ; {command}')
+        args = ['ssh', '-t', hostname, 'cd', sandbox_dir, ';'] + command_to_run
+        os.execlp(command, *args)
 
 
 def ssh(clusters, args, _):
@@ -48,7 +49,7 @@ def ssh(clusters, args, _):
         raise Exception(f'You can only provide a single uuid.')
 
     command_from_command_line = args.get('command', None)
-    command_fn = partial(ssh_to_instance, command=command_from_command_line)
+    command_fn = partial(ssh_to_instance, command_to_run=command_from_command_line)
     query_unique_and_run(clusters_of_interest, entity_refs[0], command_fn)
 
 
