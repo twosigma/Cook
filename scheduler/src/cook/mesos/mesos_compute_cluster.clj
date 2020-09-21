@@ -231,7 +231,7 @@
 
 (defrecord MesosComputeCluster [compute-cluster-name framework-id db-id driver-atom
                                 sandbox-syncer-state exit-code-syncer-state mesos-heartbeat-chan
-                                progress-update-chans trigger-chans mesos-config pool->offers-chan container-defaults]
+                                progress-update-chans trigger-chans mesos-config pool->offers-chan container-defaults launch-rate-limit]
   cc/ComputeCluster
   (compute-cluster-name [this]
     compute-cluster-name)
@@ -331,7 +331,8 @@
              (URLEncoder/encode sandbox-directory "UTF-8")))
       (catch Exception e
         (log/debug e "Unable to retrieve directory path for" task-id "on agent" hostname)
-        nil))))
+        nil)))
+  (get-launch-rate-limiter [_] launch-rate-limit))
 
 ; Internal method
 (defn mesos-cluster->compute-cluster-map-for-datomic
@@ -381,7 +382,8 @@
            role
            framework-name
            gpu-enabled?
-           container-defaults]}
+           container-defaults
+           launch-rate-limit-config]}
    {:keys [exit-code-syncer-state
            mesos-agent-query-cache
            mesos-heartbeat-chan
@@ -411,6 +413,7 @@
           pool->offer-chan (pc/map-from-keys (fn [_]
                                                (async/chan offer-chan-size))
                                              (map :pool/name synthesized-pools))
+          launch-rate-limit (cook.rate-limit/create-compute-cluster-launch-rate-limiter compute-cluster-name launch-rate-limit-config)
           mesos-compute-cluster (->MesosComputeCluster compute-cluster-name
                                                        framework-id
                                                        cluster-entity-id
@@ -422,7 +425,8 @@
                                                        trigger-chans
                                                        mesos-config
                                                        pool->offer-chan
-                                                       container-defaults)]
+                                                       container-defaults
+                                                       launch-rate-limit)]
       (log/info "Registering compute cluster" mesos-compute-cluster)
       (cc/register-compute-cluster! mesos-compute-cluster)
       mesos-compute-cluster)

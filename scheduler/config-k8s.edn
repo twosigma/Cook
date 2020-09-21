@@ -22,6 +22,10 @@
                      :config {:name "gke-1"
                               ;; Location of the kubernetes config file. Hardcoded to the location specified by bin/make-gke-test-cluster
                               :config-file "../scheduler/.cook_kubeconfig_1"
+                              :launch-rate-limit-config {:expire-minutes 1200
+                                                         :enforce? true
+                                                         :bucket-size 10000
+                                                         :tokens-replenished-per-minute 5000}
                               :synthetic-pods {:image "gcr.io/google-containers/alpine-with-bash:1.0"
                                                :max-pods-outstanding 128
                                                :user #config/env "USER"
@@ -35,6 +39,10 @@
                      :config {:name "gke-2"
                               ;; Location of the kubernetes config file. Hardcoded to the location specified by bin/make-gke-test-cluster
                               :config-file "../scheduler/.cook_kubeconfig_2"
+                              :launch-rate-limit-config {:expire-minutes 1200
+                                                         :enforce? true
+                                                         :bucket-size 10000
+                                                         :tokens-replenished-per-minute 5000}
                               :synthetic-pods {:image "gcr.io/google-containers/alpine-with-bash:1.0"
                                                :max-pods-outstanding 128
                                                :user #config/env "USER"
@@ -115,23 +123,6 @@
                                :enforce? true
                                :tokens-replenished-per-minute 600}
               :user-limit-per-m 1000000}
- :compute-cluster-launch-rate-limit {:expire-minutes 1200
-                                     :enforce? true
-                                     :matches
-                                     [{:compute-cluster-regex "^gke-1$"
-                                       :tbf-config {
-                                                    :bucket-size 1000
-                                                    :tokens-replenished-per-minute 2
-                                                    }}
-                                      {:compute-cluster-regex "^gke-2$"
-                                       :tbf-config {
-                                                    :bucket-size 1000
-                                                    :tokens-replenished-per-minute 4
-                                                    }}
-                                      {:compute-cluster-regex "^.*$"
-                                       :tbf-config {
-                                                    :bucket-size 1000
-                                                    :tokens-replenished-per-minute .0001}}]}
  :rebalancer {:dru-scale 1
               :interval-seconds 30
               :max-preemption 500.0

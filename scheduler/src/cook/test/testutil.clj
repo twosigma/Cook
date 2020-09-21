@@ -64,7 +64,8 @@
                                trigger-chans
                                {}
                                {"no-pool" (async/chan 100)}
-                               {})))
+                               {}
+                               rate-limit/AllowAllRateLimiter)))
 
 (defn fake-test-compute-cluster-with-driver
   "Create a test compute cluster with associated driver attached to it. Returns the compute cluster."
@@ -116,7 +117,6 @@
     (mount/start-with-args (merge minimal-config config)
                            #'cook.config/config
                            #'cook.rate-limit/job-launch-rate-limiter
-                           #'cook.rate-limit/global-job-launch-rate-limiter
                            #'cook.plugins.adjustment/plugin
                            #'cook.plugins.file/plugin
                            #'cook.plugins.launch/plugin-object
@@ -586,4 +586,4 @@
                                     (atom :running) ; state atom
                                     (atom false) ; state-locked? atom
                                     false ; dynamic-cluster-config?
-                                    )))
+                                    rate-limit/AllowAllRateLimiter)))

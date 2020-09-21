@@ -67,20 +67,16 @@
 (mount/defstate job-launch-rate-limiter
   :start (create-job-launch-rate-limiter config))
 
-(defn create-global-job-launch-rate-limiter
+(defn create-compute-cluster-launch-rate-limiter
   "From the configuration map, extract the keys that setup the job-launch rate limiter and return
   the constructed object. If the configuration map is not found, the AllowAllRateLimiter is returned."
-  [config]
-  (let [ratelimit-config (some-> config :settings :compute-cluster-launch-rate-limit)]
+  [compute-cluster-name ratelimit-config]
     (if (seq ratelimit-config)
       (do
-        (log/info "Making global rate limit config with" ratelimit-config)
-        (rtg/make-generic-tbf-rate-limiter
-          ratelimit-config
-          (initialize-rate-limit-based-on-key :compute-cluster-regex ratelimit-config)))
+        (log/info "For compute cluster" compute-cluster-name "configuring global rate limit config" ratelimit-config)
+        (rtg/make-tbf-rate-limiter ratelimit-config))
       (do
-        (log/info "Not configuring global rate limit because no configuration set")
-        AllowAllRateLimiter))))
+        (log/info "For compute cluster" compute-cluster-name "not configuring global rate limit because no configuration set")
+        AllowAllRateLimiter)))
 
-(mount/defstate global-job-launch-rate-limiter
-  :start (create-global-job-launch-rate-limiter config))
+(def global-job-launch-rate-limiter-key "*DEF*")

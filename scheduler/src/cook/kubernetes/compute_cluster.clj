@@ -303,7 +303,8 @@
                                      pool->fenzo-atom namespace-config scan-frequency-seconds-config max-pods-per-node
                                      synthetic-pods-config node-blocklist-labels
                                      ^ExecutorService launch-task-executor-service
-                                     cluster-definition state-atom state-locked?-atom dynamic-cluster-config?]
+                                     cluster-definition state-atom state-locked?-atom dynamic-cluster-config?
+                                     launch-rate-limit]
   cc/ComputeCluster
   (launch-tasks [this pool-name matches process-task-post-launch-fn]
     (let [task-metadata-seq (mapcat :task-metadata-seq matches)]
@@ -547,7 +548,9 @@
     ;; Users will need to add the file path & offset to their query.
     ;; Refer to the 'Using the output_url' section in docs/scheduler-rest-api.adoc for further details.
     [_ {:keys [instance/sandbox-url]}]
-    sandbox-url))
+    sandbox-url)
+  (get-launch-rate-limiter
+    [_] launch-rate-limit))
 
 (defn get-or-create-cluster-entity-id
   [conn compute-cluster-name]
@@ -656,6 +659,7 @@
            ca-cert-path
            ^String config-file
            dynamic-cluster-config?
+           launch-rate-limit-config
            launch-task-num-threads
            max-pods-per-node
            name
@@ -690,6 +694,7 @@
         cluster-entity-id (get-or-create-cluster-entity-id conn name)
         api-client (make-api-client config-file base-path use-google-service-account? bearer-token-refresh-seconds verifying-ssl ca-cert ca-cert-path)
         launch-task-executor-service (Executors/newFixedThreadPool launch-task-num-threads)
+        launch-rate-limit (cook.rate-limit/create-compute-cluster-launch-rate-limiter name launch-rate-limit-config)
         compute-cluster (->KubernetesComputeCluster api-client 
                                                     name
                                                     cluster-entity-id
@@ -712,6 +717,7 @@
                                                      :config compute-cluster-config}
                                                     (atom state)
                                                     (atom state-locked?)
-                                                    dynamic-cluster-config?)]
+                                                    dynamic-cluster-config?
+                                                    launch-rate-limit)]
     (cc/register-compute-cluster! compute-cluster)
     compute-cluster))

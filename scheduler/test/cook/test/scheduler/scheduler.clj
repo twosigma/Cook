@@ -309,13 +309,14 @@
    {:rate-limit {:expire-minutes 180
                  :job-launch {:bucket-size 500
                               :enforce? true
-                              :tokens-replenished-per-minute 100}}
-    :compute-cluster-launch-rate-limit {:expire-minutes 100
-                                        :enforce? true
-                                        :matches [{:compute-cluster-regex "^.*$"
-                                                   :tbf-config {
-                                                                :bucket-size 1
-                                                                :tokens-replenished-per-minute 0.01}}]}}})
+                              :tokens-replenished-per-minute 100}}}})
+
+(def compute-cluster-launch-rate-limit-config-for-testing
+  "A basic config, designed to be big enough that everything passes, but enforcing."
+  {:expire-minutes 1000
+   :enforce? true
+   :bucket-size 1
+   :tokens-replenished-per-minute 0.01})
 
 (doseq [[t i] (mapv vector cook.schema/work-item-schema (range))]
   (deref (d/transact c (conj t
@@ -1602,7 +1603,8 @@
                                             (-> task-metadata :task-request :job :job/name))
                                           task-metadata-seq))
                               (doseq [task-metadata task-metadata-seq]
-                                (process-task-post-launch-fn task-metadata))))))
+                                (process-task-post-launch-fn task-metadata)))))
+                        (get-launch-rate-limiter [this] rate-limit/AllowAllRateLimiter))
       test-user (System/getProperty "user.name")
       executor {:command "cook-executor"
                 :default-progress-regex-string "regex-string"
@@ -1745,8 +1747,8 @@
             (is (= #{"job-1"} (set @launched-job-names-atom))))))
 
       (with-redefs [rate-limit/job-launch-rate-limiter rate-limit/AllowAllRateLimiter
-                    rate-limit/global-job-launch-rate-limiter
-                    (rate-limit/create-global-job-launch-rate-limiter job-launch-rate-limit-config-for-testing)
+                    cc/get-launch-rate-limiter
+                    (constantly (rate-limit/create-compute-cluster-launch-rate-limiter "fake-name-a" compute-cluster-launch-rate-limit-config-for-testing))
                     rate-limit/get-token-count! (fn [rate-limiter key]
                                                   (cond
                                                     (= rate-limiter rate-limit/AllowAllRateLimiter) 1000
@@ -1762,13 +1764,13 @@
             (is (= #{"job-1" "job-2" "job-3" "job-4"} (set @launched-job-names-atom))))))
 
       (with-redefs [rate-limit/job-launch-rate-limiter rate-limit/AllowAllRateLimiter
-                    rate-limit/global-job-launch-rate-limiter
-                    (rate-limit/create-global-job-launch-rate-limiter job-launch-rate-limit-config-for-testing)
+                    cc/get-launch-rate-limiter
+                    (constantly (rate-limit/create-compute-cluster-launch-rate-limiter "fake-name-b" compute-cluster-launch-rate-limit-config-for-testing))
+                    rate-limit/enforce? (constantly true)
                     rate-limit/get-token-count! (fn [rate-limiter key]
                                                   (cond
-                                                    (= rate-limiter rate-limit/AllowAllRateLimiter) 1000
-                                                    :else
-                                                    (do (is (= key compute-cluster-name)) -1)))]
+                                                    (= key rate-limit/global-job-launch-rate-limiter-key) -1
+                                                    :else 100))]
         (testing "enough offers for all normal jobs, but global rate limited."
           (let [num-considerable 10
                 offers [offer-1 offer-2 offer-3]]

@@ -819,9 +819,9 @@
       (fn process-task-post-launch!
         [{:keys [hostname task-request]}]
         (let [user (get-in task-request [:job :job/user])
-              compute-cluster-name (cc/compute-cluster-name compute-cluster)]
+              launch-rate-limit (cc/get-launch-rate-limiter compute-cluster)]
           (ratelimit/spend! ratelimit/job-launch-rate-limiter user 1)
-          (ratelimit/spend! ratelimit/global-job-launch-rate-limiter compute-cluster-name 1))
+          (ratelimit/spend! launch-rate-limit ratelimit/global-job-launch-rate-limiter-key 1))
         (locking fenzo
           (.. fenzo
               (getTaskAssigner)
@@ -838,9 +838,10 @@
                                (map
                                  (fn [[compute-cluster matches-in-compute-cluster]]
                                    (let [compute-cluster-name (cc/compute-cluster-name compute-cluster)
-                                         enforce? (ratelimit/enforce? ratelimit/global-job-launch-rate-limiter)
-                                         token-count (ratelimit/get-token-count! ratelimit/global-job-launch-rate-limiter compute-cluster-name)
-                                         resume-millis (ratelimit/time-until-out-of-debt-millis! ratelimit/global-job-launch-rate-limiter compute-cluster-name)
+                                         launch-rate-limit (cc/get-launch-rate-limiter compute-cluster)
+                                         enforce? (ratelimit/enforce? launch-rate-limit)
+                                         token-count (ratelimit/get-token-count! launch-rate-limit ratelimit/global-job-launch-rate-limiter-key)
+                                         resume-millis (ratelimit/time-until-out-of-debt-millis! launch-rate-limit ratelimit/global-job-launch-rate-limiter-key)
                                          skipping-cycle? (and enforce? (neg? token-count))]
                                      (if skipping-cycle?
                                        {:skip-rate-limit true
