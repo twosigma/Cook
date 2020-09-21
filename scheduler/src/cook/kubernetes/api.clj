@@ -73,6 +73,11 @@
 ; and MiB back to bytes when submitting to k8s.
 (def memory-multiplier (* 1024 1024))
 
+(def pod-labels-defaults
+  {"workload-class" "cook-job"
+   "workload-id" "unspecified"
+   "workload-details" "none"})
+
 (defn is-cook-scheduler-pod
   "Is this a cook pod? Uses some-> so is null-safe."
   [^V1Pod pod compute-cluster-name]
@@ -720,7 +725,8 @@
                               :application/workload-id
                               :application/workload-details])
                 walk/stringify-keys)]
-    (merge pod-labels-from-job-labels
+    (merge pod-labels-defaults
+           pod-labels-from-job-labels
            pod-labels-from-job-application)))
 
 (defn ^V1Pod task-metadata->pod
