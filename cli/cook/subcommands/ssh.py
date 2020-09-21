@@ -1,5 +1,7 @@
+import argparse
 import logging
 import os
+from functools import partial
 
 from cook import plugins, terminal
 from cook.querying import get_compute_cluster_config, query_unique_and_run, parse_entity_refs
@@ -14,7 +16,7 @@ def kubectl_exec_to_instance(instance_uuid, _):
               '--', '/bin/sh', '-c', 'cd $HOME; exec /bin/sh')
 
 
-def ssh_to_instance(job, instance, sandbox_dir_fn, cluster):
+def ssh_to_instance(job, instance, sandbox_dir_fn, cluster, command=None):
     """
     When using Mesos, attempts to ssh (using os.execlp) to the Mesos agent corresponding to the given instance.
     When using Kubernetes, calls the exec command of the kubectl cli.
@@ -23,6 +25,7 @@ def ssh_to_instance(job, instance, sandbox_dir_fn, cluster):
     compute_cluster = instance["compute-cluster"]
     compute_cluster_type = compute_cluster["type"]
     compute_cluster_name = compute_cluster["name"]
+    command = command or 'exec /bin/bash'
     if compute_cluster_type == "kubernetes":
         kubectl_exec_to_instance_fn = plugins.get_fn('kubectl-exec-to-instance', kubectl_exec_to_instance)
         compute_cluster_config = get_compute_cluster_config(cluster, compute_cluster_name)
@@ -33,7 +36,7 @@ def ssh_to_instance(job, instance, sandbox_dir_fn, cluster):
         logging.info(f'using ssh command: {command}')
         hostname = instance['hostname']
         print_info(f'Executing ssh to {terminal.bold(hostname)}.')
-        os.execlp(command, 'ssh', '-t', hostname, f'cd "{sandbox_dir}" ; bash')
+        os.execlp(command, 'ssh', '-t', hostname, f'cd "{sandbox_dir}" ; {command}')
 
 
 def ssh(clusters, args, _):
@@ -44,11 +47,14 @@ def ssh(clusters, args, _):
         # argparse should prevent this, but we'll be defensive anyway
         raise Exception(f'You can only provide a single uuid.')
 
-    query_unique_and_run(clusters_of_interest, entity_refs[0], ssh_to_instance)
+    command_from_command_line = args.get('command', None)
+    command_fn = partial(ssh_to_instance, command=command_from_command_line)
+    query_unique_and_run(clusters_of_interest, entity_refs[0], command_fn)
 
 
 def register(add_parser, _):
     """Adds this sub-command's parser and returns the action function"""
     parser = add_parser('ssh', help='ssh to container by job or instance uuid')
     parser.add_argument('uuid', nargs=1)
+    parser.add_argument('command', nargs=argparse.REMAINDER)
     return ssh
