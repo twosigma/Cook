@@ -1519,6 +1519,17 @@ class CookTest(util.CookTest):
         _, resp = util.submit_job(self.cook_url, application={'name': 'foo-app'})
         self.assertEqual(resp.status_code, 400)
 
+        # Should allow workload- fields
+        application = {'name': 'foo-app',
+                       'version': '0.1.0',
+                       'workload-class': 'foo',
+                       'workload-id': 'bar',
+                       'workload-details': 'baz'}
+        job_uuid, resp = util.submit_job(self.cook_url, application=application)
+        self.assertEqual(resp.status_code, 201)
+        job = util.load_job(self.cook_url, job_uuid)
+        self.assertEqual(application, job['application'])
+
     def test_error_while_creating_job(self):
         job1 = util.minimal_job()
         job2 = util.minimal_job(uuid=job1['uuid'])

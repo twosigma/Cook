@@ -120,7 +120,7 @@
         (is (= "Never" (-> pod .getSpec .getRestartPolicy)))
         (is (= "kubehost" (-> pod .getSpec .getNodeSelector (get api/k8s-hostname-label))))
         (is (= 1 (count (-> pod .getSpec .getContainers))))
-        (is (= {api/cook-pod-label "testing-cluster"} (-> pod .getMetadata .getLabels)))
+        (is (= "testing-cluster" (-> pod .getMetadata .getLabels (get api/cook-pod-label))))
         (is (< 0 (-> pod .getSpec .getSecurityContext .getRunAsGroup)))
         (is (< 0 (-> pod .getSpec .getSecurityContext .getRunAsUser)))
 
@@ -308,7 +308,73 @@
               pod-labels (-> pod .getMetadata .getLabels)]
           (is (not (contains? pod-labels "platform/baz")))
           (is (not (contains? pod-labels "platform/another")))
-          (is (not (contains? pod-labels "not-platform/foo"))))))))
+          (is (not (contains? pod-labels "not-platform/foo")))))))
+
+  (testing "job application -> pod labels"
+    ; All workload- fields specified
+    (let [task-metadata {:command {:user "test-user"}
+                         :task-request {:job {:job/application {:application/workload-class "foo"
+                                                                :application/workload-id "bar"
+                                                                :application/workload-details "baz"}}
+                                        :scalar-requests {"mem" 512 "cpus" 1.0}}}
+          ^V1Pod pod (api/task-metadata->pod "test-namespace"
+                                             "test-compute-cluster"
+                                             task-metadata)
+          pod-labels (-> pod .getMetadata .getLabels)]
+      (is (= "foo" (get pod-labels "workload-class")))
+      (is (= "bar" (get pod-labels "workload-id")))
+      (is (= "baz" (get pod-labels "workload-details"))))
+
+    ; No workload-class specified
+    (let [task-metadata {:command {:user "test-user"}
+                         :task-request {:job {:job/application {:application/workload-id "bar"
+                                                                :application/workload-details "baz"}}
+                                        :scalar-requests {"mem" 512 "cpus" 1.0}}}
+          ^V1Pod pod (api/task-metadata->pod "test-namespace"
+                                             "test-compute-cluster"
+                                             task-metadata)
+          pod-labels (-> pod .getMetadata .getLabels)]
+      (is (= "cook-job" (get pod-labels "workload-class")))
+      (is (= "bar" (get pod-labels "workload-id")))
+      (is (= "baz" (get pod-labels "workload-details"))))
+
+    ; No workload-id specified
+    (let [task-metadata {:command {:user "test-user"}
+                         :task-request {:job {:job/application {:application/workload-class "foo"
+                                                                :application/workload-details "baz"}}
+                                        :scalar-requests {"mem" 512 "cpus" 1.0}}}
+          ^V1Pod pod (api/task-metadata->pod "test-namespace"
+                                             "test-compute-cluster"
+                                             task-metadata)
+          pod-labels (-> pod .getMetadata .getLabels)]
+      (is (= "foo" (get pod-labels "workload-class")))
+      (is (= "unspecified" (get pod-labels "workload-id")))
+      (is (= "baz" (get pod-labels "workload-details"))))
+
+    ; No workload-details specified
+    (let [task-metadata {:command {:user "test-user"}
+                         :task-request {:job {:job/application {:application/workload-class "foo"
+                                                                :application/workload-id "bar"}}
+                                        :scalar-requests {"mem" 512 "cpus" 1.0}}}
+          ^V1Pod pod (api/task-metadata->pod "test-namespace"
+                                             "test-compute-cluster"
+                                             task-metadata)
+          pod-labels (-> pod .getMetadata .getLabels)]
+      (is (= "foo" (get pod-labels "workload-class")))
+      (is (= "bar" (get pod-labels "workload-id")))
+      (is (= "none" (get pod-labels "workload-details"))))
+
+    ; No workload- fields specified
+    (let [task-metadata {:command {:user "test-user"}
+                         :task-request {:job {:job/application {}}
+                                        :scalar-requests {"mem" 512 "cpus" 1.0}}}
+          ^V1Pod pod (api/task-metadata->pod "test-namespace"
+                                             "test-compute-cluster"
+                                             task-metadata)
+          pod-labels (-> pod .getMetadata .getLabels)]
+      (is (= "cook-job" (get pod-labels "workload-class")))
+      (is (= "unspecified" (get pod-labels "workload-id")))
+      (is (= "none" (get pod-labels "workload-details"))))))
 
 (defn- k8s-volume->clj [^V1Volume volume]
   {:name (.getName volume)
