@@ -998,7 +998,7 @@
                                            (match-offer-to-schedule db fenzo considerable-jobs offers
                                                                     rebalancer-reservation-atom pool-name))
               matches (filter-matches-for-ratelimit matches)
-              _ (log/debug "In" pool-name "pool, got matches:" matches)
+              _ (log/debug "In" pool-name "pool, got matches after rate limit:" matches)
               offers-scheduled (for [{:keys [leases]} matches
                                      lease leases]
                                  (:offer lease))
