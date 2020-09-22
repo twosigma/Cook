@@ -46,6 +46,7 @@ actions = {
     'wait': wait.register(subparsers.add_parser, configuration.add_defaults)
 }
 
+
 def run(args, plugins):
     """
     Main entrypoint to the cook scheduler CLI. Loads configuration files, 
