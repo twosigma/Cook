@@ -10,7 +10,7 @@ import cook.plugins
 def ClusterCompleter(parsed_args, **kwargs):
     """
     Autocompletes the cluster name.
-    Uses the  configuration file passed on the command lineif provided.
+    Uses the configuration file passed on the command lineif provided.
     Otherwise it uses the default configuration file.
     """
     args_vars = vars(parsed_args)
@@ -71,7 +71,6 @@ def run(args, plugins):
     config_path = args.pop('config')
     cluster = args.pop('cluster')
     url = args.pop('url')
-
 
     if action is None:
         parser.print_help()
