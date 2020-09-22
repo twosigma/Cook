@@ -25,7 +25,7 @@ def ssh_to_instance(job, instance, sandbox_dir_fn, cluster, command_to_run=None)
     compute_cluster = instance["compute-cluster"]
     compute_cluster_type = compute_cluster["type"]
     compute_cluster_name = compute_cluster["name"]
-    command_to_run = command_to_run or 'exec /bin/bash'
+    command_to_run = command_to_run or ['exec', '/bin/bash']
     if compute_cluster_type == "kubernetes":
         kubectl_exec_to_instance_fn = plugins.get_fn('kubectl-exec-to-instance', kubectl_exec_to_instance)
         compute_cluster_config = get_compute_cluster_config(cluster, compute_cluster_name)
