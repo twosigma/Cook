@@ -1,4 +1,5 @@
 import argparse
+import argcomplete
 import logging
 
 from cook import util, http, metrics, version, configuration
@@ -6,8 +7,20 @@ from cook.subcommands import admin, cat, config, jobs, kill, ls, show, ssh, subm
 from cook.util import deep_merge, load_target_clusters
 import cook.plugins
 
+def ClusterCompleter(parsed_args, **kwargs):
+    """
+    Autocompletes the cluster name.
+    Uses the  configuration file passed on the command lineif provided.
+    Otherwise it uses the default configuration file.
+    """
+    args_vars = vars(parsed_args)
+    config_path = args_vars.pop('config')
+    _, config_map = configuration.load_config_with_defaults(config_path)
+    clusters = config_map.get('clusters')
+    return [cluster.get('name') for cluster in clusters]
+
 parser = argparse.ArgumentParser(description='cs is the Cook Scheduler CLI')
-parser.add_argument('--cluster', '-c', help='the name of the Cook scheduler cluster to use')
+parser.add_argument('--cluster', '-c', help='the name of the Cook scheduler cluster to use').completer = ClusterCompleter
 parser.add_argument('--url', '-u', help='the url of the Cook scheduler cluster to use')
 parser.add_argument('--config', '-C', help='the configuration file to use')
 parser.add_argument('--silent', '-s', help='silent mode', dest='silent', action='store_true')
@@ -33,13 +46,13 @@ actions = {
     'wait': wait.register(subparsers.add_parser, configuration.add_defaults)
 }
 
-
 def run(args, plugins):
     """
     Main entrypoint to the cook scheduler CLI. Loads configuration files, 
     processes global command line arguments, and calls other command line 
     sub-commands (actions) if necessary.
     """
+    argcomplete.autocomplete(parser)
     args = vars(parser.parse_args(args))
 
     util.silent = args.pop('silent')
@@ -58,6 +71,7 @@ def run(args, plugins):
     config_path = args.pop('config')
     cluster = args.pop('cluster')
     url = args.pop('url')
+
 
     if action is None:
         parser.print_help()

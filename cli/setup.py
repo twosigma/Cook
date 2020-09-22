@@ -5,6 +5,7 @@ from setuptools import setup
 from cook import version
 
 requirements = [
+    'argcomplete',
     'arrow',
     'blessed',
     'humanfriendly',
