@@ -357,11 +357,11 @@
 (defn make-fenzo-job-constraints
   "Returns a sequence of all the constraints for 'job', in Fenzo-compatible format."
   [job]
-  (-> (->> job-constraint-constructors
-           (map (fn [constructor] (constructor job)))
-           (remove nil?)
-           (map fenzoize-job-constraint))
-      (conj (build-max-tasks-per-host-constraint))))
+  (conj (->> job-constraint-constructors
+             (map (fn [constructor] (constructor job)))
+             (remove nil?)
+             (map fenzoize-job-constraint))
+        (build-max-tasks-per-host-constraint)))
 
 (defn build-rebalancer-reservation-constraint
   "Constructs a rebalancer-reservation-constraint"

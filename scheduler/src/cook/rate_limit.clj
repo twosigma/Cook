@@ -28,17 +28,6 @@
 (def enforce? rtg/enforce?)
 (def AllowAllRateLimiter rtg/AllowAllRateLimiter)
 
-(defn initialize-rate-limit-based-on-key
-  "Method to help token-bucket-filter pick a default rate limit based a regexp match through a series of patterns.
-
-  Given a match-list of [{:<field> <regexp> :tbf-config {:tokens-replenished-per-minute ...}}] and a key, return a
-  token bucket filter"
-  [regexp-name {match-list :matches}]
-  (fn [key]
-    (if-let [tbf-config-dict (regexp-tools/match-based-on-regexp regexp-name :tbf-config match-list key)]
-      (rtg/config->token-bucket-filter tbf-config-dict)
-      (throw (ex-info "Unable to match in matchlist." {:key key :match-list match-list})))))
-
 (defn create-job-submission-rate-limiter
   "From the configuration map, extract the keys that setup the job-submission rate limiter and return
   the constructed object. If the configuration map is not found, the AllowAllRateLimiter is returned."

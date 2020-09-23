@@ -332,6 +332,7 @@
       (catch Exception e
         (log/debug e "Unable to retrieve directory path for" task-id "on agent" hostname)
         nil)))
+
   (get-launch-rate-limiter [_] launch-rate-limit))
 
 ; Internal method

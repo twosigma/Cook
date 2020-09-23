@@ -549,6 +549,7 @@
     ;; Refer to the 'Using the output_url' section in docs/scheduler-rest-api.adoc for further details.
     [_ {:keys [instance/sandbox-url]}]
     sandbox-url)
+
   (get-launch-rate-limiter
     [_] launch-rate-limit))
 
