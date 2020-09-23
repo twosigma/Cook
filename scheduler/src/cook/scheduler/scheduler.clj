@@ -709,7 +709,7 @@
             (not (and is-rate-limited? enforcing-job-launch-rate-limit?))))
         considerable-jobs
         (->> pending-jobs
-             (tools/filter-pending-jobs-for-quota user->quota user->usage (tools/global-pool-quota (config/pool-quotas) pool-name))
+             (tools/filter-pending-jobs-for-quota pool-name user->quota user->usage (tools/global-pool-quota (config/pool-quotas) pool-name))
              (filter (fn [job] (tools/job-allowed-to-start? db job)))
              (filter user-within-launch-rate-limit?-fn)
              (filter launch-plugin/filter-job-launches)
@@ -1066,7 +1066,7 @@
                 ;; trigger autoscaling beyond what users have quota to actually run
                 autoscalable-jobs (->> pool-name
                                        (get @pool-name->pending-jobs-atom)
-                                       (tools/filter-pending-jobs-for-quota
+                                       (tools/filter-pending-jobs-for-quota pool-name
                                          user->quota user->usage (tools/global-pool-quota (config/pool-quotas) pool-name)))]
             ;; This call needs to happen *after* launch-matched-tasks!
             ;; in order to avoid autoscaling tasks taking up available
