@@ -22,7 +22,7 @@
                      :config {:name "gke-1"
                               ;; Location of the kubernetes config file. Hardcoded to the location specified by bin/make-gke-test-cluster
                               :config-file "../scheduler/.cook_kubeconfig_1"
-                              :launch-rate-limit-config {:expire-minutes 1200
+                              :compute-cluster-launch-rate-limits {:expire-minutes 1200
                                                          :enforce? true
                                                          :bucket-size 10000
                                                          :tokens-replenished-per-minute 5000}
@@ -39,10 +39,10 @@
                      :config {:name "gke-2"
                               ;; Location of the kubernetes config file. Hardcoded to the location specified by bin/make-gke-test-cluster
                               :config-file "../scheduler/.cook_kubeconfig_2"
-                              :launch-rate-limit-config {:expire-minutes 1200
-                                                         :enforce? true
-                                                         :bucket-size 10000
-                                                         :tokens-replenished-per-minute 5000}
+                              :compute-cluster-launch-rate-limits {:expire-minutes 1200
+                                                                   :enforce? true
+                                                                   :bucket-size 10000
+                                                                   :tokens-replenished-per-minute 5000}
                               :synthetic-pods {:image "gcr.io/google-containers/alpine-with-bash:1.0"
                                                :max-pods-outstanding 128
                                                :user #config/env "USER"

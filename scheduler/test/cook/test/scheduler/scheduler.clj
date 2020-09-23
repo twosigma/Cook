@@ -311,7 +311,7 @@
                               :enforce? true
                               :tokens-replenished-per-minute 100}}}})
 
-(def compute-cluster-launch-rate-limit-config-for-testing
+(def compute-cluster-launch-rate-limits-for-testing
   "A basic config, designed to be big enough that everything passes, but enforcing."
   {:expire-minutes 1000
    :enforce? true
@@ -1604,7 +1604,7 @@
                                           task-metadata-seq))
                               (doseq [task-metadata task-metadata-seq]
                                 (process-task-post-launch-fn task-metadata)))))
-                        (get-launch-rate-limiter [this] rate-limit/AllowAllRateLimiter))
+                        (get-compute-cluster-launch-rate-limiter [this] rate-limit/AllowAllRateLimiter))
       test-user (System/getProperty "user.name")
       executor {:command "cook-executor"
                 :default-progress-regex-string "regex-string"
@@ -1747,8 +1747,8 @@
             (is (= #{"job-1"} (set @launched-job-names-atom))))))
 
       (with-redefs [rate-limit/job-launch-rate-limiter rate-limit/AllowAllRateLimiter
-                    cc/get-launch-rate-limiter
-                    (constantly (rate-limit/create-compute-cluster-launch-rate-limiter "fake-name-a" compute-cluster-launch-rate-limit-config-for-testing))
+                    cc/get-compute-cluster-launch-rate-limiter
+                    (constantly (rate-limit/create-compute-cluster-launch-rate-limiter "fake-name-a" compute-cluster-launch-rate-limits-for-testing))
                     rate-limit/get-token-count! (fn [rate-limiter key]
                                                   (cond
                                                     (= rate-limiter rate-limit/AllowAllRateLimiter) 1000
@@ -1764,12 +1764,12 @@
             (is (= #{"job-1" "job-2" "job-3" "job-4"} (set @launched-job-names-atom))))))
 
       (with-redefs [rate-limit/job-launch-rate-limiter rate-limit/AllowAllRateLimiter
-                    cc/get-launch-rate-limiter
-                    (constantly (rate-limit/create-compute-cluster-launch-rate-limiter "fake-name-b" compute-cluster-launch-rate-limit-config-for-testing))
+                    cc/get-compute-cluster-launch-rate-limiter
+                    (constantly (rate-limit/create-compute-cluster-launch-rate-limiter "fake-name-b" compute-cluster-launch-rate-limits-for-testing))
                     rate-limit/enforce? (constantly true)
                     rate-limit/get-token-count! (fn [rate-limiter key]
                                                   (cond
-                                                    (= key rate-limit/global-job-launch-rate-limiter-key) -1
+                                                    (= key rate-limit/compute-cluster-launch-rate-limiter-key) -1
                                                     :else 100))]
         (testing "enough offers for all normal jobs, but global rate limited."
           (let [num-considerable 10

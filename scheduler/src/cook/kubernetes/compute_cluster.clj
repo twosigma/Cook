@@ -304,7 +304,7 @@
                                      synthetic-pods-config node-blocklist-labels
                                      ^ExecutorService launch-task-executor-service
                                      cluster-definition state-atom state-locked?-atom dynamic-cluster-config?
-                                     launch-rate-limit]
+                                     compute-cluster-launch-rate-limiter]
   cc/ComputeCluster
   (launch-tasks [this pool-name matches process-task-post-launch-fn]
     (let [task-metadata-seq (mapcat :task-metadata-seq matches)]
@@ -550,8 +550,8 @@
     [_ {:keys [instance/sandbox-url]}]
     sandbox-url)
 
-  (get-launch-rate-limiter
-    [_] launch-rate-limit))
+  (get-compute-cluster-launch-rate-limiter
+    [_] compute-cluster-launch-rate-limiter))
 
 (defn get-or-create-cluster-entity-id
   [conn compute-cluster-name]
@@ -660,7 +660,7 @@
            ca-cert-path
            ^String config-file
            dynamic-cluster-config?
-           launch-rate-limit-config
+           compute-cluster-launch-rate-limits
            launch-task-num-threads
            max-pods-per-node
            name
@@ -695,7 +695,7 @@
         cluster-entity-id (get-or-create-cluster-entity-id conn name)
         api-client (make-api-client config-file base-path use-google-service-account? bearer-token-refresh-seconds verifying-ssl ca-cert ca-cert-path)
         launch-task-executor-service (Executors/newFixedThreadPool launch-task-num-threads)
-        launch-rate-limit (cook.rate-limit/create-compute-cluster-launch-rate-limiter name launch-rate-limit-config)
+        compute-cluster-launch-rate-limiter (cook.rate-limit/create-compute-cluster-launch-rate-limiter name compute-cluster-launch-rate-limits)
         compute-cluster (->KubernetesComputeCluster api-client 
                                                     name
                                                     cluster-entity-id
@@ -719,6 +719,6 @@
                                                     (atom state)
                                                     (atom state-locked?)
                                                     dynamic-cluster-config?
-                                                    launch-rate-limit)]
+                                                    compute-cluster-launch-rate-limiter)]
     (cc/register-compute-cluster! compute-cluster)
     compute-cluster))

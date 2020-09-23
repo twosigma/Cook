@@ -59,13 +59,13 @@
 (defn create-compute-cluster-launch-rate-limiter
   "From the configuration map, extract the keys that setup the job-launch rate limiter and return
   the constructed object. If the configuration map is not found, the AllowAllRateLimiter is returned."
-  [compute-cluster-name ratelimit-config]
-    (if (seq ratelimit-config)
+  [compute-cluster-name compute-cluster-launch-rate-limits]
+    (if (seq compute-cluster-launch-rate-limits)
       (do
-        (log/info "For compute cluster" compute-cluster-name "configuring global rate limit config" ratelimit-config)
-        (rtg/make-tbf-rate-limiter ratelimit-config))
+        (log/info "For compute cluster" compute-cluster-name "configuring global rate limit config" compute-cluster-launch-rate-limits)
+        (rtg/make-tbf-rate-limiter compute-cluster-launch-rate-limits))
       (do
         (log/info "For compute cluster" compute-cluster-name "not configuring global rate limit because no configuration set")
         AllowAllRateLimiter)))
 
-(def global-job-launch-rate-limiter-key "*DEF*")
+(def compute-cluster-launch-rate-limiter-key "*DEF*")

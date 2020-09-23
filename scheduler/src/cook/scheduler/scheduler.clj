@@ -819,9 +819,9 @@
       (fn process-task-post-launch!
         [{:keys [hostname task-request]}]
         (let [user (get-in task-request [:job :job/user])
-              launch-rate-limit (cc/get-launch-rate-limiter compute-cluster)]
+              compute-cluster-launch-rate-limiter (cc/get-compute-cluster-launch-rate-limiter compute-cluster)]
           (ratelimit/spend! ratelimit/job-launch-rate-limiter user 1)
-          (ratelimit/spend! launch-rate-limit ratelimit/global-job-launch-rate-limiter-key 1))
+          (ratelimit/spend! compute-cluster-launch-rate-limiter ratelimit/compute-cluster-launch-rate-limiter-key 1))
         (locking fenzo
           (.. fenzo
               (getTaskAssigner)
@@ -838,14 +838,14 @@
                                (map
                                  (fn [[compute-cluster matches-in-compute-cluster]]
                                    (let [compute-cluster-name (cc/compute-cluster-name compute-cluster)
-                                         launch-rate-limit (cc/get-launch-rate-limiter compute-cluster)
-                                         enforce? (ratelimit/enforce? launch-rate-limit)
+                                         compute-cluster-launch-rate-limiter (cc/get-compute-cluster-launch-rate-limiter compute-cluster)
+                                         enforce? (ratelimit/enforce? compute-cluster-launch-rate-limiter)
                                          token-count (ratelimit/get-token-count!
-                                                       launch-rate-limit
-                                                       ratelimit/global-job-launch-rate-limiter-key)
+                                                       compute-cluster-launch-rate-limiter
+                                                       ratelimit/compute-cluster-launch-rate-limiter-key)
                                          resume-millis (ratelimit/time-until-out-of-debt-millis!
-                                                         launch-rate-limit
-                                                         ratelimit/global-job-launch-rate-limiter-key)
+                                                         compute-cluster-launch-rate-limiter
+                                                         ratelimit/compute-cluster-launch-rate-limiter-key)
                                          skipping-cycle? (and enforce? (neg? token-count))]
                                      (if skipping-cycle?
                                        {:skip-rate-limit true

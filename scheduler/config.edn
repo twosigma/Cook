@@ -21,10 +21,10 @@
                               :container-defaults {:volumes [{:host-path "/tmp/cook-integration-mount"
                                                               :container-path "/mnt/cook-integration"
                                                               :mode "RW"}]}
-                              :launch-rate-limit-config {:expire-minutes 1200
-                                                         :enforce? true
-                                                         :bucket-size 10000
-                                                         :tokens-replenished-per-minute 5000}}}]
+                              :compute-cluster-launch-rate-limits {:expire-minutes 1200
+                                                                   :enforce? true
+                                                                   :bucket-size 10000
+                                                                   :tokens-replenished-per-minute 5000}}}]
  :cors-origins ["https?://cors.example.com"]
  :data-local {:fitness-calculator {:cache-ttl-ms 60000
                                    :cost-endpoint #config/env "DATA_LOCAL_ENDPOINT"
