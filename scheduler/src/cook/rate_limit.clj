@@ -16,7 +16,6 @@
 (ns cook.rate-limit
   (:require [clojure.tools.logging :as log]
             [cook.config :refer [config]]
-            [cook.compute-cluster :as cc]
             [cook.rate-limit.generic :as rtg]
             [cook.regexp-tools :as regexp-tools]
             [mount.core :as mount]))
