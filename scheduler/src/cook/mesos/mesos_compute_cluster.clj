@@ -415,7 +415,7 @@
                                                (async/chan offer-chan-size))
                                              (map :pool/name synthesized-pools))
           compute-cluster-launch-rate-limiter (cook.rate-limit/create-compute-cluster-launch-rate-limiter
-                              compute-cluster-name compute-cluster-launch-rate-limits)
+                                                compute-cluster-name compute-cluster-launch-rate-limits)
           mesos-compute-cluster (->MesosComputeCluster compute-cluster-name
                                                        framework-id
                                                        cluster-entity-id
