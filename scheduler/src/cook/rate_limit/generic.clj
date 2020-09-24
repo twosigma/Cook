@@ -40,8 +40,10 @@
   (or key "*NULL_TBF_KEY*"))
 
 (defn make-token-bucket-filter
-  "Given a tocken bucket parameters and size, create an empty tbf that has the target parameters."
+  "Given a token bucket parameters and size, create an empty tbf that has the target parameters."
   [tokens-replenished-per-minute bucket-size]
+  {:pre [(> bucket-size 0)
+         (> tokens-replenished-per-minute 0.0)]}
   (tbf/create-tbf (/ tokens-replenished-per-minute 60000.)
                   bucket-size
                   (current-time-in-millis)
@@ -66,6 +68,8 @@
   gotten anything from them in a long time. (Assuming the TTL is set at least as high as
   (:bucket-size/:tokens-replenished-per-minute))."
   [{:keys [^LoadingCache cache] :as ratelimiter} key]
+  {:pre [(not (nil? key))
+         (not (nil? cache))]}
   (.get cache key))
 
 (defn earn-tokens!
