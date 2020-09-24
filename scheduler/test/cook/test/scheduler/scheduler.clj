@@ -1604,7 +1604,7 @@
                                           task-metadata-seq))
                               (doseq [task-metadata task-metadata-seq]
                                 (process-task-post-launch-fn task-metadata)))))
-                        (get-compute-cluster-launch-rate-limiter [this] rate-limit/AllowAllRateLimiter))
+                        (launch-rate-limiter [this] rate-limit/AllowAllRateLimiter))
       test-user (System/getProperty "user.name")
       executor {:command "cook-executor"
                 :default-progress-regex-string "regex-string"
@@ -1747,7 +1747,7 @@
             (is (= #{"job-1"} (set @launched-job-names-atom))))))
 
       (with-redefs [rate-limit/job-launch-rate-limiter rate-limit/AllowAllRateLimiter
-                    cc/get-compute-cluster-launch-rate-limiter
+                    cc/launch-rate-limiter
                     (constantly (rate-limit/create-compute-cluster-launch-rate-limiter "fake-name-a" compute-cluster-launch-rate-limits-for-testing))
                     rate-limit/get-token-count! (fn [rate-limiter key]
                                                   (cond
@@ -1764,7 +1764,7 @@
             (is (= #{"job-1" "job-2" "job-3" "job-4"} (set @launched-job-names-atom))))))
 
       (with-redefs [rate-limit/job-launch-rate-limiter rate-limit/AllowAllRateLimiter
-                    cc/get-compute-cluster-launch-rate-limiter
+                    cc/launch-rate-limiter
                     (constantly (rate-limit/create-compute-cluster-launch-rate-limiter "fake-name-b" compute-cluster-launch-rate-limits-for-testing))
                     rate-limit/enforce? (constantly true)
                     rate-limit/get-token-count! (fn [rate-limiter key]

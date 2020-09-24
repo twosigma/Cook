@@ -550,7 +550,7 @@
     [_ {:keys [instance/sandbox-url]}]
     sandbox-url)
 
-  (get-compute-cluster-launch-rate-limiter
+  (launch-rate-limiter
     [_] compute-cluster-launch-rate-limiter))
 
 (defn get-or-create-cluster-entity-id

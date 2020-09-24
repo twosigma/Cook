@@ -819,7 +819,7 @@
       (fn process-task-post-launch!
         [{:keys [hostname task-request]}]
         (let [user (get-in task-request [:job :job/user])
-              compute-cluster-launch-rate-limiter (cc/get-compute-cluster-launch-rate-limiter compute-cluster)]
+              compute-cluster-launch-rate-limiter (cc/launch-rate-limiter compute-cluster)]
           (ratelimit/spend! ratelimit/job-launch-rate-limiter user 1)
           (ratelimit/spend! compute-cluster-launch-rate-limiter ratelimit/compute-cluster-launch-rate-limiter-key 1))
         (locking fenzo
@@ -838,7 +838,7 @@
                                (map
                                  (fn [[compute-cluster matches-in-compute-cluster]]
                                    (let [compute-cluster-name (cc/compute-cluster-name compute-cluster)
-                                         compute-cluster-launch-rate-limiter (cc/get-compute-cluster-launch-rate-limiter compute-cluster)
+                                         compute-cluster-launch-rate-limiter (cc/launch-rate-limiter compute-cluster)
                                          enforce? (ratelimit/enforce? compute-cluster-launch-rate-limiter)
                                          token-count (ratelimit/get-token-count!
                                                        compute-cluster-launch-rate-limiter

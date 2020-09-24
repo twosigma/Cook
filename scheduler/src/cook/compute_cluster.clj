@@ -95,7 +95,7 @@
      Users will need to add the file path & offset to their query.
      Refer to the 'Using the output_url' section in docs/scheduler-rest-api.adoc for further details.")
 
-  (get-compute-cluster-launch-rate-limiter [this]
+  (launch-rate-limiter [this]
     "Return the RateLimiter that should be used to limit launches to this compute cluster"))
 
 (defn safe-kill-task

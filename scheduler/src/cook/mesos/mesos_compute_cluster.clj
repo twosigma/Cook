@@ -333,7 +333,7 @@
         (log/debug e "Unable to retrieve directory path for" task-id "on agent" hostname)
         nil)))
 
-  (get-compute-cluster-launch-rate-limiter [_] compute-cluster-launch-rate-limiter))
+  (launch-rate-limiter [_] compute-cluster-launch-rate-limiter))
 
 ; Internal method
 (defn mesos-cluster->compute-cluster-map-for-datomic
