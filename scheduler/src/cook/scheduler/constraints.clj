@@ -132,7 +132,7 @@
   and a non-gpu job from running on a gpu host because we consider gpus scarce resources."
   [job]
   (let [job-gpu-count-requested (-> job util/job-ent->resources :gpus (or 0))
-        job-gpu-model-requested (job->gpu-model-requested job-gpu-count-requested job (util/job->pool-name job))]
+        job-gpu-model-requested (when (pos? job-gpu-count-requested) (job->gpu-model-requested job-gpu-count-requested job (util/job->pool-name job)))]
     (->gpu-host-constraint job-gpu-count-requested job-gpu-model-requested)))
 
 (defrecord rebalancer-reservation-constraint [reserved-hosts]
