@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+##[1.47.0] - 2020-09-25
+### Added
+- Add rate limits per compute cluster, from @scrosby
+### Changed
+- Cached job-constant fields in defrecords for gpu-host-constraint, from @kathryn-zhou
+- Cache job-constant fields in defrecords for user-defined-constraint, from @kathryn-zhou
+
 ## [1.46.0] - 2020-09-21
 ### Added
 - Workload fields to job application, from @dposada
