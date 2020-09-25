@@ -227,7 +227,7 @@
         ; threads and we want to avoid contention in LazySeq
         vec)))
 
-(defrecord user-defined-constraint [job]
+(defrecord user-defined-constraint [constraints]
   JobConstraint
   (job-constraint-name [this] (get-class-name this))
   (job-constraint-evaluate
@@ -243,7 +243,6 @@
                         (log/error (str "Unknown operator " operator
                                         " api.clj should have prevented this from happening."))
                         true))))
-          constraints (job->constraints job)
           passes? (every? vm-passes-constraint? constraints)]
       [passes? (when-not passes?
                  "Host doesn't pass at least one user supplied constraint.")]))
@@ -255,7 +254,7 @@
   "Constructs a user-defined-constraint.
    The constraint asserts that the vm passes the constraints the user supplied as host constraints"
   [job]
-  (->user-defined-constraint job))
+  (->user-defined-constraint (job->constraints job)))
 
 (defrecord estimated-completion-constraint [estimated-end-time host-lifetime-mins]
   JobConstraint
