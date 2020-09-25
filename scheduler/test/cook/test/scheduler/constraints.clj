@@ -46,8 +46,7 @@
                      {:constraint/attribute "instance_type"
                       :constraint/operator :constraint.operator/equals
                       :constraint/pattern "mem.large"}]
-        job {:job/constraint constraints}
-        user-defined-constraint (constraints/->user-defined-constraint job)]
+        user-defined-constraint (constraints/->user-defined-constraint constraints)]
     (is (= true (first (constraints/job-constraint-evaluate user-defined-constraint nil {"is_spot" "true" "instance_type" "mem.large"}))))
     (is (= false (first (constraints/job-constraint-evaluate user-defined-constraint nil {"is_spot" "true" "instance_type" "cpu.large"}))))
     (is (= false (first (constraints/job-constraint-evaluate user-defined-constraint nil {"is_spot" "false" "instance_type" "mem.large"}))))
