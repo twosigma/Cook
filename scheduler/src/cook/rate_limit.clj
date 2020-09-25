@@ -14,8 +14,10 @@
 ;; limitations under the License.
 ;;
 (ns cook.rate-limit
-  (:require [cook.config :refer [config]]
+  (:require [clojure.tools.logging :as log]
+            [cook.config :refer [config]]
             [cook.rate-limit.generic :as rtg]
+            [cook.regexp-tools :as regexp-tools]
             [mount.core :as mount]))
 
 ; Import from cook.rate-limit.generic some relevant functions.
@@ -53,18 +55,16 @@
 (mount/defstate job-launch-rate-limiter
   :start (create-job-launch-rate-limiter config))
 
-(defn create-global-job-launch-rate-limiter
+(defn create-compute-cluster-launch-rate-limiter
   "From the configuration map, extract the keys that setup the job-launch rate limiter and return
   the constructed object. If the configuration map is not found, the AllowAllRateLimiter is returned."
-  [config]
-  (let [{:keys [settings]} config
-        {:keys [rate-limit]} settings
-        {:keys [expire-minutes global-job-launch]} rate-limit]
-    (if (seq global-job-launch)
-      (rtg/make-tbf-rate-limiter (assoc global-job-launch :expire-minutes expire-minutes))
-      AllowAllRateLimiter)))
+  [compute-cluster-name compute-cluster-launch-rate-limits]
+    (if (seq compute-cluster-launch-rate-limits)
+      (do
+        (log/info "For compute cluster" compute-cluster-name "configuring global rate limit config" compute-cluster-launch-rate-limits)
+        (rtg/make-tbf-rate-limiter compute-cluster-launch-rate-limits))
+      (do
+        (log/info "For compute cluster" compute-cluster-name "not configuring global rate limit because no configuration set")
+        AllowAllRateLimiter)))
 
-(mount/defstate global-job-launch-rate-limiter
-  :start (create-global-job-launch-rate-limiter config))
-
-(def global-job-launch-rate-limiter-key "*DEF*")
+(def compute-cluster-launch-rate-limiter-key "*DEF*")

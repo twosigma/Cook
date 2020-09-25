@@ -147,7 +147,8 @@
                                                               trigger-chans#
                                                               {}
                                                               {"no-pool" (async/chan 100)}
-                                                              {}))
+                                                              {}
+                                                              cook.rate-limit/AllowAllRateLimiter))
          prepare-match-trigger-chan-orig# ~sched/prepare-match-trigger-chan]
      (try
        (with-redefs [executor-config (constantly executor-config#)

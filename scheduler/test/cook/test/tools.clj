@@ -870,7 +870,7 @@
     (is (= (util/match-based-on-pool-name matchlist "bar" :field) {:bar 2}))
     (is (= (util/match-based-on-pool-name matchlist "baz" :field) {:bar 2})))
   (is (= (util/match-based-on-pool-name [] "foo" :field) nil)))
-  
+
 (deftest test-atom-updater
   (let [map-atom (atom {})
         testfn (util/make-atom-updater map-atom)]

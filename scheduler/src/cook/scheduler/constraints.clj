@@ -132,7 +132,7 @@
   and a non-gpu job from running on a gpu host because we consider gpus scarce resources."
   [job]
   (let [job-gpu-count-requested (-> job util/job-ent->resources :gpus (or 0))
-        job-gpu-model-requested (job->gpu-model-requested job-gpu-count-requested job (util/job->pool-name job))]
+        job-gpu-model-requested (when (pos? job-gpu-count-requested) (job->gpu-model-requested job-gpu-count-requested job (util/job->pool-name job)))]
     (->gpu-host-constraint job-gpu-count-requested job-gpu-model-requested)))
 
 (defrecord rebalancer-reservation-constraint [reserved-hosts]
@@ -304,21 +304,6 @@
         (when (< 0 max-expected-runtime)
           (->estimated-completion-constraint expected-end-time host-lifetime-mins))))))
 
-(defn build-launch-max-tasks-constraint
-  "This returns a Fenzo hard constraint that ensures that we don't match more than a given number of tasks per cycle. Returns nil
-  if the constraint is disabled."
-  []
-  (let [enforcing? (ratelimit/enforce? ratelimit/global-job-launch-rate-limiter)
-        max-tasks (ratelimit/get-token-count! ratelimit/global-job-launch-rate-limiter ratelimit/global-job-launch-rate-limiter-key)]
-    (when enforcing?
-      (reify ConstraintEvaluator
-        (getName [_] "launch_max_tasks")
-        (evaluate [_ _ _ task-tracker-state]
-          (let [num-assigned (-> task-tracker-state .getAllCurrentlyAssignedTasks .size)]
-            (ConstraintEvaluator$Result.
-              (< num-assigned max-tasks)
-              (str "Hit the global rate limit"))))))))
-
 (defn build-max-tasks-per-host-constraint
   "Returns a Fenzo constraint that ensures that we don't
   match more tasks per host than is allowed (configured)"
@@ -370,13 +355,11 @@
 (defn make-fenzo-job-constraints
   "Returns a sequence of all the constraints for 'job', in Fenzo-compatible format."
   [job]
-  (let [launch-max-tasks-constraint (build-launch-max-tasks-constraint)]
-    (cond-> (->> job-constraint-constructors
-                 (map (fn [constructor] (constructor job)))
-                 (remove nil?)
-                 (map fenzoize-job-constraint))
-            launch-max-tasks-constraint (conj (build-launch-max-tasks-constraint))
-            true (conj (build-max-tasks-per-host-constraint)))))
+  (conj (->> job-constraint-constructors
+             (map (fn [constructor] (constructor job)))
+             (remove nil?)
+             (map fenzoize-job-constraint))
+        (build-max-tasks-per-host-constraint)))
 
 (defn build-rebalancer-reservation-constraint
   "Constructs a rebalancer-reservation-constraint"

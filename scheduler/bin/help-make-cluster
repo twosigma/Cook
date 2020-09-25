@@ -18,8 +18,6 @@ CLUSTERNAME=$3
 COOK_KUBECONFIG=$4
 GKE_CLUSTER_OWNER=${GKE_CLUSTER_OWNER:-$USER}
 
-VERSION=1.15.11-gke.17
-
 gcloud="gcloud --project $PROJECT"
 
 function create_node_pool {
@@ -55,8 +53,6 @@ KUBECONFIG=${COOK_KUBECONFIG} $gcloud container clusters get-credentials "$CLUST
 # Add credentials to default kubeconfig for convenience purposes.
 $gcloud container clusters get-credentials "$CLUSTERNAME" --zone "$ZONE"
 
-echo "---- Upgrading the cluster master version to $VERSION"
-$gcloud container clusters upgrade "$CLUSTERNAME" --cluster-version $VERSION --zone "$ZONE" --quiet --master
 
 echo "---- Setting up cook priority classes in kubernetes"
 KUBECONFIG=${COOK_KUBECONFIG} kubectl create -f "${DIR}/priority-class-cook-workload.yaml"

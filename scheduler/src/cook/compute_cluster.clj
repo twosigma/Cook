@@ -93,7 +93,10 @@
   (retrieve-sandbox-url-path [this instance-entity]
     "Constructs a URL to query the sandbox directory of the task.
      Users will need to add the file path & offset to their query.
-     Refer to the 'Using the output_url' section in docs/scheduler-rest-api.adoc for further details."))
+     Refer to the 'Using the output_url' section in docs/scheduler-rest-api.adoc for further details.")
+
+  (launch-rate-limiter [this]
+    "Return the RateLimiter that should be used to limit launches to this compute cluster"))
 
 (defn safe-kill-task
   "A safe version of kill task that never throws. This reduces the risk that errors in one compute cluster propagate and cause problems in another compute cluster."
