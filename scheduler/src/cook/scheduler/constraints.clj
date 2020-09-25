@@ -99,20 +99,17 @@
           ; lookup the GPU model from the pool defaults defined in config.edn
           (util/match-based-on-pool-name (config/valid-gpu-models) pool-name :default-model)))))
 
-(defrecord gpu-host-constraint [job]
+(defrecord gpu-host-constraint [job-gpu-count-requested job-gpu-model-requested]
   JobConstraint
   (job-constraint-name [this] (get-class-name this))
   (job-constraint-evaluate
     [this _ vm-attributes]
     (job-constraint-evaluate this nil vm-attributes []))
   (job-constraint-evaluate
-    [{:keys [job]} _ vm-attributes vm-tasks-assigned]
-    (let [k8s-vm? (= (get vm-attributes "compute-cluster-type") "kubernetes")
-          job-gpu-count-requested (-> job util/job-ent->resources :gpus (or 0))]
+    [_ _ vm-attributes vm-tasks-assigned]
+    (let [k8s-vm? (= (get vm-attributes "compute-cluster-type") "kubernetes")]
           (if k8s-vm?
-            (let [job-gpu-model-requested (job->gpu-model-requested
-                                            job-gpu-count-requested job (util/job->pool-name job))
-                  vm-gpu-model->count-available (get vm-attributes "gpus")
+            (let [vm-gpu-model->count-available (get vm-attributes "gpus")
                   vm-satisfies-constraint? (if (pos? job-gpu-count-requested)
                                              ; If job requests GPUs, require that the VM has the same number of gpus available in the same model as the job requested.
                                              (and (== (get vm-gpu-model->count-available job-gpu-model-requested 0) job-gpu-count-requested)
@@ -134,7 +131,9 @@
   The constraint prevents a gpu job from running on a host that does not have the correct number and model of gpus
   and a non-gpu job from running on a gpu host because we consider gpus scarce resources."
   [job]
-  (->gpu-host-constraint job))
+  (let [job-gpu-count-requested (-> job util/job-ent->resources :gpus (or 0))
+        job-gpu-model-requested (when (pos? job-gpu-count-requested) (job->gpu-model-requested job-gpu-count-requested job (util/job->pool-name job)))]
+    (->gpu-host-constraint job-gpu-count-requested job-gpu-model-requested)))
 
 (defrecord rebalancer-reservation-constraint [reserved-hosts]
   JobConstraint
