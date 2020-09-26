@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
-##[1.47.0] - 2020-09-25
+## [1.47.0] - 2020-09-25
 ### Added
 - Add rate limits per compute cluster, from @scrosby
 ### Changed
