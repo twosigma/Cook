@@ -62,6 +62,12 @@ class TestDynamicClusters(util.CookTest):
             }
             data, resp = util.create_compute_cluster(self.cook_url, test_cluster)
             self.assertEqual(201, resp.status_code, resp.content)
+            # Test create cluster with duplicate name
+            data, resp = util.create_compute_cluster(self.cook_url, test_cluster)
+            self.assertEqual(422, resp.status_code, resp.content)
+            self.assertEqual(f'Compute cluster with name {test_cluster_name} already exists',
+                             data['error']['message'],
+                             resp.content)
 
         # Check that a job schedules successfully
         command = "true"
