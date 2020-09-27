@@ -96,7 +96,7 @@ class TestDynamicClusters(util.CookTest):
                 self.assertEqual(204, resp.status_code, resp.content)
             # Force give up leadership
             resp = util.shutdown_leader(self.cook_url, "test_dynamic_clusters")
-            self.assertEqual("Accepted", resp)
+            self.assertEqual(b'Accepted', resp)
 
         # Old clusters should be re-created
         # wait for cook to come up
