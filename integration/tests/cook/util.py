@@ -1958,3 +1958,10 @@ def delete_compute_cluster(cook_url, cluster, headers=None):
     resp = session.delete(f'{leader_url}/compute-clusters', json=cluster, headers=headers)
     logger.info(f'delete_compute_cluster resp: {resp.headers} {resp.content} {resp.status_code} {resp.history}')
     return resp
+
+
+def shutdown_leader(cook_url, reason, headers=None):
+    leader_url = scheduler_info_uncached(cook_url)['leader-url']
+    resp = session.post(f'{leader_url}/shutdown-leader', json={"reason": reason}, headers=headers)
+    logger.info(f'shutdown_leader resp: {resp.headers} {resp.content} {resp.status_code} {resp.history}')
+    return resp.content

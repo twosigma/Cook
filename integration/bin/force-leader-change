@@ -1,3 +1,0 @@
-#!/usr/bin/env bash
-
-curl -u admin: http://localhost:12321/shutdown-leader -H "Content-Type: application/json" -d'{"reason": "test"}'

@@ -23,8 +23,8 @@ class TestDynamicClusters(util.CookTest):
         self.user_factory = util.UserFactory(self)
 
     @unittest.skipUnless(util.using_kubernetes(), 'Test requires kubernetes')
-    @unittest.skipUnless(os.getenv('COOK_CHANGE_LEADER_COMMAND') is not None,
-                         'Requires setting the COOK_CHANGE_LEADER_COMMAND environment variable')
+    @unittest.skipUnless(os.getenv('COOK_TEST_DYNAMIC_CLUSTERS') is not None,
+                         'Requires setting the COOK_TEST_DYNAMIC_CLUSTERS environment variable')
     @pytest.mark.serial
     def test_dynamic_clusters(self):
         """
@@ -67,7 +67,16 @@ class TestDynamicClusters(util.CookTest):
         command = "true"
         job_uuid, resp = util.submit_job(self.cook_url, command=command, container=container)
         self.assertEqual(201, resp.status_code, resp.content)
+        instance = util.wait_for_instance(self.cook_url, job_uuid)
+        message = repr(instance)
+        self.assertIsNotNone(instance['compute-cluster'], message)
+        instance_compute_cluster_name = instance['compute-cluster']['name']
+        self.assertEqual(test_cluster["name"], instance_compute_cluster_name, instance['compute-cluster'])
         util.wait_for_instance(self.cook_url, job_uuid, status='success')
+        running_clusters = [cluster for cluster in util.compute_clusters(self.cook_url)['db-configs'] if cluster["state"] == "running"]
+        self.assertEqual(1, len(running_clusters), running_clusters)
+        self.assertEqual(test_cluster["name"], running_clusters[0]["name"], running_clusters)
+
 
         with admin:
             # Delete test cluster
@@ -86,9 +95,8 @@ class TestDynamicClusters(util.CookTest):
                 resp = util.delete_compute_cluster(self.cook_url, cluster)
                 self.assertEqual(204, resp.status_code, resp.content)
             # Force give up leadership
-            self.logger.info(f"COOK_CHANGE_LEADER_COMMAND {os.getenv('COOK_CHANGE_LEADER_COMMAND')}")
-            cp = subprocess.run(os.getenv('COOK_CHANGE_LEADER_COMMAND'), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            self.assertEqual(0, cp.returncode, f'{cp.stdout} {cp.stderr}')
+            resp = util.shutdown_leader(self.cook_url, "test_dynamic_clusters")
+            self.assertEqual("Accepted", resp)
 
         # Old clusters should be re-created
         # wait for cook to come up
