@@ -441,12 +441,16 @@ def compute_clusters(cook_url):
     return session.get(f'{cook_url}/compute-clusters').json()
 
 
-@functools.lru_cache()
-def scheduler_info(cook_url):
+def scheduler_info_uncached(cook_url):
     resp = session.get(f'{cook_url}/info', auth=None)
     response_info = {'code': resp.status_code, 'msg': resp.content}
     assert resp.status_code == 200, response_info
     return resp.json()
+
+
+@functools.lru_cache()
+def scheduler_info(cook_url):
+    return scheduler_info_uncached(cook_url)
 
 
 def docker_image():
@@ -1935,12 +1939,29 @@ def kubernetes_settings():
     return settings(cook_url)['kubernetes']
 
 
-def create_compute_cluster(cook_url, cluster):
-    resp = session.post(f'{cook_url}/compute-clusters', json=cluster)
-    logger.info(f'create_compute_cluster resp: {resp.content}')
+def create_compute_cluster(cook_url, cluster, headers=None):
+    leader_url = scheduler_info_uncached(cook_url)['leader-url']
+    resp = session.post(f'{leader_url}/compute-clusters', json=cluster, headers=headers)
+    logger.info(f'create_compute_cluster resp: {resp.headers} {resp.content} {resp.status_code} {resp.history}')
     return resp.json(), resp
 
 
-def delete_compute_cluster(cook_url, cluster):
-    resp = session.delete(f'{cook_url}/compute-clusters', json={'name': cluster['name']})
+def update_compute_cluster(cook_url, cluster, headers=None):
+    leader_url = scheduler_info_uncached(cook_url)['leader-url']
+    resp = session.put(f'{leader_url}/compute-clusters', json=cluster, headers=headers)
+    logger.info(f'update_compute_cluster resp: {resp.headers} {resp.content} {resp.status_code} {resp.history}')
+    return resp.json(), resp
+
+
+def delete_compute_cluster(cook_url, cluster, headers=None):
+    leader_url = scheduler_info_uncached(cook_url)['leader-url']
+    resp = session.delete(f'{leader_url}/compute-clusters', json=cluster, headers=headers)
+    logger.info(f'delete_compute_cluster resp: {resp.headers} {resp.content} {resp.status_code} {resp.history}')
     return resp
+
+
+def shutdown_leader(cook_url, reason, headers=None):
+    leader_url = scheduler_info_uncached(cook_url)['leader-url']
+    resp = session.post(f'{leader_url}/shutdown-leader', json={"reason": reason}, headers=headers)
+    logger.info(f'shutdown_leader resp: {resp.headers} {resp.content} {resp.status_code} {resp.history}')
+    return resp.content

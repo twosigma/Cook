@@ -1,6 +1,6 @@
 Vagrant.configure("2") do |config|
   config.vm.box = "hashicorp/bionic64"
-
+  config.vm.network "forwarded_port", guest: 12321, host: 12321
   config.vm.provider "virtualbox" do |v|
     v.memory = 6144
     v.cpus = 2
