@@ -20,6 +20,7 @@
             [clojure.core.async :as async]
             [clojure.core.cache :as cache]
             [clojure.edn :as edn]
+            [clojure.set :as set]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
             [clojure.walk :as walk]
@@ -978,6 +979,8 @@
       (catch Throwable e
         (log/error e "In" pool-name "pool, encountered error while triggering autoscaling")))))
 
+(def pool-name->unmatched-job-uuid->unmatched-cycles-atom (atom {}))
+
 (defn handle-resource-offers!
   "Gets a list of offers from mesos. Decides what to do with them all--they should all
    be accepted or rejected at the end of the function."
@@ -1037,6 +1040,48 @@
                               :number-total (count offers)
                               :number-unmatched (- (count offers) (count offers-scheduled))
                               :stats (offers->stats offers)}})
+
+          (let [unmatched-job-uuids
+                (set/difference
+                  (->> considerable-jobs (map :job/uuid) set)
+                  (set matched-job-uuids))
+                {:keys [unmatched-cycles-warn-threshold
+                        unmatched-fraction-warn-threshold]}
+                (config/offer-matching)]
+            (swap!
+              pool-name->unmatched-job-uuid->unmatched-cycles-atom
+              (fn [m]
+                (let [unmatched-job-uuid->unmatched-cycles
+                      (pc/map-from-keys
+                        (fn [job-uuid]
+                          (-> m
+                              (get pool-name)
+                              (get job-uuid 0)
+                              inc))
+                        unmatched-job-uuids)
+                      unmatched-too-long
+                      (filter
+                        (fn [[_ cycles]]
+                          (> cycles
+                             unmatched-cycles-warn-threshold))
+                        unmatched-job-uuid->unmatched-cycles)]
+                  (when
+                    (and
+                      (pos? (count considerable-jobs))
+                      (-> unmatched-too-long
+                          count
+                          (/ (count considerable-jobs))
+                          (> unmatched-fraction-warn-threshold)))
+                    (log/warn "In" pool-name "pool, jobs are unmatched for too long"
+                              {:first-10-unmatched-too-long (take 10 unmatched-too-long)
+                               :number-considerable (count considerable-jobs)
+                               :number-unmatched-too-long (count unmatched-too-long)
+                               :unmatched-cycles-warn-threshold unmatched-cycles-warn-threshold
+                               :unmatched-fraction-warn-threshold unmatched-fraction-warn-threshold}))
+                  (assoc
+                    m
+                    pool-name
+                    unmatched-job-uuid->unmatched-cycles)))))
 
           (fenzo/record-placement-failures! conn failures)
 

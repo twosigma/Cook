@@ -482,7 +482,9 @@
                             kubernetes)))
      :offer-matching (fnk [[:config {offer-matching {}}]]
                        (merge {:global-min-match-interval-millis 100
-                               :target-per-pool-match-interval-millis 3000}
+                               :target-per-pool-match-interval-millis 3000
+                               :unmatched-cycles-warn-threshold 500
+                               :unmatched-fraction-warn-treshold 0.5}
                               offer-matching))}))
 
 (defn read-config
