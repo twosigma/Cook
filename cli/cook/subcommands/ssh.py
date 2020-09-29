@@ -30,7 +30,7 @@ def ssh_to_instance(job, instance, sandbox_dir_fn, cluster, command_to_run=None)
         compute_cluster_config = get_compute_cluster_config(cluster, compute_cluster_name)
         kubectl_exec_to_instance_fn(job["user"], instance["task_id"], compute_cluster_config, command_to_run)
     else:
-        command_to_run = command_to_run or ['/bin/bash']
+        command_to_run = command_to_run or ['bash']
         sandbox_dir = sandbox_dir_fn()
         command = os.environ.get('CS_SSH', 'ssh')
         logging.info(f'using ssh command: {command}')
