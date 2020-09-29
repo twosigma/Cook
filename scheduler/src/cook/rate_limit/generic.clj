@@ -27,6 +27,8 @@
     "Get the number of tokens in the token bucket filter under this name. Also earns any tokens first.")
   (time-until-out-of-debt-millis! [this key]
     "Time, in milliseconds, until this rate limiter is out of debt for this key. Earns resources first.")
+  (flush! [this key]
+    "Flush all entries with this key, causing a rate limit to be reset. nil means flush all keys")
   (enforce? [this]
     "Are we enforcing this policy?"))
 
@@ -81,7 +83,7 @@
         (.put cache key tbf)))))
 
 (defrecord TokenBucketFilterRateLimiter
-  [config cache ^Boolean enforce?]
+  [config ^LoadingCache cache ^Boolean enforce?]
   RateLimiter
   (spend!
     [this key tokens]
@@ -102,6 +104,13 @@
     (let [key (get-key key)]
       (earn-tokens! this key)
       (tbf/get-token-count (get-token-bucket-filter this key))))
+
+  (flush!
+    [this key]
+    (locking cache
+      (if (nil? key)
+        (.invalidateAll cache)
+        (.refresh cache key))))
 
   (enforce?
     [_]
@@ -141,4 +150,5 @@
     (spend! [_ _ _] 0)
     (time-until-out-of-debt-millis! [_ _] 0)
     (get-token-count! [_ _] 100000000)
+    (flush! [_ _])
     (enforce? [_] false)))

@@ -25,6 +25,7 @@
 (def time-until-out-of-debt-millis! rtg/time-until-out-of-debt-millis!)
 (def get-token-count! rtg/get-token-count!)
 (def enforce? rtg/enforce?)
+(def flush! rtg/flush!)
 (def AllowAllRateLimiter rtg/AllowAllRateLimiter)
 
 (defn create-job-submission-rate-limiter
