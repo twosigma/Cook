@@ -340,7 +340,8 @@
     ; you need to require S's namespace with ns :require. 'ns :require' is how mount finds defstates to initialize.
     ;
     ; If you get an error about "Can't embed object in code, maybe print-dup not defined: clojure.lang.Delay"
-    ; The issue is about metatransaction.core seems to be incompatible with mount. It cannot be in the dependency tree.
+    ; The issue is that at least metatransaction.core seems to be incompatible with mount. It cannot be in the
+    ; dependency tree of anything using mount.
     (mount/start-with-args (cook.config/read-config config-file-path))
     (pool/guard-invalid-default-pool (d/db datomic/conn))
     (metrics-jvm/instrument-jvm)
