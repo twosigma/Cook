@@ -764,13 +764,13 @@
         queue [(make-job 1 2 2048) (make-job 2 1 1024) (make-job 3 3 4096) (make-job 4 1 1024)]]
     (testing "no jobs included"
       (is (= []
-             (util/filter-based-on-pool-quota {:count 1, :cpus 2, :mem 1024} usage queue))))
+             (util/filter-based-on-pool-quota nil {:count 1, :cpus 2, :mem 1024} usage queue))))
     (testing "all jobs included"
       (is (= [(make-job 1 2 2048) (make-job 2 1 1024) (make-job 3 3 4096) (make-job 4 1 1024)]
-             (util/filter-based-on-pool-quota {:count 10, :cpus 20, :mem 32768} usage queue))))
+             (util/filter-based-on-pool-quota nil {:count 10, :cpus 20, :mem 32768} usage queue))))
     (testing "room for later jobs not included"
       (is (= [(make-job 1 2 2048) (make-job 2 1 1024)]
-             (util/filter-based-on-pool-quota {:count 4, :cpus 20, :mem 6144} usage queue))))))
+             (util/filter-based-on-pool-quota nil {:count 4, :cpus 20, :mem 6144} usage queue))))))
 
 (deftest test-filter-based-on-user-quota
   (let [test-user "john"
@@ -783,13 +783,13 @@
         queue [(make-job 1 2 2048) (make-job 2 1 1024) (make-job 3 3 4096) (make-job 4 1 1024)]]
     (testing "no jobs included"
       (is (= []
-             (util/filter-based-on-user-quota {test-user {:count 1, :cpus 2, :mem 1024}} user->usage queue))))
+             (util/filter-based-on-user-quota nil {test-user {:count 1, :cpus 2, :mem 1024}} user->usage queue))))
     (testing "all jobs included"
       (is (= [(make-job 1 2 2048) (make-job 2 1 1024) (make-job 3 3 4096) (make-job 4 1 1024)]
-             (util/filter-based-on-user-quota {test-user {:count 10, :cpus 20, :mem 32768}} user->usage queue))))
+             (util/filter-based-on-user-quota nil {test-user {:count 10, :cpus 20, :mem 32768}} user->usage queue))))
     (testing "room for later jobs not included"
       (is (= [(make-job 1 2 2048) (make-job 2 1 1024)]
-             (util/filter-based-on-user-quota {test-user {:count 4, :cpus 20, :mem 6144}} user->usage queue))))))
+             (util/filter-based-on-user-quota nil {test-user {:count 4, :cpus 20, :mem 6144}} user->usage queue))))))
 
 (deftest test-filter-pending-jobs-for-quota
   (let [test-user-1 "john"
@@ -807,7 +807,7 @@
     ; queue would be seen by the user quota and we'd only launch job-1.
     (testing "User quota filters first."
       (is (= [job-1 job-4]
-             (util/filter-pending-jobs-for-quota user->quota user->usage pool-quota queue))))))
+             (util/filter-pending-jobs-for-quota nil user->quota user->usage pool-quota queue))))))
 
 (deftest test-pool->user->usage
   (let [uri "datomic:mem://test-pool-user-usage"

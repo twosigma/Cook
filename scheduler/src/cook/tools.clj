@@ -922,7 +922,7 @@
 (defn filter-based-on-user-quota
   "Lazily filters jobs for which the sum of running jobs and jobs earlier in the queue exceeds one of the constraints,
    max-jobs, max-cpus or max-mem"
-  [user->quota user->usage queue]
+  [pool user->quota user->usage queue]
   (letfn [(filter-with-quota [user->usage job]
             (let [user (:job/user job)
                   job-usage (job->usage job)
@@ -939,8 +939,8 @@
 
    The input is a quota consisting of a map from resources to values:  {:mem 123 :cpus 456 ...}
    usage is a similar map containing the usage of all running jobs in this pool."
-  [quota usage queue]
-  (log/debug "Pool quota and usage:" {:quota quota :usage usage})
+  [pool quota usage queue]
+  (log/debug "Pool quota and usage:" {:pool pool :quota quota :usage usage})
   (if (nil? quota)
     queue
     (letfn [(filter-with-quota [usage job]
@@ -957,12 +957,12 @@
   user->quota is a map from user to a quota dictionary which is {:mem 123 :cpus 456 ...}
   user->usage is a map from user to a usage dictionary which is {:mem 123 :cpus 456 ...}
   pool-quota is the quota for the current pool, a quota dictionary which is {:mem 123 :cpus 456 ...}"
-  [user->quota user->usage pool-quota queue]
+  [pool user->quota user->usage pool-quota queue]
   ; Use the already precomputed user->usage map and just aggregate by users to get pool usage.
   (let [pool-usage (reduce (partial merge-with +) (vals user->usage))]
     (->> queue
-         (filter-based-on-user-quota user->quota user->usage)
-         (filter-based-on-pool-quota pool-quota pool-usage))))
+         (filter-based-on-user-quota pool user->quota user->usage)
+         (filter-based-on-pool-quota pool pool-quota pool-usage))))
 
 (defn pool->user->usage
   "Returns a map from pool name to user name to usage for all users in all pools."
