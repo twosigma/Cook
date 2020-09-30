@@ -341,7 +341,7 @@
     ;
     ; If you get an error about "Can't embed object in code, maybe print-dup not defined: clojure.lang.Delay"
     ; The issue is that at least metatransaction.core seems to be incompatible with mount. It cannot be in the
-    ; dependency tree of anything using mount.
+    ; dependency tree of anything using mount. See also issue #1370
     (mount/start-with-args (cook.config/read-config config-file-path))
     (pool/guard-invalid-default-pool (d/db datomic/conn))
     (metrics-jvm/instrument-jvm)
