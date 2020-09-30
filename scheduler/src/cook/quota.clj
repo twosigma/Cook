@@ -17,7 +17,7 @@
   (:require [clojure.set :as set]
             [cook.pool :as pool]
             [cook.schema]
-            [cook.tools :as util]
+            [cook.queries :as queries]
             [datomic.api :as d]
             [plumbing.core :as pc]))
 ;; This namespace is dangerously similar to cook.share (it was copied..)
@@ -68,7 +68,7 @@
    return Double.MAX_VALUE."
   [db user pool-name]
   (let [mesos-resource-quota (pc/map-from-keys (fn [type] (get-quota-by-type-or-default db type user pool-name))
-                                               (util/get-all-resource-types db))
+                                               (queries/get-all-resource-types db))
         ;; As part of the pool migration, there might be a mix of quotas that have the count as an attribute or a resource.
         ;; We prefer to read the resource if available and fall back to the attribute.
         count-quota (or (get-quota-by-type db :resource.type/count user pool-name) ; prefer resource
@@ -199,7 +199,7 @@
   [db pool-name]
   (let [default-type->quota (get-quota db default-user pool-name)
         default-count-quota (get default-type->quota :count)
-        all-resource-types (util/get-all-resource-types db)
+        all-resource-types (queries/get-all-resource-types db)
         type->user->quota (pc/map-from-keys #(retrieve-user->resource-quota-amount db pool-name %) all-resource-types)
         all-quota-users (d/q '[:find [?user ...] :where [?q :quota/user ?user]] db) ;; returns a sequence without duplicates
         user->count-quota (retrieve-user->count-quota db pool-name all-quota-users default-count-quota)

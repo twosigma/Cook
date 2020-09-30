@@ -38,6 +38,7 @@
             [cook.plugins.submission :as submission-plugin]
             [cook.pool :as pool]
             [cook.progress :as progress]
+            [cook.queries :as queries]
             [cook.quota :as quota]
             [cook.rate-limit :as rate-limit]
             [cook.scheduler.constraints :as constraints]
@@ -2588,7 +2589,7 @@
      :handle-created (partial retrieve-user-limit get-limit-fn conn)
      :malformed? (fn [ctx]
                    (let [resource-types
-                         (set (apply conj (util/get-all-resource-types (d/db conn))
+                         (set (apply conj (queries/get-all-resource-types (d/db conn))
                                      extra-resource-types))
                          limits (->> (get-in ctx [:request :body-params limit-type])
                                      keywordize-keys

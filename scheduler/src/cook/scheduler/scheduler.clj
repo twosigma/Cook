@@ -33,6 +33,7 @@
             [cook.plugins.definitions :as plugins]
             [cook.plugins.launch :as launch-plugin]
             [cook.pool :as pool]
+            [cook.queries :as queries]
             [cook.quota :as quota]
             [cook.rate-limit :as ratelimit]
             [cook.scheduler.constraints :as constraints]
@@ -1443,7 +1444,7 @@
      {user (if (seq used-resources)
              used-resources
              ;; Return all 0's for a user who does NOT have any running job.
-             (zipmap (tools/get-all-resource-types db) (repeat 0.0)))})))
+             (zipmap (queries/get-all-resource-types db) (repeat 0.0)))})))
 
 (defn limit-over-quota-jobs
   "Filters task-ents, preserving at most (config/max-over-quota-jobs) that would exceed the user's quota"
