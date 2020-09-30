@@ -158,4 +158,19 @@
       (is (= (.getIfPresent (:cache ratelimit nil) "Bar4") {:current-tokens 390
                                                             :last-update 1000000
                                                             :bucket-size 400
-                                                            :token-rate 1.0})))))
+                                                            :token-rate 1.0}))
+      (is (= (rtg/get-token-count! ratelimit "Bar1") 60))
+      (is (= (rtg/get-token-count! ratelimit "Bar2") 170))
+      (is (= (rtg/get-token-count! ratelimit "Bar3") 280))
+      (testing "Flush one and make sure only that one resets"
+        (rtg/flush! ratelimit "Bar1")
+        (is (= (rtg/get-token-count! ratelimit "Bar1") 100))
+        (is (= (rtg/get-token-count! ratelimit "Bar2") 170)))
+      ; Flush all.
+      (testing "Flush all and make sure only the others reset"
+        (rtg/flush! ratelimit nil)
+        (is (= (rtg/get-token-count! ratelimit "Bar2") 200))
+        (is (= (rtg/get-token-count! ratelimit "Bar3") 300))))))
+
+
+
