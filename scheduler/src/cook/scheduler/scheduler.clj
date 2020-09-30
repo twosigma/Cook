@@ -1045,9 +1045,9 @@
           ; In order to do this, we keep track, per pool, of the jobs that did not
           ; get matched to an offer, along with how many matching cycles they've
           ; gone unmatched for. The amount of data we store is relatively small;
-          ; it's O(# pools * # unmatched considerable jobs). If a job uuid does
-          ; get matched, we stop storing it. We never store job uuids that were
-          ; not considerable in the first place.
+          ; it's O(# pools * # considerable jobs). If a job uuid does get matched,
+          ; we stop storing it. We never store job uuids that were not considerable
+          ; in the first place.
           (let [unmatched-job-uuids
                 (set/difference
                   (->> considerable-jobs (map :job/uuid) set)
@@ -1077,7 +1077,14 @@
               ; matching cycles that the job has gone unmatched
               pool-name->unmatched-job-uuid->unmatched-cycles-atom
               (fn [m]
-                (let [unmatched-job-uuid->unmatched-cycles
+                (let [; Note that this doesn't leak jobs and grow
+                      ; forever. We build a new map from scratch
+                      ; of size at most (count unmatched-job-uuids),
+                      ; which is <= num-considerable. That new map
+                      ; gets assoc'ed in, replacing the existing
+                      ; job-uuid -> unmatched-cycles sub-map, which
+                      ; means we won't leak historic jobs.
+                      unmatched-job-uuid->unmatched-cycles
                       (pc/map-from-keys
                         (fn [job-uuid]
                           (-> m
