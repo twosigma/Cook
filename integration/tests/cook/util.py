@@ -1245,20 +1245,41 @@ def user_current_usage(cook_url, headers=None, **kwargs):
     return session.get('%s/usage' % cook_url, params=kwargs, headers=headers)
 
 
-def query_queue(cook_url, allow_redirects=True, **kwargs):
-    """Get current jobs via the queue endpoint (admin-only)"""
-    # We handle redirects manually here because /queue can redirect to a new hostname
-    # (when redirecting to master node), and requests strips and does not re-apply
+def request_with_redirects(method, url, allow_redirects=True, **kwargs):
+    """Special version to do requests while more properly handling authentication."""
+    # We need to handle redirects manually because some endpoints can redirect to a new hostname
+    # (when redirecting to primary node), and requests strips and does not re-apply
     # auth when redirects cross domains.
-    response = session.get(f'{cook_url}/queue', allow_redirects=False, **kwargs)
+    response = session.request(method, url, allow_redirects=False, **kwargs)
     if allow_redirects and response.is_redirect:
         for _ in range(10):
-            response = session.get(response.headers['Location'], allow_redirects=False, **kwargs)
+            response = session.request(method, response.headers['Location'], allow_redirects=False, **kwargs)
             if not response.is_redirect:
                 break
         else:
             assert not response.is_redirect, response.headers
     return response
+
+
+def get_with_redirects(url, allow_redirects=True, **kwargs):
+    """Special version of GET that handles redirects and authentication. see request_with_redirects"""
+    return request_with_redirects('GET', url, allow_redirects, **kwargs)
+
+
+def post_with_redirects(url, allow_redirects=True, **kwargs):
+    """Special version of POST that handles redirects and authentication. see request_with_redirects"""
+    return request_with_redirects('POST', url, allow_redirects, **kwargs)
+
+
+def delete_with_redirects(url, allow_redirects=True, **kwargs):
+    """Special version of DELETE that handles redirects and authentication. see request_with_redirects"""
+    return request_with_redirects('DELETE', url, allow_redirects, **kwargs)
+
+
+def query_queue(cook_url, allow_redirects=True, **kwargs):
+    """Get current jobs via the queue endpoint (admin-only)"""
+    # /queue can redirect to the cook primary so needs special logic.
+    return get_with_redirects(f'{cook_url}/queue', allow_redirects=True, **kwargs)
 
 
 def get_limit(cook_url, limit_type, user, pool=None, headers=None):
