@@ -2507,7 +2507,9 @@
   {:cpus s/Num
    :gpus s/Num
    :mem s/Num
-   (s/optional-key :count) s/Num})
+   (s/optional-key :count) s/Num
+   (s/optional-key :pool-user-launch-rate-saved) s/Num
+   (s/optional-key :pool-user-launch-rate-per-minute) s/Num})
 
 (def UserLimitsResponse
   (assoc UserLimitSchema (s/optional-key :pools) {s/Str UserLimitSchema}))
@@ -2557,24 +2559,26 @@
     {:handle-ok (partial retrieve-user-limit get-limit-fn conn)}))
 
 (defn destroy-limit-handler
-  [limit-type retract-limit-fn conn is-authorized-fn]
+  [limit-type retract-limit-fn conn is-authorized-fn leadership-atom leader-selector]
   (base-limit-handler
     limit-type is-authorized-fn
-    {:allowed-methods [:delete]
-     :delete! (fn [ctx]
-                (let [request-user (get-in ctx [:request :authorization/user])
-                      limit-user (get-in ctx [:request :query-params :user])
-                      pool (or (get-in ctx [:request :query-params :pool])
-                               (get-in ctx [:request :headers "x-cook-pool"]))
-                      reason (get-in ctx [:request :query-params :reason])]
-                  (log/info "Retracting limit type" limit-type {:request-user request-user
-                                                                :limit-user limit-user
-                                                                :pool pool
-                                                                :reason reason})
-                  (retract-limit-fn conn
-                                    limit-user
-                                    pool
-                                    reason)))}))
+    (merge
+      (redirect-to-leader leadership-atom leader-selector)
+      {:allowed-methods [:delete]
+       :delete! (fn [ctx]
+                  (let [request-user (get-in ctx [:request :authorization/user])
+                        limit-user (get-in ctx [:request :query-params :user])
+                        pool (or (get-in ctx [:request :query-params :pool])
+                                 (get-in ctx [:request :headers "x-cook-pool"]))
+                        reason (get-in ctx [:request :query-params :reason])]
+                    (log/info "Retracting limit type" limit-type {:request-user request-user
+                                                                  :limit-user limit-user
+                                                                  :pool pool
+                                                                  :reason reason})
+                    (retract-limit-fn conn
+                                      limit-user
+                                      pool
+                                      reason)))})))
 
 (defn coerce-limit-values
   [limits-from-request]
@@ -2582,44 +2586,46 @@
                 limits-from-request)))
 
 (defn update-limit-handler
-  [limit-type extra-resource-types get-limit-fn set-limit-fn conn is-authorized-fn]
+  [limit-type extra-resource-types get-limit-fn set-limit-fn conn is-authorized-fn leadership-atom leader-selector]
   (base-limit-handler
     limit-type is-authorized-fn
-    {:allowed-methods [:post]
-     :handle-created (partial retrieve-user-limit get-limit-fn conn)
-     :malformed? (fn [ctx]
-                   (let [resource-types
-                         (set (apply conj (queries/get-all-resource-types (d/db conn))
-                                     extra-resource-types))
-                         limits (->> (get-in ctx [:request :body-params limit-type])
-                                     keywordize-keys
-                                     coerce-limit-values)]
-                     (cond
-                       (not (seq limits))
-                       [true {::error "No " (name limit-type) " set. Are you specifying that this is application/json?"}]
-                       (not (every? (partial contains? resource-types) (keys limits)))
-                       [true {::error (str "Unknown resource type(s)" (str/join \space (remove (partial contains? resource-types) (keys limits))))}]
-                       :else
-                       [false {::limits limits}])))
+    (merge
+      (redirect-to-leader leadership-atom leader-selector)
+      {:allowed-methods [:post]
+       :handle-created (partial retrieve-user-limit get-limit-fn conn)
+       :malformed? (fn [ctx]
+                     (let [resource-types
+                           (set (apply conj (queries/get-all-resource-types (d/db conn))
+                                       extra-resource-types))
+                           limits (->> (get-in ctx [:request :body-params limit-type])
+                                       keywordize-keys
+                                       coerce-limit-values)]
+                       (cond
+                         (not (seq limits))
+                         [true {::error "No " (name limit-type) " set. Are you specifying that this is application/json?"}]
+                         (not (every? (partial contains? resource-types) (keys limits)))
+                         [true {::error (str "Unknown resource type(s)" (str/join \space (remove (partial contains? resource-types) (keys limits))))}]
+                         :else
+                         [false {::limits limits}])))
 
-     :post! (fn [ctx]
-              (let [request-user (get-in ctx [:request :authorization/user])
-                    limit-user (get-in ctx [:request :body-params :user])
-                    pool (or (get-in ctx [:request :body-params :pool])
-                             (get-in ctx [:request :headers "x-cook-pool"]))
-                    reason (get-in ctx [:request :body-params :reason])
-                    limits (reduce into [] (::limits ctx))]
-                (log/info "Updating limit" limit-type {:request-user request-user
-                                                       :limit-user limit-user
-                                                       :pool pool
-                                                       :reason reason
-                                                       :limits limits})
-                (apply set-limit-fn
-                       conn
-                       limit-user
-                       pool
-                       reason
-                       limits)))}))
+       :post! (fn [ctx]
+                (let [request-user (get-in ctx [:request :authorization/user])
+                      limit-user (get-in ctx [:request :body-params :user])
+                      pool (or (get-in ctx [:request :body-params :pool])
+                               (get-in ctx [:request :headers "x-cook-pool"]))
+                      reason (get-in ctx [:request :body-params :reason])
+                      limits (reduce into [] (::limits ctx))]
+                  (log/info "Updating limit" limit-type {:request-user request-user
+                                                         :limit-user limit-user
+                                                         :pool pool
+                                                         :reason reason
+                                                         :limits limits})
+                  (apply set-limit-fn
+                         conn
+                         limit-user
+                         pool
+                         reason
+                         limits)))})))
 
 (def UserUsageParams
   "User usage endpoint query string parameters"
@@ -3458,13 +3464,17 @@
                     :parameters (set-limit-params :share)
                     :handler (update-limit-handler :share []
                                                    share/get-share share/set-share!
-                                                   conn is-authorized-fn)}
+                                                   conn is-authorized-fn
+                                                   leadership-atom leader-selector)}
              :delete {:summary "Reset a user's share to the default"
                       :parameters {:query-params UserLimitChangeParams}
-                      :handler (destroy-limit-handler :share share/retract-share! conn is-authorized-fn)}}))
+                      :handler (destroy-limit-handler :share share/retract-share!
+                                                      conn is-authorized-fn
+                                                      leadership-atom leader-selector)}}))
 
         (c-api/context
           "/quota" []
+          ;; only the leader handles quota requests to flush any rate limit state after any changes.
           (c-api/resource
             {:produces ["application/json"],
              :responses {200 {:schema UserLimitsResponse
@@ -3476,12 +3486,16 @@
                    :handler (read-limit-handler :quota quota/get-quota conn is-authorized-fn)}
              :post {:summary "Change a user's quota"
                     :parameters (set-limit-params :quota)
-                    :handler (update-limit-handler :quota [:count]
+                    :handler (update-limit-handler :quota [:count :pool-user-launch-rate-saved :pool-user-launch-rate-per-minute]
                                                    quota/get-quota quota/set-quota!
-                                                   conn is-authorized-fn)}
+                                                   conn is-authorized-fn
+                                                   leadership-atom leader-selector)}
              :delete {:summary "Reset a user's quota to the default"
                       :parameters {:query-params UserLimitChangeParams}
-                      :handler (destroy-limit-handler :delete quota/retract-quota! conn is-authorized-fn)}}))
+                      :handler (destroy-limit-handler :delete
+                                                      quota/retract-quota!
+                                                      conn is-authorized-fn
+                                                      leadership-atom leader-selector)}}))
 
         (c-api/context
           "/usage" []

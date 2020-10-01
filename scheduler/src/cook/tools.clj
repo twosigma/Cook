@@ -27,6 +27,8 @@
             [cook.cache :as ccache]
             [cook.config :as config]
             [cook.pool :as pool]
+            [cook.quota :as quota]
+            [cook.rate-limit :as ratelimit]
             [cook.regexp-tools :as regexp-tools]
             [cook.schema :as schema]
             [datomic.api :as d :refer [q]]
@@ -894,8 +896,7 @@
 
 (defn below-quota?
   "Returns true if the usage is below quota-constraints on all dimensions"
-  [{:keys [count cpus mem] :as quota}
-   {:keys [count cpus mem] :as usage}]
+  [quota usage]
   (every? (fn [[usage-key usage-val]]
             (<= usage-val (get quota usage-key 0)))
           (seq usage)))
@@ -915,7 +916,7 @@
   (regexp-tools/match-based-on-regexp :pool-regex field match-list effective-pool-name))
 
 (defn global-pool-quota
-  "Given a pool name, determine the quota for that pool."
+  "Given a pool name, determine the global quota for that pool across all users."
   [quotas effective-pool-name]
   (match-based-on-pool-name quotas effective-pool-name :quota))
 
@@ -951,6 +952,39 @@
                 [usage' (below-quota? quota usage')]))]
       (filter-sequential filter-with-quota usage queue))))
 
+
+; This is used by the /unscheduled_jobs code to determine whether
+; or not to report rate-limiting as a reason for being pending
+(defonce pool->user->num-rate-limited-jobs (atom {}))
+
+(defn filter-pending-jobs-for-ratelimit
+  [pool-name queue]
+  (let [enforcing-job-launch-rate-limit? (ratelimit/enforce? quota/per-user-per-pool-launch-rate-limiter)
+        user->number-jobs (atom {})
+        user->rate-limit-count (atom {})
+        user-within-launch-rate-limit?-fn
+        (fn
+          [{:keys [job/user]}]
+          ; Account for each time we see a job for a user.
+          (let [token-key (quota/->token-key pool-name user)
+                _ (swap! user->number-jobs update token-key #(inc (or % 0)))
+                tokens-left (ratelimit/get-token-count! quota/per-user-per-pool-launch-rate-limiter token-key)
+                number-jobs-for-user-so-far (@user->number-jobs token-key)
+                is-rate-limited? (> number-jobs-for-user-so-far tokens-left)]
+            (when is-rate-limited?
+              (swap! user->rate-limit-count update token-key #(inc (or % 0))))
+            (not (and is-rate-limited? enforcing-job-launch-rate-limit?))))
+        filtered-queue (doall (filter user-within-launch-rate-limit?-fn queue))]
+    (swap! pool->user->num-rate-limited-jobs update pool-name (constantly @user->rate-limit-count))
+    (when (seq @user->rate-limit-count)
+      (log/info "In" pool-name "pool, job launch rate-limiting"
+                {:queue (count queue)
+                 :enforcing-job-launch-rate-limit? enforcing-job-launch-rate-limit?
+                 :total-rate-limit-count (->> @user->rate-limit-count vals (reduce +))
+                 :user->number-jobs @user->number-jobs
+                 :user->rate-limit-count @user->rate-limit-count}))
+    filtered-queue))
+
 (defn filter-pending-jobs-for-quota
   "Lazily filters jobs to those that that are in quota.
 
@@ -962,6 +996,7 @@
   (let [pool-usage (reduce (partial merge-with +) (vals user->usage))]
     (->> queue
          (filter-based-on-user-quota pool user->quota user->usage)
+         (filter-pending-jobs-for-ratelimit pool)
          (filter-based-on-pool-quota pool pool-quota pool-usage))))
 
 (defn pool->user->usage

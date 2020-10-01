@@ -65,11 +65,10 @@
        :keystore-type "pkcs12"
        :keystore-pass "cookstore"}
  :rate-limit {:expire-minutes 1200 ; Expire unused rate limit entries after 20 hours.
-              ; Keep these job-launch and job-submission values as they are for integration tests. Making them smaller can cause
+              ; Keep job-submission values as they are for integration tests. Making them smaller can cause
               ; spurious failures, and making them larger will cause test_rate_limit_launching_jobs to skip itself.
-              :job-launch {:bucket-size 10000
-                           :enforce? true
-                           :tokens-replenished-per-minute 5000}
+              :per-user-per-pool-job-launch {:expire-minutes 1440
+                                             :enforce? true}
               :job-submission {:bucket-size 1000
                                :enforce? true
                                :tokens-replenished-per-minute 600}

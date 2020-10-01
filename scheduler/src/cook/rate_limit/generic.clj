@@ -16,6 +16,7 @@
 (ns cook.rate-limit.generic
   (:require [clj-time.coerce]
             [clj-time.core]
+            [clojure.tools.logging :as log]
             [cook.rate-limit.token-bucket-filter :as tbf])
   (:import (com.google.common.cache LoadingCache CacheLoader CacheBuilder)
            (java.util.concurrent TimeUnit)))
@@ -110,7 +111,7 @@
     (locking cache
       (if (nil? key)
         (.invalidateAll cache)
-        (.refresh cache key))))
+        (.invalidate cache key))))
 
   (enforce?
     [_]
@@ -143,12 +144,16 @@
     (make-generic-tbf-rate-limiter config (fn [_] (config->token-bucket-filter config))))
 
 
+(defrecord AllowAllRateLimiterSingleton
+  []
+  RateLimiter
+  (spend! [_ _ _] 0)
+  (time-until-out-of-debt-millis! [_ _] 0)
+  (get-token-count! [_ _] 100000000)
+  (flush! [_ _])
+  (enforce? [_] false))
+
+
 (def AllowAllRateLimiter
   "A noop rate limiter that doesn't put a limit on anything. Has {:enforce? false} as the policy key."
-  (reify
-    RateLimiter
-    (spend! [_ _ _] 0)
-    (time-until-out-of-debt-millis! [_ _] 0)
-    (get-token-count! [_ _] 100000000)
-    (flush! [_ _])
-    (enforce? [_] false)))
+  (->AllowAllRateLimiterSingleton))

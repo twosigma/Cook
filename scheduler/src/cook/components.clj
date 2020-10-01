@@ -38,6 +38,8 @@
             ; This explicit require is needed so that mount can see the defstate defined in the cook.plugins.submission namespace.
             [cook.plugins.submission]
             [cook.pool :as pool]
+            ; This explicit require is needed so that mount can see the defstate defined in the cook.quota namespace.
+            [cook.quota :as quota]
             [cook.rate-limit]
             [cook.rest.cors :as cors]
             [cook.rest.impersonation :refer [impersonation-authorized-wrapper]]

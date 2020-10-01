@@ -1291,7 +1291,8 @@ def get_limit(cook_url, limit_type, user, pool=None, headers=None):
     return session.get(f'{cook_url}/{limit_type}', params=params, headers=headers)
 
 
-def set_limit(cook_url, limit_type, user, mem=None, cpus=None, gpus=None, count=None, reason='testing', pool=None,
+def set_limit(cook_url, limit_type, user, mem=None, cpus=None, gpus=None, count=None,
+              reason='testing', pool=None, bucket_size=None, token_rate=None,
               headers=None):
     """
     Set resource limits for the given user.
@@ -1314,10 +1315,15 @@ def set_limit(cook_url, limit_type, user, mem=None, cpus=None, gpus=None, count=
         limits['gpus'] = gpus
     if count is not None:
         limits['count'] = count
+    if bucket_size is not None:
+        limits['pool-user-launch-rate-per-minute'] = bucket_size
+    if token_rate is not None:
+        limits['pool-user-launch-rate-saved'] = token_rate
     if pool is not None:
         body['pool'] = pool
     logger.debug(f'Setting {user} {limit_type} to {limits}: {body}')
-    return session.post(f'{cook_url}/{limit_type}', json=body, headers=headers)
+    # /quota can redirect to the cook primary so needs special logic.
+    return post_with_redirects(f'{cook_url}/{limit_type}', allow_redirects=True, json=body, headers=headers)
 
 
 def set_limit_to_default(cook_url, limit_type, user, pool_name):
@@ -1342,7 +1348,8 @@ def reset_limit(cook_url, limit_type, user, reason='testing', pool=None, headers
         params['reason'] = reason
     if pool is not None:
         params['pool'] = pool
-    return session.delete(f'{cook_url}/{limit_type}', params=params, headers=headers)
+    # /quota can redirect to the cook primary so needs special logic.
+    return delete_with_redirects(f'{cook_url}/{limit_type}', allow_redirects=True, params=params, headers=headers)
 
 
 def retrieve_progress_file_env(cook_url):

@@ -19,6 +19,7 @@
             [cook.rate-limit :as rate-limit]
             [cook.scheduler.scheduler :as scheduler]
             [cook.test.testutil :refer [create-dummy-instance create-dummy-job restore-fresh-database! setup]]
+            [cook.tools :as tools]
             [cook.unscheduled :as u]
             [datomic.api :as d]))
 
@@ -130,33 +131,17 @@
             running-job-uuids [(-> running-job-ent1 :job/uuid str)
                                (-> running-job-ent2 :job/uuid str)]
             reasons
-            (with-redefs [scheduler/pool->user->num-rate-limited-jobs (atom {:pool0 {"mforsythr" 3}})
-                          rate-limit/job-launch-rate-limiter
-                          (rate-limit/create-job-launch-rate-limiter
-                            {:settings {:rate-limit {:expire-minutes 180
-                                                     :job-launch {:bucket-size 500
-                                                                  :enforce? true
-                                                                  :tokens-replenished-per-minute 100}}}})]
+            (with-redefs [rate-limit/enforce? (constantly true)
+                          tools/pool->user->num-rate-limited-jobs (atom {:pool0 {"mforsythr" 3}})]
               (u/reasons conn waiting-job-ent))]
-
-        (is (= (nth reasons 0)
-               ["Job has exhausted its maximum number of retries."
-                {:max-retries 2, :instance-count 2}]))
-
-        (is (= (nth reasons 1)
-               ["The job would cause you to exceed resource quotas."
-                {:count {:limit 2 :usage 3}}]))
-
-        (is (= (nth reasons 2)
-               ["You are currently rate limited on how many jobs you launch per minute." {:max-jobs-per-minute 100}]))
-
-        (is (= (nth reasons 3)
-               ["You have 2 other jobs ahead in the queue."
-                {:jobs running-job-uuids}]))
-
-        (is (= (nth reasons 4)
-               ["The job is now under investigation. Check back in a minute for more details!"
-                {}]))))
+        (is (= reasons [["Job has exhausted its maximum number of retries."
+                         {:max-retries 2, :instance-count 2}]
+                        ["The job would cause you to exceed resource quotas."
+                         {:count {:limit 2 :usage 3}}]
+                        ["You are currently rate limited on how many jobs you launch per minute." {:num-ratelimited 3}]
+                        ["You have 2 other jobs ahead in the queue."
+                         {:jobs running-job-uuids}]
+                        ["The job is now under investigation. Check back in a minute for more details!" {}]]))))
 
     (testing "Waiting job returns multiple reasons, including an unenforced rate launch rate limit."
       @(d/transact conn [[:db/add waiting-job-id :job/state :job.state/waiting]])
@@ -167,32 +152,17 @@
             running-job-uuids [(-> running-job-ent1 :job/uuid str)
                                (-> running-job-ent2 :job/uuid str)]
             reasons
-            (with-redefs [rate-limit/time-until-out-of-debt-millis! (constantly 1999)
-                          rate-limit/job-launch-rate-limiter
-                          (rate-limit/create-job-launch-rate-limiter
-                            {:settings {:rate-limit {:expire-minutes 180
-                                                     :job-launch {:bucket-size 500
-                                                                  :enforce? false
-                                                                  :tokens-replenished-per-minute 100}}}})]
+            (with-redefs [rate-limit/time-until-out-of-debt-millis! (constantly 1999)]
               (u/reasons conn waiting-job-ent))]
 
-        (is (= (nth reasons 0)
-               ["Job has exhausted its maximum number of retries."
-                {:max-retries 2, :instance-count 2}]))
-
-        (is (= (nth reasons 1)
-               ["The job would cause you to exceed resource quotas."
-                {:count {:limit 2 :usage 3}}]))
-
         ; Note: No launch rate limit reason is returned here, because not enforcing.
-
-        (is (= (nth reasons 2)
-               ["You have 2 other jobs ahead in the queue."
-                {:jobs running-job-uuids}]))
-
-        (is (= (nth reasons 3)
-               ["The job is now under investigation. Check back in a minute for more details!"
-                {}]))))))
+        (is (= reasons [["Job has exhausted its maximum number of retries."
+                         {:max-retries 2, :instance-count 2}]
+                        ["The job would cause you to exceed resource quotas."
+                         {:count {:limit 2 :usage 3}}]
+                        ["You have 2 other jobs ahead in the queue."
+                         {:jobs running-job-uuids}]
+                        ["The job is now under investigation. Check back in a minute for more details!" {}]]))))))
 
 
 (deftest test-check-queue-position
