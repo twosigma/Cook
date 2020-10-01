@@ -20,6 +20,7 @@
             [clojure.core.async :as async]
             [clojure.core.cache :as cache]
             [clojure.edn :as edn]
+            [clojure.set :as set]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
             [clojure.walk :as walk]
@@ -979,6 +980,8 @@
       (catch Throwable e
         (log/error e "In" pool-name "pool, encountered error while triggering autoscaling")))))
 
+(def pool-name->unmatched-job-uuid->unmatched-cycles-atom (atom {}))
+
 (defn handle-resource-offers!
   "Gets a list of offers from mesos. Decides what to do with them all--they should all
    be accepted or rejected at the end of the function."
@@ -1038,6 +1041,94 @@
                               :number-total (count offers)
                               :number-unmatched (- (count offers) (count offers-scheduled))
                               :stats (offers->stats offers)}})
+
+          ; We want to log warnings when jobs have gone unmatched for a long time.
+          ; In order to do this, we keep track, per pool, of the jobs that did not
+          ; get matched to an offer, along with how many matching cycles they've
+          ; gone unmatched for. The amount of data we store is relatively small;
+          ; it's O(# pools * # considerable jobs). If a job uuid does get matched,
+          ; we stop storing it. We never store job uuids that were not considerable
+          ; in the first place.
+          (let [unmatched-job-uuids
+                (set/difference
+                  (->> considerable-jobs (map :job/uuid) set)
+                  (set matched-job-uuids))
+                ; There are two configuration knobs we can tweak:
+                ; - unmatched-cycles-warn-threshold:
+                ;   the # of consecutive unmatched matching cycles we care about
+                ; - unmatched-fraction-warn-threshold:
+                ;   the fraction of considerable jobs that have gone unmatched for
+                ;   at least unmatched-cycles-warn-threshold beyond which we will
+                ;   warn
+                {:keys [unmatched-cycles-warn-threshold
+                        unmatched-fraction-warn-threshold]}
+                (config/offer-matching)]
+            (swap!
+              ; This atom's value is a map of the following shape:
+              ;
+              ; {"pool-1" {job-uuid-a count-a
+              ;            job-uuid-b count-b
+              ;            ...}
+              ;  "pool-2" {job-uuid-c count-c
+              ;            job-uuid-d count-d
+              ;            ...}
+              ; ...}
+              ;
+              ; where the counts are the numbers of consecutive
+              ; matching cycles that the job has gone unmatched
+              pool-name->unmatched-job-uuid->unmatched-cycles-atom
+              (fn [m]
+                (let [; Note that this doesn't leak jobs and grow
+                      ; forever. We build a new map from scratch
+                      ; of size at most (count unmatched-job-uuids),
+                      ; which is <= num-considerable. That new map
+                      ; gets assoc'ed in, replacing the existing
+                      ; job-uuid -> unmatched-cycles sub-map, which
+                      ; means we won't leak historic jobs.
+                      unmatched-job-uuid->unmatched-cycles
+                      (pc/map-from-keys
+                        (fn [job-uuid]
+                          (-> m
+                              (get pool-name)
+                              (get job-uuid 0)
+                              inc))
+                        unmatched-job-uuids)
+                      ; Filter the map of job-uuid -> cycle-count
+                      ; down to only those entries where the # of
+                      ; cycles is greater than the threshold
+                      unmatched-too-long
+                      (filter
+                        (fn [[_ cycles]]
+                          (> cycles
+                             unmatched-cycles-warn-threshold))
+                        unmatched-job-uuid->unmatched-cycles)]
+                  (when
+                    (and
+                      ; If there are no considerable jobs,
+                      ; then this warning is not applicable
+                      (pos? (count considerable-jobs))
+                      ; We only want to warn then the fraction of
+                      ; considerable jobs that are unmatched for
+                      ; too long (too many consecutive cycles) is
+                      ; greater than the configured threshold
+                      (-> unmatched-too-long
+                          count
+                          (/ (count considerable-jobs))
+                          (> unmatched-fraction-warn-threshold)))
+                    ; Including the first 10 job uuids that have gone unmatched for too
+                    ; long can help in troubleshooting the issue when this happens
+                    (log/warn "In" pool-name "pool, jobs are unmatched for too long"
+                              {:first-10-unmatched-too-long (take 10 unmatched-too-long)
+                               :number-considerable (count considerable-jobs)
+                               :number-unmatched-too-long (count unmatched-too-long)
+                               :unmatched-cycles-warn-threshold unmatched-cycles-warn-threshold
+                               :unmatched-fraction-warn-threshold unmatched-fraction-warn-threshold}))
+                  ; We need to update the overall map so that we update the
+                  ; job-uuid -> cycle-count state from iteration to iteration
+                  (assoc
+                    m
+                    pool-name
+                    unmatched-job-uuid->unmatched-cycles)))))
 
           (fenzo/record-placement-failures! conn failures)
 
