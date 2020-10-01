@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.47.1] - 2020-10-01
+### Changed
+- Added warning log when jobs go unmatched for too long, from @dposada
+- Added the ability to flush a rate limit from the cache, from @scrosby
+
 ## [1.47.0] - 2020-09-25
 ### Added
 - Add rate limits per compute cluster, from @scrosby
