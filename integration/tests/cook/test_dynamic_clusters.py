@@ -49,7 +49,7 @@ class TestDynamicClusters(util.CookTest):
             for cluster in clusters:
                 cluster["state"] = "deleted"
                 util.wait_until(lambda: util.update_compute_cluster(self.cook_url, cluster),
-                                lambda x: True if 201 == x[1].status_code else x[1].content,
+                                lambda x: 201 == x[1].status_code,
                                 300000, 5000)
             # Create at least one new cluster with a unique test name (using one of the existing cluster's IP and cert)
             test_cluster_name = f'test_cluster_{round(time.time() * 1000)}'
@@ -93,7 +93,7 @@ class TestDynamicClusters(util.CookTest):
             # Then state = deleted
             test_cluster["state"] = "deleted"
             util.wait_until(lambda: util.update_compute_cluster(self.cook_url, test_cluster),
-                            lambda x: True if 201 == x[1].status_code else x[1].content,
+                            lambda x: 201 == x[1].status_code,
                             300000, 5000)
             # Hard-delete the original non-test clusters
             for cluster in clusters:
