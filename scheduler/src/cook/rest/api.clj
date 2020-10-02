@@ -1777,7 +1777,11 @@
 
 (defn redirect-to-leader
   "Returns a map of Liberator resource attribute functions to
-   be used when only the Cook leader should handle the request"
+   be used when only the Cook leader should handle the request.
+
+   Note: If you use this function, you need special logic in the client to follow the
+   resulting redirects. Specifically, python needs to use cook.util.request_with_redirects
+   to work correctly, and curl needs command line option --location-trusted."
   [leadership-atom leader-selector]
   {:can-post-to-gone?
    (constantly true)
