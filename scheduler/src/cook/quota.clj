@@ -105,7 +105,9 @@
                                            user
                                            pool-name
                                            default-pool-user-launch-rate-per-minute)]
-    (assoc mesos-resource-quota :count (int count-quota) :pool-user-launch-rate-saved pool-user-launch-rate-saved :pool-user-launch-rate-per-minute pool-user-launch-rate-per-minute)))
+    (assoc mesos-resource-quota :count (int count-quota)
+                                :pool-user-launch-rate-saved pool-user-launch-rate-saved
+                                :pool-user-launch-rate-per-minute pool-user-launch-rate-per-minute)))
 
 (defn ->token-key
   "Given a pool name and a user, create a key suitable for the per-user-per-pool ratelimit code"
@@ -141,7 +143,7 @@
 
 (defn maybe-flush-ratelimit
   "Look at the quota being updated (or retracted) and flush the rate limit
-  if its a rate-limit related quota"
+  if it's a rate-limit related quota"
   [pool-name user type]
   (when (contains? ratelimit-quota-fields type)
     (let [token-key (if (= user default-user)

@@ -1377,7 +1377,8 @@
           (is (= [] ; Everything should be deferred
                  (sched/pending-jobs->considerable-jobs
                    (d/db conn) non-gpu-jobs user->quota user->usage num-considerable nil)))
-          (is (= {nil {}} @tools/pool->user->num-rate-limited-jobs)))))
+          (is (= [nil] (keys @tools/pool->user->num-rate-limited-jobs)))
+          (is (= {} @(get @tools/pool->user->num-rate-limited-jobs nil))))))
 
     ;; Cache expired, so when we run this time, it's found (and will be cached as 'accepted'
     (testing "jobs inside usage quota"
@@ -1388,13 +1389,15 @@
         (is (= non-gpu-jobs
                (sched/pending-jobs->considerable-jobs
                  (d/db conn) non-gpu-jobs user->quota user->usage num-considerable nil)))
-        (is (= {nil {}} @tools/pool->user->num-rate-limited-jobs))
+        (is (= [nil] (keys @tools/pool->user->num-rate-limited-jobs)))
+        (is (= {} @(get @tools/pool->user->num-rate-limited-jobs nil)))
         (reset! tools/pool->user->num-rate-limited-jobs {})
         (is (= gpu-jobs
                (sched/pending-jobs->considerable-jobs
                  (d/db conn) gpu-jobs user->quota user->usage num-considerable nil)))
-        (is (= {nil {}} @tools/pool->user->num-rate-limited-jobs))))
-    
+        (is (= [nil] (keys @tools/pool->user->num-rate-limited-jobs)))
+        (is (= {} @(get @tools/pool->user->num-rate-limited-jobs nil)))))
+
     (testing "jobs inside usage quota, but beyond rate limit"
       ;; Jobs inside of usage quota, but beyond rate limit, so should return no considerable jobs.
       (let [user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}}
@@ -1405,16 +1408,20 @@
                       quota/get-quota (constantly {:pool-user-launch-rate-per-minute 0.001 :pool-user-launch-rate-saved 1})]
           (reset! tools/pool->user->num-rate-limited-jobs {})
           (is (= [job-1]
-                 (sched/pending-jobs->considerable-jobs
-                   (d/db conn) non-gpu-jobs user->quota user->usage num-considerable nil)))
-          (is (= {nil {{:pool-name cook.pool/nil-pool
-                        :user test-user} 3}} @tools/pool->user->num-rate-limited-jobs))
+                 (doall (sched/pending-jobs->considerable-jobs
+                          (d/db conn) non-gpu-jobs user->quota user->usage num-considerable nil))))
+          (is (= [nil] (keys @tools/pool->user->num-rate-limited-jobs)))
+          (is (= {test-user 3}
+                 @(get @tools/pool->user->num-rate-limited-jobs nil)))
+
+          (is (=  @tools/pool->user->num-rate-limited-jobs))
           (reset! tools/pool->user->num-rate-limited-jobs {})
           (is (= [job-5]
-                 (sched/pending-jobs->considerable-jobs
-                   (d/db conn) gpu-jobs user->quota user->usage num-considerable nil)))
-          (is (= {nil {{:pool-name cook.pool/nil-pool
-                        :user test-user} 1}} @tools/pool->user->num-rate-limited-jobs)))))
+                 (doall (sched/pending-jobs->considerable-jobs
+                          (d/db conn) gpu-jobs user->quota user->usage num-considerable nil))))
+          (is (= [nil] (keys @tools/pool->user->num-rate-limited-jobs)))
+          (is (= {test-user 1}
+                 @(get @tools/pool->user->num-rate-limited-jobs nil))))))
 
     (testing "jobs inside usage quota limited by num-considerable of 3"
       (let [user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}}

@@ -958,31 +958,25 @@
 (defonce pool->user->num-rate-limited-jobs (atom {}))
 
 (defn filter-pending-jobs-for-ratelimit
-  [pool-name queue]
+  [pool-name pending-jobs]
   (let [enforcing-job-launch-rate-limit? (ratelimit/enforce? quota/per-user-per-pool-launch-rate-limiter)
+        ; Each rank cycle, we reset whose had anything rate limited this cycle.
+        _ (swap! pool->user->num-rate-limited-jobs update pool-name (constantly (atom {})))
         user->number-jobs (atom {})
-        user->rate-limit-count (atom {})
         user-within-launch-rate-limit?-fn
         (fn
           [{:keys [job/user]}]
           ; Account for each time we see a job for a user.
-          (let [token-key (quota/->token-key pool-name user)
-                _ (swap! user->number-jobs update token-key #(inc (or % 0)))
+          (let [user->rate-limit-count (get @pool->user->num-rate-limited-jobs pool-name (atom {}))
+                token-key (quota/->token-key pool-name user)
+                _ (swap! user->number-jobs update user #(inc (or % 0)))
                 tokens-left (ratelimit/get-token-count! quota/per-user-per-pool-launch-rate-limiter token-key)
-                number-jobs-for-user-so-far (@user->number-jobs token-key)
+                number-jobs-for-user-so-far (@user->number-jobs user)
                 is-rate-limited? (> number-jobs-for-user-so-far tokens-left)]
             (when is-rate-limited?
-              (swap! user->rate-limit-count update token-key #(inc (or % 0))))
+              (swap! user->rate-limit-count update user #(inc (or % 0))))
             (not (and is-rate-limited? enforcing-job-launch-rate-limit?))))
-        filtered-queue (doall (filter user-within-launch-rate-limit?-fn queue))]
-    (swap! pool->user->num-rate-limited-jobs update pool-name (constantly @user->rate-limit-count))
-    (when (seq @user->rate-limit-count)
-      (log/info "In" pool-name "pool, job launch rate-limiting"
-                {:queue (count queue)
-                 :enforcing-job-launch-rate-limit? enforcing-job-launch-rate-limit?
-                 :total-rate-limit-count (->> @user->rate-limit-count vals (reduce +))
-                 :user->number-jobs @user->number-jobs
-                 :user->rate-limit-count @user->rate-limit-count}))
+        filtered-queue (filter user-within-launch-rate-limit?-fn pending-jobs)]
     filtered-queue))
 
 (defn filter-pending-jobs-for-quota

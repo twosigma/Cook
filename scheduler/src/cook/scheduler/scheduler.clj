@@ -688,17 +688,24 @@
 
 (defn pending-jobs->considerable-jobs
   "Limit the pending jobs to considerable jobs based on usage and quota.
-   Further limit the considerable jobs to a maximum of num-considerable jobs."
+   Further limit the considerable jobs to a maximum of num-consideracheckble jobs."
   [db pending-jobs user->quota user->usage num-considerable pool-name]
   (log/debug "In" pool-name "pool, there are" (count pending-jobs) "pending jobs:" pending-jobs)
-  (let [considerable-jobs
+  (let [enforcing-job-launch-rate-limit? (ratelimit/enforce? quota/per-user-per-pool-launch-rate-limiter)
+        considerable-jobs
         (->> pending-jobs
              (tools/filter-pending-jobs-for-quota pool-name user->quota user->usage (tools/global-pool-quota (config/pool-quotas) pool-name))
              (filter (fn [job] (tools/job-allowed-to-start? db job)))
              (filter launch-plugin/filter-job-launches)
              (take num-considerable)
              ; Force this to be taken eagerly so that the log line is accurate.
-             (doall))]
+             (doall))
+        user->rate-limit-count (get @tools/pool->user->num-rate-limited-jobs pool-name (atom {}))]
+    (when (seq @user->rate-limit-count)
+      (log/info "In" pool-name "pool, job launch rate-limiting"
+                {:enforcing-job-launch-rate-limit? enforcing-job-launch-rate-limit?
+                 :total-rate-limit-count (->> @user->rate-limit-count vals (reduce +))
+                 :user->rate-limit-count @user->rate-limit-count}))
     considerable-jobs))
 
 

@@ -134,7 +134,7 @@ class MultiUserCookTest(util.CookTest):
                 self.assertEqual(resp.status_code, 201, resp.text)
 
             with user:
-                jobspec = {"command": "sleep 240", 'cpus': 0.03, 'mem': 32}
+                jobspec = {"command": f"sleep {util.DEFAULT_TEST_TIMEOUT_SECS}", 'cpus': 0.03, 'mem': 32}
 
                 self.logger.info(f'Submitting initial batch of {bucket_size - 1} jobs')
                 initial_uuids, initial_response = util.submit_jobs(self.cook_url, jobspec, bucket_size - 1)
@@ -148,9 +148,6 @@ class MultiUserCookTest(util.CookTest):
                 job_uuids.extend(subsequent_uuids)
                 self.assertEqual(201, subsequent_response.status_code, msg=subsequent_response.content)
 
-                def submit_jobs():
-                    pass
-
                 def is_rate_limit_triggered(_):
                     jobs1 = util.query_jobs(self.cook_url, True, uuid=job_uuids).json()
                     running_jobs = [j for j in jobs1 if j['status'] == 'running']
@@ -158,11 +155,16 @@ class MultiUserCookTest(util.CookTest):
                     self.logger.debug(f'There are {len(waiting_jobs)} waiting jobs')
                     return len(waiting_jobs) > 0 and len(running_jobs) >= bucket_size
 
-                util.wait_until(submit_jobs, is_rate_limit_triggered, 120000, 5000)
+                util.wait_until(lambda: None, is_rate_limit_triggered, 180000, 5000)
                 jobs2 = util.query_jobs(self.cook_url, True, uuid=job_uuids).json()
                 running_jobs = [j for j in jobs2 if j['status'] == 'running']
                 self.assertGreaterEqual(len(running_jobs), bucket_size)
-                self.assertLessEqual(len(running_jobs), bucket_size + 5)
+                self.assertLess(len(running_jobs), 2 * bucket_size)
+                # Reset rate limit and make sure everything launches.
+                with admin:
+                    resp = util.reset_limit(self.cook_url, 'quota', user.name)
+                    self.assertEqual(resp.status_code, 204, resp.text)
+                util.wait_for_jobs(self.cook_url, job_uuids, "running")
         finally:
             with admin:
                 resp = util.reset_limit(self.cook_url, 'quota', user.name)

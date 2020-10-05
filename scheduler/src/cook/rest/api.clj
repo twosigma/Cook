@@ -1781,7 +1781,7 @@
 
    Note: If you use this function, you need special logic in the client to follow the
    resulting redirects. Specifically, python needs to use cook.util.request_with_redirects
-   to work correctly, and curl needs command line option --location-trusted."
+   to work correctly, and curl needs command line option --location / --location-trusted."
   [leadership-atom leader-selector]
   {:can-post-to-gone?
    (constantly true)
@@ -3478,7 +3478,7 @@
 
         (c-api/context
           "/quota" []
-          ;; only the leader handles quota requests to flush any rate limit state after any changes.
+          ;; only the leader handles quota change requests to flush any rate limit state after any changes.
           (c-api/resource
             {:produces ["application/json"],
              :responses {200 {:schema UserLimitsResponse

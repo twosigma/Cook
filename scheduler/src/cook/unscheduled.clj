@@ -149,7 +149,7 @@
 
 (defn- check-launch-rate-limit
   "Return the appropriate error message if a user's job is unscheduled because they're over the job launch rate limit threshold"
-  [{:keys [job/user] :as job}]
+  [{:keys [job/user]}]
   (let [enforcing-job-launch-rate-limit? (ratelimit/enforce? quota/per-user-per-pool-launch-rate-limiter)
         num-ratelimited (->> @cook.tools/pool->user->num-rate-limited-jobs
                              vals
