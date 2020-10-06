@@ -133,7 +133,8 @@
        :keystore-path #config/env "COOK_KEYSTORE_PATH"
        :keystore-type "pkcs12"
        :keystore-pass "cookstore"}
- :rate-limit {:expire-minutes 1200 ; Expire unused rate limit entries after 20 hours.
+ :rate-limit {:auth-bypass-limit-per-m 10000
+              :expire-minutes 1200 ; Expire unused rate limit entries after 20 hours.
               ; Keep these job-launch and job-submission values as they are for integration tests. Making them smaller can cause
               ; spurious failures, and making them larger will cause test_rate_limit_launching_jobs to skip itself.
               :job-launch {:bucket-size 10000

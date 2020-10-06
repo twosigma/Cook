@@ -91,12 +91,17 @@
 (def default-authorization {:authorization-fn 'cook.rest.authorization/open-auth})
 (def default-fitness-calculator "com.netflix.fenzo.plugins.BinPackingFitnessCalculators/cpuMemBinPacker")
 
-(defrecord UserRateLimit [id quota ttl]
+(defrecord UserRateLimit [id quota auth-bypass-quota ttl]
   RateLimit
-  (get-key [self req]
-    (str (.getName (type self)) id "-" (:authorization/user req)))
-  (get-quota [_ _]
-    quota)
+
+  (get-key [self {:keys [authorization/user]}]
+    (str (.getName (type self)) id "-" user))
+
+  (get-quota [_ {:keys [authorization/user]}]
+    (if user
+      quota
+      auth-bypass-quota))
+
   (get-ttl [_ _]
     ttl))
 
@@ -228,13 +233,18 @@
                                      ((util/lazy-load-var 'cook.rest.impersonation/create-impersonation-middleware) impersonators)
                                      {:json-value "config-impersonation"})))
      :rate-limit (fnk [[:config {rate-limit nil}]]
-                   (let [{:keys [expire-minutes user-limit-per-m job-submission job-launch]
-                          :or {expire-minutes 120
+                   (let [{:keys [auth-bypass-limit-per-m expire-minutes job-launch job-submission user-limit-per-m]
+                          :or {auth-bypass-limit-per-m 10000
+                               expire-minutes 120
                                user-limit-per-m 600}} rate-limit]
                      {:expire-minutes expire-minutes
                       :job-submission job-submission
                       :job-launch job-launch
-                      :user-limit (->UserRateLimit :user-limit user-limit-per-m (t/minutes 1))}))
+                      :user-limit (->UserRateLimit
+                                    :user-limit
+                                    user-limit-per-m
+                                    auth-bypass-limit-per-m
+                                    (t/minutes 1))}))
      :sim-agent-path (fnk [] "/usr/bin/sim-agent")
      :executor (fnk [[:config {executor {}}]]
                  (if (str/blank? (:command executor))
