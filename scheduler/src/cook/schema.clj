@@ -1009,9 +1009,9 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
    {:db/id (d/tempid :db.part/user)
     :db/ident :resource.type/count}
    {:db/id (d/tempid :db.part/user)
-    :db/ident :resource.type/pool-user-launch-rate-saved}
+    :db/ident :resource.type/launch-rate-saved}
    {:db/id (d/tempid :db.part/user)
-    :db/ident :resource.type/pool-user-launch-rate-per-minute}
+    :db/ident :resource.type/launch-rate-per-minute}
    ;; Functions for database manipulation
    {:db/id (d/tempid :db.part/user)
     :db/ident :instance/create

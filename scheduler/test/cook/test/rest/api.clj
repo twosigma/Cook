@@ -722,8 +722,8 @@
 
     (testing "update changes quota"
       (let [new-quota {:cpus 9.0 :mem 4323.0 :count 43 :gpus 3.0
-                       :pool-user-launch-rate-per-minute quota/default-pool-user-launch-rate-per-minute
-                       :pool-user-launch-rate-saved quota/default-pool-user-launch-rate-saved}
+                       :launch-rate-per-minute quota/default-launch-rate-per-minute
+                       :launch-rate-saved quota/default-launch-rate-saved}
             update-resp (h (merge quota-req-attrs
                                   {:request-method :post
                                    :body-params {:user "foo"

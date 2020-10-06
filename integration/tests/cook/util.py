@@ -1316,9 +1316,9 @@ def set_limit(cook_url, limit_type, user, mem=None, cpus=None, gpus=None, count=
     if count is not None:
         limits['count'] = count
     if bucket_size is not None:
-        limits['pool-user-launch-rate-per-minute'] = bucket_size
+        limits['launch-rate-per-minute'] = bucket_size
     if token_rate is not None:
-        limits['pool-user-launch-rate-saved'] = token_rate
+        limits['launch-rate-saved'] = token_rate
     if pool is not None:
         body['pool'] = pool
     logger.debug(f'Setting {user} {limit_type} to {limits}: {body}')

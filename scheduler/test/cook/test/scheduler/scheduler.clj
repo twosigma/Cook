@@ -1405,7 +1405,7 @@
             num-considerable 5]
         (with-redefs [quota/per-user-per-pool-launch-rate-limiter
                       (quota/create-per-user-per-pool-launch-rate-limiter conn job-launch-rate-limit-config-for-testing)
-                      quota/get-quota (constantly {:pool-user-launch-rate-per-minute 0.001 :pool-user-launch-rate-saved 1})]
+                      quota/get-quota (constantly {:launch-rate-per-minute 0.001 :launch-rate-saved 1})]
           (reset! tools/pool->user->num-rate-limited-jobs {})
           (is (= [job-1]
                  (doall (sched/pending-jobs->considerable-jobs

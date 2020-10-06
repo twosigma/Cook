@@ -76,8 +76,8 @@
 ; 10M jobs and 10k/sec sustained seems to have a lot of headroom. Don't want to go into the billions
 ; because of integer wraparound risks.
 ; These numbers are not round numbers so they're very greppable.
-(def default-pool-user-launch-rate-saved 10000097.)
-(def default-pool-user-launch-rate-per-minute 600013)
+(def default-launch-rate-saved 10000097.)
+(def default-launch-rate-per-minute 600013.)
 
 (defn get-quota
   "Query a user's pre-defined quota.
@@ -95,20 +95,20 @@
                         (get-quota-by-type db :resource.type/count default-user pool-name) ; then the resource from the default user
                         (:quota/count (d/entity db [:quota/user default-user])) ; then the field on the default user
                         Integer/MAX_VALUE)
-        pool-user-launch-rate-saved (get-quota-extra db
-                                                     :resource.type/pool-user-launch-rate-saved
+        launch-rate-saved (get-quota-extra db
+                                                     :resource.type/launch-rate-saved
                                                      user
                                                      pool-name
-                                                     default-pool-user-launch-rate-saved)
-        pool-user-launch-rate-per-minute (get-quota-extra
+                                                     default-launch-rate-saved)
+        launch-rate-per-minute (get-quota-extra
                                            db
-                                           :resource.type/pool-user-launch-rate-per-minute
+                                           :resource.type/launch-rate-per-minute
                                            user
                                            pool-name
-                                           default-pool-user-launch-rate-per-minute)]
+                                           default-launch-rate-per-minute)]
     (assoc mesos-resource-quota :count (int count-quota)
-                                :pool-user-launch-rate-saved pool-user-launch-rate-saved
-                                :pool-user-launch-rate-per-minute pool-user-launch-rate-per-minute)))
+                                :launch-rate-saved launch-rate-saved
+                                :launch-rate-per-minute launch-rate-per-minute)))
 
 (defn pool+user->token-key
   "Given a pool name and a user, create a key suitable for the per-user-per-pool ratelimit code"
@@ -127,10 +127,10 @@
           ratelimit-config
           (fn [{:keys [user pool-name] :as key}]
             (let [db (d/db conn)
-                  {:keys [pool-user-launch-rate-saved pool-user-launch-rate-per-minute] :as quota}
+                  {:keys [launch-rate-saved launch-rate-per-minute] :as quota}
                   (get-quota db user pool-name)]
               (log/info "For token-key" key "got quota" quota)
-              (rtg/config->token-bucket-filter {:tokens-replenished-per-minute pool-user-launch-rate-per-minute :bucket-size pool-user-launch-rate-saved})))))
+              (rtg/config->token-bucket-filter {:tokens-replenished-per-minute launch-rate-per-minute :bucket-size launch-rate-saved})))))
       (do
         (log/info "Not configuring per-user-launch rate because no configuration set")
         rtg/AllowAllRateLimiter))))
@@ -138,8 +138,8 @@
 (mount/defstate per-user-per-pool-launch-rate-limiter
   :start (create-per-user-per-pool-launch-rate-limiter cook.datomic/conn config/config))
 
-(def ratelimit-quota-fields #{:resource.type/pool-user-launch-rate-saved
-                              :resource.type/pool-user-launch-rate-per-minute})
+(def ratelimit-quota-fields #{:resource.type/launch-rate-saved
+                              :resource.type/launch-rate-per-minute})
 
 
 (defn maybe-flush-ratelimit

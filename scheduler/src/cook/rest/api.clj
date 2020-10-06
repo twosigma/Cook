@@ -2512,8 +2512,8 @@
    :gpus s/Num
    :mem s/Num
    (s/optional-key :count) s/Num
-   (s/optional-key :pool-user-launch-rate-saved) s/Num
-   (s/optional-key :pool-user-launch-rate-per-minute) s/Num})
+   (s/optional-key :launch-rate-saved) s/Num
+   (s/optional-key :launch-rate-per-minute) s/Num})
 
 (def UserLimitsResponse
   (assoc UserLimitSchema (s/optional-key :pools) {s/Str UserLimitSchema}))
@@ -3490,7 +3490,7 @@
                    :handler (read-limit-handler :quota quota/get-quota conn is-authorized-fn)}
              :post {:summary "Change a user's quota"
                     :parameters (set-limit-params :quota)
-                    :handler (update-limit-handler :quota [:count :pool-user-launch-rate-saved :pool-user-launch-rate-per-minute]
+                    :handler (update-limit-handler :quota [:count :launch-rate-saved :launch-rate-per-minute]
                                                    quota/get-quota quota/set-quota!
                                                    conn is-authorized-fn
                                                    leadership-atom leader-selector)}

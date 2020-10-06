@@ -35,28 +35,28 @@
     (let [db (db conn)]
       (testing "set and query zero job count"
         (is (= {:count 0 :cpus 1.0 :mem 2.0 :gpus 1.0
-                :pool-user-launch-rate-per-minute quota/default-pool-user-launch-rate-per-minute
-                :pool-user-launch-rate-saved quota/default-pool-user-launch-rate-saved}
+                :launch-rate-per-minute quota/default-launch-rate-per-minute
+                :launch-rate-saved quota/default-launch-rate-saved}
                (quota/get-quota db "u4" nil))))
       (testing "set and query zero gpus"
         (is (= {:count Integer/MAX_VALUE
                 :cpus 1.0 :mem 2.0 :gpus 0.0
-                :pool-user-launch-rate-per-minute quota/default-pool-user-launch-rate-per-minute
-                :pool-user-launch-rate-saved quota/default-pool-user-launch-rate-saved} (quota/get-quota db "u3" nil))))
+                :launch-rate-per-minute quota/default-launch-rate-per-minute
+                :launch-rate-saved quota/default-launch-rate-saved} (quota/get-quota db "u3" nil))))
       (testing "set and query."
         (is (= {:count Integer/MAX_VALUE
                 :cpus 5.0 :mem 10.0 :gpus 1.0
-                :pool-user-launch-rate-per-minute quota/default-pool-user-launch-rate-per-minute
-                :pool-user-launch-rate-saved quota/default-pool-user-launch-rate-saved} (quota/get-quota db "u2" nil))))
+                :launch-rate-per-minute quota/default-launch-rate-per-minute
+                :launch-rate-saved quota/default-launch-rate-saved} (quota/get-quota db "u2" nil))))
       (testing "set and overide."
         (is (= {:count 6 :cpus 5.0 :mem 10.0 :gpus 1.0
-                :pool-user-launch-rate-per-minute quota/default-pool-user-launch-rate-per-minute
-                :pool-user-launch-rate-saved quota/default-pool-user-launch-rate-saved} (quota/get-quota db "u1" nil))))
+                :launch-rate-per-minute quota/default-launch-rate-per-minute
+                :launch-rate-saved quota/default-launch-rate-saved} (quota/get-quota db "u1" nil))))
       (testing "query default."
         (is (= {:count Integer/MAX_VALUE
                 :cpus 1.0 :mem 2.0 :gpus 1.0
-                :pool-user-launch-rate-per-minute quota/default-pool-user-launch-rate-per-minute
-                :pool-user-launch-rate-saved quota/default-pool-user-launch-rate-saved} (quota/get-quota db "default" nil))))
+                :launch-rate-per-minute quota/default-launch-rate-per-minute
+                :launch-rate-saved quota/default-launch-rate-saved} (quota/get-quota db "default" nil))))
       (testing "query unknown user."
         (is (= (quota/get-quota db "whoami" nil) (quota/get-quota db "default" nil))))
       (testing "retract quota"
@@ -64,8 +64,8 @@
         (let [db (mt/db conn)]
           (is (= {:count Integer/MAX_VALUE
                   :cpus 1.0 :mem 2.0 :gpus 1.0
-                  :pool-user-launch-rate-per-minute quota/default-pool-user-launch-rate-per-minute
-                  :pool-user-launch-rate-saved quota/default-pool-user-launch-rate-saved} (quota/get-quota db "u2" nil))))))))
+                  :launch-rate-per-minute quota/default-launch-rate-per-minute
+                  :launch-rate-saved quota/default-launch-rate-saved} (quota/get-quota db "u2" nil))))))))
 
 (deftest test-count-migration
   (let [uri "datomic:mem://test-count-migration"
@@ -73,8 +73,8 @@
     (testing "writes to resource instead of field"
       (quota/set-quota! conn "u1" nil "setting count" :count 1)
       (is (= {:count 1 :mem Double/MAX_VALUE :cpus Double/MAX_VALUE :gpus Double/MAX_VALUE
-              :pool-user-launch-rate-per-minute quota/default-pool-user-launch-rate-per-minute
-              :pool-user-launch-rate-saved quota/default-pool-user-launch-rate-saved}
+              :launch-rate-per-minute quota/default-launch-rate-per-minute
+              :launch-rate-saved quota/default-launch-rate-saved}
              (quota/get-quota (d/db conn) "u1" nil)))
       (let [quota (d/entity (d/db conn) [:quota/user "u1"])
             resource (:quota/resource quota)]
@@ -133,54 +133,54 @@
     (testing "get-quota, no default pool configured"
       (let [db (mt/db conn)]
         (is (= {:cpus 20.0 :mem 20.0 :gpus 1.0 :count 1
-                :pool-user-launch-rate-per-minute quota/default-pool-user-launch-rate-per-minute
-                :pool-user-launch-rate-saved quota/default-pool-user-launch-rate-saved} (quota/get-quota db "u1" nil)))
+                :launch-rate-per-minute quota/default-launch-rate-per-minute
+                :launch-rate-saved quota/default-launch-rate-saved} (quota/get-quota db "u1" nil)))
         (is (= {:cpus 100.0 :mem 100.0 :gpus 10.0 :count 10
-                :pool-user-launch-rate-per-minute quota/default-pool-user-launch-rate-per-minute
-                :pool-user-launch-rate-saved quota/default-pool-user-launch-rate-saved} (quota/get-quota db "u1" "pool-1")))
+                :launch-rate-per-minute quota/default-launch-rate-per-minute
+                :launch-rate-saved quota/default-launch-rate-saved} (quota/get-quota db "u1" "pool-1")))
         (is (= {:cpus Double/MAX_VALUE :mem Double/MAX_VALUE :gpus Double/MAX_VALUE
                 :count Integer/MAX_VALUE
-                :pool-user-launch-rate-per-minute quota/default-pool-user-launch-rate-per-minute
-                :pool-user-launch-rate-saved quota/default-pool-user-launch-rate-saved}
+                :launch-rate-per-minute quota/default-launch-rate-per-minute
+                :launch-rate-saved quota/default-launch-rate-saved}
                (quota/get-quota db "u1" "pool-2")))
 
         (is (= {:cpus 1.0 :mem 1.0 :gpus 1.0 :count 1
-                :pool-user-launch-rate-per-minute quota/default-pool-user-launch-rate-per-minute
-                :pool-user-launch-rate-saved quota/default-pool-user-launch-rate-saved} (quota/get-quota db "u2" nil)))
+                :launch-rate-per-minute quota/default-launch-rate-per-minute
+                :launch-rate-saved quota/default-launch-rate-saved} (quota/get-quota db "u2" nil)))
         (is (= {:cpus 10.0 :mem 10.0 :gpus 10.0 :count 10
-                :pool-user-launch-rate-per-minute quota/default-pool-user-launch-rate-per-minute
-                :pool-user-launch-rate-saved quota/default-pool-user-launch-rate-saved} (quota/get-quota db "u2" "pool-1")))))
+                :launch-rate-per-minute quota/default-launch-rate-per-minute
+                :launch-rate-saved quota/default-launch-rate-saved} (quota/get-quota db "u2" "pool-1")))))
 
     (testing "get-quota, default pool configured"
       (with-redefs [config/default-pool (constantly "pool-1")]
         (let [db (mt/db conn)]
           ; Should use the explicit defaults from pool-1
           (is (= {:cpus 100.0 :mem 100.0 :gpus 10.0 :count 10
-                  :pool-user-launch-rate-per-minute quota/default-pool-user-launch-rate-per-minute
-                  :pool-user-launch-rate-saved quota/default-pool-user-launch-rate-saved} (quota/get-quota db "u1" nil)))
+                  :launch-rate-per-minute quota/default-launch-rate-per-minute
+                  :launch-rate-saved quota/default-launch-rate-saved} (quota/get-quota db "u1" nil)))
           (is (= {:cpus 100.0 :mem 100.0 :gpus 10.0 :count 10
-                  :pool-user-launch-rate-per-minute quota/default-pool-user-launch-rate-per-minute
-                  :pool-user-launch-rate-saved quota/default-pool-user-launch-rate-saved} (quota/get-quota db "u1" "pool-1")))
+                  :launch-rate-per-minute quota/default-launch-rate-per-minute
+                  :launch-rate-saved quota/default-launch-rate-saved} (quota/get-quota db "u1" "pool-1")))
           (is (= {:cpus Double/MAX_VALUE :mem Double/MAX_VALUE :gpus Double/MAX_VALUE
                   :count Integer/MAX_VALUE
-                  :pool-user-launch-rate-per-minute quota/default-pool-user-launch-rate-per-minute
-                  :pool-user-launch-rate-saved quota/default-pool-user-launch-rate-saved}
+                  :launch-rate-per-minute quota/default-launch-rate-per-minute
+                  :launch-rate-saved quota/default-launch-rate-saved}
                  (quota/get-quota db "u1" "pool-2")))
 
           (is (= {:cpus 10.0 :mem 10.0 :gpus 10.0 :count 10
-                  :pool-user-launch-rate-per-minute quota/default-pool-user-launch-rate-per-minute
-                  :pool-user-launch-rate-saved quota/default-pool-user-launch-rate-saved} (quota/get-quota db "u2" nil)))
+                  :launch-rate-per-minute quota/default-launch-rate-per-minute
+                  :launch-rate-saved quota/default-launch-rate-saved} (quota/get-quota db "u2" nil)))
           (is (= {:cpus 10.0 :mem 10.0 :gpus 10.0 :count 10
-                  :pool-user-launch-rate-per-minute quota/default-pool-user-launch-rate-per-minute
-                  :pool-user-launch-rate-saved quota/default-pool-user-launch-rate-saved} (quota/get-quota db "u2" "pool-1"))))))
+                  :launch-rate-per-minute quota/default-launch-rate-per-minute
+                  :launch-rate-saved quota/default-launch-rate-saved} (quota/get-quota db "u2" "pool-1"))))))
 
     (testing "retract quota, no default pool configured"
       (quota/set-quota! conn "u2" nil "defaults" :cpus 1.0 :mem 1.0 :gpus 1.0 :count 1)
       (quota/set-quota! conn "u2" "pool-2" "pool-2 settings" :cpus 2.0 :mem 2.0 :gpus 2.0 :count 2)
       (let [db (mt/db conn)]
         (is (= {:cpus 2.0 :mem 2.0 :gpus 2.0 :count 2
-                :pool-user-launch-rate-per-minute quota/default-pool-user-launch-rate-per-minute
-                :pool-user-launch-rate-saved quota/default-pool-user-launch-rate-saved} (quota/get-quota db "u2" "pool-2"))))
+                :launch-rate-per-minute quota/default-launch-rate-per-minute
+                :launch-rate-saved quota/default-launch-rate-saved} (quota/get-quota db "u2" "pool-2"))))
 
       (quota/retract-quota! conn "u2" "pool-2" "removing quota")
       (let [db (mt/db conn)]
@@ -191,8 +191,8 @@
         ; With no default pool, we should get the default quota values
         (is (= {:cpus Double/MAX_VALUE :mem Double/MAX_VALUE :gpus Double/MAX_VALUE
                 :count Integer/MAX_VALUE
-                :pool-user-launch-rate-per-minute quota/default-pool-user-launch-rate-per-minute
-                :pool-user-launch-rate-saved quota/default-pool-user-launch-rate-saved}
+                :launch-rate-per-minute quota/default-launch-rate-per-minute
+                :launch-rate-saved quota/default-launch-rate-saved}
                (quota/get-quota db "u2" "pool-2")))))
 
     (testing "create-user->quota-fn"
@@ -210,13 +210,13 @@
         (doseq [user ["u1" "u2" "u3"]]
           (is (= {:cpus 1.0 :mem 1.0 :gpus 1.0 :count 1} (user->quota-fn user))))
         (is (= {:cpus 2.0 :mem 2.0 :gpus 2.0 :count 2
-                :pool-user-launch-rate-per-minute quota/default-pool-user-launch-rate-per-minute
-                :pool-user-launch-rate-saved quota/default-pool-user-launch-rate-saved} (user->quota-fn "u4"))))
+                :launch-rate-per-minute quota/default-launch-rate-per-minute
+                :launch-rate-saved quota/default-launch-rate-saved} (user->quota-fn "u4"))))
 
       (with-redefs [config/default-pool (constantly "pool-3")]
         (let [user->quota-fn (quota/create-user->quota-fn (mt/db conn) "pool-3")]
           (doseq [user ["u1" "u2" "u3"]]
             (is (= {:cpus 5.0 :mem 5.0 :gpus 5.0 :count 5} (user->quota-fn user))))
           (is (= {:cpus 6.0 :mem 6.0 :gpus 6.0 :count 6
-                  :pool-user-launch-rate-per-minute quota/default-pool-user-launch-rate-per-minute
-                  :pool-user-launch-rate-saved quota/default-pool-user-launch-rate-saved} (user->quota-fn "u4"))))))))
+                  :launch-rate-per-minute quota/default-launch-rate-per-minute
+                  :launch-rate-saved quota/default-launch-rate-saved} (user->quota-fn "u4"))))))))
