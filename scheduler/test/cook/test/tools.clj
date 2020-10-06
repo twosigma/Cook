@@ -807,7 +807,7 @@
     ; queue would be seen by the user quota and we'd only launch job-1.
     (testing "User quota filters first."
       (is (= [job-1 job-4]
-             (util/filter-pending-jobs-for-quota nil user->quota user->usage pool-quota queue))))))
+             (util/filter-pending-jobs-for-quota nil (atom {}) user->quota user->usage pool-quota queue))))))
 
 (deftest test-pool->user->usage
   (let [uri "datomic:mem://test-pool-user-usage"

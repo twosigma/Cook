@@ -958,17 +958,15 @@
 (defonce pool->user->num-rate-limited-jobs (atom {}))
 
 (defn filter-pending-jobs-for-ratelimit
-  [pool-name pending-jobs]
+  [pool-name user->rate-limit-count pending-jobs]
   (let [enforcing-job-launch-rate-limit? (ratelimit/enforce? quota/per-user-per-pool-launch-rate-limiter)
         ; Each rank cycle, we reset whose had anything rate limited this cycle.
-        _ (swap! pool->user->num-rate-limited-jobs update pool-name (constantly (atom {})))
         user->number-jobs (atom {})
         user-within-launch-rate-limit?-fn
         (fn
           [{:keys [job/user]}]
           ; Account for each time we see a job for a user.
-          (let [user->rate-limit-count (get @pool->user->num-rate-limited-jobs pool-name (atom {}))
-                token-key (quota/pool+user->token-key pool-name user)
+          (let [token-key (quota/pool+user->token-key pool-name user)
                 _ (swap! user->number-jobs update user #(inc (or % 0)))
                 tokens-left (ratelimit/get-token-count! quota/per-user-per-pool-launch-rate-limiter token-key)
                 number-jobs-for-user-so-far (@user->number-jobs user)
@@ -985,12 +983,12 @@
   user->quota is a map from user to a quota dictionary which is {:mem 123 :cpus 456 ...}
   user->usage is a map from user to a usage dictionary which is {:mem 123 :cpus 456 ...}
   pool-quota is the quota for the current pool, a quota dictionary which is {:mem 123 :cpus 456 ...}"
-  [pool user->quota user->usage pool-quota queue]
+  [pool user->rate-limit-count user->quota user->usage pool-quota queue]
   ; Use the already precomputed user->usage map and just aggregate by users to get pool usage.
   (let [pool-usage (reduce (partial merge-with +) (vals user->usage))]
     (->> queue
          (filter-based-on-user-quota pool user->quota user->usage)
-         (filter-pending-jobs-for-ratelimit pool)
+         (filter-pending-jobs-for-ratelimit pool user->rate-limit-count)
          (filter-based-on-pool-quota pool pool-quota pool-usage))))
 
 (defn pool->user->usage

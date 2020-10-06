@@ -692,15 +692,17 @@
   [db pending-jobs user->quota user->usage num-considerable pool-name]
   (log/debug "In" pool-name "pool, there are" (count pending-jobs) "pending jobs:" pending-jobs)
   (let [enforcing-job-launch-rate-limit? (ratelimit/enforce? quota/per-user-per-pool-launch-rate-limiter)
+        user->rate-limit-count (atom {})
         considerable-jobs
         (->> pending-jobs
-             (tools/filter-pending-jobs-for-quota pool-name user->quota user->usage (tools/global-pool-quota (config/pool-quotas) pool-name))
+             (tools/filter-pending-jobs-for-quota pool-name user->rate-limit-count user->quota user->usage (tools/global-pool-quota (config/pool-quotas) pool-name))
              (filter (fn [job] (tools/job-allowed-to-start? db job)))
              (filter launch-plugin/filter-job-launches)
              (take num-considerable)
              ; Force this to be taken eagerly so that the log line is accurate.
-             (doall))
-        user->rate-limit-count (get @tools/pool->user->num-rate-limited-jobs pool-name (atom {}))]
+             (doall))]
+    (swap! tools/pool->user->num-rate-limited-jobs update pool-name (constantly @user->rate-limit-count))
+
     (when (seq @user->rate-limit-count)
       (log/info "In" pool-name "pool, job launch rate-limiting"
                 {:enforcing-job-launch-rate-limit? enforcing-job-launch-rate-limit?
@@ -1138,7 +1140,7 @@
                 ;; trigger autoscaling beyond what users have quota to actually run
                 autoscalable-jobs (->> pool-name
                                        (get @pool-name->pending-jobs-atom)
-                                       (tools/filter-pending-jobs-for-quota pool-name
+                                       (tools/filter-pending-jobs-for-quota pool-name (atom {})
                                          user->quota user->usage (tools/global-pool-quota (config/pool-quotas) pool-name)))]
             ;; This call needs to happen *after* launch-matched-tasks!
             ;; in order to avoid autoscaling tasks taking up available
