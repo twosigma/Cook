@@ -688,7 +688,7 @@
 
 (defn pending-jobs->considerable-jobs
   "Limit the pending jobs to considerable jobs based on usage and quota.
-   Further limit the considerable jobs to a maximum of num-consideracheckble jobs."
+   Further limit the considerable jobs to a maximum of num-considerable jobs."
   [db pending-jobs user->quota user->usage num-considerable pool-name]
   (log/debug "In" pool-name "pool, there are" (count pending-jobs) "pending jobs:" pending-jobs)
   (let [enforcing-job-launch-rate-limit? (ratelimit/enforce? quota/per-user-per-pool-launch-rate-limiter)
@@ -801,7 +801,7 @@
         [{:keys [hostname task-request]}]
         (let [user (get-in task-request [:job :job/user])
               compute-cluster-launch-rate-limiter (cc/launch-rate-limiter compute-cluster)
-              token-key (quota/->token-key pool-name user)]
+              token-key (quota/pool+user->token-key pool-name user)]
           (ratelimit/spend! quota/per-user-per-pool-launch-rate-limiter token-key 1)
           (ratelimit/spend! compute-cluster-launch-rate-limiter ratelimit/compute-cluster-launch-rate-limiter-key 1))
         (locking fenzo

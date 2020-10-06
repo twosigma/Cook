@@ -968,7 +968,7 @@
           [{:keys [job/user]}]
           ; Account for each time we see a job for a user.
           (let [user->rate-limit-count (get @pool->user->num-rate-limited-jobs pool-name (atom {}))
-                token-key (quota/->token-key pool-name user)
+                token-key (quota/pool+user->token-key pool-name user)
                 _ (swap! user->number-jobs update user #(inc (or % 0)))
                 tokens-left (ratelimit/get-token-count! quota/per-user-per-pool-launch-rate-limiter token-key)
                 number-jobs-for-user-so-far (@user->number-jobs user)

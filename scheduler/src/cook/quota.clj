@@ -75,8 +75,9 @@
 ; Some defaults to be effectively infinity if you don't configure quotas explicitly.
 ; 10M jobs and 10k/sec sustained seems to have a lot of headroom. Don't want to go into the billions
 ; because of integer wraparound risks.
-(def default-pool-user-launch-rate-saved (+ 13 10000000.))
-(def default-pool-user-launch-rate-per-minute (+ 1 (* 10. 1000 60)))
+; These numbers are not round numbers so they're very greppable.
+(def default-pool-user-launch-rate-saved 10000097.)
+(def default-pool-user-launch-rate-per-minute 600013)
 
 (defn get-quota
   "Query a user's pre-defined quota.
@@ -109,7 +110,7 @@
                                 :pool-user-launch-rate-saved pool-user-launch-rate-saved
                                 :pool-user-launch-rate-per-minute pool-user-launch-rate-per-minute)))
 
-(defn ->token-key
+(defn pool+user->token-key
   "Given a pool name and a user, create a key suitable for the per-user-per-pool ratelimit code"
   [pool-name user]
   {:pool-name (pool/pool-name-or-default pool-name) :user user})
@@ -148,7 +149,7 @@
   (when (contains? ratelimit-quota-fields type)
     (let [token-key (if (= user default-user)
                       nil ; Flush all users
-                      (->token-key pool-name user))]
+                      (pool+user->token-key pool-name user))]
       (log/info "Flushing rate limit quota for" type "for" token-key)
       (cook.rate-limit/flush! per-user-per-pool-launch-rate-limiter token-key))))
 
