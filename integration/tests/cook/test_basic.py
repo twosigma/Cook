@@ -1990,7 +1990,7 @@ class CookTest(util.CookTest):
         self.assertEqual(job["container"]["docker"]["image"], expected_container["docker"]["image"])
         self.assertIn('success', [i['status'] for i in job['instances']])
 
-    @unittest.skipUnless(util.has_docker_service() and not util.using_kubernetes(),
+    @unittest.skipUnless(util.docker_tests_enabled() and util.has_docker_service() and not util.using_kubernetes(),
                          "Requires `docker inspect`. On kubernetes, need to add support and write a separate test.")
     def test_docker_port_mapping(self):
         settings_dict = util.settings(self.cook_url)
