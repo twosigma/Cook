@@ -55,7 +55,7 @@ case "$COOK_AUTH" in
 esac
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-NAME=cook-scheduler-${COOK_PORT}
+NAME=cook-scheduler-${COOK_PORT}.localhost
 
 echo "About to: Clean up existing image"
 if [ "$(docker ps -aq -f name=${NAME})" ]; then
