@@ -741,9 +741,7 @@
         (is (= checkpoint (api/calculate-effective-checkpointing-config job 1))))))
   (testing "Kill switch enabled"
     (with-redefs [config/kubernetes (fn [] {:default-checkpoint-config {:disable-checkpointing true}})]
-      (let [checkpoint {:mode "auto"
-                        :memory-overhead 129}
-            job {:job/checkpoint {:checkpoint/mode "auto"}}]
+      (let [job {:job/checkpoint {:checkpoint/mode "auto"}}]
         (is (= nil (api/calculate-effective-checkpointing-config job 1))))))
   (testing "checkpoint when max attempts not set"
     (with-redefs [config/kubernetes (fn [] {:default-checkpoint-config {}})]
