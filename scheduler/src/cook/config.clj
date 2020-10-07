@@ -234,7 +234,7 @@
                                      {:json-value "config-impersonation"})))
      :rate-limit (fnk [[:config {rate-limit nil}]]
                    (let [{:keys [auth-bypass-limit-per-m expire-minutes job-launch job-submission user-limit-per-m]
-                          :or {auth-bypass-limit-per-m 400
+                          :or {auth-bypass-limit-per-m 600
                                expire-minutes 120
                                user-limit-per-m 600}} rate-limit]
                      {:expire-minutes expire-minutes
