@@ -960,7 +960,7 @@
 (defn filter-pending-jobs-for-ratelimit
   [pool-name user->rate-limit-count pending-jobs]
   (let [enforcing-job-launch-rate-limit? (ratelimit/enforce? quota/per-user-per-pool-launch-rate-limiter)
-        ; Each rank cycle, we reset whose had anything rate limited this cycle.
+        ; Each rank cycle, we reset who's had anything rate limited this cycle.
         user->number-jobs (atom {})
         user-within-launch-rate-limit?-fn
         (fn
