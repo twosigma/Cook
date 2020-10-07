@@ -464,7 +464,7 @@
           (if (:update-succeeded update-result)
             (log/info "Update for cluster" (:cluster-name update) "successful")
             (log/error "Update failed!" update))
-          (log/error "Invalid update!" update)))
+          (log/warn "Invalid update!" update)))
       updates-with-results)))
 
 (defn update-compute-clusters
