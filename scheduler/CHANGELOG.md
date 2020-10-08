@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.48.0] - 2020-10-08
+### Added
+- Per-user per-pool job launch rate limiting, from @scrosby
+- Configurable checkpointing kill switch, from @nsinkov
+### Changed
+- Dynamic compute cluster log from `ERROR` to `WARN`, from @scrosby
+### Fixed
+- Allowing for different rate limit for auth-bypass requests, from @dposada
+
 ## [1.47.1] - 2020-10-01
 ### Changed
 - Added warning log when jobs go unmatched for too long, from @dposada
