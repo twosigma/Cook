@@ -27,6 +27,7 @@
             [cook.plugins.definitions :refer [FileUrlGenerator]]
             [cook.plugins.file :as file-plugin]
             [cook.plugins.submission :as submission-plugin]
+            [cook.quota :as quota]
             [cook.rate-limit :as rate-limit]
             [cook.rest.api :as api]
             [cook.rest.authorization :as auth]
@@ -720,7 +721,9 @@
       (is (<= 200 (:status initial-get-resp) 299)))
 
     (testing "update changes quota"
-      (let [new-quota {:cpus 9.0 :mem 4323.0 :count 43 :gpus 3.0}
+      (let [new-quota {:cpus 9.0 :mem 4323.0 :count 43 :gpus 3.0
+                       :launch-rate-per-minute quota/default-launch-rate-per-minute
+                       :launch-rate-saved quota/default-launch-rate-saved}
             update-resp (h (merge quota-req-attrs
                                   {:request-method :post
                                    :body-params {:user "foo"

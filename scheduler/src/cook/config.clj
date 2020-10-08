@@ -233,13 +233,13 @@
                                      ((util/lazy-load-var 'cook.rest.impersonation/create-impersonation-middleware) impersonators)
                                      {:json-value "config-impersonation"})))
      :rate-limit (fnk [[:config {rate-limit nil}]]
-                   (let [{:keys [auth-bypass-limit-per-m expire-minutes job-launch job-submission user-limit-per-m]
+                   (let [{:keys [auth-bypass-limit-per-m expire-minutes user-limit-per-m job-submission per-user-per-pool-job-launch]
                           :or {auth-bypass-limit-per-m 600
                                expire-minutes 120
                                user-limit-per-m 600}} rate-limit]
                      {:expire-minutes expire-minutes
                       :job-submission job-submission
-                      :job-launch job-launch
+                      :per-user-per-pool-job-launch per-user-per-pool-job-launch
                       :user-limit (->UserRateLimit
                                     :user-limit
                                     user-limit-per-m

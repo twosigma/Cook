@@ -116,12 +116,12 @@
     (mount/stop)
     (mount/start-with-args (merge minimal-config config)
                            #'cook.config/config
-                           #'cook.rate-limit/job-launch-rate-limiter
                            #'cook.plugins.adjustment/plugin
                            #'cook.plugins.file/plugin
                            #'cook.plugins.launch/plugin-object
                            #'cook.plugins.pool/plugin
-                           #'cook.plugins.submission/plugin-object)))
+                           #'cook.plugins.submission/plugin-object
+                           #'cook.quota/per-user-per-pool-launch-rate-limiter)))
 
 (defn run-test-server-in-thread
   "Runs a minimal cook scheduler server for testing inside a thread. Note that it is not properly kerberized."

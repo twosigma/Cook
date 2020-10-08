@@ -686,46 +686,27 @@
                              (map tools/job->usage)
                              (reduce (partial merge-with +))))))))
 
-; This is used by the /unscheduled_jobs code to determine whether
-; or not to report rate-limiting as a reason for being pending
-(defonce pool->user->num-rate-limited-jobs (atom {}))
-
 (defn pending-jobs->considerable-jobs
   "Limit the pending jobs to considerable jobs based on usage and quota.
    Further limit the considerable jobs to a maximum of num-considerable jobs."
   [db pending-jobs user->quota user->usage num-considerable pool-name]
   (log/debug "In" pool-name "pool, there are" (count pending-jobs) "pending jobs:" pending-jobs)
-  (let [enforcing-job-launch-rate-limit? (ratelimit/enforce? ratelimit/job-launch-rate-limiter)
-        user->number-jobs (atom {})
+  (let [enforcing-job-launch-rate-limit? (ratelimit/enforce? quota/per-user-per-pool-launch-rate-limiter)
         user->rate-limit-count (atom {})
-        user-within-launch-rate-limit?-fn
-        (fn
-          [{:keys [job/user]}]
-          ; Account for each time we see a job for a user.
-          (swap! user->number-jobs update user #(inc (or % 0)))
-          (let [tokens (ratelimit/get-token-count! ratelimit/job-launch-rate-limiter user)
-                number-jobs-for-user-so-far (@user->number-jobs user)
-                is-rate-limited? (> number-jobs-for-user-so-far tokens)]
-            (when is-rate-limited?
-              (swap! user->rate-limit-count update user #(inc (or % 0))))
-            (not (and is-rate-limited? enforcing-job-launch-rate-limit?))))
         considerable-jobs
         (->> pending-jobs
-             (tools/filter-pending-jobs-for-quota pool-name user->quota user->usage (tools/global-pool-quota (config/pool-quotas) pool-name))
+             (tools/filter-pending-jobs-for-quota pool-name user->rate-limit-count user->quota user->usage (tools/global-pool-quota (config/pool-quotas) pool-name))
              (filter (fn [job] (tools/job-allowed-to-start? db job)))
-             (filter user-within-launch-rate-limit?-fn)
              (filter launch-plugin/filter-job-launches)
              (take num-considerable)
              ; Force this to be taken eagerly so that the log line is accurate.
              (doall))]
-    (swap! pool->user->num-rate-limited-jobs update pool-name (constantly @user->rate-limit-count))
+    (swap! tools/pool->user->num-rate-limited-jobs update pool-name (constantly @user->rate-limit-count))
+
     (when (seq @user->rate-limit-count)
       (log/info "In" pool-name "pool, job launch rate-limiting"
-                {:count-considerable-jobs (count considerable-jobs)
-                 :enforcing-job-launch-rate-limit? enforcing-job-launch-rate-limit?
-                 :num-considerable num-considerable
+                {:enforcing-job-launch-rate-limit? enforcing-job-launch-rate-limit?
                  :total-rate-limit-count (->> @user->rate-limit-count vals (reduce +))
-                 :user->number-jobs @user->number-jobs
                  :user->rate-limit-count @user->rate-limit-count}))
     considerable-jobs))
 
@@ -821,8 +802,9 @@
       (fn process-task-post-launch!
         [{:keys [hostname task-request]}]
         (let [user (get-in task-request [:job :job/user])
-              compute-cluster-launch-rate-limiter (cc/launch-rate-limiter compute-cluster)]
-          (ratelimit/spend! ratelimit/job-launch-rate-limiter user 1)
+              compute-cluster-launch-rate-limiter (cc/launch-rate-limiter compute-cluster)
+              token-key (quota/pool+user->token-key pool-name user)]
+          (ratelimit/spend! quota/per-user-per-pool-launch-rate-limiter token-key 1)
           (ratelimit/spend! compute-cluster-launch-rate-limiter ratelimit/compute-cluster-launch-rate-limiter-key 1))
         (locking fenzo
           (.. fenzo
@@ -1158,7 +1140,7 @@
                 ;; trigger autoscaling beyond what users have quota to actually run
                 autoscalable-jobs (->> pool-name
                                        (get @pool-name->pending-jobs-atom)
-                                       (tools/filter-pending-jobs-for-quota pool-name
+                                       (tools/filter-pending-jobs-for-quota pool-name (atom {})
                                          user->quota user->usage (tools/global-pool-quota (config/pool-quotas) pool-name)))]
             ;; This call needs to happen *after* launch-matched-tasks!
             ;; in order to avoid autoscaling tasks taking up available
