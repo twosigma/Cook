@@ -66,6 +66,8 @@ def tabulate_job(cluster_name, job):
     job_state = [['Attempts', format_job_attempts(job)],
                  ['Job Status', format_job_status(job)],
                  ['Submitted', millis_to_date_string(job['submit_time'])]]
+    if job['checkpoint'] and job['checkpoint']['mode']:
+        job_state.append(['Checkpoint mode', job['checkpoint']['mode']])
 
     job_command = 'Command:\n%s' % job['command']
 
