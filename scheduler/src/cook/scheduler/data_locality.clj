@@ -7,6 +7,7 @@
             [clojure.set :as set]
             [clojure.tools.logging :as log]
             [cook.cache :as ccache]
+            [cook.caches :as caches]
             [cook.config :as config]
             [cook.tools :as util]
             [datomic.api :as d]
@@ -17,8 +18,6 @@
            (java.util UUID)))
 
 (def partition-date-format (:basic-date tf/formatters))
-
-(defonce job-uuid->dataset-maps-cache (util/new-cache))
 
 (defn- make-partition-map
   [partition-type partition]
@@ -47,10 +46,10 @@
 (defn get-dataset-maps
   "Returns the (possibly cached) datasets for the given job"
   [job]
-  (ccache/lookup-cache! job-uuid->dataset-maps-cache
-                      :job/uuid
-                      make-dataset-maps
-                      job))
+  (ccache/lookup-cache! caches/job-uuid->dataset-maps-cache
+                        :job/uuid
+                        make-dataset-maps
+                        job))
 
 (histograms/defhistogram [cook-mesos data-locality cost-update-staleness])
 (histograms/defhistogram [cook-mesos data-locality cost-match-staleness])

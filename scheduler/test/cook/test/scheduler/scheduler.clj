@@ -24,6 +24,7 @@
             [clojure.test :refer :all]
             [clojure.tools.logging :as log]
             [clojure.walk :as walk]
+            [cook.caches :as caches]
             [cook.compute-cluster :as cc]
             [cook.config :as config]
             [cook.datomic :as datomic]
@@ -1587,6 +1588,7 @@
 
 
 (let [uri "datomic:mem://test-handle-resource-offers"
+      _ (setup) ;To create the caches that are flushed by restore-fresh-database!
       conn (restore-fresh-database! uri)
       compute-cluster-name "kubernetes"
       cluster-entity-id (kcc/get-or-create-cluster-entity-id conn compute-cluster-name)
@@ -1976,7 +1978,7 @@
   (setup)
   (with-redefs [config/data-local-fitness-config (constantly {:data-locality-weight 0.95
                                                               :base-calculator BinPackingFitnessCalculators/cpuMemBinPacker})
-                dl/job-uuid->dataset-maps-cache (tools/new-cache)]
+                caches/job-uuid->dataset-maps-cache (testutil/new-cache)]
     (let [uri "datomic:mem://test-handle-resource-offers-with-data-locality"
           conn (restore-fresh-database! uri)
           test-user (System/getProperty "user.name")
