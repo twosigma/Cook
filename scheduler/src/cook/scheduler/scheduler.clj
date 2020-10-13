@@ -693,21 +693,24 @@
   (log/debug "In" pool-name "pool, there are" (count pending-jobs) "pending jobs:" pending-jobs)
   (let [enforcing-job-launch-rate-limit? (ratelimit/enforce? quota/per-user-per-pool-launch-rate-limiter)
         user->rate-limit-count (atom {})
+        user->passed-count (atom {})
         considerable-jobs
         (->> pending-jobs
-             (tools/filter-pending-jobs-for-quota pool-name user->rate-limit-count user->quota user->usage (tools/global-pool-quota (config/pool-quotas) pool-name))
+             (tools/filter-pending-jobs-for-quota pool-name user->rate-limit-count user->passed-count
+                                                  user->quota user->usage
+                                                  (tools/global-pool-quota (config/pool-quotas) pool-name))
              (filter (fn [job] (tools/job-allowed-to-start? db job)))
              (filter launch-plugin/filter-job-launches)
              (take num-considerable)
              ; Force this to be taken eagerly so that the log line is accurate.
              (doall))]
     (swap! tools/pool->user->num-rate-limited-jobs update pool-name (constantly @user->rate-limit-count))
-
-    (when (seq @user->rate-limit-count)
-      (log/info "In" pool-name "pool, job launch rate-limiting"
-                {:enforcing-job-launch-rate-limit? enforcing-job-launch-rate-limit?
-                 :total-rate-limit-count (->> @user->rate-limit-count vals (reduce +))
-                 :user->rate-limit-count @user->rate-limit-count}))
+    (log/info "In" pool-name "pool, job launch rate-limiting"
+              {:enforcing-job-launch-rate-limit? enforcing-job-launch-rate-limit?
+               :total-rate-limit-count (->> @user->rate-limit-count vals (reduce +))
+               :user->rate-limit-count @user->rate-limit-count
+               :total-passed-count (->> @user->passed-count vals (reduce +))
+               :user->passed-count @user->passed-count})
     considerable-jobs))
 
 
@@ -1140,7 +1143,7 @@
                 ;; trigger autoscaling beyond what users have quota to actually run
                 autoscalable-jobs (->> pool-name
                                        (get @pool-name->pending-jobs-atom)
-                                       (tools/filter-pending-jobs-for-quota pool-name (atom {})
+                                       (tools/filter-pending-jobs-for-quota pool-name (atom {}) (atom {})
                                          user->quota user->usage (tools/global-pool-quota (config/pool-quotas) pool-name)))]
             ;; This call needs to happen *after* launch-matched-tasks!
             ;; in order to avoid autoscaling tasks taking up available
