@@ -90,6 +90,11 @@
           db)
        (map first)))
 
+(defn get-quota-resource-types
+  "Return a list of resource types used for quota, :cpus :mem :gpus ..."
+  [db]
+  (remove #{:disk} (get-all-resource-types db)))
+
 (let [default-pool (config/default-pool)
       _ (log/info "The config/default-pool is" default-pool)
       miss-fn (fn [{:keys [job/pool]}]
@@ -267,7 +272,9 @@
           (reduce (fn [m r]
                     (let [resource (keyword (name (:resource/type r)))]
                       (condp contains? resource
-                        #{:cpus :mem :disk :gpus} (assoc m resource (:resource/amount r))
+                        #{:cpus :mem :gpus} (assoc m resource (:resource/amount r))
+                        #{:disk} (assoc m :disk (cond-> {:size (:resource.disk/size r)}
+                                                        (:resource.disk/type r) (assoc :type (:resource.disk/type r))) )
                         #{:uri} (update-in m [:uris] (fnil conj [])
                                            {:cache (:resource.uri/cache? r false)
                                             :executable (:resource.uri/executable? r false)

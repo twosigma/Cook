@@ -110,7 +110,7 @@
   ([db user]
    (get-share db user nil))
   ([db user pool]
-   (get-share db user pool (util/get-all-resource-types db)))
+   (get-share db user pool (util/get-quota-resource-types db)))
   ([db user pool resource-types]
    (let [type->default (get-share-by-types db default-user pool resource-types {})]
      (get-share db user pool resource-types type->default)))

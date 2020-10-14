@@ -69,7 +69,7 @@
    return Double.MAX_VALUE."
   [db user pool-name]
   (let [mesos-resource-quota (pc/map-from-keys (fn [type] (get-quota-by-type-or-default db type user pool-name))
-                                               (util/get-all-resource-types db))
+                                               (util/get-quota-resource-types db))
         ;; As part of the pool migration, there might be a mix of quotas that have the count as an attribute or a resource.
         ;; We prefer to read the resource if available and fall back to the attribute.
         count-quota (or (get-quota-by-type db :resource.type/count user pool-name) ; prefer resource
