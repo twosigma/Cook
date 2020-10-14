@@ -1002,6 +1002,20 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :db/ident :resource.type/mem
     :resource.type/mesos-name :mem}
    {:db/id (d/tempid :db.part/user)
+    :db/ident :resource.type/disk
+    ;TODO: Check if resource.type/mesos-name is needed
+    :resource.type/mesos-name :disk}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :resource.disk/size
+    :db/valueType :db.type/double
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :resource.disk/type
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/user)
     :db/ident :resource.type/gpus
     :resource.type/mesos-name :gpus}
    {:db/id (d/tempid :db.part/user)

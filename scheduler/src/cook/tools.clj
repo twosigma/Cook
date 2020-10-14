@@ -267,7 +267,7 @@
           (reduce (fn [m r]
                     (let [resource (keyword (name (:resource/type r)))]
                       (condp contains? resource
-                        #{:cpus :mem :gpus} (assoc m resource (:resource/amount r))
+                        #{:cpus :mem :disk :gpus} (assoc m resource (:resource/amount r))
                         #{:uri} (update-in m [:uris] (fnil conj [])
                                            {:cache (:resource.uri/cache? r false)
                                             :executable (:resource.uri/executable? r false)

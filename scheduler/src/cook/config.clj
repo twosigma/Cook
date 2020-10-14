@@ -540,6 +540,11 @@
       nil
       pool)))
 
+(defn valid-disk-types
+  "Returns valid disk models "
+  []
+  (-> config :settings :pools :valid-disk-types))
+
 (defn valid-gpu-models
   "Returns valid GPU models for the pool the job is scheduled in"
    []

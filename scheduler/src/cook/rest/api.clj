@@ -295,6 +295,11 @@
   {:dataset {non-empty-max-128-characters-str non-empty-max-128-characters-str}
    (s/optional-key :partitions) #{{non-empty-max-128-characters-str non-empty-max-128-characters-str}}})
 
+(def Disk
+  "Schema for disk limit specifications"
+  {(s/optional-key :size) (s/both PosDouble (s/pred #(<= 1 % 250000) 'between-1-and-250000))
+   (s/optional-key :type) s/Str})
+
 (def DatePartition
   "Schema for a date partition"
   {(s/required-key "begin") (s/constrained s/Str valid-date-str?)
@@ -349,6 +354,7 @@
    (s/optional-key :disable-mea-culpa-retries) s/Bool
    :cpus PosDouble
    :mem PosDouble
+   (s/optional-key :disk) Disk
    (s/optional-key :gpus) (s/both s/Int (s/pred pos? 'pos?))
    ;; Make sure the user name is valid. It must begin with a lower case character, end with
    ;; a lower case character or a digit, and has length between 2 to (62 + 2).
@@ -398,6 +404,7 @@
               :state s/Str
               :submit-time (s/maybe PosInt)
               :user UserName
+              (s/optional-key :disk) Disk
               (s/optional-key :gpus) s/Int
               (s/optional-key :groups) [s/Uuid]
               (s/optional-key :instances) [Instance]
@@ -702,10 +709,15 @@
    [valid-gpu-models effective-pool-name]
    (util/match-based-on-pool-name valid-gpu-models effective-pool-name :valid-models))
 
+(defn get-disk-types-on-pool
+  "Given a pool name, determine the supported disk types on that pool."
+  [valid-disk-types effective-pool-name]
+  (util/match-based-on-pool-name valid-disk-types effective-pool-name :valid-types))
+
 (s/defn make-job-txn
   "Creates the necessary txn data to insert a job into the database"
   [pool commit-latch-id db job :- Job]
-  (let [{:keys [uuid command max-retries max-runtime expected-runtime priority cpus mem gpus
+  (let [{:keys [uuid command max-retries max-runtime expected-runtime priority cpus mem disk gpus
                 user name ports uris env labels container group application disable-mea-culpa-retries
                 constraints executor progress-output-file progress-regex-string datasets checkpoint]
          :or {group nil
@@ -736,6 +748,7 @@
                          {:db/id env-var-id
                           :environment/name k
                           :environment/value v}]))
+
                     env)
         labels (mapcat (fn [[k v]]
                          (let [label-var-id (d/tempid :db.part/user)]
@@ -770,6 +783,17 @@
                                 [[:db/add db-id :job/priority priority]])
                               (when (and max-runtime (not= Long/MAX_VALUE max-runtime))
                                 [[:db/add db-id :job/max-runtime max-runtime]])
+                              (when disk
+                                (let [disk-id (d/tempid :db.part/user)
+                                      params {:db/id disk-id
+                                              :resource/type :resource.type/disk
+                                              :resource.disk/size (:size disk)}]
+                                  [[:db/add db-id :job/resource disk-id]
+                                   (if-not (nil? (:type disk))
+                                     (assoc params :resource.disk/type (:type disk))
+                                     params)]
+                                  )
+                                )
                               (when (and gpus (not (zero? gpus)))
                                 (let [gpus-id (d/tempid :db.part/user)]
                                   [[:db/add db-id :job/resource gpus-id]
@@ -953,12 +977,27 @@
                (not (contains? (get-gpu-models-on-pool (config/valid-gpu-models) pool-name) requested-gpu-model)))
       (throw (ex-info (str "The following GPU model is not supported: " requested-gpu-model) {})))))
 
+(defn validate-disk-job
+  "Validates that a job requesting disk is satisfying the following conditions:
+    - User can request size but not type; User can request both size and type; User cannot request only type and not size
+    - Requested type must be a valid type
+    - TODO: validate that requested size is less than a certain amount
+  "
+  [pool-name {:keys [disk]}]
+  (let [requested-disk-size (:size disk)
+        requested-disk-type (:type disk)]
+    (when (and requested-disk-type (not requested-disk-size))
+      (throw (ex-info (str "In order to request a disk type, user must also request disk size") disk)))
+    (when (and requested-disk-type
+               (not (contains? (get-disk-types-on-pool (config/valid-disk-types) pool-name) requested-disk-type)))
+      (throw (ex-info (str "The following disk type is not supported: " requested-disk-type) disk)))))
+
 (defn validate-and-munge-job
   "Takes the user, the parsed json from the job and a list of the uuids of
    new-groups (submitted in the same request as the job). Returns proper Job
    objects, or else throws an exception"
   [db pool-name user task-constraints gpu-enabled? new-group-uuids
-   {:keys [cpus mem gpus uuid command priority max-retries max-runtime expected-runtime name
+   {:keys [cpus mem disk gpus uuid command priority max-retries max-runtime expected-runtime name
            uris ports env labels container group application disable-mea-culpa-retries
            constraints executor progress-output-file progress-regex-string datasets checkpoint]
     :or {group nil
@@ -981,6 +1020,7 @@
                   :cpus (double cpus)
                   :mem (double mem)
                   :disable-mea-culpa-retries disable-mea-culpa-retries}
+                 (when disk {:disk disk})
                  (when gpus {:gpus (int gpus)})
                  (when env {:env (walk/stringify-keys env)})
                  (when uris {:uris (map (fn [{:keys [value executable cache extract]}]
@@ -1022,6 +1062,7 @@
                            (* 1024 (:memory-gb task-constraints)))
                       {:constraints task-constraints
                        :job job})))
+    (when disk (validate-disk-job pool-name munged))
     (when (> (:ports munged) max-ports)
       (throw (ex-info (str "Requested " ports " ports, but only allowed to use " max-ports)
                       {:constraints task-constraints
@@ -1226,6 +1267,7 @@
                    :constraints constraints
                    :cpus (:cpus resources)
                    :disable_mea_culpa_retries disable-mea-culpa-retries
+                   :disk (:disk resources {})
                    :env (util/job-ent->env job)
                    ; TODO(pschorf): Remove field
                    :framework_id (guess-framework-id)
@@ -1906,7 +1948,6 @@
 
       (let [user (get-in ctx [:request :authorization/user])]
         (rate-limit/spend! rate-limit/job-submission-rate-limiter user (count jobs)))
-
       @(d/transact
          conn
          (-> (vec group-asserts)
@@ -1914,7 +1955,6 @@
              (conj commit-latch)
              (into job-txns)
              (into group-txns)))
-
       (meters/mark! (meters/meter ["cook-mesos" "scheduler" "jobs-created"
                                    (str "pool-" (pool/pool-name-or-default (:pool/name pool)))])
                     (count jobs))
