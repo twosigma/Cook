@@ -110,7 +110,7 @@
   ([db user]
    (get-share db user nil))
   ([db user pool]
-   (get-share db user pool (queries/get-all-resource-types db)))
+   (get-share db user pool (queries/get-quota-resource-types db)))
   ([db user pool resource-types]
    (let [type->default (get-share-by-types db default-user pool resource-types {})]
      (get-share db user pool resource-types type->default)))
@@ -127,7 +127,7 @@
   ([db users]
    (get-shares db users nil))
   ([db users pool-name]
-   (get-shares db users pool-name (queries/get-all-resource-types db)))
+   (get-shares db users pool-name (queries/get-quota-resource-types db)))
   ([db users pool-name resource-types]
    (timers/time!
      get-shares-duration
@@ -138,7 +138,7 @@
 (defn retract-share!
   [conn user pool reason]
   (let [db (d/db conn)]
-    (->> (queries/get-all-resource-types db)
+    (->> (queries/get-quota-resource-types db)
          (map (fn [type]
                 [type (retract-share-by-type! conn type user pool)]))
          (into {})))
