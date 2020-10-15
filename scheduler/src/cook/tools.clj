@@ -958,7 +958,7 @@
 (defonce pool->user->num-rate-limited-jobs (atom {}))
 
 (defn filter-pending-jobs-for-ratelimit
-  [pool-name user->rate-limit-count pending-jobs]
+  [pool-name user->rate-limit-count user->passed-count pending-jobs]
   (let [enforcing-job-launch-rate-limit? (ratelimit/enforce? quota/per-user-per-pool-launch-rate-limiter)
         ; Each rank cycle, we reset who's had anything rate limited this cycle.
         user->number-jobs (atom {})
@@ -971,8 +971,9 @@
                 tokens-left (ratelimit/get-token-count! quota/per-user-per-pool-launch-rate-limiter token-key)
                 number-jobs-for-user-so-far (@user->number-jobs user)
                 is-rate-limited? (> number-jobs-for-user-so-far tokens-left)]
-            (when is-rate-limited?
-              (swap! user->rate-limit-count update user #(inc (or % 0))))
+            (if is-rate-limited?
+              (swap! user->rate-limit-count update user #(inc (or % 0)))
+              (swap! user->passed-count update user #(inc (or % 0))))
             (not (and is-rate-limited? enforcing-job-launch-rate-limit?))))
         filtered-queue (filter user-within-launch-rate-limit?-fn pending-jobs)]
     filtered-queue))
@@ -983,12 +984,12 @@
   user->quota is a map from user to a quota dictionary which is {:mem 123 :cpus 456 ...}
   user->usage is a map from user to a usage dictionary which is {:mem 123 :cpus 456 ...}
   pool-quota is the quota for the current pool, a quota dictionary which is {:mem 123 :cpus 456 ...}"
-  [pool user->rate-limit-count user->quota user->usage pool-quota queue]
+  [pool user->rate-limit-count user->passed-count user->quota user->usage pool-quota queue]
   ; Use the already precomputed user->usage map and just aggregate by users to get pool usage.
   (let [pool-usage (reduce (partial merge-with +) (vals user->usage))]
     (->> queue
          (filter-based-on-user-quota pool user->quota user->usage)
-         (filter-pending-jobs-for-ratelimit pool user->rate-limit-count)
+         (filter-pending-jobs-for-ratelimit pool user->rate-limit-count user->passed-count)
          (filter-based-on-pool-quota pool pool-quota pool-usage))))
 
 (defn pool->user->usage
