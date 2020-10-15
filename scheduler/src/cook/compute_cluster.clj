@@ -453,13 +453,16 @@
   [conn db current-configs new-configs force?]
   (let [updates (compute-config-updates db current-configs new-configs force?)
         dissoc-ca-cert
+        (fn [config]
+          (dissoc config :ca-cert))
+        dissoc-ca-cert-vals
         (fn [configs]
-          (map-vals #(dissoc % :ca-cert) configs))]
+          (map-vals dissoc-ca-cert configs))]
     (log/info "Updating dynamic clusters."
-              {:current-configs (dissoc-ca-cert current-configs)
+              {:current-configs (dissoc-ca-cert-vals current-configs)
                :force? force?
-               :new-configs (dissoc-ca-cert new-configs)
-               :updates updates})
+               :new-configs (dissoc-ca-cert-vals new-configs)
+               :updates (map #(update % :goal-config dissoc-ca-cert) updates)})
     (let [updates-with-results (map
                                  #(assoc % :update-result
                                            (when (:valid? %) (execute-update! conn %)))
