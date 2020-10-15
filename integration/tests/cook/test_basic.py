@@ -1879,6 +1879,70 @@ class CookTest(util.CookTest):
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
         self.assertIn('success', [i['status'] for i in job['instances']])
 
+    def test_submit_job_with_disk(self):
+        settings_dict = util.settings(self.cook_url)
+        valid_disk_types_config_map = settings_dict.get("pools", {}).get("valid-disk-types", [])
+        # If no pools support disks, submit a job to the default pool and assert the submission gets rejected
+        if not valid_disk_types_config_map:
+            default_pool = util.default_submit_pool()
+            job_uuid, resp = util.submit_job(
+                self.cook_url,
+                pool=default_pool,
+                disk={'size': 20000, 'type': 'pd-ssd'})
+            self.assertEqual(resp.status_code, 400)
+            self.assertTrue(f"The following disk type is not supported: pd-ssd" in resp.text,
+                msg=resp.content)
+        else:
+            # Check if there are any active pools
+            active_pools, _ = util.active_pools(self.cook_url)
+            if len(active_pools) == 0:
+                self.logger.info('There are no pools to submit jobs to')
+                self.skipTest("There are no active pools that support disk")
+            for pool in active_pools:
+                pool_name = pool['name']
+                matching_disk_types = [ii["valid-types"] for ii in valid_disk_types_config_map if
+                                       re.match(ii["pool-regex"], pool_name)]
+                # If there are no supported disk types for pool, assert submission gets rejected
+                if len(matching_disk_types) == 0 or len(matching_disk_types[0]) == 0:
+                    job_uuid, resp = util.submit_job(
+                        self.cook_url,
+                        pool=pool_name,
+                        disk={'size': 20000, 'type': 'pd-ssd'})
+                    self.assertEqual(resp.status_code, 400)
+                    self.assertTrue(f"The following disk type is not supported: pd-ssd" in resp.text,
+                        msg=resp.content)
+                else:
+                    # Job submission with valid disk request of size and type
+                    self.logger.info(f'Submitting to {pool}')
+                    expected_size = 20000
+                    expected_type = matching_disk_types[0][0]
+                    job_uuid, resp = util.submit_job(
+                        self.cook_url,
+                        pool=pool_name,
+                        disk={'size': expected_size, 'type': expected_type})
+                    self.assertEqual(resp.status_code, 201, resp.text)
+                    job = util.load_job(self.cook_url, job_uuid)
+                    self.assertEqual(job["disk"]["size"], expected_size)
+                    self.assertEqual(job["disk"]["type"], expected_type)
+
+                    # Job submission with default disk type
+                    self.logger.info(f'Submitting to {pool}')
+                    job_uuid, resp = util.submit_job(
+                        self.cook_url,
+                        pool=pool_name,
+                        disk={'size': expected_size})
+                    self.assertEqual(resp.status_code, 201, resp.text)
+                    self.assertEqual(job["disk"]["size"], expected_size)
+
+                    # Job submission with invalid request of disk type but not disk size
+                    job_uuid, resp = util.submit_job(
+                        self.cook_url,
+                        pool=pool_name,
+                        disk={'type': expected_type})
+                    self.assertEqual(resp.status_code, 400)
+                    self.assertTrue("In order to request a disk type, user must also request disk size" in resp.text,
+                                    msg=resp.content)
+
     def test_request_gpu_models(self):
         settings_dict = util.settings(self.cook_url)
         gpu_enabled = settings_dict['mesos-gpu-enabled']
