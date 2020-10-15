@@ -1680,17 +1680,19 @@
    It ranks the jobs by dru first and then apply several filters if provided."
   [unfiltered-db offensive-job-filter]
   (timers/time!
-    rank-jobs-duration
-    (try
-      (->> (sort-jobs-by-dru-pool unfiltered-db)
-           ;; Apply the offensive job filter first before taking.
-           (pc/map-vals offensive-job-filter)
-           (pc/map-vals #(map tools/job-ent->map %))
-           (pc/map-vals #(remove nil? %)))
-      (catch Throwable t
-        (log/error t "Failed to rank jobs")
-        (meters/mark! rank-jobs-failures)
-        {}))))
+    rank-jobs-duration ; TODO: For continuity with prior metrics, keep this around for a while, but delete in 2021.
+    (timers/time!
+      (timers/timer (metric-title "rank-jobs-timer" pool-name))
+      (try
+        (->> (sort-jobs-by-dru-pool unfiltered-db)
+             ;; Apply the offensive job filter first before taking.
+             (pc/map-vals offensive-job-filter)
+             (pc/map-vals #(map tools/job-ent->map %))
+             (pc/map-vals #(remove nil? %)))
+        (catch Throwable t
+          (log/error t "Failed to rank jobs")
+          (meters/mark! rank-jobs-failures)
+          {})))))
 
 (defn- start-jobs-prioritizer!
   [conn pool-name->pending-jobs-atom task-constraints trigger-chan]
