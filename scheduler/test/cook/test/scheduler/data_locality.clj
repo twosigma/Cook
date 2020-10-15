@@ -4,9 +4,10 @@
             [clj-time.coerce :as tc]
             [clj-time.core :as t]
             [clojure.test :refer :all]
+            [cook.caches :as caches]
             [cook.config :as config]
             [cook.scheduler.data-locality :as dl]
-            [cook.test.testutil :refer [create-dummy-job restore-fresh-database!]]
+            [cook.test.testutil :as testutil :refer [create-dummy-job restore-fresh-database!]]
             [cook.tools :as util]
             [datomic.api :as d]
             [plumbing.core :as pc])
@@ -15,7 +16,7 @@
 
 (deftest test-update-data-local-costs
   (with-redefs [config/data-local-fitness-config (constantly {:cache-ttl-ms 5000})
-                dl/job-uuid->dataset-maps-cache (util/new-cache)]
+                caches/job-uuid->dataset-maps-cache (testutil/new-cache)]
     (testing "sanitizes input costs"
       (let [job-1 (str (UUID/randomUUID))
             job-2 (str (UUID/randomUUID))]
@@ -103,7 +104,7 @@
     TaskRequest)
 
 (deftest test-data-local-fitness-calculator
-  (with-redefs [dl/job-uuid->dataset-maps-cache (util/new-cache)]
+  (with-redefs [caches/job-uuid->dataset-maps-cache (testutil/new-cache)]
     (let [conn (restore-fresh-database! "datomic:mem://test-data-local-fitness-calculator")
           base-fitness 0.5
           base-calculator (FixedFitnessCalculator. base-fitness)
@@ -145,7 +146,7 @@
 
 (deftest test-jobs-to-update
   (with-redefs [config/data-local-fitness-config (constantly {:batch-size 3})
-                dl/job-uuid->dataset-maps-cache (util/new-cache)]
+                caches/job-uuid->dataset-maps-cache (testutil/new-cache)]
     (dl/reset-data-local-costs!)
     (testing "does not update data for running and completed jobs"
       (let [conn (restore-fresh-database! "datomic:mem://test-job-ids-to-update")
@@ -224,7 +225,7 @@
                   dl/fetch-data-local-costs (fn [jobs]
                                               (pc/map-from-keys (fn [_] @current-cost-atom)
                                                                 (map :job/datasets jobs)))
-                  dl/job-uuid->dataset-maps-cache (util/new-cache)]
+                  caches/job-uuid->dataset-maps-cache (testutil/new-cache)]
       (testing "calls service and updates jobs"
         (dl/reset-data-local-costs!)
         (let [conn (restore-fresh-database! "datomic:mem://test-fetch-and-update-data-local-costs")

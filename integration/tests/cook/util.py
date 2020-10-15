@@ -441,12 +441,16 @@ def compute_clusters(cook_url):
     return session.get(f'{cook_url}/compute-clusters').json()
 
 
-@functools.lru_cache()
-def scheduler_info(cook_url):
+def scheduler_info_uncached(cook_url):
     resp = session.get(f'{cook_url}/info', auth=None)
     response_info = {'code': resp.status_code, 'msg': resp.content}
     assert resp.status_code == 200, response_info
     return resp.json()
+
+
+@functools.lru_cache()
+def scheduler_info(cook_url):
+    return scheduler_info_uncached(cook_url)
 
 
 def docker_image():
@@ -1241,20 +1245,41 @@ def user_current_usage(cook_url, headers=None, **kwargs):
     return session.get('%s/usage' % cook_url, params=kwargs, headers=headers)
 
 
-def query_queue(cook_url, allow_redirects=True, **kwargs):
-    """Get current jobs via the queue endpoint (admin-only)"""
-    # We handle redirects manually here because /queue can redirect to a new hostname
-    # (when redirecting to master node), and requests strips and does not re-apply
+def request_with_redirects(method, url, allow_redirects=True, **kwargs):
+    """Special version to do requests while more properly handling authentication."""
+    # We need to handle redirects manually because some endpoints can redirect to a new hostname
+    # (when redirecting to primary node), and requests strips and does not re-apply
     # auth when redirects cross domains.
-    response = session.get(f'{cook_url}/queue', allow_redirects=False, **kwargs)
+    response = session.request(method, url, allow_redirects=False, **kwargs)
     if allow_redirects and response.is_redirect:
         for _ in range(10):
-            response = session.get(response.headers['Location'], allow_redirects=False, **kwargs)
+            response = session.request(method, response.headers['Location'], allow_redirects=False, **kwargs)
             if not response.is_redirect:
                 break
         else:
             assert not response.is_redirect, response.headers
     return response
+
+
+def get_with_redirects(url, allow_redirects=True, **kwargs):
+    """Special version of GET that handles redirects and authentication. see request_with_redirects"""
+    return request_with_redirects('GET', url, allow_redirects, **kwargs)
+
+
+def post_with_redirects(url, allow_redirects=True, **kwargs):
+    """Special version of POST that handles redirects and authentication. see request_with_redirects"""
+    return request_with_redirects('POST', url, allow_redirects, **kwargs)
+
+
+def delete_with_redirects(url, allow_redirects=True, **kwargs):
+    """Special version of DELETE that handles redirects and authentication. see request_with_redirects"""
+    return request_with_redirects('DELETE', url, allow_redirects, **kwargs)
+
+
+def query_queue(cook_url, allow_redirects=True, **kwargs):
+    """Get current jobs via the queue endpoint (admin-only)"""
+    # /queue can redirect to the cook primary so needs special logic.
+    return get_with_redirects(f'{cook_url}/queue', allow_redirects=True, **kwargs)
 
 
 def get_limit(cook_url, limit_type, user, pool=None, headers=None):
@@ -1266,7 +1291,8 @@ def get_limit(cook_url, limit_type, user, pool=None, headers=None):
     return session.get(f'{cook_url}/{limit_type}', params=params, headers=headers)
 
 
-def set_limit(cook_url, limit_type, user, mem=None, cpus=None, gpus=None, count=None, reason='testing', pool=None,
+def set_limit(cook_url, limit_type, user, mem=None, cpus=None, gpus=None, count=None,
+              reason='testing', pool=None, bucket_size=None, token_rate=None,
               headers=None):
     """
     Set resource limits for the given user.
@@ -1289,10 +1315,15 @@ def set_limit(cook_url, limit_type, user, mem=None, cpus=None, gpus=None, count=
         limits['gpus'] = gpus
     if count is not None:
         limits['count'] = count
+    if bucket_size is not None:
+        limits['launch-rate-per-minute'] = bucket_size
+    if token_rate is not None:
+        limits['launch-rate-saved'] = token_rate
     if pool is not None:
         body['pool'] = pool
     logger.debug(f'Setting {user} {limit_type} to {limits}: {body}')
-    return session.post(f'{cook_url}/{limit_type}', json=body, headers=headers)
+    # /quota can redirect to the cook primary so needs special logic.
+    return post_with_redirects(f'{cook_url}/{limit_type}', allow_redirects=True, json=body, headers=headers)
 
 
 def set_limit_to_default(cook_url, limit_type, user, pool_name):
@@ -1317,7 +1348,8 @@ def reset_limit(cook_url, limit_type, user, reason='testing', pool=None, headers
         params['reason'] = reason
     if pool is not None:
         params['pool'] = pool
-    return session.delete(f'{cook_url}/{limit_type}', params=params, headers=headers)
+    # /quota can redirect to the cook primary so needs special logic.
+    return delete_with_redirects(f'{cook_url}/{limit_type}', allow_redirects=True, params=params, headers=headers)
 
 
 def retrieve_progress_file_env(cook_url):
@@ -1935,12 +1967,29 @@ def kubernetes_settings():
     return settings(cook_url)['kubernetes']
 
 
-def create_compute_cluster(cook_url, cluster):
-    resp = session.post(f'{cook_url}/compute-clusters', json=cluster)
-    logger.info(f'create_compute_cluster resp: {resp.content}')
+def create_compute_cluster(cook_url, cluster, headers=None):
+    leader_url = scheduler_info_uncached(cook_url)['leader-url']
+    resp = session.post(f'{leader_url}/compute-clusters', json=cluster, headers=headers)
+    logger.info(f'create_compute_cluster resp: {resp.headers} {resp.content} {resp.status_code} {resp.history}')
     return resp.json(), resp
 
 
-def delete_compute_cluster(cook_url, cluster):
-    resp = session.delete(f'{cook_url}/compute-clusters', json={'name': cluster['name']})
+def update_compute_cluster(cook_url, cluster, headers=None):
+    leader_url = scheduler_info_uncached(cook_url)['leader-url']
+    resp = session.put(f'{leader_url}/compute-clusters', json=cluster, headers=headers)
+    logger.info(f'update_compute_cluster resp: {resp.headers} {resp.content} {resp.status_code} {resp.history}')
+    return resp.json(), resp
+
+
+def delete_compute_cluster(cook_url, cluster, headers=None):
+    leader_url = scheduler_info_uncached(cook_url)['leader-url']
+    resp = session.delete(f'{leader_url}/compute-clusters', json=cluster, headers=headers)
+    logger.info(f'delete_compute_cluster resp: {resp.headers} {resp.content} {resp.status_code} {resp.history}')
     return resp
+
+
+def shutdown_leader(cook_url, reason, headers=None):
+    leader_url = scheduler_info_uncached(cook_url)['leader-url']
+    resp = session.post(f'{leader_url}/shutdown-leader', json={"reason": reason}, headers=headers)
+    logger.info(f'shutdown_leader resp: {resp.headers} {resp.content} {resp.status_code} {resp.history}')
+    return resp.content

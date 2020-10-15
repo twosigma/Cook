@@ -91,12 +91,17 @@
 (def default-authorization {:authorization-fn 'cook.rest.authorization/open-auth})
 (def default-fitness-calculator "com.netflix.fenzo.plugins.BinPackingFitnessCalculators/cpuMemBinPacker")
 
-(defrecord UserRateLimit [id quota ttl]
+(defrecord UserRateLimit [id quota auth-bypass-quota ttl]
   RateLimit
-  (get-key [self req]
-    (str (.getName (type self)) id "-" (:authorization/user req)))
-  (get-quota [_ _]
-    quota)
+
+  (get-key [self {:keys [authorization/user]}]
+    (str (.getName (type self)) id "-" user))
+
+  (get-quota [_ {:keys [authorization/user]}]
+    (if user
+      quota
+      auth-bypass-quota))
+
   (get-ttl [_ _]
     ttl))
 
@@ -228,13 +233,18 @@
                                      ((util/lazy-load-var 'cook.rest.impersonation/create-impersonation-middleware) impersonators)
                                      {:json-value "config-impersonation"})))
      :rate-limit (fnk [[:config {rate-limit nil}]]
-                   (let [{:keys [expire-minutes user-limit-per-m job-submission job-launch]
-                          :or {expire-minutes 120
+                   (let [{:keys [auth-bypass-limit-per-m expire-minutes user-limit-per-m job-submission per-user-per-pool-job-launch]
+                          :or {auth-bypass-limit-per-m 600
+                               expire-minutes 120
                                user-limit-per-m 600}} rate-limit]
                      {:expire-minutes expire-minutes
                       :job-submission job-submission
-                      :job-launch job-launch
-                      :user-limit (->UserRateLimit :user-limit user-limit-per-m (t/minutes 1))}))
+                      :per-user-per-pool-job-launch per-user-per-pool-job-launch
+                      :user-limit (->UserRateLimit
+                                    :user-limit
+                                    user-limit-per-m
+                                    auth-bypass-limit-per-m
+                                    (t/minutes 1))}))
      :sim-agent-path (fnk [] "/usr/bin/sim-agent")
      :executor (fnk [[:config {executor {}}]]
                  (if (str/blank? (:command executor))
@@ -424,6 +434,8 @@
                 (assoc :quotas [])))
      :api-only? (fnk [[:config {api-only? false}]]
                   api-only?)
+     :cache-working-set-size (fnk [[:config {cache-working-set-size 1000000}]]
+                               cache-working-set-size)
      :estimated-completion-constraint (fnk [[:config {estimated-completion-constraint nil}]]
                                         (merge {:agent-start-grace-period-mins 10}
                                                estimated-completion-constraint))
@@ -482,7 +494,9 @@
                             kubernetes)))
      :offer-matching (fnk [[:config {offer-matching {}}]]
                        (merge {:global-min-match-interval-millis 100
-                               :target-per-pool-match-interval-millis 3000}
+                               :target-per-pool-match-interval-millis 3000
+                               :unmatched-cycles-warn-threshold 500
+                               :unmatched-fraction-warn-threshold 0.5}
                               offer-matching))}))
 
 (defn read-config

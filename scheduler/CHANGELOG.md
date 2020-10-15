@@ -4,6 +4,32 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.48.1] - 2020-10-15
+### Changed
+- Cache sizes to be configurable, from @scrosby
+- Tracking of how rate limiting is affecting the queue, from @scrosby
+
+## [1.48.0] - 2020-10-08
+### Added
+- Per-user per-pool job launch rate limiting, from @scrosby
+- Configurable checkpointing kill switch, from @nsinkov
+### Changed
+- Dynamic compute cluster log from `ERROR` to `WARN`, from @scrosby
+### Fixed
+- Allowing for different rate limit for auth-bypass requests, from @dposada
+
+## [1.47.1] - 2020-10-01
+### Changed
+- Added warning log when jobs go unmatched for too long, from @dposada
+- Added the ability to flush a rate limit from the cache, from @scrosby
+
+## [1.47.0] - 2020-09-25
+### Added
+- Add rate limits per compute cluster, from @scrosby
+### Changed
+- Cached job-constant fields in defrecords for gpu-host-constraint, from @kathryn-zhou
+- Cache job-constant fields in defrecords for user-defined-constraint, from @kathryn-zhou
+
 ## [1.46.0] - 2020-09-21
 ### Added
 - Workload fields to job application, from @dposada

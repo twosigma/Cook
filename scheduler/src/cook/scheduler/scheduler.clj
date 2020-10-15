@@ -20,6 +20,7 @@
             [clojure.core.async :as async]
             [clojure.core.cache :as cache]
             [clojure.edn :as edn]
+            [clojure.set :as set]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
             [clojure.walk :as walk]
@@ -33,6 +34,7 @@
             [cook.plugins.definitions :as plugins]
             [cook.plugins.launch :as launch-plugin]
             [cook.pool :as pool]
+            [cook.queries :as queries]
             [cook.quota :as quota]
             [cook.rate-limit :as ratelimit]
             [cook.scheduler.constraints :as constraints]
@@ -684,47 +686,31 @@
                              (map tools/job->usage)
                              (reduce (partial merge-with +))))))))
 
-; This is used by the /unscheduled_jobs code to determine whether
-; or not to report rate-limiting as a reason for being pending
-(defonce pool->user->num-rate-limited-jobs (atom {}))
-
 (defn pending-jobs->considerable-jobs
   "Limit the pending jobs to considerable jobs based on usage and quota.
    Further limit the considerable jobs to a maximum of num-considerable jobs."
   [db pending-jobs user->quota user->usage num-considerable pool-name]
   (log/debug "In" pool-name "pool, there are" (count pending-jobs) "pending jobs:" pending-jobs)
-  (let [enforcing-job-launch-rate-limit? (ratelimit/enforce? ratelimit/job-launch-rate-limiter)
-        user->number-jobs (atom {})
+  (let [enforcing-job-launch-rate-limit? (ratelimit/enforce? quota/per-user-per-pool-launch-rate-limiter)
         user->rate-limit-count (atom {})
-        user-within-launch-rate-limit?-fn
-        (fn
-          [{:keys [job/user]}]
-          ; Account for each time we see a job for a user.
-          (swap! user->number-jobs update user #(inc (or % 0)))
-          (let [tokens (ratelimit/get-token-count! ratelimit/job-launch-rate-limiter user)
-                number-jobs-for-user-so-far (@user->number-jobs user)
-                is-rate-limited? (> number-jobs-for-user-so-far tokens)]
-            (when is-rate-limited?
-              (swap! user->rate-limit-count update user #(inc (or % 0))))
-            (not (and is-rate-limited? enforcing-job-launch-rate-limit?))))
+        user->passed-count (atom {})
         considerable-jobs
         (->> pending-jobs
-             (tools/filter-pending-jobs-for-quota user->quota user->usage (tools/global-pool-quota (config/pool-quotas) pool-name))
+             (tools/filter-pending-jobs-for-quota pool-name user->rate-limit-count user->passed-count
+                                                  user->quota user->usage
+                                                  (tools/global-pool-quota (config/pool-quotas) pool-name))
              (filter (fn [job] (tools/job-allowed-to-start? db job)))
-             (filter user-within-launch-rate-limit?-fn)
              (filter launch-plugin/filter-job-launches)
              (take num-considerable)
              ; Force this to be taken eagerly so that the log line is accurate.
              (doall))]
-    (swap! pool->user->num-rate-limited-jobs update pool-name (constantly @user->rate-limit-count))
-    (when (seq @user->rate-limit-count)
-      (log/info "In" pool-name "pool, job launch rate-limiting"
-                {:count-considerable-jobs (count considerable-jobs)
-                 :enforcing-job-launch-rate-limit? enforcing-job-launch-rate-limit?
-                 :num-considerable num-considerable
-                 :total-rate-limit-count (->> @user->rate-limit-count vals (reduce +))
-                 :user->number-jobs @user->number-jobs
-                 :user->rate-limit-count @user->rate-limit-count}))
+    (swap! tools/pool->user->num-rate-limited-jobs update pool-name (constantly @user->rate-limit-count))
+    (log/info "In" pool-name "pool, job launch rate-limiting"
+              {:enforcing-job-launch-rate-limit? enforcing-job-launch-rate-limit?
+               :total-rate-limit-count (->> @user->rate-limit-count vals (reduce +))
+               :user->rate-limit-count @user->rate-limit-count
+               :total-passed-count (->> @user->passed-count vals (reduce +))
+               :user->passed-count @user->passed-count})
     considerable-jobs))
 
 
@@ -819,8 +805,9 @@
       (fn process-task-post-launch!
         [{:keys [hostname task-request]}]
         (let [user (get-in task-request [:job :job/user])
-              compute-cluster-launch-rate-limiter (cc/launch-rate-limiter compute-cluster)]
-          (ratelimit/spend! ratelimit/job-launch-rate-limiter user 1)
+              compute-cluster-launch-rate-limiter (cc/launch-rate-limiter compute-cluster)
+              token-key (quota/pool+user->token-key pool-name user)]
+          (ratelimit/spend! quota/per-user-per-pool-launch-rate-limiter token-key 1)
           (ratelimit/spend! compute-cluster-launch-rate-limiter ratelimit/compute-cluster-launch-rate-limiter-key 1))
         (locking fenzo
           (.. fenzo
@@ -978,6 +965,8 @@
       (catch Throwable e
         (log/error e "In" pool-name "pool, encountered error while triggering autoscaling")))))
 
+(def pool-name->unmatched-job-uuid->unmatched-cycles-atom (atom {}))
+
 (defn handle-resource-offers!
   "Gets a list of offers from mesos. Decides what to do with them all--they should all
    be accepted or rejected at the end of the function."
@@ -1038,6 +1027,94 @@
                               :number-unmatched (- (count offers) (count offers-scheduled))
                               :stats (offers->stats offers)}})
 
+          ; We want to log warnings when jobs have gone unmatched for a long time.
+          ; In order to do this, we keep track, per pool, of the jobs that did not
+          ; get matched to an offer, along with how many matching cycles they've
+          ; gone unmatched for. The amount of data we store is relatively small;
+          ; it's O(# pools * # considerable jobs). If a job uuid does get matched,
+          ; we stop storing it. We never store job uuids that were not considerable
+          ; in the first place.
+          (let [unmatched-job-uuids
+                (set/difference
+                  (->> considerable-jobs (map :job/uuid) set)
+                  (set matched-job-uuids))
+                ; There are two configuration knobs we can tweak:
+                ; - unmatched-cycles-warn-threshold:
+                ;   the # of consecutive unmatched matching cycles we care about
+                ; - unmatched-fraction-warn-threshold:
+                ;   the fraction of considerable jobs that have gone unmatched for
+                ;   at least unmatched-cycles-warn-threshold beyond which we will
+                ;   warn
+                {:keys [unmatched-cycles-warn-threshold
+                        unmatched-fraction-warn-threshold]}
+                (config/offer-matching)]
+            (swap!
+              ; This atom's value is a map of the following shape:
+              ;
+              ; {"pool-1" {job-uuid-a count-a
+              ;            job-uuid-b count-b
+              ;            ...}
+              ;  "pool-2" {job-uuid-c count-c
+              ;            job-uuid-d count-d
+              ;            ...}
+              ; ...}
+              ;
+              ; where the counts are the numbers of consecutive
+              ; matching cycles that the job has gone unmatched
+              pool-name->unmatched-job-uuid->unmatched-cycles-atom
+              (fn [m]
+                (let [; Note that this doesn't leak jobs and grow
+                      ; forever. We build a new map from scratch
+                      ; of size at most (count unmatched-job-uuids),
+                      ; which is <= num-considerable. That new map
+                      ; gets assoc'ed in, replacing the existing
+                      ; job-uuid -> unmatched-cycles sub-map, which
+                      ; means we won't leak historic jobs.
+                      unmatched-job-uuid->unmatched-cycles
+                      (pc/map-from-keys
+                        (fn [job-uuid]
+                          (-> m
+                              (get pool-name)
+                              (get job-uuid 0)
+                              inc))
+                        unmatched-job-uuids)
+                      ; Filter the map of job-uuid -> cycle-count
+                      ; down to only those entries where the # of
+                      ; cycles is greater than the threshold
+                      unmatched-too-long
+                      (filter
+                        (fn [[_ cycles]]
+                          (> cycles
+                             unmatched-cycles-warn-threshold))
+                        unmatched-job-uuid->unmatched-cycles)]
+                  (when
+                    (and
+                      ; If there are no considerable jobs,
+                      ; then this warning is not applicable
+                      (pos? (count considerable-jobs))
+                      ; We only want to warn then the fraction of
+                      ; considerable jobs that are unmatched for
+                      ; too long (too many consecutive cycles) is
+                      ; greater than the configured threshold
+                      (-> unmatched-too-long
+                          count
+                          (/ (count considerable-jobs))
+                          (> unmatched-fraction-warn-threshold)))
+                    ; Including the first 10 job uuids that have gone unmatched for too
+                    ; long can help in troubleshooting the issue when this happens
+                    (log/warn "In" pool-name "pool, jobs are unmatched for too long"
+                              {:first-10-unmatched-too-long (take 10 unmatched-too-long)
+                               :number-considerable (count considerable-jobs)
+                               :number-unmatched-too-long (count unmatched-too-long)
+                               :unmatched-cycles-warn-threshold unmatched-cycles-warn-threshold
+                               :unmatched-fraction-warn-threshold unmatched-fraction-warn-threshold}))
+                  ; We need to update the overall map so that we update the
+                  ; job-uuid -> cycle-count state from iteration to iteration
+                  (assoc
+                    m
+                    pool-name
+                    unmatched-job-uuid->unmatched-cycles)))))
+
           (fenzo/record-placement-failures! conn failures)
 
           (reset! offer-stash offers-scheduled)
@@ -1066,7 +1143,7 @@
                 ;; trigger autoscaling beyond what users have quota to actually run
                 autoscalable-jobs (->> pool-name
                                        (get @pool-name->pending-jobs-atom)
-                                       (tools/filter-pending-jobs-for-quota
+                                       (tools/filter-pending-jobs-for-quota pool-name (atom {}) (atom {})
                                          user->quota user->usage (tools/global-pool-quota (config/pool-quotas) pool-name)))]
             ;; This call needs to happen *after* launch-matched-tasks!
             ;; in order to avoid autoscaling tasks taking up available
@@ -1443,7 +1520,7 @@
      {user (if (seq used-resources)
              used-resources
              ;; Return all 0's for a user who does NOT have any running job.
-             (zipmap (tools/get-all-resource-types db) (repeat 0.0)))})))
+             (zipmap (queries/get-all-resource-types db) (repeat 0.0)))})))
 
 (defn limit-over-quota-jobs
   "Filters task-ents, preserving at most (config/max-over-quota-jobs) that would exceed the user's quota"

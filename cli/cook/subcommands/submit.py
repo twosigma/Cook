@@ -119,7 +119,7 @@ def submit_federated(clusters, jobs, group, pool):
             logging.exception(ioe)
             reason = f'Cannot connect to {cluster_name} ({cluster_url})'
             message = submit_failed_message(cluster_name, reason)
-            messages.append(message)
+            messages += message
     print_error(messages)
     raise Exception(terminal.failed('Job submission failed on all of your configured clusters.'))
 
@@ -177,6 +177,10 @@ def submit(clusters, args, _):
     application_version = job_template.pop('application-version', version.VERSION)
     job_template['application'] = {'name': application_name, 'version': application_version}
     pool = job_template.pop('pool-name', None)
+    checkpoint = job_template.pop('checkpoint', False)
+    checkpoint_mode = job_template.pop('checkpoint-mode', None)
+    checkpoint_preserve_paths = job_template.pop('checkpoint-preserve-paths', None)
+    checkpoint_period_sec = job_template.pop('checkpoint-period-sec', None)
 
     docker_image = job_template.pop('docker-image', None)
     if docker_image:
@@ -233,6 +237,13 @@ def submit(clusters, args, _):
         if command_prefix:
             job['command'] = f'{command_prefix}{job["command"]}'
 
+        if checkpoint or checkpoint_mode:
+            checkpoint = {'mode': checkpoint_mode if checkpoint_mode else 'auto'}
+            if checkpoint_preserve_paths:
+                checkpoint['options'] = {'preserve-paths': checkpoint_preserve_paths}
+            if checkpoint_period_sec:
+                checkpoint['periodic-options'] = {'period-sec': checkpoint_period_sec}
+            job['checkpoint'] = checkpoint
     logging.debug('jobs: %s' % jobs)
     return submit_federated(clusters, jobs, group, pool)
 
@@ -289,6 +300,15 @@ def register(add_parser, add_defaults):
                                type=str, metavar='IMAGE', dest='docker-image')
     submit_parser.add_argument('--label', '-l', help='label for job (can be repeated)',
                                metavar='KEY=VALUE', action='append')
+    submit_parser.add_argument('--checkpoint', help='enable automatically checkpointing and restoring the application',
+                               dest='checkpoint', action='store_true')
+    submit_parser.add_argument('--checkpoint-mode', help='checkpointing mode, defaults to auto',
+                               dest='checkpoint-mode',  choices=['auto', 'periodic', 'preemption'])
+    submit_parser.add_argument('--checkpoint-preserve-path',help='path to preserve when making a checkpoint '
+                                                                 '(can be repeated to specify multiple paths)',
+                               dest='checkpoint-preserve-paths', action='append', metavar='PATH')
+    submit_parser.add_argument('--checkpoint-period-sec', help='checkpointing period in seconds',
+                               dest='checkpoint-period-sec', type=int)
     submit_parser.add_argument('command', nargs=argparse.REMAINDER)
 
     add_defaults('submit', {'cpus': 1, 'max-retries': 1, 'mem': 128, 'command-prefix': ''})

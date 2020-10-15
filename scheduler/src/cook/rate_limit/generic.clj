@@ -16,6 +16,7 @@
 (ns cook.rate-limit.generic
   (:require [clj-time.coerce]
             [clj-time.core]
+            [clojure.tools.logging :as log]
             [cook.rate-limit.token-bucket-filter :as tbf])
   (:import (com.google.common.cache LoadingCache CacheLoader CacheBuilder)
            (java.util.concurrent TimeUnit)))
@@ -27,6 +28,8 @@
     "Get the number of tokens in the token bucket filter under this name. Also earns any tokens first.")
   (time-until-out-of-debt-millis! [this key]
     "Time, in milliseconds, until this rate limiter is out of debt for this key. Earns resources first.")
+  (flush! [this key]
+    "Flush all entries with this key, causing a rate limit to be reset. nil means flush all keys")
   (enforce? [this]
     "Are we enforcing this policy?"))
 
@@ -81,7 +84,7 @@
         (.put cache key tbf)))))
 
 (defrecord TokenBucketFilterRateLimiter
-  [config cache ^Boolean enforce?]
+  [config ^LoadingCache cache ^Boolean enforce?]
   RateLimiter
   (spend!
     [this key tokens]
@@ -102,6 +105,13 @@
     (let [key (get-key key)]
       (earn-tokens! this key)
       (tbf/get-token-count (get-token-bucket-filter this key))))
+
+  (flush!
+    [this key]
+    (locking cache
+      (if (nil? key)
+        (.invalidateAll cache)
+        (.invalidate cache key))))
 
   (enforce?
     [_]
@@ -134,11 +144,16 @@
     (make-generic-tbf-rate-limiter config (fn [_] (config->token-bucket-filter config))))
 
 
+(defrecord AllowAllRateLimiterSingleton
+  []
+  RateLimiter
+  (spend! [_ _ _] 0)
+  (time-until-out-of-debt-millis! [_ _] 0)
+  (get-token-count! [_ _] 100000000)
+  (flush! [_ _])
+  (enforce? [_] false))
+
+
 (def AllowAllRateLimiter
   "A noop rate limiter that doesn't put a limit on anything. Has {:enforce? false} as the policy key."
-  (reify
-    RateLimiter
-    (spend! [_ _ _] 0)
-    (time-until-out-of-debt-millis! [_ _] 0)
-    (get-token-count! [_ _] 100000000)
-    (enforce? [_] false)))
+  (->AllowAllRateLimiterSingleton))

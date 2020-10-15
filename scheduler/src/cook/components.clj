@@ -22,6 +22,8 @@
             [compojure.route :as route]
             [congestion.middleware :refer [ip-rate-limit wrap-rate-limit]]
             [congestion.storage :as storage]
+            ; This explicit require is needed so that mount can see the defstate defined in the cook.caches namespace.
+            [cook.caches]
             [cook.compute-cluster :as cc]
             [cook.config :refer [config]]
             [cook.datomic :as datomic]
@@ -38,6 +40,8 @@
             ; This explicit require is needed so that mount can see the defstate defined in the cook.plugins.submission namespace.
             [cook.plugins.submission]
             [cook.pool :as pool]
+            ; This explicit require is needed so that mount can see the defstate defined in the cook.quota namespace.
+            [cook.quota :as quota]
             [cook.rate-limit]
             [cook.rest.cors :as cors]
             [cook.rest.impersonation :refer [impersonation-authorized-wrapper]]
@@ -338,6 +342,10 @@
   (try
     ; Note: If the mount/start-with-args fails to initialize a defstate S, and/or you get weird errors on startup,
     ; you need to require S's namespace with ns :require. 'ns :require' is how mount finds defstates to initialize.
+    ;
+    ; If you get an error about "Can't embed object in code, maybe print-dup not defined: clojure.lang.Delay"
+    ; The issue is that at least metatransaction.core seems to be incompatible with mount. It cannot be in the
+    ; dependency tree of anything using mount. See also issue #1370
     (mount/start-with-args (cook.config/read-config config-file-path))
     (pool/guard-invalid-default-pool (d/db datomic/conn))
     (metrics-jvm/instrument-jvm)

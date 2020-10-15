@@ -22,6 +22,7 @@
             [clojure.string :as str]
             [clojure.test :refer :all]
             [clojure.tools.logging :as log]
+            [cook.caches :as caches]
             [cook.compute-cluster :as cc]
             [cook.kubernetes.api :as kapi]
             [cook.kubernetes.compute-cluster :as kcc]
@@ -39,10 +40,11 @@
             [plumbing.core :refer [mapply]]
             [qbits.jet.server :refer [run-jetty]]
             [ring.middleware.params :refer [wrap-params]])
-  (:import (com.netflix.fenzo SimpleAssignmentResult)
+  (:import (com.google.common.cache CacheBuilder)
+           (com.netflix.fenzo SimpleAssignmentResult)
            (io.kubernetes.client.custom Quantity Quantity$Format)
            (io.kubernetes.client.openapi.models V1Container V1Node V1NodeSpec V1NodeStatus V1ObjectMeta V1Pod V1PodSpec V1ResourceRequirements V1Taint)
-           (java.util.concurrent Executors)
+           (java.util.concurrent Executors TimeUnit)
            (java.util UUID)
            (org.apache.log4j ConsoleAppender Logger PatternLayout)))
 
@@ -94,6 +96,7 @@
     (or compute-cluster (cc/compute-cluster-name->ComputeCluster cluster-name))))
 
 (let [minimal-config {:authorization {:one-user ""}
+                      :cache-working-set-size 1000
                       :compute-clusters [{:factory-fn cook.mesos.mesos-compute-cluster/factory-fn
                                           :config {:compute-cluster-name fake-test-compute-cluster-name}}]
                       :database {:datomic-uri ""}
@@ -116,12 +119,19 @@
     (mount/stop)
     (mount/start-with-args (merge minimal-config config)
                            #'cook.config/config
-                           #'cook.rate-limit/job-launch-rate-limiter
                            #'cook.plugins.adjustment/plugin
                            #'cook.plugins.file/plugin
+                           #'cook.plugins.launch/job-launch-cache
                            #'cook.plugins.launch/plugin-object
                            #'cook.plugins.pool/plugin
-                           #'cook.plugins.submission/plugin-object)))
+                           #'cook.plugins.submission/plugin-object
+                           #'caches/job-ent->resources-cache
+                           #'caches/job-uuid->dataset-maps-cache
+                           #'caches/job-ent->pool-cache
+                           #'caches/task-ent->user-cache
+                           #'caches/task->feature-vector-cache
+                           #'caches/job-ent->user-cache
+                           #'cook.quota/per-user-per-pool-launch-rate-limiter)))
 
 (defn run-test-server-in-thread
   "Runs a minimal cook scheduler server for testing inside a thread. Note that it is not properly kerberized."
@@ -163,14 +173,23 @@
        (finally
          (async/close! exit-chan#)))))
 
+(defn new-cache []
+  "Build a new cache"
+  (-> (CacheBuilder/newBuilder)
+      (.maximumSize 100)
+      (.expireAfterAccess 2 TimeUnit/HOURS)
+      (.build)))
+
 (defn flush-caches!
   "Flush the caches. Needed in unit tests. We centralize initialization by using it to initialize the caches too."
   []
-  (.invalidateAll util/job-ent->resources-cache)
-  (.invalidateAll util/job-ent->pool-cache)
-  (.invalidateAll util/task-ent->user-cache)
-  (.invalidateAll util/task->feature-vector-cache)
-  (.invalidateAll util/job-ent->user-cache))
+  ; If you get a "java.lang.ClassCastException: mount.core.DerefableState cannot be cast to com.google.common.cache.Cache"
+  ; error here, it is because you didn't (setup) something that uses restore-fresh-database!
+  (.invalidateAll caches/job-ent->resources-cache)
+  (.invalidateAll caches/job-ent->pool-cache)
+  (.invalidateAll caches/task-ent->user-cache)
+  (.invalidateAll caches/task->feature-vector-cache)
+  (.invalidateAll caches/job-ent->user-cache))
 
 (defn restore-fresh-database!
   "Completely delete all data, start a fresh database and apply transactions if

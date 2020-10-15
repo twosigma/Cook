@@ -364,7 +364,7 @@ def version():
     cp = cli('--version')
     assert cp.returncode == 0
     string = stdout(cp)
-    match = re.match('^cs version (\d+\.\d+\.\d+)$', string)
+    match = re.match(r'^cs version (\d+\.\d+\.\d+)$', string)
     if match:
         version_string = match.groups()[0]
         logging.info(f'parsed version string as {version_string}')

@@ -25,8 +25,11 @@
             [clojure.string :as str]
             [clojure.tools.logging :as log]
             [cook.cache :as ccache]
+            [cook.caches :as caches]
             [cook.config :as config]
             [cook.pool :as pool]
+            [cook.quota :as quota]
+            [cook.rate-limit :as ratelimit]
             [cook.regexp-tools :as regexp-tools]
             [cook.schema :as schema]
             [datomic.api :as d :refer [q]]
@@ -58,28 +61,6 @@
   "Retrieves the system group id for the specified user"
   (retrieve-system-id "-g" user-name))
 
-(defn new-cache []
-  "Build a new cache"
-  (-> (CacheBuilder/newBuilder)
-      (.maximumSize 1000000)
-      ;; if its not been accessed in 2 hours, whatever is going on, its not being visted by the
-      ;; scheduler loop anymore. E.g., its probably failed/done and won't be needed. So,
-      ;; lets kick it out to keep cache small.
-      (.expireAfterAccess 2 TimeUnit/HOURS)
-      (.build)))
-
-
-(defn lookup-cache-datomic-entity!
-  "Specialized function for caching where datomic entities are the key.
-  Extracts :db/id so that we don't keep the entity alive in the cache."
-  [cache miss-fn entity]
-  (ccache/lookup-cache! cache :db/id miss-fn entity))
-
-(defonce ^Cache job-ent->resources-cache (new-cache))
-(defonce ^Cache job-ent->pool-cache (new-cache))
-(defonce ^Cache task-ent->user-cache (new-cache))
-(defonce ^Cache job-ent->user-cache (new-cache))
-(defonce ^Cache task->feature-vector-cache (new-cache))
 
 (defn get-all-resource-types
   "Return a list of all supported resources types. Example, :cpus :mem :gpus ..."
@@ -102,7 +83,7 @@
   (defn job->pool-name
     "Return the pool name of the job."
     [job]
-    (lookup-cache-datomic-entity! job-ent->pool-cache miss-fn job)))
+    (caches/lookup-cache-datomic-entity! caches/job-ent->pool-cache miss-fn job)))
 
 (defn without-ns
   [k]
@@ -282,7 +263,7 @@
                                             :extract (:resource.uri/extract? r false)}))))
                   {:ports (:job/ports job-ent 0)}
                   (:job/resource job-ent)))]
-    (lookup-cache-datomic-entity! job-ent->resources-cache job-ent->resources-miss job)))
+    (caches/lookup-cache-datomic-entity! caches/job-ent->resources-cache job-ent->resources-miss job)))
 
 (defn job-ent->attempts-consumed
   "Determines the amount of attempts consumed by a job-ent."
@@ -353,7 +334,7 @@
 (defn job-ent->user
   "Given a job entity, return the user the job runs as."
   [job-ent]
-  (lookup-cache-datomic-entity! job-ent->user-cache :job/user job-ent))
+  (caches/lookup-cache-datomic-entity! caches/job-ent->user-cache :job/user job-ent))
 
 (defn job-ent->state
   "Given a job entity, returns the corresponding 'state', which means
@@ -626,7 +607,7 @@
   (let [task-ent->user-miss
         (fn [task-ent]
           (get-in task-ent [:job/_instance :job/user]))]
-    (lookup-cache-datomic-entity! task-ent->user-cache task-ent->user-miss task-ent)))
+    (caches/lookup-cache-datomic-entity! caches/task-ent->user-cache task-ent->user-miss task-ent)))
 
 (def ^:const default-job-priority 50)
 
@@ -649,7 +630,7 @@
         extract-key
         (fn [item]
           (or (:db/id item) (:db/id (:job/_instance item))))]
-    (ccache/lookup-cache! task->feature-vector-cache extract-key task->feature-vector-miss task)))
+    (ccache/lookup-cache! caches/task->feature-vector-cache extract-key task->feature-vector-miss task)))
 
 (defn same-user-task-comparator
   "Comparator to order same user's tasks"
@@ -901,8 +882,7 @@
 
 (defn below-quota?
   "Returns true if the usage is below quota-constraints on all dimensions"
-  [{:keys [count cpus mem] :as quota}
-   {:keys [count cpus mem] :as usage}]
+  [quota usage]
   (every? (fn [[usage-key usage-val]]
             (<= usage-val (get quota usage-key 0)))
           (seq usage)))
@@ -922,14 +902,14 @@
   (regexp-tools/match-based-on-regexp :pool-regex field match-list effective-pool-name))
 
 (defn global-pool-quota
-  "Given a pool name, determine the quota for that pool."
+  "Given a pool name, determine the global quota for that pool across all users."
   [quotas effective-pool-name]
   (match-based-on-pool-name quotas effective-pool-name :quota))
 
 (defn filter-based-on-user-quota
   "Lazily filters jobs for which the sum of running jobs and jobs earlier in the queue exceeds one of the constraints,
    max-jobs, max-cpus or max-mem"
-  [user->quota user->usage queue]
+  [pool user->quota user->usage queue]
   (letfn [(filter-with-quota [user->usage job]
             (let [user (:job/user job)
                   job-usage (job->usage job)
@@ -946,8 +926,8 @@
 
    The input is a quota consisting of a map from resources to values:  {:mem 123 :cpus 456 ...}
    usage is a similar map containing the usage of all running jobs in this pool."
-  [quota usage queue]
-  (log/debug "Pool quota and usage:" {:quota quota :usage usage})
+  [pool quota usage queue]
+  (log/debug "Pool quota and usage:" {:pool pool :quota quota :usage usage})
   (if (nil? quota)
     queue
     (letfn [(filter-with-quota [usage job]
@@ -958,18 +938,45 @@
                 [usage' (below-quota? quota usage')]))]
       (filter-sequential filter-with-quota usage queue))))
 
+
+; This is used by the /unscheduled_jobs code to determine whether
+; or not to report rate-limiting as a reason for being pending
+(defonce pool->user->num-rate-limited-jobs (atom {}))
+
+(defn filter-pending-jobs-for-ratelimit
+  [pool-name user->rate-limit-count user->passed-count pending-jobs]
+  (let [enforcing-job-launch-rate-limit? (ratelimit/enforce? quota/per-user-per-pool-launch-rate-limiter)
+        ; Each rank cycle, we reset who's had anything rate limited this cycle.
+        user->number-jobs (atom {})
+        user-within-launch-rate-limit?-fn
+        (fn
+          [{:keys [job/user]}]
+          ; Account for each time we see a job for a user.
+          (let [token-key (quota/pool+user->token-key pool-name user)
+                _ (swap! user->number-jobs update user #(inc (or % 0)))
+                tokens-left (ratelimit/get-token-count! quota/per-user-per-pool-launch-rate-limiter token-key)
+                number-jobs-for-user-so-far (@user->number-jobs user)
+                is-rate-limited? (> number-jobs-for-user-so-far tokens-left)]
+            (if is-rate-limited?
+              (swap! user->rate-limit-count update user #(inc (or % 0)))
+              (swap! user->passed-count update user #(inc (or % 0))))
+            (not (and is-rate-limited? enforcing-job-launch-rate-limit?))))
+        filtered-queue (filter user-within-launch-rate-limit?-fn pending-jobs)]
+    filtered-queue))
+
 (defn filter-pending-jobs-for-quota
   "Lazily filters jobs to those that that are in quota.
 
   user->quota is a map from user to a quota dictionary which is {:mem 123 :cpus 456 ...}
   user->usage is a map from user to a usage dictionary which is {:mem 123 :cpus 456 ...}
   pool-quota is the quota for the current pool, a quota dictionary which is {:mem 123 :cpus 456 ...}"
-  [user->quota user->usage pool-quota queue]
+  [pool user->rate-limit-count user->passed-count user->quota user->usage pool-quota queue]
   ; Use the already precomputed user->usage map and just aggregate by users to get pool usage.
   (let [pool-usage (reduce (partial merge-with +) (vals user->usage))]
     (->> queue
-         (filter-based-on-user-quota user->quota user->usage)
-         (filter-based-on-pool-quota pool-quota pool-usage))))
+         (filter-based-on-user-quota pool user->quota user->usage)
+         (filter-pending-jobs-for-ratelimit pool user->rate-limit-count user->passed-count)
+         (filter-based-on-pool-quota pool pool-quota pool-usage))))
 
 (defn pool->user->usage
   "Returns a map from pool name to user name to usage for all users in all pools."

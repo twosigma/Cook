@@ -15,6 +15,7 @@
 ;;
 (ns cook.test.config
   (:require [clojure.test :refer :all]
+            [congestion.limits :as limits]
             [cook.config :refer [config config-settings config-string->fitness-calculator default-pool env read-edn-config]
              :as config]
             [cook.test.rest.api :as api]
@@ -121,3 +122,9 @@
                           (config/guard-invalid-gpu-config [{:pool-regex "test-pool"
                                                              :valid-models #{"valid-gpu-model"}
                                                              :default-model "invalid-gpu-model"}])))))
+
+(deftest test-user-rate-limit
+  (testing "distinct quota for auth bypass requests"
+    (let [user-rate-limit (config/->UserRateLimit :user-limit 1 10 nil)]
+      (is (= 1 (limits/get-quota user-rate-limit {:authorization/user "sally"})))
+      (is (= 10 (limits/get-quota user-rate-limit {:authorization/user nil}))))))

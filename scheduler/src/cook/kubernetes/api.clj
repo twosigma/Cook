@@ -705,18 +705,19 @@
   [{:keys [job/checkpoint job/instance] :as job} task-id]
   (when checkpoint
     (let [{:keys [default-checkpoint-config]} (config/kubernetes)
-          {:keys [max-checkpoint-attempts checkpoint-failure-reasons] :as checkpoint}
+          {:keys [max-checkpoint-attempts checkpoint-failure-reasons disable-checkpointing] :as checkpoint}
           (merge default-checkpoint-config (util/job-ent->checkpoint job))]
-      (if max-checkpoint-attempts
-        (let [checkpoint-failure-reasons (or checkpoint-failure-reasons default-checkpoint-failure-reasons)
-              checkpoint-failures (filter (fn [{:keys [instance/reason]}]
-                                            (contains? checkpoint-failure-reasons (:reason/name reason)))
-                                          instance)]
-          (if (-> checkpoint-failures count (>= max-checkpoint-attempts))
-            (log/info "Will not checkpoint task-id" task-id ", there are at least" max-checkpoint-attempts "failed instances"
-                      {:job job})
-            checkpoint))
-        checkpoint))))
+      (when-not disable-checkpointing
+        (if max-checkpoint-attempts
+          (let [checkpoint-failure-reasons (or checkpoint-failure-reasons default-checkpoint-failure-reasons)
+                checkpoint-failures (filter (fn [{:keys [instance/reason]}]
+                                              (contains? checkpoint-failure-reasons (:reason/name reason)))
+                                            instance)]
+            (if (-> checkpoint-failures count (>= max-checkpoint-attempts))
+              (log/info "Will not checkpoint task-id" task-id ", there are at least" max-checkpoint-attempts "failed instances"
+                        {:job job})
+              checkpoint))
+          checkpoint)))))
 
 (defn job->pod-labels
   "Returns the dictionary of labels that should be

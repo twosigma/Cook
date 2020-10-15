@@ -18,40 +18,60 @@
          :run-as-user "root"
          ; not related to mesos, but needed to enable gpu-support for GKE
          :enable-gpu-support true}
- :compute-clusters [{:factory-fn cook.kubernetes.compute-cluster/factory-fn
-                     :config {:name "gke-1"
-                              ;; Location of the kubernetes config file. Hardcoded to the location specified by bin/make-gke-test-cluster
-                              :config-file "../scheduler/.cook_kubeconfig_1"
-                              :compute-cluster-launch-rate-limits {:expire-minutes 1200
+ :compute-clusters []
+ :compute-cluster-options
+ {:compute-cluster-templates
+  {"gke-1"
+   {:factory-fn cook.kubernetes.compute-cluster/factory-fn
+    :config {:dynamic-cluster-config? true
+             ;; Location of the kubernetes config file. Hardcoded to the location specified by bin/make-gke-test-cluster
+             :config-file "../scheduler/.cook_kubeconfig_1"
+             :compute-cluster-launch-rate-limits {:expire-minutes 1200
                                                                    :enforce? true
                                                                    :bucket-size 10000
                                                                    :tokens-replenished-per-minute 5000}
                               :synthetic-pods {:image "gcr.io/google-containers/alpine-with-bash:1.0"
-                                               :max-pods-outstanding 128
-                                               :user #config/env "USER"
-                                               :command "exit 0"
-                                               :pools #{"k8s-alpha" "k8s-gamma"}}
-                              :node-blocklist-labels ["blocklist-nodes-with-this-label-key"]
-                              :use-google-service-account? false
-                             ;; Used to work around auth problems after upgrading k8s client library to 7.0.0
-                              :verifying-ssl false}}
-                    {:factory-fn cook.kubernetes.compute-cluster/factory-fn
-                     :config {:name "gke-2"
-                              ;; Location of the kubernetes config file. Hardcoded to the location specified by bin/make-gke-test-cluster
-                              :config-file "../scheduler/.cook_kubeconfig_2"
+                              :max-pods-outstanding 128
+                              :user #config/env "USER"
+                              :command "exit 0"
+                              :pools #{"k8s-alpha" "k8s-gamma"}}
+             :node-blocklist-labels ["blocklist-nodes-with-this-label-key"]
+             :use-google-service-account? false
+             ;; Used to work around auth problems after upgrading k8s client library to 7.0.0
+             :verifying-ssl false}}
+   "gke-2"
+   {:factory-fn cook.kubernetes.compute-cluster/factory-fn
+    :config {:dynamic-cluster-config? true
+             ;; Location of the kubernetes config file. Hardcoded to the location specified by bin/make-gke-test-cluster
+             :config-file "../scheduler/.cook_kubeconfig_2"
                               :compute-cluster-launch-rate-limits {:expire-minutes 1200
                                                                    :enforce? true
                                                                    :bucket-size 10000
                                                                    :tokens-replenished-per-minute 5000}
-                              :synthetic-pods {:image "gcr.io/google-containers/alpine-with-bash:1.0"
-                                               :max-pods-outstanding 128
-                                               :user #config/env "USER"
-                                               :command "exit 0"
-                                               :pools #{"k8s-alpha"}}
-                              :node-blocklist-labels ["blocklist-nodes-with-this-label-key-1" "blocklist-nodes-with-this-label-key-2"]
-                              :use-google-service-account? false
-                              ;; Used to work around auth problems after upgrading k8s client library to 7.0.0
-                              :verifying-ssl false}}]
+             :synthetic-pods {:image "gcr.io/google-containers/alpine-with-bash:1.0"
+                              :max-pods-outstanding 128
+                              :user #config/env "USER"
+                              :command "exit 0"
+                              :pools #{"k8s-alpha"}}
+             :node-blocklist-labels ["blocklist-nodes-with-this-label-key-1" "blocklist-nodes-with-this-label-key-2"]
+             :use-google-service-account? false
+             ;; Used to work around auth problems after upgrading k8s client library to 7.0.0
+             :verifying-ssl false}}}
+  :load-clusters-on-startup? true
+  :new-cluster-configurations-fn cook.compute-cluster/dummy-cluster-configurations-fn-memo
+  :cluster-update-period-seconds 5
+  :compute-cluster-configurations [{:name "gke-1"
+                                    :template "gke-1"
+                                    ;; Location of the kubernetes config file. Hardcoded to the location specified by bin/make-gke-test-cluster
+                                    :config-file "../scheduler/.cook_kubeconfig_1"
+                                    :state :running
+                                    :state-locked? false}
+                                   {:name "gke-2"
+                                    :template "gke-2"
+                                    ;; Location of the kubernetes config file. Hardcoded to the location specified by bin/make-gke-test-cluster
+                                    :config-file "../scheduler/.cook_kubeconfig_2"
+                                    :state :running
+                                    :state-locked? false}]}
  :cors-origins ["https?://cors.example.com"]
  :database {:datomic-uri #config/env "COOK_DATOMIC_URI"}
  :plugins {:job-submission-validator {:batch-timeout-seconds 40
@@ -117,7 +137,8 @@
        :keystore-path #config/env "COOK_KEYSTORE_PATH"
        :keystore-type "pkcs12"
        :keystore-pass "cookstore"}
- :rate-limit {:expire-minutes 1200 ; Expire unused rate limit entries after 20 hours.
+ :rate-limit {:auth-bypass-limit-per-m 10000
+              :expire-minutes 1200 ; Expire unused rate limit entries after 20 hours.
               ; Keep these job-launch and job-submission values as they are for integration tests. Making them smaller can cause
               ; spurious failures, and making them larger will cause test_rate_limit_launching_jobs to skip itself.
               :job-launch {:bucket-size 10000

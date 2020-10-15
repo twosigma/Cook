@@ -2054,7 +2054,7 @@ class CookTest(util.CookTest):
         self.assertEqual(job["container"]["docker"]["image"], expected_container["docker"]["image"])
         self.assertIn('success', [i['status'] for i in job['instances']])
 
-    @unittest.skipUnless(util.has_docker_service() and not util.using_kubernetes(),
+    @unittest.skipUnless(util.docker_tests_enabled() and util.has_docker_service() and not util.using_kubernetes(),
                          "Requires `docker inspect`. On kubernetes, need to add support and write a separate test.")
     def test_docker_port_mapping(self):
         settings_dict = util.settings(self.cook_url)
@@ -3278,13 +3278,13 @@ class CookTest(util.CookTest):
         try:
             command_disabled = 'bash -c \'if [[ "${COOK_CHECKPOINT_MODE:-none}" == "none" ]] && [[ "${COOK_CHECKPOINT_PERIOD_SEC:-zzz}" == "zzz" ]]; then exit 0; else exit 1; fi\''
             job_uuid_disabled, resp_disabled = util.submit_job(self.cook_url, command=command_disabled, container=container)
-            self.assertEqual(201, resp_disabled.status_code)
+            self.assertEqual(201, resp_disabled.status_code, resp_disabled.text)
             command_enabled = 'bash -c \'if [[ "${COOK_CHECKPOINT_MODE}" == "auto" ]] && [[ "${COOK_CHECKPOINT_PERIOD_SEC}" == "555" ]] && [[ "${COOK_CHECKPOINT_PRESERVE_PATH_0}" == "p1" ]] && [[ "${COOK_CHECKPOINT_PRESERVE_PATH_1}" == "p2" ]]; then exit 0; else exit 1; fi\''
             job_uuid_enabled, resp_enabled = util.submit_job(self.cook_url, command=command_enabled, container=container,
                                                              checkpoint={"mode": "auto",
                                                                          "periodic-options": {"period-sec": 555},
                                                                          "options": {"preserve-paths": ["p2", "p1"]}})
-            self.assertEqual(201, resp_enabled.status_code)
+            self.assertEqual(201, resp_enabled.status_code, resp_enabled.text)
             util.wait_for_instance(self.cook_url, job_uuid_disabled, status='success')
             util.wait_for_instance(self.cook_url, job_uuid_enabled, status='success')
         finally:

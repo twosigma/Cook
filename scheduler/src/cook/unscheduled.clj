@@ -150,16 +150,14 @@
 (defn- check-launch-rate-limit
   "Return the appropriate error message if a user's job is unscheduled because they're over the job launch rate limit threshold"
   [{:keys [job/user]}]
-  (let [enforcing-job-launch-rate-limit? (ratelimit/enforce? ratelimit/job-launch-rate-limiter)
-        num-ratelimited (->> @scheduler/pool->user->num-rate-limited-jobs
+  (let [enforcing-job-launch-rate-limit? (ratelimit/enforce? quota/per-user-per-pool-launch-rate-limiter)
+        num-ratelimited (->> @cook.tools/pool->user->num-rate-limited-jobs
                              vals
                              (map #(get % user 0))
                              (reduce + 0))
-        being-ratelimited? (pos? num-ratelimited)
-        tokens-replenished-per-minute (get-in ratelimit/job-launch-rate-limiter [:config :tokens-replenished-per-minute])]
+        being-ratelimited? (pos? num-ratelimited)]
     (when (and enforcing-job-launch-rate-limit? being-ratelimited?)
-      ["You are currently rate limited on how many jobs you launch per minute."
-       {:max-jobs-per-minute tokens-replenished-per-minute}])))
+      ["You are currently rate limited on how many jobs you launch per minute." {:num-ratelimited num-ratelimited}])))
 
 (defn- check-plugin-filter
   "Return the appropriate error message if a user's job is unscheduled because the launch plugin

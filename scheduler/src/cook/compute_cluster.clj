@@ -464,7 +464,7 @@
           (if (:update-succeeded update-result)
             (log/info "Update for cluster" (:cluster-name update) "successful")
             (log/error "Update failed!" update))
-          (log/error "Invalid update!" update)))
+          (log/warn "Invalid update!" update)))
       updates-with-results)))
 
 (defn update-compute-clusters
@@ -502,3 +502,17 @@
   "Delete a dynamic compute clusters from the database."
   [conn {:keys [name]}]
   (d/transact conn [[:db.fn/retractEntity [:compute-cluster-config/name name]]]))
+
+(defn dummy-cluster-configurations-fn
+  "This function is used to periodically get cluster configurations, but it always returns the same list from
+  the compute-cluster-options settings section"
+  []
+  (->> (:compute-cluster-configurations (config/compute-cluster-options))
+       (map #(let [kubeconfig (slurp (:config-file %))
+                   ca-cert (->> kubeconfig (re-find #"certificate-authority-data: (.+)") second)
+                   base-path (->> kubeconfig (re-find #"server: (.+)") second)]
+               (merge {:base-path base-path :ca-cert ca-cert} (dissoc % :config-file))))
+       (map-from-vals :name)))
+
+(def dummy-cluster-configurations-fn-memo
+  (memoize dummy-cluster-configurations-fn))
