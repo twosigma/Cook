@@ -21,6 +21,7 @@
             [clojure.string :as str]
             [clojure.test :refer :all]
             [clojure.walk :refer [keywordize-keys]]
+            [cook.caches :as caches]
             [cook.compute-cluster :as cc]
             [cook.config :as config]
             [cook.mesos.reason :as reason]
@@ -1344,7 +1345,7 @@
             executor (assoc :executor executor)
             checkpoint (assoc :checkpoint checkpoint)
             datasets (assoc :datasets datasets)))]
-    (with-redefs [dl/job-uuid->dataset-maps-cache (util/new-cache)
+    (with-redefs [caches/job-uuid->dataset-maps-cache (testutil/new-cache)
                   config/compute-clusters (constantly [{:factory-fn 'cook.mesos.mesos-compute-cluster/factory-fn
                                                         :config {:framework-id "test-framework"}}])]
 
@@ -1837,6 +1838,7 @@
         (is @fetched-default-cluster-atom)))))
 
 (deftest test-file-plugin
+  (setup)
   (with-redefs [file-plugin/plugin (reify FileUrlGenerator
                                      (file-url [this {:keys [instance/task-id]}]
                                        (str "https://cook-files/instance/" task-id "/file")))]
@@ -2467,6 +2469,7 @@
       endpoint "/compute-clusters"]
 
   (deftest test-create-compute-cluster
+    (setup)
     (with-redefs [config/compute-cluster-templates
                   (constantly {"test-template" {:config {:dynamic-cluster-config? true}
                                                 :a :bb
@@ -2518,6 +2521,7 @@
               (is (= location (str sample-leader-base-url endpoint)))))))))
 
   (deftest test-read-compute-clusters
+    (setup)
     (let [conn (restore-fresh-database! "datomic:mem://test-read-compute-clusters")
           handler (basic-handler conn :is-authorized-fn is-authorized-fn)
           request {:authorization/user admin-user

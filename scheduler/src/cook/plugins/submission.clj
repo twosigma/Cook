@@ -96,11 +96,11 @@
 
 ; We may see up to the entire scheduler queue, so have a big cache here.
 ; This is called in the scheduler loop. If it hasn't been looked at in more than 2 hours, the job has almost assuredly long since run.
-(def ^Cache job-launch-cache
-  (-> (CacheBuilder/newBuilder)
-      (.maximumSize 100000)
-      (.expireAfterAccess 2 TimeUnit/HOURS)
-      (.build)))
+(mount/defstate ^Cache job-launch-cache
+  :start (-> (CacheBuilder/newBuilder)
+             (.maximumSize (get-in config/config [:settings :cache-working-set-size]))
+             (.expireAfterAccess 2 TimeUnit/HOURS)
+             (.build)))
 
 (defn plugin-jobs-submission
   [jobs]

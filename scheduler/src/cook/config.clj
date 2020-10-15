@@ -434,6 +434,8 @@
                 (assoc :quotas [])))
      :api-only? (fnk [[:config {api-only? false}]]
                   api-only?)
+     :cache-working-set-size (fnk [[:config {cache-working-set-size 1000000}]]
+                               cache-working-set-size)
      :estimated-completion-constraint (fnk [[:config {estimated-completion-constraint nil}]]
                                         (merge {:agent-start-grace-period-mins 10}
                                                estimated-completion-constraint))

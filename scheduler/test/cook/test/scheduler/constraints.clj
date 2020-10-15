@@ -18,12 +18,14 @@
   (:require [clj-time.coerce :as tc]
             [clj-time.core :as t]
             [clojure.test :refer :all]
+            [cook.caches :as caches]
             [cook.config :as config]
             [cook.scheduler.constraints :as constraints]
             [cook.scheduler.data-locality :as dl]
             [cook.scheduler.scheduler :as sched]
-            [cook.test.testutil :refer [create-dummy-group create-dummy-instance create-dummy-job create-dummy-job-with-instances create-pool
-                                        make-task-assignment-result make-task-request restore-fresh-database! setup]]
+            [cook.test.testutil :as testutil
+             :refer [create-dummy-group create-dummy-instance create-dummy-job create-dummy-job-with-instances create-pool
+                     make-task-assignment-result make-task-request restore-fresh-database! setup]]
             [cook.tools :as util]
             [datomic.api :as d :refer [db]])
   (:import (java.util Date UUID)
@@ -359,7 +361,7 @@
 
 
 (deftest test-data-locality-constraint
-  (with-redefs [dl/job-uuid->dataset-maps-cache (util/new-cache)]
+  (with-redefs [caches/job-uuid->dataset-maps-cache (testutil/new-cache)]
     (testing "disabled when not using data local fitness calculator"
       (with-redefs [config/fitness-calculator-config (constantly config/default-fitness-calculator)
                     config/data-local-fitness-config (constantly {:launch-wait-seconds 60})]

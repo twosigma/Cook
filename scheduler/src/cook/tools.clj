@@ -25,6 +25,7 @@
             [clojure.string :as str]
             [clojure.tools.logging :as log]
             [cook.cache :as ccache]
+            [cook.caches :as caches]
             [cook.config :as config]
             [cook.pool :as pool]
             [cook.quota :as quota]
@@ -60,28 +61,6 @@
   "Retrieves the system group id for the specified user"
   (retrieve-system-id "-g" user-name))
 
-(defn new-cache []
-  "Build a new cache"
-  (-> (CacheBuilder/newBuilder)
-      (.maximumSize 1000000)
-      ;; if its not been accessed in 2 hours, whatever is going on, its not being visted by the
-      ;; scheduler loop anymore. E.g., its probably failed/done and won't be needed. So,
-      ;; lets kick it out to keep cache small.
-      (.expireAfterAccess 2 TimeUnit/HOURS)
-      (.build)))
-
-
-(defn lookup-cache-datomic-entity!
-  "Specialized function for caching where datomic entities are the key.
-  Extracts :db/id so that we don't keep the entity alive in the cache."
-  [cache miss-fn entity]
-  (ccache/lookup-cache! cache :db/id miss-fn entity))
-
-(defonce ^Cache job-ent->resources-cache (new-cache))
-(defonce ^Cache job-ent->pool-cache (new-cache))
-(defonce ^Cache task-ent->user-cache (new-cache))
-(defonce ^Cache job-ent->user-cache (new-cache))
-(defonce ^Cache task->feature-vector-cache (new-cache))
 
 (defn get-all-resource-types
   "Return a list of all supported resources types. Example, :cpus :mem :gpus ..."
@@ -99,7 +78,7 @@
   (defn job->pool-name
     "Return the pool name of the job."
     [job]
-    (lookup-cache-datomic-entity! job-ent->pool-cache miss-fn job)))
+    (caches/lookup-cache-datomic-entity! caches/job-ent->pool-cache miss-fn job)))
 
 (defn without-ns
   [k]
@@ -277,7 +256,7 @@
                                             :extract (:resource.uri/extract? r false)}))))
                   {:ports (:job/ports job-ent 0)}
                   (:job/resource job-ent)))]
-    (lookup-cache-datomic-entity! job-ent->resources-cache job-ent->resources-miss job)))
+    (caches/lookup-cache-datomic-entity! caches/job-ent->resources-cache job-ent->resources-miss job)))
 
 (defn job-ent->attempts-consumed
   "Determines the amount of attempts consumed by a job-ent."
@@ -348,7 +327,7 @@
 (defn job-ent->user
   "Given a job entity, return the user the job runs as."
   [job-ent]
-  (lookup-cache-datomic-entity! job-ent->user-cache :job/user job-ent))
+  (caches/lookup-cache-datomic-entity! caches/job-ent->user-cache :job/user job-ent))
 
 (defn job-ent->state
   "Given a job entity, returns the corresponding 'state', which means
@@ -621,7 +600,7 @@
   (let [task-ent->user-miss
         (fn [task-ent]
           (get-in task-ent [:job/_instance :job/user]))]
-    (lookup-cache-datomic-entity! task-ent->user-cache task-ent->user-miss task-ent)))
+    (caches/lookup-cache-datomic-entity! caches/task-ent->user-cache task-ent->user-miss task-ent)))
 
 (def ^:const default-job-priority 50)
 
@@ -644,7 +623,7 @@
         extract-key
         (fn [item]
           (or (:db/id item) (:db/id (:job/_instance item))))]
-    (ccache/lookup-cache! task->feature-vector-cache extract-key task->feature-vector-miss task)))
+    (ccache/lookup-cache! caches/task->feature-vector-cache extract-key task->feature-vector-miss task)))
 
 (defn same-user-task-comparator
   "Comparator to order same user's tasks"
