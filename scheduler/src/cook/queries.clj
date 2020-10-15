@@ -28,3 +28,8 @@
             [?e :resource.type/mesos-name ?ident]]
           db)
        (map first)))
+
+(defn get-quota-resource-types
+  "Return a list of resource types used for quota, :cpus :mem :gpus ..."
+  [db]
+  (remove #{:disk} (get-all-resource-types db)))
