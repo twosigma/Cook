@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.48.1] - 2020-10-15
+### Changed
+- Cache sizes to be configurable, from @scrosby
+- Tracking of how rate limiting is affecting the queue, from @scrosby
+
 ## [1.48.0] - 2020-10-08
 ### Added
 - Per-user per-pool job launch rate limiting, from @scrosby
