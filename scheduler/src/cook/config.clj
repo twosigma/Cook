@@ -555,7 +555,7 @@
       pool)))
 
 (defn valid-disk-types
-  "Returns valid disk models "
+  "Returns valid disk types"
   []
   (-> config :settings :pools :valid-disk-types))
 
