@@ -1904,13 +1904,8 @@ class CookTest(util.CookTest):
                                        re.match(ii["pool-regex"], pool_name)]
                 # If there are no supported disk types for pool, assert submission gets rejected
                 if len(matching_disk_types) == 0 or len(matching_disk_types[0]) == 0:
-                    job_uuid, resp = util.submit_job(
-                        self.cook_url,
-                        pool=pool_name,
-                        disk={'size': 20000, 'type': 'pd-ssd'})
-                    self.assertEqual(resp.status_code, 400)
-                    self.assertTrue(f"The following disk type is not supported: pd-ssd" in resp.text,
-                        msg=resp.content)
+                    self.logger.info('There are no disk types configured')
+                    self.skipTest("There are no disk types configured for any active pools")
                 else:
                     # Job submission with valid disk request of size and type
                     self.logger.info(f'Submitting to {pool}')
@@ -1932,7 +1927,9 @@ class CookTest(util.CookTest):
                         pool=pool_name,
                         disk={'size': expected_size})
                     self.assertEqual(resp.status_code, 201, resp.text)
+                    job = util.load_job(self.cook_url, job_uuid)
                     self.assertEqual(job["disk"]["size"], expected_size)
+                    self.assertNotIn("type", job["disk"])
 
                     # Job submission with invalid request of disk type but not disk size
                     job_uuid, resp = util.submit_job(

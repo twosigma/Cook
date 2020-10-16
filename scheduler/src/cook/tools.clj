@@ -71,11 +71,6 @@
           db)
        (map first)))
 
-(defn get-quota-resource-types
-  "Return a list of resource types used for quota, :cpus :mem :gpus ..."
-  [db]
-  (remove #{:disk} (get-all-resource-types db)))
-
 (let [default-pool (config/default-pool)
       _ (log/info "The config/default-pool is" default-pool)
       miss-fn (fn [{:keys [job/pool]}]

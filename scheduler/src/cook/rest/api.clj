@@ -749,7 +749,6 @@
                          {:db/id env-var-id
                           :environment/name k
                           :environment/value v}]))
-
                     env)
         labels (mapcat (fn [[k v]]
                          (let [label-var-id (d/tempid :db.part/user)]
@@ -792,9 +791,7 @@
                                   [[:db/add db-id :job/resource disk-id]
                                    (if-not (nil? (:type disk))
                                      (assoc params :resource.disk/type (:type disk))
-                                     params)]
-                                  )
-                                )
+                                     params)]))
                               (when (and gpus (not (zero? gpus)))
                                 (let [gpus-id (d/tempid :db.part/user)]
                                   [[:db/add db-id :job/resource gpus-id]
@@ -978,12 +975,10 @@
                (not (contains? (get-gpu-models-on-pool (config/valid-gpu-models) pool-name) requested-gpu-model)))
       (throw (ex-info (str "The following GPU model is not supported: " requested-gpu-model) {})))))
 
-(defn validate-disk-job
+(defn validate-job-disk
   "Validates that a job requesting disk is satisfying the following conditions:
     - User can request size but not type; User can request both size and type; User cannot request only type and not size
-    - Requested type must be a valid type
-    - TODO: validate that requested size is less than a certain amount
-  "
+    - Requested type must be a valid type in config"
   [pool-name {:keys [disk]}]
   (let [requested-disk-size (:size disk)
         requested-disk-type (:type disk)]
@@ -1063,7 +1058,7 @@
                            (* 1024 (:memory-gb task-constraints)))
                       {:constraints task-constraints
                        :job job})))
-    (when disk (validate-disk-job pool-name munged))
+    (when disk (validate-job-disk pool-name munged))
     (when (> (:ports munged) max-ports)
       (throw (ex-info (str "Requested " ports " ports, but only allowed to use " max-ports)
                       {:constraints task-constraints
