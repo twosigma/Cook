@@ -298,7 +298,7 @@
 
 (def Disk
   "Schema for disk limit specifications"
-  {(s/optional-key :size) (s/both PosDouble (s/pred #(<= 1 % 250000) 'between-1-and-250000))
+  {(s/optional-key :size) (s/both PosDouble (s/pred #(<= 1 % (config/max-disk-size)) 'between-1-and-max-disk-size))
    (s/optional-key :type) s/Str})
 
 (def DatePartition

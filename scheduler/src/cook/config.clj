@@ -557,7 +557,12 @@
 (defn valid-disk-types
   "Returns valid disk types"
   []
-  (-> config :settings :pools :valid-disk-types))
+  (-> config :settings :pools :disk (keep #{:pool-regex :valid-types :default-type})))
+
+(defn max-disk-size
+  "Returns max disk size requestable"
+  []
+  (-> config :settings :pools :disk :max-size))
 
 (defn valid-gpu-models
   "Returns valid GPU models for the pool the job is scheduled in"

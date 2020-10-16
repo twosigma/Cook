@@ -119,10 +119,11 @@
                                                      :network "HOST"
                                                      :force-pull-image false
                                                      :parameters []}}}]
-         :valid-disk-types
+         :disk
          [{:pool-regex "k8s-alpha"
            :valid-types #{"pd-ssd"}
-           :default-type "pd-ssd"}]
+           :default-type "pd-ssd"
+           :max-size 256000}]
          :valid-gpu-models
          [{:pool-regex "k8s-alpha"
            :valid-models #{"nvidia-tesla-k80" "nvidia-tesla-p100"}
