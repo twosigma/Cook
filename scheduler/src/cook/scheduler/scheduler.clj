@@ -860,7 +860,16 @@
   [matches conn db fenzo mesos-run-as-user pool-name]
   (let [matches (map #(update-match-with-task-metadata-seq % db mesos-run-as-user) matches)
         task-txns (matches->task-txns matches)]
-    (log/info "In" pool-name "pool, writing tasks" task-txns)
+    (log/info "In" pool-name "pool, writing tasks"
+              {:first-10-tasks
+               (take
+                 10
+                 (for [{:keys [task-metadata-seq]} matches
+                       {:keys [task-id task-request]} task-metadata-seq]
+                   {:job-uuid (-> task-request (get-in [:job :job/uuid]) str)
+                    :task-id task-id}))
+               :number-tasks
+               (count task-txns)})
     (timers/time!
       (timers/timer (metric-title "launch-matched-tasks-all-duration" pool-name))
       (locking cc/kill-lock-object
