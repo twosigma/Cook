@@ -162,7 +162,7 @@
       (when-not pool-regex
         (throw (ex-info (str "pool-regex key is missing from config") entry)))
       (when-not max-size
-        (throw (ex-info (str "max-size key is missing from config") entry)))
+        (throw (ex-info (str "Max requestable disk size for pool-regex " pool-regex " is not defined") entry)))
       (when-not valid-types
         (throw (ex-info (str "Valid disk types for pool-regex " pool-regex " is not defined") entry)))
       (when-not default-type
