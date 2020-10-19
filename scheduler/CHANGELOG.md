@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.48.2] - 2020-10-19
+### Changed
+- Reduced excessive logging for k8s dynamic clusters and writing tasks, from @dposada
+
 ## [1.48.1] - 2020-10-15
 ### Changed
 - Cache sizes to be configurable, from @scrosby
