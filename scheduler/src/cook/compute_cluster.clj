@@ -451,9 +451,18 @@
 (defn update-compute-clusters-helper
   "Helper function for update-compute-cluster and update-compute-clusters. See those functions for full description."
   [conn db current-configs new-configs force?]
-  (let [updates (compute-config-updates db current-configs new-configs force?)]
+  (let [updates (compute-config-updates db current-configs new-configs force?)
+        dissoc-ca-cert
+        (fn [config]
+          (dissoc config :ca-cert))
+        dissoc-ca-cert-vals
+        (fn [configs]
+          (map-vals dissoc-ca-cert configs))]
     (log/info "Updating dynamic clusters."
-              {:current-configs current-configs :new-configs new-configs :force? force? :updates updates})
+              {:current-configs (dissoc-ca-cert-vals current-configs)
+               :force? force?
+               :new-configs (dissoc-ca-cert-vals new-configs)
+               :updates (map #(update % :goal-config dissoc-ca-cert) updates)})
     (let [updates-with-results (map
                                  #(assoc % :update-result
                                            (when (:valid? %) (execute-update! conn %)))

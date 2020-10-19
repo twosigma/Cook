@@ -1944,7 +1944,7 @@ if __name__ == '__main__':
                 self.assertEqual('Hello world!', cli.decode(cp.stdout))
 
     def test_usage(self):
-        command = 'sleep 300'
+        command = f'sleep {util.DEFAULT_TEST_TIMEOUT_SECS}'
 
         # Submit un-grouped jobs
         cp, uuids = cli.submit(command, self.cook_url, submit_flags='--cpus 0.1 --mem 16')
