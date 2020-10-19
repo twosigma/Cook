@@ -298,7 +298,7 @@
 
 (def Disk
   "Schema for disk limit specifications"
-  {(s/optional-key :size) (s/both PosDouble (s/pred #(<= 1 % (config/max-disk-size)) 'between-1-and-max-disk-size))
+  {(s/optional-key :size) (s/pred #(> % 1.0) 'greater-than-one)
    (s/optional-key :type) s/Str})
 
 (def DatePartition
@@ -712,8 +712,13 @@
 
 (defn get-disk-types-on-pool
   "Given a pool name, determine the supported disk types on that pool."
-  [valid-disk-types effective-pool-name]
-  (util/match-based-on-pool-name valid-disk-types effective-pool-name :valid-types))
+  [disk effective-pool-name]
+  (util/match-based-on-pool-name disk effective-pool-name :valid-types))
+
+(defn get-max-disk-size-on-pool
+  "Given a pool name, determine the max requestable disk size on that pool."
+  [disk effective-pool-name]
+  (util/match-based-on-pool-name disk effective-pool-name :max-size))
 
 (s/defn make-job-txn
   "Creates the necessary txn data to insert a job into the database"
@@ -978,14 +983,16 @@
 (defn validate-job-disk
   "Validates that a job requesting disk is satisfying the following conditions:
     - User can request size but not type; User can request both size and type; User cannot request only type and not size
-    - Requested type must be a valid type in config"
+    - Requested type must be a valid type in config
+    - Requested size must be less than the max size in config"
   [pool-name {:keys [disk]}]
-  (let [requested-disk-size (:size disk)
-        requested-disk-type (:type disk)]
+  (let [{requested-disk-size :size requested-disk-type :type} disk]
+    (when (and requested-disk-size (> requested-disk-size (get-max-disk-size-on-pool (config/disk) pool-name)))
+      (throw (ex-info (str "Disk size requested is greater than max requestable disk size on pool") disk)))
     (when (and requested-disk-type (not requested-disk-size))
       (throw (ex-info (str "In order to request a disk type, user must also request disk size") disk)))
     (when (and requested-disk-type
-               (not (contains? (get-disk-types-on-pool (config/valid-disk-types) pool-name) requested-disk-type)))
+               (not (contains? (get-disk-types-on-pool (config/disk) pool-name) requested-disk-type)))
       (throw (ex-info (str "The following disk type is not supported: " requested-disk-type) disk)))))
 
 (defn validate-and-munge-job

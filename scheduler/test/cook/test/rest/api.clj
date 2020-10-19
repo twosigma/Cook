@@ -441,84 +441,79 @@
         _ (create-pool conn "test-pool")
         job (fn [disk] (merge (basic-job) {"disk" disk}))
         h (basic-handler conn)]
-    (testing "negative disk invalid"
-      (is (<= 400
-              (:status (h {:request-method :post
-                           :scheme :http
-                           :uri "/jobs"
-                           :headers {"Content-Type" "application/json"}
-                           :authorization/user "dgrnbrg"
-                           :body-params {"jobs" [(job {"size" -4})] "pool" "test-pool"}}))
-              499)))
-    (testing "Zero disk invalid"
-      (is (<= 400
-              (:status (h {:request-method :post
-                           :scheme :http
-                           :uri "/jobs"
-                           :headers {"Content-Type" "application/json"}
-                           :authorization/user "dgrnbrg"
-                           :body-params {"jobs" [(job {"size" 0})] "pool" "test-pool"}}))
-              499)))
-    (testing "Non-whole number of disk valid"
-      (is (<= 200
-              (:status (h {:request-method :post
-                           :scheme :http
-                           :uri "/jobs"
-                           :headers {"Content-Type" "application/json"}
-                           :authorization/user "dgrnbrg"
-                           :body-params {"jobs" [(job {"size" 2.5})] "pool" "test-pool"}}))
-              299)))
-    (with-redefs [config/valid-disk-types (constantly [{:pool-regex "test-pool"
-                                                        :valid-types #{"pd-ssd"}
-                                                        :default-model "pd-ssd"}])]
+    (with-redefs [config/disk (constantly [{:pool-regex "test-pool"
+                                            :valid-types #{"pd-ssd"}
+                                            :default-type "pd-ssd"
+                                            :max-size 256000}])]
+      (testing "negative disk invalid"
+        (is (= 400
+                (:status (h {:request-method :post
+                             :scheme :http
+                             :uri "/jobs"
+                             :headers {"Content-Type" "application/json"}
+                             :authorization/user "dgrnbrg"
+                             :body-params {"jobs" [(job {"size" -4})] "pool" "test-pool"}})))))
+      (testing "Zero disk invalid"
+        (is (= 400
+                (:status (h {:request-method :post
+                             :scheme :http
+                             :uri "/jobs"
+                             :headers {"Content-Type" "application/json"}
+                             :authorization/user "dgrnbrg"
+                             :body-params {"jobs" [(job {"size" 0})] "pool" "test-pool"}})))))
+      (testing "Non-whole number of disk valid"
+        (is (= 201
+                (:status (h {:request-method :post
+                             :scheme :http
+                             :uri "/jobs"
+                             :headers {"Content-Type" "application/json"}
+                             :authorization/user "dgrnbrg"
+                             :body-params {"jobs" [(job {"size" 2.5})] "pool" "test-pool"}})))))
       (let [successful-job-1 (job {"size" 20000.0})
             successful-job-2 (job {"size" 20000.0 "type" "pd-ssd"})
             unsuccessful-job (job {"type" "pd-ssd"})]
         (testing "Specifying only size is valid"
-          (is (<= 200
+          (is (= 201
                   (:status (h {:request-method :post
                                :scheme :http
                                :uri "/jobs"
                                :headers {"Content-Type" "application/json"}
                                :authorization/user "dgrnbrg"
-                               :body-params {"jobs" [successful-job-1] "pool" "test-pool"}}))
-                  299)))
+                               :body-params {"jobs" [successful-job-1] "pool" "test-pool"}})))))
         (let [resp (h {:request-method :get
                        :scheme :http
                        :uri "/rawscheduler"
                        :authorization/user "dgrnbrg"
                        :query-params {"job" (str (get successful-job-1 "uuid"))}})
-              _ (is (<= 200 (:status resp) 299))
+              _ (is (= 200 (:status resp)))
               [body] (response->body-data resp)
               trimmed-body (select-keys body (keys successful-job-1))]
           (is (= (dissoc successful-job-1 "uris") (dissoc trimmed-body "uris"))))
         (testing "Specifying valid size and type"
-          (is (<= 200
+          (is (= 201
                   (:status (h {:request-method :post
                                :scheme :http
                                :uri "/jobs"
                                :headers {"Content-Type" "application/json"}
                                :authorization/user "dgrnbrg"
-                               :body-params {"jobs" [successful-job-2] "pool" "test-pool"}}))
-                  299)))
+                               :body-params {"jobs" [successful-job-2] "pool" "test-pool"}})))))
         (let [resp (h {:request-method     :get
                        :scheme             :http
                        :uri                "/rawscheduler"
                        :authorization/user "dgrnbrg"
                        :query-params       {"job" (str (get successful-job-2 "uuid"))}})
-              _ (is (<= 200 (:status resp) 299))
+              _ (is (= 200 (:status resp)))
               [body] (response->body-data resp)
               trimmed-body (select-keys body (keys successful-job-2))]
           (is (= (dissoc successful-job-2 "uris") (dissoc trimmed-body "uris"))))
         (testing "Specifying valid type but no size is invalid"
-          (is (<= 400
+          (is (= 400
                   (:status (h {:request-method :post
                                :scheme :http
                                :uri "/jobs"
                                :headers {"Content-Type" "application/json"}
                                :authorization/user "dgrnbrg"
-                               :body-params {"jobs" [unsuccessful-job] "pool" "test-pool"}}))
-                  499)))))))
+                               :body-params {"jobs" [unsuccessful-job] "pool" "test-pool"}})))))))))
 
 (deftest retries-api
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
@@ -2502,36 +2497,41 @@
 
 (deftest test-validate-disk-job
   (testing "valid request not specifying disk size and type"
-    (with-redefs [config/valid-disk-types (constantly [{:pool-regex "test-pool"
-                                                        :valid-types #{"valid-disk-type"}
-                                                        :default-type "valid-disk-type"}])]
-      (is (nil? (api/validate-disk-job "test-pool" {})))))
+    (with-redefs [config/disk (constantly [{:pool-regex "test-pool"
+                                            :valid-types #{"valid-disk-type"}
+                                            :default-type "valid-disk-type"
+                                            :max-size 256000}])]
+      (is (nil? (api/validate-job-disk "test-pool" {})))))
   (testing "valid request of disk size and type"
-    (with-redefs [config/valid-disk-types (constantly [{:pool-regex "test-pool"
-                                                        :valid-types #{"valid-disk-type"}
-                                                        :default-type "valid-disk-type"}])]
-      (is (nil? (api/validate-disk-job "test-pool" {:disk {:size 20 :type "valid-disk-type"}})))))
+    (with-redefs [config/disk (constantly [{:pool-regex "test-pool"
+                                            :valid-types #{"valid-disk-type"}
+                                            :default-type "valid-disk-type"
+                                            :max-size 256000}])]
+      (is (nil? (api/validate-job-disk "test-pool" {:disk {:size 20 :type "valid-disk-type"}})))))
   (testing "valid request of disk size and use default type"
-    (with-redefs [config/valid-disk-types (constantly [{:pool-regex "test-pool"
-                                                        :valid-types #{"valid-disk-type"}
-                                                        :default-type "valid-disk-type"}])]
-      (is (nil? (api/validate-disk-job "test-pool" {:disk {:size 20}})))))
+    (with-redefs [config/disk (constantly [{:pool-regex "test-pool"
+                                            :valid-types #{"valid-disk-type"}
+                                            :default-type "valid-disk-type"
+                                            :max-size 256000}])]
+      (is (nil? (api/validate-job-disk "test-pool" {:disk {:size 20}})))))
   (testing "invalid request: requests disk type but does not request disk size"
-    (with-redefs [config/valid-disk-types (constantly [{:pool-regex "test-pool"
-                                                        :valid-types #{"valid-disk-type"}
-                                                        :default-type "valid-disk-type"}])]
+    (with-redefs [config/disk (constantly [{:pool-regex "test-pool"
+                                            :valid-types #{"valid-disk-type"}
+                                            :default-type "valid-disk-type"
+                                            :max-size 256000}])]
       (is (thrown-with-msg?
             ExceptionInfo
             #"In order to request a disk type, user must also request disk size"
-            (api/validate-disk-job "test-pool" {:disk {:type "valid-disk-type"}})))))
+            (api/validate-job-disk "test-pool" {:disk {:type "valid-disk-type"}})))))
   (testing "invalid disk type"
-    (with-redefs [config/valid-disk-types (constantly [{:pool-regex "test-pool"
-                                                        :valid-types #{"valid-disk-type"}
-                                                        :default-type "valid-disk-type"}])]
+    (with-redefs [config/disk (constantly [{:pool-regex "test-pool"
+                                            :valid-types #{"valid-disk-type"}
+                                            :default-type "valid-disk-type"
+                                            :max-size 256000}])]
       (is (thrown-with-msg?
             ExceptionInfo
             #"The following disk type is not supported: invalid-disk-type"
-            (api/validate-disk-job "test-pool" {:disk {:size 20 :type "invalid-disk-type"}}))))))
+            (api/validate-job-disk "test-pool" {:disk {:size 20 :type "invalid-disk-type"}}))))))
 
 (let [admin-user "alice"
       is-authorized-fn
