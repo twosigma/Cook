@@ -1881,9 +1881,10 @@ class CookTest(util.CookTest):
 
     def test_submit_job_with_disk(self):
         settings_dict = util.settings(self.cook_url)
-        valid_disk_types_config_map = settings_dict.get("pools", {}).get("valid-disk-types", [])
+        # disk_config_list is a list of regexp's with pool regex, valid disk types, default disk type, and max requestable size of disk
+        disk_config_list = settings_dict.get("pools", {}).get("disk", [])
         # If no pools support disks, submit a job to the default pool and assert the submission gets rejected
-        if not valid_disk_types_config_map:
+        if not disk_config_list:
             default_pool = util.default_submit_pool()
             job_uuid, resp = util.submit_job(
                 self.cook_url,
@@ -1900,9 +1901,9 @@ class CookTest(util.CookTest):
                 self.skipTest("There are no active pools that support disk")
             for pool in active_pools:
                 pool_name = pool['name']
-                matching_disk_types = [ii["valid-types"] for ii in valid_disk_types_config_map if
+                matching_disk_types = [ii["valid-types"] for ii in disk_config_list if
                                        re.match(ii["pool-regex"], pool_name)]
-                # If there are no supported disk types for pool, assert submission gets rejected
+                # If there are no supported disk types for pool, skip test
                 if len(matching_disk_types) == 0 or len(matching_disk_types[0]) == 0:
                     self.logger.info('There are no disk types configured')
                     self.skipTest("There are no disk types configured for any active pools")
@@ -1920,7 +1921,7 @@ class CookTest(util.CookTest):
                     self.assertEqual(job["disk"]["size"], expected_size)
                     self.assertEqual(job["disk"]["type"], expected_type)
 
-                    # Job submission with default disk type
+                    # Job submission with just specifying disk size
                     self.logger.info(f'Submitting to {pool}')
                     job_uuid, resp = util.submit_job(
                         self.cook_url,
