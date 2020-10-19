@@ -1889,7 +1889,7 @@ class CookTest(util.CookTest):
             job_uuid, resp = util.submit_job(
                 self.cook_url,
                 pool=default_pool,
-                disk={'size': 20000, 'type': 'pd-ssd'})
+                disk={'size': 20000.0, 'type': 'pd-ssd'})
             self.assertEqual(resp.status_code, 400)
             self.assertTrue(f"The following disk type is not supported: pd-ssd" in resp.text,
                 msg=resp.content)
@@ -1910,7 +1910,7 @@ class CookTest(util.CookTest):
                 else:
                     # Job submission with valid disk request of size and type
                     self.logger.info(f'Submitting to {pool}')
-                    expected_size = 20000
+                    expected_size = 20000.0
                     expected_type = matching_disk_types[0][0]
                     job_uuid, resp = util.submit_job(
                         self.cook_url,
