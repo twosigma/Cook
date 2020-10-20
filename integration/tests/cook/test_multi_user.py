@@ -937,3 +937,37 @@ class MultiUserCookTest(util.CookTest):
         self.assertEqual(f'Compute cluster with name {cluster_name} does not exist',
                          resp.json()['error']['message'],
                          resp.content)
+
+    def test_queue_limits(self):
+        settings_dict = util.settings(self.cook_url)
+        per_pool_limits = settings_dict.get("queue-limits", {}).get("per-pool", [])
+        pool = util.default_submit_pool()
+        matching_configs = [m for m in per_pool_limits if re.match(m["pool-regex"], pool)]
+        if len(matching_configs) == 0:
+            self.skipTest(f'Requires per-pool queue-limits in {pool} pool')
+        else:
+            self.logger.info(f'Matching per-pool queue-limits in {pool} pool: {matching_configs}')
+
+        config = matching_configs[0]
+        max_limit = 50000
+        if (config['user-limit-normal'] > max_limit) or (config['user-limit-constrained'] > max_limit):
+            self.skipTest(f'Requires per-pool queue-limits in {pool} pool to be <= {max_limit}')
+
+        bad_constraint = [["HOSTNAME", "EQUALS", "lol won't get scheduled"]]
+        user = os.getenv('COOK_TEST_QUEUE_LIMITS_USER')
+        user = self.user_factory.specific_user(user) if user else self.user_factory.new_user()
+        with user:
+            try:
+                util.kill_running_and_waiting_jobs(self.cook_url, user.name)
+                _, resp = util.submit_job(self.cook_url, pool=pool, constraints=bad_constraint)
+                self.assertEqual(resp.status_code, 201, resp.text)
+
+                _, resp = util.submit_jobs(self.cook_url, {'constraints': bad_constraint}, clones=max_limit, pool=pool)
+                self.assertEqual(resp.status_code, 422, resp.text)
+                self.assertIn('User has too many jobs queued', resp.text, resp.text)
+
+                util.kill_running_and_waiting_jobs(self.cook_url, user.name)
+                _, resp = util.submit_job(self.cook_url, pool=pool, constraints=bad_constraint)
+                self.assertEqual(resp.status_code, 201, resp.text)
+            finally:
+                util.kill_running_and_waiting_jobs(self.cook_url, user.name)

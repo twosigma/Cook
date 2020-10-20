@@ -133,6 +133,11 @@
        :keystore-path #config/env "COOK_KEYSTORE_PATH"
        :keystore-type "pkcs12"
        :keystore-pass "cookstore"}
+ :queue-limits {:per-pool [{:pool-global-threshold 300000
+                            :pool-regex ".*"
+                            :user-limit-constrained 10000
+                            :user-limit-normal 50000}]
+                :update-interval-seconds 5}
  :rate-limit {:auth-bypass-limit-per-m 10000
               :expire-minutes 1200 ; Expire unused rate limit entries after 20 hours.
               ; Keep these job-launch and job-submission values as they are for integration tests. Making them smaller can cause
