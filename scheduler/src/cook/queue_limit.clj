@@ -102,7 +102,7 @@
     "Returns the queue length limit for the given pool name -- if the
     pool-global queue length is <= than the pool global threshold, we
     use the 'normal' per-user limit, otherwise, we switch to using the
-    'constrained' per-ser limit"
+    'constrained' per-user limit"
     [pool-name]
     (let [pool-global-length (get @pool->queue-length-atom pool-name 0)
           pool-global-threshold (pool-global-threshold pool-name)]
