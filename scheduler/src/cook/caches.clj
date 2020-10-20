@@ -1,5 +1,6 @@
 (ns cook.caches
   (:require [chime]
+            [clojure.tools.logging :as log]
             [cook.cache :as ccache]
             [cook.config :as config]
             [mount.core :as mount])
@@ -29,3 +30,17 @@
 (mount/defstate ^Cache job-ent->user-cache :start (new-cache config/config))
 (mount/defstate ^Cache task->feature-vector-cache :start (new-cache config/config))
 (mount/defstate ^Cache job-uuid->dataset-maps-cache :start (new-cache config/config))
+
+(let [default-pool (config/default-pool)
+      _ (log/info "The config/default-pool is" default-pool)
+      miss-fn (fn [{:keys [job/pool]}]
+                (or (:pool/name pool) default-pool "no-pool"))]
+  (defn job->pool-name
+    "Return the pool name of the job."
+    [job]
+    (lookup-cache-datomic-entity! job-ent->pool-cache miss-fn job)))
+
+(defn job-ent->user
+  "Given a job entity, return the user the job runs as."
+  [job-ent]
+  (lookup-cache-datomic-entity! job-ent->user-cache :job/user job-ent))

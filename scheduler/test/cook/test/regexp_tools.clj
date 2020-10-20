@@ -24,3 +24,12 @@
     (is (= {:bucket-size 1}
            (regexp-tools/match-based-on-regexp regexp-name :tbf-config match-list key)))))
 
+(deftest test-match-based-on-pool-name
+  (let [matchlist
+        [{:pool-regex "^foo$" :field {:foo 1}}
+         {:pool-regex ".*" :field {:bar 2}}
+         {:pool-regex "^baz$" :field {:baz 3}}]]
+    (is (= (regexp-tools/match-based-on-pool-name matchlist "foo" :field) {:foo 1}))
+    (is (= (regexp-tools/match-based-on-pool-name matchlist "bar" :field) {:bar 2}))
+    (is (= (regexp-tools/match-based-on-pool-name matchlist "baz" :field) {:bar 2})))
+  (is (= (regexp-tools/match-based-on-pool-name [] "foo" :field) nil)))

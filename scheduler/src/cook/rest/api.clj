@@ -38,6 +38,7 @@
             [cook.plugins.submission :as submission-plugin]
             [cook.pool :as pool]
             [cook.progress :as progress]
+            [cook.regexp-tools :as regexp-tools]
             [cook.queries :as queries]
             [cook.queue-limit :as queue-limit]
             [cook.quota :as quota]
@@ -697,12 +698,12 @@
 (defn get-default-container-for-pool
   "Given a pool name, determine a default container that should be run on it."
   [default-containers effective-pool-name]
-  (util/match-based-on-pool-name default-containers effective-pool-name :container))
+  (regexp-tools/match-based-on-pool-name default-containers effective-pool-name :container))
 
 (defn get-gpu-models-on-pool
    "Given a pool name, determine the supported GPU models on that pool."
    [valid-gpu-models effective-pool-name]
-   (util/match-based-on-pool-name valid-gpu-models effective-pool-name :valid-models))
+   (regexp-tools/match-based-on-pool-name valid-gpu-models effective-pool-name :valid-models))
 
 (s/defn make-job-txn
   "Creates the necessary txn data to insert a job into the database"
@@ -3061,7 +3062,7 @@
      ; TODO (pschorf) - cache this if it is a performance bottleneck
      :handle-ok (fn [_]
                   (let [uuid->datasets (->> (d/db conn)
-                                            util/get-pending-job-ents
+                                            queries/get-pending-job-ents
                                             (filter (fn [j] (not (empty? (:job/datasets j)))))
                                             (map (fn [j] [(:job/uuid j) (dl/get-dataset-maps j)]))
                                             (into {}))

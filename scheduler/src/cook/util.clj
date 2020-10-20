@@ -24,7 +24,8 @@
             [clojure.tools.namespace.dependency :refer :all]
             [postal.core :as postal]
             [schema.core :as s])
-  (:import (java.util.concurrent.atomic AtomicLong)))
+  (:import (java.util.concurrent.atomic AtomicLong)
+           (org.joda.time DateTime ReadablePeriod)))
 
 (defmacro try-timeout
   "Evaluates an expression in a separate thread and kills it if it takes too long"
@@ -190,3 +191,9 @@
   "Return triple of keys from two maps: [only in left, only in right, in both]"
   [left right]
   (data/diff (set (keys left)) (set (keys right))))
+
+(defn time-seq
+  "Returns a sequence of date-time values growing over specific period.
+   Takes as input the starting value and the growing value, returning a lazy infinite sequence."
+  [start ^ReadablePeriod period]
+  (iterate (fn [^DateTime t] (.plus t period)) start))

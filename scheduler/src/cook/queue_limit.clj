@@ -1,9 +1,12 @@
 (ns cook.queue-limit
   (:require [clj-time.core :as time]
             [clojure.tools.logging :as log]
+            [cook.caches :as caches]
             [cook.config :as config]
             [cook.datomic :as datomic]
-            [cook.tools :as util]
+            [cook.queries :as queries]
+            [cook.regexp-tools :as regexp-tools]
+            [cook.util :as util]
             [datomic.api :as d]
             [plumbing.core :as pc]
             [metrics.timers :as timers]))
@@ -14,7 +17,7 @@
   entry, or Integer/MAX_VALUE if there is no match"
   [pool-name field]
   (or
-    (util/match-based-on-pool-name
+    (regexp-tools/match-based-on-pool-name
       (:per-pool (config/queue-limits))
       pool-name
       field)
@@ -56,7 +59,7 @@
   []
   (-> datomic/conn
       d/db
-      util/get-pending-job-ents))
+      queries/get-pending-job-ents))
 
 (defn query-queue-lengths
   "Queries for pending jobs from the database and
@@ -71,13 +74,17 @@
         (get-pending-jobs)
         pool->pending-jobs
         (group-by
-          util/job->pool-name
+          caches/job->pool-name
           pending-jobs)]
     {:pool->queue-length
      (pc/map-vals count pool->pending-jobs)
      :pool->user->queue-length
      (pc/map-vals
-       #(pc/map-vals count (group-by util/job-ent->user %))
+       #(pc/map-vals
+          count
+          (group-by
+            caches/job-ent->user
+            %))
        pool->pending-jobs)}))
 
 (let [pool->queue-length-atom (atom {})

@@ -18,6 +18,7 @@
             [clojure.test :refer :all]
             [cook.mesos :as mesos]
             [cook.monitor :as monitor]
+            [cook.queries :as queries]
             [cook.rest.api :as api]
             [cook.scheduler.share :as share]
             [cook.test.testutil :as testutil :refer [restore-fresh-database! setup]]
@@ -37,7 +38,7 @@
         run-job (fn [job] @(d/transact conn [[:db/add [:job/uuid (:uuid job)] :job/state :job.state/running]]))]
 
     (monitor/set-stats-counters! (db conn) stats-atom
-                                 (util/get-pending-job-ents (db conn))
+                                 (queries/get-pending-job-ents (db conn))
                                  (util/get-running-job-ents (db conn))
                                  "no-pool")
     (is (= 0 (counter ["running" "all" "cpus"])))
@@ -57,7 +58,7 @@
     (testutil/create-jobs! conn {::api/jobs [job1 job2]})
 
     (monitor/set-stats-counters! (db conn) stats-atom
-                                 (util/get-pending-job-ents (db conn))
+                                 (queries/get-pending-job-ents (db conn))
                                  (util/get-running-job-ents (db conn))
                                  "no-pool")
     (is (= 0 (counter ["running" "all" "jobs"])))
@@ -88,7 +89,7 @@
 
     (run-job job1)
     (monitor/set-stats-counters! (db conn) stats-atom
-                                 (util/get-pending-job-ents (db conn))
+                                 (queries/get-pending-job-ents (db conn))
                                  (util/get-running-job-ents (db conn))
                                  "no-pool")
     (is (= 1 (counter ["running" "all" "jobs"])))
@@ -122,7 +123,7 @@
 
     (mesos/kill-job conn [(:uuid job1)])
     (monitor/set-stats-counters! (db conn) stats-atom
-                                 (util/get-pending-job-ents (db conn))
+                                 (queries/get-pending-job-ents (db conn))
                                  (util/get-running-job-ents (db conn))
                                  "no-pool")
     (is (= 0 (counter ["running" "all" "jobs"])))
@@ -153,7 +154,7 @@
 
     (run-job job2)
     (monitor/set-stats-counters! (db conn) stats-atom
-                                 (util/get-pending-job-ents (db conn))
+                                 (queries/get-pending-job-ents (db conn))
                                  (util/get-running-job-ents (db conn))
                                  "no-pool")
     (is (= 1 (counter ["running" "all" "jobs"])))
@@ -187,7 +188,7 @@
 
     (mesos/kill-job conn [(:uuid job2)])
     (monitor/set-stats-counters! (db conn) stats-atom
-                                 (util/get-pending-job-ents (db conn))
+                                 (queries/get-pending-job-ents (db conn))
                                  (util/get-running-job-ents (db conn))
                                  "no-pool")
     (is (= 0 (counter ["running" "all" "jobs"])))
@@ -220,7 +221,7 @@
     (with-redefs [share/get-share (constantly {:cpus 0 :mem 0})]
 
       (monitor/set-stats-counters! (db conn) stats-atom
-                                   (util/get-pending-job-ents (db conn))
+                                   (queries/get-pending-job-ents (db conn))
                                    (util/get-running-job-ents (db conn))
                                    "no-pool"))
     (is (= 0 (counter ["running" "all" "jobs"])))
@@ -257,7 +258,7 @@
 
     (run-job job3)
     (monitor/set-stats-counters! (db conn) stats-atom
-                                 (util/get-pending-job-ents (db conn))
+                                 (queries/get-pending-job-ents (db conn))
                                  (util/get-running-job-ents (db conn))
                                  "no-pool")
     (is (= 1 (counter ["running" "all" "jobs"])))

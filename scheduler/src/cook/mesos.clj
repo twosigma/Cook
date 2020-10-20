@@ -95,7 +95,7 @@
   (let [{:keys [update-interval-ms]} (config/data-local-fitness-config)
         prepare-trigger-chan (fn prepare-trigger-chan [interval]
                                (let [ch (async/chan (async/sliding-buffer 1))]
-                                 (async/pipe (chime-ch (tools/time-seq (time/now) interval))
+                                 (async/pipe (chime-ch (util/time-seq (time/now) interval))
                                              ch)
                                  ch))]
     (cond->
@@ -145,8 +145,8 @@
   (when new-cluster-configurations-fn
     (let [cluster-update-period-seconds (or cluster-update-period-seconds 60)]
       (chime/chime-at
-        (tools/time-seq (time/plus (time/now) (time/seconds cluster-update-period-seconds))
-                        (time/seconds cluster-update-period-seconds))
+        (util/time-seq (time/plus (time/now) (time/seconds cluster-update-period-seconds))
+                       (time/seconds cluster-update-period-seconds))
         (make-compute-cluster-config-updater-task conn (util/lazy-load-var new-cluster-configurations-fn))
         {:error-handler (fn compute-cluster-config-updater-error-handler [ex]
                           (log/error ex "Failed to update cluster configurations"))}))))
