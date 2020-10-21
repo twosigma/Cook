@@ -1889,16 +1889,12 @@ class CookTest(util.CookTest):
             job_uuid, resp = util.submit_job(
                 self.cook_url,
                 pool=default_pool,
-                disk={'size': 20000.0, 'type': 'pd-ssd'})
+                disk={'request': 20000.0, 'type': 'pd-ssd'})
             self.assertEqual(resp.status_code, 400)
-            self.assertTrue(f"The following disk type is not supported: pd-ssd" in resp.text,
-                msg=resp.content)
+            self.assertTrue("The following disk type is not supported: pd-ssd" in resp.text, msg=resp.content)
         else:
             # Check if there are any active pools
             active_pools, _ = util.active_pools(self.cook_url)
-            if len(active_pools) == 0:
-                self.logger.info('There are no pools to submit jobs to')
-                self.skipTest("There are no active pools that support disk")
             for pool in active_pools:
                 pool_name = pool['name']
                 matching_disk_types = [ii["valid-types"] for ii in disk_config_list if
@@ -1908,37 +1904,44 @@ class CookTest(util.CookTest):
                     self.logger.info('There are no disk types configured')
                     self.skipTest("There are no disk types configured for any active pools")
                 else:
-                    # Job submission with valid disk request of size and type
-                    self.logger.info(f'Submitting to {pool}')
-                    expected_size = 20000.0
+                    expected_request = 20000.0
+                    expected_limit = 30000.0
                     expected_type = matching_disk_types[0][0]
-                    job_uuid, resp = util.submit_job(
-                        self.cook_url,
-                        pool=pool_name,
-                        disk={'size': expected_size, 'type': expected_type})
-                    self.assertEqual(resp.status_code, 201, resp.text)
-                    job = util.load_job(self.cook_url, job_uuid)
-                    self.assertEqual(job["disk"]["size"], expected_size)
-                    self.assertEqual(job["disk"]["type"], expected_type)
 
-                    # Job submission with just specifying disk size
+                    # Valid job submission with just specifying disk request
                     self.logger.info(f'Submitting to {pool}')
                     job_uuid, resp = util.submit_job(
                         self.cook_url,
                         pool=pool_name,
-                        disk={'size': expected_size})
+                        disk={'request': expected_request})
                     self.assertEqual(resp.status_code, 201, resp.text)
                     job = util.load_job(self.cook_url, job_uuid)
-                    self.assertEqual(job["disk"]["size"], expected_size)
+                    self.assertEqual(job["disk"]["request"], expected_request)
+                    self.assertNotIn("limit", job["disk"])
                     self.assertNotIn("type", job["disk"])
 
-                    # Job submission with invalid request of disk type but not disk size
+                    # Valid job submission with disk request, size, and type
+                    self.logger.info(f'Submitting to {pool}')
+
+                    job_uuid, resp = util.submit_job(
+                        self.cook_url,
+                        pool=pool_name,
+                        disk={'request': expected_request,
+                              'limit': expected_limit,
+                              'type': expected_type})
+                    self.assertEqual(resp.status_code, 201, resp.text)
+                    job = util.load_job(self.cook_url, job_uuid)
+                    self.assertEqual(job["disk"]["request"], expected_request)
+                    self.assertEqual(job["disk"]["limit"], expected_limit)
+                    self.assertEqual(job["disk"]["type"], expected_type)
+
+                    # Invalid job submission with disk type but not disk request
                     job_uuid, resp = util.submit_job(
                         self.cook_url,
                         pool=pool_name,
                         disk={'type': expected_type})
                     self.assertEqual(resp.status_code, 400)
-                    self.assertTrue("In order to request a disk type, user must also request disk size" in resp.text,
+                    self.assertTrue("[{\"disk\":{\"request\":\"missing-required-key\"}}]" in resp.text,
                                     msg=resp.content)
 
     def test_request_gpu_models(self):
