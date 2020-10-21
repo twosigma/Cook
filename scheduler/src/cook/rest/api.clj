@@ -994,7 +994,10 @@
     - Requested size must be less than the max size in config"
   [pool-name {:keys [disk]}]
   (let [{disk-request :request disk-limit :limit requested-disk-type :type} disk
-        max-size (get-max-disk-size-on-pool (config/disk) pool-name)]
+        max-size (get-max-disk-size-on-pool (config/disk) pool-name)
+        disk-types-on-pool (get-disk-types-on-pool (config/disk) pool-name)]
+    (when-not disk-types-on-pool
+      (throw (ex-info (str "Disk requests are not supported on pool: " pool-name) disk)))
     (when disk-limit
       (do (when (> disk-request disk-limit)
             (throw (ex-info (str "Disk request specified is greater than disk limit specified") disk)))
@@ -1003,7 +1006,7 @@
     (when (> disk-request max-size)
       (throw (ex-info (str "Disk request specified is greater than max disk size on pool") disk)))
     (when (and requested-disk-type
-               (not (contains? (get-disk-types-on-pool (config/disk) pool-name) requested-disk-type)))
+               (not (contains? disk-types-on-pool requested-disk-type)))
       (throw (ex-info (str "The following disk type is not supported: " requested-disk-type) disk)))))
 
 (defn validate-and-munge-job
