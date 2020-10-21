@@ -40,7 +40,6 @@
             ; This explicit require is needed so that mount can see the defstate defined in the cook.plugins.submission namespace.
             [cook.plugins.submission]
             [cook.pool :as pool]
-            [cook.queue-limit :as queue-limit]
             ; This explicit require is needed so that mount can see the defstate defined in the cook.quota namespace.
             [cook.quota :as quota]
             [cook.rate-limit]
@@ -107,7 +106,7 @@
 
                       ; We track queue limits on all nodes, not just the leader, because
                       ; we need to check them when job submission requests come in
-                      (queue-limit/start-updating-queue-lengths)
+                      ((util/lazy-load-var 'cook.queue-limit/start-updating-queue-lengths))
 
                       (if (cook.config/api-only-mode?)
                         (if curator-framework
