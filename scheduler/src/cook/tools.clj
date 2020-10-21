@@ -249,7 +249,8 @@
                     (let [resource (keyword (name (:resource/type r)))]
                       (condp contains? resource
                         #{:cpus :mem :gpus} (assoc m resource (:resource/amount r))
-                        #{:disk} (assoc m :disk (cond-> {:size (:resource.disk/size r)}
+                        #{:disk} (assoc m :disk (cond-> {:request (:resource.disk/request r)}
+                                                        (:resource.disk/limit r) (assoc :limit (:resource.disk/limit r))
                                                         (:resource.disk/type r) (assoc :type (:resource.disk/type r))) )
                         #{:uri} (update-in m [:uris] (fnil conj [])
                                            {:cache (:resource.uri/cache? r false)

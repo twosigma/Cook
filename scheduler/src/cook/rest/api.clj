@@ -298,7 +298,8 @@
 
 (def Disk
   "Schema for disk limit specifications"
-  {(s/optional-key :size) (s/pred #(> % 1.0) 'greater-than-one)
+  {:request (s/pred #(> % 1.0) 'greater-than-one)
+   (s/optional-key :limit) (s/pred #(> % 1.0) 'greater-than-one)
    (s/optional-key :type) s/Str})
 
 (def DatePartition
@@ -792,11 +793,17 @@
                                 (let [disk-id (d/tempid :db.part/user)
                                       params {:db/id disk-id
                                               :resource/type :resource.type/disk
-                                              :resource.disk/size (:size disk)}]
+                                              :resource.disk/request (:request disk)}]
                                   [[:db/add db-id :job/resource disk-id]
-                                   (if-not (nil? (:type disk))
-                                     (assoc params :resource.disk/type (:type disk))
-                                     params)]))
+                                   (reduce-kv
+                                     ;; This only adds the optional params to the DB if they were explicitly set
+                                     (fn [txn-map k v]
+                                       (if-not (nil? v)
+                                         (assoc txn-map k v)
+                                         txn-map))
+                                     params
+                                     {:resource.disk/limit (:limit disk)
+                                      :resource.disk/type (:type disk)})]))
                               (when (and gpus (not (zero? gpus)))
                                 (let [gpus-id (d/tempid :db.part/user)]
                                   [[:db/add db-id :job/resource gpus-id]
@@ -986,11 +993,15 @@
     - Requested type must be a valid type in config
     - Requested size must be less than the max size in config"
   [pool-name {:keys [disk]}]
-  (let [{requested-disk-size :size requested-disk-type :type} disk]
-    (when (and requested-disk-size (> requested-disk-size (get-max-disk-size-on-pool (config/disk) pool-name)))
-      (throw (ex-info (str "Disk size requested is greater than max requestable disk size on pool") disk)))
-    (when (and requested-disk-type (not requested-disk-size))
-      (throw (ex-info (str "In order to request a disk type, user must also request disk size") disk)))
+  (let [{disk-request :request disk-limit :limit requested-disk-type :type} disk
+        max-size (get-max-disk-size-on-pool (config/disk) pool-name)]
+    (when disk-limit
+      (do (when (> disk-request disk-limit)
+            (throw (ex-info (str "Disk request specified is greater than disk limit specified") disk)))
+          (when (> disk-limit max-size)
+            (throw (ex-info (str "Disk limit specified is greater than max disk size on pool") disk)))))
+    (when (> disk-request max-size)
+      (throw (ex-info (str "Disk request specified is greater than max disk size on pool") disk)))
     (when (and requested-disk-type
                (not (contains? (get-disk-types-on-pool (config/disk) pool-name) requested-disk-type)))
       (throw (ex-info (str "The following disk type is not supported: " requested-disk-type) disk)))))
@@ -1244,6 +1255,7 @@
     (let [resources (util/job-ent->resources job)
           groups (:group/_job job)
           application (:job/application job)
+          disk (:disk resources)
           expected-runtime (:job/expected-runtime job)
           executor (:job/executor job)
           progress-output-file (:job/progress-output-file job)
@@ -1270,7 +1282,6 @@
                    :constraints constraints
                    :cpus (:cpus resources)
                    :disable_mea_culpa_retries disable-mea-culpa-retries
-                   :disk (:disk resources {})
                    :env (util/job-ent->env job)
                    ; TODO(pschorf): Remove field
                    :framework_id (guess-framework-id)
@@ -1302,6 +1313,7 @@
       (cond-> job-map
               groups (assoc :groups (map #(str (:group/uuid %)) groups))
               application (assoc :application (util/remove-datomic-namespacing application))
+              disk (assoc :disk disk)
               expected-runtime (assoc :expected-runtime expected-runtime)
               executor (assoc :executor (name executor))
               progress-output-file (assoc :progress-output-file progress-output-file)
