@@ -41,7 +41,7 @@
            (java.util Date)
            (org.joda.time DateTime ReadablePeriod)))
 
-(defn retrieve-system-id
+(defn retrieve-system-ids
   "Executes a shell command to retrieve the user/group id for the specified user"
   [mode-flag value]
   (let [{:keys [exit out err]} (sh/sh "/usr/bin/id" mode-flag value)]
@@ -51,7 +51,13 @@
                   :out {:exit-code exit :stderr err :stdout out}}))
     (let [result (some-> out str/trim)]
       (when-not (str/blank? result)
-        (Long/parseLong result)))))
+        (map #(Long/parseLong %) (str/split result #" "))))))
+
+(defn retrieve-system-id
+  "Returns the first id from retrieve-system-ids, if there is one"
+  [mode-flag value]
+  (when-let [ids (retrieve-system-ids mode-flag value)]
+    (first ids)))
 
 (defn user->user-id [user-name]
   "Retrieves the system user id for the specified user"
@@ -61,6 +67,20 @@
   "Retrieves the system group id for the specified user"
   (retrieve-system-id "-g" user-name))
 
+(let [user->group-ids-miss-fn
+      (fn [user-name]
+        (log/info "Retrieving group ids for" user-name)
+        {:cache-expires-at (-> 30 t/minutes t/from-now)
+         :system-ids (retrieve-system-ids "-G" user-name)})]
+  (defn user->all-group-ids [user-name]
+    "Retrieves the (potentially cached) collection
+    of all group ids for the specified user"
+    (:system-ids
+      (ccache/lookup-cache-with-expiration!
+        caches/user->group-ids-cache
+        identity
+        user->group-ids-miss-fn
+        user-name))))
 
 (defn get-all-resource-types
   "Return a list of all supported resources types. Example, :cpus :mem :gpus ..."
