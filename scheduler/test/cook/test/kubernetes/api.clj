@@ -99,6 +99,7 @@
     (is (= value (.getValue variable)))))
 
 (deftest test-task-metadata->pod
+  (tu/setup)
   (testing "creates pod from metadata"
     (with-redefs [config/kubernetes (constantly {:default-workdir "/mnt/sandbox"})]
       (let [task-metadata {:task-id "my-task"
@@ -185,7 +186,8 @@
 
   (testing "node selector for pool"
     (let [pool-name "test-pool"
-          task-metadata {:container {:docker {:parameters [{:key "user"
+          task-metadata {:command {:user "user"}
+                         :container {:docker {:parameters [{:key "user"
                                                             :value "100:10"}]}}
                          :task-request {:job {:job/pool {:pool/name pool-name}}
                                         :scalar-requests {"mem" 512
@@ -198,7 +200,8 @@
 
   (testing "node selector for hostname"
     (let [hostname "test-host"
-          task-metadata {:container {:docker {:parameters [{:key "user"
+          task-metadata {:command {:user "user"}
+                         :container {:docker {:parameters [{:key "user"
                                                             :value "100:10"}]}}
                          :hostname hostname
                          :task-request {:scalar-requests {"mem" 512
@@ -210,7 +213,8 @@
       (is (= hostname (get node-selector api/k8s-hostname-label)))))
 
   (testing "cpu limit configurability"
-    (let [task-metadata {:container {:docker {:parameters [{:key "user"
+    (let [task-metadata {:command {:user "user"}
+                         :container {:docker {:parameters [{:key "user"
                                                             :value "100:10"}]}}
                          :task-request {:scalar-requests {"mem" 512
                                                           "cpus" 1.0}}}
@@ -239,7 +243,8 @@
                                                                                                              :sub-path "efg/hij"}]}
                                                  :init-container {:command ["init container command"]
                                                                   :image "init container image"}})]
-      (let [task-metadata {:container {:docker {:parameters [{:key "user"
+      (let [task-metadata {:command {:user "user"}
+                           :container {:docker {:parameters [{:key "user"
                                                               :value "100:10"}]}}
                            :task-request {:scalar-requests {"mem" 512
                                                             "cpus" 1.0}
