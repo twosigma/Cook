@@ -131,7 +131,8 @@
                            #'caches/task-ent->user-cache
                            #'caches/task->feature-vector-cache
                            #'caches/job-ent->user-cache
-                           #'cook.quota/per-user-per-pool-launch-rate-limiter)))
+                           #'cook.quota/per-user-per-pool-launch-rate-limiter
+                           #'caches/user->group-ids-cache)))
 
 (defn run-test-server-in-thread
   "Runs a minimal cook scheduler server for testing inside a thread. Note that it is not properly kerberized."
