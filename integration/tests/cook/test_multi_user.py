@@ -941,7 +941,7 @@ class MultiUserCookTest(util.CookTest):
     def test_queue_limits(self):
         settings_dict = util.settings(self.cook_url)
         per_pool_limits = settings_dict.get("queue-limits", {}).get("per-pool", [])
-        pool = util.default_submit_pool()
+        pool = util.default_submit_pool() or util.default_pool(self.cook_url)
         matching_configs = [m for m in per_pool_limits if re.match(m["pool-regex"], pool)]
         if len(matching_configs) == 0:
             self.skipTest(f'Requires per-pool queue-limits in {pool} pool')
