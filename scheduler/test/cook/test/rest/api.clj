@@ -2533,7 +2533,14 @@
       (is (thrown-with-msg?
             ExceptionInfo
             #"The following disk type is not supported: invalid-disk-type"
-            (api/validate-job-disk "test-pool" {:disk {:request 20000 :type "invalid-disk-type"}}))))))
+            (api/validate-job-disk "test-pool" {:disk {:request 20000 :type "invalid-disk-type"}}))))
+    (testing "silently accept disk request"
+      (is (nil? (api/validate-job-disk "on-prem-pool" {:disk {:request 20000}}))))
+    (testing "reject disk request greater than on-prem max"
+      (is (thrown-with-msg?
+            ExceptionInfo
+            #"Disk request specified is greater than max disk size on pool"
+            (api/validate-job-disk "on-prem-pool" {:disk {:request 200000000}}))))))
 
 (let [admin-user "alice"
       is-authorized-fn
