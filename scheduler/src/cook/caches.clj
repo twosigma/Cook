@@ -1,6 +1,5 @@
 (ns cook.caches
   (:require [chime]
-            [clojure.tools.logging :as log]
             [cook.cache :as ccache]
             [cook.config :as config]
             [mount.core :as mount])
