@@ -1883,15 +1883,38 @@ class CookTest(util.CookTest):
         settings_dict = util.settings(self.cook_url)
         # disk_config_list is a list of regexp's with pool regex, valid disk types, default disk type, and max requestable size of disk
         disk_config_list = settings_dict.get("pools", {}).get("disk", [])
-        # If no pools support disks, submit a job to the default pool and assert the submission gets rejected
         if not disk_config_list:
+            # Submit a job to the default pool specifying request and limit and assert the submission gets silently accepted
             default_pool = util.default_submit_pool()
             job_uuid, resp = util.submit_job(
                 self.cook_url,
                 pool=default_pool,
-                disk={'request': 20000.0, 'type': 'pd-ssd'})
+                disk={'request': 20000.0,
+                      'limit': 30000.0})
+            self.assertEqual(resp.status_code, 201)
+            job = util.load_job(self.cook_url, job_uuid)
+            self.assertEqual(job["disk"]["request"], 20000.0)
+            self.assertEqual(job["disk"]["limit"], 30000.0)
+            self.assertNotIn("type", job["disk"])
+
+            # Submit a job to the default pool specifying disk type and assert the submission gets rejected
+            job_uuid, resp = util.submit_job(
+                self.cook_url,
+                pool=default_pool,
+                disk={'request': 20000.0,
+                      'type': 'pd-ssd'})
             self.assertEqual(resp.status_code, 400)
-            self.assertTrue(f"Disk requests are not supported on pool: {default_pool}" in resp.text, msg=resp.content)
+            self.assertTrue("The following disk type is not supported: pd-ssd" in resp.text,
+                            msg=resp.content)
+
+            # Submit a job that specifies disk request greater than max-size on-prem
+            job_uuid, resp = util.submit_job(
+                self.cook_url,
+                pool=default_pool,
+                disk={'request': 200000000.0})
+            self.assertEqual(resp.status_code, 400)
+            self.assertTrue("Disk request specified is greater than max disk size on pool" in resp.text, msg=resp.content)
+
         else:
             # Check if there are any active pools
             active_pools, _ = util.active_pools(self.cook_url)
