@@ -31,10 +31,11 @@
 (mount/defstate ^Cache task->feature-vector-cache :start (new-cache config/config))
 (mount/defstate ^Cache job-uuid->dataset-maps-cache :start (new-cache config/config))
 
-(let [default-pool (config/default-pool)
-      _ (log/info "The config/default-pool is" default-pool)
-      miss-fn (fn [{:keys [job/pool]}]
-                (or (:pool/name pool) default-pool "no-pool"))]
+(let [miss-fn
+      (fn [{:keys [job/pool]}]
+        (or (:pool/name pool)
+            (config/default-pool)
+            "no-pool"))]
   (defn job->pool-name
     "Return the pool name of the job."
     [job]
