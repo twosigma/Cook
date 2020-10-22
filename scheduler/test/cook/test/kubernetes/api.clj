@@ -1,6 +1,6 @@
 (ns cook.test.kubernetes.api
   (:require [clj-time.core :as t]
-            [clojure.string :as str]
+            [clojure.java.shell :as sh]
             [clojure.test :refer :all]
             [cook.config :as config]
             [cook.kubernetes.api :as api]
@@ -100,6 +100,34 @@
 
 (deftest test-task-metadata->pod
   (tu/setup)
+
+  (testing "supplemental group ids"
+    (with-redefs [sh/sh (constantly {:exit 0 :out "12 34 56 78"})]
+      ; Invocation with user alice, successful
+      (let [task-metadata {:command {:user "alice"}
+                           :task-request {:scalar-requests {"mem" 512 "cpus" 1.0}}}
+            ^V1Pod pod (api/task-metadata->pod "test-namespace"
+                                               "test-compute-cluster"
+                                               task-metadata)]
+        (is (= [12 34 56 78] (-> pod .getSpec .getSecurityContext .getSupplementalGroups)))))
+
+    (with-redefs [sh/sh (constantly {:exit 1})]
+      ; Invocation with user alice, cached
+      (let [task-metadata {:command {:user "alice"}
+                           :task-request {:scalar-requests {"mem" 512 "cpus" 1.0}}}
+            ^V1Pod pod (api/task-metadata->pod "test-namespace"
+                                               "test-compute-cluster"
+                                               task-metadata)]
+        (is (= [12 34 56 78] (-> pod .getSpec .getSecurityContext .getSupplementalGroups))))
+
+      ; Invocation with user bob, unsucessful
+      (let [task-metadata {:command {:user "bob"}
+                           :task-request {:scalar-requests {"mem" 512 "cpus" 1.0}}}
+            ^V1Pod pod (api/task-metadata->pod "test-namespace"
+                                               "test-compute-cluster"
+                                               task-metadata)]
+        (is (nil? (-> pod .getSpec .getSecurityContext .getSupplementalGroups))))))
+
   (testing "creates pod from metadata"
     (with-redefs [config/kubernetes (constantly {:default-workdir "/mnt/sandbox"})]
       (let [task-metadata {:task-id "my-task"
