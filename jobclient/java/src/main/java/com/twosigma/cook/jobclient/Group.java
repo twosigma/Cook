@@ -16,27 +16,17 @@
 
 package com.twosigma.cook.jobclient;
 
-import com.twosigma.cook.jobclient.HostPlacement;
-import com.twosigma.cook.jobclient.StragglerHandling;
-
-
-import java.util.ArrayList;
-import java.util.Map;
-import java.util.HashMap;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.List;
-import java.util.UUID;
-import java.util.regex.Pattern;
-import java.util.Iterator;
-
+import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableList;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableMap;
-import com.google.common.base.Preconditions;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.UUID;
+import java.util.regex.Pattern;
 
 /**
  * An immutable group implementation.
@@ -79,6 +69,7 @@ final public class Group {
         private HostPlacement _hostPlacement;
         private StragglerHandling _stragglerHandling;
         private List<UUID> _jobs = new ArrayList<>();
+        private boolean _shouldValidate = true;
 
         /**
          * If the group UUID is not provided, the group will be assigned a random UUID, the name cookgroup and a
@@ -103,6 +94,17 @@ final public class Group {
                 _stragglerHandling = new StragglerHandling.Builder().build();
             }
             return new Group(_uuid, _status, _name, _hostPlacement, _stragglerHandling, _jobs);
+        }
+
+        /**
+         * Sets whether or not the Builder should validate arguments
+         *
+         * @param shouldValidate {@link Boolean} true if the Builder should validate.
+         * @return this builder.
+         */
+        public Builder setShouldValidate(Boolean shouldValidate) {
+            _shouldValidate = shouldValidate;
+            return this;
         }
 
         /**
@@ -136,10 +138,12 @@ final public class Group {
          * @return this builder.
          */
         public Builder setName(String name) {
-            final Pattern pattern = Pattern.compile("[\\.a-zA-Z0-9_-]{0,128}");
-            Preconditions.checkArgument
-                (pattern.matcher(name).matches(),
-                 "Name can only contain '.', '_', '-' or any work characters has length at most 128");
+            if (_shouldValidate) {
+                final Pattern pattern = Pattern.compile("[\\.a-zA-Z0-9_-]{0,128}");
+                Preconditions.checkArgument
+                        (pattern.matcher(name).matches(),
+                                "Name can only contain '.', '_', '-', or any word characters, and must have length at most 128");
+            }
             _name = name;
             return this;
         }
@@ -169,7 +173,7 @@ final public class Group {
         /**
          * Set the jobs of the group to be built.
          *
-         * @param jobs {@link Job} to belong to the group.
+         * @param juuids {@link Job} to belong to the group.
          * @return this builder.
          */
         private Builder _setJobs(List<UUID> juuids) {
@@ -180,7 +184,7 @@ final public class Group {
         /**
          * Add a job (by UUID) to the group to be built.
          *
-         * @param job {@link Job} to belong to the group.
+         * @param juuid {@link Job} to belong to the group.
          * @return this builder.
          */
         private Builder _addJobByUUID(UUID juuid) {
@@ -356,7 +360,7 @@ final public class Group {
         for (int i = 0; i < jsonArray.length(); ++i) {
             JSONObject json = jsonArray.getJSONObject(i);
             JSONArray jobsJson = json.getJSONArray("jobs");
-            Builder groupBuilder = new Builder();
+            Builder groupBuilder = new Builder().setShouldValidate(false);
             groupBuilder.setUUID(UUID.fromString(json.getString("uuid")));
             if (json.has("name")) {
                 groupBuilder.setName(json.getString("name"));
