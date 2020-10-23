@@ -1993,6 +1993,7 @@ class CookTest(util.CookTest):
                 self.assertTrue(f"Job requested GPUs but pool {default_pool} does not have any valid GPU models" in resp.text,
                     msg=resp.content)
             else:
+                # GPU's may not be enabled for COOK_TEST_DEFAULT_SUBMIT_POOL, so we iterate over all active pools to find a pool where we can run this test.
                 # Check if there are any active pools
                 active_pools, _ = util.active_pools(self.cook_url)
                 if len(active_pools) == 0:
