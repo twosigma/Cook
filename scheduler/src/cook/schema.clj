@@ -1002,8 +1002,7 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :db/ident :resource.type/mem
     :resource.type/mesos-name :mem}
    {:db/id (d/tempid :db.part/user)
-    :db/ident :resource.type/disk
-    :resource.type/mesos-name :disk}
+    :db/ident :resource.type/disk}
    {:db/id (d/tempid :db.part/db)
     :db/ident :resource.disk/request
     :db/valueType :db.type/double
