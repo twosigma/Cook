@@ -997,10 +997,9 @@
         max-size (or (get-max-disk-size-on-pool (config/disk) pool-name) 10000000)
         disk-types-on-pool (get-disk-types-on-pool (config/disk) pool-name)]
     (when disk-limit
-      (do (when (> disk-request disk-limit)
-            (throw (ex-info (str "Disk request specified is greater than disk limit specified") disk)))
-          (when (> disk-limit max-size)
-            (throw (ex-info (str "Disk limit specified is greater than max disk size on pool") disk)))))
+      (when-not (<= disk-request disk-limit max-size)
+        (throw (ex-info (str "Disk resource setting error. We must have disk-request <= disk-limit <= max-size.")
+                        {:disk-request disk-request :disk-limit disk-limit :max-size max-size}))))
     (when (> disk-request max-size)
       (throw (ex-info (str "Disk request specified is greater than max disk size on pool") disk)))
     (when (and requested-disk-type

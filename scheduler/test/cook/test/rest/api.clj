@@ -2520,12 +2520,12 @@
     (testing "disk request is greater than disk limit - invalid"
       (is (thrown-with-msg?
             ExceptionInfo
-            #"Disk request specified is greater than disk limit specified"
+            #"Disk resource setting error. We must have disk-request <= disk-limit <= max-size."
             (api/validate-job-disk "test-pool" {:disk {:request 20000 :limit 10000}}))))
     (testing "disk limit invalid"
       (is (thrown-with-msg?
             ExceptionInfo
-            #"Disk limit specified is greater than max disk size on pool"
+            #"Disk resource setting error. We must have disk-request <= disk-limit <= max-size."
             (api/validate-job-disk "test-pool" {:disk {:request 200000 :limit 300000}}))))
     (testing "disk request and type valid"
       (is (nil? (api/validate-job-disk "test-pool" {:disk {:request 20000 :type "valid-disk-type"}}))))
