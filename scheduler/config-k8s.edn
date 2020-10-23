@@ -120,7 +120,7 @@
                                                      :force-pull-image false
                                                      :parameters []}}}]
          :disk
-         [{:pool-regex "k8s-alpha"
+         [{:pool-regex "^k8s-alpha$"
           :valid-types #{"pd-ssd"}
           :default-type "pd-ssd"
           :max-size 256000}]

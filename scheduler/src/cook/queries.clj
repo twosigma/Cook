@@ -21,15 +21,11 @@
 ;; place that no other cook code depends on. DO NOT REQUITE ANY COOK NAMESPACE.
 
 (defn get-all-resource-types
-  "Return a list of all supported resources types. Example, :cpus :mem :gpus ..."
+  "Return a list of resources types that are used for both binpacking and filtering the queue. Example, :cpus :mem :gpus ...
+   Note that this function name is misleading, and does not actually return ALL resource types."
   [db]
   (->> (q '[:find ?ident
             :where
             [?e :resource.type/mesos-name ?ident]]
           db)
        (map first)))
-
-(defn get-quota-resource-types
-  "Return a list of resource types used for quota, :cpus :mem :gpus ..."
-  [db]
-  (keep #{:cpus :mem :gpus} (get-all-resource-types db)))
