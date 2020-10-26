@@ -1884,8 +1884,8 @@ class CookTest(util.CookTest):
         # disk_config_list is a list of regexp's with pool regex, valid disk types, default disk type, and max requestable size of disk
         disk_config_list = settings_dict.get("pools", {}).get("disk", [])
         if not disk_config_list:
-            default_pool = util.default_submit_pool()
             # Submit a job to the default pool specifying disk type and assert the submission gets rejected
+            default_pool = util.default_submit_pool()
             job_uuid, resp = util.submit_job(
                 self.cook_url,
                 pool=default_pool,
@@ -1904,13 +1904,20 @@ class CookTest(util.CookTest):
                                        re.match(ii["pool-regex"], pool_name)]
                 disk_max_size = [ii["max-size"] for ii in disk_config_list if
                                     re.match(ii["pool-regex"], pool_name)]
-                # If there are no supported disk types for pool, skip test
+                # If there are no supported disk types for pool, assert submission gets rejected
                 if len(matching_disk_types) == 0 or len(matching_disk_types[0]) == 0:
-                    self.logger.info('There are no disk types configured')
-                    self.skipTest("There are no disk types configured for any active pools")
+                    self.logger.info(f'There are no disk types configured for pool {pool_name}')
+                    job_uuid, resp = util.submit_job(
+                        self.cook_url,
+                        pool=pool_name,
+                        disk={'request': 10})
+                    self.assertEqual(resp.status_code, 400)
+                    self.assertTrue(f"Disk specifications are not supported on pool {pool_name}" in resp.text,
+                                    msg=resp.content)
+
                 else:
-                    expected_request = disk_max_size[0] / 3
-                    expected_limit = disk_max_size[0] / 2
+                    expected_request = disk_max_size[0]
+                    expected_limit = disk_max_size[0]
                     expected_type = matching_disk_types[0][0]
 
                     # Valid job submission with just specifying disk request
