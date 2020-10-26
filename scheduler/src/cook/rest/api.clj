@@ -994,8 +994,10 @@
     - Requested size must be less than the max size in config"
   [pool-name {:keys [disk]}]
   (let [{disk-request :request disk-limit :limit requested-disk-type :type} disk
-        max-size (or (get-max-disk-size-on-pool (config/disk) pool-name) 10000000)
+        max-size (get-max-disk-size-on-pool (config/disk) pool-name)
         disk-types-on-pool (get-disk-types-on-pool (config/disk) pool-name)]
+    (when-not disk-types-on-pool
+      (throw (ex-info (str "Disk specifications are not supported on pool " pool-name) disk)))
     (when disk-limit
       (when-not (<= disk-request disk-limit max-size)
         (throw (ex-info (str "Disk resource setting error. We must have disk-request <= disk-limit <= max-size.")

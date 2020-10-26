@@ -2504,7 +2504,7 @@
                                                               :env {}})))))))
 
 (deftest test-validate-disk-job
-  (with-redefs [config/disk (constantly [{:pool-regex "test-pool"
+  (with-redefs [config/disk (constantly [{:pool-regex "^test-pool$"
                                           :valid-types #{"valid-disk-type"}
                                           :default-type "valid-disk-type"
                                           :max-size 256000}])]
@@ -2534,13 +2534,11 @@
             ExceptionInfo
             #"The following disk type is not supported: invalid-disk-type"
             (api/validate-job-disk "test-pool" {:disk {:request 20000 :type "invalid-disk-type"}}))))
-    (testing "silently accept disk request"
-      (is (nil? (api/validate-job-disk "on-prem-pool" {:disk {:request 20000}}))))
-    (testing "reject disk request greater than on-prem max"
+    (testing "reject disk specifications for pools with no config"
       (is (thrown-with-msg?
             ExceptionInfo
-            #"Disk request specified is greater than max disk size on pool"
-            (api/validate-job-disk "on-prem-pool" {:disk {:request 200000000}}))))))
+            #"Disk specifications are not supported on pool pool-without-disk"
+            (api/validate-job-disk "pool-without-disk" {:disk {:request 200000000}}))))))
 
 (let [admin-user "alice"
       is-authorized-fn

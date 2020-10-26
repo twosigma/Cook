@@ -1884,19 +1884,7 @@ class CookTest(util.CookTest):
         # disk_config_list is a list of regexp's with pool regex, valid disk types, default disk type, and max requestable size of disk
         disk_config_list = settings_dict.get("pools", {}).get("disk", [])
         if not disk_config_list:
-            # Submit a job to the default pool specifying request and limit and assert the submission gets silently accepted
             default_pool = util.default_submit_pool()
-            job_uuid, resp = util.submit_job(
-                self.cook_url,
-                pool=default_pool,
-                disk={'request': 20000.0,
-                      'limit': 30000.0})
-            self.assertEqual(resp.status_code, 201)
-            job = util.load_job(self.cook_url, job_uuid)
-            self.assertEqual(job["disk"]["request"], 20000.0)
-            self.assertEqual(job["disk"]["limit"], 30000.0)
-            self.assertNotIn("type", job["disk"])
-
             # Submit a job to the default pool specifying disk type and assert the submission gets rejected
             job_uuid, resp = util.submit_job(
                 self.cook_url,
@@ -1904,16 +1892,8 @@ class CookTest(util.CookTest):
                 disk={'request': 20000.0,
                       'type': 'pd-ssd'})
             self.assertEqual(resp.status_code, 400)
-            self.assertTrue("The following disk type is not supported: pd-ssd" in resp.text,
+            self.assertTrue(f"Disk specifications are not supported on pool {default_pool}" in resp.text,
                             msg=resp.content)
-
-            # Submit a job that specifies disk request greater than max-size on-prem
-            job_uuid, resp = util.submit_job(
-                self.cook_url,
-                pool=default_pool,
-                disk={'request': 200000000.0})
-            self.assertEqual(resp.status_code, 400)
-            self.assertTrue("Disk request specified is greater than max disk size on pool" in resp.text, msg=resp.content)
 
         else:
             # Check if there are any active pools
@@ -1922,13 +1902,15 @@ class CookTest(util.CookTest):
                 pool_name = pool['name']
                 matching_disk_types = [ii["valid-types"] for ii in disk_config_list if
                                        re.match(ii["pool-regex"], pool_name)]
+                disk_max_size = [ii["max-size"] for ii in disk_config_list if
+                                    re.match(ii["pool-regex"], pool_name)]
                 # If there are no supported disk types for pool, skip test
                 if len(matching_disk_types) == 0 or len(matching_disk_types[0]) == 0:
                     self.logger.info('There are no disk types configured')
                     self.skipTest("There are no disk types configured for any active pools")
                 else:
-                    expected_request = 20000.0
-                    expected_limit = 30000.0
+                    expected_request = disk_max_size[0] / 3
+                    expected_limit = disk_max_size[0] / 2
                     expected_type = matching_disk_types[0][0]
 
                     # Valid job submission with just specifying disk request
@@ -1944,8 +1926,6 @@ class CookTest(util.CookTest):
                     self.assertNotIn("type", job["disk"])
 
                     # Valid job submission with disk request, size, and type
-                    self.logger.info(f'Submitting to {pool}')
-
                     job_uuid, resp = util.submit_job(
                         self.cook_url,
                         pool=pool_name,
