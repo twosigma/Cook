@@ -989,9 +989,10 @@
 
 (defn validate-job-disk
   "Validates that a job requesting disk is satisfying the following conditions:
-    - User can request size but not type; User can request both size and type; User cannot request only type and not size
-    - Requested type must be a valid type in config
-    - Requested size must be less than the max size in config"
+    - Disk specifications cannot be made on a pool that does not support disks
+    - Disk limit and disk type are optional
+    - Disk request cannot exceed disk limit, and both request and limit cannot exceed the max size in config
+    - Requested type must be a valid type in config"
   [pool-name {:keys [disk]}]
   (let [{disk-request :request disk-limit :limit requested-disk-type :type} disk
         max-size (get-max-disk-size-on-pool (config/disk) pool-name)
