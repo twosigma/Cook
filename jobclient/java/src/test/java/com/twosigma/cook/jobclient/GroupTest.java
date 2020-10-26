@@ -62,25 +62,15 @@ public class GroupTest {
     }
 
     @Test
-    public void testParseFromJSONAllowsReadingInvalidNames() throws JSONException {
-        final String invalidName = "~~~ invalid group name !!!";
-
-        // Check that we are in fact using an invalid name
-        try {
-            new Group.Builder().setName(invalidName);
-            Assert.fail();
-        } catch (IllegalArgumentException iae) {
-            Assert.assertTrue(iae.getMessage().contains("Name can only contain"));
-        }
-
-        // Check that reading the invalid name from JSON is permitted
+    public void testParseFromJSONAllowsReadingNamesWithOddCharacters() throws JSONException {
+        final String nameWithOddCharacters = "~~~ odd group name !!!";
         final JSONObject json = Group.jsonizeGroup(_initializedGroup);
         json.put("jobs", new JSONArray().put(UUID.randomUUID().toString()));
-        json.put("name", invalidName);
+        json.put("name", nameWithOddCharacters);
         final String jsonString = new JSONArray().put(json).toString();
         final List<Group> groups = Group.parseFromJSON(jsonString);
         Assert.assertEquals(groups.size(), 1);
-        Assert.assertEquals(groups.get(0).getName(), invalidName);
+        Assert.assertEquals(groups.get(0).getName(), nameWithOddCharacters);
     }
 }
 
