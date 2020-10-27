@@ -1885,15 +1885,15 @@ class CookTest(util.CookTest):
         disk_config_list = settings_dict.get("pools", {}).get("disk", [])
         if not disk_config_list:
             # Submit a job to the default pool specifying disk type and assert the submission gets rejected
-            default_pool = util.default_submit_pool()
+            default_pool = util.default_pool(self.cook_url)
             job_uuid, resp = util.submit_job(
                 self.cook_url,
                 pool=default_pool,
                 disk={'request': 20000.0,
                       'type': 'pd-ssd'})
             self.assertEqual(resp.status_code, 400)
-            self.assertEqual(f'Disk specifications are not supported on pool {default_pool}', resp.json()['error'],
-                             resp.text)
+            self.assertEqual(f"Disk specifications are not supported on pool {default_pool}" in resp.text,
+                             msg=resp.content)
 
         else:
             # Check if there are any active pools
