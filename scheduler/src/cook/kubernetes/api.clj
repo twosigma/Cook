@@ -583,6 +583,8 @@
         security-context (V1PodSecurityContext.)]
     (.setRunAsUser security-context uid)
     (.setRunAsGroup security-context gid)
+    (when-let [group-ids (util/user->all-group-ids user)]
+      (.setSupplementalGroups security-context group-ids))
     security-context))
 
 (defn get-workdir
