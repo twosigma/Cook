@@ -583,19 +583,28 @@
                  mem {50 ..., 95 ..., 100 ...}}
    :totals {mem ..., cpus ..., ...}}"
   [resource-maps]
-  {:percentiles (pc/map-from-keys
-                  (fn percentiles
-                    [resource]
-                    (let [resource-values (->> resource-maps
-                                               (map #(get % resource))
-                                               (remove nil?))]
-                      (-> resource-values
-                          (task-stats/percentiles 50 95 100)
-                          tools/format-resource-map)))
-                  ["cpus" "mem"])
-   :totals (->> resource-maps
-                (reduce (partial merge-with +))
-                tools/format-resource-map)})
+  (let [resources-of-interest ["cpus" "mem"]]
+    {:largest-by (pc/map-from-keys
+                   (fn percentiles
+                     [resource]
+                     (->> resource-maps
+                          (sort-by #(get % resource))
+                          last
+                          tools/format-resource-map))
+                   resources-of-interest)
+     :percentiles (pc/map-from-keys
+                    (fn percentiles
+                      [resource]
+                      (let [resource-values (->> resource-maps
+                                                 (map #(get % resource))
+                                                 (remove nil?))]
+                        (-> resource-values
+                            (task-stats/percentiles 50 95 100)
+                            tools/format-resource-map)))
+                    resources-of-interest)
+     :totals (->> resource-maps
+                  (reduce (partial merge-with +))
+                  tools/format-resource-map)}))
 
 (defn offers->stats
   "Given a collection of offers, returns stats about the offers"
