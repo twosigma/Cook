@@ -21,6 +21,7 @@
             [clojure.string :as str]
             [clojure.test :refer :all]
             [clojure.walk :refer [keywordize-keys]]
+            [cook.cached-queries :as cached-queries]
             [cook.caches :as caches]
             [cook.compute-cluster :as cc]
             [cook.config :as config]
@@ -2310,7 +2311,7 @@
               {:keys [status] :as response} (handler request)]
           ; Assert that the request succeeded and that the pool in the database is pool-2
           (is (= 201 status) (str response))
-          (is (= "pool-2" (-> conn d/db (d/entity [:job/uuid job-uuid]) caches/job->pool-name)))))
+          (is (= "pool-2" (-> conn d/db (d/entity [:job/uuid job-uuid]) cached-queries/job->pool-name)))))
 
       (testing "job labels with slashes are preserved"
         (let [handler (api/create-jobs-handler conn task-constraints gpu-enabled? is-authorized-fn)

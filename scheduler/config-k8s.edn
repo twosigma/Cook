@@ -133,8 +133,12 @@
        :keystore-path #config/env "COOK_KEYSTORE_PATH"
        :keystore-type "pkcs12"
        :keystore-pass "cookstore"}
+ ; Pools can be configured with a :user-limit-normal and a
+ ; :user-limit-constrained, where :user-limit-constrained
+ ; is only used when the entire pool's queue length is
+ ; above the configured :pool-global-threshold
  :queue-limits {:per-pool [{:pool-global-threshold 30000
-                            :pool-regex ".*"
+                            :pool-regex "^.*$"
                             :user-limit-constrained 1000
                             :user-limit-normal 5000}]
                 :update-interval-seconds 5}

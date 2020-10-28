@@ -1,7 +1,7 @@
 (ns cook.queue-limit
   (:require [clj-time.core :as time]
             [clojure.tools.logging :as log]
-            [cook.caches :as caches]
+            [cook.cached-queries :as cached-queries]
             [cook.config :as config]
             [cook.datomic :as datomic]
             [cook.queries :as queries]
@@ -74,7 +74,7 @@
         (get-pending-jobs)
         pool->pending-jobs
         (group-by
-          caches/job->pool-name
+          cached-queries/job->pool-name
           pending-jobs)]
     {:pool->queue-length
      (pc/map-vals count pool->pending-jobs)
@@ -83,7 +83,7 @@
        #(pc/map-vals
           count
           (group-by
-            caches/job-ent->user
+            cached-queries/job-ent->user
             %))
        pool->pending-jobs)}))
 

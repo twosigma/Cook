@@ -17,7 +17,7 @@
   (:require [clojure.core.async :as async]
             [clojure.data.json :as json]
             [clojure.tools.logging :as log]
-            [cook.caches :as caches]
+            [cook.cached-queries :as cached-queries]
             [cook.compute-cluster :as cc]
             [cook.compute-cluster.metrics :as ccmetrics]
             [cook.config :as config]
@@ -63,7 +63,7 @@
         instance (d/entity (d/db conn) [:instance/task-id task-id])
         prior-job-state (:job/state (:job/_instance instance))
         prior-instance-status (:instance/status instance)
-        pool-name (caches/job->pool-name (:job/_instance instance))]
+        pool-name (cached-queries/job->pool-name (:job/_instance instance))]
     (if (and
             (or (nil? instance) ; We could know nothing about the task, meaning a DB error happened and it's a waste to finish
                 (= prior-job-state :job.state/completed) ; The task is attached to a failed job, possibly due to instances running on multiple hosts

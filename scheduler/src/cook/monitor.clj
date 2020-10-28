@@ -18,7 +18,7 @@
             [clj-time.core :as time]
             [clojure.set :refer [difference union]]
             [clojure.tools.logging :as log]
-            [cook.caches :as caches]
+            [cook.cached-queries :as cached-queries]
             [cook.config :refer [config]]
             [cook.datomic :as datomic]
             [cook.pool :as pool]
@@ -37,7 +37,7 @@
    types to amounts."
   [job-ents pool-name]
   (->> job-ents
-       (filter #(= pool-name (caches/job->pool-name %)))
+       (filter #(= pool-name (cached-queries/job->pool-name %)))
        ;; Produce a list of maps from user's name to his stats.
        (mapv (fn [job-ent]
                (let [user (:job/user job-ent)

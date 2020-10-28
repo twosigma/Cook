@@ -19,7 +19,7 @@
             [clojure.core.cache :as cache]
             [clojure.set :as set]
             [clojure.tools.logging :as log]
-            [cook.caches :as caches]
+            [cook.cached-queries :as cached-queries]
             [cook.config :as config]
             [cook.group :as group]
             [cook.rate-limit :as ratelimit]
@@ -135,7 +135,7 @@
   [job]
   (let [job-gpu-count-requested (-> job util/job-ent->resources :gpus (or 0))
         job-gpu-model-requested (when (pos? job-gpu-count-requested)
-                                  (job->gpu-model-requested job-gpu-count-requested job (caches/job->pool-name job)))]
+                                  (job->gpu-model-requested job-gpu-count-requested job (cached-queries/job->pool-name job)))]
     (->gpu-host-constraint job-gpu-count-requested job-gpu-model-requested)))
 
 (defrecord rebalancer-reservation-constraint [reserved-hosts]
@@ -184,7 +184,7 @@
   [job]
   (regexp-tools/match-based-on-pool-name
     (config/default-job-constraints)
-    (caches/job->pool-name job)
+    (cached-queries/job->pool-name job)
     :default-constraints))
 
 (def machine-type-constraint-attributes

@@ -25,6 +25,7 @@
             [clojure.string :as str]
             [clojure.tools.logging :as log]
             [cook.cache :as ccache]
+            [cook.cached-queries :as cached-queries]
             [cook.caches :as caches]
             [cook.config :as config]
             [cook.pool :as pool]
@@ -370,7 +371,7 @@
                            (= (:v %) state-entid)))
          (map :e)
          (map (partial d/entity db))
-         (filter #(= (caches/job-ent->user %) user))
+         (filter #(= (cached-queries/job-ent->user %) user))
          (filter #(job-submitted-in-range? % start-ms end-ms)))))
 
 ;; get-completed-jobs-by-user is a bit opaque because it is
@@ -940,7 +941,7 @@
   [db]
   (let [running-tasks (get-running-task-ents db)
         running-jobs (map :job/_instance running-tasks)
-        pool->jobs (group-by caches/job->pool-name running-jobs)]
+        pool->jobs (group-by cached-queries/job->pool-name running-jobs)]
     (pc/map-vals (fn [jobs]
                    (let [user->jobs (group-by :job/user jobs)]
                      (pc/map-vals (fn [jobs]
