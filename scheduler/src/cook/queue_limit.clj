@@ -74,17 +74,21 @@
         pool->pending-jobs
         (group-by
           cached-queries/job->pool-name
-          pending-jobs)]
+          pending-jobs)
+        pool->user->queue-length
+        (pc/map-vals
+          #(pc/map-vals
+             count
+             (group-by
+               cached-queries/job-ent->user
+               %))
+          pool->pending-jobs)]
     {:pool->queue-length
-     (pc/map-vals count pool->pending-jobs)
-     :pool->user->queue-length
      (pc/map-vals
-       #(pc/map-vals
-          count
-          (group-by
-            cached-queries/job-ent->user
-            %))
-       pool->pending-jobs)}))
+       #(->> % vals (reduce +))
+       pool->user->queue-length)
+     :pool->user->queue-length
+     pool->user->queue-length}))
 
 (let [pool->queue-length-atom (atom {})
       pool->user->queue-length-atom (atom {})]
