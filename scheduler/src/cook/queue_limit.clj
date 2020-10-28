@@ -117,6 +117,7 @@
     "Increments the pool-global and per-user queue lengths for
     the given pool name and user by the given number of jobs"
     [pool-name user number-jobs]
+    {:pre [(some? pool-name)]}
     (let [inc-number-jobs #(-> % (or 0) (+ number-jobs))]
       (swap! pool->queue-length-atom update pool-name inc-number-jobs)
       (swap! pool->user->queue-length-atom update-in [pool-name user] inc-number-jobs)))

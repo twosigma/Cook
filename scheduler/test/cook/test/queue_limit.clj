@@ -16,3 +16,7 @@
               :pool->user->queue-length {"pool-1" {"alice" 2 "sally" 1}
                                          "pool-2" {"alice" 1 "sally" 2}}}
              (queue-limit/query-queue-lengths))))))
+
+(deftest test-inc-queue-length!
+  (testing "throws on nil pool name"
+    (is (thrown? AssertionError (queue-limit/inc-queue-length! nil "alice" 2)))))
