@@ -60,5 +60,17 @@ public class GroupTest {
         Assert.assertEquals(groups.size(), 1);
         Assert.assertEquals(groups.get(0), _initializedGroup);
     }
+
+    @Test
+    public void testParseFromJSONAllowsReadingNamesWithOddCharacters() throws JSONException {
+        final String nameWithOddCharacters = "~~~ odd group name !!!";
+        final JSONObject json = Group.jsonizeGroup(_initializedGroup);
+        json.put("jobs", new JSONArray().put(UUID.randomUUID().toString()));
+        json.put("name", nameWithOddCharacters);
+        final String jsonString = new JSONArray().put(json).toString();
+        final List<Group> groups = Group.parseFromJSON(jsonString);
+        Assert.assertEquals(groups.size(), 1);
+        Assert.assertEquals(groups.get(0).getName(), nameWithOddCharacters);
+    }
 }
 
