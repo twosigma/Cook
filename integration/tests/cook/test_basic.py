@@ -1896,6 +1896,7 @@ class CookTest(util.CookTest):
                              msg=resp.content)
 
         else:
+            # Disk may not be configured for COOK_TEST_DEFAULT_POOL, so we iterate over all active pools to find a pool where we can run this test.
             # Check if there are any active pools
             active_pools, _ = util.active_pools(self.cook_url)
             for pool in active_pools:
