@@ -899,13 +899,9 @@
               user->num-jobs (->> matches
                                   (mapcat :task-metadata-seq)
                                   (map (comp tools/job-ent->user :job :task-request))
-                                  frequencies)
-              hostnames-matched (->> offers-matched
-                                     (map :hostname)
-                                     distinct)]
+                                  frequencies)]
           (log/info "In" pool-name "pool, launching matched tasks"
-                    {:hostnames-matched hostnames-matched
-                     :number-offers-matched num-offers-matched
+                    {:number-offers-matched num-offers-matched
                      :number-tasks (count task-txns)
                      :user->number-jobs user->num-jobs})
           (meters/mark! scheduler-offer-matched num-offers-matched)
