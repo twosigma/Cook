@@ -11,40 +11,39 @@
             [plumbing.core :as pc]
             [metrics.timers :as timers]))
 
-(defn- match-based-on-pool-name
-  "Given a pool name and field name, returns
-  the value for the first matching configuration
-  entry, or Integer/MAX_VALUE if there is no match"
-  [pool-name field]
-  (or
-    (regexp-tools/match-based-on-pool-name
-      (:per-pool (config/queue-limits))
-      pool-name
-      field)
-    Integer/MAX_VALUE))
+(defn- per-pool-config
+  "Returns the :per-pool section of the queue-limits config"
+  []
+  (:per-pool (config/queue-limits)))
 
 (defn- pool-global-threshold
   "Returns the pool-global-threshold for the given pool,
   the value at which the per-user queue limit switches
   from the 'normal' number to the 'constrained' number"
   [pool-name]
-  (match-based-on-pool-name
+  (regexp-tools/match-based-on-pool-name
+    (per-pool-config)
     pool-name
-    :pool-global-threshold))
+    :pool-global-threshold
+    :default-value Integer/MAX_VALUE))
 
 (defn- user-limit-normal
   "Returns the user-limit-normal for the given pool"
   [pool-name]
-  (match-based-on-pool-name
+  (regexp-tools/match-based-on-pool-name
+    (per-pool-config)
     pool-name
-    :user-limit-normal))
+    :user-limit-normal
+    :default-value Integer/MAX_VALUE))
 
 (defn- user-limit-constrained
   "Returns the user-limit-constrained for the given pool"
   [pool-name]
-  (match-based-on-pool-name
+  (regexp-tools/match-based-on-pool-name
+    (per-pool-config)
     pool-name
-    :user-limit-constrained))
+    :user-limit-constrained
+    :default-value Integer/MAX_VALUE))
 
 (defn- update-interval-seconds
   "Returns the interval in seconds at which
