@@ -1892,7 +1892,7 @@ class CookTest(util.CookTest):
                 disk={'request': 20000.0,
                       'type': 'pd-ssd'})
             self.assertEqual(resp.status_code, 400)
-            self.assertEqual(f"Disk specifications are not supported on pool {default_pool}" in resp.text,
+            self.assertTrue(f"Disk specifications are not supported on pool {default_pool}" in resp.text,
                              msg=resp.content)
 
         else:
