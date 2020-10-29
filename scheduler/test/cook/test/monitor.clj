@@ -29,6 +29,7 @@
            (org.joda.time Interval)))
 
 (deftest test-set-stats-counters!
+  (setup)
   (let [conn (restore-fresh-database! "datomic:mem://test-set-stats-counters!")
         counter #(counters/value (counters/counter (conj % "pool-no-pool")))
         job1 {:uuid (UUID/randomUUID), :command "ls", :max-retries 1, :cpus 1., :mem 128., :user "alice"}

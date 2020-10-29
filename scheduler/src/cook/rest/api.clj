@@ -1982,7 +1982,8 @@
   - Jobs will get removed from the queue when they launch
   - Jobs will get added to the queue if they fail and have retries
   - If there are multiple API hosts in the cluster, each one is maintaining a separate
-    count of the queue, without knowing about the other API hosts' job submissions
+    count of the queue, without knowing about the other API hosts' job submissions or
+    job kills
 
   Why is it OK to not take these things into account? This check is meant to prevent
   individual users from flooding the queue with hundreds of thousands of jobs, so if it

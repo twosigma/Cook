@@ -24,6 +24,7 @@
             [cook.datomic :refer [transact-with-retries]]
             [cook.mesos.heartbeat]
             [cook.monitor]
+            [cook.queue-limit :as queue-limit]
             [cook.rebalancer]
             [cook.scheduler.data-locality :as dl]
             [cook.scheduler.optimizer]
@@ -323,6 +324,26 @@
   [conn job-uuids]
   (when (seq job-uuids)
     (log/info "Killing some jobs!!")
+
+    ; Decrement the queue lengths that are
+    ; used for queue limiting purposes
+    (let [db (d/db conn)
+          jobs
+          (map
+            (fn [job-uuid]
+              (d/entity
+                db
+                [:job/uuid job-uuid]))
+            job-uuids)
+          pending-jobs
+          (filter
+            (fn [job]
+              (= (tools/job-ent->state job)
+                 "waiting"))
+            jobs)]
+      (queue-limit/dec-queue-length! pending-jobs))
+
+    ; Transact the state changes
     (doseq [uuids (partition-all 50 job-uuids)]
       (async/<!!
         (transact-with-retries conn

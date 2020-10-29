@@ -962,14 +962,13 @@ class MultiUserCookTest(util.CookTest):
         job_spec_bad_constraint = {'constraints': bad_constraint}
         user = os.getenv('COOK_TEST_QUEUE_LIMITS_USER')
         user = self.user_factory.specific_user(user) if user else self.user_factory.new_user()
-        num_jobs_initial = user_limit_constrained - buffer
+        num_jobs_under_limit = user_limit_constrained - buffer
 
-        def submit_subsequent_jobs():
-            num_jobs_subsequent = user_limit_normal - num_jobs_initial
-            self.logger.info(f'Submitting {num_jobs_subsequent} jobs to {pool} pool')
+        def submit_jobs(num_jobs):
+            self.logger.info(f'Submitting {num_jobs} jobs to {pool} pool')
             _, submit_resp = util.submit_jobs(self.cook_url,
                                               job_spec_bad_constraint,
-                                              clones=num_jobs_subsequent,
+                                              clones=num_jobs,
                                               pool=pool,
                                               log_request_body=False)
             self.logger.info(submit_resp.text)
@@ -980,25 +979,24 @@ class MultiUserCookTest(util.CookTest):
             self.assertIn('User has too many jobs queued', submit_resp.text, submit_resp.text)
             return True
 
+        def submission_succeeded(submit_resp):
+            self.assertEqual(submit_resp.status_code, 201, submit_resp.text)
+            return True
+
         with user:
             try:
                 # Kill running and waiting jobs and make sure we can
                 # submit a number of jobs less than the user's queue limit
                 util.kill_running_and_waiting_jobs(self.cook_url, user.name, log_jobs=False)
-                self.logger.info(f'Submitting {num_jobs_initial} jobs to {pool} pool')
-                _, resp = util.submit_jobs(self.cook_url,
-                                           job_spec_bad_constraint,
-                                           clones=num_jobs_initial,
-                                           pool=pool,
-                                           log_request_body=False)
-                self.assertEqual(resp.status_code, 201, resp.text)
+                util.wait_until(lambda: submit_jobs(num_jobs_under_limit), submission_succeeded)
 
                 # Trigger the queue-limit-reached failure
-                util.wait_until(submit_subsequent_jobs, queue_limit_reached)
+                util.wait_until(lambda: submit_jobs(user_limit_normal - num_jobs_under_limit),
+                                queue_limit_reached)
 
-                # Kill running and waiting jobs and make sure a single job submission works
+                # Again, kill running and waiting jobs and make sure we can
+                # submit a number of jobs less than the user's queue limit
                 util.kill_running_and_waiting_jobs(self.cook_url, user.name, log_jobs=False)
-                _, resp = util.submit_job(self.cook_url, pool=pool, constraints=bad_constraint)
-                self.assertEqual(resp.status_code, 201, resp.text)
+                util.wait_until(lambda: submit_jobs(num_jobs_under_limit), submission_succeeded)
             finally:
                 util.kill_running_and_waiting_jobs(self.cook_url, user.name, log_jobs=False)

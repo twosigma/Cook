@@ -60,18 +60,16 @@
       d/db
       queries/get-pending-job-ents))
 
-(defn query-queue-lengths
-  "Queries for pending jobs from the database and
-  returns a map with two sub-maps of the following shape:
+(defn- jobs->queue-lengths
+  "Given a collection of pending jobs, returns a map with two
+  sub-maps of the following shape:
 
   {:pool->queue-length {pool-a 100 pool-b 200 ...}
    :pool->user->queue-length {pool-a {user-x 10 user-y 20 user-z 70}
                               pool-b {user-x 20 user-y 40 user-z 140}
                               ...}"
-  []
-  (let [pending-jobs
-        (get-pending-jobs)
-        pool->pending-jobs
+  [pending-jobs]
+  (let [pool->pending-jobs
         (group-by
           cached-queries/job->pool-name
           pending-jobs)
@@ -89,6 +87,17 @@
        pool->user->queue-length)
      :pool->user->queue-length
      pool->user->queue-length}))
+
+(defn query-queue-lengths
+  "Queries for pending jobs from the database and
+  returns a map with two sub-maps of the following shape:
+
+  {:pool->queue-length {pool-a 100 pool-b 200 ...}
+   :pool->user->queue-length {pool-a {user-x 10 user-y 20 user-z 70}
+                              pool-b {user-x 20 user-y 40 user-z 140}
+                              ...}"
+  []
+  (jobs->queue-lengths (get-pending-jobs)))
 
 (let [pool->queue-length-atom (atom {})
       pool->user->queue-length-atom (atom {})]
@@ -122,12 +131,25 @@
       (swap! pool->queue-length-atom update pool-name inc-number-jobs)
       (swap! pool->user->queue-length-atom update-in [pool-name user] inc-number-jobs)))
 
+  (defn dec-queue-length!
+    "Decrements the pool-global and per-user queue lengths for
+    the given set of pending jobs that are being killed"
+    [killed-pending-jobs]
+    (let [{:keys [pool->queue-length
+                  pool->user->queue-length]}
+          (jobs->queue-lengths killed-pending-jobs)
+          subtract-fn
+          (fn [a b]
+            (-> a (- b) (max 0)))]
+      (swap! pool->queue-length-atom #(merge-with subtract-fn % pool->queue-length))
+      (swap! pool->user->queue-length-atom #(util/deep-merge-with subtract-fn % pool->user->queue-length))))
+
   (timers/deftimer
     [cook-scheduler
      queue-limit
      update-queue-lengths!-duration])
 
-  (defn- update-queue-lengths!
+  (defn update-queue-lengths!
     "Queries queue lengths from the database and updates the atoms"
     []
     (timers/time!
