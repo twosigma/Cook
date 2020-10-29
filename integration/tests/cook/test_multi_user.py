@@ -321,17 +321,20 @@ class MultiUserCookTest(util.CookTest):
                     # First, empty most but not all of the token bucket.
                     jobs1, resp1 = util.submit_jobs(self.cook_url, {}, bucket_size - 60, log_request_body=False)
                     jobs_to_kill.extend(jobs1)
-                    self.assertEqual(resp1.status_code, 201)
+                    self.assertEqual(resp1.status_code, 201, resp1.text)
+
                     # Then more to get us very negative.
                     jobs2, resp2 = util.submit_jobs(self.cook_url, {}, extra_size + 60, log_request_body=False)
                     jobs_to_kill.extend(jobs2)
-                    self.assertEqual(resp2.status_code, 201)
+                    self.assertEqual(resp2.status_code, 201, resp2.text)
+
                     # And finally a request that gets cut off.
                     jobs3, resp3 = util.submit_jobs(self.cook_url, {}, 10)
-                    self.assertEqual(resp3.status_code, 400)
+                    self.assertEqual(resp3.status_code, 400, resp3.text)
+
                     # The timestamp can change so we should only match on the prefix.
                     expected_prefix = f'User {user.name} is inserting too quickly. Not allowed to insert for'
-                    self.assertEqual(resp3.json()['error'][:len(expected_prefix)], expected_prefix)
+                    self.assertEqual(resp3.json()['error'][:len(expected_prefix)], expected_prefix, resp3.text)
                 except:
                     self.logger.exception('Encountered error triggering submission rate limit')
                     raise
@@ -342,11 +345,10 @@ class MultiUserCookTest(util.CookTest):
                     time.sleep(seconds)
                     jobs4, resp4 = util.submit_jobs(self.cook_url, {}, 10)
                     jobs_to_kill.extend(jobs4)
-                    self.assertEqual(resp4.status_code, 201)
+                    self.assertEqual(resp4.status_code, 201, resp4.text)
                     util.kill_jobs(self.cook_url, jobs_to_kill)
 
             trigger_submission_rate_limit()
-
 
     def trigger_preemption(self, pool):
         """
