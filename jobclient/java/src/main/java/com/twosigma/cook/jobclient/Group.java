@@ -16,27 +16,15 @@
 
 package com.twosigma.cook.jobclient;
 
-import com.twosigma.cook.jobclient.HostPlacement;
-import com.twosigma.cook.jobclient.StragglerHandling;
-
-
-import java.util.ArrayList;
-import java.util.Map;
-import java.util.HashMap;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.List;
-import java.util.UUID;
-import java.util.regex.Pattern;
-import java.util.Iterator;
-
+import com.google.common.collect.ImmutableList;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableMap;
-import com.google.common.base.Preconditions;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.UUID;
 
 /**
  * An immutable group implementation.
@@ -136,10 +124,6 @@ final public class Group {
          * @return this builder.
          */
         public Builder setName(String name) {
-            final Pattern pattern = Pattern.compile("[\\.a-zA-Z0-9_-]{0,128}");
-            Preconditions.checkArgument
-                (pattern.matcher(name).matches(),
-                 "Name can only contain '.', '_', '-' or any work characters has length at most 128");
             _name = name;
             return this;
         }
@@ -169,7 +153,7 @@ final public class Group {
         /**
          * Set the jobs of the group to be built.
          *
-         * @param jobs {@link Job} to belong to the group.
+         * @param juuids {@link Job} to belong to the group.
          * @return this builder.
          */
         private Builder _setJobs(List<UUID> juuids) {
@@ -180,7 +164,7 @@ final public class Group {
         /**
          * Add a job (by UUID) to the group to be built.
          *
-         * @param job {@link Job} to belong to the group.
+         * @param juuid {@link Job} to belong to the group.
          * @return this builder.
          */
         private Builder _addJobByUUID(UUID juuid) {
