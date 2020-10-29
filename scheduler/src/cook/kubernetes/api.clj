@@ -716,7 +716,7 @@
                                               (contains? checkpoint-failure-reasons (:reason/name reason)))
                                             instance)]
             (if (-> checkpoint-failures count (>= max-checkpoint-attempts))
-              (log/info "Will not checkpoint, there are too many checkpoint failures"
+              (log/info "Will not checkpoint, there are at least" max-checkpoint-attempts "checkpoint failures"
                         {:job-uuid uuid
                          :max-checkpoint-attempts max-checkpoint-attempts
                          :number-checkpoint-failures (count checkpoint-failures)
