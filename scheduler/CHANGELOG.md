@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.48.4] - 2020-10-28
+### Changed
+- Reduced excessive logging for checkpointing and launching tasks, from @dposada
+
 ## [1.48.3] - 2020-10-23
 ### Changed
 - Added supplemental groups to the pod security context, from @dposada
