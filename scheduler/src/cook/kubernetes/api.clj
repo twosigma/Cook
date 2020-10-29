@@ -704,7 +704,7 @@
 (defn calculate-effective-checkpointing-config
   "Given the job's checkpointing config, calculate the effective config. Making any adjustments such as defaults,
   overrides, or other behavior modifications."
-  [{:keys [job/checkpoint job/instance] :as job} task-id]
+  [{:keys [job/checkpoint job/instance job/uuid] :as job} task-id]
   (when checkpoint
     (let [{:keys [default-checkpoint-config]} (config/kubernetes)
           {:keys [max-checkpoint-attempts checkpoint-failure-reasons disable-checkpointing] :as checkpoint}
@@ -716,8 +716,11 @@
                                               (contains? checkpoint-failure-reasons (:reason/name reason)))
                                             instance)]
             (if (-> checkpoint-failures count (>= max-checkpoint-attempts))
-              (log/info "Will not checkpoint task-id" task-id ", there are at least" max-checkpoint-attempts "failed instances"
-                        {:job job})
+              (log/info "Will not checkpoint, there are at least" max-checkpoint-attempts "checkpoint failures"
+                        {:job-uuid uuid
+                         :max-checkpoint-attempts max-checkpoint-attempts
+                         :number-checkpoint-failures (count checkpoint-failures)
+                         :task-id task-id})
               checkpoint))
           checkpoint)))))
 
