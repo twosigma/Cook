@@ -264,7 +264,7 @@
   "Take a job entity and return a resource map. NOTE: the keys must be same as mesos resource keys"
   [job]
   (let [job-ent->resources-miss
-        (fn [job-ent]
+        (fn [{:keys [job/uuid] :as job-ent}]
           (reduce (fn [m r]
                     (let [resource (keyword (name (:resource/type r)))]
                       (condp contains? resource
@@ -273,7 +273,12 @@
                                            {:cache (:resource.uri/cache? r false)
                                             :executable (:resource.uri/executable? r false)
                                             :value (:resource.uri/value r)
-                                            :extract (:resource.uri/extract? r false)}))))
+                                            :extract (:resource.uri/extract? r false)})
+                        (do
+                          (log/info "Encountered unknown job resource type"
+                                    {:job-uuid uuid
+                                     :resource resource})
+                          m))))
                   {:ports (:job/ports job-ent 0)}
                   (:job/resource job-ent)))]
     (caches/lookup-cache-datomic-entity! caches/job-ent->resources-cache job-ent->resources-miss job)))
