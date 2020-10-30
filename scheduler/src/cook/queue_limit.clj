@@ -129,7 +129,9 @@
     {:pre [(some? pool-name)]}
     (let [inc-number-jobs #(-> % (or 0) (+ number-jobs))]
       (swap! pool->queue-length-atom update pool-name inc-number-jobs)
-      (swap! pool->user->queue-length-atom update-in [pool-name user] inc-number-jobs)))
+      (swap! pool->user->queue-length-atom update-in [pool-name user] inc-number-jobs))
+    {:pool->queue-length @pool->queue-length-atom
+     :pool->user->queue-length @pool->user->queue-length-atom})
 
   (defn dec-queue-length!
     "Decrements the pool-global and per-user queue lengths for
@@ -142,7 +144,9 @@
           (fn [a b]
             (-> a (- b) (max 0)))]
       (swap! pool->queue-length-atom #(merge-with subtract-fn % pool->queue-length))
-      (swap! pool->user->queue-length-atom #(util/deep-merge-with subtract-fn % pool->user->queue-length))))
+      (swap! pool->user->queue-length-atom #(util/deep-merge-with subtract-fn % pool->user->queue-length)))
+    {:pool->queue-length @pool->queue-length-atom
+     :pool->user->queue-length @pool->user->queue-length-atom})
 
   (timers/deftimer
     [cook-scheduler
