@@ -321,17 +321,20 @@ class MultiUserCookTest(util.CookTest):
                     # First, empty most but not all of the token bucket.
                     jobs1, resp1 = util.submit_jobs(self.cook_url, {}, bucket_size - 60, log_request_body=False)
                     jobs_to_kill.extend(jobs1)
-                    self.assertEqual(resp1.status_code, 201)
+                    self.assertEqual(resp1.status_code, 201, resp1.text)
+
                     # Then more to get us very negative.
                     jobs2, resp2 = util.submit_jobs(self.cook_url, {}, extra_size + 60, log_request_body=False)
                     jobs_to_kill.extend(jobs2)
-                    self.assertEqual(resp2.status_code, 201)
+                    self.assertEqual(resp2.status_code, 201, resp2.text)
+
                     # And finally a request that gets cut off.
                     jobs3, resp3 = util.submit_jobs(self.cook_url, {}, 10)
-                    self.assertEqual(resp3.status_code, 400)
+                    self.assertEqual(resp3.status_code, 400, resp3.text)
+
                     # The timestamp can change so we should only match on the prefix.
                     expected_prefix = f'User {user.name} is inserting too quickly. Not allowed to insert for'
-                    self.assertEqual(resp3.json()['error'][:len(expected_prefix)], expected_prefix)
+                    self.assertEqual(resp3.json()['error'][:len(expected_prefix)], expected_prefix, resp3.text)
                 except:
                     self.logger.exception('Encountered error triggering submission rate limit')
                     raise
@@ -342,11 +345,10 @@ class MultiUserCookTest(util.CookTest):
                     time.sleep(seconds)
                     jobs4, resp4 = util.submit_jobs(self.cook_url, {}, 10)
                     jobs_to_kill.extend(jobs4)
-                    self.assertEqual(resp4.status_code, 201)
+                    self.assertEqual(resp4.status_code, 201, resp4.text)
                     util.kill_jobs(self.cook_url, jobs_to_kill)
 
             trigger_submission_rate_limit()
-
 
     def trigger_preemption(self, pool):
         """
@@ -937,3 +939,73 @@ class MultiUserCookTest(util.CookTest):
         self.assertEqual(f'Compute cluster with name {cluster_name} does not exist',
                          resp.json()['error']['message'],
                          resp.content)
+
+    def test_queue_limits(self):
+        # If there is no config matching our pool under test, skip the test
+        settings_dict = util.settings(self.cook_url)
+        per_pool_limits = settings_dict.get("queue-limits", {}).get("per-pool", [])
+        pool = util.default_submit_pool() or util.default_pool(self.cook_url)
+        matching_configs = [m for m in per_pool_limits if re.match(m["pool-regex"], pool)]
+        if len(matching_configs) == 0:
+            self.skipTest(f'Requires per-pool queue-limits in {pool} pool')
+        else:
+            self.logger.info(f'Matching per-pool queue-limits in {pool} pool: {matching_configs}')
+
+        # If the configured queue limits are too high, it's not reasonable to run this test
+        config = matching_configs[0]
+        user_limit_normal = config['user-limit-normal']
+        user_limit_constrained = config['user-limit-constrained']
+        self.assertLessEqual(user_limit_constrained, user_limit_normal)
+        max_limit = 5000
+        if (user_limit_normal > max_limit) or (user_limit_constrained > max_limit):
+            self.skipTest(f'Requires per-pool queue-limits in {pool} pool to be <= {max_limit}')
+
+        # Subtract a small number of jobs to be under, but almost at, the limit
+        small_buffer_of_jobs = 10
+        self.assertLess(small_buffer_of_jobs, user_limit_constrained)
+        num_jobs_under_limit = user_limit_constrained - small_buffer_of_jobs
+
+        def submit_jobs(num_jobs):
+            self.logger.info(f'Submitting {num_jobs} jobs to {pool} pool')
+            bad_constraint = [["HOSTNAME", "EQUALS", "lol won't get scheduled"]]
+            _, submit_resp = util.submit_jobs(self.cook_url,
+                                              {'constraints': bad_constraint},
+                                              clones=num_jobs,
+                                              pool=pool,
+                                              log_request_body=False)
+            if submit_resp.status_code != 201:
+                self.logger.info(submit_resp.text)
+            return submit_resp
+
+        def queue_limit_reached(submit_resp):
+            self.assertEqual(submit_resp.status_code, 422, submit_resp.text)
+            self.assertIn('User has too many jobs queued', submit_resp.text, submit_resp.text)
+            return True
+
+        def submission_succeeded(submit_resp):
+            self.assertEqual(submit_resp.status_code, 201, submit_resp.text)
+            return True
+
+        user = os.getenv('COOK_TEST_QUEUE_LIMITS_USER')
+        user = self.user_factory.specific_user(user) if user else self.user_factory.new_user()
+        with user:
+            try:
+                # Kill the test user's running and waiting jobs. This is safe and won't impact
+                # other tests because we don't share test users between pytest workers.
+                util.kill_running_and_waiting_jobs(self.cook_url, user.name, log_jobs=False)
+
+                # Make sure we can submit a number of jobs less than the user's queue limit
+                util.wait_until(lambda: submit_jobs(num_jobs_under_limit),
+                                submission_succeeded)
+
+                # Trigger the queue-limit-reached failure
+                util.wait_until(lambda: submit_jobs(user_limit_normal - num_jobs_under_limit),
+                                queue_limit_reached)
+
+                # Again, kill running and waiting jobs and make sure we can
+                # submit a number of jobs less than the user's queue limit
+                util.kill_running_and_waiting_jobs(self.cook_url, user.name, log_jobs=False)
+                util.wait_until(lambda: submit_jobs(num_jobs_under_limit),
+                                submission_succeeded)
+            finally:
+                util.kill_running_and_waiting_jobs(self.cook_url, user.name, log_jobs=False)

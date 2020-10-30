@@ -40,6 +40,7 @@
             ; This explicit require is needed so that mount can see the defstate defined in the cook.plugins.submission namespace.
             [cook.plugins.submission]
             [cook.pool :as pool]
+            [cook.queue-limit :as queue-limit]
             ; This explicit require is needed so that mount can see the defstate defined in the cook.quota namespace.
             [cook.quota :as quota]
             [cook.rate-limit]
@@ -103,6 +104,11 @@
                           compute-clusters curator-framework mesos-datomic-mult leadership-atom
                           mesos-agent-attributes-cache pool-name->pending-jobs-atom mesos-heartbeat-chan
                           trigger-chans]
+
+                      ; We track queue limits on all nodes, not just the leader, because
+                      ; we need to check them when job submission requests come in
+                      (queue-limit/start-updating-queue-lengths)
+
                       (if (cook.config/api-only-mode?)
                         (if curator-framework
                           (throw (ex-info "This node is configured for API-only mode, but also has a curator configured"

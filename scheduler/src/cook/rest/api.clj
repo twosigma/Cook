@@ -38,7 +38,9 @@
             [cook.plugins.submission :as submission-plugin]
             [cook.pool :as pool]
             [cook.progress :as progress]
+            [cook.regexp-tools :as regexp-tools]
             [cook.queries :as queries]
+            [cook.queue-limit :as queue-limit]
             [cook.quota :as quota]
             [cook.rate-limit :as rate-limit]
             [cook.scheduler.constraints :as constraints]
@@ -696,12 +698,12 @@
 (defn get-default-container-for-pool
   "Given a pool name, determine a default container that should be run on it."
   [default-containers effective-pool-name]
-  (util/match-based-on-pool-name default-containers effective-pool-name :container))
+  (regexp-tools/match-based-on-pool-name default-containers effective-pool-name :container))
 
 (defn get-gpu-models-on-pool
    "Given a pool name, determine the supported GPU models on that pool."
    [valid-gpu-models effective-pool-name]
-   (util/match-based-on-pool-name valid-gpu-models effective-pool-name :valid-models))
+   (regexp-tools/match-based-on-pool-name valid-gpu-models effective-pool-name :valid-models))
 
 (s/defn make-job-txn
   "Creates the necessary txn data to insert a job into the database"
@@ -1907,10 +1909,12 @@
           group-txns (map #(make-group-txn % (get group-uuid->job-dbids
                                                   (:uuid %)
                                                   []))
-                          groups)]
+                          groups)
+          pool-name (pool/pool-name-or-default (:pool/name pool))]
 
       (let [user (get-in ctx [:request :authorization/user])]
-        (rate-limit/spend! rate-limit/job-submission-rate-limiter user (count jobs)))
+        (rate-limit/spend! rate-limit/job-submission-rate-limiter user (count jobs))
+        (queue-limit/inc-queue-length! pool-name user (count jobs)))
 
       @(d/transact
          conn
@@ -1921,7 +1925,7 @@
              (into group-txns)))
 
       (meters/mark! (meters/meter ["cook-mesos" "scheduler" "jobs-created"
-                                   (str "pool-" (pool/pool-name-or-default (:pool/name pool)))])
+                                   (str "pool-" pool-name)])
                     (count jobs))
       {::results (str/join
                    \space (concat ["submitted jobs"]
@@ -1968,6 +1972,56 @@
       (zero? (:count user-quota)) [false {::error "User quota is set to zero jobs."}]
       (seq errors) [false {::error (str/join "\n" errors)}]
       :else true)))
+
+(defn user-queue-length-within-limit?
+  "Check if the job submission would cause the user to have more jobs queued than they're
+  allowed. We refresh queue lengths from the database on a configurable interval. Note that
+  this check does not take into account any of the following in real-time, and therefore is
+  only 100% accurate as of the last refresh from the database:
+
+  - Jobs will get removed from the queue when they launch. This is going to be minor as
+    launch rate is going to be much smaller than insert rate.
+
+  - Jobs will get added to the queue if they fail and have retries. This is going to be
+    minor as failure rate is going to be much smaller than insert rate.
+
+  - If there are multiple API hosts in the cluster, each one is maintaining a separate
+    count of the queue, without knowing about the other API hosts' job submissions or
+    job kills. We hope that locality (a user tends to talk to the same host) mitigates
+    this.
+
+  In summary, we take into account submitted and killed jobs on the same API host but
+  ignore launched and retried jobs. This check is meant to prevent individual users from
+  flooding the queue with hundreds of thousands of jobs, so if it lets a few hundred too
+  many or too few in until the next refresh from the database, that's acceptable."
+  [{:keys [::jobs ::pool] :as ctx}]
+  (let [pool-name (or (:pool/name pool) (config/default-pool))
+        user (get-in ctx [:request :authorization/user])
+        user-queue-length (queue-limit/user-queue-length pool-name user)
+        user-queue-length-limit (queue-limit/user-queue-limit pool-name)]
+    (if (> (-> jobs count (+ user-queue-length))
+           user-queue-length-limit)
+      (do
+        (log/info "In" pool-name "pool, rejecting job submission due to queue length"
+                  {:number-jobs (count jobs)
+                   :user user
+                   :user-queue-length user-queue-length
+                   :user-queue-length-limit user-queue-length-limit})
+        [false {::error (format "User has too many jobs queued (the per-user queue limit is %d)"
+                                user-queue-length-limit)}])
+      true)))
+
+(defn job-create-processable?
+  "We want to return a 422 (unprocessable entity) if the requested
+   resources for a single job exceed the user's total resource quota,
+   or if the job submission would cause the user to have more jobs
+   queued than they're allowed."
+  [conn ctx]
+  (let [no-job-exceeds-quota-result
+        (no-job-exceeds-quota? conn ctx)]
+    (if (true? no-job-exceeds-quota-result)
+      (user-queue-length-within-limit? ctx)
+      no-job-exceeds-quota-result)))
 
 ;;; On POST; JSON blob that looks like:
 ;;; {"jobs": [{"command": "echo hello world",
@@ -2045,9 +2099,7 @@
                 (let [db (d/db conn)
                       existing (filter (partial job-exists? db) (map :uuid (::jobs ctx)))]
                   [(seq existing) {::existing existing}]))
-     ;; We want to return a 422 (unprocessable entity) if the requested resources
-     ;; for a single job exceed the user's total resource quota.
-     :processable? (partial no-job-exceeds-quota? conn)
+     :processable? (partial job-create-processable? conn)
      ;; To ensure compatibility with existing clients,
      ;; we need to return 409 (conflict) when a client POSTs a Job UUID that already exists.
      ;; Liberator normally only supports 409 responses to PUT requests, so we need to override
@@ -3016,7 +3068,7 @@
      ; TODO (pschorf) - cache this if it is a performance bottleneck
      :handle-ok (fn [_]
                   (let [uuid->datasets (->> (d/db conn)
-                                            util/get-pending-job-ents
+                                            queries/get-pending-job-ents
                                             (filter (fn [j] (not (empty? (:job/datasets j)))))
                                             (map (fn [j] [(:job/uuid j) (dl/get-dataset-maps j)]))
                                             (into {}))

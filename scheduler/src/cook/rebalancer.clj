@@ -20,6 +20,7 @@
             [clojure.data.priority-map :as pm]
             [clojure.tools.logging :as log]
             [clojure.walk :refer [keywordize-keys]]
+            [cook.cached-queries :as cached-queries]
             [cook.compute-cluster :as cc]
             [cook.config :as config]
             [cook.quota :as quota]
@@ -232,7 +233,7 @@
          running-task-ents (filter (fn [task]
                                      (-> task
                                          :job/_instance
-                                         util/job->pool-name
+                                         cached-queries/job->pool-name
                                          (= pool-name)))
                                    running-task-ents)
          using-pools? (not (nil? (config/default-pool)))

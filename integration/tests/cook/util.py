@@ -1861,16 +1861,25 @@ def has_one_agent():
 def supports_exit_code():
     return using_kubernetes() or is_cook_executor_in_use()
 
+
 def pool_quota_test_pool():
     return os.getenv("COOK_TEST_POOL_QUOTA_TEST_POOL", None)
 
-def kill_running_and_waiting_jobs(cook_url, user):
+
+def kill_running_and_waiting_jobs(cook_url, user, log_jobs=True):
     one_hour_in_millis = 60 * 60 * 1000
     start = current_milli_time() - (72 * one_hour_in_millis)
     end = current_milli_time() + one_hour_in_millis
-    running = jobs(cook_url, user=user, state=['running', 'waiting'], start=start, end=end).json()
-    logger.info(f'Currently running/waiting jobs: {json.dumps(running, indent=2)}')
-    kill_jobs(cook_url, running)
+    while True:
+        logger.info(f'Querying for running / waiting jobs for {user}')
+        running = jobs(cook_url, user=user, state=['running', 'waiting'], start=start, end=end, limit=500).json()
+        logger.info(f'{len(running)} running / waiting jobs for {user}')
+        if len(running) == 0:
+            break
+        else:
+            if log_jobs:
+                logger.info(f'Currently running/waiting jobs: {json.dumps(running, indent=2)}')
+            kill_jobs(cook_url, running)
 
 
 def running_tasks(cook_url):

@@ -497,7 +497,10 @@
                                :target-per-pool-match-interval-millis 3000
                                :unmatched-cycles-warn-threshold 500
                                :unmatched-fraction-warn-threshold 0.5}
-                              offer-matching))}))
+                              offer-matching))
+     :queue-limits (fnk [[:config {queue-limits {}}]]
+                     (merge {:update-interval-seconds 180}
+                            queue-limits))}))
 
 (defn read-config
   "Given a config file path, reads the config and returns the map"
@@ -656,3 +659,7 @@
 (defn offer-matching
   []
   (-> config :settings :offer-matching))
+
+(defn queue-limits
+  []
+  (-> config :settings :queue-limits))
