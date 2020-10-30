@@ -989,10 +989,13 @@ class MultiUserCookTest(util.CookTest):
         user = self.user_factory.specific_user(user) if user else self.user_factory.new_user()
         with user:
             try:
-                # Kill running and waiting jobs and make sure we can
-                # submit a number of jobs less than the user's queue limit
+                # Kill the test user's running and waiting jobs. This is safe and won't impact
+                # other tests because we don't share test users between pytest workers.
                 util.kill_running_and_waiting_jobs(self.cook_url, user.name, log_jobs=False)
-                util.wait_until(lambda: submit_jobs(num_jobs_under_limit), submission_succeeded)
+
+                # Make sure we can submit a number of jobs less than the user's queue limit
+                util.wait_until(lambda: submit_jobs(num_jobs_under_limit),
+                                submission_succeeded)
 
                 # Trigger the queue-limit-reached failure
                 util.wait_until(lambda: submit_jobs(user_limit_normal - num_jobs_under_limit),
@@ -1001,6 +1004,7 @@ class MultiUserCookTest(util.CookTest):
                 # Again, kill running and waiting jobs and make sure we can
                 # submit a number of jobs less than the user's queue limit
                 util.kill_running_and_waiting_jobs(self.cook_url, user.name, log_jobs=False)
-                util.wait_until(lambda: submit_jobs(num_jobs_under_limit), submission_succeeded)
+                util.wait_until(lambda: submit_jobs(num_jobs_under_limit),
+                                submission_succeeded)
             finally:
                 util.kill_running_and_waiting_jobs(self.cook_url, user.name, log_jobs=False)
