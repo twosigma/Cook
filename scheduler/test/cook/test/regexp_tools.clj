@@ -25,11 +25,62 @@
            (regexp-tools/match-based-on-regexp regexp-name :tbf-config match-list key)))))
 
 (deftest test-match-based-on-pool-name
-  (let [matchlist
-        [{:pool-regex "^foo$" :field {:foo 1}}
-         {:pool-regex ".*" :field {:bar 2}}
-         {:pool-regex "^baz$" :field {:baz 3}}]]
-    (is (= (regexp-tools/match-based-on-pool-name matchlist "foo" :field) {:foo 1}))
-    (is (= (regexp-tools/match-based-on-pool-name matchlist "bar" :field) {:bar 2}))
-    (is (= (regexp-tools/match-based-on-pool-name matchlist "baz" :field) {:bar 2})))
-  (is (= (regexp-tools/match-based-on-pool-name [] "foo" :field) nil)))
+  (testing "basics"
+    (let [matchlist
+          [{:pool-regex "^foo$" :field {:foo 1}}
+           {:pool-regex ".*" :field {:bar 2}}
+           {:pool-regex "^baz$" :field {:baz 3}}]]
+      (is (= (regexp-tools/match-based-on-pool-name matchlist "foo" :field) {:foo 1}))
+      (is (= (regexp-tools/match-based-on-pool-name matchlist "bar" :field) {:bar 2}))
+      (is (= (regexp-tools/match-based-on-pool-name matchlist "baz" :field) {:bar 2})))
+    (is (= (regexp-tools/match-based-on-pool-name [] "foo" :field) nil)))
+
+  (testing "defaulting"
+    (is (= false
+           (regexp-tools/match-based-on-pool-name
+             [{:pool-regex "^.*$" :field false}]
+             "pool-name"
+             :field
+             :default-value "default")))
+    (is (= {}
+           (regexp-tools/match-based-on-pool-name
+             [{:pool-regex "^.*$" :field {}}]
+             "pool-name"
+             :field
+             :default-value "default")))
+    (is (= []
+           (regexp-tools/match-based-on-pool-name
+             [{:pool-regex "^.*$" :field []}]
+             "pool-name"
+             :field
+             :default-value "default")))
+    (is (= "value"
+           (regexp-tools/match-based-on-pool-name
+             [{:pool-regex "^foo$" :field "value"}]
+             "foo"
+             :field
+             :default-value "default")))
+    (is (= "default"
+           (regexp-tools/match-based-on-pool-name
+             [{:pool-regex "^foo$" :field "value"}]
+             "pool-name"
+             :field
+             :default-value "default")))
+    (is (= "default"
+           (regexp-tools/match-based-on-pool-name
+             [{:pool-regex "^.*$" :field nil}]
+             "pool-name"
+             :field
+             :default-value "default")))
+    (is (= "default"
+           (regexp-tools/match-based-on-pool-name
+             []
+             "pool-name"
+             :field
+             :default-value "default")))
+    (is (= "default"
+           (regexp-tools/match-based-on-pool-name
+             nil
+             "pool-name"
+             :field
+             :default-value "default")))))
