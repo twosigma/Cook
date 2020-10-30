@@ -1979,8 +1979,10 @@
   this check does not take into account any of the following in real-time, and therefore is
   only 100% accurate as of the last refresh from the database:
 
-  - Jobs will get removed from the queue when they launch
-  - Jobs will get added to the queue if they fail and have retries
+  - Jobs will get removed from the queue when they launch. This is going to be minor as
+    launch rate is going to be much smaller than insert rate.
+  - Jobs will get added to the queue if they fail and have retries. This is going to be
+    minor as failure rate is going to be much smaller than insert rate.
   - If there are multiple API hosts in the cluster, each one is maintaining a separate
     count of the queue, without knowing about the other API hosts' job submissions or
     job kills
