@@ -1981,16 +1981,19 @@
 
   - Jobs will get removed from the queue when they launch. This is going to be minor as
     launch rate is going to be much smaller than insert rate.
+
   - Jobs will get added to the queue if they fail and have retries. This is going to be
     minor as failure rate is going to be much smaller than insert rate.
+
   - If there are multiple API hosts in the cluster, each one is maintaining a separate
     count of the queue, without knowing about the other API hosts' job submissions or
-    job kills
+    job kills. We hope that locality (a user tends to talk to the same host) mitigates
+    this.
 
-  Why is it OK to not take these things into account? This check is meant to prevent
-  individual users from flooding the queue with hundreds of thousands of jobs, so if it
-  lets a few hundred too many or too few in until the next refresh from the database,
-  that's acceptable."
+  In summary, we take into account submitted and killed jobs on the same API host but
+  ignore launched and retried jobs. This check is meant to prevent individual users from
+  flooding the queue with hundreds of thousands of jobs, so if it lets a few hundred too
+  many or too few in until the next refresh from the database, that's acceptable."
   [{:keys [::jobs ::pool] :as ctx}]
   (let [pool-name (or (:pool/name pool) (config/default-pool))
         user (get-in ctx [:request :authorization/user])
