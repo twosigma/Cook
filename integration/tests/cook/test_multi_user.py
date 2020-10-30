@@ -941,6 +941,7 @@ class MultiUserCookTest(util.CookTest):
                          resp.content)
 
     def test_queue_limits(self):
+        # If there is no config matching our pool under test, skip the test
         settings_dict = util.settings(self.cook_url)
         per_pool_limits = settings_dict.get("queue-limits", {}).get("per-pool", [])
         pool = util.default_submit_pool() or util.default_pool(self.cook_url)
@@ -950,26 +951,25 @@ class MultiUserCookTest(util.CookTest):
         else:
             self.logger.info(f'Matching per-pool queue-limits in {pool} pool: {matching_configs}')
 
+        # If the configured queue limits are too high, it's not reasonable to run this test
         config = matching_configs[0]
-        max_limit = 5000
         user_limit_normal = config['user-limit-normal']
         user_limit_constrained = config['user-limit-constrained']
+        self.assertLessEqual(user_limit_constrained, user_limit_normal)
+        max_limit = 5000
         if (user_limit_normal > max_limit) or (user_limit_constrained > max_limit):
             self.skipTest(f'Requires per-pool queue-limits in {pool} pool to be <= {max_limit}')
 
-        buffer = 10
-        self.assertLess(buffer, user_limit_constrained)
-        self.assertLessEqual(user_limit_constrained, user_limit_normal)
-        bad_constraint = [["HOSTNAME", "EQUALS", "lol won't get scheduled"]]
-        job_spec_bad_constraint = {'constraints': bad_constraint}
-        user = os.getenv('COOK_TEST_QUEUE_LIMITS_USER')
-        user = self.user_factory.specific_user(user) if user else self.user_factory.new_user()
-        num_jobs_under_limit = user_limit_constrained - buffer
+        # Subtract a small number of jobs to be under, but almost at, the limit
+        small_buffer_of_jobs = 10
+        self.assertLess(small_buffer_of_jobs, user_limit_constrained)
+        num_jobs_under_limit = user_limit_constrained - small_buffer_of_jobs
 
         def submit_jobs(num_jobs):
             self.logger.info(f'Submitting {num_jobs} jobs to {pool} pool')
+            bad_constraint = [["HOSTNAME", "EQUALS", "lol won't get scheduled"]]
             _, submit_resp = util.submit_jobs(self.cook_url,
-                                              job_spec_bad_constraint,
+                                              {'constraints': bad_constraint},
                                               clones=num_jobs,
                                               pool=pool,
                                               log_request_body=False)
@@ -985,6 +985,8 @@ class MultiUserCookTest(util.CookTest):
             self.assertEqual(submit_resp.status_code, 201, submit_resp.text)
             return True
 
+        user = os.getenv('COOK_TEST_QUEUE_LIMITS_USER')
+        user = self.user_factory.specific_user(user) if user else self.user_factory.new_user()
         with user:
             try:
                 # Kill running and waiting jobs and make sure we can
