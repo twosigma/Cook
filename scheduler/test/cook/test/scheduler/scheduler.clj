@@ -2256,7 +2256,9 @@
   (testing "adds up resources by type"
     (is (= [{"cpus" 1.2
              "mem" 34
-             "gpus/nvidia-tesla-k80" 2}
+             "gpus/nvidia-tesla-k80" 2
+             "disk/pd-ssd/request" 10
+             "disk/pd-ssd/limit" 20}
             {"cpus" 2.3
              "mem" 45
              "gpus/nvidia-tesla-p100" 4}]
@@ -2265,13 +2267,13 @@
                                   :environment/value "nvidia-tesla-k80"}]
                :job/resource [{:resource/type :cpus :resource/amount 1.2}
                               {:resource/type :mem :resource/amount 34}
-                              {:resource/type :gpus :resource/amount 2}]}
+                              {:resource/type :gpus :resource/amount 2}
+                              {:resource/type :disk :resource.disk/request 10 :resource.disk/limit 20 :resource.disk/type "pd-ssd"}]}
               {:job/environment [{:environment/name "COOK_GPU_MODEL"
                                   :environment/value "nvidia-tesla-p100"}]
                :job/resource [{:resource/type :cpus :resource/amount 2.3}
                               {:resource/type :mem :resource/amount 45}
                               {:resource/type :gpus :resource/amount 4}]}]))))
-
   (testing "gracefully handles unspecified gpu model"
     (is (= [{"cpus" 1.2
              "mem" 34
@@ -2285,4 +2287,19 @@
                               {:resource/type :gpus :resource/amount 2}]}
               {:job/resource [{:resource/type :cpus :resource/amount 2.3}
                               {:resource/type :mem :resource/amount 45}
-                              {:resource/type :gpus :resource/amount 4}]}])))))
+                              {:resource/type :gpus :resource/amount 4}]}]))))
+  (testing "gracefully handles unspecified disk type"
+    (is (= [{"cpus" 1.2
+             "mem" 34
+             "disk/unspecified-disk-type/request" 10}
+            {"cpus" 2.3
+             "mem" 45
+             "disk/unspecified-disk-type/request" 50
+             "disk/unspecified-disk-type/limit" 100}]
+           (sched/jobs->resource-maps
+             [{:job/resource [{:resource/type :cpus :resource/amount 1.2}
+                              {:resource/type :mem :resource/amount 34}
+                              {:resource/type :disk :resource.disk/request 10}]}
+              {:job/resource [{:resource/type :cpus :resource/amount 2.3}
+                              {:resource/type :mem :resource/amount 45}
+                              {:resource/type :disk :resource.disk/request 50 :resource.disk/limit 100}]}])))))
