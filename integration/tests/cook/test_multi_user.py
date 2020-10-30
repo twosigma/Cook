@@ -973,7 +973,8 @@ class MultiUserCookTest(util.CookTest):
                                               clones=num_jobs,
                                               pool=pool,
                                               log_request_body=False)
-            self.logger.info(submit_resp.text)
+            if submit_resp.status_code != 201:
+                self.logger.info(submit_resp.text)
             return submit_resp
 
         def queue_limit_reached(submit_resp):
