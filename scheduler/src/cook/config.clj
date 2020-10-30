@@ -469,13 +469,13 @@
                                  pool-selection)})))
      :kubernetes (fnk [[:config {kubernetes {}}]]
                    (let [{:keys [controller-lock-num-shards]
-                          :or {controller-lock-num-shards 32}}
+                          :or {controller-lock-num-shards 4095}}
                          kubernetes
                          _
-                         (when (not (< 0 controller-lock-num-shards 256))
+                         (when (not (< 0 controller-lock-num-shards 32778))
                            (throw
                              (ex-info
-                               "Please configure :controller-lock-num-shards to > 0 and < 256 in your config file."
+                               "Please configure :controller-lock-num-shards to > 0 and < 32778 in your config file."
                                kubernetes)))
                          lock-objects
                          (repeatedly
