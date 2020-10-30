@@ -275,7 +275,7 @@
                                             :value (:resource.uri/value r)
                                             :extract (:resource.uri/extract? r false)})
                         (do
-                          (log/info "Encountered unknown job resource type"
+                          (log/warn "Encountered unknown job resource type"
                                     {:job-uuid uuid
                                      :resource resource})
                           m))))
