@@ -583,12 +583,22 @@
 (defn offers->stats
   "Given a collection of offers, returns stats about the offers"
   [offers]
-  (-> offers tools/offers->resource-maps resource-maps->stats))
+  (try
+    (-> offers tools/offers->resource-maps resource-maps->stats)
+    (catch Exception e
+      (let [message "Error collecting offer stats"]
+        (log/error e message)
+        message))))
 
 (defn jobs->stats
   "Given a collection of jobs, returns stats about the jobs"
   [jobs]
-  (-> jobs jobs->resource-maps resource-maps->stats))
+  (try
+    (-> jobs jobs->resource-maps resource-maps->stats)
+    (catch Exception e
+      (let [message "Error collecting job stats"]
+        (log/error e message)
+        message))))
 
 (defn match-offer-to-schedule
   "Given an offer and a schedule, computes all the tasks should be launched as a result.
