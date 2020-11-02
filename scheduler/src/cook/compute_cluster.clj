@@ -20,7 +20,9 @@
             [cook.datomic :as datomic]
             [cook.util :as util]
             [datomic.api :as d]
-            [plumbing.core :refer [map-from-keys map-from-vals map-vals]]))
+            [metrics.timers :as timers]
+            [plumbing.core :refer [map-from-keys map-from-vals map-vals]])
+  (:import (java.util.concurrent.locks ReentrantReadWriteLock)))
 
 ; There's an ugly race where the core cook scheduler can kill a job before it tries to launch it.
 ; What happens is:
@@ -43,7 +45,12 @@
 ;
 ; So, we must grab this lock before calling kill-task in the compute cluster API. As all of our invocations to it are via
 ; safe-kill-task, we add the lock there.
-(def kill-lock-object (Object.))
+;
+; We use a ReaderWriterLock where launch tasks grab the readers, so multiple pools can launch at the same time, and a writer lock
+; here so that kills are blocked until nobody is in the middle of launching. Note that we don't actually need to hold this lock while
+; we kill, just to delay the kill until after any task-id written in the database is also guaranteed to be into the backend.
+;
+(def ^ReentrantReadWriteLock kill-lock-object (ReentrantReadWriteLock. true))
 
 (defprotocol ComputeCluster
   (launch-tasks [this pool-name matches process-task-post-launch-fn]
@@ -98,14 +105,21 @@
   (launch-rate-limiter [this]
     "Return the RateLimiter that should be used to limit launches to this compute cluster"))
 
+(def kill-lock-timer-for-kill (timers/timer ["cook-mesos" "scheduler" "kill-lock-acquire-for-kill"]))
+
 (defn safe-kill-task
   "A safe version of kill task that never throws. This reduces the risk that errors in one compute cluster propagate and cause problems in another compute cluster."
   [{:keys [name] :as compute-cluster} task-id]
-  (locking kill-lock-object
-    (try
-      (kill-task compute-cluster task-id)
-      (catch Throwable t
-        (log/error t "In compute cluster" name ", error killing task" task-id)))))
+  ; Yes, this is an empty lock body. It is to create an ordering relationship so that if we're in the process of writing to datomic and launching,
+  ; we defer killing anything until we've told mesos/k8s about the pod. See further explanation at kill-lock-object.
+  (let [kill-lock-timer-context (timers/start kill-lock-timer-for-kill)]
+    (.. kill-lock-object writeLock lock)
+    (.. kill-lock-object writeLock unlock)
+    (.stop kill-lock-timer-context))
+  (try
+    (kill-task compute-cluster task-id)
+    (catch Throwable t
+      (log/error t "In compute cluster" name ", error killing task" task-id))))
 
 (defn kill-task-if-possible
   "If compute cluster is nil, print a warning instead of killing the task. There are cases, in particular,
