@@ -716,12 +716,12 @@
 (defn get-disk-types-on-pool
   "Given a pool name, determine the supported disk types on that pool."
   [disk effective-pool-name]
-  (util/match-based-on-pool-name disk effective-pool-name :valid-types))
+  (regexp-tools/match-based-on-pool-name disk effective-pool-name :valid-types))
 
 (defn get-max-disk-size-on-pool
   "Given a pool name, determine the max requestable disk size on that pool."
   [disk effective-pool-name]
-  (util/match-based-on-pool-name disk effective-pool-name :max-size))
+  (regexp-tools/match-based-on-pool-name disk effective-pool-name :max-size))
 
 (s/defn make-job-txn
   "Creates the necessary txn data to insert a job into the database"

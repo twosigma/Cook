@@ -96,7 +96,7 @@
       (is (thrown? ExceptionInfo (config-settings bad-config))))
     (let [bad-config (assoc-in (api/minimal-config)
                                [:config :kubernetes :controller-lock-num-shards]
-                               256)]
+                               32778)]
       (is (thrown? ExceptionInfo (config-settings bad-config))))))
 
 (deftest test-valid-gpu-models-config-settings
