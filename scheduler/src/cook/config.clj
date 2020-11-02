@@ -488,13 +488,13 @@
                                  pool-selection)})))
      :kubernetes (fnk [[:config {kubernetes {}}]]
                    (let [{:keys [controller-lock-num-shards]
-                          :or {controller-lock-num-shards 32}}
+                          :or {controller-lock-num-shards 4095}}
                          kubernetes
                          _
-                         (when (not (< 0 controller-lock-num-shards 256))
+                         (when (not (< 0 controller-lock-num-shards 32778))
                            (throw
                              (ex-info
-                               "Please configure :controller-lock-num-shards to > 0 and < 256 in your config file."
+                               "Please configure :controller-lock-num-shards to > 0 and < 32778 in your config file."
                                kubernetes)))
                          lock-objects
                          (repeatedly
@@ -516,7 +516,10 @@
                                :target-per-pool-match-interval-millis 3000
                                :unmatched-cycles-warn-threshold 500
                                :unmatched-fraction-warn-threshold 0.5}
-                              offer-matching))}))
+                              offer-matching))
+     :queue-limits (fnk [[:config {queue-limits {}}]]
+                     (merge {:update-interval-seconds 180}
+                            queue-limits))}))
 
 (defn read-config
   "Given a config file path, reads the config and returns the map"
@@ -680,3 +683,7 @@
 (defn offer-matching
   []
   (-> config :settings :offer-matching))
+
+(defn queue-limits
+  []
+  (-> config :settings :queue-limits))

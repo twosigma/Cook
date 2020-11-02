@@ -17,6 +17,7 @@
   (:require [clojure.core.cache :as cache]
             [clojure.test :refer :all]
             [clojure.test.check.generators :as gen]
+            [cook.queries :as queries]
             [cook.quota :as quota]
             [cook.rebalancer :as rebalancer :refer [->State]]
             [cook.scheduler.dru :as dru]
@@ -781,7 +782,7 @@
           db (d/db conn)
           state (rebalancer/init-state db
                                        (util/get-running-task-ents db)
-                                       (util/get-pending-job-ents db)
+                                       (queries/get-pending-job-ents db)
                                        {}
                                        {:pool/name "no-pool" :pool/dru-mode :pool.dru-mode/default})
           decision (rebalancer/compute-preemption-decision
@@ -1144,7 +1145,7 @@
 
             db (d/db conn)
 
-            pending-job-ents (util/get-pending-job-ents db)
+            pending-job-ents (queries/get-pending-job-ents db)
             pool-ent {:pool/dru-mode :pool.dru-mode/default}]
         (rebalance db agent-attributes-cache pending-job-ents {} (atom {})
                    {:max-preemption 128, :pool-ent pool-ent})))))
@@ -1203,7 +1204,7 @@
                         :mem 10.0 :cpus 10.0)
       (let [db (d/db conn)
             [{:keys [hostname task to-make-room-for]}]
-            (rebalance db agent-attributes-cache (util/get-pending-job-ents db)
+            (rebalance db agent-attributes-cache (queries/get-pending-job-ents db)
                        {"hostA" {:cpus 0.0 :mem 0.0 :gpus 0.0}} reservations params)]
         (is (= "hostA" hostname))
         (is (= job4 (:db/id to-make-room-for)))
@@ -1234,7 +1235,7 @@
                         :mem 1.0 :cpus 1.0)
       (let [db (d/db conn)
             [{:keys [hostname task to-make-room-for]}]
-            (rebalance db agent-attributes-cache (util/get-pending-job-ents db)
+            (rebalance db agent-attributes-cache (queries/get-pending-job-ents db)
                        {"hostA" {:cpus 0.0 :mem 0.0 :gpus 0.0}} reservations params)]
         (is (= "hostA" hostname))
         (is (= job2 (:db/id to-make-room-for)))
@@ -1269,7 +1270,7 @@
                         :mem 10.0 :cpus 10.0)
       (let [db (d/db conn)
             [{:keys [hostname task to-make-room-for]}]
-            (rebalance db agent-attributes-cache (util/get-pending-job-ents db)
+            (rebalance db agent-attributes-cache (queries/get-pending-job-ents db)
                        {"hostA" {:cpus 0.0 :mem 0.0 :gpus 0.0}} reservations params)]
         (is (= "hostA" hostname))
         (is (= job4 (:db/id to-make-room-for)))
@@ -1348,7 +1349,7 @@
         b-waiting-job (d/entity db b-waiting-job-id)
         state (rebalancer/init-state db
                                      (util/get-running-task-ents db)
-                                     (util/get-pending-job-ents db)
+                                     (queries/get-pending-job-ents db)
                                      {}
                                      {:pool/name "no-pool" :pool/dru-mode :pool.dru-mode/default})]
     (is (not (rebalancer/job-below-quota state a-waiting-job)))

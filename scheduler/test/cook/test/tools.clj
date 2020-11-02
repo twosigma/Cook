@@ -20,9 +20,11 @@
             [clojure.core.cache :as cache]
             [clojure.test :refer :all]
             [cook.config :as config]
+            [cook.queries :as queries]
             [cook.test.testutil :as testutil
              :refer [create-dummy-group create-dummy-instance create-dummy-job create-dummy-job-with-instances create-pool restore-fresh-database!]]
-            [cook.tools :as util]
+            [cook.tools :as tools]
+            [cook.util :as util]
             [datomic.api :as d :refer [db q]])
   (:import (java.util.concurrent ExecutionException)
            (java.util Date)
@@ -36,13 +38,13 @@
               (create-dummy-job conn :ncpus 1.00 :memory 30.0 :gpus 2.0)
               (create-dummy-job conn :ncpus 10.0 :memory 5.0)]
         job-ents (mapv (partial d/entity (db conn)) jobs)]
-    (is (= (util/total-resources-of-jobs (take 1 job-ents))
+    (is (= (tools/total-resources-of-jobs (take 1 job-ents))
            {:jobs 1 :cpus 4.0 :mem 0.5 :gpus 0.0}))
-    (is (= (util/total-resources-of-jobs (take 2 job-ents))
+    (is (= (tools/total-resources-of-jobs (take 2 job-ents))
            {:jobs 2 :cpus 4.1 :mem 10.5 :gpus 1.0}))
-    (is (= (util/total-resources-of-jobs job-ents)
+    (is (= (tools/total-resources-of-jobs job-ents)
            {:jobs 4 :cpus 15.1 :mem 45.5 :gpus 3.0}))
-    (is (= (util/total-resources-of-jobs nil)
+    (is (= (tools/total-resources-of-jobs nil)
            {:jobs 0 :cpus 0.0 :mem 0.0 :gpus 0.0}))))
 
 (deftest test-get-running-job-ents
@@ -97,26 +99,26 @@
                       :pool "pool-a")
 
     ; No default pool, specifying a specific pool
-    (is (= 2 (count (util/get-user-running-job-ents-in-pool (db conn) "u1" "pool-a"))))
-    (is (= 1 (count (util/get-user-running-job-ents-in-pool (db conn) "u2" "pool-b"))))
-    (is (= 0 (count (util/get-user-running-job-ents-in-pool (db conn) "u3" "pool-c"))))
+    (is (= 2 (count (tools/get-user-running-job-ents-in-pool (db conn) "u1" "pool-a"))))
+    (is (= 1 (count (tools/get-user-running-job-ents-in-pool (db conn) "u2" "pool-b"))))
+    (is (= 0 (count (tools/get-user-running-job-ents-in-pool (db conn) "u3" "pool-c"))))
 
     ; No default pool, not specifying a pool
-    (is (= 2 (count (util/get-user-running-job-ents-in-pool (db conn) "u1" nil))))
-    (is (= 1 (count (util/get-user-running-job-ents-in-pool (db conn) "u2" nil))))
-    (is (= 0 (count (util/get-user-running-job-ents-in-pool (db conn) "u3" nil))))
+    (is (= 2 (count (tools/get-user-running-job-ents-in-pool (db conn) "u1" nil))))
+    (is (= 1 (count (tools/get-user-running-job-ents-in-pool (db conn) "u2" nil))))
+    (is (= 0 (count (tools/get-user-running-job-ents-in-pool (db conn) "u3" nil))))
 
     ; Default pool defined, specifying a specific pool
     (with-redefs [config/default-pool (constantly "pool-a")]
-      (is (= 4 (count (util/get-user-running-job-ents-in-pool (db conn) "u1" "pool-a"))))
-      (is (= 1 (count (util/get-user-running-job-ents-in-pool (db conn) "u2" "pool-b"))))
-      (is (= 0 (count (util/get-user-running-job-ents-in-pool (db conn) "u3" "pool-c")))))
+      (is (= 4 (count (tools/get-user-running-job-ents-in-pool (db conn) "u1" "pool-a"))))
+      (is (= 1 (count (tools/get-user-running-job-ents-in-pool (db conn) "u2" "pool-b"))))
+      (is (= 0 (count (tools/get-user-running-job-ents-in-pool (db conn) "u3" "pool-c")))))
 
     ; Default pool defined, not specifying a pool
     (with-redefs [config/default-pool (constantly "pool-b")]
-      (is (= 3 (count (util/get-user-running-job-ents-in-pool (db conn) "u1" nil))))
-      (is (= 2 (count (util/get-user-running-job-ents-in-pool (db conn) "u2" nil))))
-      (is (= 0 (count (util/get-user-running-job-ents-in-pool (db conn) "u3" nil)))))))
+      (is (= 3 (count (tools/get-user-running-job-ents-in-pool (db conn) "u1" nil))))
+      (is (= 2 (count (tools/get-user-running-job-ents-in-pool (db conn) "u2" nil))))
+      (is (= 0 (count (tools/get-user-running-job-ents-in-pool (db conn) "u3" nil)))))))
 
 (deftest test-get-pending-job-ents
   (let [uri "datomic:mem://test-get-pending-job-ents"
@@ -125,26 +127,26 @@
     (create-dummy-job conn :user "u1" :job-state :job.state/running)
     (create-dummy-job conn :user "u2" :job-state :job.state/waiting)
     (create-dummy-job conn :user "u1" :job-state :job.state/waiting)
-    (is (= 3 (count (util/get-pending-job-ents (db conn)))))))
+    (is (= 3 (count (queries/get-pending-job-ents (db conn)))))))
 
 (deftest test-filter-sequential
   ; Same as filter
-  (is (util/filter-sequential (fn [state x]
+  (is (tools/filter-sequential (fn [state x]
                                 [state (even? x)])
-                              {}
-                              (range 10))
+                               {}
+                               (range 10))
       (filter even? (range 10)))
   ;; Check lazy
-  (is (take 100 (util/filter-sequential (fn [state x]
+  (is (take 100 (tools/filter-sequential (fn [state x]
                                           [state (even? x)])
-                                        {}
-                                        (range)))
+                                         {}
+                                         (range)))
       (take 100 (filter even? (range)))
       )
   ;; Check with state
   ;; Take first 100 odd numbers. Take even numbers after first 100
   (is (take 200
-            (util/filter-sequential
+            (tools/filter-sequential
               (fn [state x]
                 (let [state' (merge-with + state {:even (mod (inc x) 2) ;if x even this is 1
                                                   :odd (mod x 2) ;if x odd, this is 1
@@ -173,7 +175,7 @@
                                               :end-time (tc/to-date end))
             task-ent (d/entity (d/db conn) task-entid)]
         (is (= (t/in-seconds expected-run-time)
-               (t/in-seconds (util/task-run-time task-ent))))))
+               (t/in-seconds (tools/task-run-time task-ent))))))
     (testing "task running"
       (let [expected-run-time (t/hours 3)
             start (t/ago expected-run-time)
@@ -184,7 +186,7 @@
                                               :start-time (tc/to-date start))
             task-ent (d/entity (d/db conn) task-entid)]
         (is (= (t/in-seconds expected-run-time)
-               (t/in-seconds (util/task-run-time task-ent))))))))
+               (t/in-seconds (tools/task-run-time task-ent))))))))
 
 (deftest test-attempts-consumed
   (let [uri "datomic:mem://test-attempts-consumed"
@@ -198,7 +200,7 @@
             _ (create-dummy-instance conn job :instance-status :instance.status/running) ; Not counted
             db (d/db conn)
             job-ent (d/entity @(d/sync conn) job)]
-        (is (= (util/job-ent->attempts-consumed db job-ent) 2))
+        (is (= (tools/job-ent->attempts-consumed db job-ent) 2))
         ))
     (testing "Some mea-culpa reasons"
       (let [job (create-dummy-job conn :user "tsram" :job-state :job.state/completed :retry-count 3)
@@ -211,7 +213,7 @@
             _ (create-dummy-instance conn job :instance-status :instance.status/running) ; Not counted
             db (d/db conn)
             job-ent (d/entity @(d/sync conn) job)]
-        (is (= (util/job-ent->attempts-consumed db job-ent) 1))
+        (is (= (tools/job-ent->attempts-consumed db job-ent) 1))
         ))
     (testing "All mea-culpa reasons"
       (let [job (create-dummy-job conn :user "tsram" :job-state :job.state/completed :retry-count 3)
@@ -222,7 +224,7 @@
             _ (create-dummy-instance conn job :instance-status :instance.status/running) ; Not counted
             db (d/db conn)
             job-ent (d/entity @(d/sync conn) job)]
-        (is (= (util/job-ent->attempts-consumed db job-ent) 0))
+        (is (= (tools/job-ent->attempts-consumed db job-ent) 0))
         ))
     (testing "Some nil reasons"
       (let [job (create-dummy-job conn :user "tsram" :job-state :job.state/completed :retry-count 3)
@@ -234,7 +236,7 @@
             _ (create-dummy-instance conn job :instance-status :instance.status/running) ; Not counted
             db (d/db conn)
             job-ent (d/entity @(d/sync conn) job)]
-        (is (= (util/job-ent->attempts-consumed db job-ent) 2))
+        (is (= (tools/job-ent->attempts-consumed db job-ent) 2))
         ))
     (testing "Finished running job"
       (let [job (create-dummy-job conn :user "tsram" :job-state :job.state/completed :retry-count 3)
@@ -245,7 +247,7 @@
             _ (create-dummy-instance conn job :instance-status :instance.status/running) ; Not counted
             db (d/db conn)
             job-ent (d/entity @(d/sync conn) job)]
-        (is (= (util/job-ent->attempts-consumed db job-ent) 2))
+        (is (= (tools/job-ent->attempts-consumed db job-ent) 2))
         ))
     (testing "Finished job"
       (let [job (create-dummy-job conn :user "tsram" :job-state :job.state/completed :retry-count 3)
@@ -255,7 +257,7 @@
                                      :reason :preempted-by-rebalancer) ; Not counted
             db (d/db conn)
             job-ent (d/entity @(d/sync conn) job)]
-        (is (= (util/job-ent->attempts-consumed db job-ent) 2))
+        (is (= (tools/job-ent->attempts-consumed db job-ent) 2))
         ))
 
     ))
@@ -265,7 +267,7 @@
         conn (restore-fresh-database! uri)
         job (create-dummy-job conn :user "tsram")
         job-ent (d/entity @(d/sync conn) job)
-        job-map (util/entity->map job-ent)]
+        job-map (tools/entity->map job-ent)]
     (is (instance? datomic.Entity job-ent))
     (is (instance? datomic.Entity (first (:job/resource job-ent))))
     (is (not (instance? datomic.Entity job-map)))
@@ -276,7 +278,7 @@
         conn (restore-fresh-database! uri)
         group-id (create-dummy-group conn)
         job-id (create-dummy-job conn :group group-id)
-        job-map (util/job-ent->map (d/entity @(d/sync conn) job-id))
+        job-map (tools/job-ent->map (d/entity @(d/sync conn) job-id))
         group (first (:group/_job job-map))]
     (is (not (instance? datomic.Entity job-map)))
     (is group)
@@ -288,9 +290,9 @@
 
 (deftest test-namespace-datomic
   (testing "Example tests"
-    (is (= (util/namespace-datomic :straggler-handling :type)
+    (is (= (tools/namespace-datomic :straggler-handling :type)
            :straggler-handling/type))
-    (is (= (util/namespace-datomic :straggler-handling :type :quantile-deviation)
+    (is (= (tools/namespace-datomic :straggler-handling :type :quantile-deviation)
            :straggler-handling.type/quantile-deviation))))
 
 (deftest test-clear-uncommitted-jobs
@@ -299,7 +301,7 @@
           conn (restore-fresh-database! uri)
           _ (dotimes [_ 100]
               (create-dummy-job conn))]
-      (is (= (count (util/clear-uncommitted-jobs conn (t/yesterday) true)) 0))))
+      (is (= (count (tools/clear-uncommitted-jobs conn (t/yesterday) true)) 0))))
   (testing "uncommitted but not before"
     (let [uri "datomic:mem://test-clear-uncommitted"
           conn (restore-fresh-database! uri)
@@ -309,7 +311,7 @@
               (create-dummy-job conn
                                 :committed? false
                                 :submit-time (tc/to-date (-> 6 t/hours t/ago))))]
-      (is (= (count (util/clear-uncommitted-jobs conn (t/yesterday) true)) 0))))
+      (is (= (count (tools/clear-uncommitted-jobs conn (t/yesterday) true)) 0))))
   (testing "uncommitted dry-run"
     (let [uri "datomic:mem://test-clear-uncommitted"
           conn (restore-fresh-database! uri)
@@ -324,7 +326,7 @@
               (create-dummy-job conn
                                 :committed? false
                                 :submit-time (tc/to-date (-> 48 t/hours t/ago))))]
-      (is (= (count (util/clear-uncommitted-jobs conn (t/yesterday) true))
+      (is (= (count (tools/clear-uncommitted-jobs conn (t/yesterday) true))
              uncommitted-count))))
   (testing "uncommitted with retract"
     (let [uri "datomic:mem://test-clear-uncommitted"
@@ -340,9 +342,9 @@
               (create-dummy-job conn
                                 :committed? false
                                 :submit-time (tc/to-date (-> 48 t/hours t/ago))))]
-      (is (= (count (util/clear-uncommitted-jobs conn (t/yesterday) false))
+      (is (= (count (tools/clear-uncommitted-jobs conn (t/yesterday) false))
              uncommitted-count))
-      (is (= (count (util/clear-uncommitted-jobs conn (t/yesterday) false)) 0)))))
+      (is (= (count (tools/clear-uncommitted-jobs conn (t/yesterday) false)) 0)))))
 
 (deftest test-clear-old-uncommitted-jobs
   (testing "Clear old uncommitted jobs works when we're the master."
@@ -359,8 +361,8 @@
               (create-dummy-job conn
                                 :committed? false
                                 :submit-time (tc/to-date (-> 9 t/days t/ago))))]
-      (is (= (count (util/clear-old-uncommitted-jobs conn (atom true))) uncommitted-count))
-      (is (= (count (util/clear-old-uncommitted-jobs conn (atom true))) 0))))
+      (is (= (count (tools/clear-old-uncommitted-jobs conn (atom true))) uncommitted-count))
+      (is (= (count (tools/clear-old-uncommitted-jobs conn (atom true))) 0))))
 
   (testing "Clear old uncommitted jobs does nothing when we're not the master."
     (let [uri "datomic:mem://test-clear-old-uncommitted"
@@ -376,8 +378,8 @@
               (create-dummy-job conn
                                 :committed? false
                                 :submit-time (tc/to-date (-> 9 t/days t/ago))))]
-      (is (= (count (util/clear-old-uncommitted-jobs conn (atom false))) 0))
-      (is (= (count (util/clear-old-uncommitted-jobs conn (atom false))) 0)))))
+      (is (= (count (tools/clear-old-uncommitted-jobs conn (atom false))) 0))
+      (is (= (count (tools/clear-old-uncommitted-jobs conn (atom false))) 0)))))
 
 (deftest test-make-guuid->juuids
   (let [jobs [{:job/uuid "1"
@@ -392,7 +394,7 @@
                :group/_job #{{:group/uuid "e"}}}
               {:job/uuid "6"
                :group/_job #{}}]
-        guuid->juuids (util/make-guuid->juuids jobs)]
+        guuid->juuids (tools/make-guuid->juuids jobs)]
     (is (= (guuid->juuids "a") #{"1"}))
     (is (= (guuid->juuids "b") #{"1" "2"}))
     (is (= (guuid->juuids "c") #{"1" "2" "3"}))
@@ -400,16 +402,16 @@
     (is (= (guuid->juuids "e") #{"1" "2" "3" "4" "5"}))))
 
 (deftest test-read-chan
-  (is (= (count (util/read-chan (async/chan) 10)) 0))
+  (is (= (count (tools/read-chan (async/chan) 10)) 0))
   (let [ch (async/chan 10)]
     (async/<!! (async/onto-chan ch [1 2 3 4 5] false))
-    (is (= (count (util/read-chan ch 10)) 5))
-    (is (= (count (util/read-chan ch 10)) 0))
+    (is (= (count (tools/read-chan ch 10)) 5))
+    (is (= (count (tools/read-chan ch 10)) 0))
     (async/<!! (async/onto-chan ch (range 10) false))
     (let [oc (async/onto-chan ch (range 10) false)]
-      (is (= (count (util/read-chan ch 10)) 10))
+      (is (= (count (tools/read-chan ch 10)) 10))
       (async/<!! oc)
-      (is (= (count (util/read-chan ch 10)) 10)))))
+      (is (= (count (tools/read-chan ch 10)) 10)))))
 
 (deftest test-get-jobs-by-user-and-states
   (let [uri "datomic:mem://test-get-pending-job-ents"
@@ -460,71 +462,71 @@
             match-any-name-fn (constantly true)
             match-no-name-fn (constantly false)]
         (testing (str "get " state " jobs")
-          (is (= 2 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time half-way-time
-                                                            10 match-any-name-fn false nil))))
-          (is (= 1 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time half-way-time
-                                                            1 match-any-name-fn false nil))))
-          (is (= (map :db/id (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time half-way-time
-                                                               1 match-any-name-fn false nil))
+          (is (= 2 (count (tools/get-jobs-by-user-and-states (d/db conn) "u1" states start-time half-way-time
+                                                             10 match-any-name-fn false nil))))
+          (is (= 1 (count (tools/get-jobs-by-user-and-states (d/db conn) "u1" states start-time half-way-time
+                                                             1 match-any-name-fn false nil))))
+          (is (= (map :db/id (tools/get-jobs-by-user-and-states (d/db conn) "u1" states start-time half-way-time
+                                                                1 match-any-name-fn false nil))
                  [job1]))
-          (is (= 3 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time end-time
-                                                            10 match-any-name-fn false nil))))
-          (is (= 2 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time end-time
-                                                            2 match-any-name-fn false nil))))
-          (is (= (map :db/id (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time end-time
-                                                               2 match-any-name-fn false nil))
+          (is (= 3 (count (tools/get-jobs-by-user-and-states (d/db conn) "u1" states start-time end-time
+                                                             10 match-any-name-fn false nil))))
+          (is (= 2 (count (tools/get-jobs-by-user-and-states (d/db conn) "u1" states start-time end-time
+                                                             2 match-any-name-fn false nil))))
+          (is (= (map :db/id (tools/get-jobs-by-user-and-states (d/db conn) "u1" states start-time end-time
+                                                                2 match-any-name-fn false nil))
                  [job1 job2]))
 
-          (is (= 1 (count (util/get-jobs-by-user-and-states (d/db conn) "u2" states start-time end-time
-                                                            10 match-any-name-fn false nil))))
-          (is (= 0 (count (util/get-jobs-by-user-and-states (d/db conn) "u3" states start-time end-time
-                                                            10 match-any-name-fn false nil))))
-          (is (= 0 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states
-                                                            #inst "2017-06-01" #inst "2017-06-02"
-                                                            10 match-any-name-fn false nil)))))
+          (is (= 1 (count (tools/get-jobs-by-user-and-states (d/db conn) "u2" states start-time end-time
+                                                             10 match-any-name-fn false nil))))
+          (is (= 0 (count (tools/get-jobs-by-user-and-states (d/db conn) "u3" states start-time end-time
+                                                             10 match-any-name-fn false nil))))
+          (is (= 0 (count (tools/get-jobs-by-user-and-states (d/db conn) "u1" states
+                                                             #inst "2017-06-01" #inst "2017-06-02"
+                                                             10 match-any-name-fn false nil)))))
         ; Nil means the same as always true.
         (testing (str "get " state " jobs ; name = nil")
-          (is (= 2 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time half-way-time
-                                                            10 nil false nil))))
-          (is (= 1 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time half-way-time
-                                                            1 nil false nil))))
-          (is (= (map :db/id (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time half-way-time
-                                                               1 nil false nil))
+          (is (= 2 (count (tools/get-jobs-by-user-and-states (d/db conn) "u1" states start-time half-way-time
+                                                             10 nil false nil))))
+          (is (= 1 (count (tools/get-jobs-by-user-and-states (d/db conn) "u1" states start-time half-way-time
+                                                             1 nil false nil))))
+          (is (= (map :db/id (tools/get-jobs-by-user-and-states (d/db conn) "u1" states start-time half-way-time
+                                                                1 nil false nil))
                  [job1]))
-          (is (= 3 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time end-time
-                                                            10 nil false nil))))
-          (is (= 2 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time end-time
-                                                            2 nil false nil))))
-          (is (= (map :db/id (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time end-time
-                                                               2 nil false nil))
+          (is (= 3 (count (tools/get-jobs-by-user-and-states (d/db conn) "u1" states start-time end-time
+                                                             10 nil false nil))))
+          (is (= 2 (count (tools/get-jobs-by-user-and-states (d/db conn) "u1" states start-time end-time
+                                                             2 nil false nil))))
+          (is (= (map :db/id (tools/get-jobs-by-user-and-states (d/db conn) "u1" states start-time end-time
+                                                                2 nil false nil))
                  [job1 job2]))
 
-          (is (= 1 (count (util/get-jobs-by-user-and-states (d/db conn) "u2" states start-time end-time
-                                                            10 nil false nil))))
-          (is (= 0 (count (util/get-jobs-by-user-and-states (d/db conn) "u3" states start-time end-time
-                                                            10 nil false nil))))
-          (is (= 0 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states
-                                                            #inst "2017-06-01" #inst "2017-06-02"
-                                                            10 nil false nil)))))
+          (is (= 1 (count (tools/get-jobs-by-user-and-states (d/db conn) "u2" states start-time end-time
+                                                             10 nil false nil))))
+          (is (= 0 (count (tools/get-jobs-by-user-and-states (d/db conn) "u3" states start-time end-time
+                                                             10 nil false nil))))
+          (is (= 0 (count (tools/get-jobs-by-user-and-states (d/db conn) "u1" states
+                                                             #inst "2017-06-01" #inst "2017-06-02"
+                                                             10 nil false nil)))))
         ; Never true, so should match nothing.
         (testing (str "get " state " jobs ; name = false")
-          (is (= 0 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time half-way-time
-                                                            10 match-no-name-fn false nil))))
-          (is (= 0 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time half-way-time
-                                                            1 match-no-name-fn false nil))))
+          (is (= 0 (count (tools/get-jobs-by-user-and-states (d/db conn) "u1" states start-time half-way-time
+                                                             10 match-no-name-fn false nil))))
+          (is (= 0 (count (tools/get-jobs-by-user-and-states (d/db conn) "u1" states start-time half-way-time
+                                                             1 match-no-name-fn false nil))))
 
-          (is (= 0 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time end-time
-                                                            10 match-no-name-fn false nil))))
-          (is (= 0 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time end-time
-                                                            2 match-no-name-fn false nil))))
+          (is (= 0 (count (tools/get-jobs-by-user-and-states (d/db conn) "u1" states start-time end-time
+                                                             10 match-no-name-fn false nil))))
+          (is (= 0 (count (tools/get-jobs-by-user-and-states (d/db conn) "u1" states start-time end-time
+                                                             2 match-no-name-fn false nil))))
 
-          (is (= 0 (count (util/get-jobs-by-user-and-states (d/db conn) "u2" states start-time end-time
-                                                            10 match-no-name-fn false nil))))
-          (is (= 0 (count (util/get-jobs-by-user-and-states (d/db conn) "u3" states start-time end-time
-                                                            10 match-no-name-fn false nil))))
-          (is (= 0 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states
-                                                            #inst "2017-06-01" #inst "2017-06-02"
-                                                            10 match-no-name-fn false nil)))))))))
+          (is (= 0 (count (tools/get-jobs-by-user-and-states (d/db conn) "u2" states start-time end-time
+                                                             10 match-no-name-fn false nil))))
+          (is (= 0 (count (tools/get-jobs-by-user-and-states (d/db conn) "u3" states start-time end-time
+                                                             10 match-no-name-fn false nil))))
+          (is (= 0 (count (tools/get-jobs-by-user-and-states (d/db conn) "u1" states
+                                                             #inst "2017-06-01" #inst "2017-06-02"
+                                                             10 match-no-name-fn false nil)))))))))
 
 (deftest test-reducing-pipe
   (testing "basic piping"
@@ -535,7 +537,7 @@
                      (conj state data))
           in-chan (async/chan 10)
           out-chan (async/chan)
-          reducing-go-chan (util/reducing-pipe in-chan in-xform out-chan :initial-state initial-state)]
+          reducing-go-chan (tools/reducing-pipe in-chan in-xform out-chan :initial-state initial-state)]
 
       (testing "consume initial batch"
         (async/>!! in-chan 1)
@@ -568,24 +570,24 @@
   (let [cache-store (-> {}
                         (cache/lru-cache-factory :threshold 2)
                         atom)]
-    (is (= 10 (util/cache-lookup! cache-store "A" 10)))
+    (is (= 10 (tools/cache-lookup! cache-store "A" 10)))
     (is (= {"A" 10} (.cache @cache-store)))
 
-    (is (= 10 (util/cache-lookup! cache-store "A" 11)))
+    (is (= 10 (tools/cache-lookup! cache-store "A" 11)))
     (is (= {"A" 10} (.cache @cache-store)))
 
-    (is (= 20 (util/cache-lookup! cache-store "B" 20)))
+    (is (= 20 (tools/cache-lookup! cache-store "B" 20)))
     (is (= {"A" 10, "B" 20} (.cache @cache-store)))
 
-    (is (= 30 (util/cache-lookup! cache-store "C" 30)))
+    (is (= 30 (tools/cache-lookup! cache-store "C" 30)))
     (is (= {"B" 20, "C" 30} (.cache @cache-store)))
 
-    (util/cache-update! cache-store "C" 31)
+    (tools/cache-update! cache-store "C" 31)
     (is (= {"B" 20, "C" 31} (.cache @cache-store)))
-    (is (= 31 (util/cache-lookup! cache-store "C" 32)))
+    (is (= 31 (tools/cache-lookup! cache-store "C" 32)))
     (is (= {"B" 20, "C" 31} (.cache @cache-store)))
 
-    (is (= 12 (util/cache-lookup! cache-store "A" 12)))
+    (is (= 12 (tools/cache-lookup! cache-store "A" 12)))
     (is (= {"A" 12, "C" 31} (.cache @cache-store)))))
 
 
@@ -598,7 +600,7 @@
                                                      :retry-count 5
                                                      :instances [{:instance-status :instance.status/running}])
             uuid (:job/uuid (d/entity (d/db conn) job))]
-        (util/retry-job! conn uuid 10)
+        (tools/retry-job! conn uuid 10)
         (let [job-ent (d/entity (d/db conn) job)]
           (is (= 10 (:job/max-retries job-ent)))
           (is (= :job.state/running (:job/state job-ent))))))
@@ -609,7 +611,7 @@
                                                      :retry-count 2
                                                      :instances [{:instance-status :instance.status/failed}])
             job-uuid (:job/uuid (d/entity (d/db conn) job))]
-        (util/retry-job! conn job-uuid 2)
+        (tools/retry-job! conn job-uuid 2)
         (let [job-ent (d/entity (d/db conn) job)]
           (is (= 2 (:job/max-retries job-ent)))
           (is (= :job.state/waiting (:job/state job-ent))))))
@@ -621,7 +623,7 @@
                                                     :instances [{:instance-status :instance.status/failed
                                                                  :reason :preempted-by-rebalancer}])
             job-uuid (:job/uuid (d/entity (d/db conn) job))]
-        (util/retry-job! conn job-uuid 1)
+        (tools/retry-job! conn job-uuid 1)
         (let [job-ent (d/entity (d/db conn) job)]
           (is (= 1 (:job/max-retries job-ent)))
           (is (= :job.state/waiting (:job/state job-ent))))))
@@ -632,7 +634,7 @@
                                                      :retry-count 1
                                                      :instances [{:instance-status :instance.status/failed}])
             job-uuid (:job/uuid (d/entity (d/db conn) job))]
-        (util/retry-job! conn job-uuid 1)
+        (tools/retry-job! conn job-uuid 1)
         (let [job-ent (d/entity (d/db conn) job)]
           (is (= 1 (:job/max-retries job-ent)))
           (is (= :job.state/completed (:job/state job-ent))))))
@@ -642,7 +644,7 @@
                                   :job-state :job.state/waiting
                                   :retry-count 5)
             job-uuid (:job/uuid (d/entity (d/db conn) job))]
-        (util/retry-job! conn job-uuid 20)
+        (tools/retry-job! conn job-uuid 20)
         (let [job-ent (d/entity (d/db conn) job)]
           (is (= 20 (:job/max-retries job-ent)))
           (is (= :job.state/waiting (:job/state job-ent))))))
@@ -656,7 +658,7 @@
                                                                  {:instance-status :instance.status/failed}])
             job-uuid (:job/uuid (d/entity (d/db conn) job))]
         (is (thrown-with-msg? ExecutionException #"Attempted to change retries from 5 to 2"
-                              (util/retry-job! conn job-uuid 2)))))
+                              (tools/retry-job! conn job-uuid 2)))))
 
     (testing "decrease retries with attempts remaining"
       (let [[job _] (create-dummy-job-with-instances conn
@@ -665,7 +667,7 @@
                                                      :instances [{:instance-status :instance.status/failed
                                                                   :reason :preempted-by-rebalancer}])
             job-uuid (:job/uuid (d/entity (d/db conn) job))]
-        (util/retry-job! conn job-uuid 1)
+        (tools/retry-job! conn job-uuid 1)
         (let [job-ent (d/entity (d/db conn) job)]
           (is (= 1 (:job/max-retries job-ent)))
           (is (= :job.state/waiting (:job/state job-ent))))))))
@@ -692,67 +694,67 @@
 
 (deftest test-below-quota?
   (testing "not using quota"
-    (is (util/below-quota? {:count 5, :cpus 15, :mem 9999}
-                           {:count 0, :cpus 0, :mem 0})))
+    (is (tools/below-quota? {:count 5, :cpus 15, :mem 9999}
+                            {:count 0, :cpus 0, :mem 0})))
   (testing "not using quota with extra keys"
-    (is (util/below-quota? {:count 5, :cpus 15, :mem 9999, :foo 2, :bar 3}
-                           {:count 0, :cpus 0, :mem 0})))
+    (is (tools/below-quota? {:count 5, :cpus 15, :mem 9999, :foo 2, :bar 3}
+                            {:count 0, :cpus 0, :mem 0})))
   (testing "inside quota"
-    (is (util/below-quota? {:count 5, :cpus 15, :mem 9999}
-                           {:count 4, :cpus 10, :mem 1234})))
+    (is (tools/below-quota? {:count 5, :cpus 15, :mem 9999}
+                            {:count 4, :cpus 10, :mem 1234})))
   (testing "at quota limit"
-    (is (util/below-quota? {:count 5, :cpus 15, :mem 9999}
-                           {:count 5, :cpus 15, :mem 9999})))
+    (is (tools/below-quota? {:count 5, :cpus 15, :mem 9999}
+                            {:count 5, :cpus 15, :mem 9999})))
   (testing "exceed quota limit - count"
-    (is (not (util/below-quota? {:count 5, :cpus 15, :mem 9999}
-                                {:count 6, :cpus 10, :mem 1234}))))
+    (is (not (tools/below-quota? {:count 5, :cpus 15, :mem 9999}
+                                 {:count 6, :cpus 10, :mem 1234}))))
   (testing "exceed quota limit - cpus"
-    (is (not (util/below-quota? {:count 5, :cpus 15, :mem 9999}
-                                {:count 4, :cpus 20, :mem 1234}))))
+    (is (not (tools/below-quota? {:count 5, :cpus 15, :mem 9999}
+                                 {:count 4, :cpus 20, :mem 1234}))))
   (testing "exceed quota limit - mem"
-    (is (not (util/below-quota? {:count 5, :cpus 15, :mem 1234}
-                                {:count 4, :cpus 10, :mem 4321}))))
+    (is (not (tools/below-quota? {:count 5, :cpus 15, :mem 1234}
+                                 {:count 4, :cpus 10, :mem 4321}))))
   (testing "exceed quota limit - gpus"
-    (is (not (util/below-quota? {:count 5, :cpus 15, :mem 9999, :gpus 4}
-                                {:count 4, :cpus 10, :mem 1234, :gpus 5}))))
+    (is (not (tools/below-quota? {:count 5, :cpus 15, :mem 9999, :gpus 4}
+                                 {:count 4, :cpus 10, :mem 1234, :gpus 5}))))
   (testing "at quota limit with extra keys"
-    (is (util/below-quota? {:count 5, :cpus 15, :mem 9999, :gpus 4}
-                           {:count 5, :cpus 15, :mem 9999}))))
+    (is (tools/below-quota? {:count 5, :cpus 15, :mem 9999, :gpus 4}
+                            {:count 5, :cpus 15, :mem 9999}))))
 
 (deftest test-job->usage
   (testing "cpus and mem usage"
     (is (= {:count 1, :cpus 2, :mem 2048}
-           (util/job->usage {:job/resource [{:resource/type :cpus, :resource/amount 2}
+           (tools/job->usage {:job/resource [{:resource/type :cpus, :resource/amount 2}
                                             {:resource/type :mem, :resource/amount 2048}]}))))
   (testing "cpus and mem usage - ignore extra resources"
     (is (= {:count 1, :cpus 2, :mem 2048}
-           (util/job->usage {:job/resource [{:resource/type :cpus, :resource/amount 2}
+           (tools/job->usage {:job/resource [{:resource/type :cpus, :resource/amount 2}
                                             {:resource/type :mem, :resource/amount 2048}
                                             {:resource/type :uri, :resource.uri/value "www.test.com"}]}))))
   (testing "cpus mem and gpus usage"
     (is (= {:count 1, :cpus 2, :gpus 10, :mem 2048}
-           (util/job->usage {:job/resource [{:resource/type :cpus, :resource/amount 2}
+           (tools/job->usage {:job/resource [{:resource/type :cpus, :resource/amount 2}
                                             {:resource/type :mem, :resource/amount 2048}
                                             {:resource/type :gpus, :resource/amount 10}
                                             {:resource/type :uri, :resource.uri/value "www.test.com"}]}))))
   (testing "cpus mem and gpus usage - ignore extra resources"
     (is (= {:count 1, :cpus 2, :gpus 10, :mem 2048}
-           (util/job->usage {:job/resource [{:resource/type :cpus, :resource/amount 2}
+           (tools/job->usage {:job/resource [{:resource/type :cpus, :resource/amount 2}
                                             {:resource/type :mem, :resource/amount 2048}
                                             {:resource/type :gpus, :resource/amount 10}]}))))
   (testing "ensures cpu value - gpus absent"
     (is (= {:count 1, :cpus nil, :mem 2048}
-           (util/job->usage {:job/resource [{:resource/type :mem, :resource/amount 2048}]}))))
+           (tools/job->usage {:job/resource [{:resource/type :mem, :resource/amount 2048}]}))))
   (testing "ensures cpu value - gpus present"
     (is (= {:count 1, :cpus nil, :gpus 10, :mem 2048}
-           (util/job->usage {:job/resource [{:resource/type :mem, :resource/amount 2048}
+           (tools/job->usage {:job/resource [{:resource/type :mem, :resource/amount 2048}
                                             {:resource/type :gpus, :resource/amount 10}]}))))
   (testing "ensures mem value - gpus absent"
     (is (= {:count 1, :cpus 2, :mem nil}
-           (util/job->usage {:job/resource [{:resource/type :cpus, :resource/amount 2}]}))))
+           (tools/job->usage {:job/resource [{:resource/type :cpus, :resource/amount 2}]}))))
   (testing "ensures mem value - gpus present"
     (is (= {:count 1, :cpus 2, :gpus 10, :mem nil}
-           (util/job->usage {:job/resource [{:resource/type :cpus, :resource/amount 2}
+           (tools/job->usage {:job/resource [{:resource/type :cpus, :resource/amount 2}
                                             {:resource/type :gpus, :resource/amount 10}]})))))
 
 (deftest test-filter-based-on-pool-quota
@@ -764,13 +766,13 @@
         queue [(make-job 1 2 2048) (make-job 2 1 1024) (make-job 3 3 4096) (make-job 4 1 1024)]]
     (testing "no jobs included"
       (is (= []
-             (util/filter-based-on-pool-quota nil {:count 1, :cpus 2, :mem 1024} usage queue))))
+             (tools/filter-based-on-pool-quota nil {:count 1, :cpus 2, :mem 1024} usage queue))))
     (testing "all jobs included"
       (is (= [(make-job 1 2 2048) (make-job 2 1 1024) (make-job 3 3 4096) (make-job 4 1 1024)]
-             (util/filter-based-on-pool-quota nil {:count 10, :cpus 20, :mem 32768} usage queue))))
+             (tools/filter-based-on-pool-quota nil {:count 10, :cpus 20, :mem 32768} usage queue))))
     (testing "room for later jobs not included"
       (is (= [(make-job 1 2 2048) (make-job 2 1 1024)]
-             (util/filter-based-on-pool-quota nil {:count 4, :cpus 20, :mem 6144} usage queue))))))
+             (tools/filter-based-on-pool-quota nil {:count 4, :cpus 20, :mem 6144} usage queue))))))
 
 (deftest test-filter-based-on-user-quota
   (let [test-user "john"
@@ -783,13 +785,13 @@
         queue [(make-job 1 2 2048) (make-job 2 1 1024) (make-job 3 3 4096) (make-job 4 1 1024)]]
     (testing "no jobs included"
       (is (= []
-             (util/filter-based-on-user-quota nil {test-user {:count 1, :cpus 2, :mem 1024}} user->usage queue))))
+             (tools/filter-based-on-user-quota nil {test-user {:count 1, :cpus 2, :mem 1024}} user->usage queue))))
     (testing "all jobs included"
       (is (= [(make-job 1 2 2048) (make-job 2 1 1024) (make-job 3 3 4096) (make-job 4 1 1024)]
-             (util/filter-based-on-user-quota nil {test-user {:count 10, :cpus 20, :mem 32768}} user->usage queue))))
+             (tools/filter-based-on-user-quota nil {test-user {:count 10, :cpus 20, :mem 32768}} user->usage queue))))
     (testing "room for later jobs not included"
       (is (= [(make-job 1 2 2048) (make-job 2 1 1024)]
-             (util/filter-based-on-user-quota nil {test-user {:count 4, :cpus 20, :mem 6144}} user->usage queue))))))
+             (tools/filter-based-on-user-quota nil {test-user {:count 4, :cpus 20, :mem 6144}} user->usage queue))))))
 
 (deftest test-filter-pending-jobs-for-quota
   (let [test-user-1 "john"
@@ -807,8 +809,8 @@
     ; queue would be seen by the user quota and we'd only launch job-1.
     (testing "User quota filters first."
       (is (= [job-1 job-4]
-             (util/filter-pending-jobs-for-quota nil (atom {}) (atom {})
-                                                 user->quota user->usage pool-quota queue))))))
+             (tools/filter-pending-jobs-for-quota nil (atom {}) (atom {})
+                                                  user->quota user->usage pool-quota queue))))))
 
 (deftest test-pool->user->usage
   (let [uri "datomic:mem://test-pool-user-usage"
@@ -860,21 +862,11 @@
             "B" {"tom" {:cpus 1.0
                         :mem 10.0
                         :count 1}}}
-           (util/pool->user->usage (d/db conn))))))
-
-(deftest test-match-based-on-pool-name
-  (let [matchlist
-        [{:pool-regex "^foo$" :field {:foo 1}}
-         {:pool-regex ".*" :field {:bar 2}}
-         {:pool-regex "^baz$" :field {:baz 3}}]]
-    (is (= (util/match-based-on-pool-name matchlist "foo" :field) {:foo 1}))
-    (is (= (util/match-based-on-pool-name matchlist "bar" :field) {:bar 2}))
-    (is (= (util/match-based-on-pool-name matchlist "baz" :field) {:bar 2})))
-  (is (= (util/match-based-on-pool-name [] "foo" :field) nil)))
+           (tools/pool->user->usage (d/db conn))))))
 
 (deftest test-atom-updater
   (let [map-atom (atom {})
-        testfn (util/make-atom-updater map-atom)]
+        testfn (tools/make-atom-updater map-atom)]
     (testfn :a nil 1)
     (is (= {:a 1} @map-atom))
     (testfn :b nil 2)
@@ -887,32 +879,32 @@
     (is (= {} @map-atom))))
 
 (deftest test-dissoc-in
-  (is (= {:a {:c 3} :d {:e 5 :f 6}} (util/dissoc-in {:a {:b 2 :c 3} :d {:e 5 :f 6}} [:a :b])))
-  (is (= {:a {:b 2} :d {:e 5 :f 6}} (util/dissoc-in {:a {:b 2 :c 3} :d {:e 5 :f 6}} [:a :c])))
-  (is (= {:a {:b 2 :c 3} :d {:e 5}} (util/dissoc-in {:a {:b 2 :c 3} :d {:e 5 :f 6}} [:d :f])))
+  (is (= {:a {:c 3} :d {:e 5 :f 6}} (tools/dissoc-in {:a {:b 2 :c 3} :d {:e 5 :f 6}} [:a :b])))
+  (is (= {:a {:b 2} :d {:e 5 :f 6}} (tools/dissoc-in {:a {:b 2 :c 3} :d {:e 5 :f 6}} [:a :c])))
+  (is (= {:a {:b 2 :c 3} :d {:e 5}} (tools/dissoc-in {:a {:b 2 :c 3} :d {:e 5 :f 6}} [:d :f])))
   ; These keys aren't in it.
-  (is (= {:a {:b 2 :c 3} :d {:e 5 :f 6}} (util/dissoc-in {:a {:b 2 :c 3} :d {:e 5 :f 6}} [:a :d])))
-  (is (= {:a {:b 2 :c 3} :d {:e 5 :f 6}} (util/dissoc-in {:a {:b 2 :c 3} :d {:e 5 :f 6}} [:b :c])))
+  (is (= {:a {:b 2 :c 3} :d {:e 5 :f 6}} (tools/dissoc-in {:a {:b 2 :c 3} :d {:e 5 :f 6}} [:a :d])))
+  (is (= {:a {:b 2 :c 3} :d {:e 5 :f 6}} (tools/dissoc-in {:a {:b 2 :c 3} :d {:e 5 :f 6}} [:b :c])))
 
   ;; Now try deleting from smaller dictionaries and make sure it deletes empty leafs.
-  (is (= {:d {:e 5 :f 6}} (util/dissoc-in {:a {:b 2} :d {:e 5 :f 6}} [:a :b])))
-  (is (= {:a {:b 2}} (util/dissoc-in {:a {:b 2} :d {:e 5}} [:d :e])))
-  (is (= {} (util/dissoc-in {:a {:b 2}} [:a :b])))
+  (is (= {:d {:e 5 :f 6}} (tools/dissoc-in {:a {:b 2} :d {:e 5 :f 6}} [:a :b])))
+  (is (= {:a {:b 2}} (tools/dissoc-in {:a {:b 2} :d {:e 5}} [:d :e])))
+  (is (= {} (tools/dissoc-in {:a {:b 2}} [:a :b])))
 
   ;; Check for nil safety.
-  (is (= {:a {:b 2 :c 3} nil {nil 6}} (util/dissoc-in {:a {:b 2 :c 3} nil {:e 5 nil 6}} [nil :e])))
-  (is (= {:a {:b 2 :c 3} nil {:e 5}} (util/dissoc-in {:a {:b 2 :c 3} nil {:e 5 nil 6}} [nil nil])))
-  (is (= {:a {:b 2} nil {:e 5 nil 6}} (util/dissoc-in {:a {:b 2 nil 3} nil {:e 5 nil 6}} [:a nil])))
-  (is (= {:a {nil 3} nil {:e 5 nil 6}} (util/dissoc-in {:a {:b 2 nil 3} nil {:e 5 nil 6}} [:a :b])))
+  (is (= {:a {:b 2 :c 3} nil {nil 6}} (tools/dissoc-in {:a {:b 2 :c 3} nil {:e 5 nil 6}} [nil :e])))
+  (is (= {:a {:b 2 :c 3} nil {:e 5}} (tools/dissoc-in {:a {:b 2 :c 3} nil {:e 5 nil 6}} [nil nil])))
+  (is (= {:a {:b 2} nil {:e 5 nil 6}} (tools/dissoc-in {:a {:b 2 nil 3} nil {:e 5 nil 6}} [:a nil])))
+  (is (= {:a {nil 3} nil {:e 5 nil 6}} (tools/dissoc-in {:a {:b 2 nil 3} nil {:e 5 nil 6}} [:a :b])))
 
-  (is (= {:a {:b 2} :d {:e 5 :f 6}} (util/dissoc-in {:a {:b 2} :d {:e 5 :f 6}} [nil :b])))
-  (is (= {:a {:b 2} :d {:e 5 :f 6}} (util/dissoc-in {:a {:b 2} :d {:e 5 :f 6}} [:nil nil])))
-  (is (= {:d {:e 5 :f 6}} (util/dissoc-in {nil {:b 2} :d {:e 5 :f 6}} [nil :b])))
-  (is (= {:a {:b 2}} (util/dissoc-in {:a {:b 2} :d {nil 5}} [:d nil]))))
+  (is (= {:a {:b 2} :d {:e 5 :f 6}} (tools/dissoc-in {:a {:b 2} :d {:e 5 :f 6}} [nil :b])))
+  (is (= {:a {:b 2} :d {:e 5 :f 6}} (tools/dissoc-in {:a {:b 2} :d {:e 5 :f 6}} [:nil nil])))
+  (is (= {:d {:e 5 :f 6}} (tools/dissoc-in {nil {:b 2} :d {:e 5 :f 6}} [nil :b])))
+  (is (= {:a {:b 2}} (tools/dissoc-in {:a {:b 2} :d {nil 5}} [:d nil]))))
 
 (deftest test-make-nested-atom-updater
   (let [map-atom (atom {})
-        testfn (util/make-nested-atom-updater map-atom :k1 :k2)]
+        testfn (tools/make-nested-atom-updater map-atom :k1 :k2)]
     (testing "Inserting"
       (let [d1 {:k1 :a :k2 :b}
             _ (testfn nil nil d1)
@@ -982,7 +974,7 @@
              "mem" 45
              "gpus/nvidia-tesla-k80" 4
              "gpus/nvidia-tesla-p100" 8}]
-           (util/offers->resource-maps
+           (tools/offers->resource-maps
              [{:resources [{:name "cpus" :type :value-scalar :scalar 1.2}
                            {:name "mem" :type :value-scalar :scalar 34}
                            {:name "gpus"
@@ -1004,7 +996,7 @@
              "mem" 45
              "gpus/nvidia-tesla-k80" 4
              "gpus/nvidia-tesla-p100" 8}]
-           (util/offers->resource-maps
+           (tools/offers->resource-maps
              [{:resources [{:name "cpus" :type :value-scalar :scalar 1.2}
                            {:name "mem" :type :value-scalar :scalar 34}
                            {:name "gpus"

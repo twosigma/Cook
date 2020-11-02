@@ -9,6 +9,7 @@
             [cook.cache :as ccache]
             [cook.caches :as caches]
             [cook.config :as config]
+            [cook.queries :as queries]
             [cook.tools :as util]
             [datomic.api :as d]
             [metrics.histograms :as histograms]
@@ -105,7 +106,7 @@
      The number of jobs is limited by the configured batch size."
     [db]
     (let [pending-jobs (->> db
-                            util/get-pending-job-ents
+                            queries/get-pending-job-ents
                             (filter (fn [j] (not (empty? (:job/datasets j)))))
                             (map (fn [{:keys [job/uuid job/submit-time] :as job}]
                                    {:job/uuid uuid

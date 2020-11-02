@@ -1,6 +1,6 @@
 (ns cook.test.kubernetes.api
   (:require [clj-time.core :as t]
-            [clojure.string :as str]
+            [clojure.java.shell :as sh]
             [clojure.test :refer :all]
             [cook.config :as config]
             [cook.kubernetes.api :as api]
@@ -99,6 +99,35 @@
     (is (= value (.getValue variable)))))
 
 (deftest test-task-metadata->pod
+  (tu/setup)
+
+  (testing "supplemental group ids"
+    (with-redefs [sh/sh (constantly {:exit 0 :out "12 34 56 78"})]
+      ; Invocation with user alice, successful
+      (let [task-metadata {:command {:user "alice"}
+                           :task-request {:scalar-requests {"mem" 512 "cpus" 1.0}}}
+            ^V1Pod pod (api/task-metadata->pod "test-namespace"
+                                               "test-compute-cluster"
+                                               task-metadata)]
+        (is (= [12 34 56 78] (-> pod .getSpec .getSecurityContext .getSupplementalGroups)))))
+
+    (with-redefs [sh/sh (constantly {:exit 1})]
+      ; Invocation with user alice, cached
+      (let [task-metadata {:command {:user "alice"}
+                           :task-request {:scalar-requests {"mem" 512 "cpus" 1.0}}}
+            ^V1Pod pod (api/task-metadata->pod "test-namespace"
+                                               "test-compute-cluster"
+                                               task-metadata)]
+        (is (= [12 34 56 78] (-> pod .getSpec .getSecurityContext .getSupplementalGroups))))
+
+      ; Invocation with user bob, unsucessful
+      (let [task-metadata {:command {:user "bob"}
+                           :task-request {:scalar-requests {"mem" 512 "cpus" 1.0}}}
+            ^V1Pod pod (api/task-metadata->pod "test-namespace"
+                                               "test-compute-cluster"
+                                               task-metadata)]
+        (is (nil? (-> pod .getSpec .getSecurityContext .getSupplementalGroups))))))
+
   (testing "creates pod from metadata"
     (with-redefs [config/kubernetes (constantly {:default-workdir "/mnt/sandbox"})]
       (let [task-metadata {:task-id "my-task"
@@ -185,7 +214,8 @@
 
   (testing "node selector for pool"
     (let [pool-name "test-pool"
-          task-metadata {:container {:docker {:parameters [{:key "user"
+          task-metadata {:command {:user "user"}
+                         :container {:docker {:parameters [{:key "user"
                                                             :value "100:10"}]}}
                          :task-request {:job {:job/pool {:pool/name pool-name}}
                                         :scalar-requests {"mem" 512
@@ -198,7 +228,8 @@
 
   (testing "node selector for hostname"
     (let [hostname "test-host"
-          task-metadata {:container {:docker {:parameters [{:key "user"
+          task-metadata {:command {:user "user"}
+                         :container {:docker {:parameters [{:key "user"
                                                             :value "100:10"}]}}
                          :hostname hostname
                          :task-request {:scalar-requests {"mem" 512
@@ -210,7 +241,8 @@
       (is (= hostname (get node-selector api/k8s-hostname-label)))))
 
   (testing "cpu limit configurability"
-    (let [task-metadata {:container {:docker {:parameters [{:key "user"
+    (let [task-metadata {:command {:user "user"}
+                         :container {:docker {:parameters [{:key "user"
                                                             :value "100:10"}]}}
                          :task-request {:scalar-requests {"mem" 512
                                                           "cpus" 1.0}}}
@@ -239,7 +271,8 @@
                                                                                                              :sub-path "efg/hij"}]}
                                                  :init-container {:command ["init container command"]
                                                                   :image "init container image"}})]
-      (let [task-metadata {:container {:docker {:parameters [{:key "user"
+      (let [task-metadata {:command {:user "user"}
+                           :container {:docker {:parameters [{:key "user"
                                                               :value "100:10"}]}}
                            :task-request {:scalar-requests {"mem" 512
                                                             "cpus" 1.0}

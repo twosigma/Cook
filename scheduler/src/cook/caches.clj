@@ -29,3 +29,4 @@
 (mount/defstate ^Cache job-ent->user-cache :start (new-cache config/config))
 (mount/defstate ^Cache task->feature-vector-cache :start (new-cache config/config))
 (mount/defstate ^Cache job-uuid->dataset-maps-cache :start (new-cache config/config))
+(mount/defstate ^Cache user->group-ids-cache :start (new-cache config/config))

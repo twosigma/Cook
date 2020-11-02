@@ -16,6 +16,7 @@
             [cook.pool]
             [cook.scheduler.constraints :as constraints]
             [cook.tools :as tools]
+            [cook.util :as util]
             [datomic.api :as d]
             [metrics.meters :as meters]
             [metrics.timers :as timers]
@@ -73,7 +74,7 @@
         node-name->consumed (->> (api/get-consumption node-name->pods)
                                  (filter #(node-name->capacity (first %)))
                                  (into {}))
-        node-name->available (tools/deep-merge-with - node-name->capacity node-name->consumed)
+        node-name->available (util/deep-merge-with - node-name->capacity node-name->consumed)
         ; Grab every unique GPU model being represented so that we can set counters for capacity and consumed for each GPU model
         gpu-models (->> node-name->capacity vals (map :gpus) (apply merge) keys set)
         ; The following variables are only being used setting counters for monitor

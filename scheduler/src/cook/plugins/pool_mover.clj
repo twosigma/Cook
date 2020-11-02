@@ -1,5 +1,6 @@
 (ns cook.plugins.pool-mover
   (:require [clojure.tools.logging :as log]
+            [cook.cached-queries :as cached-queries]
             [cook.config :as config]
             [cook.plugins.definitions :as chd]
             [cook.tools :as util]
@@ -13,7 +14,7 @@
   (adjust-job [_ {:keys [job/uuid job/pool] :as job-txn} db]
     (let [submission-pool (-> db (d/entity pool) :pool/name (or (config/default-pool)))]
       (if-let [{:keys [users destination-pool]} (get pool-mover-config submission-pool)]
-        (let [user (util/job-ent->user job-txn)]
+        (let [user (cached-queries/job-ent->user job-txn)]
           (if-let [{:keys [portion]} (get users user)]
             (if (and (number? portion)
                      (> (* portion 100) (-> uuid hash (mod 100))))

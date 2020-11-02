@@ -8,7 +8,8 @@
             [cook.kubernetes.metrics :as metrics]
             [cook.scheduler.constraints :as constraints]
             [cook.task :as task]
-            [cook.tools :as util]
+            [cook.tools :as tools]
+            [cook.util :as util]
             [datomic.api :as d]
             [metrics.meters :as meters]
             [metrics.timers :as timers]
@@ -176,8 +177,8 @@
   [{:keys [^ApiClient api-client all-pods-atom node-name->pod-name->pod] compute-cluster-name :name :as compute-cluster} cook-pod-callback]
   (let [[current-pods namespaced-pod-name->pod] (get-all-pods-in-kubernetes api-client compute-cluster-name)
         callbacks
-        [(util/make-atom-updater all-pods-atom) ; Update the set of all pods.
-         (util/make-nested-atom-updater node-name->pod-name->pod pod->node-name get-pod-namespaced-key)
+        [(tools/make-atom-updater all-pods-atom) ; Update the set of all pods.
+         (tools/make-nested-atom-updater node-name->pod-name->pod pod->node-name get-pod-namespaced-key)
          (partial cook-pod-callback-wrap cook-pod-callback compute-cluster-name)] ; Invoke the cook-pod-callback if its a cook pod.
         old-all-pods @all-pods-atom
         new-pod-names (set (keys namespaced-pod-name->pod))
@@ -269,8 +270,8 @@
                      ))
         current-nodes (pc/map-from-vals node->node-name (.getItems current-nodes-raw))
         callbacks
-        [(util/make-atom-updater current-nodes-atom) ; Update the set of all pods.
-         (util/make-nested-atom-updater pool->node-name->node get-node-pool node->node-name)]
+        [(tools/make-atom-updater current-nodes-atom) ; Update the set of all pods.
+         (tools/make-nested-atom-updater pool->node-name->node get-node-pool node->node-name)]
         old-current-nodes @current-nodes-atom
         new-node-names (set (keys current-nodes))
         old-node-names (set (keys old-current-nodes))]
@@ -579,10 +580,12 @@
                     ;; TODO validate and fail when the user parameter is missing.
                     (let [[uid gid] (str/split (:value user-param) #":")]
                       [(Long/parseLong uid) (Long/parseLong gid)])
-                    [(util/user->user-id user) (util/user->group-id user)])
+                    [(tools/user->user-id user) (tools/user->group-id user)])
         security-context (V1PodSecurityContext.)]
     (.setRunAsUser security-context uid)
     (.setRunAsGroup security-context gid)
+    (when-let [group-ids (tools/user->all-group-ids user)]
+      (.setSupplementalGroups security-context group-ids))
     security-context))
 
 (defn get-workdir
@@ -639,7 +642,7 @@
         (-> (config/kubernetes) :sidecar :resource-requirements)
         checkpoint-memory-overhead
         (when checkpoint
-          (-> (config/kubernetes) :default-checkpoint-config (merge (util/job-ent->checkpoint job)) :memory-overhead))]
+          (-> (config/kubernetes) :default-checkpoint-config (merge (tools/job-ent->checkpoint job)) :memory-overhead))]
     (cond-> resources
       resource-requirements
       (assoc
@@ -702,11 +705,11 @@
 (defn calculate-effective-checkpointing-config
   "Given the job's checkpointing config, calculate the effective config. Making any adjustments such as defaults,
   overrides, or other behavior modifications."
-  [{:keys [job/checkpoint job/instance] :as job} task-id]
+  [{:keys [job/checkpoint job/instance job/uuid] :as job} task-id]
   (when checkpoint
     (let [{:keys [default-checkpoint-config]} (config/kubernetes)
           {:keys [max-checkpoint-attempts checkpoint-failure-reasons disable-checkpointing] :as checkpoint}
-          (merge default-checkpoint-config (util/job-ent->checkpoint job))]
+          (merge default-checkpoint-config (tools/job-ent->checkpoint job))]
       (when-not disable-checkpointing
         (if max-checkpoint-attempts
           (let [checkpoint-failure-reasons (or checkpoint-failure-reasons default-checkpoint-failure-reasons)
@@ -714,8 +717,11 @@
                                               (contains? checkpoint-failure-reasons (:reason/name reason)))
                                             instance)]
             (if (-> checkpoint-failures count (>= max-checkpoint-attempts))
-              (log/info "Will not checkpoint task-id" task-id ", there are at least" max-checkpoint-attempts "failed instances"
-                        {:job job})
+              (log/info "Will not checkpoint, there are at least" max-checkpoint-attempts "checkpoint failures"
+                        {:job-uuid uuid
+                         :max-checkpoint-attempts max-checkpoint-attempts
+                         :number-checkpoint-failures (count checkpoint-failures)
+                         :task-id task-id})
               checkpoint))
           checkpoint)))))
 
@@ -727,7 +733,7 @@
   (let [pod-labels-from-job-labels
         (if-let [prefix (:add-job-label-to-pod-prefix (config/kubernetes))]
           (->> job
-               util/job-ent->label
+               tools/job-ent->label
                (filter (fn [[k _]] (str/starts-with? k prefix)))
                (into {}))
           {})
