@@ -881,11 +881,14 @@
       (log/warn "Skipping a subset of matches because of rate-limit:" matches-throttled))
     matches-kept))
 
+(def kill-lock-timer-for-launch (timers/timer ["cook-mesos" "scheduler" "kill-lock-acquire-for-launch"]))
+
 (defn launch-matched-tasks!
   "Updates the state of matched tasks in the database and then launches them."
   [matches conn db fenzo mesos-run-as-user pool-name]
   (let [matches (map #(update-match-with-task-metadata-seq % db mesos-run-as-user) matches)
-        task-txns (matches->task-txns matches)]
+        task-txns (matches->task-txns matches)
+        kill-lock-timer-context (timers/start kill-lock-timer-for-launch)]
     (log/info "In" pool-name "pool, writing tasks"
               {:first-10-tasks
                (take
@@ -898,7 +901,11 @@
                (count task-txns)})
     (timers/time!
       (timers/timer (metric-title "launch-matched-tasks-all-duration" pool-name))
-      (locking cc/kill-lock-object
+      ; Avoids a race. See docs for kill-lock-object.
+      (try
+        (.. cc/kill-lock-object readLock lock)
+        ;; Determine lock acquisition time.
+        (.stop kill-lock-timer-context)
         ;; Note that this transaction can fail if a job was scheduled
         ;; during a race. If that happens, then other jobs that should
         ;; be scheduled will not be eligible for rescheduling until
@@ -953,7 +960,9 @@
                        (launch-matches-in-compute-cluster!)
                        (future (launch-matches-in-compute-cluster!))))))
                doall
-               (run! #(when (future? %) (deref %)))))))))
+               (run! #(when (future? %) (deref %)))))
+        (finally
+          (.. cc/kill-lock-object readLock unlock))))))
 
 (defn update-host-reservations!
   "Updates the rebalancer-reservation-atom with the result of the match cycle.
