@@ -539,7 +539,7 @@
     (.setCreationTimestamp pod-metadata creation-timestamp)
     (-> outstanding-synthetic-pod
         .getSpec
-        (.addTolerationsItem (kapi/toleration-for-pool pool-name)))
+        (.addTolerationsItem (kapi/toleration-for-pool "cook-pool-taint-A" pool-name)))
     outstanding-synthetic-pod))
 
 (defn node-helper [node-name cpus mem gpus gpu-model pool]
@@ -567,7 +567,7 @@
 
     (when pool
       (let [^V1Taint taint (V1Taint.)]
-        (.setKey taint kapi/cook-pool-taint)
+        (.setKey taint "foo-taint-probably-broken-TODO")
         (.setValue taint pool)
         (.setEffect taint "NoSchedule")
         (-> spec (.addTaintsItem taint))
@@ -606,4 +606,6 @@
                                     (atom :running) ; state atom
                                     (atom false) ; state-locked? atom
                                     false ; dynamic-cluster-config?
-                                    rate-limit/AllowAllRateLimiter)))
+                                    rate-limit/AllowAllRateLimiter
+                                    "some-random-taint-A"
+                                    "some-random-label-A")))

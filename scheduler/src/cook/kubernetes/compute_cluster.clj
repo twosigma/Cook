@@ -33,9 +33,9 @@
 
 (defn schedulable-node-filter
   "Is a node schedulable?"
-  [node-name->node node-name->pods {:keys [node-blocklist-labels] :as compute-cluster} [node-name _]]
+  [compute-cluster node-name->node node-name->pods [node-name _]]
   (if-let [^V1Node node (node-name->node node-name)]
-    (api/node-schedulable? node (cc/max-tasks-per-host compute-cluster) node-name->pods node-blocklist-labels)
+    (api/node-schedulable? compute-cluster node (cc/max-tasks-per-host compute-cluster) node-name->pods)
     (do
       (log/error "In" (cc/compute-cluster-name compute-cluster)
                  "compute cluster, unable to get node from node name" node-name)
@@ -80,10 +80,9 @@
         ; The following variables are only being used setting counters for monitor
         gpu-model->total-capacity (total-gpu-resource node-name->capacity)
         gpu-model->total-consumed (total-gpu-resource node-name->consumed)
-        node-name->schedulable (filter #(schedulable-node-filter
+        node-name->schedulable (filter #(schedulable-node-filter compute-cluster
                                           node-name->node
                                           node-name->pods
-                                          compute-cluster
                                           %)
                                        node-name->available)
         number-nodes-schedulable (count node-name->schedulable)
@@ -273,7 +272,7 @@
   (let [timer-context (timers/start (metrics/timer "cc-launch-tasks" name))
         pod-namespace (get-namespace-from-task-metadata namespace-config task-metadata)
         pod-name (:task-id task-metadata)
-        ^V1Pod pod (api/task-metadata->pod pod-namespace name task-metadata)
+        ^V1Pod pod (api/task-metadata->pod pod-namespace compute-cluster task-metadata)
         new-cook-expected-state-dict {:cook-expected-state :cook-expected-state/starting
                                       :launch-pod {:pod pod}}]
     (try
@@ -305,7 +304,7 @@
                                      synthetic-pods-config node-blocklist-labels
                                      ^ExecutorService launch-task-executor-service
                                      cluster-definition state-atom state-locked?-atom dynamic-cluster-config?
-                                     compute-cluster-launch-rate-limiter]
+                                     compute-cluster-launch-rate-limiter cook-pool-taint-name cook-pool-label-name]
   cc/ComputeCluster
   (launch-tasks [this pool-name matches process-task-post-launch-fn]
     (let [task-metadata-seq (mapcat :task-metadata-seq matches)]
@@ -608,8 +607,9 @@
     - If verifying-ssl is specified, sets verifying ssl
     - If use-google-service-account? is true, gets google application default credentials and generates
       a bearer token for authenticating with kubernetes
-    - bearer-token-refresh-seconds: interval to refresh the bearer token"
-  [^String config-file base-path ^String use-google-service-account? bearer-token-refresh-seconds verifying-ssl ^String ca-cert ^String ca-cert-path]
+    - bearer-token-refresh-seconds: interval to refresh the bearer token
+    - If we have a configuration file set, then we can select the context out of that kubeconfig file with kubeconfig-context"
+  [^String config-file base-path ^String use-google-service-account? bearer-token-refresh-seconds verifying-ssl ^String ca-cert ^String ca-cert-path kubeconfig-context]
   {:pre [(not (and ca-cert ca-cert-path))]}
   (log/info "API Client config file" config-file)
   (let [^ApiClient api-client (if (some? config-file)
@@ -623,6 +623,8 @@
                                   ; don't need the functionality. But we need to set the file anyways
                                   ; to avoid a NPE.
                                   (.setFile kubeconfig (File. config-file))
+                                  (when kubeconfig-context
+                                    (.setContext kubeconfig kubeconfig-context))
                                   (Config/fromConfig kubeconfig))
                                 (ApiClient.))
         ; Reset to a more sane timeout from the default 10 seconds.
@@ -659,9 +661,12 @@
            bearer-token-refresh-seconds
            ca-cert
            ca-cert-path
+           cook-pool-taint-name
+           cook-pool-label-name
            ^String config-file
            dynamic-cluster-config?
            compute-cluster-launch-rate-limits
+           kubeconfig-context
            launch-task-num-threads
            max-pods-per-node
            name
@@ -683,7 +688,9 @@
          scan-frequency-seconds 120
          state :running
          state-locked? false
-         use-google-service-account? true}
+         use-google-service-account? true
+         cook-pool-taint-name "cook-pool"
+         cook-pool-label-name "cook-pool"}
     :as compute-cluster-config}
    {:keys [exit-code-syncer-state]}]
   (guard-invalid-synthetic-pods-config name synthetic-pods)
@@ -694,7 +701,7 @@
         compute-cluster-config)))
   (let [conn cook.datomic/conn
         cluster-entity-id (get-or-create-cluster-entity-id conn name)
-        api-client (make-api-client config-file base-path use-google-service-account? bearer-token-refresh-seconds verifying-ssl ca-cert ca-cert-path)
+        api-client (make-api-client config-file base-path use-google-service-account? bearer-token-refresh-seconds verifying-ssl ca-cert ca-cert-path kubeconfig-context)
         launch-task-executor-service (Executors/newFixedThreadPool launch-task-num-threads)
         compute-cluster-launch-rate-limiter (cook.rate-limit/create-compute-cluster-launch-rate-limiter name compute-cluster-launch-rate-limits)
         compute-cluster (->KubernetesComputeCluster api-client 
@@ -720,6 +727,6 @@
                                                     (atom state)
                                                     (atom state-locked?)
                                                     dynamic-cluster-config?
-                                                    compute-cluster-launch-rate-limiter)]
+                                                    compute-cluster-launch-rate-limiter cook-pool-taint-name cook-pool-label-name)]
     (cc/register-compute-cluster! compute-cluster)
     compute-cluster))
