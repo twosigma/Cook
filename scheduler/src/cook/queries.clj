@@ -23,7 +23,8 @@
 ;;
 
 (defn get-all-resource-types
-  "Return a list of all supported resources types. Example, :cpus :mem :gpus ..."
+  "Return a list of resources types that are used for both binpacking and filtering the queue. Example, :cpus :mem :gpus ...
+   Note that this function name is misleading, and does not actually return ALL resource types."
   [db]
   (->> (q '[:find ?ident
             :where

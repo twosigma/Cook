@@ -298,6 +298,12 @@
   {:dataset {non-empty-max-128-characters-str non-empty-max-128-characters-str}
    (s/optional-key :partitions) #{{non-empty-max-128-characters-str non-empty-max-128-characters-str}}})
 
+(def Disk
+  "Schema for disk limit specifications"
+  {:request (s/pred #(> % 1.0) 'greater-than-one)
+   (s/optional-key :limit) (s/pred #(> % 1.0) 'greater-than-one)
+   (s/optional-key :type) s/Str})
+
 (def DatePartition
   "Schema for a date partition"
   {(s/required-key "begin") (s/constrained s/Str valid-date-str?)
@@ -352,6 +358,7 @@
    (s/optional-key :disable-mea-culpa-retries) s/Bool
    :cpus PosDouble
    :mem PosDouble
+   (s/optional-key :disk) Disk
    (s/optional-key :gpus) (s/both s/Int (s/pred pos? 'pos?))
    ;; Make sure the user name is valid. It must begin with a lower case character, end with
    ;; a lower case character or a digit, and has length between 2 to (62 + 2).
@@ -401,6 +408,7 @@
               :state s/Str
               :submit-time (s/maybe PosInt)
               :user UserName
+              (s/optional-key :disk) Disk
               (s/optional-key :gpus) s/Int
               (s/optional-key :groups) [s/Uuid]
               (s/optional-key :instances) [Instance]
@@ -705,10 +713,20 @@
    [valid-gpu-models effective-pool-name]
    (regexp-tools/match-based-on-pool-name valid-gpu-models effective-pool-name :valid-models))
 
+(defn get-disk-types-on-pool
+  "Given a pool name, determine the supported disk types on that pool."
+  [disk effective-pool-name]
+  (regexp-tools/match-based-on-pool-name disk effective-pool-name :valid-types))
+
+(defn get-max-disk-size-on-pool
+  "Given a pool name, determine the max requestable disk size on that pool."
+  [disk effective-pool-name]
+  (regexp-tools/match-based-on-pool-name disk effective-pool-name :max-size))
+
 (s/defn make-job-txn
   "Creates the necessary txn data to insert a job into the database"
   [pool commit-latch-id db job :- Job]
-  (let [{:keys [uuid command max-retries max-runtime expected-runtime priority cpus mem gpus
+  (let [{:keys [uuid command max-retries max-runtime expected-runtime priority cpus mem disk gpus
                 user name ports uris env labels container group application disable-mea-culpa-retries
                 constraints executor progress-output-file progress-regex-string datasets checkpoint]
          :or {group nil
@@ -773,6 +791,21 @@
                                 [[:db/add db-id :job/priority priority]])
                               (when (and max-runtime (not= Long/MAX_VALUE max-runtime))
                                 [[:db/add db-id :job/max-runtime max-runtime]])
+                              (when disk
+                                (let [disk-id (d/tempid :db.part/user)
+                                      params {:db/id disk-id
+                                              :resource/type :resource.type/disk
+                                              :resource.disk/request (:request disk)}]
+                                  [[:db/add db-id :job/resource disk-id]
+                                   (reduce-kv
+                                     ;; This only adds the optional params to the DB if they were explicitly set
+                                     (fn [txn-map k v]
+                                       (if-not (nil? v)
+                                         (assoc txn-map k v)
+                                         txn-map))
+                                     params
+                                     {:resource.disk/limit (:limit disk)
+                                      :resource.disk/type (:type disk)})]))
                               (when (and gpus (not (zero? gpus)))
                                 (let [gpus-id (d/tempid :db.part/user)]
                                   [[:db/add db-id :job/resource gpus-id]
@@ -956,12 +989,34 @@
                (not (contains? (get-gpu-models-on-pool (config/valid-gpu-models) pool-name) requested-gpu-model)))
       (throw (ex-info (str "The following GPU model is not supported: " requested-gpu-model) {})))))
 
+(defn validate-job-disk
+  "Validates that a job requesting disk is satisfying the following conditions:
+    - Disk specifications cannot be made on a pool that does not support disks
+    - Disk limit and disk type are optional
+    - Disk request cannot exceed disk limit, and both request and limit cannot exceed the max size in config
+    - Requested type must be a valid type in config"
+  [pool-name {:keys [disk]}]
+  (let [{disk-request :request disk-limit :limit requested-disk-type :type} disk
+        max-size (get-max-disk-size-on-pool (config/disk) pool-name)
+        disk-types-on-pool (get-disk-types-on-pool (config/disk) pool-name)]
+    (when-not disk-types-on-pool
+      (throw (ex-info (str "Disk specifications are not supported on pool " pool-name) disk)))
+    (when disk-limit
+      (when-not (<= disk-request disk-limit max-size)
+        (throw (ex-info (str "Disk resource setting error. We must have disk-request <= disk-limit <= max-size.")
+                        {:disk-request disk-request :disk-limit disk-limit :max-size max-size}))))
+    (when (> disk-request max-size)
+      (throw (ex-info (str "Disk request specified is greater than max disk size on pool") disk)))
+    (when (and requested-disk-type
+               (not (contains? disk-types-on-pool requested-disk-type)))
+      (throw (ex-info (str "The following disk type is not supported: " requested-disk-type) disk)))))
+
 (defn validate-and-munge-job
   "Takes the user, the parsed json from the job and a list of the uuids of
    new-groups (submitted in the same request as the job). Returns proper Job
    objects, or else throws an exception"
   [db pool-name user task-constraints gpu-enabled? new-group-uuids
-   {:keys [cpus mem gpus uuid command priority max-retries max-runtime expected-runtime name
+   {:keys [cpus mem disk gpus uuid command priority max-retries max-runtime expected-runtime name
            uris ports env labels container group application disable-mea-culpa-retries
            constraints executor progress-output-file progress-regex-string datasets checkpoint]
     :or {group nil
@@ -984,6 +1039,7 @@
                   :cpus (double cpus)
                   :mem (double mem)
                   :disable-mea-culpa-retries disable-mea-culpa-retries}
+                 (when disk {:disk disk})
                  (when gpus {:gpus (int gpus)})
                  (when env {:env (walk/stringify-keys env)})
                  (when uris {:uris (map (fn [{:keys [value executable cache extract]}]
@@ -1025,6 +1081,7 @@
                            (* 1024 (:memory-gb task-constraints)))
                       {:constraints task-constraints
                        :job job})))
+    (when disk (validate-job-disk pool-name munged))
     (when (> (:ports munged) max-ports)
       (throw (ex-info (str "Requested " ports " ports, but only allowed to use " max-ports)
                       {:constraints task-constraints
@@ -1203,6 +1260,7 @@
     (let [resources (util/job-ent->resources job)
           groups (:group/_job job)
           application (:job/application job)
+          disk (:disk resources)
           expected-runtime (:job/expected-runtime job)
           executor (:job/executor job)
           progress-output-file (:job/progress-output-file job)
@@ -1260,6 +1318,7 @@
       (cond-> job-map
               groups (assoc :groups (map #(str (:group/uuid %)) groups))
               application (assoc :application (util/remove-datomic-namespacing application))
+              disk (assoc :disk disk)
               expected-runtime (assoc :expected-runtime expected-runtime)
               executor (assoc :executor (name executor))
               progress-output-file (assoc :progress-output-file progress-output-file)
@@ -1915,7 +1974,6 @@
       (let [user (get-in ctx [:request :authorization/user])]
         (rate-limit/spend! rate-limit/job-submission-rate-limiter user (count jobs))
         (queue-limit/inc-queue-length! pool-name user (count jobs)))
-
       @(d/transact
          conn
          (-> (vec group-asserts)
@@ -1923,7 +1981,6 @@
              (conj commit-latch)
              (into job-txns)
              (into group-txns)))
-
       (meters/mark! (meters/meter ["cook-mesos" "scheduler" "jobs-created"
                                    (str "pool-" pool-name)])
                     (count jobs))

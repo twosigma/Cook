@@ -88,13 +88,13 @@
    "mem" 2048.0})
 
 (defn basic-handler
-  [conn & {:keys [cpus memory-gb gpus-enabled retry-limit is-authorized-fn]
+  [conn & {:keys [cpus memory-gb disk gpus-enabled retry-limit is-authorized-fn]
            :or {cpus 12, memory-gb 100, gpus-enabled false, retry-limit 200, is-authorized-fn authorized-fn}}]
   (fn [request & {:keys [leader?] :or {leader? true}}]
     (let [handler (api/main-handler conn (fn [] [])
                                     {:is-authorized-fn is-authorized-fn
                                      :mesos-gpu-enabled gpus-enabled
-                                     :task-constraints {:cpus cpus :memory-gb memory-gb :retry-limit retry-limit}}
+                                     :task-constraints {:cpus cpus :memory-gb memory-gb :disk disk :retry-limit retry-limit}}
                                     (Object.)
                                     (atom leader?)
                                     {:progress-aggregator-chan (async/chan)})]
@@ -175,6 +175,7 @@
                            (select-keys copy (keys gold)))
                          uris
                          (get trimmed-body "uris"))]
+      (is (= nil (get body "disk")))
       (is (zero? (get body "gpus")))
       (is (= (dissoc job "uris") (dissoc trimmed-body "uris")))
       (is (compare-uris uris (get trimmed-body "uris"))))
@@ -434,6 +435,94 @@
               [body] (response->body-data resp)
               trimmed-body (select-keys body (keys successful-job))]
           (is (= (dissoc successful-job "uris") (dissoc trimmed-body "uris"))))))))
+
+(deftest disk-api
+  (setup)
+  (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
+        _ (create-pool conn "test-pool")
+        job (fn [disk] (merge (basic-job) {"disk" disk}))
+        h (basic-handler conn)]
+    (with-redefs [config/disk (constantly [{:pool-regex "test-pool"
+                                            :valid-types #{"pd-ssd"}
+                                            :default-type "pd-ssd"
+                                            :max-size 256000}])]
+      (testing "negative disk request invalid"
+        (is (= 400
+                (:status (h {:request-method :post
+                             :scheme :http
+                             :uri "/jobs"
+                             :headers {"Content-Type" "application/json"}
+                             :authorization/user "dgrnbrg"
+                             :body-params {"jobs" [(job {"request" -4})] "pool" "test-pool"}})))))
+      (testing "Zero disk request invalid"
+        (is (= 400
+                (:status (h {:request-method :post
+                             :scheme :http
+                             :uri "/jobs"
+                             :headers {"Content-Type" "application/json"}
+                             :authorization/user "dgrnbrg"
+                             :body-params {"jobs" [(job {"request" 0})] "pool" "test-pool"}})))))
+      (testing "Non-whole request of disk valid"
+        (is (= 201
+                (:status (h {:request-method :post
+                             :scheme :http
+                             :uri "/jobs"
+                             :headers {"Content-Type" "application/json"}
+                             :authorization/user "dgrnbrg"
+                             :body-params {"jobs" [(job {"request" 2.5})] "pool" "test-pool"}})))))
+      (testing "Request of disk greater than max size invalid"
+        (is (= 400
+               (:status (h {:request-method :post
+                            :scheme :http
+                            :uri "/jobs"
+                            :headers {"Content-Type" "application/json"}
+                            :authorization/user "dgrnbrg"
+                            :body-params {"jobs" [(job {"request" 300000})] "pool" "test-pool"}})))))
+      (let [successful-job-1 (job {"request" 20000.0})
+            successful-job-2 (job {"request" 20000.0 "limit" 100000.0 "type" "pd-ssd"})
+            unsuccessful-job (job {"type" "pd-ssd"})]
+        (testing "Specifying only request is valid"
+          (is (= 201
+                  (:status (h {:request-method :post
+                               :scheme :http
+                               :uri "/jobs"
+                               :headers {"Content-Type" "application/json"}
+                               :authorization/user "dgrnbrg"
+                               :body-params {"jobs" [successful-job-1] "pool" "test-pool"}})))))
+        (let [resp (h {:request-method :get
+                       :scheme :http
+                       :uri "/rawscheduler"
+                       :authorization/user "dgrnbrg"
+                       :query-params {"job" (str (get successful-job-1 "uuid"))}})
+              _ (is (= 200 (:status resp)))
+              [body] (response->body-data resp)
+              trimmed-body (select-keys body (keys successful-job-1))]
+          (is (= (dissoc successful-job-1 "uris") (dissoc trimmed-body "uris"))))
+        (testing "Specifying valid request, limit, and type"
+          (is (= 201
+                  (:status (h {:request-method :post
+                               :scheme :http
+                               :uri "/jobs"
+                               :headers {"Content-Type" "application/json"}
+                               :authorization/user "dgrnbrg"
+                               :body-params {"jobs" [successful-job-2] "pool" "test-pool"}})))))
+        (let [resp (h {:request-method :get
+                       :scheme :http
+                       :uri "/rawscheduler"
+                       :authorization/user "dgrnbrg"
+                       :query-params {"job" (str (get successful-job-2 "uuid"))}})
+              _ (is (= 200 (:status resp)))
+              [body] (response->body-data resp)
+              trimmed-body (select-keys body (keys successful-job-2))]
+          (is (= (dissoc successful-job-2 "uris") (dissoc trimmed-body "uris"))))
+        (testing "Specifying valid type but no request is invalid"
+          (is (= 400
+                  (:status (h {:request-method :post
+                               :scheme :http
+                               :uri "/jobs"
+                               :headers {"Content-Type" "application/json"}
+                               :authorization/user "dgrnbrg"
+                               :body-params {"jobs" [unsuccessful-job] "pool" "test-pool"}})))))))))
 
 (deftest retries-api
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
@@ -1315,7 +1404,7 @@
           ; will have to dissoc it.
           [{:keys [mem max-retries max-runtime expected-runtime name gpus
                    command ports priority uuid user cpus application
-                   disable-mea-culpa-retries executor datasets checkpoint]
+                   disable-mea-culpa-retries executor datasets checkpoint disk]
             :or {disable-mea-culpa-retries false}}]
           (cond-> {;; Fields we will fill in from the provided args:
                    :command command
@@ -1342,6 +1431,7 @@
                    :uris nil}
             ;; Only assoc these fields if the job specifies one
             application (assoc :application application)
+            disk (assoc :disk disk)
             expected-runtime (assoc :expected-runtime expected-runtime)
             executor (assoc :executor executor)
             checkpoint (assoc :checkpoint checkpoint)
@@ -2413,6 +2503,43 @@
             (let [gpu-enabled? true]
               (api/validate-gpu-job gpu-enabled? "test-pool" {:gpus 2
                                                               :env {}})))))))
+
+(deftest test-validate-disk-job
+  (with-redefs [config/disk (constantly [{:pool-regex "^test-pool$"
+                                          :valid-types #{"valid-disk-type"}
+                                          :default-type "valid-disk-type"
+                                          :max-size 256000}])]
+    (testing "disk request valid"
+      (is (nil? (api/validate-job-disk "test-pool" {:disk {:request 20000}}))))
+    (testing "disk request invalid"
+      (is (thrown-with-msg?
+            ExceptionInfo
+            #"Disk request specified is greater than max disk size on pool"
+            (api/validate-job-disk "test-pool" {:disk {:request 500000}}))))
+    (testing "disk request and limit valid"
+      (is (nil? (api/validate-job-disk "test-pool" {:disk {:request 20000 :limit 20000}}))))
+    (testing "disk request is greater than disk limit - invalid"
+      (is (thrown-with-msg?
+            ExceptionInfo
+            #"Disk resource setting error. We must have disk-request <= disk-limit <= max-size."
+            (api/validate-job-disk "test-pool" {:disk {:request 20000 :limit 10000}}))))
+    (testing "disk limit invalid"
+      (is (thrown-with-msg?
+            ExceptionInfo
+            #"Disk resource setting error. We must have disk-request <= disk-limit <= max-size."
+            (api/validate-job-disk "test-pool" {:disk {:request 200000 :limit 300000}}))))
+    (testing "disk request and type valid"
+      (is (nil? (api/validate-job-disk "test-pool" {:disk {:request 20000 :type "valid-disk-type"}}))))
+    (testing "invalid disk type"
+      (is (thrown-with-msg?
+            ExceptionInfo
+            #"The following disk type is not supported: invalid-disk-type"
+            (api/validate-job-disk "test-pool" {:disk {:request 20000 :type "invalid-disk-type"}}))))
+    (testing "reject disk specifications for pools with no config"
+      (is (thrown-with-msg?
+            ExceptionInfo
+            #"Disk specifications are not supported on pool pool-without-disk"
+            (api/validate-job-disk "pool-without-disk" {:disk {:request 200000000}}))))))
 
 (let [admin-user "alice"
       is-authorized-fn

@@ -152,6 +152,24 @@
       (when-not (contains? valid-models default-model)
         (throw (ex-info (str "Default GPU model for pool-regex " pool-regex " is not listed as a valid GPU model") entry))))))
 
+(defn guard-invalid-disk-config
+  "Throws if either of the following is true:
+  - any one of the keys (pool-regex, valid-types, default-type, max-size) is not configured
+  - there is no disk-type in valid-disk-types matching the configured default"
+  [disk]
+  (when disk
+    (doseq [{:keys [default-type pool-regex valid-types max-size] :as entry} disk]
+      (when-not pool-regex
+        (throw (ex-info (str "pool-regex key is missing from config") entry)))
+      (when-not max-size
+        (throw (ex-info (str "Max requestable disk size for pool-regex " pool-regex " is not defined") entry)))
+      (when-not valid-types
+        (throw (ex-info (str "Valid disk types for pool-regex " pool-regex " is not defined") entry)))
+      (when-not default-type
+        (throw (ex-info (str "Default disk type for pool-regex " pool-regex " is not defined") entry)))
+      (when-not (contains? valid-types default-type)
+        (throw (ex-info (str "Default disk type for pool-regex " pool-regex " is not listed as a valid disk type") entry))))))
+
 (def config-settings
   "Parses the settings out of a config file"
   (graph/eager-compile
@@ -423,6 +441,7 @@
                        ((util/lazy-load-var 'clojure.tools.nrepl.server/start-server) :port port)))
      :pools (fnk [[:config {pools nil}]]
               (guard-invalid-gpu-config (:valid-gpu-models pools))
+              (guard-invalid-disk-config (:disk pools))
               (cond-> pools
                 (:job-resource-adjustment pools)
                 (update :job-resource-adjustment
@@ -556,6 +575,11 @@
     (if (str/blank? pool)
       nil
       pool)))
+
+(defn disk
+  "Returns disk configurations"
+  []
+  (-> config :settings :pools :disk))
 
 (defn valid-gpu-models
   "Returns valid GPU models for the pool the job is scheduled in"

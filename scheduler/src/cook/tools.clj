@@ -248,6 +248,10 @@
                     (let [resource (keyword (name (:resource/type r)))]
                       (condp contains? resource
                         #{:cpus :mem :gpus} (assoc m resource (:resource/amount r))
+                        ; We add these additional disk resources here so they're available for Fenzo binpacking, so we don't run out of disk space on a node
+                        #{:disk} (assoc m :disk (cond-> {:request (:resource.disk/request r)}
+                                                        (:resource.disk/limit r) (assoc :limit (:resource.disk/limit r))
+                                                        (:resource.disk/type r) (assoc :type (:resource.disk/type r))) )
                         #{:uri} (update-in m [:uris] (fnil conj [])
                                            {:cache (:resource.uri/cache? r false)
                                             :executable (:resource.uri/executable? r false)

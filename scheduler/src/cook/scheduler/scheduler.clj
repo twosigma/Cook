@@ -542,19 +542,34 @@
   [jobs]
   (map (fn job->resource-map
          [job]
-         (let [{:strs [gpus] :as resource-map}
+         (let [{:strs [gpus disk] :as resource-map}
                (-> job
                    tools/job-ent->resources
                    (dissoc :ports)
-                   walk/stringify-keys)]
-           (if gpus
-             (let [env (tools/job-ent->env job)
-                   gpu-model (get env "COOK_GPU_MODEL" "unspecified-gpu-model")
-                   gpus-resource-key (str "gpus/" gpu-model)]
-               (-> resource-map
-                   (assoc gpus-resource-key gpus)
-                   (dissoc "gpus")))
-             resource-map)))
+                   walk/stringify-keys)
+               flatten-gpus
+               (fn [res-map]
+                 (if gpus
+                   (let [env (tools/job-ent->env job)
+                         gpu-model (get env "COOK_GPU_MODEL" "unspecified-gpu-model")
+                         gpus-resource-key (str "gpus/" gpu-model)]
+                     (-> res-map
+                         (assoc gpus-resource-key gpus)
+                         (dissoc "gpus")))
+                   res-map))
+               flatten-disk
+               (fn [res-map]
+                 (if disk
+                   (let [{request "request", limit "limit"} disk
+                         type (get disk "type" "unspecified-disk-type")]
+                     (cond-> res-map
+                             true (dissoc "disk")
+                             (not (nil? request)) (assoc (str "disk/" type "/request") request)
+                             (not (nil? limit)) (assoc (str "disk/" type "/limit") limit)))
+                   res-map))]
+           (-> resource-map
+               flatten-gpus
+               flatten-disk)))
        jobs))
 
 (defn resource-maps->stats
