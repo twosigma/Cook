@@ -138,7 +138,9 @@
           (is (= (conj api/default-shell "foo && bar") (.getCommand container)))
           (is (= "alpine:latest" (.getImage container)))
           (is (not (nil? container)))
-          (is (= ["COOK_SANDBOX"
+          (is (= ["COOK_COMPUTE_CLUSTER_NAME"
+                  "COOK_SANDBOX"
+                  "COOK_SCHEDULER_REST_URL"
                   "EXECUTOR_PROGRESS_OUTPUT_FILE"
                   "FOO"
                   "HOME"
