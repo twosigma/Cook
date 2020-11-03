@@ -596,8 +596,12 @@
                     :synthesized-state (api/pod->synthesized-pod-state pod-name pod)
                     :sandbox-file-server-container-state (api/pod->sandbox-file-server-container-state pod)}
          old-state (get @k8s-actual-state-map pod-name)]
-     ; We always store the updated state, but only reprocess it if it is genuinely different.
-     (swap! k8s-actual-state-map assoc pod-name new-state)
+     ; We always store the new state (to capture any changes in the pod) if the pod's not nil. If we write here unconditionally,
+     ; we may leak a deleted pod back into this dictionary where it will never be recoverable.
+     ;
+     ; We only reprocess if something important has actually changed.
+     (when-not (and (nil? pod))
+       (swap! k8s-actual-state-map assoc pod-name new-state))
      (let [new-file-server-state (:sandbox-file-server-container-state new-state)
            old-file-server-state (:sandbox-file-server-container-state old-state)]
        (when (and (= new-file-server-state :running) (not= old-file-server-state :running))
