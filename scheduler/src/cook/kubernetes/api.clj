@@ -733,7 +733,9 @@
     (try
       ((util/lazy-load-var-memo calculate-effective-image-fn) image)
       (catch Exception e
-        (log/error e "Error calculating effective image for checkpointing" {:calculate-effective-image-fn calculate-effective-image-fn})
+        (log/error e "Error calculating effective image for checkpointing"
+                   {:calculate-effective-image-fn calculate-effective-image-fn
+                    :image image})
         image))
     image))
 
