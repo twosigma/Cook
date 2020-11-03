@@ -311,18 +311,13 @@
   ; At this point, we don't care about the launch pod or the metric timers, so toss their dictionary away.
   {:cook-expected-state :cook-expected-state/running})
 
-(def get-pod-ip->hostname-fn
-  (memoize
-    (fn [pod-ip->hostname-fn]
-      (if pod-ip->hostname-fn (util/lazy-load-var pod-ip->hostname-fn) identity))))
-
 (defn record-sandbox-url
   "Record the sandbox file server URL in datomic."
   [pod-name {:keys [pod]}]
   (when-not (api/synthetic-pod? pod-name)
     (let [task-id (-> pod .getMetadata .getName)
           pod-ip (-> pod .getStatus .getPodIP)
-          {:keys [default-workdir pod-ip->hostname-fn sidecar]} (config/kubernetes)
+          {:keys [default-workdir sidecar]} (config/kubernetes)
           sandbox-fileserver-port (:port sidecar)
           sandbox-health-check-endpoint (:health-check-endpoint sidecar)
           sandbox-url (try
@@ -330,7 +325,7 @@
                                    sandbox-health-check-endpoint
                                    (not (str/blank? pod-ip)))
                           (str "http://"
-                               ((get-pod-ip->hostname-fn pod-ip->hostname-fn) pod-ip)
+                               pod-ip
                                ":" sandbox-fileserver-port
                                "/files/read.json?path="
                                (URLEncoder/encode default-workdir "UTF-8")))

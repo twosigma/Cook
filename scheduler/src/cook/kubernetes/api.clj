@@ -725,6 +725,18 @@
               checkpoint))
           checkpoint)))))
 
+(defn calculate-effective-image
+  "Transform the supplied job's image as necessary. e.g. do special transformation if checkpointing is enabled
+  and an image transformation function is supplied."
+  [image {:keys [mode calculate-effective-image-fn]}]
+  (if (and mode calculate-effective-image-fn)
+    (try
+      ((util/lazy-load-var-memo calculate-effective-image-fn) image)
+      (catch Exception e
+        (log/error e "Error calculating effective image for checkpointing" {:calculate-effective-image-fn calculate-effective-image-fn})
+        image))
+    image))
+
 (defn job->pod-labels
   "Returns the dictionary of labels that should be
   added to the job's pod based on the job's labels
@@ -780,6 +792,7 @@
         {:keys [volumes volume-mounts sandbox-volume-mount-fn]} (make-volumes volumes sandbox-dir)
         {:keys [custom-shell init-container set-container-cpu-limit? sidecar]} (config/kubernetes)
         checkpoint (calculate-effective-checkpointing-config job task-id)
+        image (calculate-effective-image image checkpoint)
         checkpoint-memory-overhead (:memory-overhead checkpoint)
         use-cook-init? (and init-container pod-supports-cook-init?)
         use-cook-sidecar? (and sidecar pod-supports-cook-sidecar?)

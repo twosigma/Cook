@@ -161,6 +161,9 @@
         resolved
         (throw (ex-info "Unable to resolve var, is it valid?" {:var-sym var-sym}))))))
 
+(def lazy-load-var-memo
+  (memoize lazy-load-var))
+
 (def ZeroInt
   (s/both s/Int (s/pred zero? 'zero?)))
 
