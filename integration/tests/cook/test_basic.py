@@ -3234,7 +3234,7 @@ class CookTest(util.CookTest):
         default_pool = util.default_submit_pool() or util.default_pool(self.cook_url)
         try:
             command = 'bash -c \'if [[ "${COOK_POOL:-zzz}" == "' + default_pool + '" ]] && ' \
-                      '[[ "${COOK_SCHEDULER_URL:-zzz}" == "' + self.cook_url + '" ]]; then exit 0; else exit 1; fi\''
+                      '[[ "${COOK_SCHEDULER_REST_URL:-zzz}" == "' + self.cook_url + '" ]]; then exit 0; else exit 1; fi\''
             job_uuid, resp = util.submit_job(self.cook_url, command=command, container=container)
             self.assertEqual(201, resp.status_code, resp.text)
             util.wait_for_instance(self.cook_url, job_uuid, status='success')
