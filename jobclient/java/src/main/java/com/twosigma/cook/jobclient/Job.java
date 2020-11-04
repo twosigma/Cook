@@ -83,6 +83,7 @@ final public class Job {
         private Executor _executor;
         private Double _memory;
         private Double _cpus;
+        private Disk _disk = new Disk();
         private Integer _gpus;
         private Integer _retries;
         private Long _maxRuntime;
@@ -145,9 +146,9 @@ final public class Job {
             if (_isMeaCulpaRetriesDisabled == null) {
                 _isMeaCulpaRetriesDisabled = false;
             }
-            return new Job(_uuid, _name, _command, _executor, _memory, _cpus, _gpus, _retries, _maxRuntime, _expectedRuntime, _status,
-                    _priority, _pool, _isMeaCulpaRetriesDisabled, _instances, _env, _uris, _container, _labels, _constraints,
-                    _groups, _application, _checkpoint, _progressOutputFile, _progressRegexString, _user, _datasets);
+            return new Job(_uuid, _name, _command, _executor, _memory, _cpus, _disk, _gpus, _retries, _maxRuntime,
+                    _expectedRuntime, _status, _priority, _pool, _isMeaCulpaRetriesDisabled, _instances, _env, _uris, _container,
+                    _labels, _constraints, _groups, _application, _checkpoint, _progressOutputFile, _progressRegexString, _user, _datasets);
         }
 
         /**
@@ -458,6 +459,58 @@ final public class Job {
         }
 
         /**
+         * Sets the disk of the job expected to build.
+         *
+         * @param disk {@link Disk} specifies the disk of the job.
+         * @return this builder
+         */
+        public Builder setDisk(Disk disk) {
+            _disk = disk;
+            return this;
+        }
+
+        /**
+         * Set the disk request, specifying the disk space guaranteed, to the job.
+         * @param diskRequest The disk request for this job
+         * @return this builder
+         */
+        public Builder setDiskRequest(Double diskRequest) {
+            _disk.setRequest(diskRequest);
+            return this;
+        }
+
+        /**
+         * Set the disk limit, specifying the max usable disk space, to the job.
+         * @param diskLimit The disk limit for this job
+         * @return this builder
+         */
+        public Builder setDiskLimit(Double diskLimit) {
+            _disk.setLimit(diskLimit);
+            return this;
+        }
+
+        /**
+         * Set the disk type, specifying the disk type requested, to the job.
+         * @param diskType The disk type for this job
+         * @return this builder
+         */
+        public Builder setDiskType(String diskType) {
+            _disk.setType(diskType);
+            return this;
+        }
+
+        /**
+         * Set the disk type, specifying the disk type requested, to the job.
+         * @param diskType The disk type for this job
+         * @return this builder
+         */
+        //TODO: add another setter function that takes in enum
+        public Builder setDiskType(Disk.DiskType diskType) {
+            _disk.setType(diskType);
+            return this;
+        }
+
+        /**
          * Set the container information of the job expected ot build.
          *
          * @param container {@link JSONObject} specifies container information for the job
@@ -676,6 +729,7 @@ final public class Job {
     final private Executor _executor;
     final private Double _memory;
     final private Double _cpus;
+    final private Disk _disk;
     final private Integer _gpus;
     final private Integer _retries;
     final private Long _maxRuntime;
@@ -700,7 +754,7 @@ final public class Job {
     final private String _user;
     final private JSONArray _datasets;
 
-    private Job(UUID uuid, String name, String command, Executor executor, Double memory, Double cpus, Integer gpus, Integer retries,
+    private Job(UUID uuid, String name, String command, Executor executor, Double memory, Double cpus, Disk disk, Integer gpus, Integer retries,
                 Long maxRuntime, Long expectedRuntime, Status status, Integer priority, String pool, Boolean isMeaCulpaRetriesDisabled,
                 List<Instance> instances, Map<String, String> env, List<FetchableURI> uris, JSONObject container,
                 Map<String, String> labels, Set<Constraint> constraints, List<UUID> groups, Application application, Checkpoint checkpoint,
@@ -711,6 +765,7 @@ final public class Job {
         _executor = executor;
         _memory = memory;
         _cpus = cpus;
+        _disk = disk;
         _gpus = gpus;
         _retries = retries;
         _maxRuntime = maxRuntime;
@@ -785,6 +840,13 @@ final public class Job {
      */
     public Double getCpus() {
         return _cpus;
+    }
+
+    /**
+     * @return the job's disk specifications.
+     */
+    public Disk getDisk() {
+        return _disk;
     }
 
     /**
@@ -1018,6 +1080,9 @@ final public class Job {
         if (job.getGpus() > 0) {
             object.put("gpus", job.getGpus());
         }
+        if (job.getDisk().shouldIncludeInJSON()) {
+            object.put("disk", job.getDisk().toJSONObject());
+        }
         object.put("priority", job.getPriority());
         object.put("max_retries", job.getRetries());
         object.put("disable_mea_culpa_retries", job.isMeaCulpaRetriesDisabled());
@@ -1143,6 +1208,10 @@ final public class Job {
             jobBuilder.setUUID(UUID.fromString(json.getString("uuid")));
             jobBuilder.setMemory(json.getDouble("mem"));
             jobBuilder.setCpus(json.getDouble("cpus"));
+            if (json.has("disk")) {
+                JSONObject diskJson = json.getJSONObject("disk");
+                jobBuilder.setDisk(Disk.parseFromJSON(diskJson));
+            }
             if (json.has("gpus")) {
                 jobBuilder.setGpus(json.getInt("gpus"));
             }
