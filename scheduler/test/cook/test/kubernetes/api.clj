@@ -141,7 +141,7 @@
           (is (= ["COOK_COMPUTE_CLUSTER_NAME"
                   "COOK_POOL"
                   "COOK_SANDBOX"
-                  "COOK_SCHEDULER_URL"
+                  "COOK_SCHEDULER_REST_URL"
                   "EXECUTOR_PROGRESS_OUTPUT_FILE"
                   "FOO"
                   "HOME"

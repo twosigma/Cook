@@ -803,7 +803,7 @@
         checkpoint-env (checkpoint->env checkpoint)
         metadata-env {"COOK_COMPUTE_CLUSTER_NAME" compute-cluster-name
                       "COOK_POOL" (pool/pool-name-or-default pool-name)
-                      "COOK_SCHEDULER_URL" (config/scheduler-rest-url)}
+                      "COOK_SCHEDULER_REST_URL" (config/scheduler-rest-url)}
         main-env-base (merge environment params-env progress-env sandbox-env checkpoint-env metadata-env)
         progress-file-var (get main-env-base task/progress-meta-env-name task/default-progress-env-name)
         progress-file-path (get main-env-base progress-file-var)
