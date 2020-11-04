@@ -694,10 +694,10 @@
     :as compute-cluster-config}
    {:keys [exit-code-syncer-state]}]
   (guard-invalid-synthetic-pods-config name synthetic-pods)
-  (when (not (< 0 launch-task-num-threads 64))
+  (when (not (< 0 launch-task-num-threads 512))
     (throw
       (ex-info
-        "Please configure :launch-task-num-threads to > 0 and < 64 in your config."
+        "Please configure :launch-task-num-threads to > 0 and < 512 in your config."
         compute-cluster-config)))
   (let [conn cook.datomic/conn
         cluster-entity-id (get-or-create-cluster-entity-id conn name)

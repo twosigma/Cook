@@ -314,7 +314,7 @@
       (is (kcc/factory-fn {:launch-task-num-threads 1
                            :use-google-service-account? false}
                           nil))
-      (is (kcc/factory-fn {:launch-task-num-threads 63
+      (is (kcc/factory-fn {:launch-task-num-threads 511
                            :use-google-service-account? false}
                           nil))
       (is (thrown? ExceptionInfo
@@ -322,7 +322,7 @@
                                     :use-google-service-account? false}
                                    nil)))
       (is (thrown? ExceptionInfo
-                   (kcc/factory-fn {:launch-task-num-threads 64
+                   (kcc/factory-fn {:launch-task-num-threads 512
                                     :use-google-service-account? false}
                                    nil))))))
 
