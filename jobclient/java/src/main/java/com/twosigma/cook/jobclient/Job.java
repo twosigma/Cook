@@ -504,7 +504,6 @@ final public class Job {
          * @param diskType The disk type for this job
          * @return this builder
          */
-        //TODO: add another setter function that takes in enum
         public Builder setDiskType(Disk.DiskType diskType) {
             _disk.setType(diskType);
             return this;

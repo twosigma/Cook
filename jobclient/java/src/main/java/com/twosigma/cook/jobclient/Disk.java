@@ -44,7 +44,9 @@ public class Disk {
         this._type = type;
     }
 
-    public void setRequest(Double request) { this._request = request; }
+    public void setRequest(Double request) {
+        this._request = request;
+    }
 
     public void setLimit(Double limit) {
         this._limit = limit;
@@ -71,7 +73,7 @@ public class Disk {
 
     public JSONObject toJSONObject() throws JSONException {
         final JSONObject object = new JSONObject();
-        if(this._request != null) {
+        if (this._request != null) {
             object.put("request", _request);
         }
         if (this._limit != null) {
