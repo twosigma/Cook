@@ -600,7 +600,7 @@
      ; we may leak a deleted pod back into this dictionary where it will never be recoverable.
      ;
      ; We only reprocess if something important has actually changed.
-     (when-not (and (nil? pod))
+     (when (some? pod)
        (swap! k8s-actual-state-map assoc pod-name new-state))
      (let [new-file-server-state (:sandbox-file-server-container-state new-state)
            old-file-server-state (:sandbox-file-server-container-state old-state)]
