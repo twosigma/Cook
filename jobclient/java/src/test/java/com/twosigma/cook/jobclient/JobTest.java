@@ -47,7 +47,7 @@ public class JobTest {
     // Constraints which could be used for any test.
     private Constraint _constraint1;
     private Constraint _constraint2;
-    private static final double DELTA = 1e-15;
+    private static final double EPSILON = 1e-15;
 
     @Before
     public void setup() {
@@ -332,12 +332,12 @@ public class JobTest {
         final Job basicJob = jobBuilder.build();
         final JSONObject jsonJob = Job.jsonizeJob(basicJob);
 
-        Assert.assertEquals(10.0, basicJob.getDisk().getRequest(), DELTA);
-        Assert.assertEquals(20.0, basicJob.getDisk().getLimit(), DELTA);
+        Assert.assertEquals(10.0, basicJob.getDisk().getRequest(), EPSILON);
+        Assert.assertEquals(20.0, basicJob.getDisk().getLimit(), EPSILON);
         Assert.assertEquals("standard", basicJob.getDisk().getType());
 
-        Assert.assertEquals(10.0, jsonJob.getJSONObject("disk").getDouble("request"), DELTA);
-        Assert.assertEquals(20.0, jsonJob.getJSONObject("disk").getDouble("limit"), DELTA);
+        Assert.assertEquals(10.0, jsonJob.getJSONObject("disk").getDouble("request"), EPSILON);
+        Assert.assertEquals(20.0, jsonJob.getJSONObject("disk").getDouble("limit"), EPSILON);
         Assert.assertEquals("standard", jsonJob.getJSONObject("disk").getString("type"));
     }
 
@@ -354,7 +354,7 @@ public class JobTest {
         Assert.assertEquals(jobs.size(), 1);
         final Job actualJob1 = jobs.get(0);
 
-        Assert.assertEquals(10.0, actualJob1.getDisk().getRequest(), DELTA);
+        Assert.assertEquals(10.0, actualJob1.getDisk().getRequest(), EPSILON);
         Assert.assertNull(actualJob1.getDisk().getLimit());
         Assert.assertEquals("pd-ssd", actualJob1.getDisk().getType());
 
@@ -369,8 +369,8 @@ public class JobTest {
         Assert.assertEquals(jobs2.size(), 1);
         final Job actualJob2 = jobs2.get(0);
 
-        Assert.assertEquals(diskEntry.getRequest(), actualJob2.getDisk().getRequest(), DELTA);
-        Assert.assertEquals(diskEntry.getLimit(), actualJob2.getDisk().getLimit(), DELTA);
+        Assert.assertEquals(diskEntry.getRequest(), actualJob2.getDisk().getRequest(), EPSILON);
+        Assert.assertEquals(diskEntry.getLimit(), actualJob2.getDisk().getLimit(), EPSILON);
         Assert.assertEquals(diskEntry.getType(), actualJob2.getDisk().getType());
     }
 }

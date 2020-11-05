@@ -13,7 +13,13 @@ public class Disk {
     private Double _limit;
     private String _type;
 
+    /**
+     * Users can specify either a String or enum value for disk type.
+     * Allowing the disk input to be a String means that we do not need to update DiskType every time we add a new disk type to the config.
+     * The enum value will be converted to a String for the JSON payload.
+     */
     public enum DiskType {
+        // Disk type pd-ssd is only available for clusters on Google Cloud Platform
         STANDARD ("standard"), PD_SSD ("pd-ssd");
 
         private final String typeString;
