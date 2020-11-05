@@ -44,9 +44,7 @@ public class Disk {
         this._type = type;
     }
 
-    public void setRequest(Double request) {
-        this._request = request;
-    }
+    public void setRequest(Double request) { this._request = request; }
 
     public void setLimit(Double limit) {
         this._limit = limit;
@@ -60,8 +58,8 @@ public class Disk {
         setType(type.toString());
     }
 
-    public double getRequest() { return _request; }
-    public double getLimit() { return _limit; }
+    public Double getRequest() { return _request; }
+    public Double getLimit() { return _limit; }
     public String getType() { return _type; }
 
     /**
