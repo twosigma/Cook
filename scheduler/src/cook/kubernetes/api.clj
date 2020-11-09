@@ -1210,7 +1210,7 @@
           (let [code (.getCode e)
                 already-deleted? (contains? #{404} code)]
             (if already-deleted?
-              (log/info e "In" compute-cluster-name "compute cluster, pod" pod-name "was already deleted")
+              (log/info "In" compute-cluster-name "compute cluster, pod" pod-name "was already deleted")
               (throw e))))))))
 
 (defn create-namespaced-pod
