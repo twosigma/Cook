@@ -158,11 +158,6 @@ JOB_DICT_WITH_OPTIONALS = {**JOB_DICT_NO_OPTIONALS, **{
     'progress_regex_string': 'test',
     'gpus': 1,
     'ports': 10,
-    'disk': {
-        'request': 10.0,
-        'limit': 20.0,
-        'type': 'standard'
-     }
 }}
 
 JOB_DICT_GROUP_AND_GROUPS = {**JOB_DICT_NO_OPTIONALS, **{
@@ -275,7 +270,7 @@ JOB_EXAMPLE = Job(
     progress_regex_string='test',
     gpus=1,
     ports=10,
-    disk=Disk(10.0, 20.0, 'standard')
+    disk=Disk(request=10.0, limit=20.0, type='standard')
 )
 
 
