@@ -21,7 +21,7 @@
             [clojure.set :as set]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
-            [cook.tools :as util]
+            [cook.util :as util]
             [datomic.api :as d]
             [metrics.counters :as counters]
             [metrics.histograms :as histograms]

@@ -24,6 +24,7 @@
             [clojure.string :as str]
             [clojure.tools.logging :as log]
             [clojure.walk :as walk]
+            [cook.cached-queries :as cached-queries]
             [cook.compute-cluster :as cc]
             [cook.config :as config]
             [cook.datomic :as datomic]
@@ -271,7 +272,7 @@
                instance-runtime (- (.getTime current-time) ; Used for reporting
                                    (.getTime (or (:instance/start-time instance-ent) current-time)))
                job-resources (tools/job-ent->resources job-ent)
-               pool-name (tools/job->pool-name job-ent)
+               pool-name (cached-queries/job->pool-name job-ent)
                ^TaskScheduler fenzo (get pool->fenzo pool-name)]
            (when (#{:instance.status/success :instance.status/failed} instance-status)
              (if fenzo
@@ -541,19 +542,34 @@
   [jobs]
   (map (fn job->resource-map
          [job]
-         (let [{:strs [gpus] :as resource-map}
+         (let [{:strs [gpus disk] :as resource-map}
                (-> job
                    tools/job-ent->resources
                    (dissoc :ports)
-                   walk/stringify-keys)]
-           (if gpus
-             (let [env (tools/job-ent->env job)
-                   gpu-model (get env "COOK_GPU_MODEL" "unspecified-gpu-model")
-                   gpus-resource-key (str "gpus/" gpu-model)]
-               (-> resource-map
-                   (assoc gpus-resource-key gpus)
-                   (dissoc "gpus")))
-             resource-map)))
+                   walk/stringify-keys)
+               flatten-gpus
+               (fn [res-map]
+                 (if gpus
+                   (let [env (tools/job-ent->env job)
+                         gpu-model (get env "COOK_GPU_MODEL" "unspecified-gpu-model")
+                         gpus-resource-key (str "gpus/" gpu-model)]
+                     (-> res-map
+                         (assoc gpus-resource-key gpus)
+                         (dissoc "gpus")))
+                   res-map))
+               flatten-disk
+               (fn [res-map]
+                 (if disk
+                   (let [{request "request", limit "limit"} disk
+                         type (get disk "type" "unspecified-disk-type")]
+                     (cond-> res-map
+                             true (dissoc "disk")
+                             (not (nil? request)) (assoc (str "disk/" type "/request") request)
+                             (not (nil? limit)) (assoc (str "disk/" type "/limit") limit)))
+                   res-map))]
+           (-> resource-map
+               flatten-gpus
+               flatten-disk)))
        jobs))
 
 (defn resource-maps->stats
@@ -582,12 +598,22 @@
 (defn offers->stats
   "Given a collection of offers, returns stats about the offers"
   [offers]
-  (-> offers tools/offers->resource-maps resource-maps->stats))
+  (try
+    (-> offers tools/offers->resource-maps resource-maps->stats)
+    (catch Exception e
+      (let [message "Error collecting offer stats"]
+        (log/error e message)
+        message))))
 
 (defn jobs->stats
   "Given a collection of jobs, returns stats about the jobs"
   [jobs]
-  (-> jobs jobs->resource-maps resource-maps->stats))
+  (try
+    (-> jobs jobs->resource-maps resource-maps->stats)
+    (catch Exception e
+      (let [message "Error collecting job stats"]
+        (log/error e message)
+        message))))
 
 (defn match-offer-to-schedule
   "Given an offer and a schedule, computes all the tasks should be launched as a result.
@@ -679,7 +705,7 @@
     generate-user-usage-map-duration
     (->> (tools/get-running-task-ents unfiltered-db)
          (map :job/_instance)
-         (remove #(not= pool-name (tools/job->pool-name %)))
+         (remove #(not= pool-name (cached-queries/job->pool-name %)))
          (group-by :job/user)
          (pc/map-vals (fn [jobs]
                         (->> jobs
@@ -855,11 +881,14 @@
       (log/warn "Skipping a subset of matches because of rate-limit:" matches-throttled))
     matches-kept))
 
+(def kill-lock-timer-for-launch (timers/timer ["cook-mesos" "scheduler" "kill-lock-acquire-for-launch"]))
+
 (defn launch-matched-tasks!
   "Updates the state of matched tasks in the database and then launches them."
   [matches conn db fenzo mesos-run-as-user pool-name]
   (let [matches (map #(update-match-with-task-metadata-seq % db mesos-run-as-user) matches)
-        task-txns (matches->task-txns matches)]
+        task-txns (matches->task-txns matches)
+        kill-lock-timer-context (timers/start kill-lock-timer-for-launch)]
     (log/info "In" pool-name "pool, writing tasks"
               {:first-10-tasks
                (take
@@ -872,7 +901,11 @@
                (count task-txns)})
     (timers/time!
       (timers/timer (metric-title "launch-matched-tasks-all-duration" pool-name))
-      (locking cc/kill-lock-object
+      ; Avoids a race. See docs for kill-lock-object.
+      (try
+        (.. cc/kill-lock-object readLock lock)
+        ;; Determine lock acquisition time.
+        (.stop kill-lock-timer-context)
         ;; Note that this transaction can fail if a job was scheduled
         ;; during a race. If that happens, then other jobs that should
         ;; be scheduled will not be eligible for rescheduling until
@@ -898,7 +931,7 @@
                                       count)
               user->num-jobs (->> matches
                                   (mapcat :task-metadata-seq)
-                                  (map (comp tools/job-ent->user :job :task-request))
+                                  (map (comp cached-queries/job-ent->user :job :task-request))
                                   frequencies)]
           (log/info "In" pool-name "pool, launching matched tasks"
                     {:number-offers-matched num-offers-matched
@@ -927,7 +960,9 @@
                        (launch-matches-in-compute-cluster!)
                        (future (launch-matches-in-compute-cluster!))))))
                doall
-               (run! #(when (future? %) (deref %)))))))))
+               (run! #(when (future? %) (deref %)))))
+        (finally
+          (.. cc/kill-lock-object readLock unlock))))))
 
 (defn update-host-reservations!
   "Updates the rebalancer-reservation-atom with the result of the match cycle.
@@ -1007,10 +1042,10 @@
               matched-considerable-jobs-head? (contains? matched-job-uuids (-> considerable-jobs first :job/uuid))
               user->number-matched-considerable-jobs (->> matches
                                                           matches->jobs
-                                                          (map tools/job-ent->user)
+                                                          (map cached-queries/job-ent->user)
                                                           frequencies)
               user->number-total-considerable-jobs (->> considerable-jobs
-                                                        (map tools/job-ent->user)
+                                                        (map cached-queries/job-ent->user)
                                                         frequencies)]
 
           (log/info "In" pool-name "pool, matching offers to considerable jobs"
@@ -1327,7 +1362,7 @@
                                              task-ent (d/entity db [:instance/task-id task-id])
                                              hostname (:instance/hostname task-ent)]]
                                    (when-let [job (tools/job-ent->map (:job/_instance task-ent))]
-                                     (let [pool-name (tools/job->pool-name job)
+                                     (let [pool-name (cached-queries/job->pool-name job)
                                            task-request (make-task-request db job pool-name :task-id task-id)
                                            ^TaskScheduler fenzo (pool->fenzo pool-name)]
                                        ;; Need to lock on fenzo when accessing taskAssigner because taskAssigner and
@@ -1589,9 +1624,9 @@
   ;; e.g. running jobs or when it is always considered committed e.g. shares
   ;; The unfiltered db can also be used on pending job entities once the filtered db is used to limit
   ;; to only those jobs that have been committed.
-  (let [pool-name->pending-job-ents (group-by tools/job->pool-name (tools/get-pending-job-ents unfiltered-db))
+  (let [pool-name->pending-job-ents (group-by cached-queries/job->pool-name (queries/get-pending-job-ents unfiltered-db))
         pool-name->pending-task-ents (pc/map-vals #(map tools/create-task-ent %1) pool-name->pending-job-ents)
-        pool-name->running-task-ents (group-by (comp tools/job->pool-name :job/_instance)
+        pool-name->running-task-ents (group-by (comp cached-queries/job->pool-name :job/_instance)
                                                (tools/get-running-task-ents unfiltered-db))
         pools (pool/all-pools unfiltered-db)
         using-pools? (-> pools count pos?)
@@ -1808,7 +1843,7 @@
       (log/warn "match-trigger-chan is set to the global minimum interval of " global-min-match-interval-millis " ms. "
                 "This is a sign that we have more pools, " (count pools) " than we expect to have and we will "
                 "schedule each pool less often than the desired setting of every " target-per-pool-match-interval-millis " ms."))
-    (async/pipe (chime-ch (tools/time-seq (time/now) (time/millis match-interval-millis))) match-trigger-chan)))
+    (async/pipe (chime-ch (util/time-seq (time/now) (time/millis match-interval-millis))) match-trigger-chan)))
 
 (defn create-datomic-scheduler
   [{:keys [conn cluster-name->compute-cluster-atom fenzo-fitness-calculator fenzo-floor-iterations-before-reset

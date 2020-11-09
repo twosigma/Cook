@@ -107,7 +107,7 @@
       (let [task-metadata {:command {:user "alice"}
                            :task-request {:scalar-requests {"mem" 512 "cpus" 1.0}}}
             ^V1Pod pod (api/task-metadata->pod "test-namespace"
-                                               "test-compute-cluster"
+                                               {:name "test-compute-cluster" :cook-pool-taint-name "test-taint"}
                                                task-metadata)]
         (is (= [12 34 56 78] (-> pod .getSpec .getSecurityContext .getSupplementalGroups)))))
 
@@ -116,7 +116,7 @@
       (let [task-metadata {:command {:user "alice"}
                            :task-request {:scalar-requests {"mem" 512 "cpus" 1.0}}}
             ^V1Pod pod (api/task-metadata->pod "test-namespace"
-                                               "test-compute-cluster"
+                                               {:name "test-compute-cluster" :cook-pool-taint-name "test-taint"}
                                                task-metadata)]
         (is (= [12 34 56 78] (-> pod .getSpec .getSecurityContext .getSupplementalGroups))))
 
@@ -124,7 +124,7 @@
       (let [task-metadata {:command {:user "bob"}
                            :task-request {:scalar-requests {"mem" 512 "cpus" 1.0}}}
             ^V1Pod pod (api/task-metadata->pod "test-namespace"
-                                               "test-compute-cluster"
+                                               {:name "test-compute-cluster" :cook-pool-taint-name "test-taint"}
                                                task-metadata)]
         (is (nil? (-> pod .getSpec .getSecurityContext .getSupplementalGroups))))))
 
@@ -141,9 +141,10 @@
                            :task-request {:resources {:mem 576
                                                       :cpus 1.1}
                                           :scalar-requests {"mem" 512
-                                                            "cpus" 1.0}}
+                                                            "cpus" 1.0}
+                                          :job {:job/pool {:pool/name "fake-pool-12"}}}
                            :hostname "kubehost"}
-            pod (api/task-metadata->pod "cook" "testing-cluster" task-metadata)]
+            pod (api/task-metadata->pod "cook" {:name "testing-cluster" :cook-pool-taint-name "test-taint"}  task-metadata)]
         (is (= "my-task" (-> pod .getMetadata .getName)))
         (is (= "cook" (-> pod .getMetadata .getNamespace)))
         (is (= "Never" (-> pod .getSpec .getRestartPolicy)))
@@ -152,6 +153,11 @@
         (is (= "testing-cluster" (-> pod .getMetadata .getLabels (get api/cook-pod-label))))
         (is (< 0 (-> pod .getSpec .getSecurityContext .getRunAsGroup)))
         (is (< 0 (-> pod .getSpec .getSecurityContext .getRunAsUser)))
+
+        (let [tolerations-on-pod (or (some-> pod .getSpec .getTolerations) [])
+              found-cook-pool-toleration (filter #(= "test-taint" (.getKey %)) tolerations-on-pod)]
+          (is (= 1 (count found-cook-pool-toleration)))
+          (is (= "fake-pool-12" (-> found-cook-pool-toleration first .getValue))))
 
         (let [cook-sandbox-volume (->> pod
                                        .getSpec
@@ -220,11 +226,11 @@
                          :task-request {:job {:job/pool {:pool/name pool-name}}
                                         :scalar-requests {"mem" 512
                                                           "cpus" 1.0}}}
-          ^V1Pod pod (api/task-metadata->pod nil nil task-metadata)
+          ^V1Pod pod (api/task-metadata->pod nil {:cook-pool-label-name "pool-label-1"} task-metadata)
           ^V1PodSpec pod-spec (.getSpec pod)
           node-selector (.getNodeSelector pod-spec)]
-      (is (contains? node-selector api/cook-pool-label))
-      (is (= pool-name (get node-selector api/cook-pool-label)))))
+      (is (contains? node-selector "pool-label-1"))
+      (is (= pool-name (get node-selector "pool-label-1")))))
 
   (testing "node selector for hostname"
     (let [hostname "test-host"
@@ -326,7 +332,7 @@
       (with-redefs [config/kubernetes
                     (constantly {:add-job-label-to-pod-prefix "platform/"})]
         (let [^V1Pod pod (api/task-metadata->pod "test-namespace"
-                                                 "test-compute-cluster"
+                                                 {:name "test-compute-cluster" :cook-pool-taint-name "test-taint"}
                                                  task-metadata)
               pod-labels (-> pod .getMetadata .getLabels)]
           (is (= "qux" (get pod-labels "platform/baz")))
@@ -336,7 +342,7 @@
       ; With no prefix configured
       (with-redefs [config/kubernetes (constantly {})]
         (let [^V1Pod pod (api/task-metadata->pod "test-namespace"
-                                                 "test-compute-cluster"
+                                                 {:name "test-compute-cluster" :cook-pool-taint-name "test-taint"}
                                                  task-metadata)
               pod-labels (-> pod .getMetadata .getLabels)]
           (is (not (contains? pod-labels "platform/baz")))
@@ -351,7 +357,7 @@
                                                                 :application/workload-details "baz"}}
                                         :scalar-requests {"mem" 512 "cpus" 1.0}}}
           ^V1Pod pod (api/task-metadata->pod "test-namespace"
-                                             "test-compute-cluster"
+                                             {:name "test-compute-cluster" :cook-pool-taint-name "test-taint"}
                                              task-metadata)
           pod-labels (-> pod .getMetadata .getLabels)]
       (is (= "foo" (get pod-labels "workload-class")))
@@ -364,7 +370,7 @@
                                                                 :application/workload-details "baz"}}
                                         :scalar-requests {"mem" 512 "cpus" 1.0}}}
           ^V1Pod pod (api/task-metadata->pod "test-namespace"
-                                             "test-compute-cluster"
+                                             {:name "test-compute-cluster" :cook-pool-taint-name "test-taint"}
                                              task-metadata)
           pod-labels (-> pod .getMetadata .getLabels)]
       (is (= "cook-job" (get pod-labels "workload-class")))
@@ -377,7 +383,7 @@
                                                                 :application/workload-details "baz"}}
                                         :scalar-requests {"mem" 512 "cpus" 1.0}}}
           ^V1Pod pod (api/task-metadata->pod "test-namespace"
-                                             "test-compute-cluster"
+                                             {:name "test-compute-cluster" :cook-pool-taint-name "test-taint"}
                                              task-metadata)
           pod-labels (-> pod .getMetadata .getLabels)]
       (is (= "foo" (get pod-labels "workload-class")))
@@ -390,7 +396,7 @@
                                                                 :application/workload-id "bar"}}
                                         :scalar-requests {"mem" 512 "cpus" 1.0}}}
           ^V1Pod pod (api/task-metadata->pod "test-namespace"
-                                             "test-compute-cluster"
+                                             {:name "test-compute-cluster" :cook-pool-taint-name "test-taint"}
                                              task-metadata)
           pod-labels (-> pod .getMetadata .getLabels)]
       (is (= "foo" (get pod-labels "workload-class")))
@@ -402,7 +408,7 @@
                          :task-request {:job {:job/application {}}
                                         :scalar-requests {"mem" 512 "cpus" 1.0}}}
           ^V1Pod pod (api/task-metadata->pod "test-namespace"
-                                             "test-compute-cluster"
+                                             {:name "test-compute-cluster" :cook-pool-taint-name "test-taint"}
                                              task-metadata)
           pod-labels (-> pod .getMetadata .getLabels)]
       (is (= "cook-job" (get pod-labels "workload-class")))
@@ -652,14 +658,14 @@
         (.setNamespace metadata "cook")
         (.setMetadata node metadata)
         (.setSpec node spec)
-        (is (not (api/node-schedulable? node 30 nil ["blocklist-1"])))
-        (is (api/node-schedulable? node 30 nil ["blocklist-2"]))))
+        (is (not (api/node-schedulable? {:node-blocklist-labels ["blocklist-1"]} node 30 nil)))
+        (is (api/node-schedulable? {:node-blocklist-labels ["blocklist-2"]} node 30 nil))))
     (testing "Pool Taint"
       (let [^V1Node node (V1Node.)
             metadata (V1ObjectMeta.)
             ^V1NodeSpec spec (V1NodeSpec.)
             ^V1Taint taint (V1Taint.)]
-        (.setKey taint api/cook-pool-taint)
+        (.setKey taint "the-taint-to-use")
         (.setValue taint "a-pool")
         (.setEffect taint "NoSchedule")
         (.addTaintsItem spec taint)
@@ -668,7 +674,8 @@
         (.setNamespace metadata "cook")
         (.setMetadata node metadata)
         (.setSpec node spec)
-        (is (api/node-schedulable? node 30 nil ["blocklist-1"]))))
+        (is (api/node-schedulable? {:node-blocklist-labels ["blocklist-1"] :cook-pool-taint-name "the-taint-to-use"} node 30 nil))
+        (is (not (api/node-schedulable? {:node-blocklist-labels ["blocklist-1"] :cook-pool-taint-name "a-taint-different-than-node"} node 30 nil)))))
     (testing "Other Taint"
       (let [^V1Node node (V1Node.)
             metadata (V1ObjectMeta.)
@@ -683,7 +690,7 @@
         (.setNamespace metadata "cook")
         (.setMetadata node metadata)
         (.setSpec node spec)
-        (is (not (api/node-schedulable? node 30 nil ["blocklist-1"])))))
+        (is (not (api/node-schedulable? {:node-blocklist-labels ["blocklist-1"]} node 30 nil)))))
     (testing "GPU Taint"
       (let [^V1Node node (V1Node.)
             metadata (V1ObjectMeta.)
@@ -698,7 +705,7 @@
         (.setNamespace metadata "cook")
         (.setMetadata node metadata)
         (.setSpec node spec)
-        (is (api/node-schedulable? node 30 nil ["blocklist-1"]))))))
+        (is (api/node-schedulable? {:node-blocklist-labels ["blocklist-1"]} node 30 nil))))))
 
 (deftest test-initialize-pod-watch-helper
   (testing "only processes each pod once"

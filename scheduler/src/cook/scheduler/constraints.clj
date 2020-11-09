@@ -19,9 +19,11 @@
             [clojure.core.cache :as cache]
             [clojure.set :as set]
             [clojure.tools.logging :as log]
+            [cook.cached-queries :as cached-queries]
             [cook.config :as config]
             [cook.group :as group]
             [cook.rate-limit :as ratelimit]
+            [cook.regexp-tools :as regexp-tools]
             [cook.scheduler.data-locality :as dl]
             [cook.tools :as util]
             [swiss.arrows :refer :all])
@@ -97,7 +99,7 @@
     (when (pos? gpu-count)
       (or gpu-model-in-env
           ; lookup the GPU model from the pool defaults defined in config.edn
-          (util/match-based-on-pool-name (config/valid-gpu-models) pool-name :default-model)))))
+          (regexp-tools/match-based-on-pool-name (config/valid-gpu-models) pool-name :default-model)))))
 
 (defrecord gpu-host-constraint [job-gpu-count-requested job-gpu-model-requested]
   JobConstraint
@@ -132,7 +134,8 @@
   and a non-gpu job from running on a gpu host because we consider gpus scarce resources."
   [job]
   (let [job-gpu-count-requested (-> job util/job-ent->resources :gpus (or 0))
-        job-gpu-model-requested (when (pos? job-gpu-count-requested) (job->gpu-model-requested job-gpu-count-requested job (util/job->pool-name job)))]
+        job-gpu-model-requested (when (pos? job-gpu-count-requested)
+                                  (job->gpu-model-requested job-gpu-count-requested job (cached-queries/job->pool-name job)))]
     (->gpu-host-constraint job-gpu-count-requested job-gpu-model-requested)))
 
 (defrecord rebalancer-reservation-constraint [reserved-hosts]
@@ -179,9 +182,9 @@
 (defn job->default-constraints
   "Returns the list of default constraints configured for the job's pool"
   [job]
-  (util/match-based-on-pool-name
+  (regexp-tools/match-based-on-pool-name
     (config/default-job-constraints)
-    (util/job->pool-name job)
+    (cached-queries/job->pool-name job)
     :default-constraints))
 
 (def machine-type-constraint-attributes

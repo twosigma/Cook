@@ -30,3 +30,16 @@
         (get field-name))
     (catch Exception e
       (throw (ex-info "Failed matching key" {:regexp-name regexp-name :field-name field-name :match-list match-list :key key} e)))))
+
+(defn match-based-on-pool-name
+  "Given a list of dictionaries [{:pool-regexp .. :field ...} {:pool-regexp .. :field ...}
+   a pool name and a <field> name, return the first matching <field> where the regexp matches the pool name."
+  [match-list effective-pool-name field & {:keys [default-value] :or {default-value nil}}]
+  (let [value (match-based-on-regexp
+                :pool-regex
+                field
+                match-list
+                effective-pool-name)]
+    (if (some? value)
+      value
+      default-value)))

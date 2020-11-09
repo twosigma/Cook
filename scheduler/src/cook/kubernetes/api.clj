@@ -8,7 +8,8 @@
             [cook.kubernetes.metrics :as metrics]
             [cook.scheduler.constraints :as constraints]
             [cook.task :as task]
-            [cook.tools :as util]
+            [cook.tools :as tools]
+            [cook.util :as util]
             [datomic.api :as d]
             [metrics.meters :as meters]
             [metrics.timers :as timers]
@@ -34,8 +35,6 @@
 (def workload-class-label "workload-class")
 (def workload-id-label "workload-id")
 (def resource-owner-label "resource-owner")
-(def cook-pool-label "cook-pool")
-(def cook-pool-taint "cook-pool")
 (def cook-sandbox-volume-name "cook-sandbox-volume")
 (def cook-job-pod-priority-class "cook-workload")
 (def cook-synthetic-pod-priority-class "synthetic-pod")
@@ -176,8 +175,8 @@
   [{:keys [^ApiClient api-client all-pods-atom node-name->pod-name->pod] compute-cluster-name :name :as compute-cluster} cook-pod-callback]
   (let [[current-pods namespaced-pod-name->pod] (get-all-pods-in-kubernetes api-client compute-cluster-name)
         callbacks
-        [(util/make-atom-updater all-pods-atom) ; Update the set of all pods.
-         (util/make-nested-atom-updater node-name->pod-name->pod pod->node-name get-pod-namespaced-key)
+        [(tools/make-atom-updater all-pods-atom) ; Update the set of all pods.
+         (tools/make-nested-atom-updater node-name->pod-name->pod pod->node-name get-pod-namespaced-key)
          (partial cook-pod-callback-wrap cook-pod-callback compute-cluster-name)] ; Invoke the cook-pod-callback if its a cook pod.
         old-all-pods @all-pods-atom
         new-pod-names (set (keys namespaced-pod-name->pod))
@@ -241,10 +240,10 @@
 
 (defn get-node-pool
   "Get the pool for a node. In the case of no pool, return 'no-pool"
-  [^V1Node node]
+  [cook-pool-taint-name ^V1Node node]
   ; In the case of nil, we have taints-on-node == [], and we'll map to no-pool.
   (let [taints-on-node (or (some-> node .getSpec .getTaints) [])
-        found-cook-pool-taint (filter #(= cook-pool-taint (.getKey %)) taints-on-node)]
+        found-cook-pool-taint (filter #(= cook-pool-taint-name (.getKey %)) taints-on-node)]
     (if (= 1 (count found-cook-pool-taint))
       (-> found-cook-pool-taint first .getValue)
       "no-pool")))
@@ -252,7 +251,7 @@
 (declare initialize-node-watch)
 (defn initialize-node-watch-helper
   "Help creating node watch. Returns a new watch Callable"
-  [{:keys [^ApiClient api-client current-nodes-atom pool->node-name->node] compute-cluster-name :name :as compute-cluster}]
+  [{:keys [^ApiClient api-client current-nodes-atom pool->node-name->node cook-pool-taint-name] compute-cluster-name :name :as compute-cluster}]
   (let [api (CoreV1Api. api-client)
         current-nodes-raw
         (timers/time! (metrics/timer "get-all-nodes" compute-cluster-name)
@@ -269,8 +268,8 @@
                      ))
         current-nodes (pc/map-from-vals node->node-name (.getItems current-nodes-raw))
         callbacks
-        [(util/make-atom-updater current-nodes-atom) ; Update the set of all pods.
-         (util/make-nested-atom-updater pool->node-name->node get-node-pool node->node-name)]
+        [(tools/make-atom-updater current-nodes-atom) ; Update the set of all pods.
+         (tools/make-nested-atom-updater pool->node-name->node (partial get-node-pool cook-pool-taint-name) node->node-name)]
         old-current-nodes @current-nodes-atom
         new-node-names (set (keys current-nodes))
         old-node-names (set (keys old-current-nodes))]
@@ -411,12 +410,12 @@
   "Can we schedule on a node. For now, yes, unless there are other taints on it or it contains any label in the
   node-blocklist-labels list.
   TODO: Incorporate other node-health measures here."
-  [^V1Node node pod-count-capacity node-name->pods node-blocklist-labels]
+  [{:keys [node-blocklist-labels cook-pool-taint-name]} ^V1Node node pod-count-capacity node-name->pods]
   (if (nil? node)
     false
     (let [taints-on-node (or (some-> node .getSpec .getTaints) [])
           other-taints (remove #(contains?
-                                  #{cook-pool-taint k8s-deletion-candidate-taint gpu-node-taint}
+                                  #{cook-pool-taint-name k8s-deletion-candidate-taint gpu-node-taint}
                                   (.getKey %))
                                taints-on-node)
           node-name (some-> node .getMetadata .getName)
@@ -547,9 +546,9 @@
 
 (defn toleration-for-pool
   "For a given cook pool name, create the right V1Toleration so that Cook will ignore that cook-pool taint."
-  [pool-name]
+  [cook-pool-taint-name pool-name]
   (let [^V1Toleration toleration (V1Toleration.)]
-    (.setKey toleration cook-pool-taint)
+    (.setKey toleration cook-pool-taint-name)
     (.setValue toleration pool-name)
     (.setOperator toleration "Equal")
     (.setEffect toleration "NoSchedule")
@@ -579,11 +578,11 @@
                     ;; TODO validate and fail when the user parameter is missing.
                     (let [[uid gid] (str/split (:value user-param) #":")]
                       [(Long/parseLong uid) (Long/parseLong gid)])
-                    [(util/user->user-id user) (util/user->group-id user)])
+                    [(tools/user->user-id user) (tools/user->group-id user)])
         security-context (V1PodSecurityContext.)]
     (.setRunAsUser security-context uid)
     (.setRunAsGroup security-context gid)
-    (when-let [group-ids (util/user->all-group-ids user)]
+    (when-let [group-ids (tools/user->all-group-ids user)]
       (.setSupplementalGroups security-context group-ids))
     security-context))
 
@@ -641,7 +640,7 @@
         (-> (config/kubernetes) :sidecar :resource-requirements)
         checkpoint-memory-overhead
         (when checkpoint
-          (-> (config/kubernetes) :default-checkpoint-config (merge (util/job-ent->checkpoint job)) :memory-overhead))]
+          (-> (config/kubernetes) :default-checkpoint-config (merge (tools/job-ent->checkpoint job)) :memory-overhead))]
     (cond-> resources
       resource-requirements
       (assoc
@@ -708,7 +707,7 @@
   (when checkpoint
     (let [{:keys [default-checkpoint-config]} (config/kubernetes)
           {:keys [max-checkpoint-attempts checkpoint-failure-reasons disable-checkpointing] :as checkpoint}
-          (merge default-checkpoint-config (util/job-ent->checkpoint job))]
+          (merge default-checkpoint-config (tools/job-ent->checkpoint job))]
       (when-not disable-checkpointing
         (if max-checkpoint-attempts
           (let [checkpoint-failure-reasons (or checkpoint-failure-reasons default-checkpoint-failure-reasons)
@@ -732,7 +731,7 @@
   (let [pod-labels-from-job-labels
         (if-let [prefix (:add-job-label-to-pod-prefix (config/kubernetes))]
           (->> job
-               util/job-ent->label
+               tools/job-ent->label
                (filter (fn [[k _]] (str/starts-with? k prefix)))
                (into {}))
           {})
@@ -749,7 +748,7 @@
 
 (defn ^V1Pod task-metadata->pod
   "Given a task-request and other data generate the kubernetes V1Pod to launch that task."
-  [namespace compute-cluster-name
+  [namespace {:keys [cook-pool-taint-name cook-pool-label-name] compute-cluster-name :name}
    {:keys [task-id command container task-request hostname pod-annotations pod-constraints pod-hostnames-to-avoid
            pod-labels pod-priority-class pod-supports-cook-init? pod-supports-cook-sidecar?]
     :or {pod-priority-class cook-job-pod-priority-class
@@ -959,12 +958,12 @@
     ; user. For the time being, this isn't a problem only if / when
     ; the default pool is not being fed offers from Kubernetes.
     (when pool-name
-      (.addTolerationsItem pod-spec (toleration-for-pool pool-name))
+      (.addTolerationsItem pod-spec (toleration-for-pool cook-pool-taint-name pool-name))
       ; Add a node selector for nodes labeled with the Cook pool
       ; we're launching in. This is technically only needed for
       ; synthetic pods (which don't specify a node name), but it
       ; doesn't hurt to add it for all pods we submit.
-      (add-node-selector pod-spec cook-pool-label pool-name))
+      (add-node-selector pod-spec cook-pool-label-name pool-name))
 
     (when pod-constraints
       (doseq [{:keys [constraint/attribute
@@ -1211,7 +1210,7 @@
           (let [code (.getCode e)
                 already-deleted? (contains? #{404} code)]
             (if already-deleted?
-              (log/info e "In" compute-cluster-name "compute cluster, pod" pod-name "was already deleted")
+              (log/info "In" compute-cluster-name "compute cluster, pod" pod-name "was already deleted")
               (throw e))))))))
 
 (defn create-namespaced-pod

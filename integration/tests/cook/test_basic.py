@@ -1879,6 +1879,81 @@ class CookTest(util.CookTest):
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
         self.assertIn('success', [i['status'] for i in job['instances']])
 
+    def test_submit_job_with_disk(self):
+        settings_dict = util.settings(self.cook_url)
+        # disk_config_list is a list of regexp's with pool regex, valid disk types, default disk type, and max requestable size of disk
+        disk_config_list = settings_dict.get("pools", {}).get("disk", [])
+        if not disk_config_list:
+            # Submit a job to the default pool specifying disk type and assert the submission gets rejected
+            default_pool = util.default_pool(self.cook_url)
+            job_uuid, resp = util.submit_job(
+                self.cook_url,
+                pool=default_pool,
+                disk={'request': 20000.0,
+                      'type': 'pd-ssd'})
+            self.assertEqual(resp.status_code, 400)
+            self.assertTrue(f"Disk specifications are not supported on pool {default_pool}" in resp.text,
+                             msg=resp.content)
+
+        else:
+            # Disk may not be configured for COOK_TEST_DEFAULT_POOL, so we iterate over all active pools to find a pool where we can run this test.
+            active_pools, _ = util.active_pools(self.cook_url)
+            for pool in active_pools:
+                pool_name = pool['name']
+                matching_disk_types = [ii["valid-types"] for ii in disk_config_list if
+                                       re.match(ii["pool-regex"], pool_name)]
+                disk_max_size = [ii["max-size"] for ii in disk_config_list if
+                                    re.match(ii["pool-regex"], pool_name)]
+                # If there are no supported disk types for pool, assert submission gets rejected
+                if len(matching_disk_types) == 0 or len(matching_disk_types[0]) == 0:
+                    self.logger.info(f'There are no disk types configured for pool {pool_name}')
+                    job_uuid, resp = util.submit_job(
+                        self.cook_url,
+                        pool=pool_name,
+                        disk={'request': 10})
+                    self.assertEqual(resp.status_code, 400)
+                    self.assertTrue(f"Disk specifications are not supported on pool {pool_name}" in resp.text,
+                                    msg=resp.content)
+
+                else:
+                    expected_request = disk_max_size[0]
+                    expected_limit = disk_max_size[0]
+                    expected_type = matching_disk_types[0][0]
+
+                    # Valid job submission with just specifying disk request
+                    self.logger.info(f'Submitting to {pool}')
+                    job_uuid, resp = util.submit_job(
+                        self.cook_url,
+                        pool=pool_name,
+                        disk={'request': expected_request})
+                    self.assertEqual(resp.status_code, 201, resp.text)
+                    job = util.load_job(self.cook_url, job_uuid)
+                    self.assertEqual(job["disk"]["request"], expected_request)
+                    self.assertNotIn("limit", job["disk"])
+                    self.assertNotIn("type", job["disk"])
+
+                    # Valid job submission with disk request, size, and type
+                    job_uuid, resp = util.submit_job(
+                        self.cook_url,
+                        pool=pool_name,
+                        disk={'request': expected_request,
+                              'limit': expected_limit,
+                              'type': expected_type})
+                    self.assertEqual(resp.status_code, 201, resp.text)
+                    job = util.load_job(self.cook_url, job_uuid)
+                    self.assertEqual(job["disk"]["request"], expected_request)
+                    self.assertEqual(job["disk"]["limit"], expected_limit)
+                    self.assertEqual(job["disk"]["type"], expected_type)
+
+                    # Invalid job submission with disk type but not disk request
+                    job_uuid, resp = util.submit_job(
+                        self.cook_url,
+                        pool=pool_name,
+                        disk={'type': expected_type})
+                    self.assertEqual(resp.status_code, 400)
+                    self.assertTrue("[{\"disk\":{\"request\":\"missing-required-key\"}}]" in resp.text,
+                                    msg=resp.content)
+
     def test_request_gpu_models(self):
         settings_dict = util.settings(self.cook_url)
         gpu_enabled = settings_dict['mesos-gpu-enabled']
@@ -1905,7 +1980,7 @@ class CookTest(util.CookTest):
                 self.assertTrue(f"Job requested GPUs but pool {default_pool} does not have any valid GPU models" in resp.text,
                     msg=resp.content)
             else:
-                # Check if there are any active pools
+                # GPU's may not be enabled for COOK_TEST_DEFAULT_SUBMIT_POOL, so we iterate over all active pools to find a pool where we can run this test.
                 active_pools, _ = util.active_pools(self.cook_url)
                 if len(active_pools) == 0:
                     self.logger.info('There are no pools to submit jobs to')

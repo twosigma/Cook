@@ -16,6 +16,7 @@
 
 (ns cook.test.benchmark
   (:require [clojure.test :refer :all]
+            [cook.queries :as queries]
             [cook.quota :as quota]
             [cook.scheduler.dru :as dru]
             [cook.scheduler.scheduler :as sched]
@@ -56,7 +57,7 @@
         (cc/quick-bench (sched/rank-jobs db offensive-job-filter))))
     (testing "sort-jobs-by-dru-helper"
       (let [db (d/db conn)
-            pending-task-ents (->> (util/get-pending-job-ents db)
+            pending-task-ents (->> (queries/get-pending-job-ents db)
                                    (map util/create-task-ent))
             running-task-ents (util/get-running-task-ents db)
             sort-task-scored-task-pairs dru/sorted-task-scored-task-pairs
