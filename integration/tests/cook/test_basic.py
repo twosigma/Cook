@@ -3238,7 +3238,7 @@ class CookTest(util.CookTest):
             # leader url and COOK_SCHEDULER_REST_URL can have different schemes right now
             #command = 'bash -c \'if [[ "${COOK_POOL:-zzz}" == "' + default_pool + '" ]] && [[ "${COOK_SCHEDULER_REST_URL:-zzz}" == "' + info['leader-url'] + '" ]]; then exit 0; else exit 1; fi\''
             command = 'bash -c \'if [[ "${COOK_POOL:-zzz}" == "' + default_pool + '" ]] && [[ "${COOK_SCHEDULER_REST_URL:-zzz}" != "zzz" ]]; then exit 0; else exit 1; fi\''
-            job_uuid, resp = util.submit_job(self.cook_url, command=command, container=container)
+            job_uuid, resp = util.submit_job(self.cook_url, command=command, container=container, max_retries=5)
             self.assertEqual(201, resp.status_code, resp.text)
             util.wait_for_instance(self.cook_url, job_uuid, status='success')
         finally:
