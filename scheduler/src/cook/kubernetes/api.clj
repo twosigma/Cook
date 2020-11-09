@@ -6,6 +6,7 @@
             [clojure.walk :as walk]
             [cook.config :as config]
             [cook.kubernetes.metrics :as metrics]
+            [cook.pool :as pool]
             [cook.scheduler.constraints :as constraints]
             [cook.task :as task]
             [cook.tools :as tools]
@@ -804,7 +805,10 @@
         params-env (build-params-env parameters)
         progress-env (task/build-executor-environment job)
         checkpoint-env (checkpoint->env checkpoint)
-        main-env-base (merge environment params-env progress-env sandbox-env checkpoint-env)
+        metadata-env {"COOK_COMPUTE_CLUSTER_NAME" compute-cluster-name
+                      "COOK_POOL" (pool/pool-name-or-default pool-name)
+                      "COOK_SCHEDULER_REST_URL" (config/scheduler-rest-url)}
+        main-env-base (merge environment params-env progress-env sandbox-env checkpoint-env metadata-env)
         progress-file-var (get main-env-base task/progress-meta-env-name task/default-progress-env-name)
         progress-file-path (get main-env-base progress-file-var)
         main-env (cond-> main-env-base
@@ -895,7 +899,6 @@
           (.setPorts container [(.containerPort (V1ContainerPort.) (int port))])
 
           (.setEnv container (conj main-env-vars
-                                   (make-env "COOK_SCHEDULER_REST_URL" (config/scheduler-rest-url))
                                    ;; DEPRECATED - sidecar should use COOK_SANDBOX instead.
                                    ;; Will remove this environment variable in a future release.
                                    (make-env "COOK_WORKDIR" sandbox-dir)))

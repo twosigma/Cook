@@ -3301,6 +3301,25 @@ class CookTest(util.CookTest):
         finally:
             util.kill_jobs(self.cook_url, [job_uuid_disabled, job_uuid_enabled])
 
+    @unittest.skipUnless(util.using_kubernetes(), 'Test requires kubernetes')
+    def test_kubernetes_metadata_env_vars(self):
+        docker_image = util.docker_image()
+        container = {'type': 'docker',
+                     'docker': {'image': docker_image}}
+        default_pool = util.default_submit_pool() or util.default_pool(self.cook_url)
+        # info = util.scheduler_info(self.cook_url)
+        try:
+            # need to figure out how to match up COOK_SCHEDULER_REST_URL
+            # leader url and COOK_SCHEDULER_REST_URL can have different schemes right now
+            #command = 'bash -c \'if [[ "${COOK_POOL:-zzz}" == "' + default_pool + '" ]] && [[ "${COOK_SCHEDULER_REST_URL:-zzz}" == "' + info['leader-url'] + '" ]]; then exit 0; else exit 1; fi\''
+            command = 'bash -c \'if [[ "${COOK_POOL:-zzz}" == "' + default_pool + '" ]] && [[ "${COOK_SCHEDULER_REST_URL:-zzz}" != "zzz" ]]; then exit 0; else exit 1; fi\''
+            job_uuid, resp = util.submit_job(self.cook_url, command=command, container=container, max_retries=5)
+            self.assertEqual(201, resp.status_code, resp.text)
+            util.wait_for_instance(self.cook_url, job_uuid, status='success')
+        finally:
+            util.kill_jobs(self.cook_url, [job_uuid])
+
+
     @unittest.skipUnless(util.docker_tests_enabled(), 'Requires docker support')
     def test_disallowed_docker_parameters(self):
         settings = util.settings(self.cook_url)
