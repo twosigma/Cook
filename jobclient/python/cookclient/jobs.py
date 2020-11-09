@@ -130,17 +130,17 @@ class Disk:
     """Disk information associated with a job.
 
     :param request: Disk request - guaranteed disk space for job.
-    :type name: double
+    :type name: float
     :param limit: Disk limit - max disk space job can use.
-    :type limit: double
+    :type limit: float
     :param type: Disk type.
     :type type: str
     """
-    request: double
-    limit: double
+    request: float
+    limit: float
     type: str
 
-    def __init__(self, request: double, limit: double, type: str):
+    def __init__(self, request: float, limit: float, type: str):
         self.request = request
         self.limit = limit
         self.type = type

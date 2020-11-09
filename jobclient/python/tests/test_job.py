@@ -25,7 +25,7 @@ from cookclient.containers import (
     Volume
 )
 from cookclient.instance import Instance, Executor
-from cookclient.jobs import Application, Job
+from cookclient.jobs import Application, Disk, Job
 from cookclient.jobs import Status as JobStatus
 from cookclient.jobs import State as JobState
 from cookclient.util import datetime_to_unix_ms
@@ -253,7 +253,8 @@ JOB_EXAMPLE = Job(
     progress_output_file='output.txt',
     progress_regex_string='test',
     gpus=1,
-    ports=10
+    ports=10,
+    disk=Disk(10.0, 20.0, 'standard')
 )
 
 
@@ -349,9 +350,13 @@ class JobTest(TestCase):
         self.assertEqual(job.gpus, jobdict['gpus'])
         self.assertEqual(job.ports, jobdict['ports'])
         # Test disk inline as it's a very simple structure
-        self.assertEqual(job.disk.request, jobdict['disk']['request'])
-        self.assertEqual(job.disk.limit, jobdict['disk']['limit'])
-        self.assertEqual(job.disk.type, jobdict['disk']['type'])
+        # self.assertEqual(job.disk.request, jobdict['disk'])
+        # self.assertEqual(jobdict['disk'], 10.0)
+
+
+        self.assertEqual(' ', jobdict['disk'])
+        # self.assertEqual(job.disk.limit, jobdict['disk']['limit'])
+        # self.assertEqual(job.disk.type, jobdict['disk']['type'])
 
     def test_dict_parse_required(self):
         """Test parsing a job dictionary object parsed from JSON.
