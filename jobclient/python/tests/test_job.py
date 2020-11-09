@@ -157,7 +157,12 @@ JOB_DICT_WITH_OPTIONALS = {**JOB_DICT_NO_OPTIONALS, **{
     'progress_output_file': 'output.txt',
     'progress_regex_string': 'test',
     'gpus': 1,
-    'ports': 10
+    'ports': 10,
+    'disk': {
+        'request': 10.0,
+        'limit': 20.0,
+        'type': 'standard'
+     }
 }}
 
 JOB_DICT_GROUP_AND_GROUPS = {**JOB_DICT_NO_OPTIONALS, **{
@@ -343,6 +348,10 @@ class JobTest(TestCase):
                          jobdict['progress_regex_string'])
         self.assertEqual(job.gpus, jobdict['gpus'])
         self.assertEqual(job.ports, jobdict['ports'])
+        # Test disk inline as it's a very simple structure
+        self.assertEqual(job.disk.request, jobdict['disk']['request'])
+        self.assertEqual(job.disk.limit, jobdict['disk']['limit'])
+        self.assertEqual(job.disk.type, jobdict['disk']['type'])
 
     def test_dict_parse_required(self):
         """Test parsing a job dictionary object parsed from JSON.
