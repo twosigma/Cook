@@ -157,7 +157,7 @@ class Disk:
             disk_dict['request'] = self.request
         if self.limit is not None:
             disk_dict['limit'] = self.limit
-        if self.request is not None:
+        if self.type is not None:
             disk_dict['type'] = self.type
         return disk_dict
 
