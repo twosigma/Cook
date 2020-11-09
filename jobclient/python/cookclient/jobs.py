@@ -140,13 +140,13 @@ class Disk:
     limit: float
     type: str
 
-    def __init__(self, request: float, limit: float, type: str):
+    def __init__(self, request: float, limit: float = None, type: str = None):
         self.request = request
         self.limit = limit
         self.type = type
 
     def __str__(self):
-        return json.dumps(self.to_dict, indent=4)
+        return json.dumps(self.to_dict(), indent=4)
 
     def __repr__(self):
         return f'Disk({self.request}, {self.limit}, {self.type})'
@@ -417,7 +417,7 @@ class Job:
         if self.retries_remaining is not None:
             d['retries_remaining'] = self.retries_remaining
         if self.disk is not None:
-            d['disk'] = self.disk
+            d['disk'] = self.disk.to_dict()
         return d
 
     @classmethod
