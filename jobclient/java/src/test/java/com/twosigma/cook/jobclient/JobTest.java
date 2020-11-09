@@ -47,6 +47,7 @@ public class JobTest {
     // Constraints which could be used for any test.
     private Constraint _constraint1;
     private Constraint _constraint2;
+    private static final double EPSILON = 1e-15;
 
     @Before
     public void setup() {
@@ -149,6 +150,9 @@ public class JobTest {
         Assert.assertEquals(Integer.valueOf(2), job.getGpus());
         Assert.assertEquals("nvidia-tesla-p100", job.getEnv().get("COOK_GPU_MODEL"));
         Assert.assertEquals("test", job.getEnv().get("FOO"));
+        Assert.assertNull(job.getDisk().getRequest());
+        Assert.assertNull(job.getDisk().getLimit());
+        Assert.assertNull(job.getDisk().getType());
 
         final Set<Constraint> constraints = job.getConstraints();
         Assert.assertEquals(constraints.size(), 5);
@@ -315,5 +319,58 @@ public class JobTest {
         final List<Job> jobs = Job.parseFromJSON(jsonString, null);
         final Job actualJob = jobs.get(0);
         Assert.assertEquals(0, (long) actualJob.getGpus());
+    }
+
+    @Test
+    public void testJsonizeJobWithDisk() {
+        final Job.Builder jobBuilder = new Job.Builder();
+        populateBuilder(jobBuilder);
+        jobBuilder.setDiskRequest(10.0);
+        jobBuilder.setDiskLimit(20.0);
+        jobBuilder.setDiskType("standard");
+
+        final Job basicJob = jobBuilder.build();
+        final JSONObject jsonJob = Job.jsonizeJob(basicJob);
+
+        Assert.assertEquals(10.0, basicJob.getDisk().getRequest(), EPSILON);
+        Assert.assertEquals(20.0, basicJob.getDisk().getLimit(), EPSILON);
+        Assert.assertEquals("standard", basicJob.getDisk().getType());
+
+        Assert.assertEquals(10.0, jsonJob.getJSONObject("disk").getDouble("request"), EPSILON);
+        Assert.assertEquals(20.0, jsonJob.getJSONObject("disk").getDouble("limit"), EPSILON);
+        Assert.assertEquals("standard", jsonJob.getJSONObject("disk").getString("type"));
+    }
+
+    @Test
+    public void testParseFromJsonDisk() {
+        final Job.Builder jobBuilder1 = new Job.Builder();
+        populateBuilder(jobBuilder1);
+        jobBuilder1.setDiskRequest(10.0);
+        jobBuilder1.setDiskType("pd-ssd");
+
+        final JSONObject json = convertJobToJsonObject(jobBuilder1.build());
+        final String jsonString = new JSONArray().put(json).toString();
+        final List<Job> jobs = Job.parseFromJSON(jsonString);
+        Assert.assertEquals(jobs.size(), 1);
+        final Job actualJob1 = jobs.get(0);
+
+        Assert.assertEquals(10.0, actualJob1.getDisk().getRequest(), EPSILON);
+        Assert.assertNull(actualJob1.getDisk().getLimit());
+        Assert.assertEquals("pd-ssd", actualJob1.getDisk().getType());
+
+        final Disk diskEntry = new Disk(50.0, 100.0, "standard");
+        final Job.Builder jobBuilder2 = new Job.Builder();
+        populateBuilder(jobBuilder2);
+        jobBuilder2.setDisk(diskEntry);
+
+        final JSONObject json2 = convertJobToJsonObject(jobBuilder2.build());
+        final String jsonString2 = new JSONArray().put(json2).toString();
+        final List<Job> jobs2 = Job.parseFromJSON(jsonString2);
+        Assert.assertEquals(jobs2.size(), 1);
+        final Job actualJob2 = jobs2.get(0);
+
+        Assert.assertEquals(diskEntry.getRequest(), actualJob2.getDisk().getRequest(), EPSILON);
+        Assert.assertEquals(diskEntry.getLimit(), actualJob2.getDisk().getLimit(), EPSILON);
+        Assert.assertEquals(diskEntry.getType(), actualJob2.getDisk().getType());
     }
 }
