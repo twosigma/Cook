@@ -190,6 +190,27 @@ JOB_DICT_MANY_GROUPS = {**JOB_DICT_NO_OPTIONALS, **{
     ]
 }}
 
+JOB_DICT_DISK_ONLY_REQUEST = {**JOB_DICT_NO_OPTIONALS, **{
+    'disk': {
+        'request': 10.0,
+     }
+}}
+
+JOB_DICT_DISK_ONLY_REQUEST_AND_LIMIT = {**JOB_DICT_NO_OPTIONALS, **{
+    'disk': {
+        'request': 10.0,
+        'limit': 20.0
+     }
+}}
+
+JOB_DICT_DISK_ALL_FIELDS = {**JOB_DICT_NO_OPTIONALS, **{
+    'disk': {
+        'request': 10.0,
+        'limit': 20.0,
+        'type': 'standard'
+     }
+}}
+
 JOB_EXAMPLE = Job(
     command='ls',
     mem=10.0,
@@ -292,9 +313,22 @@ class JobTest(TestCase):
         else:
             self.assertIsNone(job.group)
 
+    def _check_disk(self, job: Job, jobdict: dict):
+        """Check the disk field of a Job.
+
+        The Job's disk attribute should be either:
+        * The value of `jobdict['disk']` if set,
+        * Otherwise, the value of `jobdict['disk'][0]` if set,
+        * Otherwise, `None`.
+        """
+        if 'disk' in jobdict:
+            self.assertEqual(job.disk.to_dict(), jobdict['disk'])
+        else:
+            self.assertIsNone(job.disk)
+
     def _check_optional_fields(self, job: Job, jobdict: dict):
         self._check_group(job, jobdict)
-
+        self._check_disk(job, jobdict)
         self.assertEqual(str(job.executor).lower(),
                          jobdict['executor'].lower())
         self.assertTrue(isinstance(job.container, AbstractContainer))
@@ -349,14 +383,6 @@ class JobTest(TestCase):
                          jobdict['progress_regex_string'])
         self.assertEqual(job.gpus, jobdict['gpus'])
         self.assertEqual(job.ports, jobdict['ports'])
-        # Test disk inline as it's a very simple structure
-        # self.assertEqual(job.disk.request, jobdict['disk'])
-        # self.assertEqual(jobdict['disk'], 10.0)
-
-
-        self.assertEqual(' ', jobdict['disk'])
-        # self.assertEqual(job.disk.limit, jobdict['disk']['limit'])
-        # self.assertEqual(job.disk.type, jobdict['disk']['type'])
 
     def test_dict_parse_required(self):
         """Test parsing a job dictionary object parsed from JSON.
@@ -396,6 +422,23 @@ class JobTest(TestCase):
         jobdict = JOB_DICT_NO_OPTIONALS
         job = Job.from_dict(jobdict)
         self._check_group(job, jobdict)
+
+    def test_dict_parse_disk(self):
+        # jobdict only has request
+        jobdict = JOB_DICT_DISK_ONLY_REQUEST
+        job = Job.from_dict(jobdict)
+        self._check_disk(job, jobdict)
+
+        # jobdict has request and limit
+        jobdict = JOB_DICT_DISK_ONLY_REQUEST_AND_LIMIT
+        job = Job.from_dict(jobdict)
+        self._check_disk(job, jobdict)
+
+        # jobdict has request, limit, and type
+        jobdict = JOB_DICT_DISK_ALL_FIELDS
+        job = Job.from_dict(jobdict)
+        self._check_disk(job, jobdict)
+
 
     def test_dict_output(self):
         job = JOB_EXAMPLE
