@@ -67,7 +67,7 @@ public class JobTest {
         jobBuilder.setMaxRuntime(1000L);
         jobBuilder.disableMeaCulpaRetries();
         jobBuilder.addUri(new FetchableURI.Builder().setValue("http://example.com/my_resource").build());
-        jobBuilder.setApplication(new Application("baz-app", "1.2.3"));
+        jobBuilder.setApplication(new Application("baz-app", "1.2.3", "workloadClass", "workloadId", "workloadDetails"));
         jobBuilder.setCheckpoint(new Checkpoint(Mode.auto,
                 new CheckpointOptions(new HashSet<String>(Arrays.asList("path1", "path2", "path2"))),
                 new PeriodicCheckpointOptions(5)));
@@ -100,8 +100,14 @@ public class JobTest {
         Assert.assertEquals(jsonJob.getInt("gpus"), basicJob.getGpus().intValue());
         Assert.assertEquals(jsonJob.getString("uuid"), basicJob.getUUID().toString());
         Assert.assertEquals(
-            jsonJob.getJSONObject("application").toString(),
-            new JSONObject().put("name", "baz-app").put("version", "1.2.3").toString());
+                new JSONObject()
+                        .put("name", "baz-app")
+                        .put("version", "1.2.3")
+                        .put("workload-class", "workloadClass")
+                        .put("workload-id", "workloadId")
+                        .put("workload-details", "workloadDetails")
+                        .toString(),
+                jsonJob.getJSONObject("application").toString());
         Assert.assertEquals(jsonJob.getJSONObject("checkpoint").getString("mode"),
                 basicJob.getCheckpoint().getMode().toString());
         Assert.assertEquals(500L, jsonJob.getLong("expected_runtime"));
@@ -141,6 +147,9 @@ public class JobTest {
         Assert.assertEquals(job.getMaxRuntime(), Long.valueOf(1000L));
         Assert.assertEquals(job.getApplication().getName(), "baz-app");
         Assert.assertEquals(job.getApplication().getVersion(), "1.2.3");
+        Assert.assertEquals(job.getApplication().getWorkloadClass(), "workloadClass");
+        Assert.assertEquals(job.getApplication().getWorkloadId(), "workloadId");
+        Assert.assertEquals(job.getApplication().getWorkloadDetails(), "workloadDetails");
         Assert.assertEquals(job.getCheckpoint().getMode(), Mode.auto);
         Assert.assertEquals(job.getCheckpoint().getCheckpointOptions().getPreservePaths(),
                 new HashSet<String>(Arrays.asList("path1", "path2")));
