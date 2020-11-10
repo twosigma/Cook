@@ -121,8 +121,8 @@
                                                      :parameters []}}}]
          :disk
          [{:pool-regex "^k8s-alpha$"
-           :valid-types #{"pd-ssd"}
-           :default-type "pd-ssd"
+           :valid-types #{"standard"}
+           :default-type "standard"
            :max-size 256000.0}]
          :valid-gpu-models
          [{:pool-regex "k8s-alpha"
