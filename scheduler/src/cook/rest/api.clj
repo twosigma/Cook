@@ -1276,8 +1276,7 @@
                                   (->> [attribute (str/upper-case (name operator)) pattern]
                                        (map str)))))
           instances (map #(fetch-instance-map db %1) (:job/instance job))
-          submit-time (when (:job/submit-time job) ; due to a bug, submit time may not exist for some jobs
-                        (.getTime (:job/submit-time job)))
+          submit-time (util/job->submit-time job)
           datasets (when (seq (:job/datasets job))
                      (dl/get-dataset-maps job))
           attempts-consumed (util/job-ent->attempts-consumed db job)

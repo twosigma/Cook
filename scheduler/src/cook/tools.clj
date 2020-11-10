@@ -1030,3 +1030,8 @@
                   (format "%.3f" %)
                   (str %))
                resource-map))
+
+(defn job->submit-time
+  "Get submit-time for a job. due to a bug, submit time may not exist for some jobs"
+  [job]
+  (when (:job/submit-time job) (.getTime (:job/submit-time job))))

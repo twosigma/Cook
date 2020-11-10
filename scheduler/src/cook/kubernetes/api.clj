@@ -795,8 +795,7 @@
         {:keys [volumes volume-mounts sandbox-volume-mount-fn]} (make-volumes volumes sandbox-dir)
         {:keys [custom-shell init-container set-container-cpu-limit? sidecar]} (config/kubernetes)
         checkpoint (calculate-effective-checkpointing-config job task-id)
-        job-submit-time (when (:job/submit-time job) ; due to a bug, submit time may not exist for some jobs
-                          (.getTime (:job/submit-time job)))
+        job-submit-time (tools/job->submit-time job)
         image (calculate-effective-image (config/kubernetes) job-submit-time image checkpoint task-id)
         checkpoint-memory-overhead (:memory-overhead checkpoint)
         use-cook-init? (and init-container pod-supports-cook-init?)
