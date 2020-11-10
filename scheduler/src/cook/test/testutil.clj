@@ -565,17 +565,18 @@
                                                               Quantity$Format/DECIMAL_SI))
       (.putLabelsItem metadata "gpu-type" (or gpu-model "nvidia-tesla-p100")))
 
+    (.setUnschedulable spec false)
     (when pool
       (let [^V1Taint taint (V1Taint.)]
         (.setKey taint "foo-taint-probably-broken-TODO")
         (.setValue taint pool)
         (.setEffect taint "NoSchedule")
-        (-> spec (.addTaintsItem taint))
-        (-> node (.setSpec spec))))
+        (-> spec (.addTaintsItem taint))))
     (.setStatus node status)
     (.setName metadata node-name)
     (.setMetadata node metadata)
-  node))
+    (.setSpec node spec)
+    node))
 
 (defn make-kubernetes-compute-cluster
   [namespaced-pod-name->pod pool-names node-blocklist-labels additional-synthetic-pods-config]
