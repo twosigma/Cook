@@ -26,6 +26,7 @@
             [schema.core :as s])
   (:import (java.util.concurrent.atomic AtomicLong)
            (org.joda.time DateTime ReadablePeriod)))
+; To avoid circular dependencies, this namespace should depend on no cook namespaces.
 
 (defmacro try-timeout
   "Evaluates an expression in a separate thread and kills it if it takes too long"
