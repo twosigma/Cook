@@ -92,6 +92,14 @@
   (let [previous-hosts (job->previous-hosts-to-avoid job)]
     (->novel-host-constraint job previous-hosts)))
 
+(defn job->disk-type-requested
+  "Get disk type requested from job or use default disk type on pool"
+  [job pool-name]
+  (let [disk-type-requested (-> job util/job-ent->resources :disk :type)]
+    (or disk-type-requested
+        ; lookup the GPU model from the pool defaults defined in config.edn
+        (regexp-tools/match-based-on-pool-name (config/disk) pool-name :default-model))))
+
 (defn job->gpu-model-requested
   "Get GPU model requested from job or use default GPU model on pool"
   [gpu-count job pool-name]
@@ -137,6 +145,36 @@
         job-gpu-model-requested (when (pos? job-gpu-count-requested)
                                   (job->gpu-model-requested job-gpu-count-requested job (cached-queries/job->pool-name job)))]
     (->gpu-host-constraint job-gpu-count-requested job-gpu-model-requested)))
+
+(defrecord disk-host-constraint [job-disk-request job-disk-type]
+  JobConstraint
+  (job-constraint-name [this] (get-class-name this))
+  (job-constraint-evaluate
+    [this _ vm-attributes]
+    (job-constraint-evaluate this nil vm-attributes []))
+  (job-constraint-evaluate
+    [_ _ vm-attributes _]
+    (let [vm-disk-type->space-available (get vm-attributes "disk")
+
+          vm-satisfies-constraint? (>= (get vm-disk-type->space-available job-disk-type 0) job-gpu-count-requested)]
+      [vm-satisfies-constraint? (when-not vm-satisfies-constraint?
+                                  (if (not job-disk-request)
+                                    "Job does not need GPUs, kubernetes VM has GPUs."
+                                    "Job needs GPUs that are not present on kubernetes VM."))])
+    (let [vm-satisfies-constraint? (zero? job-disk-request)]
+      [vm-satisfies-constraint? (when-not vm-satisfies-constraint?
+                                  "Job needs GPUs, mesos VMs do not support GPU jobs.")])))
+
+(defn build-disk-host-constraint
+  "Constructs a disk-host-constraint.
+  The constraint prevents a job from running on a host that does not have correct disk type that the job requested
+  and prevents a job from running on a host that does not have enough disk space."
+  [job]
+  (let [                                                    ;; or use the default request on pool
+        job-disk-request (-> job util/job-ent->resources :disk :request)
+        job-disk-type (when (pos? job-disk-request)
+                                  (job->disk-type-requested job (cached-queries/job->pool-name job)))]
+    (->disk-host-constraint job-disk-request job-disk-type)))
 
 (defrecord rebalancer-reservation-constraint [reserved-hosts]
   JobConstraint
