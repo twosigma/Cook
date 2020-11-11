@@ -1294,10 +1294,6 @@ if __name__ == '__main__':
         self.assertIn("Disk Limit", cli.stdout(cp))
         self.assertIn("Disk Type", cli.stdout(cp))
 
-
-
-
-
     def test_submit_with_executor(self):
         cp, uuids = cli.submit('ls', self.cook_url, submit_flags='--executor cook')
         self.assertEqual(0, cp.returncode, cp.stderr)
