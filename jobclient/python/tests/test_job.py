@@ -157,7 +157,7 @@ JOB_DICT_WITH_OPTIONALS = {**JOB_DICT_NO_OPTIONALS, **{
     'progress_output_file': 'output.txt',
     'progress_regex_string': 'test',
     'gpus': 1,
-    'ports': 10,
+    'ports': 10
 }}
 
 JOB_DICT_GROUP_AND_GROUPS = {**JOB_DICT_NO_OPTIONALS, **{
@@ -187,7 +187,7 @@ JOB_DICT_MANY_GROUPS = {**JOB_DICT_NO_OPTIONALS, **{
 
 JOB_DICT_DISK_ONLY_REQUEST = {**JOB_DICT_NO_OPTIONALS, **{
     'disk': {
-        'request': 10.0,
+        'request': 10.0
      }
 }}
 
@@ -313,7 +313,6 @@ class JobTest(TestCase):
 
         The Job's disk attribute should be either:
         * The value of `jobdict['disk']` if set,
-        * Otherwise, the value of `jobdict['disk'][0]` if set,
         * Otherwise, `None`.
         """
         if 'disk' in jobdict:
