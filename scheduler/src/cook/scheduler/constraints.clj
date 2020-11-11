@@ -157,20 +157,18 @@
     (let [vm-disk-type->space-available (get vm-attributes "disk")
           vm-satisfies-constraint? (>= (get vm-disk-type->space-available job-disk-type 0) job-disk-request)]
       [vm-satisfies-constraint? (when-not vm-satisfies-constraint?
-                                  "VM does not have enough disk space")])
-    (let [vm-satisfies-constraint? (zero? job-disk-request)]
-      [vm-satisfies-constraint? (when-not vm-satisfies-constraint?
-                                  "Job needs GPUs, mesos VMs do not support GPU jobs.")])))
+                                  "VM does not have enough disk space of requested disk type")])))
 
 (defn build-disk-host-constraint
   "Constructs a disk-host-constraint.
   The constraint prevents a job from running on a host that does not have correct disk type that the job requested
   and prevents a job from running on a host that does not have enough disk space."
   [job]
-  (let [                                                    ;; or use the default request on pool
-        job-disk-request (-> job util/job-ent->resources :disk :request)
+  (let [pool-name (cached-queries/job->pool-name job)                                                    ;; or use the default request on pool
+        job-disk-request (or (-> job util/job-ent->resources :disk :request)
+                             (regexp-tools/match-based-on-pool-name (config/disk) pool-name :default-model))
         job-disk-type (when (pos? job-disk-request)
-                                  (job->disk-type-requested job (cached-queries/job->pool-name job)))]
+                                  (job->disk-type-requested job pool-name))]
     (->disk-host-constraint job-disk-request job-disk-type)))
 
 (defrecord rebalancer-reservation-constraint [reserved-hosts]
