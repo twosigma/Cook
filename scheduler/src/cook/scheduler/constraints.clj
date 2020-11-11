@@ -365,7 +365,7 @@
             true
             ""))))))
 
-(def job-constraint-constructors [build-novel-host-constraint build-gpu-host-constraint build-user-defined-constraint build-estimated-completion-constraint build-data-locality-constraint])
+(def job-constraint-constructors [build-novel-host-constraint build-gpu-host-constraint build-disk-host-constraint build-user-defined-constraint build-estimated-completion-constraint build-data-locality-constraint])
 
 (defn fenzoize-job-constraint
   "Makes the JobConstraint 'constraint' Fenzo-compatible."
