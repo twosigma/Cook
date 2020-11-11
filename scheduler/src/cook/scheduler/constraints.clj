@@ -155,12 +155,9 @@
   (job-constraint-evaluate
     [_ _ vm-attributes _]
     (let [vm-disk-type->space-available (get vm-attributes "disk")
-
-          vm-satisfies-constraint? (>= (get vm-disk-type->space-available job-disk-type 0) job-gpu-count-requested)]
+          vm-satisfies-constraint? (>= (get vm-disk-type->space-available job-disk-type 0) job-disk-request)]
       [vm-satisfies-constraint? (when-not vm-satisfies-constraint?
-                                  (if (not job-disk-request)
-                                    "Job does not need GPUs, kubernetes VM has GPUs."
-                                    "Job needs GPUs that are not present on kubernetes VM."))])
+                                  "VM does not have enough disk space")])
     (let [vm-satisfies-constraint? (zero? job-disk-request)]
       [vm-satisfies-constraint? (when-not vm-satisfies-constraint?
                                   "Job needs GPUs, mesos VMs do not support GPU jobs.")])))
