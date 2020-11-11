@@ -14,8 +14,8 @@ Vagrant.configure("2") do |config|
   repo_root=/vagrant
   bashrc=$HOME/.bashrc
 
-  # Cook jobclient setup
-  cd $repo_root/jobclient || exit 1
+  # Cook java jobclient setup
+  cd $repo_root/jobclient/java || exit 1
   mvn install -DskipTests
 
   # Python setup
