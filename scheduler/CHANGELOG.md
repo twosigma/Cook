@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.49.0] - 2020-11-11
+### Added
+- Per-user queue length limits, from @dposada
+- API for Disk Limits, from @kathryn-zhou
+- Metadata pod env vars, from @nsinkov
+- Support for modifying pod image when checkpointing, from @nsinkov
+### Changed
+- Increases default and max :controller-lock-num-shards, from @dposada
+- Make the kill-lock be a ReentrantReadWriteLock and add metrics, from @scrosby
+- Make pool taint / label and context configurable, from @scrosby
+### Fixed
+- Gracefully handles unknown job resource type, from @dposada
+- Fix memory leak in k8s state for deleted pods, from @scrosby
+
 ## [1.48.4] - 2020-10-28
 ### Changed
 - Reduced excessive logging for checkpointing and launching tasks, from @dposada
