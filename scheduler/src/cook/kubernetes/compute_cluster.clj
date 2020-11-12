@@ -80,6 +80,7 @@
         ; The following variables are only being used setting counters for monitor
         gpu-model->total-capacity (total-gpu-resource node-name->capacity)
         gpu-model->total-consumed (total-gpu-resource node-name->consumed)
+        ; TODO: set counters for disk
         node-name->schedulable (filter #(schedulable-node-filter compute-cluster
                                           node-name->node
                                           node-name->pods

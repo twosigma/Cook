@@ -542,7 +542,7 @@
         (.addTolerationsItem (kapi/toleration-for-pool "cook-pool-taint-A" pool-name)))
     outstanding-synthetic-pod))
 
-(defn node-helper [node-name cpus mem gpus gpu-model pool]
+(defn node-helper [node-name cpus mem gpus gpu-model {:keys [disk-amount disk-type] :as disk} pool]
   "Make a fake node for kubernetes unit tests"
   (let [node (V1Node.)
         status (V1NodeStatus.)
@@ -564,6 +564,15 @@
       (.putAllocatableItem status "nvidia.com/gpu" (Quantity. (BigDecimal. gpus)
                                                               Quantity$Format/DECIMAL_SI))
       (.putLabelsItem metadata "gpu-type" (or gpu-model "nvidia-tesla-p100")))
+
+    (clojure.tools.logging/info "~~~" disk-amount)
+    (clojure.tools.logging/info "***" disk-type)
+    (when disk
+      (.putCapacityItem status "ephemeral-storage" (Quantity. (BigDecimal. disk-amount)
+                                                              Quantity$Format/DECIMAL_SI))
+      (.putAllocatableItem status "ephemeral-storage" (Quantity. (BigDecimal. disk-amount)
+                                                      Quantity$Format/DECIMAL_SI))
+      (.putLabelsItem metadata "cloud.google.com/gke-boot-disk" (or disk-type "standard")))
 
     (when pool
       (let [^V1Taint taint (V1Taint.)]
