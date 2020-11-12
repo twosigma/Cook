@@ -18,7 +18,8 @@
           node-name->pods (api/pods->node-name->pods pods)]
       (is (= {"hostA" {:cpus 1.0
                        :mem 100.0
-                       :gpus {}}}
+                       :gpus {}
+                       :disk {"standard" 10000.0}}}
              (api/get-consumption node-name->pods)))))
 
   (testing "correctly computes consumption for a single pod with gpus"
@@ -27,7 +28,8 @@
           node-name->pods (api/pods->node-name->pods pods)]
       (is (= {"hostA" {:cpus 1.0
                        :mem 100.0
-                       :gpus {"nvidia-tesla-p100" 2}}}
+                       :gpus {"nvidia-tesla-p100" 2}
+                       :disk {"standard" 10000.0}}}
              (api/get-consumption node-name->pods)))))
 
   (testing "correctly computes consumption for a pod with multiple containers without gpus"
@@ -38,7 +40,8 @@
           node-name->pods (api/pods->node-name->pods pods)]
       (is (= {"hostA" {:cpus 2.0
                        :mem 200.0
-                       :gpus {}}}
+                       :gpus {}
+                       :disk {"standard" 30000.0}}}
              (api/get-consumption node-name->pods)))))
 
   (testing "correctly computes consumption for a pod with multiple containers with gpus"
@@ -49,11 +52,13 @@
           node-name->pods (api/pods->node-name->pods pods)]
       (is (= {"hostA" {:cpus 2.0
                        :mem 200.0
-                       :gpus {"nvidia-tesla-p100" 5}}}
+                       :gpus {"nvidia-tesla-p100" 5}
+                       :disk {"standard" 30000.0}}}
              (api/get-consumption node-name->pods)))))
 
   (testing "correctly aggregates pods by node name"
-    (let [pods [(tu/pod-helper "podA" "hostA"
+    (let [pods [
+                (tu/pod-helper "podA" "hostA"
                                {:cpus 1.0
                                 :mem 100.0
                                 :gpus "2"
@@ -70,30 +75,36 @@
                                {:cpus 2.0}
                                {:mem 30.0
                                 :gpus "1"
-                                :gpu-model "nvidia-tesla-k80"})
+                                :gpu-model "nvidia-tesla-k80"
+                                :disk {:disk-request 10.0 :disk-limit 50.0 :disk-type "standard"}})
                 (tu/pod-helper "podD" "hostC"
-                               {:cpus 1.0})
-                (tu/pod-helper "podD" nil ; nil host should be skipped and not included in output.
+                               {:cpus 1.0
+                                :disk {:disk-request 100.0 :disk-type "pd-ssd"}})
+                (tu/pod-helper "podD" "hostC"
+                               {:cpus 1.0
+                                :disk {:disk-type "pd-ssd"}})
+                (tu/pod-helper "podE" nil ; nil host should be skipped and not included in output.
                                {:cpus 12.0})]
           node-name->pods (api/pods->node-name->pods pods)]
-      (is (= {"hostA" {:cpus 2.0 :mem 100.0 :gpus {"nvidia-tesla-p100" 3}}
-              "hostB" {:cpus 3.0 :mem 130.0 :gpus {"nvidia-tesla-k80" 1}}
-              "hostC" {:cpus 1.0 :mem 0.0 :gpus {}}}
+      (is (= {"hostA" {:cpus 2.0 :mem 100.0 :gpus {"nvidia-tesla-p100" 3} :disk {"standard" 30000.0}}
+              "hostB" {:cpus 3.0 :mem 130.0 :gpus {"nvidia-tesla-k80" 1} :disk {"standard" 30010.0}}
+              "hostC" {:cpus 2.0 :mem 0.0 :gpus {} :disk {"pd-ssd" 10100.0}}}
              (api/get-consumption node-name->pods))))))
 
 (deftest test-get-capacity
   (let [node-name->node {"nodeA" (tu/node-helper "nodeA" 1.0 100.0 2 "nvidia-tesla-p100" nil nil)
                          "nodeB" (tu/node-helper "nodeB" 1.0 nil nil nil nil nil)
                          "nodeC" (tu/node-helper "nodeC" nil 100.0 5 "nvidia-tesla-p100" nil nil)
-                         "nodeD" (tu/node-helper "nodeD" nil nil 7 "nvidia-tesla-p100" nil nil)
-                         "nodeE" (tu/node-helper "nodeD" nil nil 7 "nvidia-tesla-p100" {:disk-amount 500000 :disk-type "standard"} nil)}]
-    (is (= {"nodeA" {:cpus 1.0 :mem 100.0 :gpus {"nvidia-tesla-p100" 2}}
-            "nodeB" {:cpus 1.0 :mem 0.0 :gpus {}}
-            "nodeC" {:cpus 0.0 :mem 100.0 :gpus {"nvidia-tesla-p100" 5}}
-            "nodeD" {:cpus 0.0 :mem 0.0 :gpus {"nvidia-tesla-p100" 7}}}
+                         "nodeD" (tu/node-helper "nodeD" nil nil 7 "nvidia-tesla-p100" nil nil)}]
+    (is (= {"nodeA" {:cpus 1.0 :mem 100.0 :gpus {"nvidia-tesla-p100" 2} :disk {}}
+            "nodeB" {:cpus 1.0 :mem 0.0 :gpus {} :disk {}}
+            "nodeC" {:cpus 0.0 :mem 100.0 :gpus {"nvidia-tesla-p100" 5} :disk {}}
+            "nodeD" {:cpus 0.0 :mem 0.0 :gpus {"nvidia-tesla-p100" 7} :disk {}}}
            (api/get-capacity node-name->node))))
-  (let [node-name->node {"nodeA" (tu/node-helper "nodeA" 1.0 100.0 2 "nvidia-tesla-p100" {:disk-amount 500000 :disk-type "standard"} nil)}]
-    (is (= {"nodeA" {:cpus 1.0 :mem 100.0 :gpus {"nvidia-tesla-p100" 2} :disk {"standard" 500000.0}}}
+  (let [node-name->node {"nodeA" (tu/node-helper "nodeA" 1.0 100.0 2 "nvidia-tesla-p100" {:disk-amount 500000 :disk-type "standard"} nil)
+                         "nodeB" (tu/node-helper "nodeB" 2.0 100.0 nil nil {:disk-amount 300000 :disk-type "pd-ssd"} nil)}]
+    (is (= {"nodeA" {:cpus 1.0 :mem 100.0 :gpus {"nvidia-tesla-p100" 2} :disk {"standard" 500000.0}}
+            "nodeB" {:cpus 2.0 :mem 100.0 :gpus {} :disk {"pd-ssd" 300000.0}}}
            (api/get-capacity node-name->node)))))
 
 (defn assert-env-var-value
