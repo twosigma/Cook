@@ -144,7 +144,7 @@
                                                               "cpus" 1.0}
                                             :job {:job/pool {:pool/name "fake-pool-12"}}}
                              :hostname "kubehost"}
-              pod (api/task-metadata->pod "cook" {:name "testing-cluster" :cook-pool-taint-name "test-taint"} task-metadata)]
+              pod (api/task-metadata->pod "cook" {:name "testing-cluster" :cook-pool-taint-name "test-taint" :cook-pool-taint-prefix "taint-prefix-"} task-metadata)]
           (is (= "my-task" (-> pod .getMetadata .getName)))
           (is (= "cook" (-> pod .getMetadata .getNamespace)))
           (is (= "Never" (-> pod .getSpec .getRestartPolicy)))
@@ -157,7 +157,7 @@
           (let [tolerations-on-pod (or (some-> pod .getSpec .getTolerations) [])
                 found-cook-pool-toleration (filter #(= "test-taint" (.getKey %)) tolerations-on-pod)]
             (is (= 1 (count found-cook-pool-toleration)))
-            (is (= "fake-pool-12" (-> found-cook-pool-toleration first .getValue))))
+            (is (= "taint-prefix-fake-pool-12" (-> found-cook-pool-toleration first .getValue))))
 
           (let [cook-sandbox-volume (->> pod
                                          .getSpec
