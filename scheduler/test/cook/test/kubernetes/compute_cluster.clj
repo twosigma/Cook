@@ -109,10 +109,11 @@
                                                           (Executors/newSingleThreadExecutor)
                                                           {} (atom :running) (atom false) false
                                                           cook.rate-limit/AllowAllRateLimiter "t-c" "l-c")
-          node-name->node {"nodeA" (tu/node-helper "nodeA" 1.0 1000.0 10 "nvidia-tesla-p100" nil)
-                           "nodeB" (tu/node-helper "nodeB" 1.0 1000.0 25 "nvidia-tesla-p100" nil)
-                           "nodeC" (tu/node-helper "nodeC" 1.0 1000.0 nil nil nil)
-                           "my.fake.host" (tu/node-helper "my.fake.host" 1.0 1000.0 nil nil nil)}
+          node-name->node {"nodeA" (tu/node-helper "nodeA" 1.0 1000.0 10 "nvidia-tesla-p100" nil nil)
+                           "nodeB" (tu/node-helper "nodeB" 1.0 1000.0 25 "nvidia-tesla-p100" nil nil)
+                           "nodeC" (tu/node-helper "nodeC" 1.0 1000.0 nil nil nil nil)
+                           "nodeE" (tu/node-helper "nodeE" 2.0 1100.0 nil nil {:disk-amount 256000 :disk-type "standard"} nil)
+                           "my.fake.host" (tu/node-helper "my.fake.host" 1.0 1000.0 nil nil nil nil)}
           j1 (tu/create-dummy-job conn :ncpus 0.1)
           j2 (tu/create-dummy-job conn :ncpus 0.2)
           db (d/db conn)
@@ -131,11 +132,13 @@
                                                                 {:cpus 1.0 :mem 1100.0 :gpus "10" :gpu-model "nvidia-tesla-p100"})
                 {:namespace "cook" :name "podD"} (tu/pod-helper "podD" "nodeD"
                                                                 {:cpus 1.0 :mem 1100.0 :gpus "10" :gpu-model "nvidia-tesla-p100"})
+                {:namespace "cook" :name "podE"} (tu/pod-helper "podE" "nodeE"
+                                                                {:cpus 1.0 :mem 1100.0 :disk {:disk-request 50 :disk-limit 70 :disk-type "standard"}})
                 {:namespace "cook" :name task-1-id} (tu/pod-helper task-1-id "my.fake.host"
                                                                    {:cpus 0.1 :mem 10.0})}
           node-name->pods (api/pods->node-name->pods (kcc/add-starting-pods compute-cluster pods))
           offers (kcc/generate-offers compute-cluster node-name->node node-name->pods)]
-      (is (= 4 (count offers)))
+      (is (= 5 (count offers)))
       (let [offer (first (filter #(= "nodeA" (:hostname %))
                                  offers))]
         (is (not (nil? offer)))
@@ -143,7 +146,7 @@
         (is (= {:value "nodeA"} (:slave-id offer)))
         (is (= [{:name "mem" :type :value-scalar :scalar 400.0}
                 {:name "cpus" :type :value-scalar :scalar 0.4}
-                {:name "disk" :type :value-scalar :scalar 0.0}
+                {:name "disk" :type :value-text->scalar :text->scalar {}}
                 {:name "gpus" :type :value-text->scalar :text->scalar {"nvidia-tesla-p100" 0}}]
                (:resources offer)))
         (is (:reject-after-match-attempt offer)))
@@ -153,14 +156,23 @@
         (is (= {:value "nodeB"} (:slave-id offer)))
         (is (= [{:name "mem" :type :value-scalar :scalar 0.0}
                 {:name "cpus" :type :value-scalar :scalar 0.0}
-                {:name "disk" :type :value-scalar :scalar 0.0}
+                {:name "disk" :type :value-text->scalar :text->scalar {}}
                 {:name "gpus" :type :value-text->scalar :text->scalar {"nvidia-tesla-p100" 15}}]
                (:resources offer))))
 
       (let [offer (first (filter #(= "my.fake.host" (:hostname %)) offers))]
         (is (= [{:name "mem" :type :value-scalar :scalar 980.0}
                 {:name "cpus" :type :value-scalar :scalar 0.7}
-                {:name "disk" :type :value-scalar :scalar 0.0}
+                {:name "disk" :type :value-text->scalar :text->scalar {}}
+                {:name "gpus" :type :value-text->scalar :text->scalar {}}]
+               (:resources offer))))
+
+      (let [offer (first (filter #(= "nodeE" (:hostname %))
+                                 offers))]
+        (is (= {:value "nodeE"} (:slave-id offer)))
+        (is (= [{:name "mem" :type :value-scalar :scalar 0.0}
+                {:name "cpus" :type :value-scalar :scalar 1.0}
+                {:name "disk" :type :value-text->scalar :text->scalar {"standard" 255950.0}}
                 {:name "gpus" :type :value-text->scalar :text->scalar {}}]
                (:resources offer)))))))
 
