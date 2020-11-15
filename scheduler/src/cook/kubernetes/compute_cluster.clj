@@ -134,7 +134,7 @@
                    :hostname node-name
                    :resources [{:name "mem" :type :value-scalar :scalar (max 0.0 (:mem available))}
                                {:name "cpus" :type :value-scalar :scalar (max 0.0 (:cpus available))}
-                               {:name "disk" :type :value-scalar :scalar 0.0}
+                               {:name "disk" :type :value-text->scalar :text->scalar (:disk available {})}
                                {:name "gpus" :type :value-text->scalar :text->scalar (:gpus available)}]
                    :attributes (conj node-label-attributes
                                      {:name "compute-cluster-type"
