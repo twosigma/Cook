@@ -97,8 +97,8 @@
   [job pool-name]
   (let [disk-type-requested (-> job util/job-ent->resources :disk :type)]
     (or disk-type-requested
-        ; lookup the GPU model from the pool defaults defined in config.edn
-        (regexp-tools/match-based-on-pool-name (config/disk) pool-name :default-model))))
+        ; lookup the default disk type from the pool defaults defined in config.edn
+        (regexp-tools/match-based-on-pool-name (config/disk) pool-name :default-type))))
 
 (defn job->gpu-model-requested
   "Get GPU model requested from job or use default GPU model on pool"
@@ -154,21 +154,32 @@
     (job-constraint-evaluate this nil vm-attributes []))
   (job-constraint-evaluate
     [_ _ vm-attributes _]
-    (let [vm-disk-type->space-available (get vm-attributes "disk")
-          vm-satisfies-constraint? (>= (get vm-disk-type->space-available job-disk-type 0) job-disk-request)]
-      [vm-satisfies-constraint? (when-not vm-satisfies-constraint?
-                                  "VM does not have enough disk space of requested disk type")])))
+    (let [k8s-vm? (= (get vm-attributes "compute-cluster-type") "kubernetes")]
+      (if k8s-vm?
+        (let [vm-disk-type->space-available (get vm-attributes "disk")
+              ; k8s VMs all support disk, so they will only support jobs whose users requested disk or consume a default disk request
+              vm-satisfies-constraint? (if job-disk-request
+                                         (>= (get vm-disk-type->space-available job-disk-type 0) job-disk-request)
+                                         ; if job does not have a disk-request, pass true to always ignore the disk-host-constraint
+                                         true)]
+          [vm-satisfies-constraint? (when-not vm-satisfies-constraint?
+                                      "VM does not have enough disk space of requested disk type")])
+        ; Mesos jobs cannot request disk. If VM is a mesos VM, constraint always passes
+        (let [vm-satisfies-constraint? true]
+          [vm-satisfies-constraint? _])))))
 
 (defn build-disk-host-constraint
   "Constructs a disk-host-constraint.
   The constraint prevents a job from running on a host that does not have correct disk type that the job requested
-  and prevents a job from running on a host that does not have enough disk space."
+  and prevents a job from running on a host that does not have enough disk space. Use a constraint for disk binpacking instead of
+  using Fenzo because disk is not considered a first class resource in Fenzo."
   [job]
-  (let [pool-name (cached-queries/job->pool-name job)                                                    ;; or use the default request on pool
+  (let [pool-name (cached-queries/job->pool-name job)
+        ; If the user did not specify a disk request, use the default request amount for the pool
         job-disk-request (or (-> job util/job-ent->resources :disk :request)
-                             (regexp-tools/match-based-on-pool-name (config/disk) pool-name :default-model))
-        job-disk-type (when (pos? job-disk-request)
-                                  (job->disk-type-requested job pool-name))]
+                             (regexp-tools/match-based-on-pool-name (config/disk) pool-name :default-request))
+        job-disk-type (when job-disk-request
+                        (job->disk-type-requested job pool-name))]
     (->disk-host-constraint job-disk-request job-disk-type)))
 
 (defrecord rebalancer-reservation-constraint [reserved-hosts]
