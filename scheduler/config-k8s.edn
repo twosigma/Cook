@@ -95,7 +95,8 @@
                         :resource-requirements {:cpu-request 0.1
                                                 :cpu-limit 0.1
                                                 :memory-request 128.0
-                                                :memory-limit 128.0}}}
+                                                :memory-limit 128.0}}
+              :disk-type-node-label-name "cloud.google.com/gke-boot-disk"}
  :log {:file #config/env "COOK_LOG_FILE"
        :levels {"datomic.db" :warn
                 "datomic.kv-cluster" :warn

@@ -492,7 +492,7 @@
                                         resource-map (apply merge-with + container-requests)
                                         gpu-model (some-> pod .getSpec .getNodeSelector (get "cloud.google.com/gke-accelerator"))
                                         ; update config, use the following string as default
-                                        disk-type (some-> pod .getSpec .getNodeSelector (get "cloud.google.com/gke-boot-disk"))
+                                        disk-type (some-> pod .getSpec .getNodeSelector (get (config/disk-type-node-label-name)))
                                         update-gpu-in-res-map (fn [res-map] (add-gpu-model-to-resource-map gpu-model res-map))
                                         update-disk-in-res-map (fn [res-map] (add-disk-type-to-resource-map disk-type res-map))]
                                     (-> resource-map update-gpu-in-res-map update-disk-in-res-map))))
