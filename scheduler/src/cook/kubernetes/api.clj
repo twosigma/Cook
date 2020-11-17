@@ -25,7 +25,7 @@
              V1DeleteOptionsBuilder V1EmptyDirVolumeSource V1EnvVar V1EnvVarSource V1Event V1HostPathVolumeSource
              V1HTTPGetAction V1ObjectFieldSelector V1Node V1NodeAffinity V1NodeSelector V1NodeSelectorRequirement
              V1NodeSelectorTerm V1ObjectMeta V1ObjectReference V1Pod V1PodCondition V1PodSecurityContext V1PodSpec
-             V1PodStatus V1Probe V1ResourceRequirements V1Toleration V1Volume V1VolumeBuilder V1VolumeMount V1NodeSpec)
+             V1PodStatus V1Probe V1ResourceRequirements V1Toleration V1Volume V1VolumeBuilder V1VolumeMount)
            (io.kubernetes.client.util Watch)
            (java.net SocketTimeoutException)
            (java.util.concurrent Executors ExecutorService)))
@@ -420,7 +420,7 @@
                                   (.getKey %))
                                taints-on-node)
           node-name (some-> node .getMetadata .getName)
-          ^V1NodeSpec node-unschedulable (some-> node .getSpec .getUnschedulable)
+          node-unschedulable (some-> node .getSpec .getUnschedulable)
           num-pods-on-node (-> node-name->pods (get node-name []) count)
           labels-on-node (or (some-> node .getMetadata .getLabels) {})
           matching-node-blocklist-keyvals (select-keys labels-on-node node-blocklist-labels)]
