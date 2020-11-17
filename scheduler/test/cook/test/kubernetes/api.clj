@@ -660,6 +660,7 @@
         (.setName metadata "NodeName")
         (.setNamespace metadata "cook")
         (.setMetadata node metadata)
+        (.setUnschedulable spec false)
         (.setSpec node spec)
         (is (not (api/node-schedulable? {:node-blocklist-labels ["blocklist-1"]} node 30 nil)))
         (is (api/node-schedulable? {:node-blocklist-labels ["blocklist-2"]} node 30 nil))))
@@ -676,6 +677,7 @@
         (.setName metadata "NodeName")
         (.setNamespace metadata "cook")
         (.setMetadata node metadata)
+        (.setUnschedulable spec false)
         (.setSpec node spec)
         (is (api/node-schedulable? {:node-blocklist-labels ["blocklist-1"] :cook-pool-taint-name "the-taint-to-use"} node 30 nil))
         (is (not (api/node-schedulable? {:node-blocklist-labels ["blocklist-1"] :cook-pool-taint-name "a-taint-different-than-node"} node 30 nil)))))
@@ -692,6 +694,7 @@
         (.setName metadata "NodeName")
         (.setNamespace metadata "cook")
         (.setMetadata node metadata)
+        (.setUnschedulable spec false)
         (.setSpec node spec)
         (is (not (api/node-schedulable? {:node-blocklist-labels ["blocklist-1"]} node 30 nil)))))
     (testing "GPU Taint"
@@ -707,8 +710,38 @@
         (.setName metadata "NodeName")
         (.setNamespace metadata "cook")
         (.setMetadata node metadata)
+        (.setUnschedulable spec false)
         (.setSpec node spec)
-        (is (api/node-schedulable? {:node-blocklist-labels ["blocklist-1"]} node 30 nil))))))
+        (is (api/node-schedulable? {:node-blocklist-labels ["blocklist-1"]} node 30 nil))))
+    (testing "Unschedule node spec"
+      (let [^V1Node node (V1Node.)
+            metadata (V1ObjectMeta.)
+            ^V1NodeSpec spec (V1NodeSpec.)]
+        (.setName metadata "NodeName")
+        (.setNamespace metadata "cook")
+        (.setMetadata node metadata)
+        (.setUnschedulable spec true)
+        (.setSpec node spec)
+        (is (not (api/node-schedulable? {:node-blocklist-labels []} node 30 nil))))
+      (let [^V1Node node (V1Node.)
+            metadata (V1ObjectMeta.)
+            ^V1NodeSpec spec (V1NodeSpec.)]
+        (.setName metadata "NodeName")
+        (.setNamespace metadata "cook")
+        (.setMetadata node metadata)
+        (.setUnschedulable spec nil)
+        (.setSpec node spec)
+        ; nil Unschedulable should pass.
+        (is (api/node-schedulable? {:node-blocklist-labels []} node 30 nil)))
+      (let [^V1Node node (V1Node.)
+            metadata (V1ObjectMeta.)
+            ^V1NodeSpec spec (V1NodeSpec.)]
+        (.setName metadata "NodeName")
+        (.setNamespace metadata "cook")
+        (.setMetadata node metadata)
+        (.setUnschedulable spec false)
+        (.setSpec node spec)
+        (is (api/node-schedulable? {:node-blocklist-labels []} node 30 nil))))))
 
 (deftest test-initialize-pod-watch-helper
   (testing "only processes each pod once"

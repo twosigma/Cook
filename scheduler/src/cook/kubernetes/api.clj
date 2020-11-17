@@ -424,20 +424,26 @@
                                   (.getKey %))
                                taints-on-node)
           node-name (some-> node .getMetadata .getName)
+          node-unschedulable (some-> node .getSpec .getUnschedulable)
           num-pods-on-node (-> node-name->pods (get node-name []) count)
           labels-on-node (or (some-> node .getMetadata .getLabels) {})
           matching-node-blocklist-keyvals (select-keys labels-on-node node-blocklist-labels)]
-      (cond  (seq other-taints) (do
-                                  (log/info "Filtering out" node-name "because it has taints" other-taints)
-                                  false)
-             (>= num-pods-on-node pod-count-capacity) (do
-                                                        (log/info "Filtering out" node-name "because it is at or above its pod count capacity of"
-                                                                  pod-count-capacity "(" num-pods-on-node ")")
-                                                        false)
-             (seq matching-node-blocklist-keyvals) (do
-                                                     (log/info "Filtering out" node-name "because it has node blocklist labels" matching-node-blocklist-keyvals)
-                                                     false)
-             :else true))))
+      (cond
+        ;; Note that node-unschedulable may be nil or false or true.
+        node-unschedulable (do
+                             (log/info "Filtering out" node-name "because it is unschedulable" node-unschedulable)
+                             false)
+        (seq other-taints) (do
+                             (log/info "Filtering out" node-name "because it has taints" other-taints)
+                             false)
+        (>= num-pods-on-node pod-count-capacity) (do
+                                                   (log/info "Filtering out" node-name "because it is at or above its pod count capacity of"
+                                                             pod-count-capacity "(" num-pods-on-node ")")
+                                                   false)
+        (seq matching-node-blocklist-keyvals) (do
+                                                (log/info "Filtering out" node-name "because it has node blocklist labels" matching-node-blocklist-keyvals)
+                                                false)
+        :else true))))
 
 (defn add-gpu-model-to-resource-map
   "Given a map from node-name->resource-type->capacity, perform the following operation:
