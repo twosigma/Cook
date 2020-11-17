@@ -539,7 +539,7 @@
     (.setCreationTimestamp pod-metadata creation-timestamp)
     (-> outstanding-synthetic-pod
         .getSpec
-        (.addTolerationsItem (kapi/toleration-for-pool "cook-pool-taint-A" pool-name)))
+        (.addTolerationsItem (kapi/toleration-for-pool "cook-pool-taint-A" "prefix" pool-name)))
     outstanding-synthetic-pod))
 
 (defn node-helper [node-name cpus mem gpus gpu-model pool]
@@ -608,4 +608,5 @@
                                     false ; dynamic-cluster-config?
                                     rate-limit/AllowAllRateLimiter
                                     "some-random-taint-A"
+                                    "taint-prefix-1"
                                     "some-random-label-A")))
