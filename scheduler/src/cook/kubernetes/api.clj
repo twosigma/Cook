@@ -832,7 +832,7 @@
                    ;; Add a default progress file path to the environment when missing,
                    ;; preserving compatibility with Meosos + Cook Executor.
                    (not progress-file-path)
-                   (assoc progress-file-var (str task-id ".progress")))
+                   (assoc progress-file-var (str workdir "/" task-id ".progress")))
         main-env-vars (make-filtered-env-vars main-env)
         computed-mem (if checkpoint-memory-overhead (add-as-decimals mem checkpoint-memory-overhead) mem)]
 
