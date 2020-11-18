@@ -55,6 +55,11 @@
         "exec /bin/sh -c \"$1\"")
    "--"])
 
+(defn synthetic-pod?
+  "Given a pod name, returns true if it has the synthetic pod prefix"
+  [pod-name]
+  (str/starts-with? pod-name cook-synthetic-pod-name-prefix))
+
 ; DeletionCandidateTaint is a soft taint that k8s uses to mark unneeded
 ; nodes as preferably unschedulable. This taint is added as soon as the
 ; autoscaler detects that nodes are under-utilized and all pods could be
@@ -805,7 +810,10 @@
         {:keys [custom-shell init-container set-container-cpu-limit? sidecar]} (config/kubernetes)
         checkpoint (calculate-effective-checkpointing-config job task-id)
         job-submit-time (tools/job->submit-time job)
-        image (calculate-effective-image (config/kubernetes) job-submit-time image checkpoint task-id)
+        pod-name (str task-id)
+        image (if (synthetic-pod? pod-name)
+                image
+                (calculate-effective-image (config/kubernetes) job-submit-time image checkpoint task-id))
         checkpoint-memory-overhead (:memory-overhead checkpoint)
         use-cook-init? (and init-container pod-supports-cook-init?)
         use-cook-sidecar? (and sidecar pod-supports-cook-sidecar?)
@@ -847,7 +855,7 @@
         computed-mem (if checkpoint-memory-overhead (add-as-decimals mem checkpoint-memory-overhead) mem)]
 
     ; metadata
-    (.setName metadata (str task-id))
+    (.setName metadata pod-name)
     (.setNamespace metadata namespace)
     (.setLabels metadata labels)
     (when pod-annotations
@@ -1029,11 +1037,6 @@
   "Extract the name of a pod from the pod itself"
   [^V1Pod pod]
   (-> pod .getMetadata .getName))
-
-(defn synthetic-pod?
-  "Given a pod name, returns true if it has the synthetic pod prefix"
-  [pod-name]
-  (str/starts-with? pod-name cook-synthetic-pod-name-prefix))
 
 (defn pod-unschedulable?
   "Returns true if the given pod status has a PodScheduled
