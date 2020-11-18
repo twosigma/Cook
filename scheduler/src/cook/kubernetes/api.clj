@@ -731,7 +731,7 @@
   (if (and true calculate-effective-image-fn)
     (try
       ((util/lazy-load-var-memo calculate-effective-image-fn) kubernetes-config job-submit-time image)
-      (catch Exception e
+      (catch Throwable e
         (log/error e "Error calculating effective image for checkpointing"
                    {:calculate-effective-image-fn calculate-effective-image-fn
                     :image image
