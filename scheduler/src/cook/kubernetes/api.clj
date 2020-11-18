@@ -801,7 +801,7 @@
         checkpoint (calculate-effective-checkpointing-config job task-id)
         job-submit-time (tools/job->submit-time job)
         pod-name (str task-id)
-        image (if (synthetic-pod? (or pod-name ""))
+        image (if (synthetic-pod? pod-name)
                 image
                 (calculate-effective-image (config/kubernetes) job-submit-time image checkpoint task-id))
         checkpoint-memory-overhead (:memory-overhead checkpoint)
