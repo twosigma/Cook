@@ -7,6 +7,7 @@
             [cook.config :as config]
             [cook.kubernetes.metrics :as metrics]
             [cook.pool :as pool]
+            [cook.regexp-tools :as regexp-tools]
             [cook.scheduler.constraints :as constraints]
             [cook.task :as task]
             [cook.tools :as tools]
@@ -787,6 +788,12 @@
         ; gpu count is not stored in scalar-requests because Fenzo does not handle gpus in binpacking
         gpus (or (:gpus resources) 0)
         gpu-model-requested (constraints/job->gpu-model-requested gpus job pool-name)
+        ; if user did not specify disk request, use default on pool
+        disk-request (or (-> resources :disk :request)
+                         (regexp-tools/match-based-on-pool-name (config/disk) pool-name :default-request))
+        disk-limit (-> resources :disk :limit)
+        ; if user did not specify disk type, use default on pool
+        disk-type (constraints/job->disk-type-requested (-> resources :disk :type) pool-name)
         pod (V1Pod.)
         pod-spec (V1PodSpec.)
         metadata (V1ObjectMeta.)
@@ -881,6 +888,12 @@
       (add-node-selector pod-spec "cloud.google.com/gke-accelerator" gpu-model-requested)
       ; GKE nodes with GPUs have gpu-count label, so synthetic pods need a matching node selector
       (add-node-selector pod-spec "gpu-count" (-> gpus int str)))
+    (when disk-request
+      (.putRequestsItem resources "ephemeral-storage" (double->quantity disk-request))
+      ; by default, do not set disk-limit
+      (when disk-limit
+        (.putLimitsItem resources "ephemeral-storage" (double->quantity disk-limit)))
+      (add-node-selector pod-spec (config/disk-type-node-label-name) disk-type))
     (.setResources container resources)
     (.setVolumeMounts container (filterv some? (conj (concat volume-mounts main-container-checkpoint-volume-mounts)
                                                      (init-container-workdir-volume-mount-fn true)
