@@ -95,10 +95,12 @@
 (defn job->disk-type-requested
   "Get disk type requested from job or use default disk type on pool"
   [job pool-name]
-  (let [disk-type-requested (-> job util/job-ent->resources :disk :type)]
-    (or disk-type-requested
-        ; lookup the default disk type from the pool defaults defined in config.edn
-        (regexp-tools/match-based-on-pool-name (config/disk) pool-name :default-type))))
+  ; IF user did not specify desired disk type, use the default disk type on the pool
+  (let [disk-type-requested (or (-> job util/job-ent->resources :disk :type)
+                                (regexp-tools/match-based-on-pool-name (config/disk) pool-name :default-type))]
+    ; Consume the type that the disk-type-requested maps to, which is found in the config
+    (or (get (regexp-tools/match-based-on-pool-name (config/disk) pool-name :type-map) disk-type-requested)
+        disk-type-requested)))
 
 (defn job->gpu-model-requested
   "Get GPU model requested from job or use default GPU model on pool"
@@ -166,7 +168,7 @@
                                       "VM does not have enough disk space of requested disk type")])
         ; Mesos jobs cannot request disk. If VM is a mesos VM, constraint always passes
         (let [vm-satisfies-constraint? true]
-          [vm-satisfies-constraint? _])))))
+          [vm-satisfies-constraint? ""])))))
 
 (defn build-disk-host-constraint
   "Constructs a disk-host-constraint.
