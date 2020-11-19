@@ -94,9 +94,9 @@
 
 (defn job->disk-type-requested
   "Get disk type requested from job or use default disk type on pool"
-  [job pool-name]
-  ; IF user did not specify desired disk type, use the default disk type on the pool
-  (let [disk-type-requested (or (-> job util/job-ent->resources :disk :type)
+  [disk-type-from-user pool-name]
+  ; If user did not specify desired disk type, use the default disk type on the pool
+  (let [disk-type-requested (or disk-type-from-user
                                 (regexp-tools/match-based-on-pool-name (config/disk) pool-name :default-type))]
     ; Consume the type that the disk-type-requested maps to, which is found in the config
     (or (get (regexp-tools/match-based-on-pool-name (config/disk) pool-name :type-map) disk-type-requested)
@@ -181,7 +181,7 @@
         job-disk-request (or (-> job util/job-ent->resources :disk :request)
                              (regexp-tools/match-based-on-pool-name (config/disk) pool-name :default-request))
         job-disk-type (when job-disk-request
-                        (job->disk-type-requested job pool-name))]
+                        (job->disk-type-requested (-> job util/job-ent->resources :disk :type) pool-name))]
     (->disk-host-constraint job-disk-request job-disk-type)))
 
 (defrecord rebalancer-reservation-constraint [reserved-hosts]
