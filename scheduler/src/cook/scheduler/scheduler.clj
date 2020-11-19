@@ -464,7 +464,8 @@
 (defrecord VirtualMachineLeaseAdapter [offer time]
   VirtualMachineLease
   (cpuCores [_] (or (offer-resource-scalar offer "cpus") 0.0))
-  (diskMB [_] (or (offer-resource-scalar offer "disk") 0.0))
+  ; We support disk but support different types of disk, so we set this metric to 0.0 and take care of binpacking disk in the disk-host-constraint
+  (diskMB [_] 0.0)
   (getScalarValue [_ name] (or (double (offer-resource-scalar offer name)) 0.0))
   (getScalarValues [_]
     (reduce (fn [result resource]
@@ -490,6 +491,7 @@
 (defrecord TaskRequestAdapter [job resources task-id assigned-resources guuid->considerable-cotask-ids constraints scalar-requests]
   TaskRequest
   (getCPUs [_] (:cpus resources))
+  ; We support disk but support different types of disk, so we set this metric to 0.0 and take care of binpacking disk in the disk-host-constraint
   (getDisk [_] 0.0)
   (getHardConstraints [_] constraints)
   (getId [_] task-id)
