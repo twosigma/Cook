@@ -890,7 +890,16 @@
     ; init container
     (when use-cook-init?
       (when-let [{:keys [command image]} init-container]
-        (let [container (V1Container.)]
+        (let [container (V1Container.)
+              sidecar-mem (if use-cook-sidecar?
+                            (or (get-in sidecar [:resource-requirements :memory-request] 0)
+                                (get-in sidecar [:resource-requirements :memory-limit] 0))
+                            0)
+              sidecar-cpu (if use-cook-sidecar?
+                            (or (get-in sidecar [:resource-requirements :cpu-request] 0)
+                                (get-in sidecar [:resource-requirements :cpu-limit] 0))
+                            0)
+              resources (V1ResourceRequirements.)]
           ; container
           (.setName container cook-init-container-name)
           (.setImage container image)
@@ -900,6 +909,9 @@
           (.setVolumeMounts container (filterv some? (concat [(init-container-workdir-volume-mount-fn false)
                                                               (scratch-space-volume-mount-fn false)]
                                                              init-container-checkpoint-volume-mounts)))
+          (.putRequestsItem resources "memory" (double->quantity (* memory-multiplier (+ sidecar-mem computed-mem))))
+          (.putRequestsItem resources "cpu" (double->quantity (+ sidecar-cpu cpus)))
+          (.setResources container resources)
           (.addInitContainersItem pod-spec container))))
 
     ; sandbox file server container
