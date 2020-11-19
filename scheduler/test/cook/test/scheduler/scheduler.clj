@@ -1689,13 +1689,29 @@
                                                                                     :memory 1024
                                                                                     :gpus 4
                                                                                     :pool "test-pool"))
+                                          job-7 (d/entity test-db (create-dummy-job conn
+                                                                                    :uuid (get-uuid "job-7")
+                                                                                    :group group-ent-id
+                                                                                    :name "job-7"
+                                                                                    :ncpus 1
+                                                                                    :memory 2048
+                                                                                    :disk {:request 250000.0 :limit 255000.0 :type "pd-ssd"}
+                                                                                    :pool "test-pool"))
+                                          job-8 (d/entity test-db (create-dummy-job conn
+                                                                                    :uuid (get-uuid "job-8")
+                                                                                    :group group-ent-id
+                                                                                    :name "job-8"
+                                                                                    :ncpus 2
+                                                                                    :memory 2048
+                                                                                    :disk {:request 10000.0 :type "pd-ssd"}
+                                                                                    :pool "test-pool"))
                                           entity->map (fn [entity]
                                                         (tools/job-ent->map entity (d/db conn)))
-                                          pool->pending-jobs (->> {"test-pool" [job-1 job-2 job-3 job-4 job-5 job-6]}
+                                          pool->pending-jobs (->> {"test-pool" [job-1 job-2 job-3 job-4 job-5 job-6 job-7 job-8]}
                                                                   (pc/map-vals (partial map entity->map)))
                                           pool-name->pending-jobs-atom (atom pool->pending-jobs)
                                           user->usage (or user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}})
-                                          user->quota (or user-quota {test-user {:count 10, :cpus 60, :mem 32768, :gpus 10}})
+                                          user->quota (or user-quota {test-user {:count 10, :cpus 70, :mem 32768, :gpus 10}})
                                           mesos-run-as-user nil
                                           result (sched/handle-resource-offers!
                                                    conn fenzo pool-name->pending-jobs-atom mesos-run-as-user
@@ -1705,7 +1721,13 @@
                                       result))
       gpu-models-config [{:pool-regex "test-pool"
                           :valid-models #{"nvidia-tesla-p100" "nvidia-tesla-k80"}
-                          :default-model "nvidia-tesla-p100"}]]
+                          :default-model "nvidia-tesla-p100"}]
+      disk-config [{:pool-regex "test-pool"
+                    :max-size 256000.0
+                    :valid-types #{"standard" "pd-ssd"}
+                    :default-type "standard"
+                    :default-request 10000.0
+                    :type-map {"standard" "pd-standard"}}]]
   (defn test-handle-resource-helpers
     "Helper function for test-handle-resource offers"
     [offers-list]
@@ -1717,7 +1739,7 @@
           offer-9 (nth offers-list 8)]
 
       (testing "enough offers for all normal jobs"
-        (let [num-considerable 10
+        (let [num-considerable 6
               offers [offer-1 offer-2 offer-3]]
           (is (run-handle-resource-offers! num-considerable offers "test-pool"))
           (is (= :end-marker (async/<!! offers-chan)))
@@ -1764,7 +1786,7 @@
                                                     :else
                                                     (do (is (= key compute-cluster-name)) 1)))]
         (testing "enough offers for all normal jobs but not global rate limited."
-          (let [num-considerable 10
+          (let [num-considerable 6
                 offers [offer-1 offer-2 offer-3]]
             (is (run-handle-resource-offers! num-considerable offers "test-pool"))
             (is (= :end-marker (async/<!! offers-chan)))
@@ -1790,7 +1812,7 @@
       (let [total-spent (atom 0)]
         (with-redefs [rate-limit/spend! (fn [_ _ tokens] (reset! total-spent (-> @total-spent (+ tokens))))]
           (testing "enough offers for all normal jobs, limited by num-considerable of 2. Make sure we spend the tokens."
-            (let [num-considerable 10
+            (let [num-considerable 6
                   offers [offer-1 offer-2 offer-3]]
               (is (run-handle-resource-offers! num-considerable offers "test-pool"))
               (is (= :end-marker (async/<!! offers-chan)))
@@ -1893,7 +1915,8 @@
 
   (deftest test-handle-resource-offers-mesos
     (setup)
-    (let [offer-maker (fn [cpus mem gpus]
+    (let [offer-maker (fn [cpus mem gpus & {:keys [disk]
+                                            :or {disk {"standard" 512000}}}]
                         (assoc (static-offer-info)
                           :resources [{:name "cpus", :scalar cpus, :type :value-scalar, :role "cook"}
                                       {:name "mem", :scalar mem, :type :value-scalar, :role "cook"}
@@ -1909,7 +1932,8 @@
           offer-9 (offer-maker 100 200000 0)
           offers [offer-1 offer-2 offer-3 offer-4 offer-5 offer-6 offer-7 offer-8 offer-9]]
       (with-redefs [cook.config/executor-config (constantly executor)
-                    config/valid-gpu-models (constantly gpu-models-config)]
+                    config/valid-gpu-models (constantly gpu-models-config)
+                    config/disk (constantly disk-config)]
         (test-handle-resource-helpers offers)
         ; In mesos, jobs requesting gpus should not get matched
         (testing "all offers for all jobs"
@@ -1917,16 +1941,18 @@
                 offers [offer-1 offer-2 offer-3 offer-4 offer-5 offer-6 offer-7 offer-8 offer-9]]
             (is (run-handle-resource-offers! num-considerable offers "test-pool"))
             (is (= :end-marker (async/<!! offers-chan)))
-            (is (= 4 (count @launched-job-names-atom)))
-            (is (= #{"job-1" "job-2" "job-3" "job-4"} (set @launched-job-names-atom))))))))
+            (is (= 6 (count @launched-job-names-atom)))
+            (is (= #{"job-1" "job-2" "job-3" "job-4" "job-7" "job-8"} (set @launched-job-names-atom))))))))
 
   (deftest test-handle-resource-offers-k8s
     (setup)
-    (let [offer-maker (fn [cpus mem gpus]
+    (let [offer-maker (fn [cpus mem gpus & {:keys [disk]
+                                            :or {disk {"pd-standard" 512000}}}]
                         (assoc (static-offer-info)
                           :resources [{:name "cpus", :scalar cpus, :type :value-scalar, :role "cook"}
                                       {:name "mem", :scalar mem, :type :value-scalar, :role "cook"}
-                                      {:name "gpus", :text->scalar gpus, :type :value-text->scalar, :role "cook"}]
+                                      {:name "gpus", :text->scalar gpus, :type :value-text->scalar, :role "cook"}
+                                      {:name "disk", :text->scalar disk, :type :value-text->scalar, :role "cook"}]
                           :attributes [{:name "compute-cluster-type", :text "kubernetes", :type :value-text, :role "cook"}]))
           offer-1 (offer-maker 10 2048 {})
           offer-2 (offer-maker 20 16384 {})
@@ -1937,19 +1963,22 @@
           offer-7 (offer-maker 20 4096 {"nvidia-tesla-p100" 4})
           offer-8 (offer-maker 30 16384 {"nvidia-tesla-p100" 1})
           offer-9 (offer-maker 100 200000 {})
-          offers [offer-1 offer-2 offer-3 offer-4 offer-5 offer-6 offer-7 offer-8 offer-9]]
+          offer-10 (offer-maker 30 2048 {} :disk {"pd-ssd" 500000})
+          offer-11 (offer-maker 30 2048 {} :disk {"pd-ssd" 200000})
+          offers [offer-1 offer-2 offer-3 offer-4 offer-5 offer-6 offer-7 offer-8 offer-9 offer-10 offer-11]]
       (with-redefs [cook.config/executor-config (constantly executor)
                     config/valid-gpu-models (constantly gpu-models-config)
+                    config/disk (constantly disk-config)
                     kapi/create-namespaced-pod (constantly true)]
         (test-handle-resource-helpers offers)
         ; In kubernetes, gpu jobs should get matched if vm has enough count available in the correct model
         (testing "all offers for all jobs"
           (let [num-considerable 10
-                offers [offer-1 offer-2 offer-3 offer-4 offer-5 offer-6 offer-7 offer-8 offer-9]]
+                offers [offer-1 offer-2 offer-3 offer-4 offer-5 offer-6 offer-7 offer-8 offer-9 offer-10 offer-11]]
             (is (run-handle-resource-offers! num-considerable offers "test-pool"))
             (is (= :end-marker (async/<!! offers-chan)))
-            (is (= 6 (count @launched-job-names-atom)))
-            (is (= #{"job-1" "job-2" "job-3" "job-4" "job-5" "job-6"} (set @launched-job-names-atom)))))
+            (is (= 8 (count @launched-job-names-atom)))
+            (is (= #{"job-1" "job-2" "job-3" "job-4" "job-5" "job-6" "job-7" "job-8"} (set @launched-job-names-atom)))))
 
         (testing "k8s gpu offers for all gpu jobs"
           (let [num-considerable 10
@@ -1970,6 +1999,22 @@
         (testing "k8s gpu offer matching no gpu job"
           (let [num-considerable 10
                 offers [offer-8]]
+            (is (run-handle-resource-offers! num-considerable offers "test-pool"))
+            (is (= :end-marker (async/<!! offers-chan)))
+            (is (empty? @launched-job-names-atom))))
+
+        ; Add some more rigorous testing for scheduling jobs requesting disk
+        (testing "disk offer matching job requesting same disk type"
+          (let [num-considerable 10
+                offers [offer-10]]
+            (is (not (run-handle-resource-offers! num-considerable offers "test-pool")))
+            (is (= :end-marker (async/<!! offers-chan)))
+            (is (= 1 (count @launched-job-names-atom)))
+            (is (= #{"job-7"} (set @launched-job-names-atom)))))
+
+        (testing "disk offer matching no job"
+          (let [num-considerable 7
+                offers [offer-11]]
             (is (run-handle-resource-offers! num-considerable offers "test-pool"))
             (is (= :end-marker (async/<!! offers-chan)))
             (is (empty? @launched-job-names-atom))))))))
