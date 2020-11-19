@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.49.1] - 2020-11-19
+### Added
+- Add support for ignoring a taint prefix, from @scrosby
+### Changed
+- Increase limit for launch-task-num-threads, from @scrosby
+- Make progress an absolute path in k8s, from @scrosby
+### Fixed
+- Do not schedule nodes with unschedulable node-spec, from @scrosby
+- Improve error handling when calculating effective image, from @nsinkov
+
 ## [1.49.0] - 2020-11-11
 ### Added
 - Per-user queue length limits, from @dposada
