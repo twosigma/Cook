@@ -743,7 +743,7 @@
   "Transform the supplied job's image as necessary. e.g. do special transformation if checkpointing is enabled
   and an image transformation function is supplied."
   [{:keys [calculate-effective-image-fn] :as kubernetes-config} job-submit-time image {:keys [mode]} task-id]
-  (if (and mode calculate-effective-image-fn)
+  (if (and true calculate-effective-image-fn)
     (try
       ((util/lazy-load-var-memo calculate-effective-image-fn) kubernetes-config job-submit-time image)
       (catch Exception e
