@@ -284,14 +284,14 @@
         job-info (if disk
                    (let [{:keys [request limit type]} disk
                          disk-map {:resource/type :resource.type/disk
-                                   :resource.disk/request (double request)}
+                                   :resource.disk/request request}
                          disk-map (reduce-kv
                                     (fn [disk-map k v]
                                       (if-not (nil? v)
                                         (assoc disk-map k v)
                                         disk-map))
                                     disk-map
-                                    {:resource.disk/limit (double limit)
+                                    {:resource.disk/limit limit
                                      :resource.disk/type type})]
                      (update-in job-info [:job/resource] conj disk-map))
                    job-info)
