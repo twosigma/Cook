@@ -6,7 +6,8 @@
             [cook.mesos.task :as task]
             [cook.scheduler.scheduler :as sched]
             [cook.test.testutil :as tu]
-            [datomic.api :as d])
+            [datomic.api :as d]
+            [cook.config :as config])
   (:import (clojure.lang ExceptionInfo)
            (io.kubernetes.client.openapi.models V1NodeSelectorRequirement V1Pod V1PodSecurityContext)
            (java.util.concurrent Executors)
@@ -101,7 +102,8 @@
 
 (deftest test-generate-offers
   (tu/setup)
-  (with-redefs [api/launch-pod (constantly true)]
+  (with-redefs [api/launch-pod (constantly true)
+                config/disk-type-node-label-name (constantly "cloud.google.com/gke-boot-disk")]
     (let [conn (tu/restore-fresh-database! "datomic:mem://test-generate-offers")
           compute-cluster (kcc/->KubernetesComputeCluster nil "kubecompute" nil nil
                                                           (atom {}) (atom {}) (atom {}) (atom {}) (atom {}) (atom {}) (atom {}) (atom nil)
@@ -112,7 +114,7 @@
           node-name->node {"nodeA" (tu/node-helper "nodeA" 1.0 1000.0 10 "nvidia-tesla-p100" nil nil)
                            "nodeB" (tu/node-helper "nodeB" 1.0 1000.0 25 "nvidia-tesla-p100" nil nil)
                            "nodeC" (tu/node-helper "nodeC" 1.0 1000.0 nil nil nil nil)
-                           "nodeE" (tu/node-helper "nodeE" 2.0 1100.0 nil nil {:disk-amount 256000 :disk-type "standard"} nil)
+                           "nodeE" (tu/node-helper "nodeE" 2.0 1100.0 nil nil {:disk-amount 256000 :disk-type "pd-standard"} nil)
                            "my.fake.host" (tu/node-helper "my.fake.host" 1.0 1000.0 nil nil nil nil)}
           j1 (tu/create-dummy-job conn :ncpus 0.1)
           j2 (tu/create-dummy-job conn :ncpus 0.2)
@@ -133,7 +135,7 @@
                 {:namespace "cook" :name "podD"} (tu/pod-helper "podD" "nodeD"
                                                                 {:cpus 1.0 :mem 1100.0 :gpus "10" :gpu-model "nvidia-tesla-p100"})
                 {:namespace "cook" :name "podE"} (tu/pod-helper "podE" "nodeE"
-                                                                {:cpus 1.0 :mem 1100.0 :disk {:disk-request 50 :disk-limit 70 :disk-type "standard"}})
+                                                                {:cpus 1.0 :mem 1100.0 :disk {:disk-request 50 :disk-limit 70 :disk-type "pd-standard"}})
                 {:namespace "cook" :name task-1-id} (tu/pod-helper task-1-id "my.fake.host"
                                                                    {:cpus 0.1 :mem 10.0})}
           node-name->pods (api/pods->node-name->pods (kcc/add-starting-pods compute-cluster pods))
@@ -172,7 +174,7 @@
         (is (= {:value "nodeE"} (:slave-id offer)))
         (is (= [{:name "mem" :type :value-scalar :scalar 0.0}
                 {:name "cpus" :type :value-scalar :scalar 1.0}
-                {:name "disk" :type :value-text->scalar :text->scalar {"standard" 255950.0}}
+                {:name "disk" :type :value-text->scalar :text->scalar {"pd-standard" 255950.0}}
                 {:name "gpus" :type :value-text->scalar :text->scalar {}}]
                (:resources offer)))))))
 
