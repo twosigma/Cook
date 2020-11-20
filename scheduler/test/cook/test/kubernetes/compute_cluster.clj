@@ -1,13 +1,13 @@
 (ns cook.test.kubernetes.compute-cluster
   (:require [clojure.test :refer :all]
             [cook.compute-cluster :as cc]
+            [cook.config :as config]
             [cook.kubernetes.api :as api]
             [cook.kubernetes.compute-cluster :as kcc]
             [cook.mesos.task :as task]
             [cook.scheduler.scheduler :as sched]
             [cook.test.testutil :as tu]
-            [datomic.api :as d]
-            [cook.config :as config])
+            [datomic.api :as d])
   (:import (clojure.lang ExceptionInfo)
            (io.kubernetes.client.openapi.models V1NodeSelectorRequirement V1Pod V1PodSecurityContext)
            (java.util.concurrent Executors)

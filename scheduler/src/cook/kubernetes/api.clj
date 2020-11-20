@@ -400,8 +400,7 @@
     ; Only add disk to the resource map if pods are using disk
     (if (get m "ephemeral-storage")
       (assoc res-map :disk (-> m (get "ephemeral-storage") to-double))
-      res-map))
-   )
+      res-map)))
 
 (defn pods->node-name->pods
   "Given a seq of pods, create a map of node names to pods"
