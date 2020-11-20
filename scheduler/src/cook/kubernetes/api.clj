@@ -451,6 +451,15 @@
                            {})]
     (assoc resource-map :gpus gpu-model->count)))
 
+(defn pool->disk-type-label-name
+  "TODO: docstring"
+  [pool-name]
+  (regexp-tools/match-based-on-pool-name
+    (config/disk-type-node-label-name)
+    pool-name
+    :disk-node-label
+    :default-value "cloud.google.com/gke-boot-disk"))
+
 (defn add-disk-type-to-resource-map
   "Given a map from node-name->resource-type->capacity, set the disk capacity to type->amount"
   [disk-type {:keys [disk] :as resource-map}]
@@ -460,11 +469,11 @@
 
 (defn get-capacity
   "Given a map from node-name to node, generate a map from node-name->resource-type-><capacity>"
-  [node-name->node]
+  [node-name->node pool-name]
   (pc/map-vals (fn [^V1Node node]
                  (let [resource-map (some-> node .getStatus .getAllocatable convert-resource-map)
                        gpu-model (some-> node .getMetadata .getLabels (get "gpu-type"))
-                       disk-type (some-> node .getMetadata .getLabels (get "cloud.google.com/gke-boot-disk"))
+                       disk-type (some-> node .getMetadata .getLabels (get (pool->disk-type-label-name pool-name)))
                        update-gpu-in-res-map (fn [res-map] (add-gpu-model-to-resource-map gpu-model res-map))
                        update-disk-in-res-map (fn [res-map] (add-disk-type-to-resource-map disk-type res-map))]
                    (-> resource-map update-gpu-in-res-map update-disk-in-res-map)))
@@ -475,7 +484,7 @@
   Ignores pods that do not have an assigned node.
   When accounting for resources, we use resource requests to determine how much is used, not limits.
   See https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/#resource-requests-and-limits-of-pod-and-container"
-  [node-name->pods]
+  [node-name->pods pool-name]
   (->> node-name->pods
        (filter first) ; Keep those with non-nil node names.
        (pc/map-vals (fn [pods]
@@ -488,11 +497,10 @@
                                                                           .getRequests
                                                                           convert-resource-map))
                                                                 containers)
-                                        _ (log/info "####" container-requests)
                                         resource-map (apply merge-with + container-requests)
-                                        gpu-model (some-> pod .getSpec .getNodeSelector (get "cloud.google.com/gke-accelerator"))
-                                        ; update config, use the following string as default
-                                        disk-type (some-> pod .getSpec .getNodeSelector (get (config/disk-type-node-label-name)))
+                                        ^V1NodeSelector nodeSelector (some-> pod .getSpec .getNodeSelector)
+                                        gpu-model (some-> nodeSelector (get "cloud.google.com/gke-accelerator"))
+                                        disk-type (some-> nodeSelector (get (pool->disk-type-label-name pool-name)))
                                         update-gpu-in-res-map (fn [res-map] (add-gpu-model-to-resource-map gpu-model res-map))
                                         update-disk-in-res-map (fn [res-map] (add-disk-type-to-resource-map disk-type res-map))]
                                     (-> resource-map update-gpu-in-res-map update-disk-in-res-map))))
