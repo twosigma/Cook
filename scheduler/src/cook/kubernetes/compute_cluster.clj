@@ -47,11 +47,11 @@
   [node-name->resource-map resource-keyword]
   (->> node-name->resource-map vals (map resource-keyword) (filter some?) (reduce +)))
 
-(defn total-gpu-resource
+(defn total-text->scalar-resource
   "Given a map from node-name->resource-keyword->amount,
-  returns a map from gpu model to count for all nodes."
-  [node-name->resource-map]
-  (->> node-name->resource-map vals (map :gpus) (apply merge-with +)))
+  returns a map from model/type to count for all nodes."
+  [node-name->resource-map resource-keyword]
+  (->> node-name->resource-map vals (map resource-keyword) (apply merge-with +)))
 
 (defn generate-offers
   "Given a compute cluster and maps with node capacity and existing pods, return a map from pool to offers."
@@ -74,13 +74,20 @@
         node-name->consumed (->> (api/get-consumption node-name->pods)
                                  (filter #(node-name->capacity (first %)))
                                  (into {}))
+
         node-name->available (util/deep-merge-with - node-name->capacity node-name->consumed)
         ; Grab every unique GPU model being represented so that we can set counters for capacity and consumed for each GPU model
         gpu-models (->> node-name->capacity vals (map :gpus) (apply merge) keys set)
         ; The following variables are only being used setting counters for monitor
-        gpu-model->total-capacity (total-gpu-resource node-name->capacity)
-        gpu-model->total-consumed (total-gpu-resource node-name->consumed)
-        ; TODO: set counters for disk
+        gpu-model->total-capacity (total-text->scalar-resource node-name->capacity :gpus)
+        gpu-model->total-consumed (total-text->scalar-resource node-name->consumed :gpus)
+
+        ; Grab every unique disk type being represented to set counters for capacity and consumed for each disk type
+        disk-types (->> node-name->capacity vals (map :disk) (apply merge) keys set)
+        ; The following disk variables are only being used to set counters for monitor
+        disk-type->total-capacity (total-text->scalar-resource node-name->capacity :disk)
+        disk-type->total-consumed (total-text->scalar-resource node-name->consumed :disk)
+
         node-name->schedulable (filter #(schedulable-node-filter compute-cluster
                                           node-name->node
                                           node-name->pods
@@ -110,6 +117,11 @@
                             (get gpu-model->total-capacity gpu-model))
       (monitor/set-counter! (metrics/counter (str "consumption-gpu-" gpu-model) compute-cluster-name)
                             (get gpu-model->total-consumed gpu-model 0)))
+    (doseq [disk-type disk-types]
+      (monitor/set-counter! (metrics/counter (str "capacity-disk-" disk-type) compute-cluster-name)
+                            (get disk-type->total-capacity disk-type))
+      (monitor/set-counter! (metrics/counter (str "consumption-disk-" disk-type) compute-cluster-name)
+                            (get disk-type->total-consumed disk-type 0)))
 
 
     (->> node-name->schedulable
