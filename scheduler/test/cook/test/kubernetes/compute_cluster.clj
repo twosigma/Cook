@@ -103,7 +103,8 @@
 (deftest test-generate-offers
   (tu/setup)
   (with-redefs [api/launch-pod (constantly true)
-                config/disk-type-node-label-name (constantly "cloud.google.com/gke-boot-disk")]
+                config/disk-type-node-label-name (constantly [{:pool-regex "test-pool"
+                                                               :disk-node-label "cloud.google.com/gke-boot-disk"}])]
     (let [conn (tu/restore-fresh-database! "datomic:mem://test-generate-offers")
           compute-cluster (kcc/->KubernetesComputeCluster nil "kubecompute" nil nil
                                                           (atom {}) (atom {}) (atom {}) (atom {}) (atom {}) (atom {}) (atom {}) (atom nil)
@@ -139,7 +140,7 @@
                 {:namespace "cook" :name task-1-id} (tu/pod-helper task-1-id "my.fake.host"
                                                                    {:cpus 0.1 :mem 10.0})}
           node-name->pods (api/pods->node-name->pods (kcc/add-starting-pods compute-cluster pods))
-          offers (kcc/generate-offers compute-cluster node-name->node node-name->pods)]
+          offers (kcc/generate-offers compute-cluster node-name->node node-name->pods "test-pool")]
       (is (= 5 (count offers)))
       (let [offer (first (filter #(= "nodeA" (:hostname %))
                                  offers))]
