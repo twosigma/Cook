@@ -762,6 +762,19 @@
            pod-labels-from-job-labels
            pod-labels-from-job-application)))
 
+(defn set-mem-cpu-resources
+  "Given a resources object and a CPU and memory request and limit, update the resources object to reflect the
+  desired requests and limits."
+  [resources memory-request memory-limit cpu-request cpu-limit]
+  (let [{:keys [set-container-cpu-limit?]} (config/kubernetes)]
+    (.putRequestsItem resources "memory" (double->quantity (* memory-multiplier memory-request)))
+    (.putLimitsItem resources "memory" (double->quantity (* memory-multiplier memory-limit)))
+    (.putRequestsItem resources "cpu" (double->quantity cpu-request))
+    (when set-container-cpu-limit?
+      ; Some environments may need pods to run in the "Guaranteed"
+      ; QoS, which requires limits for both memory and cpu
+      (.putLimitsItem resources "cpu" (double->quantity cpu-limit)))))
+
 (defn ^V1Pod task-metadata->pod
   "Given a task-request and other data generate the kubernetes V1Pod to launch that task."
   [namespace {:keys [cook-pool-taint-name cook-pool-label-name] compute-cluster-name :name}
@@ -864,13 +877,8 @@
     (.setTty container true)
     (.setStdin container true)
 
-    (.putRequestsItem resources "memory" (double->quantity (* memory-multiplier computed-mem)))
-    (.putLimitsItem resources "memory" (double->quantity (* memory-multiplier computed-mem)))
-    (.putRequestsItem resources "cpu" (double->quantity cpus))
-    (when set-container-cpu-limit?
-      ; Some environments may need pods to run in the "Guaranteed"
-      ; QoS, which requires limits for both memory and cpu
-      (.putLimitsItem resources "cpu" (double->quantity cpus)))
+    (set-mem-cpu-resources resources computed-mem computed-mem cpus cpus)
+
     (when (pos? gpus)
       (.putLimitsItem resources "nvidia.com/gpu" (double->quantity gpus))
       (.putRequestsItem resources "nvidia.com/gpu" (double->quantity gpus))
@@ -891,14 +899,16 @@
     (when use-cook-init?
       (when-let [{:keys [command image]} init-container]
         (let [container (V1Container.)
-              sidecar-mem (if use-cook-sidecar?
-                            (or (get-in sidecar [:resource-requirements :memory-request] 0)
-                                (get-in sidecar [:resource-requirements :memory-limit] 0))
-                            0)
-              sidecar-cpu (if use-cook-sidecar?
-                            (or (get-in sidecar [:resource-requirements :cpu-request] 0)
-                                (get-in sidecar [:resource-requirements :cpu-limit] 0))
-                            0)
+              sidecar-mem (+ computed-mem
+                             (if use-cook-sidecar?
+                               (or (get-in sidecar [:resource-requirements :memory-request] 0)
+                                   (get-in sidecar [:resource-requirements :memory-limit] 0))
+                               0))
+              sidecar-cpu (+ cpus
+                             (if use-cook-sidecar?
+                               (or (get-in sidecar [:resource-requirements :cpu-request] 0)
+                                   (get-in sidecar [:resource-requirements :cpu-limit] 0))
+                               0))
               resources (V1ResourceRequirements.)]
           ; container
           (.setName container cook-init-container-name)
@@ -909,8 +919,7 @@
           (.setVolumeMounts container (filterv some? (concat [(init-container-workdir-volume-mount-fn false)
                                                               (scratch-space-volume-mount-fn false)]
                                                              init-container-checkpoint-volume-mounts)))
-          (.putRequestsItem resources "memory" (double->quantity (* memory-multiplier (+ sidecar-mem computed-mem))))
-          (.putRequestsItem resources "cpu" (double->quantity (+ sidecar-cpu cpus)))
+          (set-mem-cpu-resources resources sidecar-mem sidecar-mem sidecar-cpu sidecar-cpu)
           (.setResources container resources)
           (.addInitContainersItem pod-spec container))))
 
@@ -942,11 +951,7 @@
             (.setReadinessProbe container readiness-probe)))
 
           ; resources
-          (.putRequestsItem resources "cpu" (double->quantity cpu-request))
-          (when set-container-cpu-limit?
-            (.putLimitsItem resources "cpu" (double->quantity cpu-limit)))
-          (.putRequestsItem resources "memory" (double->quantity (* memory-multiplier memory-request)))
-          (.putLimitsItem resources "memory" (double->quantity (* memory-multiplier memory-limit)))
+          (set-mem-cpu-resources resources memory-request memory-limit cpu-request cpu-limit)
           (.setResources container resources)
 
           (.setVolumeMounts container [(sandbox-volume-mount-fn true) (sidecar-workdir-volume-mount-fn false)])
