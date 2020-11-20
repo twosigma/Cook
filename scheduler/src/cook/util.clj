@@ -26,6 +26,7 @@
             [schema.core :as s])
   (:import (java.util.concurrent.atomic AtomicLong)
            (org.joda.time DateTime ReadablePeriod)))
+; To avoid circular dependencies, this namespace should depend on no cook namespaces.
 
 (defmacro try-timeout
   "Evaluates an expression in a separate thread and kills it if it takes too long"
@@ -160,6 +161,9 @@
       (if resolved
         resolved
         (throw (ex-info "Unable to resolve var, is it valid?" {:var-sym var-sym}))))))
+
+(def lazy-load-var-memo
+  (memoize lazy-load-var))
 
 (def ZeroInt
   (s/both s/Int (s/pred zero? 'zero?)))

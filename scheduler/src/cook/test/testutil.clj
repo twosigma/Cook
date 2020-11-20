@@ -566,7 +566,7 @@
     (.setCreationTimestamp pod-metadata creation-timestamp)
     (-> outstanding-synthetic-pod
         .getSpec
-        (.addTolerationsItem (kapi/toleration-for-pool "cook-pool-taint-A" pool-name)))
+        (.addTolerationsItem (kapi/toleration-for-pool "cook-pool-taint-A" "prefix" pool-name)))
     outstanding-synthetic-pod))
 
 (defn node-helper [node-name cpus mem gpus gpu-model {:keys [disk-amount disk-type] :as disk} pool]
@@ -591,25 +591,24 @@
       (.putAllocatableItem status "nvidia.com/gpu" (Quantity. (BigDecimal. gpus)
                                                               Quantity$Format/DECIMAL_SI))
       (.putLabelsItem metadata "gpu-type" (or gpu-model "nvidia-tesla-p100")))
-
     (when disk
       (.putCapacityItem status "ephemeral-storage" (Quantity. (BigDecimal. disk-amount)
                                                               Quantity$Format/DECIMAL_SI))
       (.putAllocatableItem status "ephemeral-storage" (Quantity. (BigDecimal. disk-amount)
                                                       Quantity$Format/DECIMAL_SI))
       (.putLabelsItem metadata "cloud.google.com/gke-boot-disk" (or disk-type "standard")))
-
+    (.setUnschedulable spec false)
     (when pool
       (let [^V1Taint taint (V1Taint.)]
         (.setKey taint "foo-taint-probably-broken-TODO")
         (.setValue taint pool)
         (.setEffect taint "NoSchedule")
-        (-> spec (.addTaintsItem taint))
-        (-> node (.setSpec spec))))
+        (-> spec (.addTaintsItem taint))))
     (.setStatus node status)
     (.setName metadata node-name)
     (.setMetadata node metadata)
-  node))
+    (.setSpec node spec)
+    node))
 
 (defn make-kubernetes-compute-cluster
   [namespaced-pod-name->pod pool-names node-blocklist-labels additional-synthetic-pods-config]
@@ -642,4 +641,5 @@
                                     false ; dynamic-cluster-config?
                                     rate-limit/AllowAllRateLimiter
                                     "some-random-taint-A"
+                                    "taint-prefix-1"
                                     "some-random-label-A")))
