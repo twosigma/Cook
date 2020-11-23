@@ -629,6 +629,7 @@
 (defn- add-as-decimals
   "Takes two doubles and adds them as decimals to avoid floating point error. Kubernetes will not be able to launch a
    pod if the required cpu has too much precision. For example, adding 0.1 and 0.02 as doubles results in 0.12000000000000001"
+  ; If you get an error like IllegalArgumentException "No suffix for exponent-18" in JSON serialization. Use this function.
   [a b]
   (double (+ (bigdec a) (bigdec b))))
 
@@ -904,7 +905,7 @@
                                (or (get-in sidecar [:resource-requirements :memory-request] 0)
                                    (get-in sidecar [:resource-requirements :memory-limit] 0))
                                0))
-              sidecar-cpu (+ cpus
+              sidecar-cpu (add-as-decimals cpus
                              (if use-cook-sidecar?
                                (or (get-in sidecar [:resource-requirements :cpu-request] 0)
                                    (get-in sidecar [:resource-requirements :cpu-limit] 0))
