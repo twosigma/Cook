@@ -243,18 +243,21 @@
         disk-request-job-id-2 (create-dummy-job conn :user "ljin" :ncpus 5.0 :memory 5.0 :pool "test-pool" :disk {:request 50.0 :limit 60.0})
         disk-request-job-id-3 (create-dummy-job conn :user "ljin" :ncpus 5.0 :memory 5.0 :pool "test-pool" :disk {:request 100.0 :type "standard"})
         disk-request-job-id-4 (create-dummy-job conn :user "ljin" :ncpus 5.0 :memory 5.0 :pool "test-pool" :disk {:request 10.0 :type "pd-ssd"})
+        disk-request-job-id-5 (create-dummy-job conn :user "ljin" :ncpus 5.0 :memory 5.0 :pool "mesos-pool")
         db (db conn)
         disk-request-job-1 (d/entity db disk-request-job-id-1)
         disk-request-job-2 (d/entity db disk-request-job-id-2)
         disk-request-job-3 (d/entity db disk-request-job-id-3)
-        disk-request-job-4 (d/entity db disk-request-job-id-4)]
+        disk-request-job-4 (d/entity db disk-request-job-id-4)
+        disk-request-job-5 (d/entity db disk-request-job-id-5)]
 
     (with-redefs [config/disk (constantly [{:pool-regex "test-pool"
                                             :max-size 256000.0
                                             :valid-types #{"standard", "pd-ssd"}
                                             :default-type "standard"
                                             :default-request 10000.0
-                                            :type-map {"standard", "pd-standard"}}])]
+                                            :type-map {"standard", "pd-standard"}
+                                            :enable-constraint? true}])]
       (is (.isSuccessful
             (.evaluate (constraints/fenzoize-job-constraint (constraints/build-disk-host-constraint disk-request-job-1))
                        (sched/make-task-request db disk-request-job-1 nil)
@@ -294,7 +297,8 @@
                               (getTasksCurrentlyAssigned [_] [])
                               (getCurrAvailableResources [_] (sched/->VirtualMachineLeaseAdapter offer 0)))
                             nil)))
-          (str "Disk task on host without correct disk type should fail")))))
+          (str "Disk task on host without correct disk type should fail"))
+      (is (nil? (constraints/build-disk-host-constraint disk-request-job-5))))))
 
 (deftest test-rebalancer-reservation-constraint
   (setup)

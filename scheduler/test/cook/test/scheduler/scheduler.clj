@@ -1727,7 +1727,8 @@
                     :valid-types #{"standard" "pd-ssd"}
                     :default-type "standard"
                     :default-request 10000.0
-                    :type-map {"standard" "pd-standard"}}]
+                    :type-map {"standard" "pd-standard"}
+                    :enable-constraint? true}]
       disk-type-node-label [{:pool-regex "test-pool"
                              :disk-node-label "cloud.google.com/gke-boot-disk"}]]
   (defn test-handle-resource-helpers
