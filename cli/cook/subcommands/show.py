@@ -48,6 +48,12 @@ def tabulate_job(cluster_name, job):
         job_definition.append(['Max Runtime', millis_to_timedelta(job['max_runtime'])])
     if job['gpus'] > 0:
         job_definition.append(['GPUs', job['gpus']])
+    if 'disk' in job:
+        job_definition.append(['Disk Request', job['disk']['request']])
+        if 'limit' in job['disk']:
+            job_definition.append(['Disk Limit', job['disk']['limit']])
+        if 'type' in job['disk']:
+            job_definition.append(['Disk Type', job['disk']['type']])
     if job['ports'] > 0:
         job_definition.append(['Ports Requested', job['ports']])
     if len(job['constraints']) > 0:

@@ -317,7 +317,7 @@
                                      synthetic-pods-config node-blocklist-labels
                                      ^ExecutorService launch-task-executor-service
                                      cluster-definition state-atom state-locked?-atom dynamic-cluster-config?
-                                     compute-cluster-launch-rate-limiter cook-pool-taint-name cook-pool-label-name]
+                                     compute-cluster-launch-rate-limiter cook-pool-taint-name cook-pool-taint-prefix cook-pool-label-name]
   cc/ComputeCluster
   (launch-tasks [this pool-name matches process-task-post-launch-fn]
     (let [task-metadata-seq (mapcat :task-metadata-seq matches)]
@@ -676,6 +676,7 @@
            ca-cert
            ca-cert-path
            cook-pool-taint-name
+           cook-pool-taint-prefix
            cook-pool-label-name
            ^String config-file
            dynamic-cluster-config?
@@ -704,14 +705,15 @@
          state-locked? false
          use-google-service-account? true
          cook-pool-taint-name "cook-pool"
+         cook-pool-taint-prefix ""
          cook-pool-label-name "cook-pool"}
     :as compute-cluster-config}
    {:keys [exit-code-syncer-state]}]
   (guard-invalid-synthetic-pods-config name synthetic-pods)
-  (when (not (< 0 launch-task-num-threads 64))
+  (when (not (< 0 launch-task-num-threads 512))
     (throw
       (ex-info
-        "Please configure :launch-task-num-threads to > 0 and < 64 in your config."
+        "Please configure :launch-task-num-threads to > 0 and < 512 in your config."
         compute-cluster-config)))
   (let [conn cook.datomic/conn
         cluster-entity-id (get-or-create-cluster-entity-id conn name)
@@ -741,6 +743,6 @@
                                                     (atom state)
                                                     (atom state-locked?)
                                                     dynamic-cluster-config?
-                                                    compute-cluster-launch-rate-limiter cook-pool-taint-name cook-pool-label-name)]
+                                                    compute-cluster-launch-rate-limiter cook-pool-taint-name cook-pool-taint-prefix cook-pool-label-name)]
     (cc/register-compute-cluster! compute-cluster)
     compute-cluster))

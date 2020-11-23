@@ -71,7 +71,7 @@
                                                               {:kind :static :namespace "cook"} nil nil nil nil
                                                               (Executors/newSingleThreadExecutor)
                                                               {} (atom :running) (atom false) false
-                                                              cook.rate-limit/AllowAllRateLimiter "t-a" "l-a")
+                                                              cook.rate-limit/AllowAllRateLimiter "t-a" "p-a" "l-a")
               task-metadata (task/TaskAssignmentResult->task-metadata (d/db conn)
                                                                       nil
                                                                       compute-cluster
@@ -89,7 +89,7 @@
                                                               {:kind :per-user} nil nil nil nil
                                                               (Executors/newSingleThreadExecutor)
                                                               {} (atom :running) (atom false) false
-                                                              cook.rate-limit/AllowAllRateLimiter "t-b" "l-b")
+                                                              cook.rate-limit/AllowAllRateLimiter "t-b" "p-b" "l-b")
               task-metadata (task/TaskAssignmentResult->task-metadata (d/db conn)
                                                                       nil
                                                                       compute-cluster
@@ -329,7 +329,7 @@
       (is (kcc/factory-fn {:launch-task-num-threads 1
                            :use-google-service-account? false}
                           nil))
-      (is (kcc/factory-fn {:launch-task-num-threads 63
+      (is (kcc/factory-fn {:launch-task-num-threads 511
                            :use-google-service-account? false}
                           nil))
       (is (thrown? ExceptionInfo
@@ -337,7 +337,7 @@
                                     :use-google-service-account? false}
                                    nil)))
       (is (thrown? ExceptionInfo
-                   (kcc/factory-fn {:launch-task-num-threads 64
+                   (kcc/factory-fn {:launch-task-num-threads 512
                                     :use-google-service-account? false}
                                    nil))))))
 

@@ -56,6 +56,11 @@
         "exec /bin/sh -c \"$1\"")
    "--"])
 
+(defn synthetic-pod?
+  "Given a pod name, returns true if it has the synthetic pod prefix"
+  [pod-name]
+  (str/starts-with? pod-name cook-synthetic-pod-name-prefix))
+
 ; DeletionCandidateTaint is a soft taint that k8s uses to mark unneeded
 ; nodes as preferably unschedulable. This taint is added as soon as the
 ; autoscaler detects that nodes are under-utilized and all pods could be
@@ -242,18 +247,22 @@
 
 (defn get-node-pool
   "Get the pool for a node. In the case of no pool, return 'no-pool"
-  [cook-pool-taint-name ^V1Node node]
+  [cook-pool-taint-name cook-pool-taint-prefix ^V1Node node]
   ; In the case of nil, we have taints-on-node == [], and we'll map to no-pool.
   (let [taints-on-node (or (some-> node .getSpec .getTaints) [])
         found-cook-pool-taint (filter #(= cook-pool-taint-name (.getKey %)) taints-on-node)]
     (if (= 1 (count found-cook-pool-taint))
-      (-> found-cook-pool-taint first .getValue)
+      (let [taint-value
+            (-> found-cook-pool-taint first .getValue)]
+        (if (str/starts-with? taint-value cook-pool-taint-prefix)
+          (subs taint-value (count cook-pool-taint-prefix))
+          "no-pool"))
       "no-pool")))
 
 (declare initialize-node-watch)
 (defn initialize-node-watch-helper
   "Help creating node watch. Returns a new watch Callable"
-  [{:keys [^ApiClient api-client current-nodes-atom pool->node-name->node cook-pool-taint-name] compute-cluster-name :name :as compute-cluster}]
+  [{:keys [^ApiClient api-client current-nodes-atom pool->node-name->node cook-pool-taint-name cook-pool-taint-prefix] compute-cluster-name :name :as compute-cluster}]
   (let [api (CoreV1Api. api-client)
         current-nodes-raw
         (timers/time! (metrics/timer "get-all-nodes" compute-cluster-name)
@@ -271,7 +280,7 @@
         current-nodes (pc/map-from-vals node->node-name (.getItems current-nodes-raw))
         callbacks
         [(tools/make-atom-updater current-nodes-atom) ; Update the set of all pods.
-         (tools/make-nested-atom-updater pool->node-name->node (partial get-node-pool cook-pool-taint-name) node->node-name)]
+         (tools/make-nested-atom-updater pool->node-name->node (partial get-node-pool cook-pool-taint-name cook-pool-taint-prefix) node->node-name)]
         old-current-nodes @current-nodes-atom
         new-node-names (set (keys current-nodes))
         old-node-names (set (keys old-current-nodes))]
@@ -426,20 +435,26 @@
                                   (.getKey %))
                                taints-on-node)
           node-name (some-> node .getMetadata .getName)
+          node-unschedulable (some-> node .getSpec .getUnschedulable)
           num-pods-on-node (-> node-name->pods (get node-name []) count)
           labels-on-node (or (some-> node .getMetadata .getLabels) {})
           matching-node-blocklist-keyvals (select-keys labels-on-node node-blocklist-labels)]
-      (cond  (seq other-taints) (do
-                                  (log/info "Filtering out" node-name "because it has taints" other-taints)
-                                  false)
-             (>= num-pods-on-node pod-count-capacity) (do
-                                                        (log/info "Filtering out" node-name "because it is at or above its pod count capacity of"
-                                                                  pod-count-capacity "(" num-pods-on-node ")")
-                                                        false)
-             (seq matching-node-blocklist-keyvals) (do
-                                                     (log/info "Filtering out" node-name "because it has node blocklist labels" matching-node-blocklist-keyvals)
-                                                     false)
-             :else true))))
+      (cond
+        ;; Note that node-unschedulable may be nil or false or true.
+        node-unschedulable (do
+                             (log/info "Filtering out" node-name "because it is unschedulable" node-unschedulable)
+                             false)
+        (seq other-taints) (do
+                             (log/info "Filtering out" node-name "because it has taints" other-taints)
+                             false)
+        (>= num-pods-on-node pod-count-capacity) (do
+                                                   (log/info "Filtering out" node-name "because it is at or above its pod count capacity of"
+                                                             pod-count-capacity "(" num-pods-on-node ")")
+                                                   false)
+        (seq matching-node-blocklist-keyvals) (do
+                                                (log/info "Filtering out" node-name "because it has node blocklist labels" matching-node-blocklist-keyvals)
+                                                false)
+        :else true))))
 
 (defn add-gpu-model-to-resource-map
   "Given a map from node-name->resource-type->capacity, perform the following operation:
@@ -576,10 +591,10 @@
 
 (defn toleration-for-pool
   "For a given cook pool name, create the right V1Toleration so that Cook will ignore that cook-pool taint."
-  [cook-pool-taint-name pool-name]
+  [cook-pool-taint-name cook-pool-taint-prefix pool-name]
   (let [^V1Toleration toleration (V1Toleration.)]
     (.setKey toleration cook-pool-taint-name)
-    (.setValue toleration pool-name)
+    (.setValue toleration (str cook-pool-taint-prefix pool-name))
     (.setOperator toleration "Equal")
     (.setEffect toleration "NoSchedule")
     toleration))
@@ -753,6 +768,21 @@
               checkpoint))
           checkpoint)))))
 
+(defn calculate-effective-image
+  "Transform the supplied job's image as necessary. e.g. do special transformation if checkpointing is enabled
+  and an image transformation function is supplied."
+  [{:keys [calculate-effective-image-fn] :as kubernetes-config} job-submit-time image {:keys [mode]} task-id]
+  (if (and mode calculate-effective-image-fn)
+    (try
+      ((util/lazy-load-var-memo calculate-effective-image-fn) kubernetes-config job-submit-time image)
+      (catch Exception e
+        (log/error e "Error calculating effective image for checkpointing"
+                   {:calculate-effective-image-fn calculate-effective-image-fn
+                    :image image
+                    :task-id task-id})
+        image))
+    image))
+
 (defn job->pod-labels
   "Returns the dictionary of labels that should be
   added to the job's pod based on the job's labels
@@ -778,7 +808,7 @@
 
 (defn ^V1Pod task-metadata->pod
   "Given a task-request and other data generate the kubernetes V1Pod to launch that task."
-  [namespace {:keys [cook-pool-taint-name cook-pool-label-name] compute-cluster-name :name}
+  [namespace {:keys [cook-pool-taint-name cook-pool-taint-prefix cook-pool-label-name] compute-cluster-name :name}
    {:keys [task-id command container task-request hostname pod-annotations pod-constraints pod-hostnames-to-avoid
            pod-labels pod-priority-class pod-supports-cook-init? pod-supports-cook-sidecar?]
     :or {pod-priority-class cook-job-pod-priority-class
@@ -817,6 +847,11 @@
         {:keys [volumes volume-mounts sandbox-volume-mount-fn]} (make-volumes volumes sandbox-dir)
         {:keys [custom-shell init-container set-container-cpu-limit? sidecar]} (config/kubernetes)
         checkpoint (calculate-effective-checkpointing-config job task-id)
+        job-submit-time (tools/job->submit-time job)
+        pod-name (str task-id)
+        image (if (synthetic-pod? pod-name)
+                image
+                (calculate-effective-image (config/kubernetes) job-submit-time image checkpoint task-id))
         checkpoint-memory-overhead (:memory-overhead checkpoint)
         use-cook-init? (and init-container pod-supports-cook-init?)
         use-cook-sidecar? (and sidecar pod-supports-cook-sidecar?)
@@ -853,12 +888,12 @@
                    ;; Add a default progress file path to the environment when missing,
                    ;; preserving compatibility with Meosos + Cook Executor.
                    (not progress-file-path)
-                   (assoc progress-file-var (str task-id ".progress")))
+                   (assoc progress-file-var (str workdir "/" task-id ".progress")))
         main-env-vars (make-filtered-env-vars main-env)
         computed-mem (if checkpoint-memory-overhead (add-as-decimals mem checkpoint-memory-overhead) mem)]
 
     ; metadata
-    (.setName metadata (str task-id))
+    (.setName metadata pod-name)
     (.setNamespace metadata namespace)
     (.setLabels metadata labels)
     (when pod-annotations
@@ -1005,12 +1040,10 @@
     ; user. For the time being, this isn't a problem only if / when
     ; the default pool is not being fed offers from Kubernetes.
     (when pool-name
-      (.addTolerationsItem pod-spec (toleration-for-pool cook-pool-taint-name pool-name))
-      ; Add a node selector for nodes labeled with the Cook pool
-      ; we're launching in. This is technically only needed for
-      ; synthetic pods (which don't specify a node name), but it
-      ; doesn't hurt to add it for all pods we submit.
-      (add-node-selector pod-spec cook-pool-label-name pool-name))
+      (.addTolerationsItem pod-spec (toleration-for-pool cook-pool-taint-name cook-pool-taint-prefix pool-name))
+      ; We need to make sure synthetic pods --- which don't have a hostname set --- have a node selector
+      ; to run only in nodes labelled with the appropriate cook pool
+      (when-not hostname (add-node-selector pod-spec cook-pool-label-name pool-name)))
 
     (when pod-constraints
       (doseq [{:keys [constraint/attribute
@@ -1048,11 +1081,6 @@
   "Extract the name of a pod from the pod itself"
   [^V1Pod pod]
   (-> pod .getMetadata .getName))
-
-(defn synthetic-pod?
-  "Given a pod name, returns true if it has the synthetic pod prefix"
-  [pod-name]
-  (str/starts-with? pod-name cook-synthetic-pod-name-prefix))
 
 (defn pod-unschedulable?
   "Returns true if the given pod status has a PodScheduled
