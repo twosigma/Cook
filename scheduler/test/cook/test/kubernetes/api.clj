@@ -343,7 +343,8 @@
                                             :valid-types #{"standard", "pd-ssd"}
                                             :default-type "standard"
                                             :default-request 10000.0
-                                            :type-map {"standard", "pd-standard"}}])]
+                                            :type-map {"standard", "pd-standard"}
+                                            :enable-constraint? true}])]
       (let [pool-name "test-pool"
             task-metadata {:task-id "my-task"
                            :command {:value "foo && bar"

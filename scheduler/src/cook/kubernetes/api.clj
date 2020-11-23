@@ -795,12 +795,15 @@
         ; gpu count is not stored in scalar-requests because Fenzo does not handle gpus in binpacking
         gpus (or (:gpus resources) 0)
         gpu-model-requested (constraints/job->gpu-model-requested gpus job pool-name)
+        ; if disk config for pool has enable-constraint? set to true, add disk info to the job
+        enable-disk-constraint? (regexp-tools/match-based-on-pool-name (config/disk) pool-name :enable-constraint? :default-value false)
         ; if user did not specify disk request, use default on pool
-        disk-request (or (-> resources :disk :request)
-                         (regexp-tools/match-based-on-pool-name (config/disk) pool-name :default-request))
-        disk-limit (-> resources :disk :limit)
+        disk-request (when enable-disk-constraint?
+                       (or (-> resources :disk :request)
+                           (regexp-tools/match-based-on-pool-name (config/disk) pool-name :default-request)))
+        disk-limit (when enable-disk-constraint? (-> resources :disk :limit))
         ; if user did not specify disk type, use default on pool
-        disk-type (constraints/job->disk-type-requested (-> resources :disk :type) pool-name)
+        disk-type (when enable-disk-constraint? (constraints/job->disk-type-requested (-> resources :disk :type) pool-name))
         pod (V1Pod.)
         pod-spec (V1PodSpec.)
         metadata (V1ObjectMeta.)
