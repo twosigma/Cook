@@ -168,7 +168,7 @@
                                       "VM does not have enough disk space of requested disk type")])
         ; Mesos jobs cannot request disk. If VM is a mesos VM, constraint always passes
         (let [vm-satisfies-constraint? true]
-          [vm-satisfies-constraint? ""])))))
+          [vm-satisfies-constraint?])))))
 
 (defn build-disk-host-constraint
   "Constructs a disk-host-constraint.
@@ -176,13 +176,15 @@
   and prevents a job from running on a host that does not have enough disk space. Use a constraint for disk binpacking instead of
   using Fenzo because disk is not considered a first class resource in Fenzo."
   [job]
-  (let [pool-name (cached-queries/job->pool-name job)
-        ; If the user did not specify a disk request, use the default request amount for the pool
-        job-disk-request (or (-> job util/job-ent->resources :disk :request)
-                             (regexp-tools/match-based-on-pool-name (config/disk) pool-name :default-request))
-        job-disk-type (when job-disk-request
-                        (job->disk-type-requested (-> job util/job-ent->resources :disk :type) pool-name))]
-    (->disk-host-constraint job-disk-request job-disk-type)))
+  (let [pool-name (cached-queries/job->pool-name job)]
+        ; If the pool does not have enable-constraint set to true, return nil
+        (if (regexp-tools/match-based-on-pool-name (config/disk) pool-name :enable-constraint? :default-value false)
+          (let [; If the user did not specify a disk request, use the default request amount for the pool
+                job-disk-request (or (-> job util/job-ent->resources :disk :request)
+                                     (regexp-tools/match-based-on-pool-name (config/disk) pool-name :default-request))
+                job-disk-type (when job-disk-request
+                                (job->disk-type-requested (-> job util/job-ent->resources :disk :type) pool-name))]
+            (->disk-host-constraint job-disk-request job-disk-type)))))
 
 (defrecord rebalancer-reservation-constraint [reserved-hosts]
   JobConstraint
