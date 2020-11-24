@@ -900,16 +900,22 @@
     (when use-cook-init?
       (when-let [{:keys [command image]} init-container]
         (let [container (V1Container.)
-              sidecar-mem (+ computed-mem
-                             (if use-cook-sidecar?
-                               (or (get-in sidecar [:resource-requirements :memory-request] 0)
-                                   (get-in sidecar [:resource-requirements :memory-limit] 0))
-                               0))
-              sidecar-cpu (add-as-decimals cpus
-                             (if use-cook-sidecar?
-                               (or (get-in sidecar [:resource-requirements :cpu-request] 0)
-                                   (get-in sidecar [:resource-requirements :cpu-limit] 0))
-                               0))
+              total-memory-request (+ computed-mem
+                                      (if use-cook-sidecar?
+                                        (get-in sidecar [:resource-requirements :memory-request])
+                                        0))
+              total-memory-limit (+ computed-mem
+                                    (if use-cook-sidecar?
+                                      (get-in sidecar [:resource-requirements :memory-limit])
+                                      0))
+              total-cpu-request (add-as-decimals cpus
+                                                 (if use-cook-sidecar?
+                                                   (get-in sidecar [:resource-requirements :cpu-request])
+                                                   0))
+              total-cpu-limit (add-as-decimals cpus
+                                               (if use-cook-sidecar?
+                                                 (get-in sidecar [:resource-requirements :cpu-limit])
+                                                 0))
               resources (V1ResourceRequirements.)]
           ; container
           (.setName container cook-init-container-name)
@@ -920,7 +926,7 @@
           (.setVolumeMounts container (filterv some? (concat [(init-container-workdir-volume-mount-fn false)
                                                               (scratch-space-volume-mount-fn false)]
                                                              init-container-checkpoint-volume-mounts)))
-          (set-mem-cpu-resources resources sidecar-mem sidecar-mem sidecar-cpu sidecar-cpu)
+          (set-mem-cpu-resources resources total-memory-request total-memory-limit total-cpu-request total-cpu-limit)
           (.setResources container resources)
           (.addInitContainersItem pod-spec container))))
 
