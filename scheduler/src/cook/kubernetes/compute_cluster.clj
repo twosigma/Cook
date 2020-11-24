@@ -74,7 +74,6 @@
         node-name->consumed (->> (api/get-consumption node-name->pods pool-name)
                                  (filter #(node-name->capacity (first %)))
                                  (into {}))
-
         node-name->available (util/deep-merge-with - node-name->capacity node-name->consumed)
         ; Grab every unique GPU model being represented so that we can set counters for capacity and consumed for each GPU model
         gpu-models (->> node-name->capacity vals (map :gpus) (apply merge) keys set)
