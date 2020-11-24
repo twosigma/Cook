@@ -103,6 +103,13 @@
 (deftest test-generate-offers
   (tu/setup)
   (with-redefs [api/launch-pod (constantly true)
+                config/disk (constantly [{:pool-regex "test-pool"
+                                          :max-size 256000.0
+                                          :valid-types #{"standard", "pd-ssd"}
+                                          :default-type "standard"
+                                          :default-request 10000.0
+                                          :type-map {"standard", "pd-standard"}
+                                          :enable-constraint? true}])
                 config/disk-type-node-label-name (constantly [{:pool-regex "test-pool"
                                                                :disk-node-label "cloud.google.com/gke-boot-disk"}])]
     (let [conn (tu/restore-fresh-database! "datomic:mem://test-generate-offers")
@@ -111,7 +118,7 @@
                                                           {:kind :static :namespace "cook"} nil 3 nil nil
                                                           (Executors/newSingleThreadExecutor)
                                                           {} (atom :running) (atom false) false
-                                                          cook.rate-limit/AllowAllRateLimiter "t-c" "l-c")
+                                                          cook.rate-limit/AllowAllRateLimiter "t-c" "p-c" "l-c")
           node-name->node {"nodeA" (tu/node-helper "nodeA" 1.0 1000.0 10 "nvidia-tesla-p100" nil nil)
                            "nodeB" (tu/node-helper "nodeB" 1.0 1000.0 25 "nvidia-tesla-p100" nil nil)
                            "nodeC" (tu/node-helper "nodeC" 1.0 1000.0 nil nil nil nil)

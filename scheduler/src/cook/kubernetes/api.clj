@@ -467,7 +467,7 @@
     (assoc resource-map :gpus gpu-model->count)))
 
 (defn pool->disk-type-label-name
-  "TODO: docstring"
+  "Given a pool name, get the disk-type-label-name that will be used as a nodeSelector label"
   [pool-name]
   (regexp-tools/match-based-on-pool-name
     (config/disk-type-node-label-name)
@@ -938,7 +938,7 @@
       ; by default, do not set disk-limit
       (when disk-limit
         (.putLimitsItem resources "ephemeral-storage" (double->quantity disk-limit)))
-      (add-node-selector pod-spec (config/disk-type-node-label-name) disk-type))
+      (add-node-selector pod-spec (pool->disk-type-label-name pool-name) disk-type))
     (.setResources container resources)
     (.setVolumeMounts container (filterv some? (conj (concat volume-mounts main-container-checkpoint-volume-mounts)
                                                      (init-container-workdir-volume-mount-fn true)
