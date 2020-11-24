@@ -766,7 +766,7 @@
 (defn set-mem-cpu-resources
   "Given a resources object and a CPU and memory request and limit, update the resources object to reflect the
   desired requests and limits."
-  [resources memory-request memory-limit cpu-request cpu-limit]
+  [^V1ResourceRequirements resources memory-request memory-limit cpu-request cpu-limit]
   (let [{:keys [set-container-cpu-limit?]} (config/kubernetes)]
     (.putRequestsItem resources "memory" (double->quantity (* memory-multiplier memory-request)))
     (.putLimitsItem resources "memory" (double->quantity (* memory-multiplier memory-limit)))
@@ -900,22 +900,13 @@
     (when use-cook-init?
       (when-let [{:keys [command image]} init-container]
         (let [container (V1Container.)
-              total-memory-request (+ computed-mem
-                                      (if use-cook-sidecar?
-                                        (get-in sidecar [:resource-requirements :memory-request])
-                                        0))
-              total-memory-limit (+ computed-mem
-                                    (if use-cook-sidecar?
-                                      (get-in sidecar [:resource-requirements :memory-limit])
-                                      0))
-              total-cpu-request (add-as-decimals cpus
-                                                 (if use-cook-sidecar?
-                                                   (get-in sidecar [:resource-requirements :cpu-request])
-                                                   0))
-              total-cpu-limit (add-as-decimals cpus
-                                               (if use-cook-sidecar?
-                                                 (get-in sidecar [:resource-requirements :cpu-limit])
-                                                 0))
+              get-resource-requirements-fn (fn [fieldname] (if use-cook-sidecar?
+                                                             (get-in sidecar [:resource-requirements fieldname])
+                                                             0))
+              total-memory-request (add-as-decimals computed-mem (get-resource-requirements-fn :memory-request))
+              total-memory-limit (add-as-decimals computed-mem (get-resource-requirements-fn :memory-limit))
+              total-cpu-request (add-as-decimals cpus (get-resource-requirements-fn :cpu-request))
+              total-cpu-limit (add-as-decimals cpus (get-resource-requirements-fn :cpu-limit))
               resources (V1ResourceRequirements.)]
           ; container
           (.setName container cook-init-container-name)
