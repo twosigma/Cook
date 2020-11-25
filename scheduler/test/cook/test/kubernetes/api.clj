@@ -310,32 +310,7 @@
                                                  (->> (filter #(= (.getName %) "cook-checkpointing-tools-volume")))
                                                  (->> (map #(str (.getMountPath %) (.getSubPath %))))))]
           (is (= #{"/abc/xyz"} init-container-paths))
-          (is (= #{"/abc/xyz" "/qed/bbqefg/hij"} main-container-paths)))))
-
-    (testing "gpu task-metadata"
-      (let [task-metadata {:task-id "my-task"
-                           :command {:value "foo && bar"
-                                     :environment {"FOO" "BAR"}
-                                     :user (System/getProperty "user.name")}
-                           :container {:type :docker
-                                       :docker {:image "alpine:latest"}}
-                           :task-request {:resources {:mem 576
-                                                      :cpus 1.1
-                                                      :gpus 2}
-                                          :scalar-requests {"mem" 512
-                                                            "cpus" 1.0}
-                                          :job {:job/checkpoint {:checkpoint/mode "auto"}}}}
-            ^V1Pod pod (api/task-metadata->pod nil nil task-metadata)
-            ^V1Container init-container (-> pod .getSpec .getInitContainers first)
-            ^V1Container main-container (-> pod .getSpec .getContainers (->> (filter #(= (.getName %) api/cook-container-name-for-job))) first)
-            init-container-paths (into #{} (-> init-container .getVolumeMounts
-                                                              (->> (filter #(= (.getName %) "cook-checkpointing-tools-volume")))
-                                                              (->> (map #(str (.getMountPath %) (.getSubPath %))))))
-            main-container-paths (into #{} (-> main-container .getVolumeMounts
-                                                              (->> (filter #(= (.getName %) "cook-checkpointing-tools-volume")))
-                                                              (->> (map #(str (.getMountPath %) (.getSubPath %))))))]
-        (is (= #{"/abc/xyz"} init-container-paths))
-        (is (= #{"/abc/xyz" "/qed/bbqefg/hij"} main-container-paths)))))
+          (is (= #{"/abc/xyz" "/qed/bbqefg/hij"} main-container-paths))))))
 
   (testing "gpu task-metadata"
     (let [task-metadata {:task-id "my-task"

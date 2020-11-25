@@ -124,8 +124,9 @@
                            "nodeC" (tu/node-helper "nodeC" 1.0 1000.0 nil nil nil nil)
                            "nodeE" (tu/node-helper "nodeE" 2.0 1100.0 nil nil {:disk-amount 256000 :disk-type "pd-standard"} nil)
                            "my.fake.host" (tu/node-helper "my.fake.host" 1.0 1000.0 nil nil nil nil)}
-          j1 (tu/create-dummy-job conn :ncpus 0.1)
-          j2 (tu/create-dummy-job conn :ncpus 0.2)
+          _ (tu/create-pool conn "no-pool")
+          j1 (tu/create-dummy-job conn :ncpus 0.1 :pool "no-pool")
+          j2 (tu/create-dummy-job conn :ncpus 0.2 :pool "no-pool")
           db (d/db conn)
           job-ent-1 (d/entity db j1)
           job-ent-2 (d/entity db j2)
