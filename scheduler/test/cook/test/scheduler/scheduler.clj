@@ -711,7 +711,7 @@
 
     (is (= (.getId adapter) "my-offer-id"))
     (is (= (.cpuCores adapter) 40.0))
-    (is (= (.diskMB adapter) 6000.0))
+    (is (= (.diskMB adapter) 0.0))
     (is (= (.getOfferedTime adapter) now))
     (is (= (.getVMID adapter) "my-slave-id"))
     (is (= (.hostname adapter) "slave3"))
@@ -738,7 +738,7 @@
 
     (is (= (.getId adapter) "my-offer-id"))
     (is (= (.cpuCores adapter) 40.0))
-    (is (= (.diskMB adapter) 6000.0))
+    (is (= (.diskMB adapter) 0.0))
     (is (= (.getOfferedTime adapter) now))
     (is (= (.getVMID adapter) "my-slave-id"))
     (is (= (.hostname adapter) "slave3"))
