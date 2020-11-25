@@ -644,6 +644,7 @@
 (defn- add-as-decimals
   "Takes two doubles and adds them as decimals to avoid floating point error. Kubernetes will not be able to launch a
    pod if the required cpu has too much precision. For example, adding 0.1 and 0.02 as doubles results in 0.12000000000000001"
+  ; If you get an error like IllegalArgumentException "No suffix for exponent-18" in JSON serialization. Use this function.
   [a b]
   (double (+ (bigdec a) (bigdec b))))
 
@@ -777,6 +778,19 @@
            pod-labels-from-job-labels
            pod-labels-from-job-application)))
 
+(defn set-mem-cpu-resources
+  "Given a resources object and a CPU and memory request and limit, update the resources object to reflect the
+  desired requests and limits."
+  [^V1ResourceRequirements resources memory-request memory-limit cpu-request cpu-limit]
+  (let [{:keys [set-container-cpu-limit?]} (config/kubernetes)]
+    (.putRequestsItem resources "memory" (double->quantity (* memory-multiplier memory-request)))
+    (.putLimitsItem resources "memory" (double->quantity (* memory-multiplier memory-limit)))
+    (.putRequestsItem resources "cpu" (double->quantity cpu-request))
+    (when set-container-cpu-limit?
+      ; Some environments may need pods to run in the "Guaranteed"
+      ; QoS, which requires limits for both memory and cpu
+      (.putLimitsItem resources "cpu" (double->quantity cpu-limit)))))
+
 (defn ^V1Pod task-metadata->pod
   "Given a task-request and other data generate the kubernetes V1Pod to launch that task."
   [namespace {:keys [cook-pool-taint-name cook-pool-taint-prefix cook-pool-label-name] compute-cluster-name :name}
@@ -882,13 +896,8 @@
     (.setTty container true)
     (.setStdin container true)
 
-    (.putRequestsItem resources "memory" (double->quantity (* memory-multiplier computed-mem)))
-    (.putLimitsItem resources "memory" (double->quantity (* memory-multiplier computed-mem)))
-    (.putRequestsItem resources "cpu" (double->quantity cpus))
-    (when set-container-cpu-limit?
-      ; Some environments may need pods to run in the "Guaranteed"
-      ; QoS, which requires limits for both memory and cpu
-      (.putLimitsItem resources "cpu" (double->quantity cpus)))
+    (set-mem-cpu-resources resources computed-mem computed-mem cpus cpus)
+
     (when (pos? gpus)
       (.putLimitsItem resources "nvidia.com/gpu" (double->quantity gpus))
       (.putRequestsItem resources "nvidia.com/gpu" (double->quantity gpus))
@@ -908,7 +917,15 @@
     ; init container
     (when use-cook-init?
       (when-let [{:keys [command image]} init-container]
-        (let [container (V1Container.)]
+        (let [container (V1Container.)
+              get-resource-requirements-fn (fn [fieldname] (if use-cook-sidecar?
+                                                             (get-in sidecar [:resource-requirements fieldname])
+                                                             0))
+              total-memory-request (add-as-decimals computed-mem (get-resource-requirements-fn :memory-request))
+              total-memory-limit (add-as-decimals computed-mem (get-resource-requirements-fn :memory-limit))
+              total-cpu-request (add-as-decimals cpus (get-resource-requirements-fn :cpu-request))
+              total-cpu-limit (add-as-decimals cpus (get-resource-requirements-fn :cpu-limit))
+              resources (V1ResourceRequirements.)]
           ; container
           (.setName container cook-init-container-name)
           (.setImage container image)
@@ -918,6 +935,8 @@
           (.setVolumeMounts container (filterv some? (concat [(init-container-workdir-volume-mount-fn false)
                                                               (scratch-space-volume-mount-fn false)]
                                                              init-container-checkpoint-volume-mounts)))
+          (set-mem-cpu-resources resources total-memory-request total-memory-limit total-cpu-request total-cpu-limit)
+          (.setResources container resources)
           (.addInitContainersItem pod-spec container))))
 
     ; sandbox file server container
@@ -948,11 +967,7 @@
             (.setReadinessProbe container readiness-probe)))
 
           ; resources
-          (.putRequestsItem resources "cpu" (double->quantity cpu-request))
-          (when set-container-cpu-limit?
-            (.putLimitsItem resources "cpu" (double->quantity cpu-limit)))
-          (.putRequestsItem resources "memory" (double->quantity (* memory-multiplier memory-request)))
-          (.putLimitsItem resources "memory" (double->quantity (* memory-multiplier memory-limit)))
+          (set-mem-cpu-resources resources memory-request memory-limit cpu-request cpu-limit)
           (.setResources container resources)
 
           (.setVolumeMounts container [(sandbox-volume-mount-fn true) (sidecar-workdir-volume-mount-fn false)])
