@@ -382,4 +382,24 @@ public class JobTest {
         Assert.assertEquals(diskEntry.getLimit(), actualJob2.getDisk().getLimit(), EPSILON);
         Assert.assertEquals(diskEntry.getType(), actualJob2.getDisk().getType());
     }
+
+    @Test
+    public void testParseFromJsonToBuilder() {
+        final Job.Builder jobBuilder1 = new Job.Builder();
+        populateBuilder(jobBuilder1);
+        jobBuilder1.setDiskRequest(10.0);
+        jobBuilder1.setDiskType("pd-ssd");
+
+        final JSONObject json = convertJobToJsonObject(jobBuilder1.build());
+        final Job job1 = Job.parseFromJSON(json);
+
+        final Job.Builder jobBuilder2 = new Job.Builder().of(job1);
+        final Job job2 = jobBuilder2.build();
+
+        Assert.assertEquals(job1.getCommand(), job2.getCommand());
+        Assert.assertEquals(job1.getEnv(), job2.getEnv());
+        Assert.assertEquals(job1.getDisk().getRequest(), job2.getDisk().getRequest(), EPSILON);
+        Assert.assertEquals(job1.getDisk().getType(), job2.getDisk().getType());
+        Assert.assertEquals(job1.getConstraints().size(), job2.getConstraints().size());
+    }
 }
