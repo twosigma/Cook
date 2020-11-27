@@ -43,9 +43,12 @@ jobs:
         run: |
           ./cli/travis/setup.sh
           cd scheduler && ./travis/setup.sh
-      - name: Run unit tests
-        run: |
-          pushd ../jobclient/java && mvn test
-          popd && pushd ../jobclient/python && python -m pytest
-          popd && pushd ../cli && python -m pytest
-          popd && lein with-profile +test test :all-but-benchmark
+      - name: Run JobClient Java unit tests
+        run: cd ./jobclient/java && mvn test
+      - name: Run JobClient Python unit tests
+        run: cd ./jobclient/python && python -m pytest
+      - name: CLI unit tests
+        run: cd ./cli && python -m pytest
+      - name: Scheduler Unit tests
+        run: cd ./scheduler && lein with-profile +test test :all-but-benchmark
+
