@@ -44,9 +44,7 @@ jobs:
           ./cli/travis/setup.sh
           cd scheduler && ./travis/setup.sh
       - name: Run JobClient Java unit tests
-        run: cd ./jobclient/java && mvn test
-        env:
-          MVN_OPTS: -Dstyle.color=always
+        run: cd ./jobclient/java && mvn test -Dstyle.color=always 
       - name: Run JobClient Python unit tests
         run: cd ./jobclient/python && python -m pytest
         env:
