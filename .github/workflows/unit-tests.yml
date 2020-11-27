@@ -47,8 +47,11 @@ jobs:
         run: cd ./jobclient/java && mvn test
       - name: Run JobClient Python unit tests
         run: cd ./jobclient/python && python -m pytest
+        env:
+          PYTEST_ADDOPTS: --color=yes
       - name: CLI unit tests
         run: cd ./cli && python -m pytest
+        env:
+          PYTEST_ADDOPTS: --color=yes
       - name: Scheduler Unit tests
         run: cd ./scheduler && lein with-profile +test test :all-but-benchmark
-
