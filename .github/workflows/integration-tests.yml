@@ -41,7 +41,7 @@ jobs:
             ${{ runner.os }}-pip-
       - name: Setup tests
         run: |
-          ./travis/install_mesos.sh
+          sudo ./travis/install_mesos.sh
           cd integration && ./travis/prepare_integration.sh
           export PYTHONPATH=$PWD/../jobclient/python
       - name: Run integration tests
