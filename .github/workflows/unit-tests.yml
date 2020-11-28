@@ -13,7 +13,7 @@ on:
     - cron: '0 0 * * *'
 
 jobs:
-  setup:
+  test:
     runs-on: ubuntu-16.04
 
     steps:
@@ -43,31 +43,15 @@ jobs:
         run: |
           ./cli/travis/setup.sh
           cd scheduler && ./travis/setup.sh
-  jobclient:
-    runs-on: ubuntu-16.04
-    needs: setup
-    steps:
-      - name: check
-        run: |
-          pwd
-          ls
       - name: Run JobClient Java unit tests
         run: cd ./jobclient/java && mvn test 
       - name: Run JobClient Python unit tests
         run: cd ./jobclient/python && python -m pytest
         env:
           PYTEST_ADDOPTS: --color=yes
-  cli:
-    runs-on: ubuntu-16.04
-    needs: setup
-    steps:
       - name: CLI unit tests
         run: cd ./cli && python -m pytest
         env:
           PYTEST_ADDOPTS: --color=yes
-  scheduler:
-    runs-on: ubuntu-16.04
-    needs: setup
-    steps:
       - name: Scheduler Unit tests
         run: cd ./scheduler && lein with-profile +test test :all-but-benchmark
