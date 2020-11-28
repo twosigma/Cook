@@ -47,6 +47,10 @@ jobs:
     runs-on: ubuntu-16.04
     needs: setup
     steps:
+      - name: check
+        run: |
+          pwd
+          ls
       - name: Run JobClient Java unit tests
         run: cd ./jobclient/java && mvn test 
       - name: Run JobClient Python unit tests
