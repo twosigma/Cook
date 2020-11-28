@@ -2,7 +2,7 @@
 
 set -e
 
-cd ${TRAVIS_BUILD_DIR}
+cd ${GITHUB_WORKSPACE}
 
 # List the last 10 containers
 docker ps --all --last 10
