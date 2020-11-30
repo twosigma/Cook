@@ -1184,7 +1184,8 @@ final public class Job {
      * @return a single {@link Job}.
      * @throws JSONException
      */
-    public static Job parseFromJSON(JSONObject json, InstanceDecorator decorator){
+    public static Job parseFromJSON(JSONObject json, InstanceDecorator decorator)
+            throws JSONException {
         Builder jobBuilder = new Builder();
         jobBuilder.setUUID(UUID.fromString(json.getString("uuid")));
         jobBuilder.setMemory(json.getDouble("mem"));
