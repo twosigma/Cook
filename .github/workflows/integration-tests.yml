@@ -39,6 +39,10 @@ jobs:
           key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
           restore-keys: |
             ${{ runner.os }}-pip-
+      - name: Setup environment variables
+        run: |
+          echo /home/runner/.local/bin >> $GITHUB_PATH
+          echo "PYTEST_ADDOPTS=\"--color=yes\"" >> $GITHUB_ENV
       - name: Run integration tests
         run: |
           sudo ./travis/install_mesos.sh
