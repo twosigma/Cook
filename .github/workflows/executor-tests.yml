@@ -45,8 +45,6 @@ jobs:
           echo "PYTEST_ADDOPTS=\"--color=yes\"" >> $GITHUB_ENV
       - name: run tests
         run: |
-          echo $PATH
-          echo $GITHUB_PATH
           cd executor
           ./travis/setup.sh
           ./travis/run_tests.sh
