@@ -41,7 +41,7 @@ jobs:
             ${{ runner.os }}-pip-
       - name: setup environment variables
         run: |
-          export GITHUB_PATH=$GITHUB_PATH:/home/runner/.local/bin
+          echo /home/runner/.local/bin >> $GITHUB_PATH
           echo "PYTEST_ADDOPTS=\"--color=yes\"" >> $GITHUB_ENV
       - name: run tests
         run: |
