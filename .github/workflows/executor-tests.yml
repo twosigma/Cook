@@ -41,5 +41,6 @@ jobs:
             ${{ runner.os }}-pip-
       - name: run tests
         run: |
-          cd executor && ./travis/setup.sh
-          cd .. && ./travis/run_tests.sh
+          cd executor
+          ./travis/setup.sh
+          ./travis/run_tests.sh
