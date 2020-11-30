@@ -41,10 +41,11 @@ jobs:
             ${{ runner.os }}-pip-
       - name: Setup tests
         run: |
+          python -m pip install --upgrade pip
           sudo ./travis/install_mesos.sh
           cd integration && ./travis/prepare_integration.sh
       - name: Run integration tests
         run: |
-          cd integration 
-          export PYTHONPATH=$PWD/../jobclient/python
+          export PYTHONPATH=$PWD/jobclient/python
+          cd integration
           ./travis/run_integration.sh --executor=cook --image=python:3.5
