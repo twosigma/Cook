@@ -40,7 +40,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-
       - name: setup Path variable
-        run: echo "{/home/runner/.local/bin}" >> $GITHUB_PATH
+        run: echo /home/runner/.local/bin >> $GITHUB_PATH
       - name: run tests
         run: |
           echo $PATH
