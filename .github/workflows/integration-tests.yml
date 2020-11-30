@@ -41,7 +41,6 @@ jobs:
             ${{ runner.os }}-pip-
       - name: Setup tests
         run: |
-          python -m pip install --upgrade pip
           sudo ./travis/install_mesos.sh
           cd integration && ./travis/prepare_integration.sh
       - name: Run integration tests
