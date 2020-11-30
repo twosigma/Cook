@@ -40,7 +40,9 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-
       - name: setup Path variable
-        run: echo /home/runner/.local/bin >> $GITHUB_PATH
+        run: |
+          export GITHUB_PATH=$GITHUB_PATH:/home/runner/.local/bin
+          echo "PYTEST_ADDOPTS=\"--color=yes\"" >> $GITHUB_ENV
       - name: run tests
         run: |
           echo $PATH
