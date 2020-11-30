@@ -39,12 +39,9 @@ jobs:
           key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
           restore-keys: |
             ${{ runner.os }}-pip-
-      - name: Setup tests
+      - name: Run integration tests
         run: |
           sudo ./travis/install_mesos.sh
           cd integration && ./travis/prepare_integration.sh
-      - name: Run integration tests
-        run: |
-          export PYTHONPATH=$PWD/jobclient/python
-          cd integration
-          ./travis/run_integration.sh --executor=cook --image=python:3.5
+          cd .. && export PYTHONPATH=$PWD/jobclient/python
+          cd integration && ./travis/run_integration.sh --executor=cook --image=python:3.5
