@@ -43,5 +43,4 @@ jobs:
         run: |
           sudo ./travis/install_mesos.sh
           cd integration && ./travis/prepare_integration.sh
-          cd .. && export PYTHONPATH=$PWD/jobclient/python
           cd integration && ./travis/run_integration.sh --executor=cook --image=python:3.5
