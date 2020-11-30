@@ -1,4 +1,4 @@
-name: Cook Scheduler Simulator tests
+name: Cook Executor tests
 
 on:
   pull_request:
@@ -41,6 +41,5 @@ jobs:
             ${{ runner.os }}-pip-
       - name: run tests
         run: |
-          sudo ./travis/install_mesos.sh
-          cd simulator && ./travis/prepare_simulation.sh
-          cd .. && ./travis/run_simulation.sh
+          cd executor && ./travis/setup.sh
+          cd .. && ./travis/run_tests.sh
