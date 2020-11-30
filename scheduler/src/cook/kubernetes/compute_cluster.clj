@@ -24,7 +24,7 @@
   (:import (com.google.auth.oauth2 GoogleCredentials)
            (io.kubernetes.client.openapi ApiClient)
            (io.kubernetes.client.openapi.models V1Node V1Pod)
-           (io.kubernetes.client.util Config KubeConfig)
+           (io.kubernetes.client.util Config KubeConfig ClientBuilder)
            (java.nio.charset StandardCharsets)
            (java.io ByteArrayInputStream File FileInputStream InputStreamReader)
            (java.util.concurrent Executors ExecutorService ScheduledExecutorService TimeUnit)
@@ -617,19 +617,20 @@
                                       (-> config-file
                                           (FileInputStream.)
                                           (InputStreamReader. (.name (StandardCharsets/UTF_8)))
-                                          (KubeConfig/loadKubeConfig))]
-                                  ; Workaround client library bug. The library attempts to resolve paths
-                                  ; against the Kubeconfig filename. We are using an absolute path so we
-                                  ; don't need the functionality. But we need to set the file anyways
-                                  ; to avoid a NPE.
-                                  (.setFile kubeconfig (File. config-file))
-                                  (when kubeconfig-context
-                                    (.setContext kubeconfig kubeconfig-context))
-                                  (Config/fromConfig kubeconfig))
+                                          (KubeConfig/loadKubeConfig))
+                                      ; Workaround client library bug. The library attempts to resolve paths
+                                      ; against the Kubeconfig filename. We are using an absolute path so we
+                                      ; don't need the functionality. But we need to set the file anyways
+                                      ; to avoid a NPE.
+                                      _ (.setFile kubeconfig (File. config-file))
+                                      _ (when kubeconfig-context
+                                          (.setContext kubeconfig kubeconfig-context))
+                                      ^ClientBuilder clientbuilder (ClientBuilder/kubeconfig kubeconfig)]
+                                  (.build clientbuilder))
                                 (ApiClient.))
         ; Reset to a more sane timeout from the default 10 seconds.
-        http-client (-> (OkHttpClient$Builder.) (.readTimeout 120 TimeUnit/SECONDS) .build)]
-    (.setHttpClient api-client http-client)
+        http-client-with-readtimeout (-> api-client .getHttpClient .newBuilder (.readTimeout 120 TimeUnit/SECONDS) .build)
+        _ (.setHttpClient api-client http-client-with-readtimeout)]
     (when base-path
       (.setBasePath api-client base-path))
     (when (some? verifying-ssl)
