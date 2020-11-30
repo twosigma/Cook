@@ -43,6 +43,7 @@ jobs:
         run: echo "{/home/runner/.local/bin}" >> $GITHUB_PATH
       - name: run tests
         run: |
+          echo $PATH
           cd executor
           ./travis/setup.sh
           ./travis/run_tests.sh
