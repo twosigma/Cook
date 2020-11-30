@@ -42,5 +42,6 @@ jobs:
       - name: run tests
         run: |
           sudo ./travis/install_mesos.sh
-          cd simulator && ./travis/prepare_simulation.sh
-          cd .. && ./travis/run_simulation.sh
+          cd Simulator
+          ./travis/prepare_simulation.sh
+          ./travis/run_simulation.sh
