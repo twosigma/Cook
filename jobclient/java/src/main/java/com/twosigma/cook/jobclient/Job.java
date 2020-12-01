@@ -171,6 +171,8 @@ final public class Job {
             setPool(job.getPool());
             setLabels(job.getLabels());
             setDatasets(job.getDatasets());
+            setStatus(job.getStatus());
+            setPriority(job.getPriority());
             setDisk(job.getDisk());
             addConstraint(job.getConstraints());
             if (job.isMeaCulpaRetriesDisabled()) {
@@ -1084,6 +1086,7 @@ final public class Job {
         if (job.getDisk().shouldIncludeInJSON()) {
             object.put("disk", job.getDisk().toJSONObject());
         }
+        object.put("status", job.getStatus().name());
         object.put("priority", job.getPriority());
         object.put("max_retries", job.getRetries());
         object.put("disable_mea_culpa_retries", job.isMeaCulpaRetriesDisabled());
@@ -1202,7 +1205,9 @@ final public class Job {
             jobBuilder.setExecutor(json.getString("executor"));
         }
         jobBuilder.setPriority(json.getInt("priority"));
-        jobBuilder.setStatus(Status.fromString(json.getString("status")));
+        if (json.has("status")){
+            jobBuilder.setStatus(Status.fromString(json.getString("status")));
+        }
         if (json.has("disable_mea_culpa_retries") && json.getBoolean("disable_mea_culpa_retries")) {
             jobBuilder.disableMeaCulpaRetries();
         } else {
@@ -1265,7 +1270,9 @@ final public class Job {
                 }
             }
         }
-        jobBuilder.addInstances(Instance.parseFromJSON(json.getJSONArray("instances"), decorator));
+        if (json.has("instances")) {
+            jobBuilder.addInstances(Instance.parseFromJSON(json.getJSONArray("instances"), decorator));
+        }
         if (json.has("application")) {
             JSONObject applicationJson = json.getJSONObject("application");
             jobBuilder.setApplication(Application.parseFromJSON(applicationJson));
