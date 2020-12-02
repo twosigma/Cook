@@ -795,7 +795,7 @@
                                 (let [disk-id (d/tempid :db.part/user)
                                       params {:db/id disk-id
                                               :resource/type :resource.type/disk
-                                              :resource.disk/request (:request disk)}]
+                                              :resource.disk/request (some-> disk :request double)}]
                                   [[:db/add db-id :job/resource disk-id]
                                    (reduce-kv
                                      ;; This only adds the optional params to the DB if they were explicitly set
@@ -804,7 +804,7 @@
                                          (assoc txn-map k v)
                                          txn-map))
                                      params
-                                     {:resource.disk/limit (:limit disk)
+                                     {:resource.disk/limit (some-> disk :limit double)
                                       :resource.disk/type (:type disk)})]))
                               (when (and gpus (not (zero? gpus)))
                                 (let [gpus-id (d/tempid :db.part/user)]
