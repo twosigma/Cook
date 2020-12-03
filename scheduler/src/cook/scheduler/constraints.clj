@@ -157,13 +157,13 @@
   (job-constraint-evaluate
     [_ _ vm-attributes _]
     (log/info "Entered disk host constraint")
+    (log/info "Job disk request: " job-disk-request )
+    (log/info "Job disk type: " job-disk-type )
     (let [k8s-vm? (= (get vm-attributes "compute-cluster-type") "kubernetes")]
       (log/info "VM is k8s: " k8s-vm?)
       (if k8s-vm?
         (let [vm-disk-type->space-available (get vm-attributes "disk")
               ; k8s VMs all support disk, so they will only support jobs whose users requested disk or consume a default disk request
-              (log/info "Job disk request: " job-disk-request )
-              (log/info "Job disk type: " job-disk-type )
               vm-satisfies-constraint? (if job-disk-request
                                          (>= (get vm-disk-type->space-available job-disk-type 0) job-disk-request)
                                          ; if job does not have a disk-request, pass true to always ignore the disk-host-constraint
