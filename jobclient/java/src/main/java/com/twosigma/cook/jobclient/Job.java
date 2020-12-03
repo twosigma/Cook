@@ -470,7 +470,7 @@ final public class Job {
         }
 
         /**
-         * Set the disk request, specifying the disk space guaranteed, to the job.
+         * Set the disk request (MiB), specifying the disk space guaranteed, to the job.
          * @param diskRequest The disk request for this job
          * @return this builder
          */
@@ -480,7 +480,7 @@ final public class Job {
         }
 
         /**
-         * Set the disk limit, specifying the max usable disk space, to the job.
+         * Set the disk limit (MiB), specifying the max usable disk space, to the job.
          * @param diskLimit The disk limit for this job
          * @return this builder
          */
