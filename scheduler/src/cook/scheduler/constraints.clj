@@ -156,10 +156,14 @@
     (job-constraint-evaluate this nil vm-attributes []))
   (job-constraint-evaluate
     [_ _ vm-attributes _]
+    (log/info "Entered disk host constraint")
     (let [k8s-vm? (= (get vm-attributes "compute-cluster-type") "kubernetes")]
+      (log/info "VM is k8s: " k8s-vm?)
       (if k8s-vm?
         (let [vm-disk-type->space-available (get vm-attributes "disk")
               ; k8s VMs all support disk, so they will only support jobs whose users requested disk or consume a default disk request
+              (log/info "Job disk request: " job-disk-request )
+              (log/info "Job disk type: " job-disk-type )
               vm-satisfies-constraint? (if job-disk-request
                                          (>= (get vm-disk-type->space-available job-disk-type 0) job-disk-request)
                                          ; if job does not have a disk-request, pass true to always ignore the disk-host-constraint
@@ -177,14 +181,15 @@
   using Fenzo because disk is not considered a first class resource in Fenzo."
   [job]
   (let [pool-name (cached-queries/job->pool-name job)]
-        ; If the pool does not have enable-constraint set to true, return nil
-        (if (regexp-tools/match-based-on-pool-name (config/disk) pool-name :enable-constraint? :default-value false)
-          (let [; If the user did not specify a disk request, use the default request amount for the pool
-                job-disk-request (or (-> job util/job-ent->resources :disk :request)
-                                     (regexp-tools/match-based-on-pool-name (config/disk) pool-name :default-request))
-                job-disk-type (when job-disk-request
-                                (job->disk-type-requested (-> job util/job-ent->resources :disk :type) pool-name))]
-            (->disk-host-constraint job-disk-request job-disk-type)))))
+    (log/info "in build-disk-host-constraint, enable-constraint? for pool " pool-name ": " (regexp-tools/match-based-on-pool-name (config/disk) pool-name :enable-constraint? :default-value false))
+    ; If the pool does not have enable-constraint set to true, return nil
+    (if (regexp-tools/match-based-on-pool-name (config/disk) pool-name :enable-constraint? :default-value false)
+      (let [; If the user did not specify a disk request, use the default request amount for the pool
+            job-disk-request (or (-> job util/job-ent->resources :disk :request)
+                                 (regexp-tools/match-based-on-pool-name (config/disk) pool-name :default-request))
+            job-disk-type (when job-disk-request
+                            (job->disk-type-requested (-> job util/job-ent->resources :disk :type) pool-name))]
+        (->disk-host-constraint job-disk-request job-disk-type)))))
 
 (defrecord rebalancer-reservation-constraint [reserved-hosts]
   JobConstraint

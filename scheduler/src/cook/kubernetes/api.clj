@@ -827,6 +827,7 @@
         gpu-model-requested (constraints/job->gpu-model-requested gpus job pool-name)
         ; if disk config for pool has enable-constraint? set to true, add disk info to the job
         enable-disk-constraint? (regexp-tools/match-based-on-pool-name (config/disk) pool-name :enable-constraint? :default-value false)
+        _ (log/info "in task-metadata->pod, enable-constraint? for pool " pool-name ": " enable-disk-constraint?)
         ; if user did not specify disk request, use default on pool
         disk-request (when enable-disk-constraint?
                        (or (-> resources :disk :request)
@@ -834,6 +835,10 @@
         disk-limit (when enable-disk-constraint? (-> resources :disk :limit))
         ; if user did not specify disk type, use default on pool
         disk-type (when enable-disk-constraint? (constraints/job->disk-type-requested (-> resources :disk :type) pool-name))
+        _ (log/info "in task-metadata->pod, disk-request: " disk-request)
+        _ (log/info "in task-metadata->pod, disk-limit for pool: " disk-limit)
+        _ (log/info "in task-metadata->pod, disk-type for pool: " disk-type)
+
         pod (V1Pod.)
         pod-spec (V1PodSpec.)
         metadata (V1ObjectMeta.)
