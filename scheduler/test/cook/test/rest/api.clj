@@ -477,7 +477,7 @@
                             :uri "/jobs"
                             :headers {"Content-Type" "application/json"}
                             :authorization/user "dgrnbrg"
-                            :body-params {"jobs" [(job {"request" 20.0})] "pool" "test-pool"}})))))
+                            :body-params {"jobs" [(job {"request" 20})] "pool" "test-pool"}})))))
       (testing "Request of disk greater than max size invalid"
         (is (= 400
                (:status (h {:request-method :post
