@@ -156,11 +156,7 @@
     (job-constraint-evaluate this nil vm-attributes []))
   (job-constraint-evaluate
     [_ _ vm-attributes _]
-    (log/info "Entered disk host constraint")
-    (log/info "Job disk request: " job-disk-request )
-    (log/info "Job disk type: " job-disk-type )
     (let [k8s-vm? (= (get vm-attributes "compute-cluster-type") "kubernetes")]
-      (log/info "VM is k8s: " k8s-vm?)
       (if k8s-vm?
         (let [vm-disk-type->space-available (get vm-attributes "disk")
               ; k8s VMs all support disk, so they will only support jobs whose users requested disk or consume a default disk request
@@ -181,7 +177,6 @@
   using Fenzo because disk is not considered a first class resource in Fenzo."
   [job]
   (let [pool-name (cached-queries/job->pool-name job)]
-    (log/info "in build-disk-host-constraint, enable-constraint? for pool " pool-name ": " (regexp-tools/match-based-on-pool-name (config/disk) pool-name :enable-constraint? :default-value false))
     ; If the pool does not have enable-constraint set to true, return nil
     (if (regexp-tools/match-based-on-pool-name (config/disk) pool-name :enable-constraint? :default-value false)
       (let [; If the user did not specify a disk request, use the default request amount for the pool
