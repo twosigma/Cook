@@ -22,6 +22,7 @@
             [metrics.timers :as timers]
             [plumbing.core :as pc])
   (:import (com.google.auth.oauth2 GoogleCredentials)
+           (com.twosigma.cook.kubernetes TokenRefreshingAuthenticator)
            (io.kubernetes.client.openapi ApiClient)
            (io.kubernetes.client.openapi.models V1Node V1Pod)
            (io.kubernetes.client.util ClientBuilder Config KubeConfig)
@@ -630,7 +631,8 @@
    ^String ca-cert
    ^String ca-cert-path
    kubeconfig-context
-   read-timeout-seconds]
+   read-timeout-seconds
+   workaround-token-refresh-bug?]
   {:pre [(not (and ca-cert ca-cert-path))]}
   (log/info "API Client config file" config-file)
   (let [^ApiClient api-client (if (some? config-file)
@@ -646,7 +648,14 @@
                                       _ (.setFile kubeconfig (File. config-file))
                                       _ (when kubeconfig-context
                                           (.setContext kubeconfig kubeconfig-context))
-                                      ^ClientBuilder clientbuilder (ClientBuilder/kubeconfig kubeconfig)]
+                                      ^ClientBuilder clientbuilder (ClientBuilder/kubeconfig kubeconfig)
+                                        ; There's an issue where we don't refresh our authenticator. (See comments
+                                        ; under TokenRefreshingAuthenticator. This workaround works when gcloud
+                                        ; didn't make the authenticator, so should be disabled in open source
+                                        ; and enabled with e.g., iam accounts or others scenarios.
+                                      _ (when workaround-token-refresh-bug?
+                                          (.setAuthentication clientbuilder
+                                                            (TokenRefreshingAuthenticator/fromKubeConfig kubeconfig)))]
                                   (.build clientbuilder))
                                 (ApiClient.))
         http-client-with-readtimeout (-> api-client
@@ -706,7 +715,8 @@
            state-locked?
            synthetic-pods
            use-google-service-account?
-           verifying-ssl]
+           verifying-ssl
+           workaround-token-refresh-bug?]
     :or {bearer-token-refresh-seconds 300
          dynamic-cluster-config? false
          launch-task-num-threads 8
@@ -721,7 +731,8 @@
          use-google-service-account? true
          cook-pool-taint-name "cook-pool"
          cook-pool-taint-prefix ""
-         cook-pool-label-name "cook-pool"}
+         cook-pool-label-name "cook-pool"
+         workaround-token-refresh-bug? false}
     :as compute-cluster-config}
    {:keys [exit-code-syncer-state]}]
   (guard-invalid-synthetic-pods-config name synthetic-pods)
@@ -740,7 +751,8 @@
                                     ca-cert
                                     ca-cert-path
                                     kubeconfig-context
-                                    read-timeout-seconds)
+                                    read-timeout-seconds
+                                    workaround-token-refresh-bug?)
         launch-task-executor-service (Executors/newFixedThreadPool launch-task-num-threads)
         compute-cluster-launch-rate-limiter (cook.rate-limit/create-compute-cluster-launch-rate-limiter name compute-cluster-launch-rate-limits)
         compute-cluster (->KubernetesComputeCluster api-client 
