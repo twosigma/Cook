@@ -24,7 +24,7 @@
   (:import (com.google.auth.oauth2 GoogleCredentials)
            (io.kubernetes.client.openapi ApiClient)
            (io.kubernetes.client.openapi.models V1Node V1Pod)
-           (io.kubernetes.client.util Config KubeConfig ClientBuilder)
+           (io.kubernetes.client.util ClientBuilder Config KubeConfig)
            (java.nio.charset StandardCharsets)
            (java.io ByteArrayInputStream File FileInputStream InputStreamReader)
            (java.util.concurrent Executors ExecutorService ScheduledExecutorService TimeUnit)
