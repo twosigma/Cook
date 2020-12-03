@@ -28,7 +28,7 @@ from . import util
 from .containers import AbstractContainer
 from .jobs import Application, Disk, Job
 
-CLIENT_VERSION = '0.3.1'
+CLIENT_VERSION = '0.4.0'
 
 _LOG = logging.getLogger(__name__)
 _LOG.addHandler(logging.StreamHandler())
