@@ -7,7 +7,6 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/) and this p
 ## [1.49.2] - 2020-12-04
 ### Added
 - Add resource request and limit to init-container in pod, from @scrosby
-- Add ability to parse single Job, update Job->Builder, from @brianbao
 ### Changed
 - Refactor authentication initialization, from @scrosby
 - Migrate to GitHub Actions from Travis CI, from @kevo1ution
