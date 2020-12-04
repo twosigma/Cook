@@ -43,6 +43,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-
       - name: setup tests
-        run: cd executor && ./travis/setup.sh
+        run: cd executor && ./travis/setup.sh && env
       - name: run tests
-        run: cd executor && ./travis/run_tests.sh
+        run: env && cd executor && ./travis/run_tests.sh
