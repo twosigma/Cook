@@ -42,7 +42,13 @@ jobs:
       - name: setup environment variables
         run: |
           echo "PYTEST_ADDOPTS=--color=yes" >> $GITHUB_ENV
+          echo "PYTEST_ADDOPTS=testing override" >> $GITHUB_ENV
           echo $PYTEST_ADDOPTS
+      - name: setup environment variables
+        run: |
+          echo "PYTEST_ADDOPTS=testing" >> $GITHUB_ENV
+          cat $GITHUB_ENV
+          echo $PYTEST_ADDOPTS          
       - name: setup
         run: echo $PYTEST_ADDOPTS
       - name: run tests
