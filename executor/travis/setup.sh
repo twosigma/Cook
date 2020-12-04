@@ -6,4 +6,5 @@ export PROJECT_DIR=`pwd`
 cd ${PROJECT_DIR}
 
 python --version
+pip install -r requirements.txt
 pip install --user -e '.[test]'
