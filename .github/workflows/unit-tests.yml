@@ -15,7 +15,8 @@ on:
 jobs:
   test:
     runs-on: ubuntu-16.04
-
+    env:
+     - PYTEST_ADDOPTS: --color=yes
     steps:
       - uses: actions/checkout@v2
       - name: Set up JDK 8
@@ -43,7 +44,6 @@ jobs:
         run: |
           ./cli/travis/setup.sh
           cd scheduler && ./travis/setup.sh
-          echo "PYTEST_ADDOPTS=--color=yes" >> $GITHUB_ENV
       - name: Run JobClient Java unit tests
         run: cd ./jobclient/java && mvn test 
       - name: Run JobClient Python unit tests

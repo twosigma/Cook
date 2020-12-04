@@ -15,7 +15,8 @@ on:
 jobs:
   test:
     runs-on: ubuntu-16.04
-
+    env:
+     - PYTEST_ADDOPTS: --color=yes
     steps:
       - uses: actions/checkout@v2
       - name: Set up JDK 8
@@ -39,18 +40,6 @@ jobs:
           key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
           restore-keys: |
             ${{ runner.os }}-pip-
-      - name: setup environment variables
-        run: |
-          echo "PYTEST_ADDOPTS=--color=yes" >> $GITHUB_ENV
-          echo "PYTEST_ADDOPTS=testing override" >> $GITHUB_ENV
-          echo $PYTEST_ADDOPTS
-      - name: setup environment variables
-        run: |
-          echo "PYTEST_ADDOPTS=testing" >> $GITHUB_ENV
-          cat $GITHUB_ENV
-          echo $PYTEST_ADDOPTS          
-      - name: setup
-        run: echo $PYTEST_ADDOPTS
       - name: run tests
         run: |
           cd executor

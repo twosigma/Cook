@@ -15,7 +15,8 @@ on:
 jobs:
   test:
     runs-on: ubuntu-16.04
-
+    env:
+     - PYTEST_ADDOPTS: --color=yes
     steps:
       - uses: actions/checkout@v2
       - name: Set up JDK 8
@@ -42,7 +43,6 @@ jobs:
       - name: setup environment variables
         run: |
           echo /home/runner/.local/bin >> $GITHUB_PATH
-          echo "PYTEST_ADDOPTS=--color=yes" >> $GITHUB_ENV
       - name: run tests
         run: |
           sudo ./travis/install_mesos.sh
