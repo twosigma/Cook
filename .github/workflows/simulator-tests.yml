@@ -14,6 +14,7 @@ on:
 
 jobs:
   test:
+    runs-on: ubuntu
     container: ubuntu@sha256:63fce984528cec8714c365919882f8fb64c8a3edf23fdfa0b218a2756125456f
     env:
       PYTEST_ADDOPTS: --color=yes
