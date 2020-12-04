@@ -6,6 +6,6 @@ export PROJECT_DIR=`pwd`
 cd ${PROJECT_DIR}
 
 python --version
-pytest --version
+python -m pytest --version
 
-pytest -n4
+python -m pytest pytest -n4

@@ -34,7 +34,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v2
         with:
-          python-version: '3.6.3'
+          python-version: '3.6.x'
       - name: Cache pip
         uses: actions/cache@v2
         with:
