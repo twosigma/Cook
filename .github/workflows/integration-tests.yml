@@ -45,7 +45,6 @@ jobs:
           echo "PYTEST_ADDOPTS=--color=yes" >> $GITHUB_ENV
       - name: Run integration tests
         run: |
-          echo $PYTEST_ADDOPTS
           sudo ./travis/install_mesos.sh
           cd integration && ./travis/prepare_integration.sh
           cd .. && export PYTHONPATH=$PWD/jobclient/python

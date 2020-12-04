@@ -2,8 +2,6 @@
 
 set -ev
 
-pwd
-echo PYTHONPATH
 cd ${GITHUB_WORKSPACE}/executor
 python -m pip install --user -r requirements.txt
 ./bin/prepare-executor.sh local ${GITHUB_WORKSPACE}/scheduler/resources/public
