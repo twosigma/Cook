@@ -8,4 +8,4 @@ cd ${PROJECT_DIR}
 python --version
 python -m pytest --version
 
-python -m pytest pytest -n4
+python -m pytest -n4
