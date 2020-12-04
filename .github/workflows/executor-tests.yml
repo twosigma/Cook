@@ -42,7 +42,7 @@ jobs:
           key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
           restore-keys: |
             ${{ runner.os }}-pip-
-      - name: setup tests
+      - name: Setup tests
         run: cd executor && ./travis/setup.sh && env
-      - name: run tests
+      - name: Run tests
         run: env && cd executor && ./travis/run_tests.sh
