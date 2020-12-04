@@ -19,6 +19,7 @@ jobs:
       PYTEST_ADDOPTS: --color=yes
       MESOS_NATIVE_JAVA_LIBRARY: /usr/lib/libmesos.so
       CLJ_HTTP_ASYNC_POOL_TEST_DURATION_MULTIPLIER: 5
+      GDRIVE_LOG_POST_URL: https://script.google.com/macros/s/AKfycbxOB55OzrQSbpZO_0gzsxZaJ8LaUWWo3PDLNc-gCiMN1iObxu7x/exec
     steps:
       - uses: actions/checkout@v2
       - name: Set up JDK 8
