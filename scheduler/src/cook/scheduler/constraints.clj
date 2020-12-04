@@ -189,8 +189,7 @@
                                  (regexp-tools/match-based-on-pool-name (config/disk) pool-name :default-request))
             job-disk-type (when job-disk-request
                             (job->disk-type-requested (-> job util/job-ent->resources :disk :type) pool-name))]
-        ; convert job-disk-request to bytes from MiB because offers have disk amount in bytes
-        (->disk-host-constraint (* disk-multiplier job-disk-request) job-disk-type)))))
+        (->disk-host-constraint job-disk-request job-disk-type)))))
 
 (defrecord rebalancer-reservation-constraint [reserved-hosts]
   JobConstraint

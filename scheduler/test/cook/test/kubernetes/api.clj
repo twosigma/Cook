@@ -90,21 +90,19 @@
              (api/get-consumption node-name->pods "test-pool"))))))
 
 (deftest test-get-capacity
-  (with-redefs [config/disk-type-node-label-name (constantly [{:pool-regex "test-pool"
-                                                               :disk-node-label "cloud.google.com/gke-boot-disk"}])]
-    (let [node-name->node {"nodeA" (tu/node-helper "nodeA" 1.0 100.0 2 "nvidia-tesla-p100" nil nil)
-                           "nodeB" (tu/node-helper "nodeB" 1.0 nil nil nil nil nil)
-                           "nodeC" (tu/node-helper "nodeC" nil 100.0 5 "nvidia-tesla-p100" nil nil)
-                           "nodeD" (tu/node-helper "nodeD" nil nil 7 "nvidia-tesla-p100" nil nil)}]
-      (is (= {"nodeA" {:cpus 1.0 :mem 100.0 :gpus {"nvidia-tesla-p100" 2}}
-              "nodeB" {:cpus 1.0 :mem 0.0 :gpus {}}
-              "nodeC" {:cpus 0.0 :mem 100.0 :gpus {"nvidia-tesla-p100" 5}}
-              "nodeD" {:cpus 0.0 :mem 0.0 :gpus {"nvidia-tesla-p100" 7}}}
-             (api/get-capacity node-name->node "test-pool")))))
-  (let [node-name->node {"nodeA" (tu/node-helper "nodeA" 1.0 100.0 2 "nvidia-tesla-p100" {:disk-amount 500000 :disk-type "standard"} nil)
-                         "nodeB" (tu/node-helper "nodeB" 2.0 100.0 nil nil {:disk-amount 300000 :disk-type "pd-ssd"} nil)}]
-    (is (= {"nodeA" {:cpus 1.0 :mem 100.0 :gpus {"nvidia-tesla-p100" 2} :disk {"standard" 500000.0}}
-            "nodeB" {:cpus 2.0 :mem 100.0 :gpus {} :disk {"pd-ssd" 300000.0}}}
+  (let [node-name->node {"nodeA" (tu/node-helper "nodeA" 1.0 100.0 2 "nvidia-tesla-p100" nil nil)
+                         "nodeB" (tu/node-helper "nodeB" 1.0 nil nil nil nil nil)
+                         "nodeC" (tu/node-helper "nodeC" nil 100.0 5 "nvidia-tesla-p100" nil nil)
+                         "nodeD" (tu/node-helper "nodeD" nil nil 7 "nvidia-tesla-p100" nil nil)}]
+    (is (= {"nodeA" {:cpus 1.0 :mem 100.0 :gpus {"nvidia-tesla-p100" 2}}
+            "nodeB" {:cpus 1.0 :mem 0.0 :gpus {}}
+            "nodeC" {:cpus 0.0 :mem 100.0 :gpus {"nvidia-tesla-p100" 5}}
+            "nodeD" {:cpus 0.0 :mem 0.0 :gpus {"nvidia-tesla-p100" 7}}}
+           (api/get-capacity node-name->node "test-pool"))))
+  (let [node-name->node {"nodeA" (tu/node-helper "nodeA" 1.0 100.0 2 "nvidia-tesla-p100" {:disk-amount 10000 :disk-type "standard"} nil)
+                         "nodeB" (tu/node-helper "nodeB" 2.0 100.0 nil nil {:disk-amount 10000 :disk-type "pd-ssd"} nil)}]
+    (is (= {"nodeA" {:cpus 1.0 :mem 100.0 :gpus {"nvidia-tesla-p100" 2} :disk {"standard" 10000.0}}
+            "nodeB" {:cpus 2.0 :mem 100.0 :gpus {} :disk {"pd-ssd" 10000.0}}}
            (api/get-capacity node-name->node "test-pool")))))
 
 (defn assert-env-var-value

@@ -539,12 +539,12 @@
                                        (or gpu-model "nvidia-tesla-p100")))
                (when disk (.putRequestsItem resources
                                             "ephemeral-storage"
-                                            (Quantity. (BigDecimal. (* constraints/disk-multiplier (or disk-request 10000)))
+                                            (Quantity. (BigDecimal. (double (* constraints/disk-multiplier (or disk-request 10000))))
                                                        Quantity$Format/DECIMAL_SI))
                           (when disk-limit
                             (.putLimitsItem resources
                                             "ephemeral-storage"
-                                            (Quantity. (BigDecimal. (* constraints/disk-multiplier disk-limit))
+                                            (Quantity. (BigDecimal. (double (* constraints/disk-multiplier disk-limit)))
                                                        Quantity$Format/DECIMAL_SI)))
                           (.putNodeSelectorItem spec
                                                 "cloud.google.com/gke-boot-disk"
@@ -593,9 +593,9 @@
                                                               Quantity$Format/DECIMAL_SI))
       (.putLabelsItem metadata "gpu-type" (or gpu-model "nvidia-tesla-p100")))
     (when disk
-      (.putCapacityItem status "ephemeral-storage" (Quantity. (BigDecimal. (* constraints/disk-multiplier disk-amount))
+      (.putCapacityItem status "ephemeral-storage" (Quantity. (BigDecimal. (double (* constraints/disk-multiplier disk-amount)))
                                                               Quantity$Format/DECIMAL_SI))
-      (.putAllocatableItem status "ephemeral-storage" (Quantity. (BigDecimal. (* constraints/disk-multiplier disk-amount))
+      (.putAllocatableItem status "ephemeral-storage" (Quantity. (BigDecimal. (double (* constraints/disk-multiplier disk-amount)))
                                                       Quantity$Format/DECIMAL_SI))
       (.putLabelsItem metadata "cloud.google.com/gke-boot-disk" (or disk-type "standard")))
     (.setUnschedulable spec false)
