@@ -5,8 +5,8 @@ import org.json.JSONObject;
 
 public class Disk {
     /**
-     *   request - disk space guaranteed for the job
-     *   limit - max disk space the job can use
+     *   request - disk space guaranteed for the job (MiB)
+     *   limit - max disk space the job can use (MiB)
      *   type - type of disk for the job
      */
     private Double _request;
