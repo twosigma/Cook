@@ -16,4 +16,4 @@ rm -rf ${EXECUTOR_DIR}/dist/cook-executor-local
 # Create a one-folder bundle containing an executable (instead of using the one-file version).
 # Allows us to avoid the extraction to a temporary folder needed by the PyInstaller bootloader.
 cd ${EXECUTOR_DIR}
-pyinstaller --onedir --name cook-executor-local --paths cook cook/__main__.py
+python -m pyinstaller --onedir --name cook-executor-local --paths cook cook/__main__.py
