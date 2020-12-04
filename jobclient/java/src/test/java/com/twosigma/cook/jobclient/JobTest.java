@@ -79,17 +79,6 @@ public class JobTest {
         jobBuilder.addCpuArchitectureConstraint("intel-cascade-lake");
     }
 
-    private JSONObject convertJobToJsonObject(Job basicJob) {
-        final JSONObject json = Job.jsonizeJob(basicJob);
-        if (!json.has("instances")) {
-            json.put("instances", new JSONArray());
-        }
-        if (!json.has("status")) {
-            json.put("status", "INITIALIZED");
-        }
-        return json;
-    }
-
     @Test
     public void testJsonizeJobBasic() throws JSONException {
         final Job.Builder jobBuilder = new Job.Builder();
@@ -136,7 +125,7 @@ public class JobTest {
         populateBuilder(jobBuilder);
         final Job basicJob = jobBuilder.build();
 
-        final JSONObject json = convertJobToJsonObject(basicJob);
+        final JSONObject json = Job.jsonizeJob(basicJob);
         json.put("pool", "dummy-pool");
         final String jsonString = new JSONArray().put(json).toString();
         final List<Job> jobs = Job.parseFromJSON(jsonString);
@@ -201,7 +190,7 @@ public class JobTest {
             populateBuilder(jobBuilder);
             jobBuilder.setExecutor(executor.displayName());
 
-            final JSONObject json = convertJobToJsonObject(jobBuilder.build());
+            final JSONObject json = Job.jsonizeJob(jobBuilder.build());
             final String jsonString = new JSONArray().put(json).toString();
             final List<Job> jobs = Job.parseFromJSON(jsonString);
             Assert.assertEquals(jobs.size(), 1);
@@ -234,7 +223,7 @@ public class JobTest {
         populateBuilder(jobBuilder);
         jobBuilder.setProgressOutputFile(progressOutputFile);
 
-        final JSONObject json = convertJobToJsonObject(jobBuilder.build());
+        final JSONObject json = Job.jsonizeJob(jobBuilder.build());
         final String jsonString = new JSONArray().put(json).toString();
         final List<Job> jobs = Job.parseFromJSON(jsonString);
         Assert.assertEquals(jobs.size(), 1);
@@ -266,7 +255,7 @@ public class JobTest {
         populateBuilder(jobBuilder);
         jobBuilder.setProgressRegexString(progressOutputFile);
 
-        final JSONObject json = convertJobToJsonObject(jobBuilder.build());
+        final JSONObject json = Job.jsonizeJob(jobBuilder.build());
         final String jsonString = new JSONArray().put(json).toString();
         final List<Job> jobs = Job.parseFromJSON(jsonString);
         Assert.assertEquals(jobs.size(), 1);
@@ -303,7 +292,7 @@ public class JobTest {
         populateBuilder(jobBuilder);
         jobBuilder.setDatasets(datasets);
 
-        final JSONObject json = convertJobToJsonObject(jobBuilder.build());
+        final JSONObject json = Job.jsonizeJob(jobBuilder.build());
         final String jsonString = new JSONArray().put(json).toString();
         final List<Job> jobs = Job.parseFromJSON(jsonString);
         Assert.assertEquals(jobs.size(), 1);
@@ -357,7 +346,7 @@ public class JobTest {
         jobBuilder1.setDiskRequest(10.0);
         jobBuilder1.setDiskType("pd-ssd");
 
-        final JSONObject json = convertJobToJsonObject(jobBuilder1.build());
+        final JSONObject json = Job.jsonizeJob(jobBuilder1.build());
         final String jsonString = new JSONArray().put(json).toString();
         final List<Job> jobs = Job.parseFromJSON(jsonString);
         Assert.assertEquals(jobs.size(), 1);
@@ -372,7 +361,7 @@ public class JobTest {
         populateBuilder(jobBuilder2);
         jobBuilder2.setDisk(diskEntry);
 
-        final JSONObject json2 = convertJobToJsonObject(jobBuilder2.build());
+        final JSONObject json2 = Job.jsonizeJob(jobBuilder2.build());
         final String jsonString2 = new JSONArray().put(json2).toString();
         final List<Job> jobs2 = Job.parseFromJSON(jsonString2);
         Assert.assertEquals(jobs2.size(), 1);
@@ -384,13 +373,13 @@ public class JobTest {
     }
 
     @Test
-    public void testParseFromJsonToBuilder() {
+    public void testParseFromJsonToBuilderOfJob() {
         final Job.Builder jobBuilder1 = new Job.Builder();
         populateBuilder(jobBuilder1);
         jobBuilder1.setDiskRequest(10.0);
         jobBuilder1.setDiskType("pd-ssd");
 
-        final JSONObject json = convertJobToJsonObject(jobBuilder1.build());
+        final JSONObject json = Job.jsonizeJob(jobBuilder1.build());
         final Job job1 = Job.parseFromJSON(json);
 
         final Job.Builder jobBuilder2 = new Job.Builder().of(job1);
@@ -398,6 +387,25 @@ public class JobTest {
 
         Assert.assertEquals(job1.getCommand(), job2.getCommand());
         Assert.assertEquals(job1.getEnv(), job2.getEnv());
+        Assert.assertEquals(job1.getDisk().getRequest(), job2.getDisk().getRequest(), EPSILON);
+        Assert.assertEquals(job1.getDisk().getType(), job2.getDisk().getType());
+        Assert.assertEquals(job1.getConstraints().size(), job2.getConstraints().size());
+    }
+
+    @Test
+    public void testParseFromJsonToBuilder() {
+        final Job.Builder jobBuilder1 = new Job.Builder();
+        populateBuilder(jobBuilder1);
+        jobBuilder1.setDiskRequest(10.0);
+        jobBuilder1.setDiskType("pd-ssd");
+        final Job job1 = jobBuilder1.build();
+
+        final JSONObject json = Job.jsonizeJob(jobBuilder1.build());
+        final Job.Builder jobBuilder2 = new Job.Builder().parseFromJSON(json);
+        final Job job2 = jobBuilder2.build();
+
+        Assert.assertEquals(job1.getCpus(), job2.getCpus());
+        Assert.assertEquals(job1.getMemory(), job2.getMemory());
         Assert.assertEquals(job1.getDisk().getRequest(), job2.getDisk().getRequest(), EPSILON);
         Assert.assertEquals(job1.getDisk().getType(), job2.getDisk().getType());
         Assert.assertEquals(job1.getConstraints().size(), job2.getConstraints().size());
