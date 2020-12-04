@@ -42,7 +42,7 @@ jobs:
       - name: setup environment variables
         run: |
           echo /home/runner/.local/bin >> $GITHUB_PATH
-          echo PYTEST_ADDOPTS=--color=yes >> $GITHUB_ENV
+          echo "PYTEST_ADDOPTS=--color=yes" >> $GITHUB_ENV
       - name: run tests
         run: |
           sudo ./travis/install_mesos.sh

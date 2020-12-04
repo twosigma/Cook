@@ -42,9 +42,10 @@ jobs:
       - name: Setup environment variables
         run: |
           echo /home/runner/.local/bin >> $GITHUB_PATH
-          echo PYTEST_ADDOPTS=--color=yes >> $GITHUB_ENV
+          echo "PYTEST_ADDOPTS=--color=yes" >> $GITHUB_ENV
       - name: Run integration tests
         run: |
+          echo $PYTEST_ADDOPTS
           sudo ./travis/install_mesos.sh
           cd integration && ./travis/prepare_integration.sh
           cd .. && export PYTHONPATH=$PWD/jobclient/python
