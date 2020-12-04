@@ -148,6 +148,11 @@
                                   (job->gpu-model-requested job-gpu-count-requested job (cached-queries/job->pool-name job)))]
     (->gpu-host-constraint job-gpu-count-requested job-gpu-model-requested)))
 
+; Cook uses mebibytes (MiB) for disk request and limit.
+; Convert bytes from k8s to MiB when passing to disk constraint,
+; and MiB back to bytes when submitting to k8s.
+(def disk-multiplier (* 1024 1024))
+
 (defrecord disk-host-constraint [job-disk-request job-disk-type]
   JobConstraint
   (job-constraint-name [this] (get-class-name this))
@@ -184,7 +189,8 @@
                                  (regexp-tools/match-based-on-pool-name (config/disk) pool-name :default-request))
             job-disk-type (when job-disk-request
                             (job->disk-type-requested (-> job util/job-ent->resources :disk :type) pool-name))]
-        (->disk-host-constraint job-disk-request job-disk-type)))))
+        ; convert job-disk-request to bytes from MiB because offers have disk amount in bytes
+        (->disk-host-constraint (* disk-multiplier job-disk-request) job-disk-type)))))
 
 (defrecord rebalancer-reservation-constraint [reserved-hosts]
   JobConstraint

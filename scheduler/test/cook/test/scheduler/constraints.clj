@@ -229,7 +229,7 @@
                :hostname "slave3",
                :resources [{:name "cpus", :type :value-scalar, :scalar 40.0, :ranges [], :set #{}, :role "*"}
                            {:name "mem", :type :value-scalar, :scalar 5000.0, :ranges [], :set #{}, :role "*"}
-                           {:name "disk", :type :value-text->scalar, :text->scalar {"pd-standard" 50}, :ranges [], :set #{}, :role "*"}
+                           {:name "disk", :type :value-text->scalar, :text->scalar {"pd-standard" (* constraints/disk-multiplier 50)}, :ranges [], :set #{}, :role "*"}
                            {:name "ports", :type :value-ranges, :scalar 0.0, :ranges [{:begin 31000, :end 32000}], :set #{}, :role "*"}
                            {:name "gpus", :type :value-text->scalar :text->scalar {} :role "*"}],
                :attributes [{:name "compute-cluster-type", :type :value-text, :text "kubernetes" :role "*"}],

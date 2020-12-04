@@ -4,6 +4,7 @@
             [clojure.test :refer :all]
             [cook.config :as config]
             [cook.kubernetes.api :as api]
+            [cook.scheduler.constraints :as constraints]
             [cook.test.testutil :as tu]
             [datomic.api :as d])
   (:import (io.kubernetes.client.openapi.models V1Container V1ContainerState V1ContainerStateWaiting V1ContainerStatus
@@ -363,8 +364,8 @@
               ^V1PodSpec pod-spec (.getSpec pod)
               ^V1Container container (-> pod-spec .getContainers first)]
           (is (= (-> pod-spec .getNodeSelector (get "cloud.google.com/gke-boot-disk")) "pd-ssd"))
-          (is (= 250000.0 (-> container .getResources .getRequests (get "ephemeral-storage") api/to-double)))
-          (is (= 255000.0 (-> container .getResources .getLimits (get "ephemeral-storage") api/to-double))))
+          (is (= (* constraints/disk-multiplier 250000.0) (-> container .getResources .getRequests (get "ephemeral-storage") api/to-double)))
+          (is (= (* constraints/disk-multiplier 255000.0) (-> container .getResources .getLimits (get "ephemeral-storage") api/to-double))))
 
         (let [pool-name "test-pool"
               task-metadata {:task-id "my-task"
@@ -384,7 +385,7 @@
               ^V1Container container (-> pod-spec .getContainers first)]
           ; check that pod has default values for disk request, type, and limit
           (is (= (-> pod-spec .getNodeSelector (get "cloud.google.com/gke-boot-disk")) "pd-standard"))
-          (is (= 10000.0 (-> container .getResources .getRequests (get "ephemeral-storage") api/to-double)))
+          (is (= (* constraints/disk-multiplier 10000.0) (-> container .getResources .getRequests (get "ephemeral-storage") api/to-double)))
           (is (nil? (-> container .getResources .getLimits (get "ephemeral-storage")))))))
 
     (testing "job labels -> pod labels"

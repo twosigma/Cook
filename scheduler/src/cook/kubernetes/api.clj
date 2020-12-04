@@ -408,7 +408,7 @@
                  0)}]
     ; Only add disk to the resource map if pods are using disk
     (if (get m "ephemeral-storage")
-      (assoc res-map :disk (-> m (get "ephemeral-storage") to-double))
+      (assoc res-map :disk (-> m (get "ephemeral-storage") to-double (/ constraints/disk-multiplier)))
       res-map)))
 
 (defn pods->node-name->pods
@@ -935,10 +935,10 @@
       ; GKE nodes with GPUs have gpu-count label, so synthetic pods need a matching node selector
       (add-node-selector pod-spec "gpu-count" (-> gpus int str)))
     (when disk-request
-      (.putRequestsItem resources "ephemeral-storage" (double->quantity disk-request))
+      (.putRequestsItem resources "ephemeral-storage" (double->quantity (* disk-multiplier disk-request)))
       ; by default, do not set disk-limit
       (when disk-limit
-        (.putLimitsItem resources "ephemeral-storage" (double->quantity disk-limit)))
+        (.putLimitsItem resources "ephemeral-storage" (double->quantity (* disk-multiplier disk-limit))))
       (add-node-selector pod-spec (pool->disk-type-label-name pool-name) disk-type))
     (.setResources container resources)
     (.setVolumeMounts container (filterv some? (conj (concat volume-mounts main-container-checkpoint-volume-mounts)
