@@ -42,10 +42,9 @@ jobs:
           key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
           restore-keys: |
             ${{ runner.os }}-pip-
-      - name: Setup tests
+      - name: Install Mesos
+        run: ./travis/install_mesos.sh
+      - name: Prepare simulation
+        run: cd simulator && ./travis/prepare_simulation.sh
       - name: Run tests
-        run: |
-          sudo ./travis/install_mesos.sh
-          cd simulator
-          ./travis/prepare_simulation.sh
-          ./travis/run_simulation.sh
+        run: cd simulator && ./travis/run_simulation.sh
