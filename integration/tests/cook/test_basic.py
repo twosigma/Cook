@@ -1932,7 +1932,7 @@ class CookTest(util.CookTest):
                     self.assertNotIn("limit", job["disk"])
                     self.assertNotIn("type", job["disk"])
 
-                    # Valid job submission with disk request, size, and type
+                    # Valid job submission with disk request, limit, and type
                     job_uuid, resp = util.submit_job(
                         self.cook_url,
                         pool=pool_name,
@@ -1941,6 +1941,20 @@ class CookTest(util.CookTest):
                               'type': expected_type})
                     self.assertEqual(resp.status_code, 201, resp.text)
                     job = util.load_job(self.cook_url, job_uuid)
+                    self.assertEqual(job["disk"]["request"], expected_request)
+                    self.assertEqual(job["disk"]["limit"], expected_limit)
+                    self.assertEqual(job["disk"]["type"], expected_type)
+
+                    # Valid job submission with disk request and limit as int
+                    job_uuid, resp = util.submit_job(
+                        self.cook_url,
+                        pool=pool_name,
+                        disk={'request': int(expected_request),
+                              'limit': int(expected_limit),
+                              'type': expected_type})
+                    self.assertEqual(resp.status_code, 201, resp.text)
+                    job = util.load_job(self.cook_url, job_uuid)
+                    # disk request and limit are converted to doubles when entering into database
                     self.assertEqual(job["disk"]["request"], expected_request)
                     self.assertEqual(job["disk"]["limit"], expected_limit)
                     self.assertEqual(job["disk"]["type"], expected_type)
