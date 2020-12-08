@@ -16,20 +16,20 @@ import java.util.function.Supplier;
 /** Similar to TokenFileAuthenticator in the official Kubernetes library. It takes a supplier that generates a
  * token and automatically calls it when a new token is needed. Ideally this should be solved at the OpenAPI layer when https://github.com/OpenAPITools/openapi-generator/pull/6036 is fixed. For now, hijack the HTTP request. */
 public class TokenRefreshingAuthenticator implements Authentication, Interceptor {
-    private static final long tokenLifeTimeSeconds = TimeUnit.MINUTES.toSeconds(10);
-
+    private final long tokenLifeTimeSeconds;
     private final Supplier<String> tokenSupplier;
     private Instant expiry;
     private String token;
 
-    /** Return a token authenticator that automatically refreshes when less than 10 minutes old.
+    /** Return a token authenticator that automatically refreshes when less than the supplied number of seconds old.
      *
      * @param tokenSupplier The token supplier. If this this is null or returns null, the interceptor does not
      *                      add an Authorization Header.
      *
      * */
-    public TokenRefreshingAuthenticator(Supplier<String> tokenSupplier) {
+    public TokenRefreshingAuthenticator(Supplier<String> tokenSupplier, int tokenLifeTimeSeconds) {
         this.tokenSupplier = tokenSupplier;
+        this.tokenLifeTimeSeconds = tokenLifeTimeSeconds;
         this.expiry = Instant.MIN;
     }
 
@@ -37,7 +37,7 @@ public class TokenRefreshingAuthenticator implements Authentication, Interceptor
      * Get an updated authorization token for this token
      */
     private String getToken() {
-        if (tokenSupplier != null)
+        if (tokenSupplier != null) {
             synchronized (tokenSupplier) {
                 Instant now = Instant.now();
                 if (now.isAfter(this.expiry)) {
@@ -46,7 +46,9 @@ public class TokenRefreshingAuthenticator implements Authentication, Interceptor
                 }
                 return this.token;
             }
-        return null;
+        } else {
+            return null;
+        }
     }
 
     @Override
@@ -69,7 +71,7 @@ public class TokenRefreshingAuthenticator implements Authentication, Interceptor
     }
 
     /** From a KubeConfig, crate a TokenRefreshingAuthenticator */
-    public static TokenRefreshingAuthenticator fromKubeConfig(KubeConfig kubeconfig) {
-        return new TokenRefreshingAuthenticator(kubeconfig::getAccessToken);
+    public static TokenRefreshingAuthenticator fromKubeConfig(KubeConfig kubeconfig, int tokenLifeTimeSeconds) {
+        return new TokenRefreshingAuthenticator(kubeconfig::getAccessToken, tokenLifeTimeSeconds);
     }
 }
