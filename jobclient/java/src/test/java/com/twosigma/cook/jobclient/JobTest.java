@@ -402,6 +402,8 @@ public class JobTest {
 
         final JSONObject json = Job.jsonizeJob(jobBuilder1.build());
         final Job.Builder jobBuilder2 = new Job.Builder().parseFromJSON(json);
+        jobBuilder2.addEnv("foo", "bar");
+        jobBuilder2.addLabel("foo", "bar");
         final Job job2 = jobBuilder2.build();
 
         Assert.assertEquals(job1.getCpus(), job2.getCpus());
@@ -409,5 +411,7 @@ public class JobTest {
         Assert.assertEquals(job1.getDisk().getRequest(), job2.getDisk().getRequest(), EPSILON);
         Assert.assertEquals(job1.getDisk().getType(), job2.getDisk().getType());
         Assert.assertEquals(job1.getConstraints().size(), job2.getConstraints().size());
+        // Added an extra label to job1.
+        Assert.assertEquals(job2.getLabels().size(), job1.getLabels().size() + 1);
     }
 }
