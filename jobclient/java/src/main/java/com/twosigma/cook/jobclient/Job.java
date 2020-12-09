@@ -165,11 +165,11 @@ final public class Job {
             setGpus(job.getGpus());
             setRetries(job.getRetries());
             setMaxRuntime(job.getMaxRuntime());
-            setEnv(job.getEnv());
+            addEnv(job.getEnv());
             setUris(job.getUris());
             setContainer(job.getContainer());
             setPool(job.getPool());
-            setLabels(job.getLabels());
+            addLabels(job.getLabels());
             setDatasets(job.getDatasets());
             setStatus(job.getStatus());
             setPriority(job.getPriority());
@@ -799,23 +799,19 @@ final public class Job {
             }
             if (json.has("env")) {
                 JSONObject envJson = json.getJSONObject("env");
-                Map<String, String> envMap = new HashMap<>();
                 if (envJson.length() > 0) {
                     for (String varName : JSONObject.getNames(envJson)) {
-                        envMap.put(varName, envJson.getString(varName));
+                        addEnv(varName, envJson.getString(varName));
                     }
                 }
-                setEnv(envMap);
             }
             if (json.has("labels")) {
                 JSONObject labelsJson = json.getJSONObject("labels");
-                Map<String, String> labelsMap = new HashMap<>();
                 if (labelsJson.length() > 0) {
                     for (String varName : JSONObject.getNames(labelsJson)) {
-                        labelsMap.put(varName, labelsJson.getString(varName));
+                        addLabel(varName, labelsJson.getString(varName));
                     }
                 }
-                setLabels(labelsMap);
             }
             JSONArray urisJson = json.optJSONArray("uris");
             if (urisJson != null) {
