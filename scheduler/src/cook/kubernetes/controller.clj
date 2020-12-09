@@ -198,11 +198,14 @@
   [{:keys [name]} instance-id ^V1PodStatus pod-status ^V1ContainerStatus container-status]
   ; TODO map additional kubernetes failure reasons
   (let [container-terminated-reason (some-> container-status .getState .getTerminated .getReason)
-        pod-status-reason (.getReason pod-status)]
+        pod-status-reason (.getReason pod-status)
+        pod-status-message (.getMessage pod-status)]
     (cond
       (= "OutOfMemory" pod-status-reason) :reason-container-limitation-memory
       (= "Error" container-terminated-reason) :reason-command-executor-failed
       (= "OOMKilled" container-terminated-reason) :reason-container-limitation-memory
+      (or (str/includes? pod-status-message "Pod ephemeral local storage usage exceeds the total limit of containers")
+          (str/includes? pod-status-message "The node was low on resource: ephemeral-storage")) :reason-container-limitation-disk
 
       ; If there is no container status and the pod status reason is Outofcpu,
       ; then the node didn't have enough CPUs to start the container
