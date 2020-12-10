@@ -609,7 +609,15 @@
       a bearer token for authenticating with kubernetes
     - bearer-token-refresh-seconds: interval to refresh the bearer token
     - If we have a configuration file set, then we can select the context out of that kubeconfig file with kubeconfig-context"
-  [^String config-file base-path ^String use-google-service-account? bearer-token-refresh-seconds verifying-ssl ^String ca-cert ^String ca-cert-path kubeconfig-context]
+  [^String config-file
+   base-path
+   ^String use-google-service-account?
+   bearer-token-refresh-seconds
+   verifying-ssl
+   ^String ca-cert
+   ^String ca-cert-path
+   kubeconfig-context
+   read-timeout-seconds]
   {:pre [(not (and ca-cert ca-cert-path))]}
   (log/info "API Client config file" config-file)
   (let [^ApiClient api-client (if (some? config-file)
@@ -628,8 +636,13 @@
                                       ^ClientBuilder clientbuilder (ClientBuilder/kubeconfig kubeconfig)]
                                   (.build clientbuilder))
                                 (ApiClient.))
-        ; Reset to a more sane timeout from the default 10 seconds.
-        http-client-with-readtimeout (-> api-client .getHttpClient .newBuilder (.readTimeout 120 TimeUnit/SECONDS) .build)
+        http-client-with-readtimeout (-> api-client
+                                         .getHttpClient
+                                         .newBuilder
+                                         (.readTimeout
+                                           read-timeout-seconds
+                                           TimeUnit/SECONDS)
+                                         .build)
         _ (.setHttpClient api-client http-client-with-readtimeout)]
     (when base-path
       (.setBasePath api-client base-path))
@@ -674,6 +687,7 @@
            name
            namespace
            node-blocklist-labels
+           read-timeout-seconds
            scan-frequency-seconds
            state
            state-locked?
@@ -687,6 +701,7 @@
          namespace {:kind :static
                     :namespace "cook"}
          node-blocklist-labels (list)
+         read-timeout-seconds 120
          scan-frequency-seconds 120
          state :running
          state-locked? false
@@ -704,7 +719,15 @@
         compute-cluster-config)))
   (let [conn cook.datomic/conn
         cluster-entity-id (get-or-create-cluster-entity-id conn name)
-        api-client (make-api-client config-file base-path use-google-service-account? bearer-token-refresh-seconds verifying-ssl ca-cert ca-cert-path kubeconfig-context)
+        api-client (make-api-client config-file
+                                    base-path
+                                    use-google-service-account?
+                                    bearer-token-refresh-seconds
+                                    verifying-ssl
+                                    ca-cert
+                                    ca-cert-path
+                                    kubeconfig-context
+                                    read-timeout-seconds)
         launch-task-executor-service (Executors/newFixedThreadPool launch-task-num-threads)
         compute-cluster-launch-rate-limiter (cook.rate-limit/create-compute-cluster-launch-rate-limiter name compute-cluster-launch-rate-limits)
         compute-cluster (->KubernetesComputeCluster api-client 
