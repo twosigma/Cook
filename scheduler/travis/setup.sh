@@ -3,7 +3,7 @@
 set -e
 
 # Install the current version of the jobclient
-pushd ${GITHUB_WORKSPACE}/jobclient/java
+pushd ${TRAVIS_BUILD_DIR}/jobclient/java
 mvn install
 popd
 

@@ -6,6 +6,6 @@ while read path; do
     echo "Contents of ${path}";
     cat "${path}";
     echo "------------------------------------"
-done <<< "$(find ${GITHUB_WORKSPACE}/travis/.minimesos -name 'stdout' -o -name 'stderr' -o -name 'executor.log')"
+done <<< "$(find ${TRAVIS_BUILD_DIR}/travis/.minimesos -name 'stdout' -o -name 'stderr' -o -name 'executor.log')"
 
-${GITHUB_WORKSPACE}/travis/show_scheduler_logs.sh
+${TRAVIS_BUILD_DIR}/travis/show_scheduler_logs.sh

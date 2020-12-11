@@ -57,9 +57,9 @@ esac
 case "$COOK_EXECUTOR" in
   cook)
     echo "$(date +%H:%M:%S) Cook executor has been enabled"
-    COOK_EXECUTOR_COMMAND="${GITHUB_WORKSPACE}/travis/cook-executor-local/cook-executor-local"
+    COOK_EXECUTOR_COMMAND="${TRAVIS_BUILD_DIR}/travis/cook-executor-local/cook-executor-local"
     # Build cook-executor
-    ${GITHUB_WORKSPACE}/travis/build_cook_executor.sh
+    ${TRAVIS_BUILD_DIR}/travis/build_cook_executor.sh
     # Run with docker
     ;;
   mesos)
@@ -84,14 +84,14 @@ function wait_for_cook {
 export -f wait_for_cook
 
 # Start minimesos
-cd ${GITHUB_WORKSPACE}/travis
+cd ${TRAVIS_BUILD_DIR}/travis
 ./minimesos up
 $(./minimesos info | grep MINIMESOS)
 export COOK_ZOOKEEPER="${MINIMESOS_ZOOKEEPER_IP}:2181"
 export MINIMESOS_ZOOKEEPER=${MINIMESOS_ZOOKEEPER%;}
 export MINIMESOS_MASTER=${MINIMESOS_MASTER%;}
 
-SCHEDULER_DIR=${GITHUB_WORKSPACE}/scheduler
+SCHEDULER_DIR=${TRAVIS_BUILD_DIR}/scheduler
 ./datomic-free-0.9.5394/bin/transactor ${SCHEDULER_DIR}/datomic/datomic_transactor.properties &
 COOK_DATOMIC_URI_1=datomic:free://localhost:4334/cook-jobs
 COOK_DATOMIC_URI_2=datomic:mem://cook-jobs
@@ -146,7 +146,7 @@ LIBPROCESS_IP=172.17.0.1 COOK_DATOMIC="${COOK_DATOMIC_URI_2}" COOK_PORT=22321 CO
 timeout 180s bash -c "wait_for_cook 12321" || curl_error=true
 if [ "$curl_error" = true ]; then
   echo "$(date +%H:%M:%S) Timed out waiting for cook to start listening"
-  ${GITHUB_WORKSPACE}/travis/upload_logs.sh
+  ${TRAVIS_BUILD_DIR}/travis/upload_logs.sh
   exit 1
 fi
 
@@ -156,13 +156,13 @@ LIBPROCESS_IP=172.17.0.1 COOK_DATOMIC="${COOK_DATOMIC_URI_1}" COOK_PORT=12323 CO
 timeout 180s bash -c "wait_for_cook 12323" || curl_error=true
 if [ "$curl_error" = true ]; then
   echo "$(date +%H:%M:%S) Timed out waiting for cook to start listening"
-  ${GITHUB_WORKSPACE}/travis/upload_logs.sh
+  ${TRAVIS_BUILD_DIR}/travis/upload_logs.sh
   exit 1
 fi
 timeout 180s bash -c "wait_for_cook 22321" || curl_error=true
 if [ "$curl_error" = true ]; then
   echo "$(date +%H:%M:%S) Timed out waiting for cook to start listening"
-  ${GITHUB_WORKSPACE}/travis/upload_logs.sh
+  ${TRAVIS_BUILD_DIR}/travis/upload_logs.sh
   exit 1
 fi
 
@@ -185,6 +185,6 @@ export COOK_MESOS_LEADER_URL=${MINIMESOS_MASTER}
 # If there were failures, then we should save the logs
 if [ "$test_failures" = true ]; then
   echo "Uploading logs..."
-  ${GITHUB_WORKSPACE}/travis/upload_logs.sh
+  ${TRAVIS_BUILD_DIR}/travis/upload_logs.sh
   exit 1
 fi

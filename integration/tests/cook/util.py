@@ -54,8 +54,8 @@ POOL_UNSPECIFIED = 'COOK_TEST_POOL_UNSPECIFIED'
 DEFAULT_JOB_NAME_PREFIX = "default_job-"
 
 def continuous_integration():
-    """Returns true if the CI environment variable is set, as done by GitHub Actions."""
-    return to_bool(os.getenv('CI'))
+    """Returns true if the CONTINUOUS_INTEGRATION environment variable is set, as done by Travis-CI."""
+    return to_bool(os.getenv('CONTINUOUS_INTEGRATION'))
 
 
 def has_docker_service():
