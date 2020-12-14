@@ -54,8 +54,6 @@
              (api/get-consumption node-name->pods "test-pool")))))
 
   (testing "correctly aggregates pods by node name"
-    (with-redefs [config/disk-type-node-label-name (constantly [{:pool-regex "test-pool"
-                                                                 :disk-node-label "cloud.google.com/gke-boot-disk"}])])
     (let [pods [(tu/pod-helper "podA" "hostA"
                                {:cpus 1.0
                                 :mem 100.0
@@ -335,15 +333,14 @@
         (is (= 2 (-> container .getResources .getLimits (get "nvidia.com/gpu") api/to-int)))))
 
     (testing "disk task-metadata"
-      (with-redefs [config/disk-type-node-label-name (constantly [{:pool-regex "test-pool"
-                                                                   :disk-node-label "cloud.google.com/gke-boot-disk"}])
-                    config/disk (constantly [{:pool-regex "test-pool"
+      (with-redefs [config/disk (constantly [{:pool-regex "test-pool"
                                               :max-size 256000.0
                                               :valid-types #{"standard", "pd-ssd"}
                                               :default-type "standard"
                                               :default-request 10000.0
                                               :type-map {"standard", "pd-standard"}
-                                              :enable-constraint? true}])]
+                                              :enable-constraint? true
+                                              :disk-node-label "cloud.google.com/gke-boot-disk"}])]
         (let [pool-name "test-pool"
               task-metadata {:task-id "my-task"
                              :command {:value "foo && bar"
@@ -353,7 +350,7 @@
                                          :docker {:image "alpine:latest"}}
                              :task-request {:resources {:mem  576
                                                         :cpus 1.1
-                                                        :disk {:request 250000.0, :limit 255000.0, :type "pd-ssd"}}
+                                                        :disk {:request 250000.0, :limit 255000.0, :type "standard"}}
                                             :scalar-requests {"mem"  512
                                                               "cpus" 1.0}
                                             :job {:job/pool {:pool/name pool-name}}}
@@ -361,9 +358,9 @@
               ^V1Pod pod (api/task-metadata->pod "cook" "testing-cluster" task-metadata)
               ^V1PodSpec pod-spec (.getSpec pod)
               ^V1Container container (-> pod-spec .getContainers first)]
-          (is (= (-> pod-spec .getNodeSelector (get "cloud.google.com/gke-boot-disk")) "pd-ssd"))
-          (is (= (* constraints/disk-multiplier 250000.0) (-> container .getResources .getRequests (get "ephemeral-storage") api/to-double)))
-          (is (= (* constraints/disk-multiplier 255000.0) (-> container .getResources .getLimits (get "ephemeral-storage") api/to-double))))
+          (is (= (-> pod-spec .getNodeSelector (get "cloud.google.com/gke-boot-disk")) "pd-standard"))
+          (is (= (* constraints/disk-multiplier 250000.0) (some-> container .getResources .getRequests (get "ephemeral-storage") api/to-double)))
+          (is (= (* constraints/disk-multiplier 255000.0) (some-> container .getResources .getLimits (get "ephemeral-storage") api/to-double))))
 
         (let [pool-name "test-pool"
               task-metadata {:task-id "my-task"
