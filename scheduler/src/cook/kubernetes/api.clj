@@ -470,7 +470,7 @@
   "Given a pool name, get the disk-type-label-name that will be used as a nodeSelector label"
   [pool-name]
   (regexp-tools/match-based-on-pool-name
-    (config/disk-type-node-label-name)
+    (config/disk)
     pool-name
     :disk-node-label
     :default-value "cloud.google.com/gke-boot-disk"))
