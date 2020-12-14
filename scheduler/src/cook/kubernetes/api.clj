@@ -393,7 +393,7 @@
   (-> q .getNumber .intValue))
 
 (defn convert-resource-map
-  "Converts a map of Kubernetes resources to a cook resource map {:mem double, :cpus double, :gpus double :disk double}"
+  "Converts a map of Kubernetes resources to a cook resource map {:mem double, :cpus double, :gpus double, :disk double}"
   [m]
   (let [res-map
         {:mem (if (get m "memory")
