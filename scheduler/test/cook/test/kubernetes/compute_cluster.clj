@@ -109,9 +109,8 @@
                                           :default-type "standard"
                                           :default-request 10000.0
                                           :type-map {"standard", "pd-standard"}
-                                          :enable-constraint? true}])
-                config/disk-type-node-label-name (constantly [{:pool-regex "test-pool"
-                                                               :disk-node-label "cloud.google.com/gke-boot-disk"}])]
+                                          :enable-constraint? true
+                                          :disk-node-label "cloud.google.com/gke-boot-disk"}])]
     (let [conn (tu/restore-fresh-database! "datomic:mem://test-generate-offers")
           compute-cluster (kcc/->KubernetesComputeCluster nil "kubecompute" nil nil
                                                           (atom {}) (atom {}) (atom {}) (atom {}) (atom {}) (atom {}) (atom {}) (atom nil)

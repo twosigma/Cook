@@ -581,11 +581,6 @@
   []
   (-> config :settings :pools :disk))
 
-(defn disk-type-node-label-name
-  "Returns node label name for disk type"
-  []
-  (-> config :kubernetes :disk-type-node-label-name))
-
 (defn valid-gpu-models
   "Returns valid GPU models for the pool the job is scheduled in"
    []

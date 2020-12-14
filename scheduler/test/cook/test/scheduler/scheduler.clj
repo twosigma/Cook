@@ -1728,9 +1728,8 @@
                     :default-type "standard"
                     :default-request 10000.0
                     :type-map {"standard" "pd-standard"}
-                    :enable-constraint? true}]
-      disk-type-node-label [{:pool-regex "test-pool"
-                             :disk-node-label "cloud.google.com/gke-boot-disk"}]]
+                    :enable-constraint? true
+                    :disk-node-label "cloud.google.com/gke-boot-disk"}]]
   (defn test-handle-resource-helpers
     "Helper function for test-handle-resource offers"
     [offers-list]
@@ -1936,8 +1935,7 @@
           offers [offer-1 offer-2 offer-3 offer-4 offer-5 offer-6 offer-7 offer-8 offer-9]]
       (with-redefs [cook.config/executor-config (constantly executor)
                     config/valid-gpu-models (constantly gpu-models-config)
-                    config/disk (constantly disk-config)
-                    config/disk-type-node-label-name (constantly disk-type-node-label)]
+                    config/disk (constantly disk-config)]
         (test-handle-resource-helpers offers)
         ; In mesos, jobs requesting gpus should not get matched
         (testing "all offers for all jobs"

@@ -95,9 +95,7 @@
                         :resource-requirements {:cpu-request 0.1
                                                 :cpu-limit 0.1
                                                 :memory-request 128.0
-                                                :memory-limit 128.0}}
-              :disk-type-node-label-name [{:pool-regex "^k8s-alpha$" 
-                                           :disk-node-label "cloud.google.com/gke-boot-disk"}]}
+                                                :memory-limit 128.0}}}
  :log {:file #config/env "COOK_LOG_FILE"
        :levels {"datomic.db" :warn
                 "datomic.kv-cluster" :warn
@@ -127,7 +125,8 @@
            :default-type "standard"
            :max-size 256000.0
            :type-map {"standard" "pd-standard"}
-           :enable-constraint? true}]
+           :enable-constraint? true
+           :disk-node-label "cloud.google.com/gke-boot-disk"}]
          :valid-gpu-models
          [{:pool-regex "k8s-alpha"
            :valid-models #{"nvidia-tesla-k80" "nvidia-tesla-p100"}
