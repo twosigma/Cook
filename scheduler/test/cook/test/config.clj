@@ -130,7 +130,8 @@
     (is (nil? (config/guard-invalid-disk-config [{:pool-regex "^test-pool$"
                                                   :valid-types #{"valid-disk-type"}
                                                   :default-type "valid-disk-type"
-                                                  :max-size 256000}]))))
+                                                  :max-size 256000
+                                                  :default-request 10000}]))))
   (testing "no valid types"
     (is (thrown-with-msg? ExceptionInfo
                           #"Valid disk types for pool-regex \^test-pool\$ is not defined"
@@ -149,13 +150,21 @@
                           (config/guard-invalid-disk-config [{:pool-regex "^test-pool$"
                                                               :valid-types #{"valid-disk-type"}
                                                               :default-type "valid-disk-type"}]))))
+  (testing "no default request"
+    (is (thrown-with-msg? ExceptionInfo
+                          #"Default disk request for pool-regex \^test-pool\$ is not defined"
+                          (config/guard-invalid-disk-config [{:pool-regex "^test-pool$"
+                                                              :valid-types #{"valid-disk-type"}
+                                                              :default-type "valid-disk-type"
+                                                              :max-size 256000}]))))
   (testing "invalid default type"
     (is (thrown-with-msg? ExceptionInfo
                           #"Default disk type for pool-regex \^test-pool\$ is not listed as a valid disk type"
                           (config/guard-invalid-disk-config [{:pool-regex "^test-pool$"
                                                               :valid-types #{"valid-disk-type"}
                                                               :default-type "invalid-disk-type"
-                                                              :max-size 256000}])))))
+                                                              :max-size 256000
+                                                              :default-request 10000}])))))
 
 (deftest test-user-rate-limit
   (testing "distinct quota for auth bypass requests"
