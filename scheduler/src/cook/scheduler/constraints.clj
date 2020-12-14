@@ -172,8 +172,7 @@
           [vm-satisfies-constraint? (when-not vm-satisfies-constraint?
                                       "VM does not have enough disk space of requested disk type")])
         ; Mesos jobs cannot request disk. If VM is a mesos VM, constraint always passes
-        (let [vm-satisfies-constraint? true]
-          [vm-satisfies-constraint?])))))
+        [true]))))
 
 (defn build-disk-host-constraint
   "Constructs a disk-host-constraint.
