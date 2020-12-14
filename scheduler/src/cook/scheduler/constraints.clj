@@ -183,7 +183,7 @@
   [job]
   (let [pool-name (cached-queries/job->pool-name job)]
     ; If the pool does not have enable-constraint set to true, return nil
-    (if (regexp-tools/match-based-on-pool-name (config/disk) pool-name :enable-constraint? :default-value false)
+    (when (regexp-tools/match-based-on-pool-name (config/disk) pool-name :enable-constraint? :default-value false)
       (let [; If the user did not specify a disk request, use the default request amount for the pool
             job-disk-request (or (-> job util/job-ent->resources :disk :request)
                                  (regexp-tools/match-based-on-pool-name (config/disk) pool-name :default-request))
