@@ -204,8 +204,12 @@
       (= "OutOfMemory" pod-status-reason) :reason-container-limitation-memory
       (= "Error" container-terminated-reason) :reason-command-executor-failed
       (= "OOMKilled" container-terminated-reason) :reason-container-limitation-memory
-      (or (str/includes? pod-status-message "Pod ephemeral local storage usage exceeds the total limit of containers")
-          (str/includes? pod-status-message "The node was low on resource: ephemeral-storage")) :reason-container-limitation-disk
+      (and pod-status-message (or
+                                ; this message is given when pod exceeds pod ephemeral-storage limit
+                                (str/includes? pod-status-message "ephemeral local storage usage exceeds")
+                                ; this message is given when pod exceeds ephemeral-storage request and available disk space on node is low
+                                (str/includes? pod-status-message "low on resource: ephemeral-storage")))
+      :reason-container-limitation-disk
 
       ; If there is no container status and the pod status reason is Outofcpu,
       ; then the node didn't have enough CPUs to start the container
