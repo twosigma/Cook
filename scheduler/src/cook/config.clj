@@ -158,7 +158,7 @@
   - there is no disk-type in valid-disk-types matching the configured default"
   [disk]
   (when disk
-    (doseq [{:keys [default-request default-type pool-regex valid-types max-size] :as entry} disk]
+    (doseq [{:keys [default-type pool-regex valid-types max-size] :as entry} disk]
       (when-not pool-regex
         (throw (ex-info (str "pool-regex key is missing from config") entry)))
       (when-not max-size
@@ -167,8 +167,6 @@
         (throw (ex-info (str "Valid disk types for pool-regex " pool-regex " is not defined") entry)))
       (when-not default-type
         (throw (ex-info (str "Default disk type for pool-regex " pool-regex " is not defined") entry)))
-      (when-not default-request
-        (throw (ex-info (str "Default disk request for pool-regex " pool-regex " is not defined") entry)))
       (when-not (contains? valid-types default-type)
         (throw (ex-info (str "Default disk type for pool-regex " pool-regex " is not listed as a valid disk type") entry))))))
 
