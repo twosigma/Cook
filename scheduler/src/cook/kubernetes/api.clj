@@ -488,10 +488,10 @@
   (pc/map-vals (fn [^V1Node node]
                  (let [resource-map (some-> node .getStatus .getAllocatable convert-resource-map)
                        gpu-model (some-> node .getMetadata .getLabels (get "gpu-type"))
-                       disk-type (some-> node .getMetadata .getLabels (get (pool->disk-type-label-name pool-name)))
-                       update-gpu-in-res-map (fn [res-map] (add-gpu-model-to-resource-map gpu-model res-map))
-                       update-disk-in-res-map (fn [res-map] (add-disk-type-to-resource-map disk-type res-map))]
-                   (-> resource-map update-gpu-in-res-map update-disk-in-res-map)))
+                       disk-type (some-> node .getMetadata .getLabels (get (pool->disk-type-label-name pool-name)))]
+                   (->> resource-map
+                        (add-gpu-model-to-resource-map gpu-model)
+                        (add-disk-type-to-resource-map disk-type))))
                node-name->node))
 
 (defn get-consumption
@@ -515,10 +515,10 @@
                                         resource-map (apply merge-with + container-requests)
                                         ^V1NodeSelector nodeSelector (some-> pod .getSpec .getNodeSelector)
                                         gpu-model (some-> nodeSelector (get "cloud.google.com/gke-accelerator"))
-                                        disk-type (some-> nodeSelector (get (pool->disk-type-label-name pool-name)))
-                                        update-gpu-in-res-map (fn [res-map] (add-gpu-model-to-resource-map gpu-model res-map))
-                                        update-disk-in-res-map (fn [res-map] (add-disk-type-to-resource-map disk-type res-map))]
-                                    (-> resource-map update-gpu-in-res-map update-disk-in-res-map))))
+                                        disk-type (some-> nodeSelector (get (pool->disk-type-label-name pool-name)))]
+                                    (->> resource-map
+                                         (add-gpu-model-to-resource-map gpu-model)
+                                         (add-disk-type-to-resource-map disk-type)))))
                            (apply util/deep-merge-with +))))))
 
 ; see pod->synthesized-pod-state comment for container naming conventions
