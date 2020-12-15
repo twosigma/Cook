@@ -47,7 +47,7 @@
   [node-name->resource-map resource-keyword]
   (->> node-name->resource-map vals (map resource-keyword) (filter some?) (reduce +)))
 
-(defn total-text->scalar-resource
+(defn total-map-resource
   "Given a map from node-name->resource-keyword->amount,
   returns a map from model/type to count for all nodes."
   [node-name->resource-map resource-keyword]
@@ -78,14 +78,14 @@
         ; Grab every unique GPU model being represented so that we can set counters for capacity and consumed for each GPU model
         gpu-models (->> node-name->capacity vals (map :gpus) (apply merge) keys set)
         ; The following variables are only being used setting counters for monitor
-        gpu-model->total-capacity (total-text->scalar-resource node-name->capacity :gpus)
-        gpu-model->total-consumed (total-text->scalar-resource node-name->consumed :gpus)
+        gpu-model->total-capacity (total-map-resource node-name->capacity :gpus)
+        gpu-model->total-consumed (total-map-resource node-name->consumed :gpus)
 
         ; Grab every unique disk type being represented to set counters for capacity and consumed for each disk type
         disk-types (->> node-name->capacity vals (map :disk) (apply merge) keys set)
         ; The following disk variables are only being used to set counters for monitor
-        disk-type->total-capacity (total-text->scalar-resource node-name->capacity :disk)
-        disk-type->total-consumed (total-text->scalar-resource node-name->consumed :disk)
+        disk-type->total-capacity (total-map-resource node-name->capacity :disk)
+        disk-type->total-consumed (total-map-resource node-name->consumed :disk)
 
         node-name->schedulable (filter #(schedulable-node-filter compute-cluster
                                           node-name->node

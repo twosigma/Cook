@@ -475,8 +475,9 @@
     :disk-node-label
     :default-value "cloud.google.com/gke-boot-disk"))
 
-(defn add-disk-type-to-resource-map
-  "Given a map from node-name->resource-type->capacity, set the disk capacity to type->amount"
+(defn force-disk-type-in-resource-map
+  "Given a map from node-name->resource-type->capacity, set the disk capacity to type->amount
+  or remove the disk resource type from the map if disk-type is not provided"
   [disk-type {:keys [disk] :as resource-map}]
   (if (and disk disk-type)
     (assoc resource-map :disk {disk-type disk})
@@ -491,7 +492,7 @@
                        disk-type (some-> node .getMetadata .getLabels (get (pool->disk-type-label-name pool-name)))]
                    (->> resource-map
                         (add-gpu-model-to-resource-map gpu-model)
-                        (add-disk-type-to-resource-map disk-type))))
+                        (force-disk-type-in-resource-map disk-type))))
                node-name->node))
 
 (defn get-consumption
@@ -518,7 +519,7 @@
                                         disk-type (some-> nodeSelector (get (pool->disk-type-label-name pool-name)))]
                                     (->> resource-map
                                          (add-gpu-model-to-resource-map gpu-model)
-                                         (add-disk-type-to-resource-map disk-type)))))
+                                         (force-disk-type-in-resource-map disk-type)))))
                            (apply util/deep-merge-with +))))))
 
 ; see pod->synthesized-pod-state comment for container naming conventions
@@ -844,10 +845,10 @@
         ; if user did not specify disk request, use default on pool
         disk-request (when enable-disk-constraint?
                        (or (-> resources :disk :request)
-                           (regexp-tools/match-based-on-pool-name (config/disk) pool-name :default-request)))
+                           (regexp-tools/match-based-on-pool-name (config/disk) pool-name :default-request :default-value 10240)))
         disk-limit (when enable-disk-constraint? (-> resources :disk :limit))
         ; if user did not specify disk type, use default on pool
-        disk-type (when enable-disk-constraint? (constraints/job->disk-type-requested (-> resources :disk :type) pool-name))
+        disk-type (when enable-disk-constraint? (constraints/disk-type-requested (-> resources :disk :type) pool-name))
 
         pod (V1Pod.)
         pod-spec (V1PodSpec.)

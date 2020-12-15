@@ -92,15 +92,15 @@
   (let [previous-hosts (job->previous-hosts-to-avoid job)]
     (->novel-host-constraint job previous-hosts)))
 
-(defn job->disk-type-requested
+(defn disk-type-requested
   "Get disk type requested from job or use default disk type on pool"
   [disk-type-from-user pool-name]
   ; If user did not specify desired disk type, use the default disk type on the pool
-  (let [disk-type-requested (or disk-type-from-user
+  (let [disk-type-for-job (or disk-type-from-user
                                 (regexp-tools/match-based-on-pool-name (config/disk) pool-name :default-type))]
     ; Consume the type that the disk-type-requested maps to, which is found in the config
-    (or (get (regexp-tools/match-based-on-pool-name (config/disk) pool-name :type-map) disk-type-requested)
-        disk-type-requested)))
+    (or (get (regexp-tools/match-based-on-pool-name (config/disk) pool-name :type-map) disk-type-for-job)
+        disk-type-for-job)))
 
 (defn job->gpu-model-requested
   "Get GPU model requested from job or use default GPU model on pool"
@@ -185,9 +185,10 @@
     (when (regexp-tools/match-based-on-pool-name (config/disk) pool-name :enable-constraint? :default-value false)
       (let [; If the user did not specify a disk request, use the default request amount for the pool
             job-disk-request (or (-> job util/job-ent->resources :disk :request)
-                                 (regexp-tools/match-based-on-pool-name (config/disk) pool-name :default-request))
+                                 ; if disk config does not have default-request, use default-request of 10GiB
+                                 (regexp-tools/match-based-on-pool-name (config/disk) pool-name :default-request :default-value 10240))
             job-disk-type (when job-disk-request
-                            (job->disk-type-requested (-> job util/job-ent->resources :disk :type) pool-name))]
+                            (disk-type-requested (-> job util/job-ent->resources :disk :type) pool-name))]
         (->disk-host-constraint job-disk-request job-disk-type)))))
 
 (defrecord rebalancer-reservation-constraint [reserved-hosts]
