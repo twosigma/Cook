@@ -111,6 +111,13 @@
           ; lookup the GPU model from the pool defaults defined in config.edn
           (regexp-tools/match-based-on-pool-name (config/valid-gpu-models) pool-name :default-model)))))
 
+(defn job-resources->disk-request
+  "Given resources on job, return the disk-request from the user or the default disk-request in config"
+  [job-resources pool-name]
+  (or (-> job-resources :disk :request)
+      ; if disk config does not have default-request, use default-request of 10GiB
+      (regexp-tools/match-based-on-pool-name (config/disk) pool-name :default-request :default-value 10240)))
+
 (defrecord gpu-host-constraint [job-gpu-count-requested job-gpu-model-requested]
   JobConstraint
   (job-constraint-name [this] (get-class-name this))
@@ -184,9 +191,7 @@
     ; If the pool does not have enable-constraint set to true, return nil
     (when (regexp-tools/match-based-on-pool-name (config/disk) pool-name :enable-constraint? :default-value false)
       (let [; If the user did not specify a disk request, use the default request amount for the pool
-            job-disk-request (or (-> job util/job-ent->resources :disk :request)
-                                 ; if disk config does not have default-request, use default-request of 10GiB
-                                 (regexp-tools/match-based-on-pool-name (config/disk) pool-name :default-request :default-value 10240))
+            job-disk-request (job-resources->disk-request (util/job-ent->resources job) pool-name)
             job-disk-type (when job-disk-request
                             (disk-type-requested (-> job util/job-ent->resources :disk :type) pool-name))]
         (->disk-host-constraint job-disk-request job-disk-type)))))
