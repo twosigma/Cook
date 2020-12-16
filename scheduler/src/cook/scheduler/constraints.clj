@@ -92,16 +92,6 @@
   (let [previous-hosts (job->previous-hosts-to-avoid job)]
     (->novel-host-constraint job previous-hosts)))
 
-(defn disk-type-requested
-  "Get disk type requested from user or use default disk type on pool"
-  [disk-type-from-user pool-name]
-  ; If user did not specify desired disk type, use the default disk type on the pool
-  (let [disk-type-for-job (or disk-type-from-user
-                              (regexp-tools/match-based-on-pool-name (config/disk) pool-name :default-type))]
-    ; Consume the type that the disk-type-requested maps to, which is found in the config
-    (or (get (regexp-tools/match-based-on-pool-name (config/disk) pool-name :type-map) disk-type-for-job)
-        disk-type-for-job)))
-
 (defn job->gpu-model-requested
   "Get GPU model requested from job or use default GPU model on pool"
   [gpu-count job pool-name]
@@ -110,6 +100,16 @@
       (or gpu-model-in-env
           ; lookup the GPU model from the pool defaults defined in config.edn
           (regexp-tools/match-based-on-pool-name (config/valid-gpu-models) pool-name :default-model)))))
+
+(defn job-resources->disk-type
+  "Get disk type requested from user or use default disk type on pool"
+  [job-resources pool-name]
+  ; If user did not specify desired disk type, use the default disk type on the pool
+  (let [disk-type-for-job (or (-> job-resources :disk :type)
+                              (regexp-tools/match-based-on-pool-name (config/disk) pool-name :default-type))]
+    ; Consume the type that the disk-type-requested maps to, which is found in the config
+    (or (get (regexp-tools/match-based-on-pool-name (config/disk) pool-name :type-map) disk-type-for-job)
+        disk-type-for-job)))
 
 (defn job-resources->disk-request
   "Given resources on job, return the disk-request from the user or the default disk-request in config"
@@ -171,10 +171,11 @@
     (let [k8s-vm? (= (get vm-attributes "compute-cluster-type") "kubernetes")]
       (if k8s-vm?
         (let [vm-disk-type->space-available (get vm-attributes "disk")
-              ; all k8s VMs support disk, so they will support jobs that have a disk request
+              ; if disk-host-constraint is being evaluated, job-disk-request should be non-nil,
+              ; but we include the following (if ..) check as another safety layer
               vm-satisfies-constraint? (if job-disk-request
                                          (>= (get vm-disk-type->space-available job-disk-type 0) job-disk-request)
-                                         ; if job does not have a disk-request, pass true to always ignore the disk-host-constraint
+                                         ; if job-disk-request is nil, ignore the disk-host-constraint
                                          true)]
           [vm-satisfies-constraint? (when-not vm-satisfies-constraint?
                                       "VM does not have enough disk space of requested disk type")])
@@ -193,7 +194,7 @@
       (let [; If the user did not specify a disk request, use the default request amount for the pool
             job-disk-request (job-resources->disk-request (util/job-ent->resources job) pool-name)
             job-disk-type (when job-disk-request
-                            (disk-type-requested (-> job util/job-ent->resources :disk :type) pool-name))]
+                            (job-resources->disk-type (util/job-ent->resources job) pool-name))]
         (->disk-host-constraint job-disk-request job-disk-type)))))
 
 (defrecord rebalancer-reservation-constraint [reserved-hosts]

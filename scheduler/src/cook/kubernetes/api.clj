@@ -845,7 +845,7 @@
                        (constraints/job-resources->disk-request resources pool-name))
         disk-limit (when enable-disk-constraint? (-> resources :disk :limit))
         ; if user did not specify disk type, use default on pool
-        disk-type (when enable-disk-constraint? (constraints/disk-type-requested (-> resources :disk :type) pool-name))
+        disk-type (when enable-disk-constraint? (constraints/job-resources->disk-type resources pool-name))
 
         pod (V1Pod.)
         pod-spec (V1PodSpec.)
