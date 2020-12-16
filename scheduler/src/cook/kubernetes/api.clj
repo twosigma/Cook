@@ -456,15 +456,13 @@
                                                 false)
         :else true))))
 
-(defn add-gpu-model-to-resource-map
-  "Given a map from node-name->resource-type->capacity, perform the following operation:
-  - if the amount of gpus on the node is positive, set the gpus capacity to model->count
-  - if the amount of gpus on the node is 0, set the gpus capacity to an empty map"
+(defn force-gpu-model-in-resource-map
+  "Given a map from node-name->resource-type->capacity, set the gpus capacity to model->amount
+  or remove the gpus resource type from the map if gpu-model is not provided"
   [gpu-model {:keys [gpus] :as resource-map}]
-  (let [gpu-model->count (if (and gpu-model (pos? gpus))
-                           {gpu-model gpus}
-                           {})]
-    (assoc resource-map :gpus gpu-model->count)))
+  (if (and gpus gpu-model)
+    (assoc resource-map :gpus {gpu-model gpus})
+    (dissoc resource-map :gpus)))
 
 (defn pool->disk-type-label-name
   "Given a pool name, get the disk-type-label-name that will be used as a nodeSelector label"
@@ -491,7 +489,7 @@
                        gpu-model (some-> node .getMetadata .getLabels (get "gpu-type"))
                        disk-type (some-> node .getMetadata .getLabels (get (pool->disk-type-label-name pool-name)))]
                    (->> resource-map
-                        (add-gpu-model-to-resource-map gpu-model)
+                        (force-gpu-model-in-resource-map gpu-model)
                         (force-disk-type-in-resource-map disk-type))))
                node-name->node))
 
@@ -518,7 +516,7 @@
                                         gpu-model (some-> nodeSelector (get "cloud.google.com/gke-accelerator"))
                                         disk-type (some-> nodeSelector (get (pool->disk-type-label-name pool-name)))]
                                     (->> resource-map
-                                         (add-gpu-model-to-resource-map gpu-model)
+                                         (force-gpu-model-in-resource-map gpu-model)
                                          (force-disk-type-in-resource-map disk-type)))))
                            (apply util/deep-merge-with +))))))
 

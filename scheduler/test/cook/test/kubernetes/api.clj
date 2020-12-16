@@ -18,8 +18,7 @@
     (let [pods [(tu/pod-helper "podA" "hostA" {:cpus 1.0 :mem 100.0})]
           node-name->pods (api/pods->node-name->pods pods)]
       (is (= {"hostA" {:cpus 1.0
-                       :mem 100.0
-                       :gpus {}}}
+                       :mem 100.0}}
              (api/get-consumption node-name->pods "test-pool")))))
 
   (testing "correctly computes consumption for a single pod with gpus"
@@ -38,8 +37,7 @@
                                {:mem 100.0})]
           node-name->pods (api/pods->node-name->pods pods)]
       (is (= {"hostA" {:cpus 2.0
-                       :mem 200.0
-                       :gpus {}}}
+                       :mem 200.0}}
              (api/get-consumption node-name->pods "test-pool")))))
 
   (testing "correctly computes consumption for a pod with multiple containers with gpus"
@@ -84,7 +82,7 @@
           node-name->pods (api/pods->node-name->pods pods)]
       (is (= {"hostA" {:cpus 2.0 :mem 100.0 :gpus {"nvidia-tesla-p100" 3}}
               "hostB" {:cpus 3.0 :mem 130.0 :gpus {"nvidia-tesla-k80" 1} :disk {"standard" 10.0}}
-              "hostC" {:cpus 2.0 :mem 0.0 :gpus {} :disk {"pd-ssd" 10100.0}}}
+              "hostC" {:cpus 2.0 :mem 0.0 :disk {"pd-ssd" 10100.0}}}
              (api/get-consumption node-name->pods "test-pool"))))))
 
 (deftest test-get-capacity
@@ -93,14 +91,14 @@
                          "nodeC" (tu/node-helper "nodeC" nil 100.0 5 "nvidia-tesla-p100" nil nil)
                          "nodeD" (tu/node-helper "nodeD" nil nil 7 "nvidia-tesla-p100" nil nil)}]
     (is (= {"nodeA" {:cpus 1.0 :mem 100.0 :gpus {"nvidia-tesla-p100" 2}}
-            "nodeB" {:cpus 1.0 :mem 0.0 :gpus {}}
+            "nodeB" {:cpus 1.0 :mem 0.0}
             "nodeC" {:cpus 0.0 :mem 100.0 :gpus {"nvidia-tesla-p100" 5}}
             "nodeD" {:cpus 0.0 :mem 0.0 :gpus {"nvidia-tesla-p100" 7}}}
            (api/get-capacity node-name->node "test-pool"))))
   (let [node-name->node {"nodeA" (tu/node-helper "nodeA" 1.0 100.0 2 "nvidia-tesla-p100" {:disk-amount 10000 :disk-type "standard"} nil)
                          "nodeB" (tu/node-helper "nodeB" 2.0 100.0 nil nil {:disk-amount 10000 :disk-type "pd-ssd"} nil)}]
     (is (= {"nodeA" {:cpus 1.0 :mem 100.0 :gpus {"nvidia-tesla-p100" 2} :disk {"standard" 10000.0}}
-            "nodeB" {:cpus 2.0 :mem 100.0 :gpus {} :disk {"pd-ssd" 10000.0}}}
+            "nodeB" {:cpus 2.0 :mem 100.0 :disk {"pd-ssd" 10000.0}}}
            (api/get-capacity node-name->node "test-pool")))))
 
 (defn assert-env-var-value
