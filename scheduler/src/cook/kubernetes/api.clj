@@ -533,6 +533,8 @@
                                     (->> resource-map
                                          (force-gpu-model-in-resource-map gpu-model)
                                          (force-disk-type-in-resource-map disk-type)))))
+                           ; remove nil resource-maps from collection before deep-merge-with
+                           (remove nil?)
                            (apply util/deep-merge-with +))))))
 
 ; see pod->synthesized-pod-state comment for container naming conventions
