@@ -460,7 +460,7 @@
   "Given a map from node-name->resource-type->capacity, set the gpus capacity to model->amount
   or remove the gpus resource type from the map if gpu-model is not provided"
   [gpu-model {:keys [gpus] :as resource-map}]
-  (if (and gpus gpu-model)
+  (if (and gpu-model (pos? gpus))
     (assoc resource-map :gpus {gpu-model gpus})
     (dissoc resource-map :gpus)))
 
