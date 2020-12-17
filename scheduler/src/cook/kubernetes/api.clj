@@ -512,9 +512,14 @@
                                                                           convert-resource-map))
                                                                 containers)
                                         resource-map (apply merge-with + container-requests)
+                                        (log/info "Resource map before adding gpu-model and/or disk-type: " resource-map)
                                         ^V1NodeSelector nodeSelector (some-> pod .getSpec .getNodeSelector)
                                         gpu-model (some-> nodeSelector (get "cloud.google.com/gke-accelerator"))
                                         disk-type (some-> nodeSelector (get (pool->disk-type-label-name pool-name)))]
+                                    (log/info "Resource map after adding gpu-model and/or disk-type: "
+                                              (->> resource-map
+                                                   (force-gpu-model-in-resource-map gpu-model)
+                                                   (force-disk-type-in-resource-map disk-type)))
                                     (->> resource-map
                                          (force-gpu-model-in-resource-map gpu-model)
                                          (force-disk-type-in-resource-map disk-type)))))

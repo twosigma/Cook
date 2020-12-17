@@ -209,6 +209,7 @@
                {:a {:b {:c 2 :d {:z 9} :z 3} :e 100}})
   -> {:a {:b {:z 3, :c 3, :d {:z 9, :x 1, :y 2}}, :e 103}, :f 4}"
   [f & maps]
+  (log/info "Maps that are being merged in deep-merge-with: " maps)
   (apply
     (fn m [& maps]
       (if (every? map? maps)
