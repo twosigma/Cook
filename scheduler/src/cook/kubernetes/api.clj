@@ -511,6 +511,16 @@
                                                                           .getRequests
                                                                           convert-resource-map))
                                                                 containers)
+                                        _ (log/info "Pod: " pod)
+                                        _ (log/info "Container resources: " (map (fn [^V1Container c]
+                                                                          (some-> c
+                                                                                  .getResources))
+                                                                        containers))
+                                        _ (log/info "Container requests: " (map (fn [^V1Container c]
+                                                                          (some-> c
+                                                                                  .getResources
+                                                                                  .getRequests))
+                                                                        containers))
                                         resource-map (apply merge-with + container-requests)
                                         _ (log/info "Resource map before adding gpu-model and/or disk-type: " resource-map)
                                         ^V1NodeSelector nodeSelector (some-> pod .getSpec .getNodeSelector)
