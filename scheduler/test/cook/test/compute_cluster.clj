@@ -17,7 +17,9 @@
   (:require [clojure.test :refer :all]
             [cook.compute-cluster :refer :all]
             [cook.config :as config]
-            [cook.test.testutil :refer [create-dummy-job-with-instances restore-fresh-database!]]
+            [cook.test.testutil :refer [create-dummy-job-with-instances
+                                        restore-fresh-database!
+                                        setup]]
             [datomic.api :as d]
             [cook.tools]
             [plumbing.core :refer [map-vals map-from-vals]])
@@ -29,14 +31,16 @@
                 :base-path "base-path"
                 :ca-cert "ca-cert"
                 :state :running
-                :state-locked? true}
+                :state-locked? true
+                :location "us-east1"}
         config-ent (compute-cluster-config->compute-cluster-config-ent config)
         _ (is (= {:compute-cluster-config/name "name"
                   :compute-cluster-config/base-path "base-path"
                   :compute-cluster-config/ca-cert "ca-cert"
                   :compute-cluster-config/state :compute-cluster-config.state/running
                   :compute-cluster-config/state-locked? true
-                  :compute-cluster-config/template "template"} config-ent))]
+                  :compute-cluster-config/template "template"
+                  :compute-cluster-config/location "us-east1"} config-ent))]
     (is (= config (compute-cluster-config-ent->compute-cluster-config config-ent)))))
 
 (deftest test-db-config-ents
@@ -78,7 +82,8 @@
                                                :base-path "base-path"
                                                :ca-cert "ca-cert"
                                                :state :running
-                                               :state-locked? false}}
+                                               :state-locked? false
+                                               :location "us-east1"}}
                  :state-atom (atom :deleted)
                  :state-locked?-atom (atom true)}]
     (is (= {:base-path "base-path"
@@ -86,7 +91,8 @@
             :name "name"
             :state :deleted
             :state-locked? true
-            :template "template"}
+            :template "template"
+            :location "us-east1"}
            (compute-cluster->compute-cluster-config cluster)))))
 
 (def sample-in-mem-config
@@ -95,7 +101,8 @@
            :name "name"
            :state :deleted
            :state-locked? true
-           :template "template"}})
+           :template "template"
+           :location "us-east1"}})
 
 (def sample-clusters
   {"name" {:name "name"
@@ -105,7 +112,8 @@
                                          :base-path "base-path"
                                          :ca-cert "ca-cert"
                                          :state :running
-                                         :state-locked? false}}
+                                         :state-locked? false
+                                         :location "us-east1"}}
            :state-atom (atom :deleted)
            :state-locked?-atom (atom true)
            :dynamic-cluster-config? true}
@@ -116,7 +124,8 @@
                                                   :base-path "base-path"
                                                   :ca-cert "ca-cert"
                                                   :state :running
-                                                  :state-locked? false}}}})
+                                                  :state-locked? false
+                                                  :location "us-east1"}}}})
 
 (deftest test-in-mem-configs
   (reset! cluster-name->compute-cluster-atom {})
@@ -155,7 +164,8 @@
                   :name "name"
                   :state :deleted
                   :state-locked? true
-                  :template "template"}} (compute-current-configs {} sample-in-mem-config))))
+                  :template "template"
+                  :location "us-east1"}} (compute-current-configs {} sample-in-mem-config))))
 
 (deftest test-get-job-instance-ids-for-cluster-name
   (let [uri "datomic:mem://test-compute-cluster-config"
@@ -233,7 +243,7 @@
       (testing "non-state change"
         (is (= {:cluster-name "name"
                 :differs? true
-                :reason "Attempting to change something other than state when force? is false. Diff is ({:a :a} {:a :b} {:name \"name\"})"
+                :reason "Attempting to change a comparable field when force? is false. Diff is ({:a :a} {:a :b} {:name \"name\"})"
                 :goal-config {:name "name" :a :b}
                 :valid? false} (compute-config-update nil {:name "name" :a :a} {:name "name" :a :b} false))))
 
@@ -545,14 +555,16 @@
                 :base-path "base-path"
                 :ca-cert "ca-cert"
                 :state :running
-                :state-locked? true})))
+                :state-locked? true
+                :location "us-east1"})))
       (is (= ["name"] @initialize-cluster-fn-invocations-atom))
       (is (= {"name" {:base-path "base-path"
                       :ca-cert "ca-cert"
                       :name "name"
                       :state :running
                       :state-locked? true
-                      :template "template1"}}
+                      :template "template1"
+                      :location "us-east1"}}
              (get-in-mem-configs))))
 
     (testing "exception"
@@ -585,7 +597,8 @@
                                     :base-path "base-path"
                                     :ca-cert "ca-cert"
                                     :state :running
-                                    :state-locked? true}
+                                    :state-locked? true
+                                    :location "us-east1"}
                                    :valid? true
                                    :differs? true
                                    :active? true})))
@@ -595,14 +608,16 @@
                   :name "name"
                   :state :running
                   :state-locked? true
-                  :template "template1"}
+                  :template "template1"
+                  :location "us-east1"}
                  (-> (get-db-config-ents (d/db conn)) (get "name") compute-cluster-config-ent->compute-cluster-config)))
           (is (= {"name" {:base-path "base-path"
                           :ca-cert "ca-cert"
                           :name "name"
                           :state :running
                           :state-locked? true
-                          :template "template1"}} (get-in-mem-configs))))
+                          :template "template1"
+                          :location "us-east1"}} (get-in-mem-configs))))
 
         (testing "normal update - differs? is false but cluster not in memory; cluster is created"
           ; no change update with missing cluster
@@ -617,7 +632,8 @@
                                     :base-path "base-path"
                                     :ca-cert "ca-cert"
                                     :state :running
-                                    :state-locked? true}
+                                    :state-locked? true
+                                    :location "us-east1"}
                                    :valid? true
                                    :differs? false
                                    :active? true})))
@@ -627,14 +643,16 @@
                   :name "name"
                   :state :running
                   :state-locked? true
-                  :template "template1"}
+                  :template "template1"
+                  :location "us-east1"}
                  (-> (get-db-config-ents (d/db conn)) (get "name") compute-cluster-config-ent->compute-cluster-config)))
           (is (= {"name" {:base-path "base-path"
                           :ca-cert "ca-cert"
                           :name "name"
                           :state :running
                           :state-locked? true
-                          :template "template1"}} (get-in-mem-configs)))))
+                          :template "template1"
+                          :location "us-east1"}} (get-in-mem-configs)))))
       (let [conn (restore-fresh-database! uri)]
         (testing "normal update - insert then update"
           (testing "insert"
@@ -649,7 +667,8 @@
                                                    :base-path "base-path"
                                                    :ca-cert "ca-cert"
                                                    :state :running
-                                                   :state-locked? true}
+                                                   :state-locked? true
+                                                   :location "us-east1"}
                                      :valid? true
                                      :differs? true
                                      :active? true})))
@@ -659,14 +678,16 @@
                     :name "name"
                     :state :running
                     :state-locked? true
-                    :template "template1"}
+                    :template "template1"
+                    :location "us-east1"}
                    (-> (get-db-config-ents (d/db conn)) (get "name") compute-cluster-config-ent->compute-cluster-config)))
             (is (= {"name" {:base-path "base-path"
                             :ca-cert "ca-cert"
                             :name "name"
                             :state :running
                             :state-locked? true
-                            :template "template1"}} (get-in-mem-configs))))
+                            :template "template1"
+                            :location "us-east1"}} (get-in-mem-configs))))
 
           (testing "update - state updates in db and in mem. base-path only updates in db"
             (is (= {:update-succeeded true}
@@ -687,14 +708,16 @@
                     :name "name"
                     :state :draining
                     :state-locked? true
-                    :template "template1"}
+                    :template "template1"
+                    :location "us-east1"}
                    (-> (get-db-config-ents (d/db conn)) (get "name") compute-cluster-config-ent->compute-cluster-config)))
             (is (= {"name" {:base-path "base-path"
                             :ca-cert "ca-cert"
                             :name "name"
                             :state :draining
                             :state-locked? true
-                            :template "template1"}} (get-in-mem-configs))))))
+                            :template "template1"
+                            :location "us-east1"}} (get-in-mem-configs))))))
       (let [conn (restore-fresh-database! uri)]
         (testing "exceptions"
           (reset! cluster-name->compute-cluster-atom {})
@@ -757,7 +780,7 @@
                               :ca-cert 1
                               :name "current"
                               :state :running}
-                :reason "Attempting to change something other than state when force? is false. Diff is ({:base-path 1, :a :b} {:base-path 2} {:ca-cert 1, :name \"current\"})"
+                :reason "Attempting to change a comparable field when force? is false. Diff is ({:base-path 1, :a :b} {:base-path 2} {:ca-cert 1, :name \"current\"})"
                 :update-result nil
                 :valid? false})
              (update-compute-cluster nil {:name "current" :state :running :ca-cert 1 :base-path 2} false))))
@@ -815,7 +838,7 @@
                {:active? true
                 :differs? true
                 :cluster-name "current"
-                :reason "Attempting to change something other than state when force? is false. Diff is ({:a :b} {:a :a} {:base-path 1, :ca-cert 1, :name \"current\"})"
+                :reason "Attempting to change a comparable field when force? is false. Diff is ({:a :b} {:a :a} {:base-path 1, :ca-cert 1, :name \"current\"})"
                 :update-result nil
                 :goal-config {:name "current"
                               :a :a
@@ -834,27 +857,31 @@
                                                     :compute-cluster-config/ca-cert "ca-cert"
                                                     :compute-cluster-config/state :compute-cluster-config.state/running
                                                     :compute-cluster-config/state-locked? true
-                                                    :compute-cluster-config/template "template"}})
+                                                    :compute-cluster-config/template "template"
+                                                    :compute-cluster-config/location "us-east1"}})
                 get-dynamic-clusters (constantly (->> [(sample-clusters "name")] (map-from-vals #(-> % :name))))]
     (is (= {:db-configs '({:base-path "base-path"
                            :ca-cert "ca-cert"
                            :name "name"
                            :state :running
                            :state-locked? true
-                           :template "template"})
+                           :template "template"
+                           :location "us-east1"})
             :in-mem-configs '({:base-path "base-path"
                                :ca-cert "ca-cert"
                                :name "name"
                                :state :deleted
                                :state-locked? true
                                :template "template"
+                               :location "us-east1"
                                :cluster-definition {:factory-fn cook.kubernetes.compute-cluster/factory-fn
                                                     :config {:base-path "base-path"
                                                              :ca-cert "ca-cert"
                                                              :name "name"
                                                              :state :running
                                                              :state-locked? false
-                                                             :template "template"}}})}
+                                                             :template "template"
+                                                             :location "us-east1"}}})}
            (get-compute-clusters nil)))))
 
 (deftest test-delete-compute-cluster
@@ -891,6 +918,7 @@
     (is (= {} (get-db-config-ents (d/db conn))))))
 
 (deftest simulate-startup
+  (setup)
   (let [uri "datomic:mem://test-compute-cluster-config"
         conn (restore-fresh-database! uri)
         new-cluster {:name "name"
@@ -898,14 +926,16 @@
                      :base-path "base-path"
                      :ca-cert "ca-cert"
                      :state :running
-                     :state-locked? true}
+                     :state-locked? true
+                     :location "us-east1"}
         ent (compute-cluster-config->compute-cluster-config-ent new-cluster)
         new-cluster-2 {:name "name-2"
                        :template "template1"
                        :base-path "base-path"
                        :ca-cert "ca-cert"
                        :state :deleted
-                       :state-locked? true}
+                       :state-locked? true
+                       :location "us-east1"}
         ent-2 (compute-cluster-config->compute-cluster-config-ent new-cluster-2)]
     (is (= {} (get-in-mem-configs)))
     (is (= {} (get-db-config-ents (d/db conn))))
@@ -926,7 +956,8 @@
                                 :name "name"
                                 :state :running
                                 :state-locked? true
-                                :template "template1"}
+                                :template "template1"
+                                :location "us-east1"}
                   :update-result {:update-succeeded true}
                   :valid? true}
                  {:active? false
@@ -937,7 +968,8 @@
                                 :name "name-2"
                                 :state :deleted
                                 :state-locked? true
-                                :template "template1"}
+                                :template "template1"
+                                :location "us-east1"}
                   :update-result {:update-succeeded true}
                   :valid? true}))
              (set (update-compute-clusters conn (get-db-configs (d/db conn)) false))))
@@ -947,5 +979,6 @@
                       :name "name"
                       :state :running
                       :state-locked? true
-                      :template "template1"}}
+                      :template "template1"
+                      :location "us-east1"}}
              (get-in-mem-configs))))))

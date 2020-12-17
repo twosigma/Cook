@@ -312,8 +312,7 @@
                      start-time (java.util.Date.)
                      task-id (str (str (UUID/randomUUID)))} :as cfg}]
 
-  (let [unittest-compute-cluster (setup-fake-test-compute-cluster conn)
-        id (d/tempid :db.part/user)
+  (let [id (d/tempid :db.part/user)
         val @(d/transact conn [(cond->
                                  {:db/id id
                                   :instance/executor-id executor-id
@@ -327,7 +326,8 @@
                                   :job/_instance job
                                   :instance/compute-cluster
                                   (cc/db-id
-                                    (or compute-cluster unittest-compute-cluster))}
+                                    (or compute-cluster
+                                        (setup-fake-test-compute-cluster conn)))}
                                  cancelled (assoc :instance/cancelled true)
                                  end-time (assoc :instance/end-time end-time)
                                  executor (assoc :instance/executor executor)
