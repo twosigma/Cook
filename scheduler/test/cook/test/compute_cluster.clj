@@ -165,7 +165,11 @@
                   :state :deleted
                   :state-locked? true
                   :template "template"
-                  :location "us-east1"}} (compute-current-configs {} sample-in-mem-config))))
+                  :location "us-east1"}} (compute-current-configs {} sample-in-mem-config)))
+  (is (= {:a {:location "us-east1"}}
+         (compute-current-configs
+           {:a {:location "us-east1"}}
+           {:a {}}))))
 
 (deftest test-get-job-instance-ids-for-cluster-name
   (let [uri "datomic:mem://test-compute-cluster-config"

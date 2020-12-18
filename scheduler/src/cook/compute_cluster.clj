@@ -285,10 +285,19 @@
                     "The cluster configuration will be added to the database on the next update."
                     {:cluster-name only-in-mem-key :cluster (current-in-mem-configs only-in-mem-key)})))
      (doseq [key both-keys]
-       (let [keys-to-keep-synced [:base-path :ca-cert :state :location]]
-         (when (not= (-> key current-db-configs (select-keys keys-to-keep-synced))
-                     (-> key current-in-mem-configs (select-keys keys-to-keep-synced)))
-           (log/error "Base path, CA cert, state, or location differ between in-memory and database cluster configurations."
+       (let [current-db-config
+             (get current-db-configs key)
+             {current-in-mem-location :location :as current-in-mem-config}
+             (get current-in-mem-configs key)
+             keys-to-keep-synced
+             (cond-> [:base-path :ca-cert :state]
+                     ; The location field is treated specially when comparing db and in-mem configs --
+                     ; since this is a new field, it can be nil in-memory and non-nil in the db for a
+                     ; limited time after the db has been populated and before the leader is restarted.
+                     current-in-mem-location (conj :location))]
+         (when (not= (select-keys current-db-config keys-to-keep-synced)
+                     (select-keys current-in-mem-config keys-to-keep-synced))
+           (log/error keys-to-keep-synced "differ between in-memory and database cluster configurations."
                       "Ensure that the database contains the correct configuration and then change leadership."
                       {:cluster-name key
                        :in-memory-cluster (current-in-mem-configs key)
