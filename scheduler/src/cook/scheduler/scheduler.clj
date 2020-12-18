@@ -973,16 +973,61 @@
                                        {:job-uuid->reserved-host (apply dissoc job-uuid->reserved-host matched-job-uuids)
                                         :launched-job-uuids (into matched-job-uuids launched-job-uuids)})))
 
+(defn job->preferred-compute-clusters
+  "Given a job and a collection of compute clusters, returns the
+  subset of compute clusters that the job would prefer to run
+  (and therefore, autoscale) on"
+  [{:keys [job/checkpoint job/instance]} compute-clusters]
+  (if (and checkpoint instance)
+    ; If checkpointing is enabled, we want to run the new instance in the
+    ; same location as the checkpointed instance to take advantage of data
+    ; locality for the checkpoint data
+    (let [{{:keys [compute-cluster/cluster-name]} :instance/compute-cluster}
+          (->> instance
+               (sort-by :instance/start-time)
+               last)
+          ; This is a list, but it should never
+          ; contain more than 1 compute cluster
+          previous-compute-clusters
+          (filter
+            (fn [{:keys [name]}]
+              (= name cluster-name))
+            compute-clusters)]
+      (if (seq previous-compute-clusters)
+        (let [previous-location
+              (-> previous-compute-clusters
+                  first
+                  :cluster-definition
+                  :config
+                  :location)]
+          (filter
+            (fn [{{{:keys [location]} :config} :cluster-definition}]
+              (= location previous-location))
+            compute-clusters))
+        ; If the previous instance's compute cluster name is not
+        ; present in the list of compute clusters passed, there's
+        ; not much we can do
+        compute-clusters))
+    compute-clusters))
+
 (defn distribute-jobs-to-compute-clusters
   "Given a collection of pending jobs and a collection of
   compute clusters, distributes the jobs amongst the compute
-  clusters, using a hash of the pending job's uuid. Returns a
-  compute-cluster->task-request map. That is the API any future
+  clusters, using job->preferred-compute-clusters preferences,
+  along with a hash of the pending job's uuid. Returns a
+  compute-cluster->jobs map. That is the API any future
   improvements need to stick to."
   [pending-jobs compute-clusters]
-  (group-by (fn [job]
-              (nth compute-clusters
-                   (-> job :job/uuid hash (mod (count compute-clusters)))))
+  (group-by (fn choose-compute-cluster-for-autoscaling
+              [{:keys [job/uuid] :as job}]
+              (let [preferred-compute-clusters
+                    (job->preferred-compute-clusters job compute-clusters)
+                    compute-clusters-to-consider
+                    (if (seq? preferred-compute-clusters)
+                      preferred-compute-clusters
+                      compute-clusters)]
+                (nth compute-clusters-to-consider
+                     (-> uuid hash (mod (count compute-clusters-to-consider))))))
             pending-jobs))
 
 (defn trigger-autoscaling!
