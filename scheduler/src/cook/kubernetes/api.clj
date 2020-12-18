@@ -959,10 +959,12 @@
       ; GKE nodes with GPUs have gpu-count label, so synthetic pods need a matching node selector
       (add-node-selector pod-spec "gpu-count" (-> gpus int str)))
     (when disk-request
-      (.putRequestsItem resources "ephemeral-storage" (double->quantity (* constraints/disk-multiplier disk-request)))
-      ; by default, do not set disk-limit
-      (when disk-limit
-        (.putLimitsItem resources "ephemeral-storage" (double->quantity (* constraints/disk-multiplier disk-limit))))
+      ; do not add disk request/limit to synthetic pod yaml
+      (when-not (synthetic-pod? pod-name)
+        (.putRequestsItem resources "ephemeral-storage" (double->quantity (* constraints/disk-multiplier disk-request)))
+        ; by default, do not set disk-limit
+        (when disk-limit
+          (.putLimitsItem resources "ephemeral-storage" (double->quantity (* constraints/disk-multiplier disk-limit)))))
       (add-node-selector pod-spec (pool->disk-type-label-name pool-name) disk-type))
     (.setResources container resources)
     (.setVolumeMounts container (filterv some? (conj (concat volume-mounts main-container-checkpoint-volume-mounts)
