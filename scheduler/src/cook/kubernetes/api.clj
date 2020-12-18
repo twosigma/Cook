@@ -511,29 +511,15 @@
                                                                           .getRequests
                                                                           convert-resource-map))
                                                                 containers)
-                                        _ (log/info "Pod: " pod)
-                                        _ (log/info "Container resources: " (map (fn [^V1Container c]
-                                                                          (some-> c
-                                                                                  .getResources))
-                                                                        containers))
-                                        _ (log/info "Container requests: " (map (fn [^V1Container c]
-                                                                          (some-> c
-                                                                                  .getResources
-                                                                                  .getRequests))
-                                                                        containers))
                                         resource-map (apply merge-with + container-requests)
-                                        _ (log/info "Resource map before adding gpu-model and/or disk-type: " resource-map)
                                         ^V1NodeSelector nodeSelector (some-> pod .getSpec .getNodeSelector)
                                         gpu-model (some-> nodeSelector (get "cloud.google.com/gke-accelerator"))
                                         disk-type (some-> nodeSelector (get (pool->disk-type-label-name pool-name)))]
-                                    (log/info "Resource map after adding gpu-model and/or disk-type: "
-                                              (->> resource-map
-                                                   (force-gpu-model-in-resource-map gpu-model)
-                                                   (force-disk-type-in-resource-map disk-type)))
                                     (->> resource-map
                                          (force-gpu-model-in-resource-map gpu-model)
                                          (force-disk-type-in-resource-map disk-type)))))
-                           ; remove nil resource-maps from collection before deep-merge-with
+                           ; remove nil resource-maps from collection before deep-merge-with because some pods do not
+                           ; have container resource requests, and deep-merge-with does not gracefully handle nil values
                            (remove nil?)
                            (apply util/deep-merge-with +))))))
 
@@ -959,7 +945,8 @@
       ; GKE nodes with GPUs have gpu-count label, so synthetic pods need a matching node selector
       (add-node-selector pod-spec "gpu-count" (-> gpus int str)))
     (when disk-request
-      ; do not add disk request/limit to synthetic pod yaml
+      ; do not add disk request/limit to synthetic pod yaml because GKE CA will not scale up from 0 if unschedulable pods
+      ; require ephemeral-storage: https://github.com/kubernetes/autoscaler/issues/1869
       (when-not (synthetic-pod? pod-name)
         (.putRequestsItem resources "ephemeral-storage" (double->quantity (* constraints/disk-multiplier disk-request)))
         ; by default, do not set disk-limit
