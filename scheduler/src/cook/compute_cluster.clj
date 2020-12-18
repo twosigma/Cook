@@ -339,11 +339,10 @@
     false))
 
 (defn config=?
-  "Returns true if we can consider current-config and
-  new-config to be equal. The location and state
-  fields are special in this regard -- location can
-  only transition from nil to non-nil, and state is
-  validated in cluster-state-change-valid?."
+  "Returns true if we can consider current-config and new-config to be equal.
+   The location and state fields are special in this regard -- location can
+   only transition from nil to non-nil, and state is validated in
+   cluster-state-change-valid?."
   [{current-location :location :as current-config}
    {new-location :location :as new-config}]
   (if (and (some? current-location)
