@@ -32,6 +32,7 @@
             [cook.rate-limit :as rate-limit]
             [cook.rest.api :as api]
             [cook.rest.impersonation :refer [create-impersonation-middleware]]
+            [cook.scheduler.constraints :as constraints]
             [cook.scheduler.scheduler :as sched]
             [cook.schema :as schema]
             [cook.tools :as util]
@@ -226,7 +227,7 @@
 
 (defn create-dummy-job
   "Return the entity id for the created dummy job."
-  [conn & {:keys [command committed? container custom-executor? datasets disable-mea-culpa-retries env executor gpus group
+  [conn & {:keys [command committed? container custom-executor? datasets disable-mea-culpa-retries env executor gpus disk group
                   job-state max-runtime memory name ncpus pool priority retry-count submit-time under-investigation user
                   uuid expected-runtime]
            :or {command "dummy command"
@@ -280,6 +281,20 @@
         job-info (if gpus
                    (update-in job-info [:job/resource] conj {:resource/type :resource.type/gpus
                                                              :resource/amount (double gpus)})
+                   job-info)
+        job-info (if disk
+                   (let [{:keys [request limit type]} disk
+                         disk-map {:resource/type :resource.type/disk
+                                   :resource.disk/request request}
+                         disk-map (reduce-kv
+                                    (fn [disk-map k v]
+                                      (if-not (nil? v)
+                                        (assoc disk-map k v)
+                                        disk-map))
+                                    disk-map
+                                    {:resource.disk/limit limit
+                                     :resource.disk/type type})]
+                     (update-in job-info [:job/resource] conj disk-map))
                    job-info)
         environment (when (seq env)
                       (mapcat (fn [[k v]]
@@ -501,9 +516,10 @@
   (let [pod (V1Pod.)
         metadata (V1ObjectMeta.)
         spec (V1PodSpec.)]
-    (doall (for [{:keys [mem cpus gpus gpu-model]} requests]
+    (doall (for [{:keys [mem cpus gpus gpu-model] {:keys [disk-request disk-limit disk-type] :as disk} :disk} requests]
              (let [container (V1Container.)
                    resources (V1ResourceRequirements.)]
+
                (when mem
                  (.putRequestsItem resources
                                    "memory"
@@ -521,6 +537,18 @@
                  (.putNodeSelectorItem spec
                                        "cloud.google.com/gke-accelerator"
                                        (or gpu-model "nvidia-tesla-p100")))
+               (when disk (.putRequestsItem resources
+                                            "ephemeral-storage"
+                                            (Quantity. (BigDecimal. (double (* constraints/disk-multiplier (or disk-request 10000))))
+                                                       Quantity$Format/DECIMAL_SI))
+                          (when disk-limit
+                            (.putLimitsItem resources
+                                            "ephemeral-storage"
+                                            (Quantity. (BigDecimal. (double (* constraints/disk-multiplier disk-limit)))
+                                                       Quantity$Format/DECIMAL_SI)))
+                          (.putNodeSelectorItem spec
+                                                "cloud.google.com/gke-boot-disk"
+                                                (or disk-type "standard")))
                (.setResources container resources)
                (.addContainersItem spec container))))
     (.setNodeName spec node-name)
@@ -542,7 +570,7 @@
         (.addTolerationsItem (kapi/toleration-for-pool "cook-pool-taint-A" "prefix" pool-name)))
     outstanding-synthetic-pod))
 
-(defn node-helper [node-name cpus mem gpus gpu-model pool]
+(defn node-helper [node-name cpus mem gpus gpu-model {:keys [disk-amount disk-type] :as disk} pool]
   "Make a fake node for kubernetes unit tests"
   (let [node (V1Node.)
         status (V1NodeStatus.)
@@ -564,7 +592,12 @@
       (.putAllocatableItem status "nvidia.com/gpu" (Quantity. (BigDecimal. gpus)
                                                               Quantity$Format/DECIMAL_SI))
       (.putLabelsItem metadata "gpu-type" (or gpu-model "nvidia-tesla-p100")))
-
+    (when disk
+      (.putCapacityItem status "ephemeral-storage" (Quantity. (BigDecimal. (double (* constraints/disk-multiplier disk-amount)))
+                                                              Quantity$Format/DECIMAL_SI))
+      (.putAllocatableItem status "ephemeral-storage" (Quantity. (BigDecimal. (double (* constraints/disk-multiplier disk-amount)))
+                                                      Quantity$Format/DECIMAL_SI))
+      (.putLabelsItem metadata "cloud.google.com/gke-boot-disk" (or disk-type "standard")))
     (.setUnschedulable spec false)
     (when pool
       (let [^V1Taint taint (V1Taint.)]

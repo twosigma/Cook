@@ -47,17 +47,17 @@
   [node-name->resource-map resource-keyword]
   (->> node-name->resource-map vals (map resource-keyword) (filter some?) (reduce +)))
 
-(defn total-gpu-resource
+(defn total-map-resource
   "Given a map from node-name->resource-keyword->amount,
-  returns a map from gpu model to count for all nodes."
-  [node-name->resource-map]
-  (->> node-name->resource-map vals (map :gpus) (apply merge-with +)))
+  returns a map from model/type to count for all nodes."
+  [node-name->resource-map resource-keyword]
+  (->> node-name->resource-map vals (map resource-keyword) (apply merge-with +)))
 
 (defn generate-offers
   "Given a compute cluster and maps with node capacity and existing pods, return a map from pool to offers."
-  [compute-cluster node-name->node node-name->pods]
+  [compute-cluster node-name->node node-name->pods pool-name]
   (let [compute-cluster-name (cc/compute-cluster-name compute-cluster)
-        node-name->capacity (api/get-capacity node-name->node)
+        node-name->capacity (api/get-capacity node-name->node pool-name)
         ; node-name->node map, used to calculate node-name->capacity includes nodes from the one pool,
         ; gotten via the pools->node-name->node map.
         ;
@@ -71,15 +71,22 @@
         ; If we have consumption calculation on a node that doesn't have a capacity calculated, there's not not much
         ; point in further computation on it. We won't make an offer in any case. So we filter them out.
         ; This also cleanly avoids the logged ERROR.
-        node-name->consumed (->> (api/get-consumption node-name->pods)
+        node-name->consumed (->> (api/get-consumption node-name->pods pool-name)
                                  (filter #(node-name->capacity (first %)))
                                  (into {}))
         node-name->available (util/deep-merge-with - node-name->capacity node-name->consumed)
         ; Grab every unique GPU model being represented so that we can set counters for capacity and consumed for each GPU model
         gpu-models (->> node-name->capacity vals (map :gpus) (apply merge) keys set)
         ; The following variables are only being used setting counters for monitor
-        gpu-model->total-capacity (total-gpu-resource node-name->capacity)
-        gpu-model->total-consumed (total-gpu-resource node-name->consumed)
+        gpu-model->total-capacity (total-map-resource node-name->capacity :gpus)
+        gpu-model->total-consumed (total-map-resource node-name->consumed :gpus)
+
+        ; Grab every unique disk type being represented to set counters for capacity and consumed for each disk type
+        disk-types (->> node-name->capacity vals (map :disk) (apply merge) keys set)
+        ; The following disk variables are only being used to set counters for monitor
+        disk-type->total-capacity (total-map-resource node-name->capacity :disk)
+        disk-type->total-consumed (total-map-resource node-name->consumed :disk)
+
         node-name->schedulable (filter #(schedulable-node-filter compute-cluster
                                           node-name->node
                                           node-name->pods
@@ -109,6 +116,11 @@
                             (get gpu-model->total-capacity gpu-model))
       (monitor/set-counter! (metrics/counter (str "consumption-gpu-" gpu-model) compute-cluster-name)
                             (get gpu-model->total-consumed gpu-model 0)))
+    (doseq [disk-type disk-types]
+      (monitor/set-counter! (metrics/counter (str "capacity-disk-" disk-type) compute-cluster-name)
+                            (get disk-type->total-capacity disk-type))
+      (monitor/set-counter! (metrics/counter (str "consumption-disk-" disk-type) compute-cluster-name)
+                            (get disk-type->total-consumed disk-type 0)))
 
 
     (->> node-name->schedulable
@@ -133,8 +145,8 @@
                    :hostname node-name
                    :resources [{:name "mem" :type :value-scalar :scalar (max 0.0 (:mem available))}
                                {:name "cpus" :type :value-scalar :scalar (max 0.0 (:cpus available))}
-                               {:name "disk" :type :value-scalar :scalar 0.0}
-                               {:name "gpus" :type :value-text->scalar :text->scalar (:gpus available)}]
+                               {:name "disk" :type :value-text->scalar :text->scalar (:disk available {})}
+                               {:name "gpus" :type :value-text->scalar :text->scalar (:gpus available {})}]
                    :attributes (conj node-label-attributes
                                      {:name "compute-cluster-type"
                                       :type :value-text
@@ -396,7 +408,8 @@
                     offers-this-pool (generate-offers this (or node-name->node {})
                                                       (->> (get-pods-in-pool this pool-name)
                                                            (add-starting-pods this)
-                                                           (api/pods->node-name->pods)))
+                                                           (api/pods->node-name->pods))
+                                                      pool-name)
                     offers-this-pool-for-logging
                     (->> offers-this-pool
                          (take 10)

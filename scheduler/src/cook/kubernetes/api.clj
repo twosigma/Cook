@@ -7,6 +7,7 @@
             [cook.config :as config]
             [cook.kubernetes.metrics :as metrics]
             [cook.pool :as pool]
+            [cook.regexp-tools :as regexp-tools]
             [cook.scheduler.constraints :as constraints]
             [cook.task :as task]
             [cook.tools :as tools]
@@ -392,18 +393,23 @@
   (-> q .getNumber .intValue))
 
 (defn convert-resource-map
-  "Converts a map of Kubernetes resources to a cook resource map {:mem double, :cpus double, :gpus double}"
+  "Converts a map of Kubernetes resources to a cook resource map {:mem double, :cpus double, :gpus double, :disk double}"
   [m]
-  {:mem (if (get m "memory")
-          (-> m (get "memory") to-double (/ memory-multiplier))
-          0.0)
-   :cpus (if (get m "cpu")
-           (-> m (get "cpu") to-double)
-           0.0)
-   ; Assumes that each Kubernetes node and each pod only contains one type of GPU model
-   :gpus (if-let [gpu-count (get m "nvidia.com/gpu")]
-           (to-int gpu-count)
-           0)})
+  (let [res-map
+        {:mem (if (get m "memory")
+                (-> m (get "memory") to-double (/ memory-multiplier))
+                0.0)
+         :cpus (if (get m "cpu")
+                 (-> m (get "cpu") to-double)
+                 0.0)
+         ; Assumes that each Kubernetes node and each pod only contains one type of GPU model
+         :gpus (if-let [gpu-count (get m "nvidia.com/gpu")]
+                 (to-int gpu-count)
+                 0)}]
+    ; Only add disk to the resource map if pods are using disk
+    (if (get m "ephemeral-storage")
+      (assoc res-map :disk (-> m (get "ephemeral-storage") to-double (/ constraints/disk-multiplier)))
+      res-map)))
 
 (defn pods->node-name->pods
   "Given a seq of pods, create a map of node names to pods"
@@ -450,23 +456,41 @@
                                                 false)
         :else true))))
 
-(defn add-gpu-model-to-resource-map
-  "Given a map from node-name->resource-type->capacity, perform the following operation:
-  - if the amount of gpus on the node is positive, set the gpus capacity to model->count
-  - if the amount of gpus on the node is 0, set the gpus capacity to an empty map"
+(defn force-gpu-model-in-resource-map
+  "Given a map from node-name->resource-type->capacity, set the gpus capacity to model->amount
+  or remove the gpus resource type from the map if gpu-model is not provided"
   [gpu-model {:keys [gpus] :as resource-map}]
-  (let [gpu-model->count (if (and gpu-model (pos? gpus))
-                           {gpu-model gpus}
-                           {})]
-    (assoc resource-map :gpus gpu-model->count)))
+  (if (and gpu-model (pos? gpus))
+    (assoc resource-map :gpus {gpu-model gpus})
+    (dissoc resource-map :gpus)))
+
+(defn pool->disk-type-label-name
+  "Given a pool name, get the disk-type-label-name that will be used as a nodeSelector label"
+  [pool-name]
+  (regexp-tools/match-based-on-pool-name
+    (config/disk)
+    pool-name
+    :disk-node-label
+    :default-value "cloud.google.com/gke-boot-disk"))
+
+(defn force-disk-type-in-resource-map
+  "Given a map from node-name->resource-type->capacity, set the disk capacity to type->amount
+  or remove the disk resource type from the map if disk-type is not provided"
+  [disk-type {:keys [disk] :as resource-map}]
+  (if (and disk disk-type)
+    (assoc resource-map :disk {disk-type disk})
+    (dissoc resource-map :disk)))
 
 (defn get-capacity
   "Given a map from node-name to node, generate a map from node-name->resource-type-><capacity>"
-  [node-name->node]
+  [node-name->node pool-name]
   (pc/map-vals (fn [^V1Node node]
                  (let [resource-map (some-> node .getStatus .getAllocatable convert-resource-map)
-                       gpu-model (some-> node .getMetadata .getLabels (get "gpu-type"))]
-                   (add-gpu-model-to-resource-map gpu-model resource-map)))
+                       gpu-model (some-> node .getMetadata .getLabels (get "gpu-type"))
+                       disk-type (some-> node .getMetadata .getLabels (get (pool->disk-type-label-name pool-name)))]
+                   (->> resource-map
+                        (force-gpu-model-in-resource-map gpu-model)
+                        (force-disk-type-in-resource-map disk-type))))
                node-name->node))
 
 (defn get-consumption
@@ -474,7 +498,7 @@
   Ignores pods that do not have an assigned node.
   When accounting for resources, we use resource requests to determine how much is used, not limits.
   See https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/#resource-requests-and-limits-of-pod-and-container"
-  [node-name->pods]
+  [node-name->pods pool-name]
   (->> node-name->pods
        (filter first) ; Keep those with non-nil node names.
        (pc/map-vals (fn [pods]
@@ -488,8 +512,15 @@
                                                                           convert-resource-map))
                                                                 containers)
                                         resource-map (apply merge-with + container-requests)
-                                        gpu-model (some-> pod .getSpec .getNodeSelector (get "cloud.google.com/gke-accelerator"))]
-                                    (add-gpu-model-to-resource-map gpu-model resource-map))))
+                                        ^V1NodeSelector nodeSelector (some-> pod .getSpec .getNodeSelector)
+                                        gpu-model (some-> nodeSelector (get "cloud.google.com/gke-accelerator"))
+                                        disk-type (some-> nodeSelector (get (pool->disk-type-label-name pool-name)))]
+                                    (->> resource-map
+                                         (force-gpu-model-in-resource-map gpu-model)
+                                         (force-disk-type-in-resource-map disk-type)))))
+                           ; remove nil resource-maps from collection before deep-merge-with because some pods do not
+                           ; have container resource requests, and deep-merge-with does not gracefully handle nil values
+                           (remove nil?)
                            (apply util/deep-merge-with +))))))
 
 ; see pod->synthesized-pod-state comment for container naming conventions
@@ -810,6 +841,15 @@
         ; gpu count is not stored in scalar-requests because Fenzo does not handle gpus in binpacking
         gpus (or (:gpus resources) 0)
         gpu-model-requested (constraints/job->gpu-model-requested gpus job pool-name)
+        ; if disk config for pool has enable-constraint? set to true, add disk info to the job
+        enable-disk-constraint? (regexp-tools/match-based-on-pool-name (config/disk) pool-name :enable-constraint? :default-value false)
+        ; if user did not specify disk request, use default on pool
+        disk-request (when enable-disk-constraint?
+                       (constraints/job-resources->disk-request resources pool-name))
+        disk-limit (when enable-disk-constraint? (-> resources :disk :limit))
+        ; if user did not specify disk type, use default on pool
+        disk-type (when enable-disk-constraint? (constraints/job-resources->disk-type resources pool-name))
+
         pod (V1Pod.)
         pod-spec (V1PodSpec.)
         metadata (V1ObjectMeta.)
@@ -904,6 +944,15 @@
       (add-node-selector pod-spec "cloud.google.com/gke-accelerator" gpu-model-requested)
       ; GKE nodes with GPUs have gpu-count label, so synthetic pods need a matching node selector
       (add-node-selector pod-spec "gpu-count" (-> gpus int str)))
+    (when disk-request
+      ; do not add disk request/limit to synthetic pod yaml because GKE CA will not scale up from 0 if unschedulable pods
+      ; require ephemeral-storage: https://github.com/kubernetes/autoscaler/issues/1869
+      (when-not (synthetic-pod? pod-name)
+        (.putRequestsItem resources "ephemeral-storage" (double->quantity (* constraints/disk-multiplier disk-request)))
+        ; by default, do not set disk-limit
+        (when disk-limit
+          (.putLimitsItem resources "ephemeral-storage" (double->quantity (* constraints/disk-multiplier disk-limit)))))
+      (add-node-selector pod-spec (pool->disk-type-label-name pool-name) disk-type))
     (.setResources container resources)
     (.setVolumeMounts container (filterv some? (conj (concat volume-mounts main-container-checkpoint-volume-mounts)
                                                      (init-container-workdir-volume-mount-fn true)
