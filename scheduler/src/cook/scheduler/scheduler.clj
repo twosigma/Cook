@@ -986,24 +986,19 @@
           (->> instance
                (sort-by :instance/start-time)
                last)
-          ; This is a list, but it should never
-          ; contain more than 1 compute cluster
-          previous-compute-clusters
-          (filter
-            (fn [{:keys [name]}]
-              (= name cluster-name))
-            compute-clusters)]
-      (if (seq previous-compute-clusters)
-        (let [previous-location
-              (-> previous-compute-clusters
-                  first
-                  :cluster-definition
-                  :config
-                  :location)]
-          (filter
-            (fn [{{{:keys [location]} :config} :cluster-definition}]
-              (= location previous-location))
-            compute-clusters))
+          compute-cluster->location
+          #(-> %
+               :cluster-definition
+               :config
+               :location)]
+      (if-let [previous-location
+               (->> compute-clusters
+                    (filter #(= (:name %) cluster-name))
+                    first
+                    compute-cluster->location)]
+        (filter
+          #(= (compute-cluster->location %) previous-location)
+          compute-clusters)
         ; If the previous instance's compute cluster name is not
         ; present in the list of compute clusters passed, there's
         ; not much we can do
@@ -1021,13 +1016,9 @@
   (group-by (fn choose-compute-cluster-for-autoscaling
               [{:keys [job/uuid] :as job}]
               (let [preferred-compute-clusters
-                    (job->preferred-compute-clusters job compute-clusters)
-                    compute-clusters-to-consider
-                    (if (seq? preferred-compute-clusters)
-                      preferred-compute-clusters
-                      compute-clusters)]
-                (nth compute-clusters-to-consider
-                     (-> uuid hash (mod (count compute-clusters-to-consider))))))
+                    (job->preferred-compute-clusters job compute-clusters)]
+                (nth preferred-compute-clusters
+                     (-> uuid hash (mod (count preferred-compute-clusters))))))
             pending-jobs))
 
 (defn trigger-autoscaling!
