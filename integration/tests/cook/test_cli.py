@@ -1309,6 +1309,37 @@ if __name__ == '__main__':
                 self.assertIn("Disk Limit", cli.stdout(cp))
                 self.assertIn("Disk Type", cli.stdout(cp))
 
+    def test_submit_with_disk(self):
+        settings_dict = util.settings(self.cook_url)
+        # disk_config_list is a list of regexp's with pool regex, valid disk types, default disk type, and max requestable size of disk
+        disk_config_list = settings_dict.get("pools", {}).get("disk", [])
+        if not disk_config_list:
+            self.skipTest("There are no pools that support disk")
+
+        # Disk may not be configured for COOK_TEST_DEFAULT_POOL, so we iterate over all active pools to find a pool where we can run this test.
+        active_pools, _ = util.active_pools(self.cook_url)
+        for pool in active_pools:
+            pool_name = pool['name']
+            matching_disk_types = [ii["valid-types"] for ii in disk_config_list if
+                                   re.match(ii["pool-regex"], pool_name)]
+            if len(matching_disk_types) == 0:
+                self.logger.info(f'There are no disk types configured for pool {pool_name}')
+            else:
+                # Job with disk request, limit, and type
+                cp, uuids = cli.submit('ls', self.cook_url,
+                                       submit_flags=f'--pool {pool_name} --disk-request 10240 --disk-limit 20480 --disk-type "standard"')
+                self.assertEqual(0, cp.returncode, cp.stderr)
+
+                # Job with disk request only
+                cp, uuids = cli.submit('ls', self.cook_url,
+                                       submit_flags=f'--pool {pool_name} --disk-request 10240')
+                self.assertEqual(0, cp.returncode, cp.stderr)
+
+                # Job with disk request and limit
+                cp, uuids = cli.submit('ls', self.cook_url,
+                                       submit_flags=f'--pool {pool_name} --disk-request 10240 --disk-limit 20480')
+                self.assertEqual(0, cp.returncode, cp.stderr)
+
     def test_submit_with_executor(self):
         cp, uuids = cli.submit('ls', self.cook_url, submit_flags='--executor cook')
         self.assertEqual(0, cp.returncode, cp.stderr)
