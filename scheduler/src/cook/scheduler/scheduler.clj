@@ -101,7 +101,8 @@
                           {"HOSTNAME" hostname}
                           compute-cluster
                           (assoc "COOK_MAX_TASKS_PER_HOST" (cc/max-tasks-per-host compute-cluster)
-                                 "COOK_NUM_TASKS_ON_HOST" (cc/num-tasks-on-host compute-cluster hostname)))]
+                                 "COOK_NUM_TASKS_ON_HOST" (cc/num-tasks-on-host compute-cluster hostname)
+                                 "COOK_COMPUTE_CLUSTER_LOCATION" (cc/compute-cluster->location compute-cluster)))]
     (merge offer-resources offer-attributes cook-attributes)))
 
 (timers/deftimer [cook-mesos scheduler handle-status-update-duration])
@@ -980,36 +981,18 @@
   subset of compute clusters that the job would accept running
   (and therefore, autoscaling) on. Note that this can return an
   empty collection if no compute cluster is deemed acceptable."
-  [{:keys [job/checkpoint job/instance]} compute-clusters]
-  (if (and checkpoint instance)
-    ; If checkpointing is enabled, we want to run the new instance in the
-    ; same location as the checkpointed instance to take advantage of data
-    ; locality for the checkpoint data
-    (let [{{:keys [compute-cluster/cluster-name]} :instance/compute-cluster}
-          (->> instance
-               (sort-by :instance/start-time)
-               last)
-          compute-cluster->location
-          #(-> %
-               :cluster-definition
-               :config
-               :location)]
-      (if-let [previous-location
-               (-> @cook.compute-cluster/cluster-name->compute-cluster-atom
-                   (get cluster-name)
-                   compute-cluster->location)]
-        ; We assume here that the number of compute clusters is small
-        ; (~10 or less); otherwise, we'd optimize this by pre-computing
-        ; the map of location -> (compute clusters in that location) and
-        ; passing that pre-computed map into this function
-        (filter
-          #(= (compute-cluster->location %)
-              previous-location)
-          compute-clusters)
-        ; If the previous instance's compute cluster name is not
-        ; present in the dictionary of compute clusters, there's
-        ; not much we can do
-        compute-clusters))
+  [job compute-clusters]
+  (if-let [previous-location (constraints/job->last-checkpoint-location job)]
+    ; We assume here that the number of compute clusters is small
+    ; (~10 or less); otherwise, we'd optimize this by pre-computing
+    ; the map of location -> (compute clusters in that location) and
+    ; passing that pre-computed map into this function
+    (filter
+      #(= (cc/compute-cluster->location %)
+          previous-location)
+      compute-clusters)
+    ; If job->last-checkpoint-location returns nil, then we can
+    ; consider all of the passed compute clusters to be acceptable
     compute-clusters))
 
 (defn distribute-jobs-to-compute-clusters

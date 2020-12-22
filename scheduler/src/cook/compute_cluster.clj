@@ -574,3 +574,11 @@
 
 (def dummy-cluster-configurations-fn-memo
   (memoize dummy-cluster-configurations-fn))
+
+(defn compute-cluster->location
+  "Given a compute cluster, returns its location"
+  [compute-cluster]
+  (-> compute-cluster
+      :cluster-definition
+      :config
+      :location))

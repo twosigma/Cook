@@ -20,6 +20,7 @@
             [clojure.set :as set]
             [clojure.tools.logging :as log]
             [cook.cached-queries :as cached-queries]
+            [cook.compute-cluster :as cc]
             [cook.config :as config]
             [cook.group :as group]
             [cook.rate-limit :as ratelimit]
@@ -196,6 +197,47 @@
             job-disk-type (when job-disk-request
                             (job-resources->disk-type (util/job-ent->resources job) pool-name))]
         (->disk-host-constraint job-disk-request job-disk-type)))))
+
+(defn job->last-checkpoint-location
+  "Given a job, returns the compute cluster location of the most recent
+  instance, if the job had checkpointing enabled and has at least once
+  instance. If the previous instance's compute cluster name is not present
+  in the dictionary of compute clusters, if the job doesn't have
+  checkpointing enabled, or if there simply isn't a previous instance,
+  returns nil."
+  [{:keys [job/checkpoint job/instance]}]
+  (when (and checkpoint instance)
+    (let [{{:keys [compute-cluster/cluster-name]} :instance/compute-cluster}
+          (->> instance
+               (sort-by :instance/start-time)
+               last)]
+      (-> @cc/cluster-name->compute-cluster-atom
+          (get cluster-name)
+          cc/compute-cluster->location))))
+
+(defrecord checkpoint-locality-constraint [job-last-checkpoint-location]
+  JobConstraint
+  (job-constraint-name [this]
+    (get-class-name this))
+
+  (job-constraint-evaluate
+    [this _ vm-attributes]
+    (job-constraint-evaluate this nil vm-attributes []))
+
+  (job-constraint-evaluate
+    [_ _ vm-attributes _]
+    (if (= (get vm-attributes
+                "COOK_COMPUTE_CLUSTER_LOCATION")
+           job-last-checkpoint-location)
+      [true nil]
+      [false "Host is in different location than last checkpoint"])))
+
+(defn build-checkpoint-locality-constraint
+  "Given a job, returns a corresponding checkpoint
+  locality constraint, or nil if not applicable."
+  [job]
+  (when-let [location (job->last-checkpoint-location job)]
+    (->checkpoint-locality-constraint location)))
 
 (defrecord rebalancer-reservation-constraint [reserved-hosts]
   JobConstraint
@@ -391,7 +433,13 @@
             true
             ""))))))
 
-(def job-constraint-constructors [build-novel-host-constraint build-gpu-host-constraint build-disk-host-constraint build-user-defined-constraint build-estimated-completion-constraint build-data-locality-constraint])
+(def job-constraint-constructors [build-novel-host-constraint
+                                  build-gpu-host-constraint
+                                  build-disk-host-constraint
+                                  build-user-defined-constraint
+                                  build-estimated-completion-constraint
+                                  build-data-locality-constraint
+                                  build-checkpoint-locality-constraint])
 
 (defn fenzoize-job-constraint
   "Makes the JobConstraint 'constraint' Fenzo-compatible."
