@@ -973,10 +973,11 @@
                                        {:job-uuid->reserved-host (apply dissoc job-uuid->reserved-host matched-job-uuids)
                                         :launched-job-uuids (into matched-job-uuids launched-job-uuids)})))
 
-(defn job->preferred-compute-clusters
+(defn job->acceptable-compute-clusters
   "Given a job and a collection of compute clusters, returns the
-  subset of compute clusters that the job would prefer to run
-  (and therefore, autoscale) on"
+  subset of compute clusters that the job would accept running
+  (and therefore, autoscaling) on. Note that this can return an
+  empty collection if no compute cluster is deemed acceptable."
   [{:keys [job/checkpoint job/instance]} compute-clusters]
   (if (and checkpoint instance)
     ; If checkpointing is enabled, we want to run the new instance in the
@@ -992,15 +993,19 @@
                :config
                :location)]
       (if-let [previous-location
-               (->> compute-clusters
-                    (filter #(= (:name %) cluster-name))
-                    first
-                    compute-cluster->location)]
+               (-> @cook.compute-cluster/cluster-name->compute-cluster-atom
+                   (get cluster-name)
+                   compute-cluster->location)]
+        ; We assume here that the number of compute clusters is small
+        ; (~10 or less); otherwise, we'd optimize this by pre-computing
+        ; the map of location -> (compute clusters in that location) and
+        ; passing that pre-computed map into this function
         (filter
-          #(= (compute-cluster->location %) previous-location)
+          #(= (compute-cluster->location %)
+              previous-location)
           compute-clusters)
         ; If the previous instance's compute cluster name is not
-        ; present in the list of compute clusters passed, there's
+        ; present in the dictionary of compute clusters, there's
         ; not much we can do
         compute-clusters))
     compute-clusters))
@@ -1008,18 +1013,27 @@
 (defn distribute-jobs-to-compute-clusters
   "Given a collection of pending jobs and a collection of
   compute clusters, distributes the jobs amongst the compute
-  clusters, using job->preferred-compute-clusters preferences,
+  clusters, using job->acceptable-compute-clusters preferences,
   along with a hash of the pending job's uuid. Returns a
   compute-cluster->jobs map. That is the API any future
   improvements need to stick to."
-  [pending-jobs compute-clusters]
-  (group-by (fn choose-compute-cluster-for-autoscaling
-              [{:keys [job/uuid] :as job}]
-              (let [preferred-compute-clusters
-                    (job->preferred-compute-clusters job compute-clusters)]
+  [pending-jobs pool-name compute-clusters]
+  (let [compute-cluster->jobs
+        (group-by
+          (fn choose-compute-cluster-for-autoscaling
+            [{:keys [job/uuid] :as job}]
+            (let [preferred-compute-clusters
+                  (job->acceptable-compute-clusters job compute-clusters)]
+              (if (empty? preferred-compute-clusters)
+                :no-acceptable-compute-cluster
                 (nth preferred-compute-clusters
-                     (-> uuid hash (mod (count preferred-compute-clusters))))))
-            pending-jobs))
+                     (-> uuid hash (mod (count preferred-compute-clusters)))))))
+          pending-jobs)]
+    (when-let [jobs (:no-acceptable-compute-cluster compute-cluster->jobs)]
+      (log/info "In" pool-name
+                "pool, there are jobs with no acceptable compute cluster for autoscaling"
+                {:first-10-jobs (take 10 jobs)}))
+    (dissoc compute-cluster->jobs :no-acceptable-compute-cluster)))
 
 (defn trigger-autoscaling!
   "Autoscales the given pool to satisfy the given pending jobs, if:
@@ -1033,7 +1047,7 @@
             num-autoscaling-compute-clusters (count autoscaling-compute-clusters)]
         (when (and (pos? num-autoscaling-compute-clusters) (seq pending-jobs))
           (let [compute-cluster->jobs (distribute-jobs-to-compute-clusters
-                                        pending-jobs autoscaling-compute-clusters)]
+                                        pending-jobs pool-name autoscaling-compute-clusters)]
             (log/info "In" pool-name "pool, starting autoscaling")
             (doseq [[compute-cluster jobs-for-cluster] compute-cluster->jobs]
               (cc/autoscale! compute-cluster pool-name jobs-for-cluster adjust-job-resources-for-pool-fn))
