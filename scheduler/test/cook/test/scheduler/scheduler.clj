@@ -2350,3 +2350,86 @@
               {:job/resource [{:resource/type :cpus :resource/amount 2.3}
                               {:resource/type :mem :resource/amount 45}
                               {:resource/type :disk :resource.disk/request 50 :resource.disk/limit 100}]}])))))
+
+(let [compute-cluster-1-name "test-compute-cluster-1"
+      compute-cluster-2-name "test-compute-cluster-2"
+      compute-cluster-3-name "test-compute-cluster-3"
+      location-a "test-location-a"
+      location-b "test-location-b"
+      compute-cluster-1 {:cluster-definition
+                         {:config {:location location-a}}
+                         :name compute-cluster-1-name}
+      compute-cluster-2 {:cluster-definition
+                         {:config {:location location-b}}
+                         :name compute-cluster-2-name}
+      compute-cluster-3 {:cluster-definition
+                         {:config {:location location-a}}
+                         :name compute-cluster-3-name}
+      instance-first {:instance/compute-cluster
+                      {:compute-cluster/cluster-name
+                       compute-cluster-2-name}
+                      :instance/start-time 1}
+      instance-second {:instance/compute-cluster
+                       {:compute-cluster/cluster-name
+                        compute-cluster-1-name}
+                       :instance/start-time 2}
+      instances [instance-second instance-first]]
+
+  (deftest test-job->preferred-compute-clusters
+    (reset! cook.compute-cluster/cluster-name->compute-cluster-atom
+            {compute-cluster-1-name compute-cluster-1
+             compute-cluster-2-name compute-cluster-2
+             compute-cluster-3-name compute-cluster-3})
+    (is (= [compute-cluster-1
+            compute-cluster-3]
+           (sched/job->acceptable-compute-clusters
+             {:job/checkpoint true
+              :job/instance instances}
+             [compute-cluster-1
+              compute-cluster-2
+              compute-cluster-3])))
+    (is (= [compute-cluster-2]
+           (sched/job->acceptable-compute-clusters
+             {:job/checkpoint true
+              :job/instance [instance-first]}
+             [compute-cluster-1
+              compute-cluster-2
+              compute-cluster-3])))
+    (is (= [compute-cluster-1
+            compute-cluster-2
+            compute-cluster-3]
+           (sched/job->acceptable-compute-clusters
+             {:job/checkpoint true
+              :job/instance []}
+             [compute-cluster-1
+              compute-cluster-2
+              compute-cluster-3])))
+    (is (= [compute-cluster-1
+            compute-cluster-2
+            compute-cluster-3]
+           (sched/job->acceptable-compute-clusters
+             {:job/checkpoint false
+              :job/instance instances}
+             [compute-cluster-1
+              compute-cluster-2
+              compute-cluster-3]))))
+
+  (deftest test-distribute-jobs-to-compute-clusters
+    (reset! cook.compute-cluster/cluster-name->compute-cluster-atom
+            {compute-cluster-1-name compute-cluster-1
+             compute-cluster-2-name compute-cluster-2
+             compute-cluster-3-name compute-cluster-3})
+    (let [job {:job/checkpoint true
+               :job/instance instances}]
+      (is (= {compute-cluster-1 [job]}
+             (sched/distribute-jobs-to-compute-clusters
+               [job]
+               "test-pool"
+               [compute-cluster-1
+                compute-cluster-2
+                compute-cluster-3])))
+      (is (= {}
+             (sched/distribute-jobs-to-compute-clusters
+               [job]
+               "test-pool"
+               [compute-cluster-2]))))))
