@@ -410,6 +410,12 @@
     (is (= 1.0 (:cpus resources)))
     (is (= 1000.0 (:mem resources)))))
 
+(defrecord TestComputeCluster
+  [cluster-definition]
+  cc/ComputeCluster
+  (max-tasks-per-host [_] 1)
+  (num-tasks-on-host [_ _] 0))
+
 (deftest test-match-offer-to-schedule
   (setup)
   (let [schedule (map #(d/entity (db c) %) [j1 j2 j3 j4]) ; all 1gb 1 cpu
@@ -421,6 +427,7 @@
                         :hostname (str "host-" (UUID/randomUUID))}])
         framework-id (str "framework-id-" (UUID/randomUUID))
         fenzo-maker #(sched/make-fenzo-scheduler 100000 nil 1)] ; The params are for offer declining, which should never happen
+
     (testing "Consume no schedule cases"
       (are [schedule offers] (= [] (:matches (sched/match-offer-to-schedule (db c) (fenzo-maker) schedule
                                                                             offers (atom {}) nil)))
@@ -430,6 +437,7 @@
                              schedule (offer-maker 0.5 100)
                              schedule (offer-maker 0.5 1000)
                              schedule (offer-maker 1 500)))
+
     (testing "Consume Partial schedule cases"
       ;; We're looking for one task to get assigned
       (are [offers] (= 1 (count (mapcat :tasks
@@ -437,6 +445,7 @@
                                                     (db c) (fenzo-maker) schedule offers (atom {}) nil)))))
                     (offer-maker 1 1000)
                     (offer-maker 1.5 1500)))
+
     (testing "Consume full schedule cases"
       ;; We're looking for the entire schedule to get assigned
       (are [offers] (= (count schedule)
@@ -444,7 +453,81 @@
                                       (:matches (sched/match-offer-to-schedule
                                                   (db c) (fenzo-maker) schedule offers (atom {}) nil)))))
                     (offer-maker 4 4000)
-                    (offer-maker 5 5000)))))
+                    (offer-maker 5 5000)))
+
+    (testing "Checkpoint locality constraint"
+      (let [cluster-1-name "cluster-1"
+            cluster-2-name "cluster-2"
+            location-a "location-a"
+            location-b "location-b"
+            offer-id (str (UUID/randomUUID))
+            match-offer-to-schedule
+            (fn [offer-location job-checkpoint job-instance-cluster-name]
+              (let [jobs
+                    [{:job/checkpoint job-checkpoint
+                      :job/instance [{:instance/compute-cluster
+                                      {:compute-cluster/cluster-name job-instance-cluster-name}}]
+                      :job/resource [{:resource/type :resource.type/mem
+                                      :resource/amount 1000.0}
+                                     {:resource/type :resource.type/cpus
+                                      :resource/amount 1.0}]}]
+                    offers
+                    [{:compute-cluster
+                      (->TestComputeCluster {:config {:location offer-location}})
+                      :hostname "host"
+                      :id {:value offer-id}
+                      :resources [{:name "cpus" :type :value-scalar :scalar 1.0}
+                                  {:name "mem" :type :value-scalar :scalar 1000.0}]}]]
+                (sched/match-offer-to-schedule (db c) (fenzo-maker) jobs offers (atom {}) nil)))
+            matches->first-offer-id
+            (fn [matches]
+              (-> matches first :leases first :offer :id :value))]
+
+        ; cluster-1 has location-a, cluster-2 has location-b
+        (reset!
+          cc/cluster-name->compute-cluster-atom
+          {cluster-1-name
+           {:cluster-definition
+            {:config
+             {:location location-a}}}
+           cluster-2-name
+           {:cluster-definition
+            {:config
+             {:location location-b}}}})
+
+        (let [{:keys [failures matches]}
+              (match-offer-to-schedule location-a true cluster-1-name)]
+          (is (= 1 (count matches)))
+          (is (= offer-id (matches->first-offer-id matches)))
+          (is (= 0 (count failures))))
+
+        (let [{:keys [failures matches]}
+              (match-offer-to-schedule location-a false cluster-1-name)]
+          (is (= 1 (count matches)))
+          (is (= offer-id (matches->first-offer-id matches)))
+          (is (= 0 (count failures))))
+
+        (let [{:keys [failures matches]}
+              (match-offer-to-schedule location-b true cluster-1-name)]
+          (is (= 0 (count matches)))
+          (is (= 1 (count failures))))
+
+        (let [{:keys [failures matches]}
+              (match-offer-to-schedule location-b false cluster-1-name)]
+          (is (= 1 (count matches)))
+          (is (= offer-id (matches->first-offer-id matches)))
+          (is (= 0 (count failures))))
+
+        (let [{:keys [failures matches]}
+              (match-offer-to-schedule location-a true cluster-2-name)]
+          (is (= 0 (count matches)))
+          (is (= 1 (count failures))))
+
+        (let [{:keys [failures matches]}
+              (match-offer-to-schedule location-b true cluster-2-name)]
+          (is (= 1 (count matches)))
+          (is (= offer-id (matches->first-offer-id matches)))
+          (is (= 0 (count failures))))))))
 
 (deftest test-match-offer-to-schedule-ordering
   (let [datomic-uri "datomic:mem://test-match-offer-to-schedule-ordering"
