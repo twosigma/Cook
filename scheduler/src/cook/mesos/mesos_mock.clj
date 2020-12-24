@@ -18,7 +18,8 @@
             [clj-time.core :as t]
             [clojure.core.async :as async]
             [clojure.tools.logging :as log]
-            [cook.tools :as util]
+            [cook.tools :as tools]
+            [cook.util :as util]
             [datomic.api :refer [q]]
             [mesomatic.scheduler :as mesos]
             [mesomatic.types :as mesos-type]
@@ -437,10 +438,10 @@
                                           (->>
                                             (.resourceOffers scheduler driver (mapv (partial mesos-type/->pb :Offer) new-offers))
                                             (map #(assoc % :offer-match-timer (timers/start (timers/timer "mock-mesos"))))))
-                                        (util/close-when-ch! v)
+                                        (tools/close-when-ch! v)
                                         state')
                    complete-trigger-chan (let [state' (complete-tasks! (assoc state :now (t/now)) scheduler driver)]
-                                           (util/close-when-ch! v)
+                                           (tools/close-when-ch! v)
                                            state'))]
              (when state'
                (recur state'))))

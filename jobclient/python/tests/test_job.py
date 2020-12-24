@@ -25,7 +25,7 @@ from cookclient.containers import (
     Volume
 )
 from cookclient.instance import Instance, Executor
-from cookclient.jobs import Application, Job
+from cookclient.jobs import Application, Disk, Job
 from cookclient.jobs import Status as JobStatus
 from cookclient.jobs import State as JobState
 from cookclient.util import datetime_to_unix_ms
@@ -185,6 +185,27 @@ JOB_DICT_MANY_GROUPS = {**JOB_DICT_NO_OPTIONALS, **{
     ]
 }}
 
+JOB_DICT_DISK_ONLY_REQUEST = {**JOB_DICT_NO_OPTIONALS, **{
+    'disk': {
+        'request': 10.0
+     }
+}}
+
+JOB_DICT_DISK_ONLY_REQUEST_AND_LIMIT = {**JOB_DICT_NO_OPTIONALS, **{
+    'disk': {
+        'request': 10.0,
+        'limit': 20.0
+     }
+}}
+
+JOB_DICT_DISK_ALL_FIELDS = {**JOB_DICT_NO_OPTIONALS, **{
+    'disk': {
+        'request': 10.0,
+        'limit': 20.0,
+        'type': 'standard'
+     }
+}}
+
 JOB_EXAMPLE = Job(
     command='ls',
     mem=10.0,
@@ -248,7 +269,8 @@ JOB_EXAMPLE = Job(
     progress_output_file='output.txt',
     progress_regex_string='test',
     gpus=1,
-    ports=10
+    ports=10,
+    disk=Disk(request=10.0, limit=20.0, type='standard')
 )
 
 
@@ -286,9 +308,21 @@ class JobTest(TestCase):
         else:
             self.assertIsNone(job.group)
 
+    def _check_disk(self, job: Job, jobdict: dict):
+        """Check the disk field of a Job.
+
+        The Job's disk attribute should be either:
+        * The value of `jobdict['disk']` if set,
+        * Otherwise, `None`.
+        """
+        if 'disk' in jobdict:
+            self.assertEqual(job.disk.to_dict(), jobdict['disk'])
+        else:
+            self.assertIsNone(job.disk)
+
     def _check_optional_fields(self, job: Job, jobdict: dict):
         self._check_group(job, jobdict)
-
+        self._check_disk(job, jobdict)
         self.assertEqual(str(job.executor).lower(),
                          jobdict['executor'].lower())
         self.assertTrue(isinstance(job.container, AbstractContainer))
@@ -382,6 +416,23 @@ class JobTest(TestCase):
         jobdict = JOB_DICT_NO_OPTIONALS
         job = Job.from_dict(jobdict)
         self._check_group(job, jobdict)
+
+    def test_dict_parse_disk(self):
+        # jobdict only has request
+        jobdict = JOB_DICT_DISK_ONLY_REQUEST
+        job = Job.from_dict(jobdict)
+        self._check_disk(job, jobdict)
+
+        # jobdict has request and limit
+        jobdict = JOB_DICT_DISK_ONLY_REQUEST_AND_LIMIT
+        job = Job.from_dict(jobdict)
+        self._check_disk(job, jobdict)
+
+        # jobdict has request, limit, and type
+        jobdict = JOB_DICT_DISK_ALL_FIELDS
+        job = Job.from_dict(jobdict)
+        self._check_disk(job, jobdict)
+
 
     def test_dict_output(self):
         job = JOB_EXAMPLE

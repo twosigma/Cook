@@ -126,6 +126,46 @@ class Application:
         """Parse an ``Application`` from its dict representation."""
         return cls(**d)
 
+class Disk:
+    """Disk information associated with a job.
+
+    :param request: Disk request - guaranteed disk space for job.
+    :type name: float
+    :param limit: Disk limit - max disk space job can use.
+    :type limit: float
+    :param type: Disk type.
+    :type type: str
+    """
+    request: float
+    limit: float
+    type: str
+
+    def __init__(self, request: float, limit: float = None, type: str = None):
+        self.request = request
+        self.limit = limit
+        self.type = type
+
+    def __str__(self):
+        return json.dumps(self.to_dict(), indent=4)
+
+    def __repr__(self):
+        return f'Disk({self.request}, {self.limit}, {self.type})'
+
+    def to_dict(self) -> dict:
+        disk_dict = {}
+        if self.request is not None:
+            disk_dict['request'] = self.request
+        if self.limit is not None:
+            disk_dict['limit'] = self.limit
+        if self.type is not None:
+            disk_dict['type'] = self.type
+        return disk_dict
+
+    @classmethod
+    def from_dict(cls, d: dict) -> 'Disk':
+        """Parse a ``Disk`` from its dict representation."""
+        return cls(**d)
+
 
 class Job:
     """A job object returned from Cook.
@@ -197,6 +237,8 @@ class Job:
     :type gpus: int, optional
     :param ports: Ports for this job.
     :type ports: int, optional
+    :param disk: Disk information for this job.
+    :type disk: Disk, optional
     """
     command: str
     mem: float
@@ -228,6 +270,7 @@ class Job:
     progress_regex_string: Optional[str]
     gpus: Optional[int]
     ports: Optional[int]
+    disk = Optional[Disk]
 
     etc: dict
 
@@ -264,6 +307,7 @@ class Job:
                  progress_regex_string: Optional[str] = None,
                  gpus: Optional[int] = None,
                  ports: Optional[int] = None,
+                 disk: Optional[Disk] = None,
                  # Extra not-officially-supported params
                  **kwargs):
         """Initializes a job object.
@@ -301,6 +345,7 @@ class Job:
         self.progress_regex_string = progress_regex_string
         self.gpus = gpus
         self.ports = ports
+        self.disk = disk
         self.etc = kwargs
 
     def __str__(self):
@@ -371,6 +416,8 @@ class Job:
             d['ports'] = self.ports
         if self.retries_remaining is not None:
             d['retries_remaining'] = self.retries_remaining
+        if self.disk is not None:
+            d['disk'] = self.disk.to_dict()
         return d
 
     @classmethod
@@ -397,6 +444,8 @@ class Job:
             d['group'] = d['groups'][0]
         if 'application' in d:
             d['application'] = Application.from_dict(d['application'])
+        if 'disk' in d:
+            d['disk'] = Disk.from_dict(d['disk'])
 
         # There's no 'groups' field in the Job constructor, so remove that key
         # from the dict.

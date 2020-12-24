@@ -394,6 +394,12 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :db.install/_attribute :db.part/db
     :db/doc "If true, the state value can't be changed unless forced when calling update function.
              The background dynamic cluster update process does not force changes."}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :compute-cluster-config/location
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db
+    :db/doc "Location of compute cluster."}
    ;; Container Attributes
    {:db/id (d/tempid :db.part/db)
     :db/doc "variant records based on container/type"
@@ -1001,6 +1007,23 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
    {:db/id (d/tempid :db.part/user)
     :db/ident :resource.type/mem
     :resource.type/mesos-name :mem}
+   {:db/id (d/tempid :db.part/user)
+    :db/ident :resource.type/disk}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :resource.disk/request
+    :db/valueType :db.type/double
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :resource.disk/limit
+    :db/valueType :db.type/double
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :resource.disk/type
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
    {:db/id (d/tempid :db.part/user)
     :db/ident :resource.type/gpus
     :resource.type/mesos-name :gpus}

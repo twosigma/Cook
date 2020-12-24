@@ -6,9 +6,12 @@
             [clojure.walk :as walk]
             [cook.config :as config]
             [cook.kubernetes.metrics :as metrics]
+            [cook.pool :as pool]
+            [cook.regexp-tools :as regexp-tools]
             [cook.scheduler.constraints :as constraints]
             [cook.task :as task]
-            [cook.tools :as util]
+            [cook.tools :as tools]
+            [cook.util :as util]
             [datomic.api :as d]
             [metrics.meters :as meters]
             [metrics.timers :as timers]
@@ -34,8 +37,6 @@
 (def workload-class-label "workload-class")
 (def workload-id-label "workload-id")
 (def resource-owner-label "resource-owner")
-(def cook-pool-label "cook-pool")
-(def cook-pool-taint "cook-pool")
 (def cook-sandbox-volume-name "cook-sandbox-volume")
 (def cook-job-pod-priority-class "cook-workload")
 (def cook-synthetic-pod-priority-class "synthetic-pod")
@@ -54,6 +55,11 @@
         "exec 2>$COOK_SANDBOX/stderr; "
         "exec /bin/sh -c \"$1\"")
    "--"])
+
+(defn synthetic-pod?
+  "Given a pod name, returns true if it has the synthetic pod prefix"
+  [pod-name]
+  (str/starts-with? pod-name cook-synthetic-pod-name-prefix))
 
 ; DeletionCandidateTaint is a soft taint that k8s uses to mark unneeded
 ; nodes as preferably unschedulable. This taint is added as soon as the
@@ -176,8 +182,8 @@
   [{:keys [^ApiClient api-client all-pods-atom node-name->pod-name->pod] compute-cluster-name :name :as compute-cluster} cook-pod-callback]
   (let [[current-pods namespaced-pod-name->pod] (get-all-pods-in-kubernetes api-client compute-cluster-name)
         callbacks
-        [(util/make-atom-updater all-pods-atom) ; Update the set of all pods.
-         (util/make-nested-atom-updater node-name->pod-name->pod pod->node-name get-pod-namespaced-key)
+        [(tools/make-atom-updater all-pods-atom) ; Update the set of all pods.
+         (tools/make-nested-atom-updater node-name->pod-name->pod pod->node-name get-pod-namespaced-key)
          (partial cook-pod-callback-wrap cook-pod-callback compute-cluster-name)] ; Invoke the cook-pod-callback if its a cook pod.
         old-all-pods @all-pods-atom
         new-pod-names (set (keys namespaced-pod-name->pod))
@@ -241,18 +247,22 @@
 
 (defn get-node-pool
   "Get the pool for a node. In the case of no pool, return 'no-pool"
-  [^V1Node node]
+  [cook-pool-taint-name cook-pool-taint-prefix ^V1Node node]
   ; In the case of nil, we have taints-on-node == [], and we'll map to no-pool.
   (let [taints-on-node (or (some-> node .getSpec .getTaints) [])
-        found-cook-pool-taint (filter #(= cook-pool-taint (.getKey %)) taints-on-node)]
+        found-cook-pool-taint (filter #(= cook-pool-taint-name (.getKey %)) taints-on-node)]
     (if (= 1 (count found-cook-pool-taint))
-      (-> found-cook-pool-taint first .getValue)
+      (let [taint-value
+            (-> found-cook-pool-taint first .getValue)]
+        (if (str/starts-with? taint-value cook-pool-taint-prefix)
+          (subs taint-value (count cook-pool-taint-prefix))
+          "no-pool"))
       "no-pool")))
 
 (declare initialize-node-watch)
 (defn initialize-node-watch-helper
   "Help creating node watch. Returns a new watch Callable"
-  [{:keys [^ApiClient api-client current-nodes-atom pool->node-name->node] compute-cluster-name :name :as compute-cluster}]
+  [{:keys [^ApiClient api-client current-nodes-atom pool->node-name->node cook-pool-taint-name cook-pool-taint-prefix] compute-cluster-name :name :as compute-cluster}]
   (let [api (CoreV1Api. api-client)
         current-nodes-raw
         (timers/time! (metrics/timer "get-all-nodes" compute-cluster-name)
@@ -269,8 +279,8 @@
                      ))
         current-nodes (pc/map-from-vals node->node-name (.getItems current-nodes-raw))
         callbacks
-        [(util/make-atom-updater current-nodes-atom) ; Update the set of all pods.
-         (util/make-nested-atom-updater pool->node-name->node get-node-pool node->node-name)]
+        [(tools/make-atom-updater current-nodes-atom) ; Update the set of all pods.
+         (tools/make-nested-atom-updater pool->node-name->node (partial get-node-pool cook-pool-taint-name cook-pool-taint-prefix) node->node-name)]
         old-current-nodes @current-nodes-atom
         new-node-names (set (keys current-nodes))
         old-node-names (set (keys old-current-nodes))]
@@ -383,18 +393,23 @@
   (-> q .getNumber .intValue))
 
 (defn convert-resource-map
-  "Converts a map of Kubernetes resources to a cook resource map {:mem double, :cpus double, :gpus double}"
+  "Converts a map of Kubernetes resources to a cook resource map {:mem double, :cpus double, :gpus double, :disk double}"
   [m]
-  {:mem (if (get m "memory")
-          (-> m (get "memory") to-double (/ memory-multiplier))
-          0.0)
-   :cpus (if (get m "cpu")
-           (-> m (get "cpu") to-double)
-           0.0)
-   ; Assumes that each Kubernetes node and each pod only contains one type of GPU model
-   :gpus (if-let [gpu-count (get m "nvidia.com/gpu")]
-           (to-int gpu-count)
-           0)})
+  (let [res-map
+        {:mem (if (get m "memory")
+                (-> m (get "memory") to-double (/ memory-multiplier))
+                0.0)
+         :cpus (if (get m "cpu")
+                 (-> m (get "cpu") to-double)
+                 0.0)
+         ; Assumes that each Kubernetes node and each pod only contains one type of GPU model
+         :gpus (if-let [gpu-count (get m "nvidia.com/gpu")]
+                 (to-int gpu-count)
+                 0)}]
+    ; Only add disk to the resource map if pods are using disk
+    (if (get m "ephemeral-storage")
+      (assoc res-map :disk (-> m (get "ephemeral-storage") to-double (/ constraints/disk-multiplier)))
+      res-map)))
 
 (defn pods->node-name->pods
   "Given a seq of pods, create a map of node names to pods"
@@ -411,47 +426,71 @@
   "Can we schedule on a node. For now, yes, unless there are other taints on it or it contains any label in the
   node-blocklist-labels list.
   TODO: Incorporate other node-health measures here."
-  [^V1Node node pod-count-capacity node-name->pods node-blocklist-labels]
+  [{:keys [node-blocklist-labels cook-pool-taint-name]} ^V1Node node pod-count-capacity node-name->pods]
   (if (nil? node)
     false
     (let [taints-on-node (or (some-> node .getSpec .getTaints) [])
           other-taints (remove #(contains?
-                                  #{cook-pool-taint k8s-deletion-candidate-taint gpu-node-taint}
+                                  #{cook-pool-taint-name k8s-deletion-candidate-taint gpu-node-taint}
                                   (.getKey %))
                                taints-on-node)
           node-name (some-> node .getMetadata .getName)
+          node-unschedulable (some-> node .getSpec .getUnschedulable)
           num-pods-on-node (-> node-name->pods (get node-name []) count)
           labels-on-node (or (some-> node .getMetadata .getLabels) {})
           matching-node-blocklist-keyvals (select-keys labels-on-node node-blocklist-labels)]
-      (cond  (seq other-taints) (do
-                                  (log/info "Filtering out" node-name "because it has taints" other-taints)
-                                  false)
-             (>= num-pods-on-node pod-count-capacity) (do
-                                                        (log/info "Filtering out" node-name "because it is at or above its pod count capacity of"
-                                                                  pod-count-capacity "(" num-pods-on-node ")")
-                                                        false)
-             (seq matching-node-blocklist-keyvals) (do
-                                                     (log/info "Filtering out" node-name "because it has node blocklist labels" matching-node-blocklist-keyvals)
-                                                     false)
-             :else true))))
+      (cond
+        ;; Note that node-unschedulable may be nil or false or true.
+        node-unschedulable (do
+                             (log/info "Filtering out" node-name "because it is unschedulable" node-unschedulable)
+                             false)
+        (seq other-taints) (do
+                             (log/info "Filtering out" node-name "because it has taints" other-taints)
+                             false)
+        (>= num-pods-on-node pod-count-capacity) (do
+                                                   (log/info "Filtering out" node-name "because it is at or above its pod count capacity of"
+                                                             pod-count-capacity "(" num-pods-on-node ")")
+                                                   false)
+        (seq matching-node-blocklist-keyvals) (do
+                                                (log/info "Filtering out" node-name "because it has node blocklist labels" matching-node-blocklist-keyvals)
+                                                false)
+        :else true))))
 
-(defn add-gpu-model-to-resource-map
-  "Given a map from node-name->resource-type->capacity, perform the following operation:
-  - if the amount of gpus on the node is positive, set the gpus capacity to model->count
-  - if the amount of gpus on the node is 0, set the gpus capacity to an empty map"
+(defn force-gpu-model-in-resource-map
+  "Given a map from node-name->resource-type->capacity, set the gpus capacity to model->amount
+  or remove the gpus resource type from the map if gpu-model is not provided"
   [gpu-model {:keys [gpus] :as resource-map}]
-  (let [gpu-model->count (if (and gpu-model (pos? gpus))
-                           {gpu-model gpus}
-                           {})]
-    (assoc resource-map :gpus gpu-model->count)))
+  (if (and gpu-model (pos? gpus))
+    (assoc resource-map :gpus {gpu-model gpus})
+    (dissoc resource-map :gpus)))
+
+(defn pool->disk-type-label-name
+  "Given a pool name, get the disk-type-label-name that will be used as a nodeSelector label"
+  [pool-name]
+  (regexp-tools/match-based-on-pool-name
+    (config/disk)
+    pool-name
+    :disk-node-label
+    :default-value "cloud.google.com/gke-boot-disk"))
+
+(defn force-disk-type-in-resource-map
+  "Given a map from node-name->resource-type->capacity, set the disk capacity to type->amount
+  or remove the disk resource type from the map if disk-type is not provided"
+  [disk-type {:keys [disk] :as resource-map}]
+  (if (and disk disk-type)
+    (assoc resource-map :disk {disk-type disk})
+    (dissoc resource-map :disk)))
 
 (defn get-capacity
   "Given a map from node-name to node, generate a map from node-name->resource-type-><capacity>"
-  [node-name->node]
+  [node-name->node pool-name]
   (pc/map-vals (fn [^V1Node node]
                  (let [resource-map (some-> node .getStatus .getAllocatable convert-resource-map)
-                       gpu-model (some-> node .getMetadata .getLabels (get "gpu-type"))]
-                   (add-gpu-model-to-resource-map gpu-model resource-map)))
+                       gpu-model (some-> node .getMetadata .getLabels (get "gpu-type"))
+                       disk-type (some-> node .getMetadata .getLabels (get (pool->disk-type-label-name pool-name)))]
+                   (->> resource-map
+                        (force-gpu-model-in-resource-map gpu-model)
+                        (force-disk-type-in-resource-map disk-type))))
                node-name->node))
 
 (defn get-consumption
@@ -459,7 +498,7 @@
   Ignores pods that do not have an assigned node.
   When accounting for resources, we use resource requests to determine how much is used, not limits.
   See https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/#resource-requests-and-limits-of-pod-and-container"
-  [node-name->pods]
+  [node-name->pods pool-name]
   (->> node-name->pods
        (filter first) ; Keep those with non-nil node names.
        (pc/map-vals (fn [pods]
@@ -473,8 +512,15 @@
                                                                           convert-resource-map))
                                                                 containers)
                                         resource-map (apply merge-with + container-requests)
-                                        gpu-model (some-> pod .getSpec .getNodeSelector (get "cloud.google.com/gke-accelerator"))]
-                                    (add-gpu-model-to-resource-map gpu-model resource-map))))
+                                        ^V1NodeSelector nodeSelector (some-> pod .getSpec .getNodeSelector)
+                                        gpu-model (some-> nodeSelector (get "cloud.google.com/gke-accelerator"))
+                                        disk-type (some-> nodeSelector (get (pool->disk-type-label-name pool-name)))]
+                                    (->> resource-map
+                                         (force-gpu-model-in-resource-map gpu-model)
+                                         (force-disk-type-in-resource-map disk-type)))))
+                           ; remove nil resource-maps from collection before deep-merge-with because some pods do not
+                           ; have container resource requests, and deep-merge-with does not gracefully handle nil values
+                           (remove nil?)
                            (apply util/deep-merge-with +))))))
 
 ; see pod->synthesized-pod-state comment for container naming conventions
@@ -547,10 +593,10 @@
 
 (defn toleration-for-pool
   "For a given cook pool name, create the right V1Toleration so that Cook will ignore that cook-pool taint."
-  [pool-name]
+  [cook-pool-taint-name cook-pool-taint-prefix pool-name]
   (let [^V1Toleration toleration (V1Toleration.)]
-    (.setKey toleration cook-pool-taint)
-    (.setValue toleration pool-name)
+    (.setKey toleration cook-pool-taint-name)
+    (.setValue toleration (str cook-pool-taint-prefix pool-name))
     (.setOperator toleration "Equal")
     (.setEffect toleration "NoSchedule")
     toleration))
@@ -579,11 +625,11 @@
                     ;; TODO validate and fail when the user parameter is missing.
                     (let [[uid gid] (str/split (:value user-param) #":")]
                       [(Long/parseLong uid) (Long/parseLong gid)])
-                    [(util/user->user-id user) (util/user->group-id user)])
+                    [(tools/user->user-id user) (tools/user->group-id user)])
         security-context (V1PodSecurityContext.)]
     (.setRunAsUser security-context uid)
     (.setRunAsGroup security-context gid)
-    (when-let [group-ids (util/user->all-group-ids user)]
+    (when-let [group-ids (tools/user->all-group-ids user)]
       (.setSupplementalGroups security-context group-ids))
     security-context))
 
@@ -629,6 +675,7 @@
 (defn- add-as-decimals
   "Takes two doubles and adds them as decimals to avoid floating point error. Kubernetes will not be able to launch a
    pod if the required cpu has too much precision. For example, adding 0.1 and 0.02 as doubles results in 0.12000000000000001"
+  ; If you get an error like IllegalArgumentException "No suffix for exponent-18" in JSON serialization. Use this function.
   [a b]
   (double (+ (bigdec a) (bigdec b))))
 
@@ -641,7 +688,7 @@
         (-> (config/kubernetes) :sidecar :resource-requirements)
         checkpoint-memory-overhead
         (when checkpoint
-          (-> (config/kubernetes) :default-checkpoint-config (merge (util/job-ent->checkpoint job)) :memory-overhead))]
+          (-> (config/kubernetes) :default-checkpoint-config (merge (tools/job-ent->checkpoint job)) :memory-overhead))]
     (cond-> resources
       resource-requirements
       (assoc
@@ -704,11 +751,11 @@
 (defn calculate-effective-checkpointing-config
   "Given the job's checkpointing config, calculate the effective config. Making any adjustments such as defaults,
   overrides, or other behavior modifications."
-  [{:keys [job/checkpoint job/instance] :as job} task-id]
+  [{:keys [job/checkpoint job/instance job/uuid] :as job} task-id]
   (when checkpoint
     (let [{:keys [default-checkpoint-config]} (config/kubernetes)
           {:keys [max-checkpoint-attempts checkpoint-failure-reasons disable-checkpointing] :as checkpoint}
-          (merge default-checkpoint-config (util/job-ent->checkpoint job))]
+          (merge default-checkpoint-config (tools/job-ent->checkpoint job))]
       (when-not disable-checkpointing
         (if max-checkpoint-attempts
           (let [checkpoint-failure-reasons (or checkpoint-failure-reasons default-checkpoint-failure-reasons)
@@ -716,10 +763,28 @@
                                               (contains? checkpoint-failure-reasons (:reason/name reason)))
                                             instance)]
             (if (-> checkpoint-failures count (>= max-checkpoint-attempts))
-              (log/info "Will not checkpoint task-id" task-id ", there are at least" max-checkpoint-attempts "failed instances"
-                        {:job job})
+              (log/info "Will not checkpoint, there are at least" max-checkpoint-attempts "checkpoint failures"
+                        {:job-uuid uuid
+                         :max-checkpoint-attempts max-checkpoint-attempts
+                         :number-checkpoint-failures (count checkpoint-failures)
+                         :task-id task-id})
               checkpoint))
           checkpoint)))))
+
+(defn calculate-effective-image
+  "Transform the supplied job's image as necessary. e.g. do special transformation if checkpointing is enabled
+  and an image transformation function is supplied."
+  [{:keys [calculate-effective-image-fn] :as kubernetes-config} job-submit-time image {:keys [mode]} task-id]
+  (if (and mode calculate-effective-image-fn)
+    (try
+      ((util/lazy-load-var-memo calculate-effective-image-fn) kubernetes-config job-submit-time image)
+      (catch Exception e
+        (log/error e "Error calculating effective image for checkpointing"
+                   {:calculate-effective-image-fn calculate-effective-image-fn
+                    :image image
+                    :task-id task-id})
+        image))
+    image))
 
 (defn job->pod-labels
   "Returns the dictionary of labels that should be
@@ -729,7 +794,7 @@
   (let [pod-labels-from-job-labels
         (if-let [prefix (:add-job-label-to-pod-prefix (config/kubernetes))]
           (->> job
-               util/job-ent->label
+               tools/job-ent->label
                (filter (fn [[k _]] (str/starts-with? k prefix)))
                (into {}))
           {})
@@ -744,9 +809,22 @@
            pod-labels-from-job-labels
            pod-labels-from-job-application)))
 
+(defn set-mem-cpu-resources
+  "Given a resources object and a CPU and memory request and limit, update the resources object to reflect the
+  desired requests and limits."
+  [^V1ResourceRequirements resources memory-request memory-limit cpu-request cpu-limit]
+  (let [{:keys [set-container-cpu-limit?]} (config/kubernetes)]
+    (.putRequestsItem resources "memory" (double->quantity (* memory-multiplier memory-request)))
+    (.putLimitsItem resources "memory" (double->quantity (* memory-multiplier memory-limit)))
+    (.putRequestsItem resources "cpu" (double->quantity cpu-request))
+    (when set-container-cpu-limit?
+      ; Some environments may need pods to run in the "Guaranteed"
+      ; QoS, which requires limits for both memory and cpu
+      (.putLimitsItem resources "cpu" (double->quantity cpu-limit)))))
+
 (defn ^V1Pod task-metadata->pod
   "Given a task-request and other data generate the kubernetes V1Pod to launch that task."
-  [namespace compute-cluster-name
+  [namespace {:keys [cook-pool-taint-name cook-pool-taint-prefix cook-pool-label-name] compute-cluster-name :name}
    {:keys [task-id command container task-request hostname pod-annotations pod-constraints pod-hostnames-to-avoid
            pod-labels pod-priority-class pod-supports-cook-init? pod-supports-cook-sidecar?]
     :or {pod-priority-class cook-job-pod-priority-class
@@ -763,6 +841,15 @@
         ; gpu count is not stored in scalar-requests because Fenzo does not handle gpus in binpacking
         gpus (or (:gpus resources) 0)
         gpu-model-requested (constraints/job->gpu-model-requested gpus job pool-name)
+        ; if disk config for pool has enable-constraint? set to true, add disk info to the job
+        enable-disk-constraint? (regexp-tools/match-based-on-pool-name (config/disk) pool-name :enable-constraint? :default-value false)
+        ; if user did not specify disk request, use default on pool
+        disk-request (when enable-disk-constraint?
+                       (constraints/job-resources->disk-request resources pool-name))
+        disk-limit (when enable-disk-constraint? (-> resources :disk :limit))
+        ; if user did not specify disk type, use default on pool
+        disk-type (when enable-disk-constraint? (constraints/job-resources->disk-type resources pool-name))
+
         pod (V1Pod.)
         pod-spec (V1PodSpec.)
         metadata (V1ObjectMeta.)
@@ -776,6 +863,11 @@
         {:keys [volumes volume-mounts sandbox-volume-mount-fn]} (make-volumes volumes sandbox-dir)
         {:keys [custom-shell init-container set-container-cpu-limit? sidecar]} (config/kubernetes)
         checkpoint (calculate-effective-checkpointing-config job task-id)
+        job-submit-time (tools/job->submit-time job)
+        pod-name (str task-id)
+        image (if (synthetic-pod? pod-name)
+                image
+                (calculate-effective-image (config/kubernetes) job-submit-time image checkpoint task-id))
         checkpoint-memory-overhead (:memory-overhead checkpoint)
         use-cook-init? (and init-container pod-supports-cook-init?)
         use-cook-sidecar? (and sidecar pod-supports-cook-sidecar?)
@@ -802,19 +894,22 @@
         params-env (build-params-env parameters)
         progress-env (task/build-executor-environment job)
         checkpoint-env (checkpoint->env checkpoint)
-        main-env-base (merge environment params-env progress-env sandbox-env checkpoint-env)
+        metadata-env {"COOK_COMPUTE_CLUSTER_NAME" compute-cluster-name
+                      "COOK_POOL" (pool/pool-name-or-default pool-name)
+                      "COOK_SCHEDULER_REST_URL" (config/scheduler-rest-url)}
+        main-env-base (merge environment params-env progress-env sandbox-env checkpoint-env metadata-env)
         progress-file-var (get main-env-base task/progress-meta-env-name task/default-progress-env-name)
         progress-file-path (get main-env-base progress-file-var)
         main-env (cond-> main-env-base
                    ;; Add a default progress file path to the environment when missing,
                    ;; preserving compatibility with Meosos + Cook Executor.
                    (not progress-file-path)
-                   (assoc progress-file-var (str task-id ".progress")))
+                   (assoc progress-file-var (str workdir "/" task-id ".progress")))
         main-env-vars (make-filtered-env-vars main-env)
         computed-mem (if checkpoint-memory-overhead (add-as-decimals mem checkpoint-memory-overhead) mem)]
 
     ; metadata
-    (.setName metadata (str task-id))
+    (.setName metadata pod-name)
     (.setNamespace metadata namespace)
     (.setLabels metadata labels)
     (when pod-annotations
@@ -841,19 +936,23 @@
     (.setTty container true)
     (.setStdin container true)
 
-    (.putRequestsItem resources "memory" (double->quantity (* memory-multiplier computed-mem)))
-    (.putLimitsItem resources "memory" (double->quantity (* memory-multiplier computed-mem)))
-    (.putRequestsItem resources "cpu" (double->quantity cpus))
-    (when set-container-cpu-limit?
-      ; Some environments may need pods to run in the "Guaranteed"
-      ; QoS, which requires limits for both memory and cpu
-      (.putLimitsItem resources "cpu" (double->quantity cpus)))
+    (set-mem-cpu-resources resources computed-mem computed-mem cpus cpus)
+
     (when (pos? gpus)
       (.putLimitsItem resources "nvidia.com/gpu" (double->quantity gpus))
       (.putRequestsItem resources "nvidia.com/gpu" (double->quantity gpus))
       (add-node-selector pod-spec "cloud.google.com/gke-accelerator" gpu-model-requested)
       ; GKE nodes with GPUs have gpu-count label, so synthetic pods need a matching node selector
       (add-node-selector pod-spec "gpu-count" (-> gpus int str)))
+    (when disk-request
+      ; do not add disk request/limit to synthetic pod yaml because GKE CA will not scale up from 0 if unschedulable pods
+      ; require ephemeral-storage: https://github.com/kubernetes/autoscaler/issues/1869
+      (when-not (synthetic-pod? pod-name)
+        (.putRequestsItem resources "ephemeral-storage" (double->quantity (* constraints/disk-multiplier disk-request)))
+        ; by default, do not set disk-limit
+        (when disk-limit
+          (.putLimitsItem resources "ephemeral-storage" (double->quantity (* constraints/disk-multiplier disk-limit)))))
+      (add-node-selector pod-spec (pool->disk-type-label-name pool-name) disk-type))
     (.setResources container resources)
     (.setVolumeMounts container (filterv some? (conj (concat volume-mounts main-container-checkpoint-volume-mounts)
                                                      (init-container-workdir-volume-mount-fn true)
@@ -867,7 +966,15 @@
     ; init container
     (when use-cook-init?
       (when-let [{:keys [command image]} init-container]
-        (let [container (V1Container.)]
+        (let [container (V1Container.)
+              get-resource-requirements-fn (fn [fieldname] (if use-cook-sidecar?
+                                                             (get-in sidecar [:resource-requirements fieldname])
+                                                             0))
+              total-memory-request (add-as-decimals computed-mem (get-resource-requirements-fn :memory-request))
+              total-memory-limit (add-as-decimals computed-mem (get-resource-requirements-fn :memory-limit))
+              total-cpu-request (add-as-decimals cpus (get-resource-requirements-fn :cpu-request))
+              total-cpu-limit (add-as-decimals cpus (get-resource-requirements-fn :cpu-limit))
+              resources (V1ResourceRequirements.)]
           ; container
           (.setName container cook-init-container-name)
           (.setImage container image)
@@ -877,6 +984,8 @@
           (.setVolumeMounts container (filterv some? (concat [(init-container-workdir-volume-mount-fn false)
                                                               (scratch-space-volume-mount-fn false)]
                                                              init-container-checkpoint-volume-mounts)))
+          (set-mem-cpu-resources resources total-memory-request total-memory-limit total-cpu-request total-cpu-limit)
+          (.setResources container resources)
           (.addInitContainersItem pod-spec container))))
 
     ; sandbox file server container
@@ -893,7 +1002,6 @@
           (.setPorts container [(.containerPort (V1ContainerPort.) (int port))])
 
           (.setEnv container (conj main-env-vars
-                                   (make-env "COOK_SCHEDULER_REST_URL" (config/scheduler-rest-url))
                                    ;; DEPRECATED - sidecar should use COOK_SANDBOX instead.
                                    ;; Will remove this environment variable in a future release.
                                    (make-env "COOK_WORKDIR" sandbox-dir)))
@@ -908,11 +1016,7 @@
             (.setReadinessProbe container readiness-probe)))
 
           ; resources
-          (.putRequestsItem resources "cpu" (double->quantity cpu-request))
-          (when set-container-cpu-limit?
-            (.putLimitsItem resources "cpu" (double->quantity cpu-limit)))
-          (.putRequestsItem resources "memory" (double->quantity (* memory-multiplier memory-request)))
-          (.putLimitsItem resources "memory" (double->quantity (* memory-multiplier memory-limit)))
+          (set-mem-cpu-resources resources memory-request memory-limit cpu-request cpu-limit)
           (.setResources container resources)
 
           (.setVolumeMounts container [(sandbox-volume-mount-fn true) (sidecar-workdir-volume-mount-fn false)])
@@ -956,12 +1060,10 @@
     ; user. For the time being, this isn't a problem only if / when
     ; the default pool is not being fed offers from Kubernetes.
     (when pool-name
-      (.addTolerationsItem pod-spec (toleration-for-pool pool-name))
-      ; Add a node selector for nodes labeled with the Cook pool
-      ; we're launching in. This is technically only needed for
-      ; synthetic pods (which don't specify a node name), but it
-      ; doesn't hurt to add it for all pods we submit.
-      (add-node-selector pod-spec cook-pool-label pool-name))
+      (.addTolerationsItem pod-spec (toleration-for-pool cook-pool-taint-name cook-pool-taint-prefix pool-name))
+      ; We need to make sure synthetic pods --- which don't have a hostname set --- have a node selector
+      ; to run only in nodes labelled with the appropriate cook pool
+      (when-not hostname (add-node-selector pod-spec cook-pool-label-name pool-name)))
 
     (when pod-constraints
       (doseq [{:keys [constraint/attribute
@@ -999,11 +1101,6 @@
   "Extract the name of a pod from the pod itself"
   [^V1Pod pod]
   (-> pod .getMetadata .getName))
-
-(defn synthetic-pod?
-  "Given a pod name, returns true if it has the synthetic pod prefix"
-  [pod-name]
-  (str/starts-with? pod-name cook-synthetic-pod-name-prefix))
 
 (defn pod-unschedulable?
   "Returns true if the given pod status has a PodScheduled
@@ -1208,7 +1305,7 @@
           (let [code (.getCode e)
                 already-deleted? (contains? #{404} code)]
             (if already-deleted?
-              (log/info e "In" compute-cluster-name "compute cluster, pod" pod-name "was already deleted")
+              (log/info "In" compute-cluster-name "compute cluster, pod" pod-name "was already deleted")
               (throw e))))))))
 
 (defn create-namespaced-pod

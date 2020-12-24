@@ -254,10 +254,14 @@
 (deftest test-synthesize-state-and-process-pod-if-changed
   (testing "gracefully handles nil pod"
     (let [compute-cluster {:k8s-actual-state-map (atom {})
-                           :cook-expected-state-map (atom {})}
+                           :cook-expected-state-map (atom {})
+                           :cook-starting-pods (atom {})} ; So that we don't get a NPE running the test
           pod-name "test-pod"
           pod nil]
-      (controller/synthesize-state-and-process-pod-if-changed compute-cluster pod-name pod))))
+      (controller/synthesize-state-and-process-pod-if-changed compute-cluster pod-name pod)
+      ; Make sure no memory leak --- we shouldn't create a pod in this circumstance.
+      (is (= {} @(get compute-cluster :k8s-actual-state-map)))
+      (is (= {} @(get compute-cluster :cook-expected-state-map))))))
 
 (deftest test-scan-process
   (testing "gracefully handles nil pod"

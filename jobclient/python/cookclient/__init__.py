@@ -26,7 +26,7 @@ from uuid import UUID
 
 from . import util
 from .containers import AbstractContainer
-from .jobs import Application, Job
+from .jobs import Application, Disk, Job
 
 CLIENT_VERSION = '0.3.1'
 
@@ -111,6 +111,7 @@ class JobClient:
                container: Optional[AbstractContainer] = None,
                application: Application = _CLIENT_APP,
                gpus: Optional[int] = None,
+               disk: Optional[Disk] = None,
 
                pool: Optional[str] = None,
 
@@ -166,6 +167,8 @@ class JobClient:
             on construction, then these will take precedence over those.
         :return: The UUID of the newly-created job.
         :rtype: UUID
+        :param disk: Disk information to assign to the job, which includes request, limit, and type
+        :type disk: Disk, optional
         """
         uuid = str(uuid or util.make_temporal_uuid())
         jobspec = {
@@ -191,6 +194,8 @@ class JobClient:
             jobspec['container'] = container
         if gpus is not None:
             jobspec['gpus'] = gpus
+        if disk is not None:
+            jobspec['disk'] = disk
         return self.submit_all([jobspec], pool=pool, **kwargs)[0]
 
     def submit_all(self, jobspecs: Iterable[dict], *,
@@ -392,6 +397,8 @@ class JobClient:
             jobspec['application'] = jobspec['application'].to_dict()
         if util.is_field_set(jobspec, 'container'):
             jobspec['container'] = jobspec['container'].to_dict()
+        if util.is_field_set(jobspec, 'disk'):
+            jobspec['disk'] = jobspec['disk'].to_dict()
         return util.prune_nones(jobspec)
 
     def __enter__(self):

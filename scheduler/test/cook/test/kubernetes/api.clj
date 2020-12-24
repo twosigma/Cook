@@ -4,6 +4,7 @@
             [clojure.test :refer :all]
             [cook.config :as config]
             [cook.kubernetes.api :as api]
+            [cook.scheduler.constraints :as constraints]
             [cook.test.testutil :as tu]
             [datomic.api :as d])
   (:import (io.kubernetes.client.openapi.models V1Container V1ContainerState V1ContainerStateWaiting V1ContainerStatus
@@ -17,9 +18,8 @@
     (let [pods [(tu/pod-helper "podA" "hostA" {:cpus 1.0 :mem 100.0})]
           node-name->pods (api/pods->node-name->pods pods)]
       (is (= {"hostA" {:cpus 1.0
-                       :mem 100.0
-                       :gpus {}}}
-             (api/get-consumption node-name->pods)))))
+                       :mem 100.0}}
+             (api/get-consumption node-name->pods "test-pool")))))
 
   (testing "correctly computes consumption for a single pod with gpus"
 
@@ -28,7 +28,7 @@
       (is (= {"hostA" {:cpus 1.0
                        :mem 100.0
                        :gpus {"nvidia-tesla-p100" 2}}}
-             (api/get-consumption node-name->pods)))))
+             (api/get-consumption node-name->pods "test-pool")))))
 
   (testing "correctly computes consumption for a pod with multiple containers without gpus"
     (let [pods [(tu/pod-helper "podA" "hostA"
@@ -37,9 +37,8 @@
                                {:mem 100.0})]
           node-name->pods (api/pods->node-name->pods pods)]
       (is (= {"hostA" {:cpus 2.0
-                       :mem 200.0
-                       :gpus {}}}
-             (api/get-consumption node-name->pods)))))
+                       :mem 200.0}}
+             (api/get-consumption node-name->pods "test-pool")))))
 
   (testing "correctly computes consumption for a pod with multiple containers with gpus"
     (let [pods [(tu/pod-helper "podA" "hostA"
@@ -50,7 +49,7 @@
       (is (= {"hostA" {:cpus 2.0
                        :mem 200.0
                        :gpus {"nvidia-tesla-p100" 5}}}
-             (api/get-consumption node-name->pods)))))
+             (api/get-consumption node-name->pods "test-pool")))))
 
   (testing "correctly aggregates pods by node name"
     (let [pods [(tu/pod-helper "podA" "hostA"
@@ -70,27 +69,37 @@
                                {:cpus 2.0}
                                {:mem 30.0
                                 :gpus "1"
-                                :gpu-model "nvidia-tesla-k80"})
+                                :gpu-model "nvidia-tesla-k80"
+                                :disk {:disk-request 10.0 :disk-limit 50.0 :disk-type "standard"}})
                 (tu/pod-helper "podD" "hostC"
-                               {:cpus 1.0})
-                (tu/pod-helper "podD" nil ; nil host should be skipped and not included in output.
+                               {:cpus 1.0
+                                :disk {:disk-request 100.0 :disk-type "pd-ssd"}})
+                (tu/pod-helper "podD" "hostC"
+                               {:cpus 1.0
+                                :disk {:disk-type "pd-ssd"}})
+                (tu/pod-helper "podE" nil ; nil host should be skipped and not included in output.
                                {:cpus 12.0})]
           node-name->pods (api/pods->node-name->pods pods)]
       (is (= {"hostA" {:cpus 2.0 :mem 100.0 :gpus {"nvidia-tesla-p100" 3}}
-              "hostB" {:cpus 3.0 :mem 130.0 :gpus {"nvidia-tesla-k80" 1}}
-              "hostC" {:cpus 1.0 :mem 0.0 :gpus {}}}
-             (api/get-consumption node-name->pods))))))
+              "hostB" {:cpus 3.0 :mem 130.0 :gpus {"nvidia-tesla-k80" 1} :disk {"standard" 10.0}}
+              "hostC" {:cpus 2.0 :mem 0.0 :disk {"pd-ssd" 10100.0}}}
+             (api/get-consumption node-name->pods "test-pool"))))))
 
 (deftest test-get-capacity
-  (let [node-name->node {"nodeA" (tu/node-helper "nodeA" 1.0 100.0 2 "nvidia-tesla-p100" nil)
-                         "nodeB" (tu/node-helper "nodeB" 1.0 nil nil nil nil)
-                         "nodeC" (tu/node-helper "nodeC" nil 100.0 5 "nvidia-tesla-p100" nil)
-                         "nodeD" (tu/node-helper "nodeD" nil nil 7 "nvidia-tesla-p100" nil)}]
+  (let [node-name->node {"nodeA" (tu/node-helper "nodeA" 1.0 100.0 2 "nvidia-tesla-p100" nil nil)
+                         "nodeB" (tu/node-helper "nodeB" 1.0 nil nil nil nil nil)
+                         "nodeC" (tu/node-helper "nodeC" nil 100.0 5 "nvidia-tesla-p100" nil nil)
+                         "nodeD" (tu/node-helper "nodeD" nil nil 7 "nvidia-tesla-p100" nil nil)}]
     (is (= {"nodeA" {:cpus 1.0 :mem 100.0 :gpus {"nvidia-tesla-p100" 2}}
-            "nodeB" {:cpus 1.0 :mem 0.0 :gpus {}}
+            "nodeB" {:cpus 1.0 :mem 0.0}
             "nodeC" {:cpus 0.0 :mem 100.0 :gpus {"nvidia-tesla-p100" 5}}
             "nodeD" {:cpus 0.0 :mem 0.0 :gpus {"nvidia-tesla-p100" 7}}}
-           (api/get-capacity node-name->node)))))
+           (api/get-capacity node-name->node "test-pool"))))
+  (let [node-name->node {"nodeA" (tu/node-helper "nodeA" 1.0 100.0 2 "nvidia-tesla-p100" {:disk-amount 10000 :disk-type "standard"} nil)
+                         "nodeB" (tu/node-helper "nodeB" 2.0 100.0 nil nil {:disk-amount 10000 :disk-type "pd-ssd"} nil)}]
+    (is (= {"nodeA" {:cpus 1.0 :mem 100.0 :gpus {"nvidia-tesla-p100" 2} :disk {"standard" 10000.0}}
+            "nodeB" {:cpus 2.0 :mem 100.0 :disk {"pd-ssd" 10000.0}}}
+           (api/get-capacity node-name->node "test-pool")))))
 
 (defn assert-env-var-value
   [container name value]
@@ -100,42 +109,116 @@
 
 (deftest test-task-metadata->pod
   (tu/setup)
+  (let [fake-cc-config {:name "test-compute-cluster" :cook-pool-taint-name "test-taint" :cook-pool-taint-prefix ""}]
+    (testing "supplemental group ids"
+      (with-redefs [sh/sh (constantly {:exit 0 :out "12 34 56 78"})]
+        ; Invocation with user alice, successful
+        (let [task-metadata {:command {:user "alice"}
+                             :task-request {:scalar-requests {"mem" 512 "cpus" 1.0}}}
+              ^V1Pod pod (api/task-metadata->pod "test-namespace"
+                                                 fake-cc-config
+                                                 task-metadata)]
+          (is (= [12 34 56 78] (-> pod .getSpec .getSecurityContext .getSupplementalGroups)))))
 
-  (testing "supplemental group ids"
-    (with-redefs [sh/sh (constantly {:exit 0 :out "12 34 56 78"})]
-      ; Invocation with user alice, successful
-      (let [task-metadata {:command {:user "alice"}
-                           :task-request {:scalar-requests {"mem" 512 "cpus" 1.0}}}
-            ^V1Pod pod (api/task-metadata->pod "test-namespace"
-                                               "test-compute-cluster"
-                                               task-metadata)]
-        (is (= [12 34 56 78] (-> pod .getSpec .getSecurityContext .getSupplementalGroups)))))
+      (with-redefs [sh/sh (constantly {:exit 1})]
+        ; Invocation with user alice, cached
+        (let [task-metadata {:command {:user "alice"}
+                             :task-request {:scalar-requests {"mem" 512 "cpus" 1.0}}}
+              ^V1Pod pod (api/task-metadata->pod "test-namespace"
+                                                 fake-cc-config
+                                                 task-metadata)]
+          (is (= [12 34 56 78] (-> pod .getSpec .getSecurityContext .getSupplementalGroups))))
 
-    (with-redefs [sh/sh (constantly {:exit 1})]
-      ; Invocation with user alice, cached
-      (let [task-metadata {:command {:user "alice"}
-                           :task-request {:scalar-requests {"mem" 512 "cpus" 1.0}}}
-            ^V1Pod pod (api/task-metadata->pod "test-namespace"
-                                               "test-compute-cluster"
-                                               task-metadata)]
-        (is (= [12 34 56 78] (-> pod .getSpec .getSecurityContext .getSupplementalGroups))))
+        ; Invocation with user bob, unsucessful
+        (let [task-metadata {:command {:user "bob"}
+                             :task-request {:scalar-requests {"mem" 512 "cpus" 1.0}}}
+              ^V1Pod pod (api/task-metadata->pod "test-namespace"
+                                                 fake-cc-config
+                                                 task-metadata)]
+          (is (nil? (-> pod .getSpec .getSecurityContext .getSupplementalGroups))))))
 
-      ; Invocation with user bob, unsucessful
-      (let [task-metadata {:command {:user "bob"}
-                           :task-request {:scalar-requests {"mem" 512 "cpus" 1.0}}}
-            ^V1Pod pod (api/task-metadata->pod "test-namespace"
-                                               "test-compute-cluster"
-                                               task-metadata)]
-        (is (nil? (-> pod .getSpec .getSecurityContext .getSupplementalGroups))))))
+    (testing "creates pod from metadata"
+      (with-redefs [config/kubernetes (constantly {:default-workdir "/mnt/sandbox"})]
+        (let [task-metadata {:task-id "my-task"
+                             :command {:value "foo && bar"
+                                       :environment {"FOO" "BAR"}
+                                       :user (System/getProperty "user.name")}
+                             :container {:type :docker
+                                         :docker {:image "alpine:latest"}}
+                             ;; assume this task requested {cpu:1.0,mem:512} for the job's container
+                             ;; plus an additional {cpu:0.1,mem:64} for a sidecar container
+                             :task-request {:resources {:mem 576
+                                                        :cpus 1.1}
+                                            :scalar-requests {"mem" 512
+                                                              "cpus" 1.0}
+                                            :job {:job/pool {:pool/name "fake-pool-12"}}}
+                             :hostname "kubehost"}
+              pod (api/task-metadata->pod "cook" {:name "testing-cluster" :cook-pool-taint-name "test-taint" :cook-pool-taint-prefix "taint-prefix-"} task-metadata)]
+          (is (= "my-task" (-> pod .getMetadata .getName)))
+          (is (= "cook" (-> pod .getMetadata .getNamespace)))
+          (is (= "Never" (-> pod .getSpec .getRestartPolicy)))
+          (is (= "kubehost" (-> pod .getSpec .getNodeSelector (get api/k8s-hostname-label))))
+          (is (= 1 (count (-> pod .getSpec .getContainers))))
+          (is (= "testing-cluster" (-> pod .getMetadata .getLabels (get api/cook-pod-label))))
+          (is (< 0 (-> pod .getSpec .getSecurityContext .getRunAsGroup)))
+          (is (< 0 (-> pod .getSpec .getSecurityContext .getRunAsUser)))
 
-  (testing "creates pod from metadata"
-    (with-redefs [config/kubernetes (constantly {:default-workdir "/mnt/sandbox"})]
+          (let [tolerations-on-pod (or (some-> pod .getSpec .getTolerations) [])
+                found-cook-pool-toleration (filter #(= "test-taint" (.getKey %)) tolerations-on-pod)]
+            (is (= 1 (count found-cook-pool-toleration)))
+            (is (= "taint-prefix-fake-pool-12" (-> found-cook-pool-toleration first .getValue))))
+
+          (let [cook-sandbox-volume (->> pod
+                                         .getSpec
+                                         .getVolumes
+                                         (filter (fn [^V1Volume v] (= "cook-sandbox-volume" (.getName v))))
+                                         first)]
+            (is (not (nil? cook-sandbox-volume)))
+            (is (not (nil? (.getEmptyDir cook-sandbox-volume)))))
+
+          (let [^V1Container container (-> pod .getSpec .getContainers first)
+                container-env (.getEnv container)]
+            (is (= "required-cook-job-container" (.getName container)))
+            (is (= (conj api/default-shell "foo && bar") (.getCommand container)))
+            (is (= "alpine:latest" (.getImage container)))
+            (is (not (nil? container)))
+            (is (= ["COOK_COMPUTE_CLUSTER_NAME"
+                    "COOK_POOL"
+                    "COOK_SANDBOX"
+                    "COOK_SCHEDULER_REST_URL"
+                    "EXECUTOR_PROGRESS_OUTPUT_FILE"
+                    "FOO"
+                    "HOME"
+                    "HOST_IP"
+                    "MESOS_DIRECTORY"
+                    "MESOS_SANDBOX"
+                    "SIDECAR_WORKDIR"]
+                   (->> container-env (map #(.getName %)) sort)))
+            (is (= "/mnt/sandbox" (.getWorkingDir container)))
+            (let [cook-sandbox-mount (->> container
+                                          .getVolumeMounts
+                                          (filter (fn [^V1VolumeMount m] (= "cook-sandbox-volume" (.getName m))))
+                                          first)]
+              (is (= "/mnt/sandbox" (.getMountPath cook-sandbox-mount))))
+
+            (assert-env-var-value container "FOO" "BAR")
+            (assert-env-var-value container "HOME" (.getWorkingDir container))
+            (assert-env-var-value container "MESOS_SANDBOX" (.getWorkingDir container))
+
+            (let [resources (-> container .getResources)]
+              (is (= 1.0 (-> resources .getRequests (get "cpu") .getNumber .doubleValue)))
+              (is (= (* 512.0 api/memory-multiplier) (-> resources .getRequests (get "memory") .getNumber .doubleValue)))
+              (is (= (* 512.0 api/memory-multiplier) (-> resources .getLimits (get "memory") .getNumber .doubleValue))))))))
+
+    (testing "user parameter"
       (let [task-metadata {:task-id "my-task"
                            :command {:value "foo && bar"
                                      :environment {"FOO" "BAR"}
                                      :user (System/getProperty "user.name")}
                            :container {:type :docker
-                                       :docker {:image "alpine:latest"}}
+                                       :docker {:image "alpine:latest"
+                                                :parameters [{:key "user"
+                                                              :value "100:10"}]}}
                            ;; assume this task requested {cpu:1.0,mem:512} for the job's container
                            ;; plus an additional {cpu:0.1,mem:64} for a sidecar container
                            :task-request {:resources {:mem 576
@@ -143,271 +226,257 @@
                                           :scalar-requests {"mem" 512
                                                             "cpus" 1.0}}
                            :hostname "kubehost"}
-            pod (api/task-metadata->pod "cook" "testing-cluster" task-metadata)]
-        (is (= "my-task" (-> pod .getMetadata .getName)))
-        (is (= "cook" (-> pod .getMetadata .getNamespace)))
-        (is (= "Never" (-> pod .getSpec .getRestartPolicy)))
-        (is (= "kubehost" (-> pod .getSpec .getNodeSelector (get api/k8s-hostname-label))))
-        (is (= 1 (count (-> pod .getSpec .getContainers))))
-        (is (= "testing-cluster" (-> pod .getMetadata .getLabels (get api/cook-pod-label))))
-        (is (< 0 (-> pod .getSpec .getSecurityContext .getRunAsGroup)))
-        (is (< 0 (-> pod .getSpec .getSecurityContext .getRunAsUser)))
+            pod (api/task-metadata->pod "cook" "test-cluster" task-metadata)]
+        (is (= 100 (-> pod .getSpec .getSecurityContext .getRunAsUser)))
+        (is (= 10 (-> pod .getSpec .getSecurityContext .getRunAsGroup)))))
 
-        (let [cook-sandbox-volume (->> pod
-                                       .getSpec
-                                       .getVolumes
-                                       (filter (fn [^V1Volume v] (= "cook-sandbox-volume" (.getName v))))
-                                       first)]
-          (is (not (nil? cook-sandbox-volume)))
-          (is (not (nil? (.getEmptyDir cook-sandbox-volume)))))
+    (testing "node selector for pool"
+      (let [pool-name "test-pool"
+            task-metadata {:command {:user "user"}
+                           :container {:docker {:parameters [{:key "user"
+                                                              :value "100:10"}]}}
+                           :task-request {:job {:job/pool {:pool/name pool-name}}
+                                          :scalar-requests {"mem" 512
+                                                            "cpus" 1.0}}}
+            ^V1Pod pod (api/task-metadata->pod nil {:cook-pool-label-name "pool-label-1"} task-metadata)
+            ^V1PodSpec pod-spec (.getSpec pod)
+            node-selector (.getNodeSelector pod-spec)]
+        (is (contains? node-selector "pool-label-1"))
+        (is (= pool-name (get node-selector "pool-label-1")))))
 
-        (let [^V1Container container (-> pod .getSpec .getContainers first)
-              container-env (.getEnv container)]
-          (is (= "required-cook-job-container" (.getName container)))
-          (is (= (conj api/default-shell "foo && bar") (.getCommand container)))
-          (is (= "alpine:latest" (.getImage container)))
-          (is (not (nil? container)))
-          (is (= ["COOK_SANDBOX"
-                  "EXECUTOR_PROGRESS_OUTPUT_FILE"
-                  "FOO"
-                  "HOME"
-                  "HOST_IP"
-                  "MESOS_DIRECTORY"
-                  "MESOS_SANDBOX"
-                  "SIDECAR_WORKDIR"]
-                 (->> container-env (map #(.getName %)) sort)))
-          (is (= "/mnt/sandbox" (.getWorkingDir container)))
-          (let [cook-sandbox-mount (->> container
-                                        .getVolumeMounts
-                                        (filter (fn [^V1VolumeMount m] (= "cook-sandbox-volume" (.getName m))))
-                                        first)]
-            (is (= "/mnt/sandbox" (.getMountPath cook-sandbox-mount))))
+    (testing "node selector for hostname"
+      (let [hostname "test-host"
+            task-metadata {:command {:user "user"}
+                           :container {:docker {:parameters [{:key "user"
+                                                              :value "100:10"}]}}
+                           :hostname hostname
+                           :task-request {:scalar-requests {"mem" 512
+                                                            "cpus" 1.0}}}
+            ^V1Pod pod (api/task-metadata->pod nil nil task-metadata)
+            ^V1PodSpec pod-spec (.getSpec pod)
+            node-selector (.getNodeSelector pod-spec)]
+        (is (contains? node-selector api/k8s-hostname-label))
+        (is (= hostname (get node-selector api/k8s-hostname-label)))))
 
-          (assert-env-var-value container "FOO" "BAR")
-          (assert-env-var-value container "HOME" (.getWorkingDir container))
-          (assert-env-var-value container "MESOS_SANDBOX" (.getWorkingDir container))
-
-          (let [resources (-> container .getResources)]
-            (is (= 1.0 (-> resources .getRequests (get "cpu") .getNumber .doubleValue)))
-            (is (= (* 512.0 api/memory-multiplier) (-> resources .getRequests (get "memory") .getNumber .doubleValue)))
-            (is (= (* 512.0 api/memory-multiplier) (-> resources .getLimits (get "memory") .getNumber .doubleValue))))))))
-
-  (testing "user parameter"
-    (let [task-metadata {:task-id "my-task"
-                         :command {:value "foo && bar"
-                                   :environment {"FOO" "BAR"}
-                                   :user (System/getProperty "user.name")}
-                         :container {:type :docker
-                                     :docker {:image "alpine:latest"
-                                              :parameters [{:key "user"
-                                                            :value "100:10"}]}}
-                         ;; assume this task requested {cpu:1.0,mem:512} for the job's container
-                         ;; plus an additional {cpu:0.1,mem:64} for a sidecar container
-                         :task-request {:resources {:mem 576
-                                                    :cpus 1.1}
-                                        :scalar-requests {"mem" 512
-                                                          "cpus" 1.0}}
-                         :hostname "kubehost"}
-          pod (api/task-metadata->pod "cook" "test-cluster" task-metadata)]
-      (is (= 100 (-> pod .getSpec .getSecurityContext .getRunAsUser)))
-      (is (= 10 (-> pod .getSpec .getSecurityContext .getRunAsGroup)))))
-
-  (testing "node selector for pool"
-    (let [pool-name "test-pool"
-          task-metadata {:command {:user "user"}
-                         :container {:docker {:parameters [{:key "user"
-                                                            :value "100:10"}]}}
-                         :task-request {:job {:job/pool {:pool/name pool-name}}
-                                        :scalar-requests {"mem" 512
-                                                          "cpus" 1.0}}}
-          ^V1Pod pod (api/task-metadata->pod nil nil task-metadata)
-          ^V1PodSpec pod-spec (.getSpec pod)
-          node-selector (.getNodeSelector pod-spec)]
-      (is (contains? node-selector api/cook-pool-label))
-      (is (= pool-name (get node-selector api/cook-pool-label)))))
-
-  (testing "node selector for hostname"
-    (let [hostname "test-host"
-          task-metadata {:command {:user "user"}
-                         :container {:docker {:parameters [{:key "user"
-                                                            :value "100:10"}]}}
-                         :hostname hostname
-                         :task-request {:scalar-requests {"mem" 512
-                                                          "cpus" 1.0}}}
-          ^V1Pod pod (api/task-metadata->pod nil nil task-metadata)
-          ^V1PodSpec pod-spec (.getSpec pod)
-          node-selector (.getNodeSelector pod-spec)]
-      (is (contains? node-selector api/k8s-hostname-label))
-      (is (= hostname (get node-selector api/k8s-hostname-label)))))
-
-  (testing "cpu limit configurability"
-    (let [task-metadata {:command {:user "user"}
-                         :container {:docker {:parameters [{:key "user"
-                                                            :value "100:10"}]}}
-                         :task-request {:scalar-requests {"mem" 512
-                                                          "cpus" 1.0}}}
-          pod->cpu-limit-fn (fn [^V1Pod pod]
-                              (let [^V1Container container (-> pod .getSpec .getContainers first)
-                                    ^V1ResourceRequirements resources (-> container .getResources)]
-                                (-> resources .getLimits (get "cpu"))))]
-
-      (with-redefs [config/kubernetes (constantly {:set-container-cpu-limit? true})]
-        (let [^V1Pod pod (api/task-metadata->pod nil nil task-metadata)]
-          (is (= 1.0 (-> pod pod->cpu-limit-fn .getNumber .doubleValue)))))
-
-      (with-redefs [config/kubernetes (constantly {:set-container-cpu-limit? false})]
-        (let [^V1Pod pod (api/task-metadata->pod nil nil task-metadata)]
-          (is (nil? (pod->cpu-limit-fn pod)))))
-
-      (with-redefs [config/kubernetes (constantly {})]
-        (let [^V1Pod pod (api/task-metadata->pod nil nil task-metadata)]
-          (is (nil? (pod->cpu-limit-fn pod)))))))
-
-  (testing "checkpointing volumes"
-    (with-redefs [config/kubernetes (constantly {:default-checkpoint-config {:volume-name "cook-checkpointing-tools-volume"
-                                                                             :init-container-volume-mounts [{:path "/abc/xyz"}]
-                                                                             :main-container-volume-mounts [{:path "/abc/xyz"}
-                                                                                                            {:path "/qed/bbq"
-                                                                                                             :sub-path "efg/hij"}]}
-                                                 :init-container {:command ["init container command"]
-                                                                  :image "init container image"}})]
+    (testing "cpu limit configurability"
       (let [task-metadata {:command {:user "user"}
                            :container {:docker {:parameters [{:key "user"
                                                               :value "100:10"}]}}
                            :task-request {:scalar-requests {"mem" 512
+                                                            "cpus" 1.0}}}
+            pod->cpu-limit-fn (fn [^V1Pod pod]
+                                (let [^V1Container container (-> pod .getSpec .getContainers first)
+                                      ^V1ResourceRequirements resources (-> container .getResources)]
+                                  (-> resources .getLimits (get "cpu"))))]
+
+        (with-redefs [config/kubernetes (constantly {:set-container-cpu-limit? true})]
+          (let [^V1Pod pod (api/task-metadata->pod nil nil task-metadata)]
+            (is (= 1.0 (-> pod pod->cpu-limit-fn .getNumber .doubleValue)))))
+
+        (with-redefs [config/kubernetes (constantly {:set-container-cpu-limit? false})]
+          (let [^V1Pod pod (api/task-metadata->pod nil nil task-metadata)]
+            (is (nil? (pod->cpu-limit-fn pod)))))
+
+        (with-redefs [config/kubernetes (constantly {})]
+          (let [^V1Pod pod (api/task-metadata->pod nil nil task-metadata)]
+            (is (nil? (pod->cpu-limit-fn pod)))))))
+
+    (testing "checkpointing volumes"
+      (with-redefs [config/kubernetes (constantly {:default-checkpoint-config {:volume-name "cook-checkpointing-tools-volume"
+                                                                               :init-container-volume-mounts [{:path "/abc/xyz"}]
+                                                                               :main-container-volume-mounts [{:path "/abc/xyz"}
+                                                                                                              {:path "/qed/bbq"
+                                                                                                               :sub-path "efg/hij"}]}
+                                                   :init-container {:command ["init container command"]
+                                                                    :image "init container image"}})]
+        (let [task-metadata {:command {:user "user"}
+                             :container {:docker {:parameters [{:key "user"
+                                                                :value "100:10"}]}}
+                             :task-request {:scalar-requests {"mem" 512
+                                                              "cpus" 1.0}
+                                            :job {:job/checkpoint {:checkpoint/mode "auto"}}}}
+              ^V1Pod pod (api/task-metadata->pod nil nil task-metadata)
+              ^V1Container init-container (-> pod .getSpec .getInitContainers first)
+              ^V1Container main-container (-> pod .getSpec .getContainers (->> (filter #(= (.getName %) api/cook-container-name-for-job))) first)
+              init-container-paths (into #{} (-> init-container .getVolumeMounts
+                                                 (->> (filter #(= (.getName %) "cook-checkpointing-tools-volume")))
+                                                 (->> (map #(str (.getMountPath %) (.getSubPath %))))))
+              main-container-paths (into #{} (-> main-container .getVolumeMounts
+                                                 (->> (filter #(= (.getName %) "cook-checkpointing-tools-volume")))
+                                                 (->> (map #(str (.getMountPath %) (.getSubPath %))))))]
+          (is (= #{"/abc/xyz"} init-container-paths))
+          (is (= #{"/abc/xyz" "/qed/bbqefg/hij"} main-container-paths)))))
+
+    (testing "gpu task-metadata"
+      (let [task-metadata {:task-id "my-task"
+                           :command {:value "foo && bar"
+                                     :environment {"FOO" "BAR"}
+                                     :user (System/getProperty "user.name")}
+                           :container {:type :docker
+                                       :docker {:image "alpine:latest"}}
+                           :task-request {:resources {:mem 576
+                                                      :cpus 1.1
+                                                      :gpus 2}
+                                          :scalar-requests {"mem" 512
                                                             "cpus" 1.0}
-                                          :job {:job/checkpoint {:checkpoint/mode "auto"}}}}
-            ^V1Pod pod (api/task-metadata->pod nil nil task-metadata)
-            ^V1Container init-container (-> pod .getSpec .getInitContainers first)
-            ^V1Container main-container (-> pod .getSpec .getContainers (->> (filter #(= (.getName %) api/cook-container-name-for-job))) first)
-            init-container-paths (into #{} (-> init-container .getVolumeMounts
-                                                              (->> (filter #(= (.getName %) "cook-checkpointing-tools-volume")))
-                                                              (->> (map #(str (.getMountPath %) (.getSubPath %))))))
-            main-container-paths (into #{} (-> main-container .getVolumeMounts
-                                                              (->> (filter #(= (.getName %) "cook-checkpointing-tools-volume")))
-                                                              (->> (map #(str (.getMountPath %) (.getSubPath %))))))]
-        (is (= #{"/abc/xyz"} init-container-paths))
-        (is (= #{"/abc/xyz" "/qed/bbqefg/hij"} main-container-paths)))))
+                                          :job {:job/environment #{{:environment/name "COOK_GPU_MODEL"
+                                                                    :environment/value "nvidia-tesla-p100"}}}}
+                           :hostname "kubehost"}
+            ^V1Pod pod (api/task-metadata->pod "cook" "testing-cluster" task-metadata)
+            ^V1PodSpec pod-spec (.getSpec pod)
+            ^V1Container container (-> pod-spec .getContainers first)]
+        (is (= (-> pod-spec .getNodeSelector (get "cloud.google.com/gke-accelerator")) "nvidia-tesla-p100"))
+        (is (= (-> pod-spec .getNodeSelector (get "gpu-count")) "2"))
+        (is (= 2 (-> container .getResources .getRequests (get "nvidia.com/gpu") api/to-int)))
+        (is (= 2 (-> container .getResources .getLimits (get "nvidia.com/gpu") api/to-int)))))
 
-  (testing "gpu task-metadata"
-    (let [task-metadata {:task-id "my-task"
-                         :command {:value "foo && bar"
-                                   :environment {"FOO" "BAR"}
-                                   :user (System/getProperty "user.name")}
-                         :container {:type :docker
-                                     :docker {:image "alpine:latest"}}
-                         :task-request {:resources {:mem 576
-                                                    :cpus 1.1
-                                                    :gpus 2}
-                                        :scalar-requests {"mem" 512
-                                                          "cpus" 1.0}
-                                        :job {:job/environment #{{:environment/name "COOK_GPU_MODEL"
-                                                                  :environment/value "nvidia-tesla-p100"}}}}
-                         :hostname "kubehost"}
-          ^V1Pod pod (api/task-metadata->pod "cook" "testing-cluster" task-metadata)
-          ^V1PodSpec pod-spec (.getSpec pod)
-          ^V1Container container (-> pod-spec .getContainers first)]
-      (is (= (-> pod-spec .getNodeSelector (get "cloud.google.com/gke-accelerator")) "nvidia-tesla-p100"))
-      (is (= (-> pod-spec .getNodeSelector (get "gpu-count")) "2"))
-      (is (= 2 (-> container .getResources .getRequests (get "nvidia.com/gpu") api/to-int)))
-      (is (= 2 (-> container .getResources .getLimits (get "nvidia.com/gpu") api/to-int)))))
+    (testing "disk task-metadata"
+      (with-redefs [config/disk (constantly [{:pool-regex "test-pool"
+                                              :max-size 256000.0
+                                              :valid-types #{"standard", "pd-ssd"}
+                                              :default-type "standard"
+                                              :default-request 10000.0
+                                              :type-map {"standard", "pd-standard"}
+                                              :enable-constraint? true
+                                              :disk-node-label "cloud.google.com/gke-boot-disk"}])]
+        (let [pool-name "test-pool"
+              task-metadata {:task-id "my-task"
+                             :command {:value "foo && bar"
+                                       :environment {"FOO" "BAR"}
+                                       :user (System/getProperty "user.name")}
+                             :container {:type :docker
+                                         :docker {:image "alpine:latest"}}
+                             :task-request {:resources {:mem  576
+                                                        :cpus 1.1
+                                                        :disk {:request 250000.0, :limit 255000.0, :type "standard"}}
+                                            :scalar-requests {"mem"  512
+                                                              "cpus" 1.0}
+                                            :job {:job/pool {:pool/name pool-name}}}
+                             :hostname "kubehost"}
+              ^V1Pod pod (api/task-metadata->pod "cook" "testing-cluster" task-metadata)
+              ^V1PodSpec pod-spec (.getSpec pod)
+              ^V1Container container (-> pod-spec .getContainers first)]
+          (is (= (-> pod-spec .getNodeSelector (get "cloud.google.com/gke-boot-disk")) "pd-standard"))
+          (is (= (* constraints/disk-multiplier 250000.0) (some-> container .getResources .getRequests (get "ephemeral-storage") api/to-double)))
+          (is (= (* constraints/disk-multiplier 255000.0) (some-> container .getResources .getLimits (get "ephemeral-storage") api/to-double))))
 
-  (testing "job labels -> pod labels"
-    (let [task-metadata {:command {:user "test-user"}
-                         :task-request {:job {:job/label [{:label/key "not-platform/foo"
-                                                           :label/value "bar"}
-                                                          {:label/key "platform/baz"
-                                                           :label/value "qux"}
-                                                          {:label/key "platform/another"
-                                                           :label/value "included"}]}
-                                        :scalar-requests {"mem" 512 "cpus" 1.0}}}]
+        (let [pool-name "test-pool"
+              task-metadata {:task-id "my-task"
+                             :command {:value "foo && bar"
+                                       :environment {"FOO" "BAR"}
+                                       :user (System/getProperty "user.name")}
+                             :container {:type :docker
+                                         :docker {:image "alpine:latest"}}
+                             :task-request {:resources {:mem  576
+                                                        :cpus 1.1}
+                                            :scalar-requests {"mem"  512
+                                                              "cpus" 1.0}
+                                            :job {:job/pool {:pool/name pool-name}}}
+                             :hostname "kubehost"}
+              ^V1Pod pod (api/task-metadata->pod "cook" "testing-cluster" task-metadata)
+              ^V1PodSpec pod-spec (.getSpec pod)
+              ^V1Container container (-> pod-spec .getContainers first)]
+          ; check that pod has default values for disk request, type, and limit
+          (is (= (-> pod-spec .getNodeSelector (get "cloud.google.com/gke-boot-disk")) "pd-standard"))
+          (is (= (* constraints/disk-multiplier 10000.0) (-> container .getResources .getRequests (get "ephemeral-storage") api/to-double)))
+          (is (nil? (-> container .getResources .getLimits (get "ephemeral-storage")))))))
 
-      ; With a prefix configured
-      (with-redefs [config/kubernetes
-                    (constantly {:add-job-label-to-pod-prefix "platform/"})]
-        (let [^V1Pod pod (api/task-metadata->pod "test-namespace"
-                                                 "test-compute-cluster"
-                                                 task-metadata)
-              pod-labels (-> pod .getMetadata .getLabels)]
-          (is (= "qux" (get pod-labels "platform/baz")))
-          (is (= "included" (get pod-labels "platform/another")))
-          (is (not (contains? pod-labels "not-platform/foo")))))
+    (testing "job labels -> pod labels"
+      (let [task-metadata {:command {:user "test-user"}
+                           :task-request {:job {:job/label [{:label/key "not-platform/foo"
+                                                             :label/value "bar"}
+                                                            {:label/key "platform/baz"
+                                                             :label/value "qux"}
+                                                            {:label/key "platform/another"
+                                                             :label/value "included"}]}
+                                          :scalar-requests {"mem" 512 "cpus" 1.0}}}]
 
-      ; With no prefix configured
-      (with-redefs [config/kubernetes (constantly {})]
-        (let [^V1Pod pod (api/task-metadata->pod "test-namespace"
-                                                 "test-compute-cluster"
-                                                 task-metadata)
-              pod-labels (-> pod .getMetadata .getLabels)]
-          (is (not (contains? pod-labels "platform/baz")))
-          (is (not (contains? pod-labels "platform/another")))
-          (is (not (contains? pod-labels "not-platform/foo")))))))
+        ; With a prefix configured
+        (with-redefs [config/kubernetes
+                      (constantly {:add-job-label-to-pod-prefix "platform/"})]
+          (let [^V1Pod pod (api/task-metadata->pod "test-namespace"
+                                                   fake-cc-config
+                                                   task-metadata)
+                pod-labels (-> pod .getMetadata .getLabels)]
+            (is (= "qux" (get pod-labels "platform/baz")))
+            (is (= "included" (get pod-labels "platform/another")))
+            (is (not (contains? pod-labels "not-platform/foo")))))
 
-  (testing "job application -> pod labels"
-    ; All workload- fields specified
-    (let [task-metadata {:command {:user "test-user"}
-                         :task-request {:job {:job/application {:application/workload-class "foo"
-                                                                :application/workload-id "bar"
-                                                                :application/workload-details "baz"}}
-                                        :scalar-requests {"mem" 512 "cpus" 1.0}}}
-          ^V1Pod pod (api/task-metadata->pod "test-namespace"
-                                             "test-compute-cluster"
-                                             task-metadata)
-          pod-labels (-> pod .getMetadata .getLabels)]
-      (is (= "foo" (get pod-labels "workload-class")))
-      (is (= "bar" (get pod-labels "workload-id")))
-      (is (= "baz" (get pod-labels "workload-details"))))
+        ; With no prefix configured
+        (with-redefs [config/kubernetes (constantly {})]
+          (let [^V1Pod pod (api/task-metadata->pod "test-namespace"
+                                                   fake-cc-config
+                                                   task-metadata)
+                pod-labels (-> pod .getMetadata .getLabels)]
+            (is (not (contains? pod-labels "platform/baz")))
+            (is (not (contains? pod-labels "platform/another")))
+            (is (not (contains? pod-labels "not-platform/foo")))))))
 
-    ; No workload-class specified
-    (let [task-metadata {:command {:user "test-user"}
-                         :task-request {:job {:job/application {:application/workload-id "bar"
-                                                                :application/workload-details "baz"}}
-                                        :scalar-requests {"mem" 512 "cpus" 1.0}}}
-          ^V1Pod pod (api/task-metadata->pod "test-namespace"
-                                             "test-compute-cluster"
-                                             task-metadata)
-          pod-labels (-> pod .getMetadata .getLabels)]
-      (is (= "cook-job" (get pod-labels "workload-class")))
-      (is (= "bar" (get pod-labels "workload-id")))
-      (is (= "baz" (get pod-labels "workload-details"))))
+    (testing "job application -> pod labels"
+      ; All workload- fields specified
+      (let [task-metadata {:command {:user "test-user"}
+                           :task-request {:job {:job/application {:application/workload-class "foo"
+                                                                  :application/workload-id "bar"
+                                                                  :application/workload-details "baz"}}
+                                          :scalar-requests {"mem" 512 "cpus" 1.0}}}
+            ^V1Pod pod (api/task-metadata->pod "test-namespace"
+                                               fake-cc-config
+                                               task-metadata)
+            pod-labels (-> pod .getMetadata .getLabels)]
+        (is (= "foo" (get pod-labels "workload-class")))
+        (is (= "bar" (get pod-labels "workload-id")))
+        (is (= "baz" (get pod-labels "workload-details"))))
 
-    ; No workload-id specified
-    (let [task-metadata {:command {:user "test-user"}
-                         :task-request {:job {:job/application {:application/workload-class "foo"
-                                                                :application/workload-details "baz"}}
-                                        :scalar-requests {"mem" 512 "cpus" 1.0}}}
-          ^V1Pod pod (api/task-metadata->pod "test-namespace"
-                                             "test-compute-cluster"
-                                             task-metadata)
-          pod-labels (-> pod .getMetadata .getLabels)]
-      (is (= "foo" (get pod-labels "workload-class")))
-      (is (= "unspecified" (get pod-labels "workload-id")))
-      (is (= "baz" (get pod-labels "workload-details"))))
+      ; No workload-class specified
+      (let [task-metadata {:command {:user "test-user"}
+                           :task-request {:job {:job/application {:application/workload-id "bar"
+                                                                  :application/workload-details "baz"}}
+                                          :scalar-requests {"mem" 512 "cpus" 1.0}}}
+            ^V1Pod pod (api/task-metadata->pod "test-namespace"
+                                               fake-cc-config
+                                               task-metadata)
+            pod-labels (-> pod .getMetadata .getLabels)]
+        (is (= "cook-job" (get pod-labels "workload-class")))
+        (is (= "bar" (get pod-labels "workload-id")))
+        (is (= "baz" (get pod-labels "workload-details"))))
 
-    ; No workload-details specified
-    (let [task-metadata {:command {:user "test-user"}
-                         :task-request {:job {:job/application {:application/workload-class "foo"
-                                                                :application/workload-id "bar"}}
-                                        :scalar-requests {"mem" 512 "cpus" 1.0}}}
-          ^V1Pod pod (api/task-metadata->pod "test-namespace"
-                                             "test-compute-cluster"
-                                             task-metadata)
-          pod-labels (-> pod .getMetadata .getLabels)]
-      (is (= "foo" (get pod-labels "workload-class")))
-      (is (= "bar" (get pod-labels "workload-id")))
-      (is (= "none" (get pod-labels "workload-details"))))
+      ; No workload-id specified
+      (let [task-metadata {:command {:user "test-user"}
+                           :task-request {:job {:job/application {:application/workload-class "foo"
+                                                                  :application/workload-details "baz"}}
+                                          :scalar-requests {"mem" 512 "cpus" 1.0}}}
+            ^V1Pod pod (api/task-metadata->pod "test-namespace"
+                                               fake-cc-config
+                                               task-metadata)
+            pod-labels (-> pod .getMetadata .getLabels)]
+        (is (= "foo" (get pod-labels "workload-class")))
+        (is (= "unspecified" (get pod-labels "workload-id")))
+        (is (= "baz" (get pod-labels "workload-details"))))
 
-    ; No workload- fields specified
-    (let [task-metadata {:command {:user "test-user"}
-                         :task-request {:job {:job/application {}}
-                                        :scalar-requests {"mem" 512 "cpus" 1.0}}}
-          ^V1Pod pod (api/task-metadata->pod "test-namespace"
-                                             "test-compute-cluster"
-                                             task-metadata)
-          pod-labels (-> pod .getMetadata .getLabels)]
-      (is (= "cook-job" (get pod-labels "workload-class")))
-      (is (= "unspecified" (get pod-labels "workload-id")))
-      (is (= "none" (get pod-labels "workload-details"))))))
+      ; No workload-details specified
+      (let [task-metadata {:command {:user "test-user"}
+                           :task-request {:job {:job/application {:application/workload-class "foo"
+                                                                  :application/workload-id "bar"}}
+                                          :scalar-requests {"mem" 512 "cpus" 1.0}}}
+            ^V1Pod pod (api/task-metadata->pod "test-namespace"
+                                               fake-cc-config
+                                               task-metadata)
+            pod-labels (-> pod .getMetadata .getLabels)]
+        (is (= "foo" (get pod-labels "workload-class")))
+        (is (= "bar" (get pod-labels "workload-id")))
+        (is (= "none" (get pod-labels "workload-details"))))
+
+      ; No workload- fields specified
+      (let [task-metadata {:command {:user "test-user"}
+                           :task-request {:job {:job/application {}}
+                                          :scalar-requests {"mem" 512 "cpus" 1.0}}}
+            ^V1Pod pod (api/task-metadata->pod "test-namespace"
+                                               fake-cc-config
+                                               task-metadata)
+            pod-labels (-> pod .getMetadata .getLabels)]
+        (is (= "cook-job" (get pod-labels "workload-class")))
+        (is (= "unspecified" (get pod-labels "workload-id")))
+        (is (= "none" (get pod-labels "workload-details")))))))
 
 (defn- k8s-volume->clj [^V1Volume volume]
   {:name (.getName volume)
@@ -651,15 +720,16 @@
         (.setName metadata "NodeName")
         (.setNamespace metadata "cook")
         (.setMetadata node metadata)
+        (.setUnschedulable spec false)
         (.setSpec node spec)
-        (is (not (api/node-schedulable? node 30 nil ["blocklist-1"])))
-        (is (api/node-schedulable? node 30 nil ["blocklist-2"]))))
+        (is (not (api/node-schedulable? {:node-blocklist-labels ["blocklist-1"]} node 30 nil)))
+        (is (api/node-schedulable? {:node-blocklist-labels ["blocklist-2"]} node 30 nil))))
     (testing "Pool Taint"
       (let [^V1Node node (V1Node.)
             metadata (V1ObjectMeta.)
             ^V1NodeSpec spec (V1NodeSpec.)
             ^V1Taint taint (V1Taint.)]
-        (.setKey taint api/cook-pool-taint)
+        (.setKey taint "the-taint-to-use")
         (.setValue taint "a-pool")
         (.setEffect taint "NoSchedule")
         (.addTaintsItem spec taint)
@@ -667,8 +737,10 @@
         (.setName metadata "NodeName")
         (.setNamespace metadata "cook")
         (.setMetadata node metadata)
+        (.setUnschedulable spec false)
         (.setSpec node spec)
-        (is (api/node-schedulable? node 30 nil ["blocklist-1"]))))
+        (is (api/node-schedulable? {:node-blocklist-labels ["blocklist-1"] :cook-pool-taint-name "the-taint-to-use"} node 30 nil))
+        (is (not (api/node-schedulable? {:node-blocklist-labels ["blocklist-1"] :cook-pool-taint-name "a-taint-different-than-node"} node 30 nil)))))
     (testing "Other Taint"
       (let [^V1Node node (V1Node.)
             metadata (V1ObjectMeta.)
@@ -682,8 +754,9 @@
         (.setName metadata "NodeName")
         (.setNamespace metadata "cook")
         (.setMetadata node metadata)
+        (.setUnschedulable spec false)
         (.setSpec node spec)
-        (is (not (api/node-schedulable? node 30 nil ["blocklist-1"])))))
+        (is (not (api/node-schedulable? {:node-blocklist-labels ["blocklist-1"]} node 30 nil)))))
     (testing "GPU Taint"
       (let [^V1Node node (V1Node.)
             metadata (V1ObjectMeta.)
@@ -697,8 +770,38 @@
         (.setName metadata "NodeName")
         (.setNamespace metadata "cook")
         (.setMetadata node metadata)
+        (.setUnschedulable spec false)
         (.setSpec node spec)
-        (is (api/node-schedulable? node 30 nil ["blocklist-1"]))))))
+        (is (api/node-schedulable? {:node-blocklist-labels ["blocklist-1"]} node 30 nil))))
+    (testing "Unschedule node spec"
+      (let [^V1Node node (V1Node.)
+            metadata (V1ObjectMeta.)
+            ^V1NodeSpec spec (V1NodeSpec.)]
+        (.setName metadata "NodeName")
+        (.setNamespace metadata "cook")
+        (.setMetadata node metadata)
+        (.setUnschedulable spec true)
+        (.setSpec node spec)
+        (is (not (api/node-schedulable? {:node-blocklist-labels []} node 30 nil))))
+      (let [^V1Node node (V1Node.)
+            metadata (V1ObjectMeta.)
+            ^V1NodeSpec spec (V1NodeSpec.)]
+        (.setName metadata "NodeName")
+        (.setNamespace metadata "cook")
+        (.setMetadata node metadata)
+        (.setUnschedulable spec nil)
+        (.setSpec node spec)
+        ; nil Unschedulable should pass.
+        (is (api/node-schedulable? {:node-blocklist-labels []} node 30 nil)))
+      (let [^V1Node node (V1Node.)
+            metadata (V1ObjectMeta.)
+            ^V1NodeSpec spec (V1NodeSpec.)]
+        (.setName metadata "NodeName")
+        (.setNamespace metadata "cook")
+        (.setMetadata node metadata)
+        (.setUnschedulable spec false)
+        (.setSpec node spec)
+        (is (api/node-schedulable? {:node-blocklist-labels []} node 30 nil))))))
 
 (deftest test-initialize-pod-watch-helper
   (testing "only processes each pod once"

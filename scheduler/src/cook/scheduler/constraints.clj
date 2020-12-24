@@ -19,9 +19,11 @@
             [clojure.core.cache :as cache]
             [clojure.set :as set]
             [clojure.tools.logging :as log]
+            [cook.cached-queries :as cached-queries]
             [cook.config :as config]
             [cook.group :as group]
             [cook.rate-limit :as ratelimit]
+            [cook.regexp-tools :as regexp-tools]
             [cook.scheduler.data-locality :as dl]
             [cook.tools :as util]
             [swiss.arrows :refer :all])
@@ -97,7 +99,24 @@
     (when (pos? gpu-count)
       (or gpu-model-in-env
           ; lookup the GPU model from the pool defaults defined in config.edn
-          (util/match-based-on-pool-name (config/valid-gpu-models) pool-name :default-model)))))
+          (regexp-tools/match-based-on-pool-name (config/valid-gpu-models) pool-name :default-model)))))
+
+(defn job-resources->disk-type
+  "Get disk type requested from user or use default disk type on pool"
+  [job-resources pool-name]
+  ; If user did not specify desired disk type, use the default disk type on the pool
+  (let [disk-type-for-job (or (-> job-resources :disk :type)
+                              (regexp-tools/match-based-on-pool-name (config/disk) pool-name :default-type))]
+    ; Consume the type that the disk-type-requested maps to, which is found in the config
+    (or (get (regexp-tools/match-based-on-pool-name (config/disk) pool-name :type-map) disk-type-for-job)
+        disk-type-for-job)))
+
+(defn job-resources->disk-request
+  "Given resources on job, return the disk-request from the user or the default disk-request in config"
+  [job-resources pool-name]
+  (or (-> job-resources :disk :request)
+      ; if disk config does not have default-request, use default-request of 10GiB
+      (regexp-tools/match-based-on-pool-name (config/disk) pool-name :default-request :default-value 10240)))
 
 (defrecord gpu-host-constraint [job-gpu-count-requested job-gpu-model-requested]
   JobConstraint
@@ -132,8 +151,51 @@
   and a non-gpu job from running on a gpu host because we consider gpus scarce resources."
   [job]
   (let [job-gpu-count-requested (-> job util/job-ent->resources :gpus (or 0))
-        job-gpu-model-requested (when (pos? job-gpu-count-requested) (job->gpu-model-requested job-gpu-count-requested job (util/job->pool-name job)))]
+        job-gpu-model-requested (when (pos? job-gpu-count-requested)
+                                  (job->gpu-model-requested job-gpu-count-requested job (cached-queries/job->pool-name job)))]
     (->gpu-host-constraint job-gpu-count-requested job-gpu-model-requested)))
+
+; Cook uses mebibytes (MiB) for disk request and limit.
+; Convert bytes from k8s to MiB when passing to disk constraint,
+; and MiB back to bytes when submitting to k8s.
+(def disk-multiplier (* 1024 1024))
+
+(defrecord disk-host-constraint [job-disk-request job-disk-type]
+  JobConstraint
+  (job-constraint-name [this] (get-class-name this))
+  (job-constraint-evaluate
+    [this _ vm-attributes]
+    (job-constraint-evaluate this nil vm-attributes []))
+  (job-constraint-evaluate
+    [_ _ vm-attributes _]
+    (let [k8s-vm? (= (get vm-attributes "compute-cluster-type") "kubernetes")]
+      (if k8s-vm?
+        (let [vm-disk-type->space-available (get vm-attributes "disk")
+              ; if disk-host-constraint is being evaluated, job-disk-request should be non-nil,
+              ; but we include the following (if ..) check as another safety layer
+              vm-satisfies-constraint? (if job-disk-request
+                                         (>= (get vm-disk-type->space-available job-disk-type 0) job-disk-request)
+                                         ; if job-disk-request is nil, ignore the disk-host-constraint
+                                         true)]
+          [vm-satisfies-constraint? (when-not vm-satisfies-constraint?
+                                      "VM does not have enough disk space of requested disk type")])
+        ; Mesos jobs cannot request disk. If VM is a mesos VM, constraint always passes
+        [true]))))
+
+(defn build-disk-host-constraint
+  "Constructs a disk-host-constraint.
+  The constraint prevents a job from running on a host that does not have correct disk type that the job requested
+  and prevents a job from running on a host that does not have enough disk space. Use a constraint for disk binpacking instead of
+  using Fenzo because disk is not considered a first class resource in Fenzo."
+  [job]
+  (let [pool-name (cached-queries/job->pool-name job)]
+    ; If the pool does not have enable-constraint set to true, return nil
+    (when (regexp-tools/match-based-on-pool-name (config/disk) pool-name :enable-constraint? :default-value false)
+      (let [; If the user did not specify a disk request, use the default request amount for the pool
+            job-disk-request (job-resources->disk-request (util/job-ent->resources job) pool-name)
+            job-disk-type (when job-disk-request
+                            (job-resources->disk-type (util/job-ent->resources job) pool-name))]
+        (->disk-host-constraint job-disk-request job-disk-type)))))
 
 (defrecord rebalancer-reservation-constraint [reserved-hosts]
   JobConstraint
@@ -179,9 +241,9 @@
 (defn job->default-constraints
   "Returns the list of default constraints configured for the job's pool"
   [job]
-  (util/match-based-on-pool-name
+  (regexp-tools/match-based-on-pool-name
     (config/default-job-constraints)
-    (util/job->pool-name job)
+    (cached-queries/job->pool-name job)
     :default-constraints))
 
 (def machine-type-constraint-attributes
@@ -329,7 +391,7 @@
             true
             ""))))))
 
-(def job-constraint-constructors [build-novel-host-constraint build-gpu-host-constraint build-user-defined-constraint build-estimated-completion-constraint build-data-locality-constraint])
+(def job-constraint-constructors [build-novel-host-constraint build-gpu-host-constraint build-disk-host-constraint build-user-defined-constraint build-estimated-completion-constraint build-data-locality-constraint])
 
 (defn fenzoize-job-constraint
   "Makes the JobConstraint 'constraint' Fenzo-compatible."

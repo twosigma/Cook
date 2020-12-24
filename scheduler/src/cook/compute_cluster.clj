@@ -20,7 +20,9 @@
             [cook.datomic :as datomic]
             [cook.util :as util]
             [datomic.api :as d]
-            [plumbing.core :refer [map-from-keys map-from-vals map-vals]]))
+            [metrics.timers :as timers]
+            [plumbing.core :refer [map-from-keys map-from-vals map-vals]])
+  (:import (java.util.concurrent.locks ReentrantReadWriteLock)))
 
 ; There's an ugly race where the core cook scheduler can kill a job before it tries to launch it.
 ; What happens is:
@@ -43,7 +45,12 @@
 ;
 ; So, we must grab this lock before calling kill-task in the compute cluster API. As all of our invocations to it are via
 ; safe-kill-task, we add the lock there.
-(def kill-lock-object (Object.))
+;
+; We use a ReaderWriterLock where launch tasks grab the readers, so multiple pools can launch at the same time, and a writer lock
+; here so that kills are blocked until nobody is in the middle of launching. Note that we don't actually need to hold this lock while
+; we kill, just to delay the kill until after any task-id written in the database is also guaranteed to be into the backend.
+;
+(def ^ReentrantReadWriteLock kill-lock-object (ReentrantReadWriteLock. true))
 
 (defprotocol ComputeCluster
   (launch-tasks [this pool-name matches process-task-post-launch-fn]
@@ -98,14 +105,21 @@
   (launch-rate-limiter [this]
     "Return the RateLimiter that should be used to limit launches to this compute cluster"))
 
+(def kill-lock-timer-for-kill (timers/timer ["cook-mesos" "scheduler" "kill-lock-acquire-for-kill"]))
+
 (defn safe-kill-task
   "A safe version of kill task that never throws. This reduces the risk that errors in one compute cluster propagate and cause problems in another compute cluster."
   [{:keys [name] :as compute-cluster} task-id]
-  (locking kill-lock-object
-    (try
-      (kill-task compute-cluster task-id)
-      (catch Throwable t
-        (log/error t "In compute cluster" name ", error killing task" task-id)))))
+  ; Yes, this is an empty lock body. It is to create an ordering relationship so that if we're in the process of writing to datomic and launching,
+  ; we defer killing anything until we've told mesos/k8s about the pod. See further explanation at kill-lock-object.
+  (let [kill-lock-timer-context (timers/start kill-lock-timer-for-kill)]
+    (.. kill-lock-object writeLock lock)
+    (.. kill-lock-object writeLock unlock)
+    (.stop kill-lock-timer-context))
+  (try
+    (kill-task compute-cluster task-id)
+    (catch Throwable t
+      (log/error t "In compute cluster" name ", error killing task" task-id))))
 
 (defn kill-task-if-possible
   "If compute cluster is nil, print a warning instead of killing the task. There are cases, in particular,
@@ -171,7 +185,8 @@
            compute-cluster-config/base-path
            compute-cluster-config/ca-cert
            compute-cluster-config/state
-           compute-cluster-config/state-locked?]}]
+           compute-cluster-config/state-locked?
+           compute-cluster-config/location]}]
   {:name name
    :template template
    :base-path base-path
@@ -180,20 +195,23 @@
             :compute-cluster-config.state/running :running
             :compute-cluster-config.state/draining :draining
             :compute-cluster-config.state/deleted :deleted)
-   :state-locked? state-locked?})
+   :state-locked? state-locked?
+   :location location})
 
 (defn compute-cluster-config->compute-cluster-config-ent
   "Convert dynamic cluster configuration to a Datomic entity"
-  [{:keys [name template base-path ca-cert state state-locked?]}]
-  {:compute-cluster-config/name name
-   :compute-cluster-config/template template
-   :compute-cluster-config/base-path base-path
-   :compute-cluster-config/ca-cert ca-cert
-   :compute-cluster-config/state (case state
-                                   :running :compute-cluster-config.state/running
-                                   :draining :compute-cluster-config.state/draining
-                                   :deleted :compute-cluster-config.state/deleted)
-   :compute-cluster-config/state-locked? state-locked?})
+  [{:keys [name template base-path ca-cert state state-locked? location]}]
+  (cond->
+    {:compute-cluster-config/name name
+     :compute-cluster-config/template template
+     :compute-cluster-config/base-path base-path
+     :compute-cluster-config/ca-cert ca-cert
+     :compute-cluster-config/state (case state
+                                     :running :compute-cluster-config.state/running
+                                     :draining :compute-cluster-config.state/draining
+                                     :deleted :compute-cluster-config.state/deleted)
+     :compute-cluster-config/state-locked? state-locked?}
+    location (assoc :compute-cluster-config/location location)))
 
 (defn get-db-config-ents
   "Get the current dynamic cluster configuration entities from the database"
@@ -225,13 +243,14 @@
 (defn compute-cluster->compute-cluster-config
   "Calculate dynamic cluster configuration from a compute cluster"
   [{:keys [state-atom state-locked?-atom name]
-    {{:keys [template base-path ca-cert]} :config} :cluster-definition}]
+    {{:keys [template base-path ca-cert location]} :config} :cluster-definition}]
   {:name name
    :template template
    :base-path base-path
    :ca-cert ca-cert
    :state @state-atom
-   :state-locked? @state-locked?-atom})
+   :state-locked? @state-locked?-atom
+   :location location})
 
 ;TODO: in the future all clusters will be dynamic and we shouldn't need this
 (defn get-dynamic-clusters
@@ -266,10 +285,19 @@
                     "The cluster configuration will be added to the database on the next update."
                     {:cluster-name only-in-mem-key :cluster (current-in-mem-configs only-in-mem-key)})))
      (doseq [key both-keys]
-       (let [keys-to-keep-synced [:base-path :ca-cert :state]]
-         (when (not= (-> key current-db-configs (select-keys keys-to-keep-synced))
-                     (-> key current-in-mem-configs (select-keys keys-to-keep-synced)))
-           (log/error "Base path, CA cert, or state differ between in-memory and database cluster configurations."
+       (let [current-db-config
+             (get current-db-configs key)
+             {current-in-mem-location :location :as current-in-mem-config}
+             (get current-in-mem-configs key)
+             keys-to-keep-synced
+             (cond-> [:base-path :ca-cert :state]
+                     ; The location field is treated specially when comparing db and in-mem configs --
+                     ; since this is a new field, it can be nil in-memory and non-nil in the db for a
+                     ; limited time after the db has been populated and before the leader is restarted.
+                     current-in-mem-location (conj :location))]
+         (when (not= (select-keys current-db-config keys-to-keep-synced)
+                     (select-keys current-in-mem-config keys-to-keep-synced))
+           (log/error keys-to-keep-synced "differ between in-memory and database cluster configurations."
                       "Ensure that the database contains the correct configuration and then change leadership."
                       {:cluster-name key
                        :in-memory-cluster (current-in-mem-configs key)
@@ -310,6 +338,23 @@
                false)
     false))
 
+(defn config=?
+  "Returns true if we can consider current-config and new-config to be equal.
+   The location and state fields are special in this regard -- location can
+   only transition from nil to non-nil, and state is validated in
+   cluster-state-change-valid?."
+  [{current-location :location :as current-config}
+   {new-location :location :as new-config}]
+  (if (and (some? current-location)
+           (not= current-location new-location))
+    false
+    (let [dissoc-non-comparable-fields
+          #(-> %
+               (dissoc :state)
+               (dissoc :location))]
+      (= (dissoc-non-comparable-fields current-config)
+         (dissoc-non-comparable-fields new-config)))))
+
 (defn compute-config-update
   "Add validation info to a dynamic cluster configuration update."
   [db
@@ -322,16 +367,20 @@
           (not (cluster-state-change-valid? db current-state new-state current-name))
           {:valid? false
            :reason (str "Cluster state transition from " current-state " to " new-state " is not valid.")}
+
           force?
           {:valid? true}
+
           (and (not= current-state new-state) current-state-locked?)
           {:valid? false
            :reason (str "Attempting to change cluster state from "
                         current-state " to " new-state " but not able because it is locked.")}
-          (not= (dissoc current-config :state) (dissoc new-config :state))
+
+          (not (config=? current-config new-config))
           {:valid? false
-           :reason (str "Attempting to change something other than state when force? is false. Diff is "
+           :reason (str "Attempting to change a comparable field when force? is false. Diff is "
                         (pr-str (data/diff (dissoc current-config :state) (dissoc new-config :state))))}
+
           :else
           {:valid? true})]
     (assoc update :goal-config new-config :differs? (not= current-config new-config) :cluster-name new-name)))

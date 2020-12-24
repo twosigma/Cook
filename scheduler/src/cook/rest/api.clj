@@ -38,7 +38,9 @@
             [cook.plugins.submission :as submission-plugin]
             [cook.pool :as pool]
             [cook.progress :as progress]
+            [cook.regexp-tools :as regexp-tools]
             [cook.queries :as queries]
+            [cook.queue-limit :as queue-limit]
             [cook.quota :as quota]
             [cook.rate-limit :as rate-limit]
             [cook.scheduler.constraints :as constraints]
@@ -296,6 +298,12 @@
   {:dataset {non-empty-max-128-characters-str non-empty-max-128-characters-str}
    (s/optional-key :partitions) #{{non-empty-max-128-characters-str non-empty-max-128-characters-str}}})
 
+(def Disk
+  "Schema for disk limit specifications"
+  {:request (s/pred #(> % 1.0) 'greater-than-one)
+   (s/optional-key :limit) (s/pred #(> % 1.0) 'greater-than-one)
+   (s/optional-key :type) s/Str})
+
 (def DatePartition
   "Schema for a date partition"
   {(s/required-key "begin") (s/constrained s/Str valid-date-str?)
@@ -350,6 +358,7 @@
    (s/optional-key :disable-mea-culpa-retries) s/Bool
    :cpus PosDouble
    :mem PosDouble
+   (s/optional-key :disk) Disk
    (s/optional-key :gpus) (s/both s/Int (s/pred pos? 'pos?))
    ;; Make sure the user name is valid. It must begin with a lower case character, end with
    ;; a lower case character or a digit, and has length between 2 to (62 + 2).
@@ -399,6 +408,7 @@
               :state s/Str
               :submit-time (s/maybe PosInt)
               :user UserName
+              (s/optional-key :disk) Disk
               (s/optional-key :gpus) s/Int
               (s/optional-key :groups) [s/Uuid]
               (s/optional-key :instances) [Instance]
@@ -696,17 +706,27 @@
 (defn get-default-container-for-pool
   "Given a pool name, determine a default container that should be run on it."
   [default-containers effective-pool-name]
-  (util/match-based-on-pool-name default-containers effective-pool-name :container))
+  (regexp-tools/match-based-on-pool-name default-containers effective-pool-name :container))
 
 (defn get-gpu-models-on-pool
    "Given a pool name, determine the supported GPU models on that pool."
    [valid-gpu-models effective-pool-name]
-   (util/match-based-on-pool-name valid-gpu-models effective-pool-name :valid-models))
+   (regexp-tools/match-based-on-pool-name valid-gpu-models effective-pool-name :valid-models))
+
+(defn get-disk-types-on-pool
+  "Given a pool name, determine the supported disk types on that pool."
+  [disk effective-pool-name]
+  (regexp-tools/match-based-on-pool-name disk effective-pool-name :valid-types))
+
+(defn get-max-disk-size-on-pool
+  "Given a pool name, determine the max requestable disk size on that pool."
+  [disk effective-pool-name]
+  (regexp-tools/match-based-on-pool-name disk effective-pool-name :max-size))
 
 (s/defn make-job-txn
   "Creates the necessary txn data to insert a job into the database"
   [pool commit-latch-id db job :- Job]
-  (let [{:keys [uuid command max-retries max-runtime expected-runtime priority cpus mem gpus
+  (let [{:keys [uuid command max-retries max-runtime expected-runtime priority cpus mem disk gpus
                 user name ports uris env labels container group application disable-mea-culpa-retries
                 constraints executor progress-output-file progress-regex-string datasets checkpoint]
          :or {group nil
@@ -771,6 +791,21 @@
                                 [[:db/add db-id :job/priority priority]])
                               (when (and max-runtime (not= Long/MAX_VALUE max-runtime))
                                 [[:db/add db-id :job/max-runtime max-runtime]])
+                              (when disk
+                                (let [disk-id (d/tempid :db.part/user)
+                                      params {:db/id disk-id
+                                              :resource/type :resource.type/disk
+                                              :resource.disk/request (some-> disk :request double)}]
+                                  [[:db/add db-id :job/resource disk-id]
+                                   (reduce-kv
+                                     ;; This only adds the optional params to the DB if they were explicitly set
+                                     (fn [txn-map k v]
+                                       (if-not (nil? v)
+                                         (assoc txn-map k v)
+                                         txn-map))
+                                     params
+                                     {:resource.disk/limit (some-> disk :limit double)
+                                      :resource.disk/type (:type disk)})]))
                               (when (and gpus (not (zero? gpus)))
                                 (let [gpus-id (d/tempid :db.part/user)]
                                   [[:db/add db-id :job/resource gpus-id]
@@ -954,12 +989,34 @@
                (not (contains? (get-gpu-models-on-pool (config/valid-gpu-models) pool-name) requested-gpu-model)))
       (throw (ex-info (str "The following GPU model is not supported: " requested-gpu-model) {})))))
 
+(defn validate-job-disk
+  "Validates that a job requesting disk is satisfying the following conditions:
+    - Disk specifications cannot be made on a pool that does not support disks
+    - Disk limit and disk type are optional
+    - Disk request cannot exceed disk limit, and both request and limit cannot exceed the max size in config
+    - Requested type must be a valid type in config"
+  [pool-name {:keys [disk]}]
+  (let [{disk-request :request disk-limit :limit requested-disk-type :type} disk
+        max-size (get-max-disk-size-on-pool (config/disk) pool-name)
+        disk-types-on-pool (get-disk-types-on-pool (config/disk) pool-name)]
+    (when-not disk-types-on-pool
+      (throw (ex-info (str "Disk specifications are not supported on pool " pool-name) disk)))
+    (when disk-limit
+      (when-not (<= disk-request disk-limit max-size)
+        (throw (ex-info (str "Disk resource setting error. We must have disk-request <= disk-limit <= max-size.")
+                        {:disk-request disk-request :disk-limit disk-limit :max-size max-size}))))
+    (when (> disk-request max-size)
+      (throw (ex-info (str "Disk request specified is greater than max disk size on pool") disk)))
+    (when (and requested-disk-type
+               (not (contains? disk-types-on-pool requested-disk-type)))
+      (throw (ex-info (str "The following disk type is not supported: " requested-disk-type) disk)))))
+
 (defn validate-and-munge-job
   "Takes the user, the parsed json from the job and a list of the uuids of
    new-groups (submitted in the same request as the job). Returns proper Job
    objects, or else throws an exception"
   [db pool-name user task-constraints gpu-enabled? new-group-uuids
-   {:keys [cpus mem gpus uuid command priority max-retries max-runtime expected-runtime name
+   {:keys [cpus mem disk gpus uuid command priority max-retries max-runtime expected-runtime name
            uris ports env labels container group application disable-mea-culpa-retries
            constraints executor progress-output-file progress-regex-string datasets checkpoint]
     :or {group nil
@@ -982,6 +1039,7 @@
                   :cpus (double cpus)
                   :mem (double mem)
                   :disable-mea-culpa-retries disable-mea-culpa-retries}
+                 (when disk {:disk disk})
                  (when gpus {:gpus (int gpus)})
                  (when env {:env (walk/stringify-keys env)})
                  (when uris {:uris (map (fn [{:keys [value executable cache extract]}]
@@ -1023,6 +1081,7 @@
                            (* 1024 (:memory-gb task-constraints)))
                       {:constraints task-constraints
                        :job job})))
+    (when disk (validate-job-disk pool-name munged))
     (when (> (:ports munged) max-ports)
       (throw (ex-info (str "Requested " ports " ports, but only allowed to use " max-ports)
                       {:constraints task-constraints
@@ -1201,6 +1260,7 @@
     (let [resources (util/job-ent->resources job)
           groups (:group/_job job)
           application (:job/application job)
+          disk (:disk resources)
           expected-runtime (:job/expected-runtime job)
           executor (:job/executor job)
           progress-output-file (:job/progress-output-file job)
@@ -1216,8 +1276,7 @@
                                   (->> [attribute (str/upper-case (name operator)) pattern]
                                        (map str)))))
           instances (map #(fetch-instance-map db %1) (:job/instance job))
-          submit-time (when (:job/submit-time job) ; due to a bug, submit time may not exist for some jobs
-                        (.getTime (:job/submit-time job)))
+          submit-time (util/job->submit-time job)
           datasets (when (seq (:job/datasets job))
                      (dl/get-dataset-maps job))
           attempts-consumed (util/job-ent->attempts-consumed db job)
@@ -1258,6 +1317,7 @@
       (cond-> job-map
               groups (assoc :groups (map #(str (:group/uuid %)) groups))
               application (assoc :application (util/remove-datomic-namespacing application))
+              disk (assoc :disk disk)
               expected-runtime (assoc :expected-runtime expected-runtime)
               executor (assoc :executor (name executor))
               progress-output-file (assoc :progress-output-file progress-output-file)
@@ -1907,11 +1967,12 @@
           group-txns (map #(make-group-txn % (get group-uuid->job-dbids
                                                   (:uuid %)
                                                   []))
-                          groups)]
+                          groups)
+          pool-name (pool/pool-name-or-default (:pool/name pool))]
 
       (let [user (get-in ctx [:request :authorization/user])]
-        (rate-limit/spend! rate-limit/job-submission-rate-limiter user (count jobs)))
-
+        (rate-limit/spend! rate-limit/job-submission-rate-limiter user (count jobs))
+        (queue-limit/inc-queue-length! pool-name user (count jobs)))
       @(d/transact
          conn
          (-> (vec group-asserts)
@@ -1919,9 +1980,8 @@
              (conj commit-latch)
              (into job-txns)
              (into group-txns)))
-
       (meters/mark! (meters/meter ["cook-mesos" "scheduler" "jobs-created"
-                                   (str "pool-" (pool/pool-name-or-default (:pool/name pool)))])
+                                   (str "pool-" pool-name)])
                     (count jobs))
       {::results (str/join
                    \space (concat ["submitted jobs"]
@@ -1968,6 +2028,56 @@
       (zero? (:count user-quota)) [false {::error "User quota is set to zero jobs."}]
       (seq errors) [false {::error (str/join "\n" errors)}]
       :else true)))
+
+(defn user-queue-length-within-limit?
+  "Check if the job submission would cause the user to have more jobs queued than they're
+  allowed. We refresh queue lengths from the database on a configurable interval. Note that
+  this check does not take into account any of the following in real-time, and therefore is
+  only 100% accurate as of the last refresh from the database:
+
+  - Jobs will get removed from the queue when they launch. This is going to be minor as
+    launch rate is going to be much smaller than insert rate.
+
+  - Jobs will get added to the queue if they fail and have retries. This is going to be
+    minor as failure rate is going to be much smaller than insert rate.
+
+  - If there are multiple API hosts in the cluster, each one is maintaining a separate
+    count of the queue, without knowing about the other API hosts' job submissions or
+    job kills. We hope that locality (a user tends to talk to the same host) mitigates
+    this.
+
+  In summary, we take into account submitted and killed jobs on the same API host but
+  ignore launched and retried jobs. This check is meant to prevent individual users from
+  flooding the queue with hundreds of thousands of jobs, so if it lets a few hundred too
+  many or too few in until the next refresh from the database, that's acceptable."
+  [{:keys [::jobs ::pool] :as ctx}]
+  (let [pool-name (or (:pool/name pool) (config/default-pool))
+        user (get-in ctx [:request :authorization/user])
+        user-queue-length (queue-limit/user-queue-length pool-name user)
+        user-queue-length-limit (queue-limit/user-queue-limit pool-name)]
+    (if (> (-> jobs count (+ user-queue-length))
+           user-queue-length-limit)
+      (do
+        (log/info "In" pool-name "pool, rejecting job submission due to queue length"
+                  {:number-jobs (count jobs)
+                   :user user
+                   :user-queue-length user-queue-length
+                   :user-queue-length-limit user-queue-length-limit})
+        [false {::error (format "User has too many jobs queued (the per-user queue limit is %d)"
+                                user-queue-length-limit)}])
+      true)))
+
+(defn job-create-processable?
+  "We want to return a 422 (unprocessable entity) if the requested
+   resources for a single job exceed the user's total resource quota,
+   or if the job submission would cause the user to have more jobs
+   queued than they're allowed."
+  [conn ctx]
+  (let [no-job-exceeds-quota-result
+        (no-job-exceeds-quota? conn ctx)]
+    (if (true? no-job-exceeds-quota-result)
+      (user-queue-length-within-limit? ctx)
+      no-job-exceeds-quota-result)))
 
 ;;; On POST; JSON blob that looks like:
 ;;; {"jobs": [{"command": "echo hello world",
@@ -2045,9 +2155,7 @@
                 (let [db (d/db conn)
                       existing (filter (partial job-exists? db) (map :uuid (::jobs ctx)))]
                   [(seq existing) {::existing existing}]))
-     ;; We want to return a 422 (unprocessable entity) if the requested resources
-     ;; for a single job exceed the user's total resource quota.
-     :processable? (partial no-job-exceeds-quota? conn)
+     :processable? (partial job-create-processable? conn)
      ;; To ensure compatibility with existing clients,
      ;; we need to return 409 (conflict) when a client POSTs a Job UUID that already exists.
      ;; Liberator normally only supports 409 responses to PUT requests, so we need to override
@@ -3016,7 +3124,7 @@
      ; TODO (pschorf) - cache this if it is a performance bottleneck
      :handle-ok (fn [_]
                   (let [uuid->datasets (->> (d/db conn)
-                                            util/get-pending-job-ents
+                                            queries/get-pending-job-ents
                                             (filter (fn [j] (not (empty? (:job/datasets j)))))
                                             (map (fn [j] [(:job/uuid j) (dl/get-dataset-maps j)]))
                                             (into {}))

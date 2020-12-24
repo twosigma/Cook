@@ -220,6 +220,85 @@
                      nil))
         "non GPU task on non GPU host should succeed")))
 
+(deftest test-disk-constraint
+  (cook.test.testutil/setup)
+  (let [framework-id "my-framework-id"
+        offer {:id "my-offer-id"
+               :framework-id framework-id
+               :slave-id "my-slave-id",
+               :hostname "slave3",
+               :resources [{:name "cpus", :type :value-scalar, :scalar 40.0, :ranges [], :set #{}, :role "*"}
+                           {:name "mem", :type :value-scalar, :scalar 5000.0, :ranges [], :set #{}, :role "*"}
+                           {:name "disk", :type :value-text->scalar, :text->scalar {"pd-standard" 50}, :ranges [], :set #{}, :role "*"}
+                           {:name "ports", :type :value-ranges, :scalar 0.0, :ranges [{:begin 31000, :end 32000}], :set #{}, :role "*"}
+                           {:name "gpus", :type :value-text->scalar :text->scalar {} :role "*"}],
+               :attributes [{:name "compute-cluster-type", :type :value-text, :text "kubernetes" :role "*"}],
+               :executor-ids []}
+        uri "datomic:mem://test-disk-constraint"
+        conn (restore-fresh-database! uri)
+        _ (create-pool conn "test-pool")
+        _ (create-pool conn "mesos-pool")
+
+        disk-request-job-id-1 (create-dummy-job conn :user "ljin" :ncpus 5.0 :memory 5.0 :pool "test-pool" :disk {:request 10.0 :limit 20.0 :type "standard"})
+        disk-request-job-id-2 (create-dummy-job conn :user "ljin" :ncpus 5.0 :memory 5.0 :pool "test-pool" :disk {:request 50.0 :limit 60.0})
+        disk-request-job-id-3 (create-dummy-job conn :user "ljin" :ncpus 5.0 :memory 5.0 :pool "test-pool" :disk {:request 100.0 :type "standard"})
+        disk-request-job-id-4 (create-dummy-job conn :user "ljin" :ncpus 5.0 :memory 5.0 :pool "test-pool" :disk {:request 10.0 :type "pd-ssd"})
+        disk-request-job-id-5 (create-dummy-job conn :user "ljin" :ncpus 5.0 :memory 5.0 :pool "mesos-pool")
+        db (db conn)
+        disk-request-job-1 (d/entity db disk-request-job-id-1)
+        disk-request-job-2 (d/entity db disk-request-job-id-2)
+        disk-request-job-3 (d/entity db disk-request-job-id-3)
+        disk-request-job-4 (d/entity db disk-request-job-id-4)
+        disk-request-job-5 (d/entity db disk-request-job-id-5)]
+
+    (with-redefs [config/disk (constantly [{:pool-regex "test-pool"
+                                            :max-size 256000.0
+                                            :valid-types #{"standard", "pd-ssd"}
+                                            :default-type "standard"
+                                            :default-request 10000.0
+                                            :type-map {"standard", "pd-standard"}
+                                            :enable-constraint? true}])]
+      (is (.isSuccessful
+            (.evaluate (constraints/fenzoize-job-constraint (constraints/build-disk-host-constraint disk-request-job-1))
+                       (sched/make-task-request db disk-request-job-1 nil)
+                       (reify com.netflix.fenzo.VirtualMachineCurrentState
+                         (getHostname [_] "test-host")
+                         (getRunningTasks [_] [])
+                         (getTasksCurrentlyAssigned [_] [])
+                         (getCurrAvailableResources [_] (sched/->VirtualMachineLeaseAdapter offer 0)))
+                       nil))
+          (str "Disk task on host with enough disk and correct type should succeed"))
+      (is (.isSuccessful
+            (.evaluate (constraints/fenzoize-job-constraint (constraints/build-disk-host-constraint disk-request-job-2))
+                       (sched/make-task-request db disk-request-job-2 nil)
+                       (reify com.netflix.fenzo.VirtualMachineCurrentState
+                         (getHostname [_] "test-host")
+                         (getRunningTasks [_] [])
+                         (getTasksCurrentlyAssigned [_] [])
+                         (getCurrAvailableResources [_] (sched/->VirtualMachineLeaseAdapter offer 0)))
+                       nil))
+          (str "Disk task on host with enough disk and correct type should succeed"))
+      (is (not (.isSuccessful
+                 (.evaluate (constraints/fenzoize-job-constraint (constraints/build-disk-host-constraint disk-request-job-3))
+                            (sched/make-task-request db disk-request-job-3 nil)
+                            (reify com.netflix.fenzo.VirtualMachineCurrentState
+                              (getHostname [_] "test-host")
+                              (getRunningTasks [_] [])
+                              (getTasksCurrentlyAssigned [_] [])
+                              (getCurrAvailableResources [_] (sched/->VirtualMachineLeaseAdapter offer 0)))
+                            nil)))
+          (str "Disk task on host without enough disk should fail"))
+      (is (not (.isSuccessful
+                 (.evaluate (constraints/fenzoize-job-constraint (constraints/build-disk-host-constraint disk-request-job-4))
+                            (sched/make-task-request db disk-request-job-4 nil)
+                            (reify com.netflix.fenzo.VirtualMachineCurrentState
+                              (getHostname [_] "test-host")
+                              (getRunningTasks [_] [])
+                              (getTasksCurrentlyAssigned [_] [])
+                              (getCurrAvailableResources [_] (sched/->VirtualMachineLeaseAdapter offer 0)))
+                            nil)))
+          (str "Disk task on host without correct disk type should fail"))
+      (is (nil? (constraints/build-disk-host-constraint disk-request-job-5))))))
 
 (deftest test-rebalancer-reservation-constraint
   (setup)
@@ -236,7 +315,7 @@
                                            :hostname "hostA",
                                            :resources [#mesomatic.types.Resource{:name "cpus", :type :value-scalar, :scalar 40.0, :ranges [], :set #{}, :role "*"}
                                                        #mesomatic.types.Resource{:name "mem", :type :value-scalar, :scalar 5000.0, :ranges [], :set #{}, :role "*"}
-                                                       #mesomatic.types.Resource{:name "disk", :type :value-scalar, :scalar 6000.0, :ranges [], :set #{}, :role "*"}
+                                                       #mesomatic.types.Resource{:name "disk", :type :value-text->scalar, :text->scalar {"standard" 6000.0}, :ranges [], :set #{}, :role "*"}
                                                        #mesomatic.types.Resource{:name "ports", :type :value-ranges, :scalar 0.0, :ranges [#mesomatic.types.ValueRange{:begin 31000, :end 32000}], :set #{}, :role "*"}],
                                            :attributes [],
                                            :executor-ids []}
@@ -246,7 +325,7 @@
                                            :hostname "hostB",
                                            :resources [#mesomatic.types.Resource{:name "cpus", :type :value-scalar, :scalar 40.0, :ranges [], :set #{}, :role "*"}
                                                        #mesomatic.types.Resource{:name "mem", :type :value-scalar, :scalar 5000.0, :ranges [], :set #{}, :role "*"}
-                                                       #mesomatic.types.Resource{:name "disk", :type :value-scalar, :scalar 6000.0, :ranges [], :set #{}, :role "*"}
+                                                       #mesomatic.types.Resource{:name "disk", :type :value-text->scalar, :text->scalar {"standard" 6000.0}, :ranges [], :set #{}, :role "*"}
                                                        #mesomatic.types.Resource{:name "ports", :type :value-ranges, :scalar 0.0, :ranges [#mesomatic.types.ValueRange{:begin 31000, :end 32000}], :set #{}, :role "*"}],
                                            :attributes [],
                                            :executor-ids []}
