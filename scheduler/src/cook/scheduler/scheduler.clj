@@ -584,7 +584,12 @@
    :totals {mem ..., cpus ..., ...}}"
   [resource-maps]
   (let [resources-of-interest ["cpus" "mem"]]
-    {:largest-by (pc/map-from-keys
+    {; How does :largest-by differ from the p100 in :percentiles?
+     ; :largest-by shows the full resource map for the max by mem
+     ; and cpus, whereas :percentiles entries only show the number
+     ; for that resource. This would tell you, for example, if the
+     ; offer with the most cpus has very little mem offered.
+     :largest-by (pc/map-from-keys
                    (fn percentiles
                      [resource]
                      (->> resource-maps
