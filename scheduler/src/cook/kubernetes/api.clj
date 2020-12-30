@@ -668,7 +668,7 @@
   (let [{:keys [disallowed-var-names]} (config/kubernetes)
         disallowed-var? #(contains? disallowed-var-names (key %))
         ; add memory request to env because there is no way to access memory request from the instance
-        env (assoc env "COOK_MEMORY_REQUEST_BYTES" mem)]
+        env (assoc env "COOK_MEMORY_REQUEST_BYTES" (* memory-multiplier mem))]
     (->> env
          (remove disallowed-var?)
          (mapv #(apply make-env %))
