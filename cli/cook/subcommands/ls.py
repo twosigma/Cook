@@ -107,7 +107,7 @@ def ls_for_instance_from_mesos(instance, sandbox_dir_fn, path, long_format, as_j
         else:
             logging.info('the directory is empty')
 
-def kubectl_ls_for_instance(instance_uuid, _, path, long_format, as_json):
+def kubectl_ls_for_instance(instance_uuid, path, long_format, as_json):
     if as_json:
         working_dir = subprocess.run(['kubectl',
                                       'exec',
@@ -148,18 +148,16 @@ def kubectl_ls_for_instance(instance_uuid, _, path, long_format, as_json):
             args.append(path)
         os.execlp(*args)
 
-def ls_for_instance(job, instance, sandbox_dir_fn, cluster, path, long_format, as_json):
+def ls_for_instance(_, instance, sandbox_dir_fn, __, path, long_format, as_json):
     """
     Lists contents of the Mesos sandbox path for the given instance.
     When using Kubernetes, calls the exec command of the kubectl cli.
     """
     compute_cluster = instance["compute-cluster"]
     compute_cluster_type = compute_cluster["type"]
-    compute_cluster_name = compute_cluster["name"]
     if compute_cluster_type == "kubernetes" and ("end_time" not in instance or instance["end_time"] is None):
-        kubectl_ls_for_instance_fn = plugins.get_fn('kubectl-ls-for-instance', kubectl_ls_for_instance)
-        compute_cluster_config = get_compute_cluster_config(cluster, compute_cluster_name)
-        kubectl_ls_for_instance_fn(job["user"], instance["task_id"], compute_cluster_config, path, long_format, as_json)
+        kubernetes_ls_for_instance_fn = plugins.get_fn('kubernetes-ls-for-instance', kubectl_ls_for_instance)
+        kubernetes_ls_for_instance_fn(instance["task_id"], path, long_format, as_json)
     else:
         ls_for_instance_from_mesos(instance, sandbox_dir_fn, path, long_format, as_json)
 
