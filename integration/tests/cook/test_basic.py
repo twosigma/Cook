@@ -3446,9 +3446,7 @@ class CookTest(util.CookTest):
     @unittest.skipUnless(util.docker_tests_enabled(), "Requires we're in an environment that requires docker images.")
     def test_memory_multiplier(self):
         mem = 64
-        command = f'mem_limit_bytes=$(cat /sys/fs/cgroup/memory/memory.limit_in_bytes) ; ' \
-                  f'echo "mem_limit_bytes = $mem_limit_bytes" ; ' \
-                  f'[ $mem_limit_bytes -eq {mem*1024*1024} ]'
+        command = f'bash -c \'if [[ "${{COOK_MEMORY_REQUEST_BYTES}}" -eq {mem * 1024 * 1024} ]]; then exit 0; else exit 1; fi\''
         job_uuid, resp = util.submit_job(self.cook_url, command=command, max_retries=5, mem=mem)
         self.assertEqual(resp.status_code, 201, msg=resp.content)
         job = util.wait_for_job_in_statuses(self.cook_url, job_uuid, ['completed'])

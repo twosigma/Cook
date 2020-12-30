@@ -664,9 +664,11 @@
 (defn make-filtered-env-vars
   "Create a Kubernetes API compatible var list from an environment vars map,
    with variables filtered based on disallowed-var-names in the Kubernetes config."
-  [env]
+  [env mem]
   (let [{:keys [disallowed-var-names]} (config/kubernetes)
-        disallowed-var? #(contains? disallowed-var-names (key %))]
+        disallowed-var? #(contains? disallowed-var-names (key %))
+        ; add memory request to env because there is no way to access memory request from the instance
+        env (assoc env "COOK_MEMORY_REQUEST_BYTES" mem)]
     (->> env
          (remove disallowed-var?)
          (mapv #(apply make-env %))
@@ -812,7 +814,7 @@
 (defn set-mem-cpu-resources
   "Given a resources object and a CPU and memory request and limit, update the resources object to reflect the
   desired requests and limits."
-  [^V1ResourceRequirements resources memory-request memory-limit cpu-request cpu-limit]
+  [^V1ResourceRequirements resources memory-request cpu-request cpu-limit]
   (let [{:keys [set-container-cpu-limit?]} (config/kubernetes)]
     (.putRequestsItem resources "memory" (double->quantity (* memory-multiplier memory-request)))
     (.putRequestsItem resources "cpu" (double->quantity cpu-request))
@@ -904,8 +906,8 @@
                    ;; preserving compatibility with Meosos + Cook Executor.
                    (not progress-file-path)
                    (assoc progress-file-var (str workdir "/" task-id ".progress")))
-        main-env-vars (make-filtered-env-vars main-env)
-        computed-mem (if checkpoint-memory-overhead (add-as-decimals mem checkpoint-memory-overhead) mem)]
+        computed-mem (if checkpoint-memory-overhead (add-as-decimals mem checkpoint-memory-overhead) mem)
+        main-env-vars (make-filtered-env-vars main-env computed-mem)]
 
     ; metadata
     (.setName metadata pod-name)
@@ -935,7 +937,7 @@
     (.setTty container true)
     (.setStdin container true)
 
-    (set-mem-cpu-resources resources computed-mem computed-mem cpus cpus)
+    (set-mem-cpu-resources resources computed-mem cpus cpus)
 
     (when (pos? gpus)
       (.putLimitsItem resources "nvidia.com/gpu" (double->quantity gpus))
@@ -970,7 +972,6 @@
                                                              (get-in sidecar [:resource-requirements fieldname])
                                                              0))
               total-memory-request (add-as-decimals computed-mem (get-resource-requirements-fn :memory-request))
-              total-memory-limit (add-as-decimals computed-mem (get-resource-requirements-fn :memory-limit))
               total-cpu-request (add-as-decimals cpus (get-resource-requirements-fn :cpu-request))
               total-cpu-limit (add-as-decimals cpus (get-resource-requirements-fn :cpu-limit))
               resources (V1ResourceRequirements.)]
@@ -983,14 +984,14 @@
           (.setVolumeMounts container (filterv some? (concat [(init-container-workdir-volume-mount-fn false)
                                                               (scratch-space-volume-mount-fn false)]
                                                              init-container-checkpoint-volume-mounts)))
-          (set-mem-cpu-resources resources total-memory-request total-memory-limit total-cpu-request total-cpu-limit)
+          (set-mem-cpu-resources resources total-memory-request total-cpu-request total-cpu-limit)
           (.setResources container resources)
           (.addInitContainersItem pod-spec container))))
 
     ; sandbox file server container
     (when use-cook-sidecar?
       (when-let [{:keys [command health-check-endpoint image port resource-requirements]} sidecar]
-        (let [{:keys [cpu-request cpu-limit memory-request memory-limit]} resource-requirements
+        (let [{:keys [cpu-request cpu-limit memory-request]} resource-requirements
               container (V1Container.)
               resources (V1ResourceRequirements.)]
           ; container
@@ -1015,7 +1016,7 @@
             (.setReadinessProbe container readiness-probe)))
 
           ; resources
-          (set-mem-cpu-resources resources memory-request memory-limit cpu-request cpu-limit)
+          (set-mem-cpu-resources resources memory-request cpu-request cpu-limit)
           (.setResources container resources)
 
           (.setVolumeMounts container [(sandbox-volume-mount-fn true) (sidecar-workdir-volume-mount-fn false)])
