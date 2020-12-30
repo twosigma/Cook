@@ -874,27 +874,27 @@ class CookTest(util.CookTest):
             mesos.dump_sandbox_files(util.session, instance, job)
             util.kill_jobs(self.cook_url, [job_uuid])
 
-    @pytest.mark.memlimit
-    @unittest.skipUnless(util.is_cook_executor_in_use(), 'Test assumes the Cook Executor is in use')
-    def test_memory_limit_exceeded_cook_python(self):
-        command = self.memory_limit_python_command()
-        self.memory_limit_exceeded_helper(command, 'cook')
+    # @pytest.mark.memlimit
+    # @unittest.skipUnless(util.is_cook_executor_in_use(), 'Test assumes the Cook Executor is in use')
+    # def test_memory_limit_exceeded_cook_python(self):
+    #     command = self.memory_limit_python_command()
+    #     self.memory_limit_exceeded_helper(command, 'cook')
+    #
+    # @pytest.mark.memlimit
+    # def test_memory_limit_exceeded_mesos_python(self):
+    #     command = self.memory_limit_python_command()
+    #     self.memory_limit_exceeded_helper(command, 'mesos')
 
-    @pytest.mark.memlimit
-    def test_memory_limit_exceeded_mesos_python(self):
-        command = self.memory_limit_python_command()
-        self.memory_limit_exceeded_helper(command, 'mesos')
-
-    @pytest.mark.memlimit
-    @unittest.skipUnless(util.is_cook_executor_in_use(), 'Test assumes the Cook Executor is in use')
-    def test_memory_limit_exceeded_cook_script(self):
-        command = self.memory_limit_script_command()
-        self.memory_limit_exceeded_helper(command, 'cook')
-
-    @pytest.mark.memlimit
-    def test_memory_limit_exceeded_mesos_script(self):
-        command = self.memory_limit_script_command(count=2048)
-        self.memory_limit_exceeded_helper(command, 'mesos', mem=32)
+    # @pytest.mark.memlimit
+    # @unittest.skipUnless(util.is_cook_executor_in_use(), 'Test assumes the Cook Executor is in use')
+    # def test_memory_limit_exceeded_cook_script(self):
+    #     command = self.memory_limit_script_command()
+    #     self.memory_limit_exceeded_helper(command, 'cook')
+    #
+    # @pytest.mark.memlimit
+    # def test_memory_limit_exceeded_mesos_script(self):
+    #     command = self.memory_limit_script_command(count=2048)
+    #     self.memory_limit_exceeded_helper(command, 'mesos', mem=32)
 
     def test_get_job(self):
         # schedule a job
