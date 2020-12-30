@@ -815,7 +815,6 @@
   [^V1ResourceRequirements resources memory-request memory-limit cpu-request cpu-limit]
   (let [{:keys [set-container-cpu-limit?]} (config/kubernetes)]
     (.putRequestsItem resources "memory" (double->quantity (* memory-multiplier memory-request)))
-    (.putLimitsItem resources "memory" (double->quantity (* memory-multiplier memory-limit)))
     (.putRequestsItem resources "cpu" (double->quantity cpu-request))
     (when set-container-cpu-limit?
       ; Some environments may need pods to run in the "Guaranteed"

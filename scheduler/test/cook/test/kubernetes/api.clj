@@ -208,7 +208,7 @@
             (let [resources (-> container .getResources)]
               (is (= 1.0 (-> resources .getRequests (get "cpu") .getNumber .doubleValue)))
               (is (= (* 512.0 api/memory-multiplier) (-> resources .getRequests (get "memory") .getNumber .doubleValue)))
-              (is (= (* 512.0 api/memory-multiplier) (-> resources .getLimits (get "memory") .getNumber .doubleValue))))))))
+              (is (nil? (-> resources .getLimits (get "memory")))))))))
 
     (testing "user parameter"
       (let [task-metadata {:task-id "my-task"
