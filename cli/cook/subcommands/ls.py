@@ -9,7 +9,7 @@ from functools import partial
 from tabulate import tabulate
 
 from cook import http, mesos, terminal, plugins
-from cook.querying import get_compute_cluster_config, query_unique_and_run, parse_entity_refs
+from cook.querying import query_unique_and_run, parse_entity_refs
 from cook.util import guard_no_cluster
 
 

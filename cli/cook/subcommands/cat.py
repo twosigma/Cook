@@ -6,7 +6,7 @@ from functools import partial
 
 from cook import plugins
 from cook.mesos import download_file
-from cook.querying import get_compute_cluster_config, parse_entity_refs, query_unique_and_run, parse_entity_ref
+from cook.querying import parse_entity_refs, query_unique_and_run, parse_entity_ref
 from cook.util import guard_no_cluster
 
 def cat_using_download_file(instance, sandbox_dir_fn, path):

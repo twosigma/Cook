@@ -4,7 +4,7 @@ from functools import partial
 
 from cook import plugins
 from cook.mesos import read_file
-from cook.querying import get_compute_cluster_config, query_unique_and_run, parse_entity_refs
+from cook.querying import query_unique_and_run, parse_entity_refs
 from cook.util import check_positive, guard_no_cluster
 
 CHUNK_SIZE = 4096
@@ -105,15 +105,15 @@ def tail_follow(file_size, read_fn, follow_sleep_seconds):
 
         time.sleep(follow_sleep_seconds)
 
-def tail_using_read_file(instance, sandbox_dir_fn, path, num_lines_to_print, follow, follow_sleep_seconds):
-    retrieve_fn = plugins.get_fn('read-job-instance-file', read_file)
+def tail_using_read_file(instance, sandbox_dir_fn, path, num_lines_to_print, follow, follow_sleep_seconds, retrieve_fn_name='read-job-instance-file'):
+    retrieve_fn = plugins.get_fn(retrieve_fn_name, read_file)
     read = partial(retrieve_fn, instance=instance, sandbox_dir_fn=sandbox_dir_fn, path=path)
     file_size = read()['offset']
     tail_backwards(file_size, read, num_lines_to_print)
     if follow:
         tail_follow(file_size, read, follow_sleep_seconds)
 
-def kubectl_tail_instance_file(instance_uuid, path, num_lines_to_print, follow):
+def kubectl_tail_instance_file(instance_uuid, path, num_lines_to_print, follow, _):
     args = ['kubectl', 'kubectl',
             'exec',
             '-c', os.getenv('COOK_CONTAINER_NAME_FOR_JOB', 'required-cook-job-container'),
@@ -135,7 +135,7 @@ def tail_for_instance(_, instance, sandbox_dir_fn, __, path, num_lines_to_print,
     compute_cluster_type = compute_cluster["type"]
     if compute_cluster_type == "kubernetes" and ("end_time" not in instance or instance["end_time"] is None):
         kubernetes_tail_instance_file_fn = plugins.get_fn('kubernetes-tail-instance-file', kubectl_tail_instance_file)
-        kubernetes_tail_instance_file_fn(instance["task_id"], path, num_lines_to_print, follow)
+        kubernetes_tail_instance_file_fn(instance["task_id"], path, num_lines_to_print, follow, follow_sleep_seconds)
     else:
         tail_using_read_file(instance, sandbox_dir_fn, path, num_lines_to_print, follow, follow_sleep_seconds)
 
