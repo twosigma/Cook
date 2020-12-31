@@ -3447,7 +3447,9 @@ class CookTest(util.CookTest):
     @unittest.skipUnless(util.using_kubernetes(), 'Test requires kubernetes')
     def test_memory_multiplier(self):
         mem = 64
-        command = f'bash -c \'echo $(env | sort) ; echo ${{COOK_MEMORY_REQUEST_BYTES}} ; echo {mem * 1024 * 1024} ; if [[ ${{COOK_MEMORY_REQUEST_BYTES}} -eq {mem * 1024 * 1024} ]]; then exit 0; else exit 1; fi\''
+        command = f'bash -c \'echo $(env | sort) ; echo ${{COOK_MEMORY_REQUEST_BYTES}} ; echo {mem * 1024 * 1024} ; ' \
+                  f'COOK_MEMORY_REQUEST_BYTES_DECIMAL=$(printf "%.0f/n" ${{COOK_MEMORY_REQUEST_BYTES}}) ; ' \
+                  f'echo ${{COOK_MEMORY_REQUEST_BYTES_DECIMAL}} ; if [[ ${{COOK_MEMORY_REQUEST_BYTES_DECIMAL}} -eq {mem * 1024 * 1024} ]]; then exit 0; else exit 1; fi\''
         job_uuid, resp = util.submit_job(self.cook_url, command=command, max_retries=5, mem=mem)
         self.assertEqual(resp.status_code, 201, msg=resp.content)
         job = util.wait_for_job_in_statuses(self.cook_url, job_uuid, ['completed'])
