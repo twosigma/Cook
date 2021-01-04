@@ -1316,7 +1316,7 @@ if __name__ == '__main__':
         if not disk_config_list:
             self.skipTest("There are no pools that support disk")
 
-        default_pool = util.default_submit_pool()
+        default_pool = util.default_submit_pool() or util.default_pool(self.cook_url)
         matching_disk_types = [ii["valid-types"] for ii in disk_config_list if
                                re.match(ii["pool-regex"], default_pool)]
         if len(matching_disk_types) == 0:
