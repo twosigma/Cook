@@ -917,31 +917,29 @@ class CookTest(util.CookTest):
     @pytest.mark.memlimit
     @unittest.skipUnless(util.is_cook_executor_in_use(), 'Test assumes the Cook Executor is in use')
     def test_memory_limit_exceeded_cook_python(self):
-        if util.using_kubernetes():
-            command =self.infinite_memory_python_command()
-        else:
-            command = self.memory_limit_python_command()
+        command = self.memory_limit_python_command()
         self.memory_limit_exceeded_helper(command, 'cook')
 
     @pytest.mark.memlimit
-    @unittest.skipIf(util.using_kubernetes(), 'No memory limit on kubernetes')
     def test_memory_limit_exceeded_mesos_python(self):
-        command = self.memory_limit_python_command()
+        if util.using_kubernetes():
+            command = self.infinite_memory_python_command()
+        else:
+            command = self.memory_limit_python_command()
         self.memory_limit_exceeded_helper(command, 'mesos')
 
     @pytest.mark.memlimit
     @unittest.skipUnless(util.is_cook_executor_in_use(), 'Test assumes the Cook Executor is in use')
     def test_memory_limit_exceeded_cook_script(self):
-        if util.using_kubernetes():
-            command =self.infinite_memory_script_command()
-        else:
-            command = self.memory_limit_script_command()
+        command = self.memory_limit_script_command()
         self.memory_limit_exceeded_helper(command, 'cook')
 
     @pytest.mark.memlimit
-    @unittest.skipIf(util.using_kubernetes(), 'No memory limit on kubernetes')
     def test_memory_limit_exceeded_mesos_script(self):
-        command = self.memory_limit_script_command(count=2048)
+        if util.using_kubernetes():
+            command = self.infinite_memory_script_command(count=2048)
+        else:
+            command = self.memory_limit_script_command(count=2048)
         self.memory_limit_exceeded_helper(command, 'mesos', mem=32)
 
     def test_get_job(self):
