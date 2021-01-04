@@ -837,6 +837,46 @@ class CookTest(util.CookTest):
                   'done'
         return command
 
+    @staticmethod
+    def infinite_memory_python_command():
+        """Generates a python command that incrementally allocates large strings that cause the python process to
+        request more memory than is available on the machine."""
+        command = 'python3 -c ' \
+                  '"import resource; ' \
+                  ' import sys;' \
+                  ' import itertools; ' \
+                  ' sys.stdout.write(\'Starting...\\n\'); ' \
+                  ' one_mb = 1024 * 1024; ' \
+                  ' [sys.stdout.write(' \
+                  '   \'progress: {} iter-{}.{}-mem-{}mB-{}\\n\'.format(' \
+                  '      i, ' \
+                  '      i, ' \
+                  '      len(\' \' * (i * 50 * one_mb)), ' \
+                  '      int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / one_mb), ' \
+                  '      sys.stdout.flush())) ; ' \
+                  '  i += 1 ' \
+                  '  for i in itertools.count(1)]; ' \
+                  ' sys.stdout.write(\'Done.\\n\'); "'
+        return command
+
+    @staticmethod
+    def infinite_memory_script_command(count=1024):
+        """Generates a script command that incrementally allocates large strings that cause the process to
+        request more memory than is available on the machine."""
+        command = 'random_string() { ' \
+                  f'  base64 /dev/urandom | tr -d \'/+\' | dd bs=1048576 count={count} 2>/dev/null; ' \
+                  '}; ' \
+                  'R="$(random_string)"; ' \
+                  'V=""; ' \
+                  'echo "Length of R is ${#R}" ; ' \
+                  'while true ; do ' \
+                  '  for i in `seq 1 10`; do ' \
+                  '    V="${V}.${R}"; ' \
+                  '  done ; ' \
+                  '  echo "Length of V is ${#V}" ; ' \
+                  'done'
+        return command
+
     def memory_limit_exceeded_helper(self, command, executor_type, mem=128):
         """Given a command that needs more memory than it is allocated, when the command is submitted to cook,
         the job should be killed by Mesos as it exceeds its memory limits."""
@@ -874,27 +914,35 @@ class CookTest(util.CookTest):
             mesos.dump_sandbox_files(util.session, instance, job)
             util.kill_jobs(self.cook_url, [job_uuid])
 
-    # @pytest.mark.memlimit
-    # @unittest.skipUnless(util.is_cook_executor_in_use(), 'Test assumes the Cook Executor is in use')
-    # def test_memory_limit_exceeded_cook_python(self):
-    #     command = self.memory_limit_python_command()
-    #     self.memory_limit_exceeded_helper(command, 'cook')
-    #
-    # @pytest.mark.memlimit
-    # def test_memory_limit_exceeded_mesos_python(self):
-    #     command = self.memory_limit_python_command()
-    #     self.memory_limit_exceeded_helper(command, 'mesos')
+    @pytest.mark.memlimit
+    @unittest.skipUnless(util.is_cook_executor_in_use(), 'Test assumes the Cook Executor is in use')
+    def test_memory_limit_exceeded_cook_python(self):
+        if util.using_kubernetes():
+            command =self.infinite_memory_python_command()
+        else:
+            command = self.memory_limit_python_command()
+        self.memory_limit_exceeded_helper(command, 'cook')
 
-    # @pytest.mark.memlimit
-    # @unittest.skipUnless(util.is_cook_executor_in_use(), 'Test assumes the Cook Executor is in use')
-    # def test_memory_limit_exceeded_cook_script(self):
-    #     command = self.memory_limit_script_command()
-    #     self.memory_limit_exceeded_helper(command, 'cook')
-    #
-    # @pytest.mark.memlimit
-    # def test_memory_limit_exceeded_mesos_script(self):
-    #     command = self.memory_limit_script_command(count=2048)
-    #     self.memory_limit_exceeded_helper(command, 'mesos', mem=32)
+    @pytest.mark.memlimit
+    @unittest.skipIf(util.using_kubernetes(), 'No memory limit on kubernetes')
+    def test_memory_limit_exceeded_mesos_python(self):
+        command = self.memory_limit_python_command()
+        self.memory_limit_exceeded_helper(command, 'mesos')
+
+    @pytest.mark.memlimit
+    @unittest.skipUnless(util.is_cook_executor_in_use(), 'Test assumes the Cook Executor is in use')
+    def test_memory_limit_exceeded_cook_script(self):
+        if util.using_kubernetes():
+            command =self.infinite_memory_script_command()
+        else:
+            command = self.memory_limit_script_command()
+        self.memory_limit_exceeded_helper(command, 'cook')
+
+    @pytest.mark.memlimit
+    @unittest.skipIf(util.using_kubernetes(), 'No memory limit on kubernetes')
+    def test_memory_limit_exceeded_mesos_script(self):
+        command = self.memory_limit_script_command(count=2048)
+        self.memory_limit_exceeded_helper(command, 'mesos', mem=32)
 
     def test_get_job(self):
         # schedule a job
@@ -3447,6 +3495,8 @@ class CookTest(util.CookTest):
     @unittest.skipUnless(util.using_kubernetes(), 'Test requires kubernetes')
     def test_memory_multiplier(self):
         mem = 64
+        # the COOK_MEMORY_REQUEST_BYTES env variable is in scientific notation, and bash cannot interpret scientific notation,
+        # so we convert to decimal
         command = f'bash -c \'COOK_MEMORY_REQUEST_BYTES_DECIMAL=$(printf "%.0f\n" ${{COOK_MEMORY_REQUEST_BYTES}}) ; ' \
                   f'echo ${{COOK_MEMORY_REQUEST_BYTES_DECIMAL}} ; if [[ ${{COOK_MEMORY_REQUEST_BYTES_DECIMAL}} -eq {mem * 1024 * 1024} ]]; ' \
                   f'then exit 0; else exit 1; fi\''
