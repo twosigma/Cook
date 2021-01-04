@@ -2,7 +2,6 @@
 
 # Cook Scheduler
 
-[![Build Status](https://travis-ci.org/twosigma/Cook.svg)](https://travis-ci.org/twosigma/Cook)
 [![Slack Status](http://cookscheduler.herokuapp.com/badge.svg)](http://cookscheduler.herokuapp.com/)
 
 Welcome to Two Sigma's Cook Scheduler!

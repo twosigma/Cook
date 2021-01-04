@@ -4,6 +4,7 @@
             [clojure.test :refer :all]
             [cook.config :as config]
             [cook.kubernetes.api :as api]
+            [cook.scheduler.constraints :as constraints]
             [cook.test.testutil :as tu]
             [datomic.api :as d])
   (:import (io.kubernetes.client.openapi.models V1Container V1ContainerState V1ContainerStateWaiting V1ContainerStatus
@@ -17,9 +18,8 @@
     (let [pods [(tu/pod-helper "podA" "hostA" {:cpus 1.0 :mem 100.0})]
           node-name->pods (api/pods->node-name->pods pods)]
       (is (= {"hostA" {:cpus 1.0
-                       :mem 100.0
-                       :gpus {}}}
-             (api/get-consumption node-name->pods)))))
+                       :mem 100.0}}
+             (api/get-consumption node-name->pods "test-pool")))))
 
   (testing "correctly computes consumption for a single pod with gpus"
 
@@ -28,7 +28,7 @@
       (is (= {"hostA" {:cpus 1.0
                        :mem 100.0
                        :gpus {"nvidia-tesla-p100" 2}}}
-             (api/get-consumption node-name->pods)))))
+             (api/get-consumption node-name->pods "test-pool")))))
 
   (testing "correctly computes consumption for a pod with multiple containers without gpus"
     (let [pods [(tu/pod-helper "podA" "hostA"
@@ -37,9 +37,8 @@
                                {:mem 100.0})]
           node-name->pods (api/pods->node-name->pods pods)]
       (is (= {"hostA" {:cpus 2.0
-                       :mem 200.0
-                       :gpus {}}}
-             (api/get-consumption node-name->pods)))))
+                       :mem 200.0}}
+             (api/get-consumption node-name->pods "test-pool")))))
 
   (testing "correctly computes consumption for a pod with multiple containers with gpus"
     (let [pods [(tu/pod-helper "podA" "hostA"
@@ -50,7 +49,7 @@
       (is (= {"hostA" {:cpus 2.0
                        :mem 200.0
                        :gpus {"nvidia-tesla-p100" 5}}}
-             (api/get-consumption node-name->pods)))))
+             (api/get-consumption node-name->pods "test-pool")))))
 
   (testing "correctly aggregates pods by node name"
     (let [pods [(tu/pod-helper "podA" "hostA"
@@ -70,27 +69,37 @@
                                {:cpus 2.0}
                                {:mem 30.0
                                 :gpus "1"
-                                :gpu-model "nvidia-tesla-k80"})
+                                :gpu-model "nvidia-tesla-k80"
+                                :disk {:disk-request 10.0 :disk-limit 50.0 :disk-type "standard"}})
                 (tu/pod-helper "podD" "hostC"
-                               {:cpus 1.0})
-                (tu/pod-helper "podD" nil ; nil host should be skipped and not included in output.
+                               {:cpus 1.0
+                                :disk {:disk-request 100.0 :disk-type "pd-ssd"}})
+                (tu/pod-helper "podD" "hostC"
+                               {:cpus 1.0
+                                :disk {:disk-type "pd-ssd"}})
+                (tu/pod-helper "podE" nil ; nil host should be skipped and not included in output.
                                {:cpus 12.0})]
           node-name->pods (api/pods->node-name->pods pods)]
       (is (= {"hostA" {:cpus 2.0 :mem 100.0 :gpus {"nvidia-tesla-p100" 3}}
-              "hostB" {:cpus 3.0 :mem 130.0 :gpus {"nvidia-tesla-k80" 1}}
-              "hostC" {:cpus 1.0 :mem 0.0 :gpus {}}}
-             (api/get-consumption node-name->pods))))))
+              "hostB" {:cpus 3.0 :mem 130.0 :gpus {"nvidia-tesla-k80" 1} :disk {"standard" 10.0}}
+              "hostC" {:cpus 2.0 :mem 0.0 :disk {"pd-ssd" 10100.0}}}
+             (api/get-consumption node-name->pods "test-pool"))))))
 
 (deftest test-get-capacity
-  (let [node-name->node {"nodeA" (tu/node-helper "nodeA" 1.0 100.0 2 "nvidia-tesla-p100" nil)
-                         "nodeB" (tu/node-helper "nodeB" 1.0 nil nil nil nil)
-                         "nodeC" (tu/node-helper "nodeC" nil 100.0 5 "nvidia-tesla-p100" nil)
-                         "nodeD" (tu/node-helper "nodeD" nil nil 7 "nvidia-tesla-p100" nil)}]
+  (let [node-name->node {"nodeA" (tu/node-helper "nodeA" 1.0 100.0 2 "nvidia-tesla-p100" nil nil)
+                         "nodeB" (tu/node-helper "nodeB" 1.0 nil nil nil nil nil)
+                         "nodeC" (tu/node-helper "nodeC" nil 100.0 5 "nvidia-tesla-p100" nil nil)
+                         "nodeD" (tu/node-helper "nodeD" nil nil 7 "nvidia-tesla-p100" nil nil)}]
     (is (= {"nodeA" {:cpus 1.0 :mem 100.0 :gpus {"nvidia-tesla-p100" 2}}
-            "nodeB" {:cpus 1.0 :mem 0.0 :gpus {}}
+            "nodeB" {:cpus 1.0 :mem 0.0}
             "nodeC" {:cpus 0.0 :mem 100.0 :gpus {"nvidia-tesla-p100" 5}}
             "nodeD" {:cpus 0.0 :mem 0.0 :gpus {"nvidia-tesla-p100" 7}}}
-           (api/get-capacity node-name->node)))))
+           (api/get-capacity node-name->node "test-pool"))))
+  (let [node-name->node {"nodeA" (tu/node-helper "nodeA" 1.0 100.0 2 "nvidia-tesla-p100" {:disk-amount 10000 :disk-type "standard"} nil)
+                         "nodeB" (tu/node-helper "nodeB" 2.0 100.0 nil nil {:disk-amount 10000 :disk-type "pd-ssd"} nil)}]
+    (is (= {"nodeA" {:cpus 1.0 :mem 100.0 :gpus {"nvidia-tesla-p100" 2} :disk {"standard" 10000.0}}
+            "nodeB" {:cpus 2.0 :mem 100.0 :disk {"pd-ssd" 10000.0}}}
+           (api/get-capacity node-name->node "test-pool")))))
 
 (defn assert-env-var-value
   [container name value]
@@ -320,6 +329,57 @@
         (is (= (-> pod-spec .getNodeSelector (get "gpu-count")) "2"))
         (is (= 2 (-> container .getResources .getRequests (get "nvidia.com/gpu") api/to-int)))
         (is (= 2 (-> container .getResources .getLimits (get "nvidia.com/gpu") api/to-int)))))
+
+    (testing "disk task-metadata"
+      (with-redefs [config/disk (constantly [{:pool-regex "test-pool"
+                                              :max-size 256000.0
+                                              :valid-types #{"standard", "pd-ssd"}
+                                              :default-type "standard"
+                                              :default-request 10000.0
+                                              :type-map {"standard", "pd-standard"}
+                                              :enable-constraint? true
+                                              :disk-node-label "cloud.google.com/gke-boot-disk"}])]
+        (let [pool-name "test-pool"
+              task-metadata {:task-id "my-task"
+                             :command {:value "foo && bar"
+                                       :environment {"FOO" "BAR"}
+                                       :user (System/getProperty "user.name")}
+                             :container {:type :docker
+                                         :docker {:image "alpine:latest"}}
+                             :task-request {:resources {:mem  576
+                                                        :cpus 1.1
+                                                        :disk {:request 250000.0, :limit 255000.0, :type "standard"}}
+                                            :scalar-requests {"mem"  512
+                                                              "cpus" 1.0}
+                                            :job {:job/pool {:pool/name pool-name}}}
+                             :hostname "kubehost"}
+              ^V1Pod pod (api/task-metadata->pod "cook" "testing-cluster" task-metadata)
+              ^V1PodSpec pod-spec (.getSpec pod)
+              ^V1Container container (-> pod-spec .getContainers first)]
+          (is (= (-> pod-spec .getNodeSelector (get "cloud.google.com/gke-boot-disk")) "pd-standard"))
+          (is (= (* constraints/disk-multiplier 250000.0) (some-> container .getResources .getRequests (get "ephemeral-storage") api/to-double)))
+          (is (= (* constraints/disk-multiplier 255000.0) (some-> container .getResources .getLimits (get "ephemeral-storage") api/to-double))))
+
+        (let [pool-name "test-pool"
+              task-metadata {:task-id "my-task"
+                             :command {:value "foo && bar"
+                                       :environment {"FOO" "BAR"}
+                                       :user (System/getProperty "user.name")}
+                             :container {:type :docker
+                                         :docker {:image "alpine:latest"}}
+                             :task-request {:resources {:mem  576
+                                                        :cpus 1.1}
+                                            :scalar-requests {"mem"  512
+                                                              "cpus" 1.0}
+                                            :job {:job/pool {:pool/name pool-name}}}
+                             :hostname "kubehost"}
+              ^V1Pod pod (api/task-metadata->pod "cook" "testing-cluster" task-metadata)
+              ^V1PodSpec pod-spec (.getSpec pod)
+              ^V1Container container (-> pod-spec .getContainers first)]
+          ; check that pod has default values for disk request, type, and limit
+          (is (= (-> pod-spec .getNodeSelector (get "cloud.google.com/gke-boot-disk")) "pd-standard"))
+          (is (= (* constraints/disk-multiplier 10000.0) (-> container .getResources .getRequests (get "ephemeral-storage") api/to-double)))
+          (is (nil? (-> container .getResources .getLimits (get "ephemeral-storage")))))))
 
     (testing "job labels -> pod labels"
       (let [task-metadata {:command {:user "test-user"}

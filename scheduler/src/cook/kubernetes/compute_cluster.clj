@@ -22,9 +22,10 @@
             [metrics.timers :as timers]
             [plumbing.core :as pc])
   (:import (com.google.auth.oauth2 GoogleCredentials)
+           (com.twosigma.cook.kubernetes TokenRefreshingAuthenticator)
            (io.kubernetes.client.openapi ApiClient)
            (io.kubernetes.client.openapi.models V1Node V1Pod)
-           (io.kubernetes.client.util Config KubeConfig)
+           (io.kubernetes.client.util ClientBuilder Config KubeConfig)
            (java.nio.charset StandardCharsets)
            (java.io ByteArrayInputStream File FileInputStream InputStreamReader)
            (java.util.concurrent Executors ExecutorService ScheduledExecutorService TimeUnit)
@@ -47,17 +48,17 @@
   [node-name->resource-map resource-keyword]
   (->> node-name->resource-map vals (map resource-keyword) (filter some?) (reduce +)))
 
-(defn total-gpu-resource
+(defn total-map-resource
   "Given a map from node-name->resource-keyword->amount,
-  returns a map from gpu model to count for all nodes."
-  [node-name->resource-map]
-  (->> node-name->resource-map vals (map :gpus) (apply merge-with +)))
+  returns a map from model/type to count for all nodes."
+  [node-name->resource-map resource-keyword]
+  (->> node-name->resource-map vals (map resource-keyword) (apply merge-with +)))
 
 (defn generate-offers
   "Given a compute cluster and maps with node capacity and existing pods, return a map from pool to offers."
-  [compute-cluster node-name->node node-name->pods]
+  [compute-cluster node-name->node node-name->pods pool-name]
   (let [compute-cluster-name (cc/compute-cluster-name compute-cluster)
-        node-name->capacity (api/get-capacity node-name->node)
+        node-name->capacity (api/get-capacity node-name->node pool-name)
         ; node-name->node map, used to calculate node-name->capacity includes nodes from the one pool,
         ; gotten via the pools->node-name->node map.
         ;
@@ -71,15 +72,22 @@
         ; If we have consumption calculation on a node that doesn't have a capacity calculated, there's not not much
         ; point in further computation on it. We won't make an offer in any case. So we filter them out.
         ; This also cleanly avoids the logged ERROR.
-        node-name->consumed (->> (api/get-consumption node-name->pods)
+        node-name->consumed (->> (api/get-consumption node-name->pods pool-name)
                                  (filter #(node-name->capacity (first %)))
                                  (into {}))
         node-name->available (util/deep-merge-with - node-name->capacity node-name->consumed)
         ; Grab every unique GPU model being represented so that we can set counters for capacity and consumed for each GPU model
         gpu-models (->> node-name->capacity vals (map :gpus) (apply merge) keys set)
         ; The following variables are only being used setting counters for monitor
-        gpu-model->total-capacity (total-gpu-resource node-name->capacity)
-        gpu-model->total-consumed (total-gpu-resource node-name->consumed)
+        gpu-model->total-capacity (total-map-resource node-name->capacity :gpus)
+        gpu-model->total-consumed (total-map-resource node-name->consumed :gpus)
+
+        ; Grab every unique disk type being represented to set counters for capacity and consumed for each disk type
+        disk-types (->> node-name->capacity vals (map :disk) (apply merge) keys set)
+        ; The following disk variables are only being used to set counters for monitor
+        disk-type->total-capacity (total-map-resource node-name->capacity :disk)
+        disk-type->total-consumed (total-map-resource node-name->consumed :disk)
+
         node-name->schedulable (filter #(schedulable-node-filter compute-cluster
                                           node-name->node
                                           node-name->pods
@@ -109,6 +117,11 @@
                             (get gpu-model->total-capacity gpu-model))
       (monitor/set-counter! (metrics/counter (str "consumption-gpu-" gpu-model) compute-cluster-name)
                             (get gpu-model->total-consumed gpu-model 0)))
+    (doseq [disk-type disk-types]
+      (monitor/set-counter! (metrics/counter (str "capacity-disk-" disk-type) compute-cluster-name)
+                            (get disk-type->total-capacity disk-type))
+      (monitor/set-counter! (metrics/counter (str "consumption-disk-" disk-type) compute-cluster-name)
+                            (get disk-type->total-consumed disk-type 0)))
 
 
     (->> node-name->schedulable
@@ -133,8 +146,8 @@
                    :hostname node-name
                    :resources [{:name "mem" :type :value-scalar :scalar (max 0.0 (:mem available))}
                                {:name "cpus" :type :value-scalar :scalar (max 0.0 (:cpus available))}
-                               {:name "disk" :type :value-scalar :scalar 0.0}
-                               {:name "gpus" :type :value-text->scalar :text->scalar (:gpus available)}]
+                               {:name "disk" :type :value-text->scalar :text->scalar (:disk available {})}
+                               {:name "gpus" :type :value-text->scalar :text->scalar (:gpus available {})}]
                    :attributes (conj node-label-attributes
                                      {:name "compute-cluster-type"
                                       :type :value-text
@@ -396,7 +409,8 @@
                     offers-this-pool (generate-offers this (or node-name->node {})
                                                       (->> (get-pods-in-pool this pool-name)
                                                            (add-starting-pods this)
-                                                           (api/pods->node-name->pods)))
+                                                           (api/pods->node-name->pods))
+                                                      pool-name)
                     offers-this-pool-for-logging
                     (->> offers-this-pool
                          (take 10)
@@ -609,7 +623,16 @@
       a bearer token for authenticating with kubernetes
     - bearer-token-refresh-seconds: interval to refresh the bearer token
     - If we have a configuration file set, then we can select the context out of that kubeconfig file with kubeconfig-context"
-  [^String config-file base-path ^String use-google-service-account? bearer-token-refresh-seconds verifying-ssl ^String ca-cert ^String ca-cert-path kubeconfig-context]
+  [^String config-file
+   base-path
+   ^String use-google-service-account?
+   bearer-token-refresh-seconds
+   verifying-ssl
+   ^String ca-cert
+   ^String ca-cert-path
+   kubeconfig-context
+   read-timeout-seconds
+   use-token-refreshing-authenticator?]
   {:pre [(not (and ca-cert ca-cert-path))]}
   (log/info "API Client config file" config-file)
   (let [^ApiClient api-client (if (some? config-file)
@@ -617,19 +640,33 @@
                                       (-> config-file
                                           (FileInputStream.)
                                           (InputStreamReader. (.name (StandardCharsets/UTF_8)))
-                                          (KubeConfig/loadKubeConfig))]
-                                  ; Workaround client library bug. The library attempts to resolve paths
-                                  ; against the Kubeconfig filename. We are using an absolute path so we
-                                  ; don't need the functionality. But we need to set the file anyways
-                                  ; to avoid a NPE.
-                                  (.setFile kubeconfig (File. config-file))
-                                  (when kubeconfig-context
-                                    (.setContext kubeconfig kubeconfig-context))
-                                  (Config/fromConfig kubeconfig))
+                                          (KubeConfig/loadKubeConfig))
+                                      ; Workaround client library bug. The library attempts to resolve paths
+                                      ; against the Kubeconfig filename. We are using an absolute path so we
+                                      ; don't need the functionality. But we need to set the file anyways
+                                      ; to avoid a NPE.
+                                      _ (.setFile kubeconfig (File. config-file))
+                                      _ (when kubeconfig-context
+                                          (.setContext kubeconfig kubeconfig-context))
+                                      ^ClientBuilder clientbuilder (ClientBuilder/kubeconfig kubeconfig)
+                                      ; There's an issue where we don't refresh our authenticator. (See comments
+                                      ; under TokenRefreshingAuthenticator.) This workaround works when gcloud
+                                      ; didn't make the authenticator, so should be disabled in open source
+                                      ; and enabled with e.g., iam accounts or others scenarios.
+                                      _ (when use-token-refreshing-authenticator?
+                                          (.setAuthentication clientbuilder
+                                                              ; Refresh after 600 seconds.
+                                                              (TokenRefreshingAuthenticator/fromKubeConfig kubeconfig 600)))]
+                                  (.build clientbuilder))
                                 (ApiClient.))
-        ; Reset to a more sane timeout from the default 10 seconds.
-        http-client (-> (OkHttpClient$Builder.) (.readTimeout 120 TimeUnit/SECONDS) .build)]
-    (.setHttpClient api-client http-client)
+        http-client-with-readtimeout (-> api-client
+                                         .getHttpClient
+                                         .newBuilder
+                                         (.readTimeout
+                                           read-timeout-seconds
+                                           TimeUnit/SECONDS)
+                                         .build)
+        _ (.setHttpClient api-client http-client-with-readtimeout)]
     (when base-path
       (.setBasePath api-client base-path))
     (when (some? verifying-ssl)
@@ -673,12 +710,14 @@
            name
            namespace
            node-blocklist-labels
+           read-timeout-seconds
            scan-frequency-seconds
            state
            state-locked?
            synthetic-pods
            use-google-service-account?
-           verifying-ssl]
+           verifying-ssl
+           use-token-refreshing-authenticator?]
     :or {bearer-token-refresh-seconds 300
          dynamic-cluster-config? false
          launch-task-num-threads 8
@@ -686,13 +725,15 @@
          namespace {:kind :static
                     :namespace "cook"}
          node-blocklist-labels (list)
+         read-timeout-seconds 120
          scan-frequency-seconds 120
          state :running
          state-locked? false
          use-google-service-account? true
          cook-pool-taint-name "cook-pool"
          cook-pool-taint-prefix ""
-         cook-pool-label-name "cook-pool"}
+         cook-pool-label-name "cook-pool"
+         use-token-refreshing-authenticator? false}
     :as compute-cluster-config}
    {:keys [exit-code-syncer-state]}]
   (guard-invalid-synthetic-pods-config name synthetic-pods)
@@ -703,7 +744,16 @@
         compute-cluster-config)))
   (let [conn cook.datomic/conn
         cluster-entity-id (get-or-create-cluster-entity-id conn name)
-        api-client (make-api-client config-file base-path use-google-service-account? bearer-token-refresh-seconds verifying-ssl ca-cert ca-cert-path kubeconfig-context)
+        api-client (make-api-client config-file
+                                    base-path
+                                    use-google-service-account?
+                                    bearer-token-refresh-seconds
+                                    verifying-ssl
+                                    ca-cert
+                                    ca-cert-path
+                                    kubeconfig-context
+                                    read-timeout-seconds
+                                    use-token-refreshing-authenticator?)
         launch-task-executor-service (Executors/newFixedThreadPool launch-task-num-threads)
         compute-cluster-launch-rate-limiter (cook.rate-limit/create-compute-cluster-launch-rate-limiter name compute-cluster-launch-rate-limits)
         compute-cluster (->KubernetesComputeCluster api-client 

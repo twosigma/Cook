@@ -165,12 +165,16 @@ final public class Job {
             setGpus(job.getGpus());
             setRetries(job.getRetries());
             setMaxRuntime(job.getMaxRuntime());
-            setEnv(job.getEnv());
+            addEnv(job.getEnv());
             setUris(job.getUris());
             setContainer(job.getContainer());
             setPool(job.getPool());
-            setLabels(job.getLabels());
+            addLabels(job.getLabels());
             setDatasets(job.getDatasets());
+            setStatus(job.getStatus());
+            setPriority(job.getPriority());
+            setDisk(job.getDisk());
+            addConstraint(job.getConstraints());
             if (job.isMeaCulpaRetriesDisabled()) {
                 disableMeaCulpaRetries();
             } else {
@@ -470,7 +474,7 @@ final public class Job {
         }
 
         /**
-         * Set the disk request, specifying the disk space guaranteed, to the job.
+         * Set the disk request (MiB), specifying the disk space guaranteed, to the job.
          * @param diskRequest The disk request for this job
          * @return this builder
          */
@@ -480,7 +484,7 @@ final public class Job {
         }
 
         /**
-         * Set the disk limit, specifying the max usable disk space, to the job.
+         * Set the disk limit (MiB), specifying the max usable disk space, to the job.
          * @param diskLimit The disk limit for this job
          * @return this builder
          */
@@ -719,6 +723,161 @@ final public class Job {
         public Builder setDatasets(JSONArray datasets) {
             _datasets = datasets;
             return this;
+        }
+
+
+        /**
+         * Parse a JSON object into this Builder object, e.g.
+         * <p>
+         * <pre>
+         * <code>
+         * {
+         *    "status" : "completed",
+         *    "mem" : 1000,
+         *    "uuid" : "26719da8-394f-44f9-9e6d-8a17500f5109",
+         *    "cpus" : 1.5,
+         *    "command" : "echo hello world",
+         * }
+         * </code>
+         * </pre>
+         *
+         * @param json {@link JSONObject} specifies a JSONObject with Builder parameters.
+         * @param decorator  specifies an instance decorator expected to decorate instances parsed from JSON string.
+         *                   If it is null, it will do nothing with it.
+         * @return {@link Builder}.
+         * @throws JSONException
+         */
+        public Builder parseFromJSON(JSONObject json, InstanceDecorator decorator)
+                throws JSONException{
+            if (json.has("uuid")) {
+                setUUID(UUID.fromString(json.getString("uuid")));
+            }
+            if (json.has("mem")) {
+                setMemory(json.getDouble("mem"));
+            }
+            if (json.has("cpus")) {
+                setCpus(json.getDouble("cpus"));
+            }
+            if (json.has("disk")) {
+                JSONObject diskJson = json.getJSONObject("disk");
+                setDisk(Disk.parseFromJSON(diskJson));
+            }
+            if (json.has("gpus")) {
+                setGpus(json.getInt("gpus"));
+            }
+            if (json.has("command")){
+                setCommand(json.getString("command"));
+            }
+            if (json.has("executor")) {
+                setExecutor(json.getString("executor"));
+            }
+            if (json.has("priority")){
+                setPriority(json.getInt("priority"));
+            }
+            if (json.has("status")){
+                setStatus(Status.fromString(json.getString("status")));
+            }
+            if (json.has("disable_mea_culpa_retries") && json.getBoolean("disable_mea_culpa_retries")) {
+                disableMeaCulpaRetries();
+            } else {
+                enableMeaCulpaRetries();
+            }
+            if (json.has("name")) {
+                setName(json.getString("name"));
+            }
+            if (json.has("user")) {
+                setUser(json.getString("user"));
+            }
+            if (json.has("max_retries")){
+                setRetries(json.getInt("max_retries"));
+            }
+            if (json.has("max_runtime")){
+                setMaxRuntime(json.getLong("max_runtime"));
+            }
+            if (json.has("container")) {
+                setContainer(json.getJSONObject("container"));
+            }
+            if (json.has("env")) {
+                JSONObject envJson = json.getJSONObject("env");
+                if (envJson.length() > 0) {
+                    for (String varName : JSONObject.getNames(envJson)) {
+                        addEnv(varName, envJson.getString(varName));
+                    }
+                }
+            }
+            if (json.has("labels")) {
+                JSONObject labelsJson = json.getJSONObject("labels");
+                if (labelsJson.length() > 0) {
+                    for (String varName : JSONObject.getNames(labelsJson)) {
+                        addLabel(varName, labelsJson.getString(varName));
+                    }
+                }
+            }
+            JSONArray urisJson = json.optJSONArray("uris");
+            if (urisJson != null) {
+                for (int j = 0; j < urisJson.length(); j++) {
+                    addUri(FetchableURI.parseFromJSON(urisJson.getJSONObject(j)));
+                }
+            }
+            if (json.has("constraints")) {
+                JSONArray constraintsJson = json.getJSONArray("constraints");
+                for (int j = 0; j < constraintsJson.length(); j++) {
+                    addConstraint(Constraints.parseFrom(constraintsJson.getJSONArray(j)));
+                }
+            }
+            JSONArray groupsJson = json.optJSONArray("groups");
+            if (groupsJson != null) {
+                for (int j = 0; j < groupsJson.length(); j++) {
+                    Object group = groupsJson.get(j);
+                    if (group instanceof String) {
+                        _setGroupByUUID(UUID.fromString((String) group));
+                    } else if (group instanceof JSONObject) {
+                        JSONObject groupObject = (JSONObject) group;
+                        _setGroupByUUID(UUID.fromString(groupObject.getString("uuid")));
+                    } else {
+                        throw new JSONException("Unable to parse group from json object:" + group);
+                    }
+                }
+            }
+            if (json.has("instances")) {
+                addInstances(Instance.parseFromJSON(json.getJSONArray("instances"), decorator));
+            }
+            if (json.has("application")) {
+                JSONObject applicationJson = json.getJSONObject("application");
+                setApplication(Application.parseFromJSON(applicationJson));
+            }
+            if (json.has("checkpoint")) {
+                JSONObject checkpointJson = json.getJSONObject("checkpoint");
+                setCheckpoint(Checkpoint.parseFromJSON(checkpointJson));
+            }
+            if (json.has("expected_runtime")) {
+                setExpectedRuntime(json.getLong("expected_runtime"));
+            }
+            if (json.has("progress_output_file")) {
+                setProgressOutputFile(json.getString("progress_output_file"));
+            }
+            if (json.has("progress_regex_string")) {
+                setProgressRegexString(json.getString("progress_regex_string"));
+            }
+            if (json.has("datasets")) {
+                setDatasets(json.getJSONArray("datasets"));
+            }
+            if (json.has("pool")) {
+                setPool(json.getString("pool"));
+            }
+            return this;
+        }
+
+        /**
+         * Similar to {@code Builder parseFromJSON(JSONObject json, InstanceDecorator decorator) with {@code decorator}
+         * being {@code null}.
+         *
+         * @param json {@link JSONObject} specifies a single Job.
+         * @return this {@link Builder}.
+         * @throws JSONException
+         */
+        public Builder parseFromJSON(JSONObject json) throws JSONException {
+            return parseFromJSON(json, null);
         }
     }
 
@@ -1162,6 +1321,45 @@ final public class Job {
     }
 
     /**
+     * Parse a JSON object representing a single job, e.g.
+     * <p>
+     * <pre>
+     * <code>
+     * {
+     *    "status" : "completed",
+     *    "mem" : 1000,
+     *    "uuid" : "26719da8-394f-44f9-9e6d-8a17500f5109",
+     *    "cpus" : 1.5,
+     *    "command" : "echo hello world",
+     * }
+     * </code>
+     * </pre>
+     *
+     * @param json {@link JSONObject} specifies a single job.
+     * @param decorator  specifies an instance decorator expected to decorate instances parsed from JSON string.
+     *                   If it is null, it will do nothing with it.
+     * @return a single {@link Job}.
+     * @throws JSONException
+     */
+    public static Job parseFromJSON(JSONObject json, InstanceDecorator decorator)
+            throws JSONException {
+        Builder jobBuilder = new Builder().parseFromJSON(json, decorator);
+        return jobBuilder.build();
+    }
+
+    /**
+     * Similar to {@code Job parseFromJSON(JSONObject json, InstanceDecorator decorator) with {@code decorator}
+     * being {@code null}.
+     *
+     * @param json {@link JSONObject} specifies a single Job.
+     * @return a single {@link Job}.
+     * @throws JSONException
+     */
+    public static Job parseFromJSON(JSONObject json) throws JSONException {
+        return parseFromJSON(json, null);
+    }
+
+    /**
      * Parse a JSON string representing a list of jobs, e.g.
      * <p>
      * <pre>
@@ -1203,110 +1401,7 @@ final public class Job {
         List<Job> jobs = new ArrayList<Job>(jsonArray.length());
         for (int i = 0; i < jsonArray.length(); ++i) {
             JSONObject json = jsonArray.getJSONObject(i);
-            Builder jobBuilder = new Builder();
-            jobBuilder.setUUID(UUID.fromString(json.getString("uuid")));
-            jobBuilder.setMemory(json.getDouble("mem"));
-            jobBuilder.setCpus(json.getDouble("cpus"));
-            if (json.has("disk")) {
-                JSONObject diskJson = json.getJSONObject("disk");
-                jobBuilder.setDisk(Disk.parseFromJSON(diskJson));
-            }
-            if (json.has("gpus")) {
-                jobBuilder.setGpus(json.getInt("gpus"));
-            }
-            jobBuilder.setCommand(json.getString("command"));
-            if (json.has("executor")) {
-                jobBuilder.setExecutor(json.getString("executor"));
-            }
-            jobBuilder.setPriority(json.getInt("priority"));
-            jobBuilder.setStatus(Status.fromString(json.getString("status")));
-            if (json.has("disable_mea_culpa_retries") && json.getBoolean("disable_mea_culpa_retries")) {
-                jobBuilder.disableMeaCulpaRetries();
-            } else {
-                jobBuilder.enableMeaCulpaRetries();
-            }
-            if (json.has("name")) {
-                jobBuilder.setName(json.getString("name"));
-            }
-            if (json.has("user")) {
-                jobBuilder.setUser(json.getString("user"));
-            }
-            jobBuilder.setRetries(json.getInt("max_retries"));
-            jobBuilder.setMaxRuntime(json.getLong("max_runtime"));
-            if (json.has("container")) {
-                jobBuilder.setContainer(json.getJSONObject("container"));
-            }
-            if (json.has("env")) {
-                JSONObject envJson = json.getJSONObject("env");
-                Map<String, String> envMap = new HashMap<>();
-                if (envJson.length() > 0) {
-                    for (String varName : JSONObject.getNames(envJson)) {
-                        envMap.put(varName, envJson.getString(varName));
-                    }
-                }
-                jobBuilder.setEnv(envMap);
-            }
-            if (json.has("labels")) {
-                JSONObject labelsJson = json.getJSONObject("labels");
-                Map<String, String> labelsMap = new HashMap<>();
-                if (labelsJson.length() > 0) {
-                    for (String varName : JSONObject.getNames(labelsJson)) {
-                        labelsMap.put(varName, labelsJson.getString(varName));
-                    }
-                }
-                jobBuilder.setLabels(labelsMap);
-            }
-            JSONArray urisJson = json.optJSONArray("uris");
-            if (urisJson != null) {
-                for (int j = 0; j < urisJson.length(); j++) {
-                    jobBuilder.addUri(FetchableURI.parseFromJSON(urisJson.getJSONObject(j)));
-                }
-            }
-            if (json.has("constraints")) {
-                JSONArray constraintsJson = json.getJSONArray("constraints");
-                for (int j = 0; j < constraintsJson.length(); j++) {
-                    jobBuilder.addConstraint(Constraints.parseFrom(constraintsJson.getJSONArray(j)));
-                }
-            }
-            JSONArray groupsJson = json.optJSONArray("groups");
-            if (groupsJson != null) {
-                for (int j = 0; j < groupsJson.length(); j++) {
-                    Object group = groupsJson.get(j);
-                    if (group instanceof String) {
-                        jobBuilder._setGroupByUUID(UUID.fromString((String) group));
-                    } else if (group instanceof JSONObject) {
-                        JSONObject groupObject = (JSONObject) group;
-                        jobBuilder._setGroupByUUID(UUID.fromString(groupObject.getString("uuid")));
-                    } else {
-                        throw new JSONException("Unable to parse group from json object:" + group);
-                    }
-                }
-            }
-            jobBuilder.addInstances(Instance.parseFromJSON(json.getJSONArray("instances"), decorator));
-            if (json.has("application")) {
-                JSONObject applicationJson = json.getJSONObject("application");
-                jobBuilder.setApplication(Application.parseFromJSON(applicationJson));
-            }
-            if (json.has("checkpoint")) {
-                JSONObject checkpointJson = json.getJSONObject("checkpoint");
-                jobBuilder.setCheckpoint(Checkpoint.parseFromJSON(checkpointJson));
-            }
-            if (json.has("expected_runtime")) {
-                jobBuilder.setExpectedRuntime(json.getLong("expected_runtime"));
-            }
-            if (json.has("progress_output_file")) {
-                jobBuilder.setProgressOutputFile(json.getString("progress_output_file"));
-            }
-            if (json.has("progress_regex_string")) {
-                jobBuilder.setProgressRegexString(json.getString("progress_regex_string"));
-            }
-            if (json.has("datasets")) {
-                jobBuilder.setDatasets(json.getJSONArray("datasets"));
-            }
-            if (json.has("pool")) {
-                jobBuilder.setPool(json.getString("pool"));
-            }
-            jobs.add(jobBuilder.build());
+            jobs.add(parseFromJSON(json));
         }
         return jobs;
     }

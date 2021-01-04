@@ -121,9 +121,13 @@
                                                      :parameters []}}}]
          :disk
          [{:pool-regex "^k8s-alpha$"
-           :valid-types #{"standard"}
+           :max-size 256000.0
+           :valid-types #{"standard", "pd-ssd"}
            :default-type "standard"
-           :max-size 256000.0}]
+           :default-request 10000.0
+           :type-map {"standard" "pd-standard"}
+           :enable-constraint? true
+           :disk-node-label "cloud.google.com/gke-boot-disk"}]
          :valid-gpu-models
          [{:pool-regex "k8s-alpha"
            :valid-models #{"nvidia-tesla-k80" "nvidia-tesla-p100"}

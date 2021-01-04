@@ -1,6 +1,8 @@
 #!/bin/bash
 
 PACKAGE_CACHE_DIR=$HOME/.apt-cache
+DISTRO=$(lsb_release -is | tr '[:upper:]' '[:lower:]')
+CODENAME=$(lsb_release -cs)
 
 if [ -d "$PACKAGE_CACHE_DIR" ] && [ -n "$(find $PACKAGE_CACHE_DIR -name 'mesos_*.deb')" ]; then
     echo 'Using cached Mesos library...'
@@ -8,7 +10,7 @@ if [ -d "$PACKAGE_CACHE_DIR" ] && [ -n "$(find $PACKAGE_CACHE_DIR -name 'mesos_*
 else
     echo 'Downloading Mesos library...'
     apt-key adv --keyserver keyserver.ubuntu.com --recv E56151BF
-    echo "deb https://repos.mesosphere.io/ubuntu/ trusty main" | sudo tee /etc/apt/sources.list.d/mesosphere.list
+    echo "deb http://repos.mesosphere.io/${DISTRO} ${CODENAME} main" | sudo tee /etc/apt/sources.list.d/mesosphere.list
     apt-get update -qq
     apt-get install mesos -y --download-only
     mkdir -p $PACKAGE_CACHE_DIR/
