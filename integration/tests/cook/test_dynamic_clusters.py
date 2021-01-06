@@ -1,10 +1,12 @@
 import logging
 import os
+import re
 import subprocess
 import time
 import unittest
 
 import pytest
+from retrying import retry
 
 from tests.cook import util
 
@@ -119,3 +121,96 @@ class TestDynamicClusters(util.CookTest):
             # Hard-delete test cluster
             resp = util.delete_compute_cluster(self.cook_url, test_cluster)
             self.assertEqual(204, resp.status_code, resp.content)
+
+    @unittest.skipUnless(util.using_kubernetes(), 'Test requires kubernetes')
+    @pytest.mark.serial
+    def test_checkpoint_locality(self):
+        """
+        Test that restored instances run in the same location as their checkpointed instances.
+        """
+        # Get the set of clusters that correspond to the pool under test and are running
+        pool = util.default_submit_pool()
+        clusters = util.compute_clusters(self.cook_url)
+        running_clusters = [c for c in clusters['in-mem-configs']
+                            if pool in c['cluster-definition']['config']['synthetic-pods']['pools']
+                            and c['state'] == 'running']
+        self.logger.info(f'Running clusters for pool {pool}: {running_clusters}')
+        if len(running_clusters) == 0:
+            self.skipTest(f'Requires at least 1 running compute cluster for pool {pool}')
+
+        # Submit an initial canary job
+        job_uuid, resp = util.submit_job(self.cook_url, pool=pool, command='true')
+        self.assertEqual(201, resp.status_code, resp.content)
+        util.wait_for_instance(self.cook_url, job_uuid, status='success')
+
+        # Submit a long-running job with checkpointing
+        checkpoint_job_uuid, resp = util.submit_job(
+            self.cook_url,
+            pool=pool,
+            command=f'sleep {util.DEFAULT_TEST_TIMEOUT_SECS}',
+            max_retries=5,
+            checkpoint={'mode': 'auto'})
+        self.assertEqual(201, resp.status_code, resp.content)
+
+        # Wait for the job to be running
+        checkpoint_instance = util.wait_for_instance(self.cook_url, checkpoint_job_uuid, status='running')
+        checkpoint_instance_uuid = checkpoint_instance['task_id']
+        checkpoint_location = next(c['location'] for c in running_clusters
+                                   if c['name'] == checkpoint_instance['compute-cluster']['name'])
+
+        # Force all clusters in the instance's location to have state = draining via the API
+        admin = self.user_factory.admin()
+        with admin:
+            for cluster in running_clusters:
+                if cluster['location'] == checkpoint_location:
+                    # Set state = draining
+                    cluster['state'] = 'draining'
+                    cluster['state-locked?'] = True
+                    self.logger.info(f'Trying to update cluster to draining: {cluster}')
+                    util.wait_until(
+                        lambda: util.update_compute_cluster(self.cook_url, cluster)[1],
+                        lambda response: response.status_code == 201 and len(response.json()) > 0)
+                else:
+                    self.logger.info(f'Not updating cluster - it is not in location {checkpoint_location}: {cluster}')
+
+        # Kill the running instance
+        util.kill_instance(self.cook_url, checkpoint_instance_uuid)
+        util.wait_for_instance(self.cook_url, checkpoint_job_uuid, status='failed')
+        util.wait_for_job_in_statuses(self.cook_url, checkpoint_job_uuid, ['waiting'])
+
+        # Confirm that the checkpoint-locality constraint is what's keeping this job from getting matched
+        @retry(stop_max_delay=60000, wait_fixed=5000)
+        def check_unscheduled_reason():
+            jobs, _ = util.unscheduled_jobs(self.cook_url, checkpoint_job_uuid)
+            self.logger.info(f'Unscheduled jobs: {jobs}')
+            job = jobs[0]
+            reason = next(r for r in job['reasons']
+                          if r['reason'] == "The job couldn't be placed on any available hosts.")
+            underlying_reason = reason['data']['reasons'][0]
+
+            self.assertEqual(checkpoint_job_uuid, job['uuid'], job)
+            self.assertEqual('checkpoint-locality-constraint', underlying_reason['reason'], underlying_reason)
+            self.assertLessEqual(1, underlying_reason['host_count'], underlying_reason)
+
+        check_unscheduled_reason()
+
+        # Force all clusters in the instance's location to have state = running via the API
+        admin = self.user_factory.admin()
+        with admin:
+            for cluster in running_clusters:
+                if cluster['location'] == checkpoint_location:
+                    # Set state = running
+                    cluster['state'] = 'running'
+                    cluster['state-locked?'] = False
+                    self.logger.info(f'Trying to update cluster to running: {cluster}')
+                    util.wait_until(
+                        lambda: util.update_compute_cluster(self.cook_url, cluster)[1],
+                        lambda response: response.status_code == 201 and len(response.json()) > 0)
+                else:
+                    self.logger.info(f'Not updating cluster - it is not in location {checkpoint_location}: {cluster}')
+
+        # Wait for the job to be running again, in the same location as before
+        checkpoint_instance = util.wait_for_instance(self.cook_url, checkpoint_job_uuid, status='running')
+        self.assertEqual(checkpoint_location,
+                         next(c['location'] for c in running_clusters
+                              if c['name'] == checkpoint_instance['compute-cluster']['name']))
