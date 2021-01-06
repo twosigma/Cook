@@ -1,12 +1,9 @@
 import logging
 import os
-import re
-import subprocess
 import time
 import unittest
 
 import pytest
-from retrying import retry
 
 from tests.cook import util
 
@@ -183,25 +180,24 @@ class TestDynamicClusters(util.CookTest):
                         else:
                             self.logger.info(f'Not updating cluster - not in location {checkpoint_location}: {cluster}')
 
-                # Kill the running instance
+                # Kill the running checkpoint job instance
                 util.kill_instance(self.cook_url, checkpoint_instance_uuid)
+
+                # Submit another canary job
+                job_uuid, resp = util.submit_job(self.cook_url, pool=pool, command='true')
+                self.assertEqual(201, resp.status_code, resp.content)
+
+                cluster_locations = set(c['location'] for c in running_clusters)
+                if len(cluster_locations) > 1:
+                    # The canary job should run in the non-draining location
+                    self.logger.info(f'There are > 1 cluster locations under test: {cluster_locations}')
+                    util.wait_for_instance(self.cook_url, job_uuid, status='success', indent=None)
+                else:
+                    self.logger.info(f'There is only 1 cluster location under test: {cluster_locations}')
+
+                # The checkpoint job should be waiting
                 util.wait_for_instance(self.cook_url, checkpoint_job_uuid, status='failed', indent=None)
                 util.wait_for_job_in_statuses(self.cook_url, checkpoint_job_uuid, ['waiting'])
-
-                # Confirm that the checkpoint-locality constraint is what's keeping this job from getting matched
-                @retry(stop_max_delay=180000, wait_fixed=5000)
-                def check_unscheduled_reason():
-                    jobs, _ = util.unscheduled_jobs(self.cook_url, checkpoint_job_uuid)
-                    self.logger.info(f'Unscheduled jobs: {jobs}')
-                    job = jobs[0]
-                    self.assertEqual(checkpoint_job_uuid, job['uuid'], job)
-                    reason = next(r for r in job['reasons']
-                                  if r['reason'] == "The job couldn't be placed on any available hosts.")
-                    underlying_reason = reason['data']['reasons'][0]
-                    self.assertEqual('checkpoint-locality-constraint', underlying_reason['reason'], underlying_reason)
-                    self.assertLessEqual(1, underlying_reason['host_count'], underlying_reason)
-
-                check_unscheduled_reason()
             finally:
                 # Revert all clusters in the instance's location to state = running
                 with admin:
@@ -221,7 +217,7 @@ class TestDynamicClusters(util.CookTest):
                         else:
                             self.logger.info(f'Not updating cluster - not in location {checkpoint_location}: {cluster}')
 
-                # Wait for the job to be running again, in the same location as before
+                # Wait for the checkpoint job to be running again, in the same location as before
                 checkpoint_instance = util.wait_for_instance(
                     self.cook_url,
                     checkpoint_job_uuid,
@@ -231,5 +227,5 @@ class TestDynamicClusters(util.CookTest):
                                  next(c['location'] for c in running_clusters
                                       if c['name'] == checkpoint_instance['compute-cluster']['name']))
         finally:
-            # Kill the job to not leave it running
+            # Kill the checkpoint job to not leave it running
             util.kill_jobs(self.cook_url, [checkpoint_job_uuid])
