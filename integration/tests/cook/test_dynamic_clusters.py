@@ -120,7 +120,6 @@ class TestDynamicClusters(util.CookTest):
             self.assertEqual(204, resp.status_code, resp.content)
 
     @unittest.skipUnless(util.using_kubernetes(), 'Test requires kubernetes')
-    @pytest.mark.serial
     def test_checkpoint_locality(self):
         """
         Test that restored instances run in the same location as their checkpointed instances.
