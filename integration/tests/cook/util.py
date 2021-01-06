@@ -1081,11 +1081,11 @@ def unscheduled_jobs(cook_url, *job_uuids, partial=None):
     return job_reasons, resp
 
 
-def wait_for_instance(cook_url, job_uuid, max_wait_ms=DEFAULT_TIMEOUT_MS, wait_interval_ms=1000, status=None):
+def wait_for_instance(cook_url, job_uuid, max_wait_ms=DEFAULT_TIMEOUT_MS, wait_interval_ms=1000, status=None, indent=2):
     """Waits for the job with the given job_uuid to have at least one instance, and returns the first instance uuid"""
 
     def instances_with_status(job):
-        logger.debug(f'Job {job_uuid}: {json.dumps(job, indent=2)}')
+        logger.debug(f'Job {job_uuid}: {json.dumps(job, indent=indent)}')
         if status is None:
             return job['instances']
         else:
