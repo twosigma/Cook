@@ -22,6 +22,7 @@ from tests.cook import reasons, mesos
 from tests.cook import util
 
 
+@pytest.mark.prodsafe
 @pytest.mark.timeout(util.DEFAULT_TEST_TIMEOUT_SECS)  # individual test timeout
 class CookTest(util.CookTest):
 
