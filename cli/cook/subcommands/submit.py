@@ -181,6 +181,9 @@ def submit(clusters, args, _):
     checkpoint_mode = job_template.pop('checkpoint-mode', None)
     checkpoint_preserve_paths = job_template.pop('checkpoint-preserve-paths', None)
     checkpoint_period_sec = job_template.pop('checkpoint-period-sec', None)
+    disk_request = job_template.pop('disk-request', None)
+    disk_limit = job_template.pop('disk-limit', None)
+    disk_type = job_template.pop('disk-type', None)
 
     docker_image = job_template.pop('docker-image', None)
     if docker_image:
@@ -244,6 +247,16 @@ def submit(clusters, args, _):
             if checkpoint_period_sec:
                 checkpoint['periodic-options'] = {'period-sec': checkpoint_period_sec}
             job['checkpoint'] = checkpoint
+
+        if disk_request or disk_limit or disk_type:
+            disk = {}
+            if disk_request:
+                disk['request'] = disk_request
+            if disk_limit:
+                disk['limit'] = disk_limit
+            if disk_type:
+                disk['type'] = disk_type
+            job['disk'] = disk
     logging.debug('jobs: %s' % jobs)
     return submit_federated(clusters, jobs, group, pool)
 
@@ -281,6 +294,9 @@ def register(add_parser, add_defaults):
     submit_parser.add_argument('--cpus', '-c', help='cpus to reserve for job', type=float)
     submit_parser.add_argument('--mem', '-m', help='memory to reserve for job', type=int)
     submit_parser.add_argument('--gpus', help='gpus to reserve for job', type=check_positive)
+    submit_parser.add_argument('--disk-request', help='disk request for job', type=float, dest='disk-request')
+    submit_parser.add_argument('--disk-limit', help='disk limit for job', type=float, dest='disk-limit')
+    submit_parser.add_argument('--disk-type', help='disk type for job', type=str, dest='disk-type')
     submit_parser.add_argument('--group', '-g', help='group uuid for job', type=str, metavar='UUID')
     submit_parser.add_argument('--group-name', '-G', help='group name for job',
                                type=str, metavar='NAME', dest='group-name')
