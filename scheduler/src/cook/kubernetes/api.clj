@@ -814,7 +814,7 @@
 (defn set-mem-cpu-resources
   "Given a resources object and a CPU and memory request and limit, update the resources object to reflect the
   desired requests and limits."
-  [^V1ResourceRequirements resources memory-request cpu-request cpu-limit & {:keys [memory-limit]}]
+  [^V1ResourceRequirements resources memory-request cpu-request cpu-limit & {:keys [memory-limit] :or {memory-limit nil}}]
   (let [{:keys [set-container-cpu-limit?]} (config/kubernetes)]
     (.putRequestsItem resources "memory" (double->quantity (* memory-multiplier memory-request)))
     ; set memory-limit if the memory-limit is set
@@ -940,9 +940,9 @@
     (.setTty container true)
     (.setStdin container true)
 
-    (if (get (config/kubernetes) set-memory-limit?)
+    (if (get (config/kubernetes) :set-memory-limit?)
       (set-mem-cpu-resources resources computed-mem computed-mem cpus cpus :memory-limit computed-mem)
-      (set-mem-cpu-resources resources computed-mem computed-mem cpus cpus))
+      (set-mem-cpu-resources resources computed-mem cpus cpus))
 
     (when (pos? gpus)
       (.putLimitsItem resources "nvidia.com/gpu" (double->quantity gpus))
@@ -991,7 +991,7 @@
           (.setVolumeMounts container (filterv some? (concat [(init-container-workdir-volume-mount-fn false)
                                                               (scratch-space-volume-mount-fn false)]
                                                              init-container-checkpoint-volume-mounts)))
-          (if (get (config/kubernetes) set-memory-limit?)
+          (if (get (config/kubernetes) :set-memory-limit?)
             (set-mem-cpu-resources resources total-memory-request total-cpu-request total-cpu-limit :memory-limit total-memory-limit)
             (set-mem-cpu-resources resources total-memory-request total-cpu-request total-cpu-limit))
           (.setResources container resources)
@@ -1025,7 +1025,7 @@
             (.setReadinessProbe container readiness-probe)))
 
           ; resources
-          (if (get (config/kubernetes) set-memory-limit?)
+          (if (get (config/kubernetes) :set-memory-limit?)
             (set-mem-cpu-resources resources memory-request cpu-request cpu-limit :memory-limit memory-limit)
             (set-mem-cpu-resources resources memory-request cpu-request cpu-limit))
           (.setResources container resources)
