@@ -814,9 +814,12 @@
 (defn set-mem-cpu-resources
   "Given a resources object and a CPU and memory request and limit, update the resources object to reflect the
   desired requests and limits."
-  [^V1ResourceRequirements resources memory-request cpu-request cpu-limit]
+  [^V1ResourceRequirements resources memory-request cpu-request cpu-limit & {:keys [memory-limit]}]
   (let [{:keys [set-container-cpu-limit?]} (config/kubernetes)]
     (.putRequestsItem resources "memory" (double->quantity (* memory-multiplier memory-request)))
+    ; set memory-limit if the memory-limit is set
+    (when memory-limit
+      (.putLimitsItem resources "memory" (double->quantity (* memory-multiplier memory-limit))))
     (.putRequestsItem resources "cpu" (double->quantity cpu-request))
     (when set-container-cpu-limit?
       ; Some environments may need pods to run in the "Guaranteed"
@@ -937,7 +940,9 @@
     (.setTty container true)
     (.setStdin container true)
 
-    (set-mem-cpu-resources resources computed-mem cpus cpus)
+    (if (get (config/kubernetes) set-memory-limit?)
+      (set-mem-cpu-resources resources computed-mem computed-mem cpus cpus :memory-limit computed-mem)
+      (set-mem-cpu-resources resources computed-mem computed-mem cpus cpus))
 
     (when (pos? gpus)
       (.putLimitsItem resources "nvidia.com/gpu" (double->quantity gpus))
@@ -972,6 +977,8 @@
                                                              (get-in sidecar [:resource-requirements fieldname])
                                                              0))
               total-memory-request (add-as-decimals computed-mem (get-resource-requirements-fn :memory-request))
+              ; TODO: wrap in config var
+              total-memory-limit (add-as-decimals computed-mem (get-resource-requirements-fn :memory-limit))
               total-cpu-request (add-as-decimals cpus (get-resource-requirements-fn :cpu-request))
               total-cpu-limit (add-as-decimals cpus (get-resource-requirements-fn :cpu-limit))
               resources (V1ResourceRequirements.)]
@@ -984,14 +991,16 @@
           (.setVolumeMounts container (filterv some? (concat [(init-container-workdir-volume-mount-fn false)
                                                               (scratch-space-volume-mount-fn false)]
                                                              init-container-checkpoint-volume-mounts)))
-          (set-mem-cpu-resources resources total-memory-request total-cpu-request total-cpu-limit)
+          (if (get (config/kubernetes) set-memory-limit?)
+            (set-mem-cpu-resources resources total-memory-request total-cpu-request total-cpu-limit :memory-limit total-memory-limit)
+            (set-mem-cpu-resources resources total-memory-request total-cpu-request total-cpu-limit))
           (.setResources container resources)
           (.addInitContainersItem pod-spec container))))
 
     ; sandbox file server container
     (when use-cook-sidecar?
       (when-let [{:keys [command health-check-endpoint image port resource-requirements]} sidecar]
-        (let [{:keys [cpu-request cpu-limit memory-request]} resource-requirements
+        (let [{:keys [cpu-request cpu-limit memory-request memory-limit]} resource-requirements
               container (V1Container.)
               resources (V1ResourceRequirements.)]
           ; container
@@ -1016,7 +1025,9 @@
             (.setReadinessProbe container readiness-probe)))
 
           ; resources
-          (set-mem-cpu-resources resources memory-request cpu-request cpu-limit)
+          (if (get (config/kubernetes) set-memory-limit?)
+            (set-mem-cpu-resources resources memory-request cpu-request cpu-limit :memory-limit memory-limit)
+            (set-mem-cpu-resources resources memory-request cpu-request cpu-limit))
           (.setResources container resources)
 
           (.setVolumeMounts container [(sandbox-volume-mount-fn true) (sidecar-workdir-volume-mount-fn false)])

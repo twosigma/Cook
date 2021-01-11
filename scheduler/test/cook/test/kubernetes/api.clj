@@ -339,7 +339,8 @@
                                               :default-request 10000.0
                                               :type-map {"standard", "pd-standard"}
                                               :enable-constraint? true
-                                              :disk-node-label "cloud.google.com/gke-boot-disk"}])]
+                                              :disk-node-label "cloud.google.com/gke-boot-disk"}])
+                    config/kubernetes (constantly [{:set-memory-limit? false}])]
         (let [pool-name "test-pool"
               task-metadata {:task-id "my-task"
                              :command {:value "foo && bar"
