@@ -882,7 +882,11 @@ class CookTest(util.CookTest):
 
     @pytest.mark.memlimit
     def test_memory_limit_exceeded_mesos_python(self):
-        if util.using_kubernetes():
+        settings_dict = util.settings(self.cook_url)
+        set_memory_limit = settings_dict['kubernetes']['set-memory-limit?']
+        print(settings_dict)
+        print(set_memory_limit)
+        if util.using_kubernetes() and not set_memory_limit:
             command = self.infinite_memory_python_command()
         else:
             command = self.memory_limit_python_command()
@@ -896,7 +900,11 @@ class CookTest(util.CookTest):
 
     @pytest.mark.memlimit
     def test_memory_limit_exceeded_mesos_script(self):
-        if util.using_kubernetes():
+        settings_dict = util.settings(self.cook_url)
+        set_memory_limit = settings_dict['kubernetes']['set-memory-limit?']
+        print(settings_dict)
+        print(set_memory_limit)
+        if util.using_kubernetes() and not set_memory_limit:
             command = self.infinite_memory_script_command(count=2048)
         else:
             command = self.memory_limit_script_command(count=2048)
