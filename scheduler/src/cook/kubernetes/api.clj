@@ -941,7 +941,7 @@
     (.setStdin container true)
 
     (if (get (config/kubernetes) :set-memory-limit?)
-      (set-mem-cpu-resources resources computed-mem computed-mem cpus cpus :memory-limit computed-mem)
+      (set-mem-cpu-resources resources computed-mem cpus cpus :memory-limit computed-mem)
       (set-mem-cpu-resources resources computed-mem cpus cpus))
 
     (when (pos? gpus)
