@@ -941,7 +941,7 @@
     (.setStdin container true)
 
     ; add memory limit if config flag set-memory-limit? is True
-    (set-mem-cpu-resources resources computed-mem (when (:set-memory-limit? (config/kubernetes)) computed-mem) cpus cpus)
+    (set-mem-cpu-resources resources computed-mem (when (:set-memory-limit? (config/kubernetes) true) computed-mem) cpus cpus)
 
     (when (pos? gpus)
       (.putLimitsItem resources "nvidia.com/gpu" (double->quantity gpus))
