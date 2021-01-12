@@ -8,6 +8,7 @@ import pytest
 from tests.cook import util
 
 
+@pytest.mark.prodskip
 @pytest.mark.timeout(util.DEFAULT_TEST_TIMEOUT_SECS)  # individual test timeout
 class TestDynamicClusters(util.CookTest):
 
