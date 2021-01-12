@@ -818,7 +818,6 @@
   (let [{:keys [set-container-cpu-limit?]} (config/kubernetes)]
     (.putRequestsItem resources "memory" (double->quantity (* memory-multiplier memory-request)))
     ; set memory-limit if the memory-limit is set
-    (log/info (str "Setting resource requests and limits, memory limit is " memory-limit))
     (when memory-limit
       (.putLimitsItem resources "memory" (double->quantity (* memory-multiplier memory-limit))))
     (.putRequestsItem resources "cpu" (double->quantity cpu-request))
