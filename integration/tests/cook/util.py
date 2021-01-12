@@ -1518,63 +1518,11 @@ def get_kubernetes_compute_cluster():
 
 
 @functools.lru_cache()
-def get_kubernetes_nodes():
-    kubernetes_compute_cluster = get_kubernetes_compute_cluster()
-    if kubernetes_compute_cluster:
-        if 'config-file' in kubernetes_compute_cluster['config']:
-            nodes = subprocess.check_output(['kubectl', '--kubeconfig', kubernetes_compute_cluster['config']['config-file'],
-                                             'get', 'nodes', '-o=json'])
-            node_json = json.loads(nodes)
-        elif 'base-path' in kubernetes_compute_cluster['config']:
-            authorization_header = subprocess.check_output(os.getenv('COOK_KUBERNETES_AUTH_CMD'), shell=True).decode(
-                'utf-8').strip()
-            nodes_url = kubernetes_compute_cluster['config']['base-path'] + '/api/v1/nodes'
-            node_json = requests.get(nodes_url, headers={'Authorization': authorization_header}, verify=False).json()
-        else:
-            raise RuntimeError(f'Unable to get node info for configured kubernetes cluster: {kubernetes_compute_cluster}')
-        logging.info(f'Retrieved kubernetes nodes: {node_json}')
-        return node_json['items']
-    else:
-        logging.info('Unable to get kubernetes nodes, returning empty list')
-        return []
-
-
-@functools.lru_cache()
-def kubernetes_node_pool(nodename):
-    node = [node for node in get_kubernetes_nodes() if node['metadata']['name'] == nodename]
-    poolname_taint = [taint for taint in node[0]['spec']['taints'] if taint['key'] == 'cook-pool']
-    if len(poolname_taint) == 0:
-        return None
-    poolname = poolname_taint[0].get('value', None)
-    logging.info(f"K8S pool for {nodename} is {poolname}")
-    return poolname
-
-
-@functools.lru_cache()
 def mesos_node_pool(nodename):
     cook_url = retrieve_cook_url()
     mesos_url = retrieve_mesos_url()
     node_pool = slave_pool(cook_url, mesos_url, nodename)
     return node_pool
-
-
-def node_pool(nodename):
-    """Get the pool for a node."""
-    if using_mesos():
-        return mesos_node_pool(nodename)
-    elif using_kubernetes():
-        return kubernetes_node_pool(nodename)
-    else:
-        raise RuntimeError(f'Unable to determine node pool for {nodename}')
-
-
-def max_kubernetes_node_cpus():
-    nodes = get_kubernetes_nodes()
-    # We need to account for per-node overhead
-    # (capacity not usable by our Cook pods)
-    k8s_node_overhead_cpus = int(os.getenv("COOK_TEST_K8S_NODE_OVERHEAD_CPUS", 0))
-    return max([float(n['status']['capacity']['cpu']) - k8s_node_overhead_cpus
-                for n in nodes])
 
 
 def get_compute_cluster_type(compute_cluster_dictionary):
@@ -1593,34 +1541,6 @@ def task_constraint_cpus(cook_url):
     """Returns the max cpus that can be submitted to the cluster"""
     task_constraint_cpus = settings(cook_url)['task-constraints']['cpus']
     return task_constraint_cpus
-
-
-def max_node_cpus():
-    if using_mesos():
-        return max_mesos_slave_cpus(retrieve_mesos_url())
-    elif using_kubernetes():
-        return max_kubernetes_node_cpus()
-    else:
-        raise RuntimeError('Unable to determine cluster max CPUs')
-
-
-def node_count():
-    if using_mesos():
-        return len(get_mesos_slaves(retrieve_mesos_url())['slaves'])
-    elif using_kubernetes():
-        return len(get_kubernetes_nodes())
-    else:
-        raise RuntimeError('Unable to determine number of nodes')
-
-
-def max_cpus():
-    """Returns the maximum cpus we can submit that actually fits on a slave"""
-    cook_url = retrieve_cook_url()
-    slave_cpus = max_node_cpus()
-    constraint_cpus = task_constraint_cpus(cook_url)
-    max_cpus = min(slave_cpus, constraint_cpus)
-    logging.debug(f'Max cpus we can submit that will get scheduled is {max_cpus}')
-    return max_cpus
 
 
 class CookTest(unittest.TestCase):
@@ -1704,38 +1624,6 @@ def mesos_hostnames_to_consider(cook_url, mesos_url):
     num_to_log = min(len(slaves), 10)
     logging.info(f'First {num_to_log} hosts to consider: {json.dumps(slaves[:num_to_log], indent=2)}')
     return [s['hostname'] for s in slaves]
-
-
-def kubernetes_hostnames_to_consider():
-    # TODO: This should check a 'cook-pool' attribute on the node for the pool.
-    # Currently, pools are not supported on kubernetes, so it's fine to ignore for now.
-    # Once support is added, we should fix this function.
-    nodes = get_kubernetes_nodes()
-    hostnames = []
-    for node in nodes:
-        for address in node['status']['addresses']:
-            if address['type'] == 'Hostname':
-                hostnames.append(address['address'])
-    return hostnames
-
-
-def hostnames_to_consider(cook_url):
-    if using_mesos():
-        return mesos_hostnames_to_consider(cook_url, retrieve_mesos_url())
-    elif using_kubernetes():
-        return kubernetes_hostnames_to_consider()
-    else:
-        return 'Unable to retrieve hostnames to consider'
-
-
-def num_hosts_to_consider(cook_url):
-    """
-    Returns the number of hosts in the default pool, or the
-    total number of hosts if the cluster is not using pools
-    """
-    num_hosts = len(hostnames_to_consider(cook_url))
-    logging.info(f'There are {num_hosts} hosts to consider')
-    return num_hosts
 
 
 def should_expect_sandbox_directory(instance):
@@ -1852,10 +1740,6 @@ def using_kubernetes():
 
 def using_mesos():
     return get_compute_cluster_test_mode() == "mesos"
-
-
-def has_one_agent():
-    return node_count() == 1
 
 
 def supports_exit_code():
