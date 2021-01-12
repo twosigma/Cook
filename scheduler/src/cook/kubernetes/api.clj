@@ -664,11 +664,9 @@
 (defn make-filtered-env-vars
   "Create a Kubernetes API compatible var list from an environment vars map,
    with variables filtered based on disallowed-var-names in the Kubernetes config."
-  [env mem]
+  [env]
   (let [{:keys [disallowed-var-names]} (config/kubernetes)
-        disallowed-var? #(contains? disallowed-var-names (key %))
-        ; add memory request to env because there is no way to access memory request from the instance
-        env (assoc env "COOK_MEMORY_REQUEST_BYTES" (* memory-multiplier mem))]
+        disallowed-var? #(contains? disallowed-var-names (key %))]
     (->> env
          (remove disallowed-var?)
          (mapv #(apply make-env %))
@@ -814,7 +812,7 @@
 (defn set-mem-cpu-resources
   "Given a resources object and a CPU and memory request and limit, update the resources object to reflect the
   desired requests and limits."
-  [^V1ResourceRequirements resources memory-request cpu-request cpu-limit & {:keys [memory-limit] :or {memory-limit nil}}]
+  [^V1ResourceRequirements resources memory-request memory-limit cpu-request cpu-limit]
   (let [{:keys [set-container-cpu-limit?]} (config/kubernetes)]
     (.putRequestsItem resources "memory" (double->quantity (* memory-multiplier memory-request)))
     ; set memory-limit if the memory-limit is set
@@ -904,13 +902,15 @@
         main-env-base (merge environment params-env progress-env sandbox-env checkpoint-env metadata-env)
         progress-file-var (get main-env-base task/progress-meta-env-name task/default-progress-env-name)
         progress-file-path (get main-env-base progress-file-var)
+        computed-mem (if checkpoint-memory-overhead (add-as-decimals mem checkpoint-memory-overhead) mem)
         main-env (cond-> main-env-base
                    ;; Add a default progress file path to the environment when missing,
                    ;; preserving compatibility with Meosos + Cook Executor.
                    (not progress-file-path)
-                   (assoc progress-file-var (str workdir "/" task-id ".progress")))
-        computed-mem (if checkpoint-memory-overhead (add-as-decimals mem checkpoint-memory-overhead) mem)
-        main-env-vars (make-filtered-env-vars main-env computed-mem)]
+                   (assoc progress-file-var (str workdir "/" task-id ".progress"))
+                   computed-mem
+                   (assoc "COOK_MEMORY_REQUEST_BYTES" (* memory-multiplier mem)))
+        main-env-vars (make-filtered-env-vars main-env)]
 
     ; metadata
     (.setName metadata pod-name)
@@ -941,9 +941,7 @@
     (.setStdin container true)
 
     ; add memory limit if config flag set-memory-limit? is True
-    (if (get (config/kubernetes) :set-memory-limit? true)
-      (set-mem-cpu-resources resources computed-mem cpus cpus :memory-limit computed-mem)
-      (set-mem-cpu-resources resources computed-mem cpus cpus))
+    (set-mem-cpu-resources resources computed-mem (when (:set-memory-limit? (config/kubernetes)) computed-mem) cpus cpus)
 
     (when (pos? gpus)
       (.putLimitsItem resources "nvidia.com/gpu" (double->quantity gpus))
@@ -978,7 +976,6 @@
                                                              (get-in sidecar [:resource-requirements fieldname])
                                                              0))
               total-memory-request (add-as-decimals computed-mem (get-resource-requirements-fn :memory-request))
-              ; TODO: wrap in config var
               total-memory-limit (add-as-decimals computed-mem (get-resource-requirements-fn :memory-limit))
               total-cpu-request (add-as-decimals cpus (get-resource-requirements-fn :cpu-request))
               total-cpu-limit (add-as-decimals cpus (get-resource-requirements-fn :cpu-limit))
@@ -992,9 +989,7 @@
           (.setVolumeMounts container (filterv some? (concat [(init-container-workdir-volume-mount-fn false)
                                                               (scratch-space-volume-mount-fn false)]
                                                              init-container-checkpoint-volume-mounts)))
-          (if (get (config/kubernetes) :set-memory-limit? true)
-            (set-mem-cpu-resources resources total-memory-request total-cpu-request total-cpu-limit :memory-limit total-memory-limit)
-            (set-mem-cpu-resources resources total-memory-request total-cpu-request total-cpu-limit))
+          (set-mem-cpu-resources resources total-memory-request total-memory-limit total-cpu-request total-cpu-limit)
           (.setResources container resources)
           (.addInitContainersItem pod-spec container))))
 
@@ -1026,9 +1021,7 @@
             (.setReadinessProbe container readiness-probe)))
 
           ; resources
-          (if (get (config/kubernetes) :set-memory-limit? true)
-            (set-mem-cpu-resources resources memory-request cpu-request cpu-limit :memory-limit memory-limit)
-            (set-mem-cpu-resources resources memory-request cpu-request cpu-limit))
+          (set-mem-cpu-resources resources memory-request memory-limit cpu-request cpu-limit)
           (.setResources container resources)
 
           (.setVolumeMounts container [(sandbox-volume-mount-fn true) (sidecar-workdir-volume-mount-fn false)])
