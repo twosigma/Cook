@@ -815,7 +815,9 @@
   [^V1ResourceRequirements resources memory-request memory-limit cpu-request cpu-limit]
   (let [{:keys [set-container-cpu-limit?]} (config/kubernetes)]
     (.putRequestsItem resources "memory" (double->quantity (* memory-multiplier memory-request)))
-    (.putLimitsItem resources "memory" (double->quantity (* memory-multiplier memory-limit)))
+    ; set memory-limit if the memory-limit is set
+    (when memory-limit
+      (.putLimitsItem resources "memory" (double->quantity (* memory-multiplier memory-limit))))
     (.putRequestsItem resources "cpu" (double->quantity cpu-request))
     (when set-container-cpu-limit?
       ; Some environments may need pods to run in the "Guaranteed"
@@ -900,13 +902,15 @@
         main-env-base (merge environment params-env progress-env sandbox-env checkpoint-env metadata-env)
         progress-file-var (get main-env-base task/progress-meta-env-name task/default-progress-env-name)
         progress-file-path (get main-env-base progress-file-var)
+        computed-mem (if checkpoint-memory-overhead (add-as-decimals mem checkpoint-memory-overhead) mem)
         main-env (cond-> main-env-base
                    ;; Add a default progress file path to the environment when missing,
                    ;; preserving compatibility with Meosos + Cook Executor.
                    (not progress-file-path)
-                   (assoc progress-file-var (str workdir "/" task-id ".progress")))
-        main-env-vars (make-filtered-env-vars main-env)
-        computed-mem (if checkpoint-memory-overhead (add-as-decimals mem checkpoint-memory-overhead) mem)]
+                   (assoc progress-file-var (str workdir "/" task-id ".progress"))
+                   computed-mem
+                   (assoc "COOK_MEMORY_REQUEST_BYTES" (* memory-multiplier mem)))
+        main-env-vars (make-filtered-env-vars main-env)]
 
     ; metadata
     (.setName metadata pod-name)
@@ -936,7 +940,8 @@
     (.setTty container true)
     (.setStdin container true)
 
-    (set-mem-cpu-resources resources computed-mem computed-mem cpus cpus)
+    ; add memory limit if config flag set-memory-limit? is True
+    (set-mem-cpu-resources resources computed-mem (when (:set-memory-limit? (config/kubernetes)) computed-mem) cpus cpus)
 
     (when (pos? gpus)
       (.putLimitsItem resources "nvidia.com/gpu" (double->quantity gpus))

@@ -509,7 +509,8 @@
                              :pod-condition-unschedulable-seconds 60
                              :reconnect-delay-ms 60000
                              :set-container-cpu-limit? true
-                             :synthetic-pod-condition-unschedulable-seconds 900}
+                             :synthetic-pod-condition-unschedulable-seconds 900
+                             :set-memory-limit? true}
                             kubernetes)))
      :offer-matching (fnk [[:config {offer-matching {}}]]
                        (merge {:global-min-match-interval-millis 100

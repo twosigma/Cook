@@ -138,7 +138,8 @@
           (is (nil? (-> pod .getSpec .getSecurityContext .getSupplementalGroups))))))
 
     (testing "creates pod from metadata"
-      (with-redefs [config/kubernetes (constantly {:default-workdir "/mnt/sandbox"})]
+      (with-redefs [config/kubernetes (constantly {:default-workdir "/mnt/sandbox"
+                                                   :set-memory-limit? false})]
         (let [task-metadata {:task-id "my-task"
                              :command {:value "foo && bar"
                                        :environment {"FOO" "BAR"}
@@ -183,6 +184,7 @@
             (is (= "alpine:latest" (.getImage container)))
             (is (not (nil? container)))
             (is (= ["COOK_COMPUTE_CLUSTER_NAME"
+                    "COOK_MEMORY_REQUEST_BYTES"
                     "COOK_POOL"
                     "COOK_SANDBOX"
                     "COOK_SCHEDULER_REST_URL"
@@ -208,7 +210,7 @@
             (let [resources (-> container .getResources)]
               (is (= 1.0 (-> resources .getRequests (get "cpu") .getNumber .doubleValue)))
               (is (= (* 512.0 api/memory-multiplier) (-> resources .getRequests (get "memory") .getNumber .doubleValue)))
-              (is (= (* 512.0 api/memory-multiplier) (-> resources .getLimits (get "memory") .getNumber .doubleValue))))))))
+              (is (nil? (-> resources .getLimits (get "memory")))))))))
 
     (testing "user parameter"
       (let [task-metadata {:task-id "my-task"
