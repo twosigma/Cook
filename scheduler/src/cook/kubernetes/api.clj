@@ -921,6 +921,7 @@
     (when pod-annotations
       (.setAnnotations metadata pod-annotations))
 
+    (.setHostnameAsFQDN pod-spec false)
     ; container
     (.setName container cook-container-name-for-job)
     (.setCommand container
