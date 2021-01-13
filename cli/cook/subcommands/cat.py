@@ -6,7 +6,7 @@ from functools import partial
 
 from cook import plugins
 from cook.mesos import download_file
-from cook.querying import get_compute_cluster_config, parse_entity_refs, query_unique_and_run, parse_entity_ref
+from cook.querying import parse_entity_refs, query_unique_and_run, parse_entity_ref
 from cook.util import guard_no_cluster
 
 def cat_using_download_file(instance, sandbox_dir_fn, path):
@@ -20,25 +20,23 @@ def cat_using_download_file(instance, sandbox_dir_fn, path):
         sys.stderr.close()
         logging.exception(bpe)
 
-def kubectl_cat_instance_file(instance_uuid, _, path):
+def kubectl_cat_instance_file(instance_uuid, path):
     os.execlp('kubectl', 'kubectl',
               'exec',
               '-c', os.getenv('COOK_CONTAINER_NAME_FOR_JOB', 'required-cook-job-container'),
               '-it', instance_uuid,
               '--', 'cat', path)
 
-def cat_for_instance(job, instance, sandbox_dir_fn, cluster, path):
+def cat_for_instance(_, instance, sandbox_dir_fn, __, path):
     """
     Outputs the contents of the Mesos sandbox path for the given instance.
     When using Kubernetes, calls the exec command of the kubectl cli.
     """
     compute_cluster = instance["compute-cluster"]
     compute_cluster_type = compute_cluster["type"]
-    compute_cluster_name = compute_cluster["name"]
     if compute_cluster_type == "kubernetes" and ("end_time" not in instance or instance["end_time"] is None):
-        kubectl_cat_instance_file_fn = plugins.get_fn('kubectl-cat-for-instance', kubectl_cat_instance_file)
-        compute_cluster_config = get_compute_cluster_config(cluster, compute_cluster_name)
-        kubectl_cat_instance_file_fn(job["user"], instance["task_id"], compute_cluster_config, path)
+        kubernetes_cat_instance_file_fn = plugins.get_fn('kubernetes-cat-for-instance', kubectl_cat_instance_file)
+        kubernetes_cat_instance_file_fn(instance["task_id"], path)
     else:
         cat_using_download_file(instance, sandbox_dir_fn, path)
 

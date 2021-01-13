@@ -8,7 +8,7 @@ from cook.querying import get_compute_cluster_config, query_unique_and_run, pars
 from cook.util import print_info, guard_no_cluster
 
 
-def kubectl_exec_to_instance(instance_uuid, _):
+def kubectl_exec_to_instance(_, instance_uuid, __, ___):
     os.execlp('kubectl', 'kubectl',
               'exec',
               '-c', os.getenv('COOK_CONTAINER_NAME_FOR_JOB', 'required-cook-job-container'),
