@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.50.1] - 2021-01-14
+### Added
+- Ability to not set memory limits, from @kathryn-zhou
+- Authenticator refresh logic needed for non-GKE k8s, from @scrosby  
+- Checkpoint locality constraint, from @dposada
+### Changed
+- Logging the largest job and offer by resource, from @dposada
+
 ## [1.50.0] - 2020-12-21
 ### Added
 - Adds location to compute cluster, from @dposada
