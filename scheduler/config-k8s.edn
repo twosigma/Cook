@@ -94,7 +94,8 @@
                         :port 23906
                         :resource-requirements {:cpu-request 0.1
                                                 :cpu-limit 0.1
-                                                :memory-request 128.0}}
+                                                :memory-request 128.0
+                                                :memory-limit 128.0}}
               :set-memory-limit? true}
  :log {:file #config/env "COOK_LOG_FILE"
        :levels {"datomic.db" :warn
