@@ -22,7 +22,7 @@
             [cook.config :as config]
             [cook.plugins.definitions :refer [check-job-submission check-job-submission-default JobSubmissionValidator]]
             [cook.plugins.util]
-            ;[cook.regexp-tools :as regexp-tools]
+            [cook.regexp-tools :as regexp-tools]
             [mount.core :as mount])
   (:import (com.google.common.cache Cache CacheBuilder)
            (java.util.concurrent TimeUnit)))
@@ -138,11 +138,10 @@
       {:status :accepted}
       (let [limits-config (config/job-resource-limits)
             node-type-lookup-map
-            {}
-            ;(regexp-tools/match-based-on-pool-name
-            ;  (:non-gpu-jobs limits-config)
-            ;  pool-name
-            ;  :node-type-lookup)
+            (regexp-tools/match-based-on-pool-name
+              (:non-gpu-jobs limits-config)
+              pool-name
+              :node-type-lookup)
             constraint-pattern-fn
             (fn [attribute-of-interest]
               (->> constraints
