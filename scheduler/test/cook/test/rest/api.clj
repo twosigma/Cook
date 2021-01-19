@@ -2049,6 +2049,7 @@
     (is (= (:uuid response-1) (get (second (list-jobs-fn submit-ms-1 (inc submit-ms-2))) "uuid")))))
 
 (deftest test-list-jobs-include-custom-executor
+  (setup)
   (let [conn (restore-fresh-database! "datomic:mem://test-list-jobs-include-custom-executor")
         handler (basic-handler conn)
         before (t/now)

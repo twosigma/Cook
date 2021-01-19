@@ -19,7 +19,7 @@
   (check-job-submission-default [this]
     "The default return value to use in check-job-submission if we've run out of time.")
 
-  (check-job-submission [this job-map]
+  (check-job-submission [this job-map pool-name]
     "Check a job submission for correctness at the time of submission. Returns a map with one of two possibilities:
       {:status :accepted}
       {:status :rejected}

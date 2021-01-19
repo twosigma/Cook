@@ -22,6 +22,7 @@
             [cook.config :as config]
             [cook.plugins.definitions :refer [check-job-submission check-job-submission-default JobSubmissionValidator]]
             [cook.plugins.util]
+            ;[cook.regexp-tools :as regexp-tools]
             [mount.core :as mount])
   (:import (com.google.common.cache Cache CacheBuilder)
            (java.util.concurrent TimeUnit)))
@@ -35,7 +36,7 @@
   []
   (reify JobSubmissionValidator
     (check-job-submission-default [_] default-accept)
-    (check-job-submission [_ _] default-accept)))
+    (check-job-submission [_ _ _] default-accept)))
 
 (defn- minimum-time
   "Takes a list of clojure time objects and returns the earliest"
@@ -46,10 +47,10 @@
 
 (defrecord CompositeSubmissionPlugin [plugins]
   JobSubmissionValidator
-  (check-job-submission-default [this]
+  (check-job-submission-default [_]
     (check-job-submission-default (first plugins)))
-  (check-job-submission [this job-map]
-    (let [component-checks (map (fn [plugin] (check-job-submission plugin job-map))
+  (check-job-submission [_ job-map pool-name]
+    (let [component-checks (map (fn [plugin] (check-job-submission plugin job-map pool-name))
                                 plugins)]
       (if (every? (fn [{:keys [status]}] (= :accepted status)) component-checks)
         (let [composite-expiry (minimum-time (map :cache-expires-at component-checks))]
@@ -103,7 +104,7 @@
              (.build)))
 
 (defn plugin-jobs-submission
-  [jobs]
+  [jobs pool-name]
   "Run the plugins for a set of jobs at submission time."
   (let [deadline (->> (config/batch-timeout-seconds-config)
                       ; One submission can include multiple jobs that must all be checked.
@@ -112,7 +113,7 @@
         do-one-job (fn do-one-job [job-map]
                      (let [now (t/now)
                            status (if (t/before? now deadline)
-                                    (check-job-submission plugin-object job-map)
+                                    (check-job-submission plugin-object job-map pool-name)
                                     ; Running out of time, do the default.
                                     (check-job-submission-default plugin-object))]
                        (or status default-accept)))
@@ -124,3 +125,73 @@
     (if (zero? error-count)
       {:status :accepted}
       {:status :rejected :message (str "Total of " error-count " errors. First 3 are: " error-samples)})))
+
+(defrecord JopShapeValidationPlugin
+  []
+  JobSubmissionValidator
+
+  (check-job-submission-default [_]
+    {:status :accepted})
+
+  (check-job-submission [_ {:keys [constraints cpus disk gpus mem]} pool-name]
+    (if (and gpus (pos? gpus))
+      {:status :accepted}
+      (let [limits-config (config/job-resource-limits)
+            node-type-lookup-map
+            {}
+            ;(regexp-tools/match-based-on-pool-name
+            ;  (:non-gpu-jobs limits-config)
+            ;  pool-name
+            ;  :node-type-lookup)
+            constraint-pattern-fn
+            (fn [attribute-of-interest]
+              (->> constraints
+                   (filter (fn [constraint]
+                             (let [attribute (nth constraint 0)
+                                   operator (nth constraint 1)]
+                               (and (= attribute attribute-of-interest)
+                                    (= operator "EQUALS")))))
+                   first
+                   last))
+            node-type-specified (constraint-pattern-fn "node-type")
+            node-family-specified (constraint-pattern-fn "node-family")
+            cpu-architecture-specified (constraint-pattern-fn "cpu-architecture")
+            node-type-for-validation
+            (get-in node-type-lookup-map
+                    [node-type-specified
+                     node-family-specified
+                     cpu-architecture-specified])]
+        (if node-type-for-validation
+          (let [node-type->resource-limits
+                (:node-type->limits limits-config)
+                {:keys [max-cpus max-disk max-mem] :as resource-limits}
+                (get node-type->resource-limits
+                     node-type-for-validation)]
+            (if resource-limits
+              (cond
+                (and cpus (> cpus max-cpus))
+                {:status :rejected
+                 :message (str "Invalid cpus " cpus ", max is " max-cpus)}
+
+                (and disk (> disk max-disk))
+                {:status :rejected
+                 :message (str "Invalid disk " disk ", max is " max-disk)}
+
+                (and mem (> mem max-mem))
+                {:status :rejected
+                 :message (str "Invalid mem " mem ", max is " max-mem)}
+
+                :else
+                {:status :accepted})
+              {:status :rejected
+               :message (str "node-type " node-type-for-validation " is not configured")}))
+          {:status :rejected
+           :message (str "Invalid combination of "
+                         "pool (" pool-name "), "
+                         "node-type (" node-type-specified "), "
+                         "node-family (" node-family-specified "), and "
+                         "cpu-architecture (" cpu-architecture-specified ")")})))))
+
+(defn job-shape-validation-factory
+  []
+  (->JopShapeValidationPlugin))
