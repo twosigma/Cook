@@ -691,4 +691,4 @@
 
 (defn job-resource-limits
   []
-  (-> config :settings :job-resource-limits))
+  (-> config :settings :plugins :job-shape-validation))
