@@ -1294,7 +1294,7 @@
           nil ; pretty
           nil ; dryRun
           nil ; gracePeriodSeconds
-          nil ; oprphanDependents
+          nil ; orphanDependents
           nil ; propagationPolicy
           deleteOptions
           )
