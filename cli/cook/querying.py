@@ -425,8 +425,13 @@ def get_compute_cluster_config(cluster, compute_cluster_name):
     """
     :param cluster: cook scheduler cluster
     :param compute_cluster_name: compute cluster
-    :return: config of the compute cluster
+    :return: config of the compute cluster Looks at both /settings (for static clusters) and /compute-clusters (for dynamic clusters)
     """
     cook_cluster_settings = http.get(cluster, 'settings', params={}).json()
-    return next(c for c in (s['config'] for s in cook_cluster_settings['compute-clusters']) if
-                c['compute-cluster-name'] == compute_cluster_name)
+    cook_compute_clusters = http.get(cluster, 'compute-clusters', params={}).json()
+    rval = next(c['cluster-definition']['config'] for c in cook_compute_clusters['in-mem-configs'] if
+                c['name'] == compute_cluster_name)
+    if not rval:
+        rval = next((c for c in (s['config'] for s in cook_cluster_settings['compute-clusters']) if
+                     c['compute-cluster-name'] == compute_cluster_name), None)
+    return rval

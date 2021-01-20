@@ -18,11 +18,14 @@
             [clj-time.core :as time]
             [clojure.set :refer [difference union]]
             [clojure.tools.logging :as log]
+            [cook.cached-queries :as cached-queries]
             [cook.config :refer [config]]
             [cook.datomic :as datomic]
             [cook.pool :as pool]
+            [cook.queries :as queries]
             [cook.scheduler.share :as share]
-            [cook.tools :as util]
+            [cook.util :as util]
+            [cook.tools :as tools]
             [datomic.api :as d :refer [q]]
             [metrics.counters :as counters]))
 
@@ -34,12 +37,12 @@
    types to amounts."
   [job-ents pool-name]
   (->> job-ents
-       (filter #(= pool-name (util/job->pool-name %)))
+       (filter #(= pool-name (cached-queries/job->pool-name %)))
        ;; Produce a list of maps from user's name to his stats.
        (mapv (fn [job-ent]
                (let [user (:job/user job-ent)
                      stats (-> job-ent
-                               util/job-ent->resources
+                               tools/job-ent->resources
                                (select-keys [:cpus :mem])
                                (assoc :jobs 1))]
                  {user stats})))
@@ -162,8 +165,8 @@
                   (fn [_]
                     (log/info "Querying database for running and waiting jobs")
                     (let [mesos-db (d/db datomic/conn)
-                          pending-job-ents (util/get-pending-job-ents mesos-db)
-                          running-job-ents (util/get-running-job-ents mesos-db)
+                          pending-job-ents (queries/get-pending-job-ents mesos-db)
+                          running-job-ents (tools/get-running-job-ents mesos-db)
                           all-pools (pool/all-pools mesos-db)
                           pools (if (seq all-pools) all-pools [{:pool/name "no-pool"}])]
                       (run!

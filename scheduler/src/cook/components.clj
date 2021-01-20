@@ -22,6 +22,9 @@
             [compojure.route :as route]
             [congestion.middleware :refer [ip-rate-limit wrap-rate-limit]]
             [congestion.storage :as storage]
+            ; This explicit require is needed so that mount can see the defstate defined in the cook.caches namespace.
+            [cook.caches]
+            [cook.compute-cluster :as cc]
             [cook.config :refer [config]]
             [cook.datomic :as datomic]
             ; This explicit require is needed so that mount can see the defstate defined in the cook.plugins.adjustment namespace.
@@ -37,6 +40,9 @@
             ; This explicit require is needed so that mount can see the defstate defined in the cook.plugins.submission namespace.
             [cook.plugins.submission]
             [cook.pool :as pool]
+            [cook.queue-limit :as queue-limit]
+            ; This explicit require is needed so that mount can see the defstate defined in the cook.quota namespace.
+            [cook.quota :as quota]
             [cook.rate-limit]
             [cook.rest.cors :as cors]
             [cook.rest.impersonation :refer [impersonation-authorized-wrapper]]
@@ -98,6 +104,11 @@
                           compute-clusters curator-framework mesos-datomic-mult leadership-atom
                           mesos-agent-attributes-cache pool-name->pending-jobs-atom mesos-heartbeat-chan
                           trigger-chans]
+
+                      ; We track queue limits on all nodes, not just the leader, because
+                      ; we need to check them when job submission requests come in
+                      (queue-limit/start-updating-queue-lengths)
+
                       (if (cook.config/api-only-mode?)
                         (if curator-framework
                           (throw (ex-info "This node is configured for API-only mode, but also has a curator configured"
@@ -279,6 +290,7 @@
                              settings
                              progress-update-chans
                              trigger-chans]
+                         (reset! cc/exit-code-syncer-state-atom exit-code-syncer-state)
                          (doall (map (fn [{:keys [factory-fn config]}]
                                        (let [resolved (util/lazy-load-var factory-fn)]
                                          (log/info "Calling compute cluster factory fn" factory-fn "with config" config)
@@ -336,6 +348,10 @@
   (try
     ; Note: If the mount/start-with-args fails to initialize a defstate S, and/or you get weird errors on startup,
     ; you need to require S's namespace with ns :require. 'ns :require' is how mount finds defstates to initialize.
+    ;
+    ; If you get an error about "Can't embed object in code, maybe print-dup not defined: clojure.lang.Delay"
+    ; The issue is that at least metatransaction.core seems to be incompatible with mount. It cannot be in the
+    ; dependency tree of anything using mount. See also issue #1370
     (mount/start-with-args (cook.config/read-config config-file-path))
     (pool/guard-invalid-default-pool (d/db datomic/conn))
     (metrics-jvm/instrument-jvm)

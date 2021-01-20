@@ -54,8 +54,8 @@ POOL_UNSPECIFIED = 'COOK_TEST_POOL_UNSPECIFIED'
 DEFAULT_JOB_NAME_PREFIX = "default_job-"
 
 def continuous_integration():
-    """Returns true if the CONTINUOUS_INTEGRATION environment variable is set, as done by Travis-CI."""
-    return to_bool(os.getenv('CONTINUOUS_INTEGRATION'))
+    """Returns true if the CI environment variable is set, as done by GitHub Actions."""
+    return to_bool(os.getenv('CI'))
 
 
 def has_docker_service():
@@ -437,13 +437,20 @@ def init_cook_session(*cook_urls):
 def settings(cook_url):
     return session.get(f'{cook_url}/settings').json()
 
+def compute_clusters(cook_url):
+    return session.get(f'{cook_url}/compute-clusters').json()
 
-@functools.lru_cache()
-def scheduler_info(cook_url):
+
+def scheduler_info_uncached(cook_url):
     resp = session.get(f'{cook_url}/info', auth=None)
     response_info = {'code': resp.status_code, 'msg': resp.content}
     assert resp.status_code == 200, response_info
     return resp.json()
+
+
+@functools.lru_cache()
+def scheduler_info(cook_url):
+    return scheduler_info_uncached(cook_url)
 
 
 def docker_image():
@@ -1074,11 +1081,11 @@ def unscheduled_jobs(cook_url, *job_uuids, partial=None):
     return job_reasons, resp
 
 
-def wait_for_instance(cook_url, job_uuid, max_wait_ms=DEFAULT_TIMEOUT_MS, wait_interval_ms=1000, status=None):
+def wait_for_instance(cook_url, job_uuid, max_wait_ms=DEFAULT_TIMEOUT_MS, wait_interval_ms=1000, status=None, indent=2):
     """Waits for the job with the given job_uuid to have at least one instance, and returns the first instance uuid"""
 
     def instances_with_status(job):
-        logger.debug(f'Job {job_uuid}: {json.dumps(job, indent=2)}')
+        logger.debug(f'Job {job_uuid}: {json.dumps(job, indent=indent)}')
         if status is None:
             return job['instances']
         else:
@@ -1238,20 +1245,41 @@ def user_current_usage(cook_url, headers=None, **kwargs):
     return session.get('%s/usage' % cook_url, params=kwargs, headers=headers)
 
 
-def query_queue(cook_url, allow_redirects=True, **kwargs):
-    """Get current jobs via the queue endpoint (admin-only)"""
-    # We handle redirects manually here because /queue can redirect to a new hostname
-    # (when redirecting to master node), and requests strips and does not re-apply
+def request_with_redirects(method, url, allow_redirects=True, **kwargs):
+    """Special version to do requests while more properly handling authentication."""
+    # We need to handle redirects manually because some endpoints can redirect to a new hostname
+    # (when redirecting to primary node), and requests strips and does not re-apply
     # auth when redirects cross domains.
-    response = session.get(f'{cook_url}/queue', allow_redirects=False, **kwargs)
+    response = session.request(method, url, allow_redirects=False, **kwargs)
     if allow_redirects and response.is_redirect:
         for _ in range(10):
-            response = session.get(response.headers['Location'], allow_redirects=False, **kwargs)
+            response = session.request(method, response.headers['Location'], allow_redirects=False, **kwargs)
             if not response.is_redirect:
                 break
         else:
             assert not response.is_redirect, response.headers
     return response
+
+
+def get_with_redirects(url, allow_redirects=True, **kwargs):
+    """Special version of GET that handles redirects and authentication. see request_with_redirects"""
+    return request_with_redirects('GET', url, allow_redirects, **kwargs)
+
+
+def post_with_redirects(url, allow_redirects=True, **kwargs):
+    """Special version of POST that handles redirects and authentication. see request_with_redirects"""
+    return request_with_redirects('POST', url, allow_redirects, **kwargs)
+
+
+def delete_with_redirects(url, allow_redirects=True, **kwargs):
+    """Special version of DELETE that handles redirects and authentication. see request_with_redirects"""
+    return request_with_redirects('DELETE', url, allow_redirects, **kwargs)
+
+
+def query_queue(cook_url, allow_redirects=True, **kwargs):
+    """Get current jobs via the queue endpoint (admin-only)"""
+    # /queue can redirect to the cook primary so needs special logic.
+    return get_with_redirects(f'{cook_url}/queue', allow_redirects=True, **kwargs)
 
 
 def get_limit(cook_url, limit_type, user, pool=None, headers=None):
@@ -1263,7 +1291,8 @@ def get_limit(cook_url, limit_type, user, pool=None, headers=None):
     return session.get(f'{cook_url}/{limit_type}', params=params, headers=headers)
 
 
-def set_limit(cook_url, limit_type, user, mem=None, cpus=None, gpus=None, count=None, reason='testing', pool=None,
+def set_limit(cook_url, limit_type, user, mem=None, cpus=None, gpus=None, count=None,
+              reason='testing', pool=None, bucket_size=None, token_rate=None,
               headers=None):
     """
     Set resource limits for the given user.
@@ -1286,10 +1315,15 @@ def set_limit(cook_url, limit_type, user, mem=None, cpus=None, gpus=None, count=
         limits['gpus'] = gpus
     if count is not None:
         limits['count'] = count
+    if bucket_size is not None:
+        limits['launch-rate-per-minute'] = bucket_size
+    if token_rate is not None:
+        limits['launch-rate-saved'] = token_rate
     if pool is not None:
         body['pool'] = pool
     logger.debug(f'Setting {user} {limit_type} to {limits}: {body}')
-    return session.post(f'{cook_url}/{limit_type}', json=body, headers=headers)
+    # /quota can redirect to the cook primary so needs special logic.
+    return post_with_redirects(f'{cook_url}/{limit_type}', allow_redirects=True, json=body, headers=headers)
 
 
 def set_limit_to_default(cook_url, limit_type, user, pool_name):
@@ -1314,7 +1348,8 @@ def reset_limit(cook_url, limit_type, user, reason='testing', pool=None, headers
         params['reason'] = reason
     if pool is not None:
         params['pool'] = pool
-    return session.delete(f'{cook_url}/{limit_type}', params=params, headers=headers)
+    # /quota can redirect to the cook primary so needs special logic.
+    return delete_with_redirects(f'{cook_url}/{limit_type}', allow_redirects=True, params=params, headers=headers)
 
 
 def retrieve_progress_file_env(cook_url):
@@ -1461,9 +1496,15 @@ def get_kubernetes_compute_clusters():
     cook_url = retrieve_cook_url()
     _wait_for_cook(cook_url)
     init_cook_session(cook_url)
-    compute_clusters = settings(cook_url)['compute-clusters']
-    kubernetes_compute_clusters = [cc for cc in compute_clusters
+    kubernetes_compute_clusters = [cc for cc in settings(cook_url)['compute-clusters']
                                    if cc['factory-fn'] == 'cook.kubernetes.compute-cluster/factory-fn']
+    try:
+        in_mem_compute_clusters = compute_clusters(cook_url)['in-mem-configs']
+        kubernetes_compute_clusters.extend(
+            [cc for cc in [m['cluster-definition'] for m in in_mem_compute_clusters]
+             if cc['factory-fn'] == 'cook.kubernetes.compute-cluster/factory-fn'])
+    finally:
+        pass
     return kubernetes_compute_clusters
 
 
@@ -1477,59 +1518,11 @@ def get_kubernetes_compute_cluster():
 
 
 @functools.lru_cache()
-def get_kubernetes_nodes():
-    kubernetes_compute_cluster = get_kubernetes_compute_cluster()
-    if 'config-file' in kubernetes_compute_cluster['config']:
-        nodes = subprocess.check_output(['kubectl', '--kubeconfig', kubernetes_compute_cluster['config']['config-file'],
-                                         'get', 'nodes', '-o=json'])
-        node_json = json.loads(nodes)
-    elif 'base-path' in kubernetes_compute_cluster['config']:
-        authorization_header = subprocess.check_output(os.getenv('COOK_KUBERNETES_AUTH_CMD'), shell=True).decode(
-            'utf-8').strip()
-        nodes_url = kubernetes_compute_cluster['config']['base-path'] + '/api/v1/nodes'
-        node_json = requests.get(nodes_url, headers={'Authorization': authorization_header}, verify=False).json()
-    else:
-        raise RuntimeError(f'Unable to get node info for configured kubernetes cluster: {kubernetes_compute_cluster}')
-    logging.info(f'Retrieved kubernetes nodes: {node_json}')
-    return node_json['items']
-
-
-@functools.lru_cache()
-def kubernetes_node_pool(nodename):
-    node = [node for node in get_kubernetes_nodes() if node['metadata']['name'] == nodename]
-    poolname_taint = [taint for taint in node[0]['spec']['taints'] if taint['key'] == 'cook-pool']
-    if len(poolname_taint) == 0:
-        return None
-    poolname = poolname_taint[0].get('value', None)
-    logging.info(f"K8S pool for {nodename} is {poolname}")
-    return poolname
-
-
-@functools.lru_cache()
 def mesos_node_pool(nodename):
     cook_url = retrieve_cook_url()
     mesos_url = retrieve_mesos_url()
     node_pool = slave_pool(cook_url, mesos_url, nodename)
     return node_pool
-
-
-def node_pool(nodename):
-    """Get the pool for a node."""
-    if using_mesos():
-        return mesos_node_pool(nodename)
-    elif using_kubernetes():
-        return kubernetes_node_pool(nodename)
-    else:
-        raise RuntimeError(f'Unable to determine node pool for {nodename}')
-
-
-def max_kubernetes_node_cpus():
-    nodes = get_kubernetes_nodes()
-    # We need to account for per-node overhead
-    # (capacity not usable by our Cook pods)
-    k8s_node_overhead_cpus = int(os.getenv("COOK_TEST_K8S_NODE_OVERHEAD_CPUS", 0))
-    return max([float(n['status']['capacity']['cpu']) - k8s_node_overhead_cpus
-                for n in nodes])
 
 
 def get_compute_cluster_type(compute_cluster_dictionary):
@@ -1548,34 +1541,6 @@ def task_constraint_cpus(cook_url):
     """Returns the max cpus that can be submitted to the cluster"""
     task_constraint_cpus = settings(cook_url)['task-constraints']['cpus']
     return task_constraint_cpus
-
-
-def max_node_cpus():
-    if using_mesos():
-        return max_mesos_slave_cpus(retrieve_mesos_url())
-    elif using_kubernetes():
-        return max_kubernetes_node_cpus()
-    else:
-        raise RuntimeError('Unable to determine cluster max CPUs')
-
-
-def node_count():
-    if using_mesos():
-        return len(get_mesos_slaves(retrieve_mesos_url())['slaves'])
-    elif using_kubernetes():
-        return len(get_kubernetes_nodes())
-    else:
-        raise RuntimeError('Unable to determine number of nodes')
-
-
-def max_cpus():
-    """Returns the maximum cpus we can submit that actually fits on a slave"""
-    cook_url = retrieve_cook_url()
-    slave_cpus = max_node_cpus()
-    constraint_cpus = task_constraint_cpus(cook_url)
-    max_cpus = min(slave_cpus, constraint_cpus)
-    logging.debug(f'Max cpus we can submit that will get scheduled is {max_cpus}')
-    return max_cpus
 
 
 class CookTest(unittest.TestCase):
@@ -1659,38 +1624,6 @@ def mesos_hostnames_to_consider(cook_url, mesos_url):
     num_to_log = min(len(slaves), 10)
     logging.info(f'First {num_to_log} hosts to consider: {json.dumps(slaves[:num_to_log], indent=2)}')
     return [s['hostname'] for s in slaves]
-
-
-def kubernetes_hostnames_to_consider():
-    # TODO: This should check a 'cook-pool' attribute on the node for the pool.
-    # Currently, pools are not supported on kubernetes, so it's fine to ignore for now.
-    # Once support is added, we should fix this function.
-    nodes = get_kubernetes_nodes()
-    hostnames = []
-    for node in nodes:
-        for address in node['status']['addresses']:
-            if address['type'] == 'Hostname':
-                hostnames.append(address['address'])
-    return hostnames
-
-
-def hostnames_to_consider(cook_url):
-    if using_mesos():
-        return mesos_hostnames_to_consider(cook_url, retrieve_mesos_url())
-    elif using_kubernetes():
-        return kubernetes_hostnames_to_consider()
-    else:
-        return 'Unable to retrieve hostnames to consider'
-
-
-def num_hosts_to_consider(cook_url):
-    """
-    Returns the number of hosts in the default pool, or the
-    total number of hosts if the cluster is not using pools
-    """
-    num_hosts = len(hostnames_to_consider(cook_url))
-    logging.info(f'There are {num_hosts} hosts to consider')
-    return num_hosts
 
 
 def should_expect_sandbox_directory(instance):
@@ -1797,16 +1730,6 @@ def supports_mesos_containerizer_images():
     isolators = _supported_isolators()
     return 'filesystem/linux' in isolators and 'docker/runtime' in isolators
 
-
-@functools.lru_cache()
-def _get_compute_cluster_factory_fn():
-    cook_url = retrieve_cook_url()
-    _wait_for_cook(cook_url)
-    init_cook_session(cook_url)
-    compute_clusters = settings(cook_url)['compute-clusters']
-    return compute_clusters[0]['factory-fn']
-
-
 def get_compute_cluster_test_mode():
     return os.getenv("COOK_TEST_COMPUTE_CLUSTER_TYPE", "mesos")
 
@@ -1819,23 +1742,28 @@ def using_mesos():
     return get_compute_cluster_test_mode() == "mesos"
 
 
-def has_one_agent():
-    return node_count() == 1
-
-
 def supports_exit_code():
     return using_kubernetes() or is_cook_executor_in_use()
+
 
 def pool_quota_test_pool():
     return os.getenv("COOK_TEST_POOL_QUOTA_TEST_POOL", None)
 
-def kill_running_and_waiting_jobs(cook_url, user):
+
+def kill_running_and_waiting_jobs(cook_url, user, log_jobs=True):
     one_hour_in_millis = 60 * 60 * 1000
     start = current_milli_time() - (72 * one_hour_in_millis)
     end = current_milli_time() + one_hour_in_millis
-    running = jobs(cook_url, user=user, state=['running', 'waiting'], start=start, end=end).json()
-    logger.info(f'Currently running/waiting jobs: {json.dumps(running, indent=2)}')
-    kill_jobs(cook_url, running)
+    while True:
+        logger.info(f'Querying for running / waiting jobs for {user}')
+        running = jobs(cook_url, user=user, state=['running', 'waiting'], start=start, end=end, limit=500).json()
+        logger.info(f'{len(running)} running / waiting jobs for {user}')
+        if len(running) == 0:
+            break
+        else:
+            if log_jobs:
+                logger.info(f'Currently running/waiting jobs: {json.dumps(running, indent=2)}')
+            kill_jobs(cook_url, running)
 
 
 def running_tasks(cook_url):
@@ -1930,3 +1858,31 @@ def make_failed_job(cook_url, **kwargs):
 def kubernetes_settings():
     cook_url = retrieve_cook_url()
     return settings(cook_url)['kubernetes']
+
+
+def create_compute_cluster(cook_url, cluster, headers=None):
+    leader_url = scheduler_info_uncached(cook_url)['leader-url']
+    resp = session.post(f'{leader_url}/compute-clusters', json=cluster, headers=headers)
+    logger.info(f'create_compute_cluster resp: {resp.headers} {resp.content} {resp.status_code} {resp.history}')
+    return resp.json(), resp
+
+
+def update_compute_cluster(cook_url, cluster, headers=None):
+    leader_url = scheduler_info_uncached(cook_url)['leader-url']
+    resp = session.put(f'{leader_url}/compute-clusters', json=cluster, headers=headers)
+    logger.info(f'update_compute_cluster resp: {resp.headers} {resp.content} {resp.status_code} {resp.history}')
+    return resp.json(), resp
+
+
+def delete_compute_cluster(cook_url, cluster, headers=None):
+    leader_url = scheduler_info_uncached(cook_url)['leader-url']
+    resp = session.delete(f'{leader_url}/compute-clusters', json=cluster, headers=headers)
+    logger.info(f'delete_compute_cluster resp: {resp.headers} {resp.content} {resp.status_code} {resp.history}')
+    return resp
+
+
+def shutdown_leader(cook_url, reason, headers=None):
+    leader_url = scheduler_info_uncached(cook_url)['leader-url']
+    resp = session.post(f'{leader_url}/shutdown-leader', json={"reason": reason}, headers=headers)
+    logger.info(f'shutdown_leader resp: {resp.headers} {resp.content} {resp.status_code} {resp.history}')
+    return resp.content

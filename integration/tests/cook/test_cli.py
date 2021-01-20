@@ -1255,6 +1255,88 @@ if __name__ == '__main__':
             self.assertIn('Command exited with status 0', stdout)
             self.assertIn('Executor completed execution', stdout)
 
+    def test_show_disk(self):
+        settings_dict = util.settings(self.cook_url)
+        # disk_config_list is a list of regexp's with pool regex, valid disk types, default disk type, and max requestable size of disk
+        disk_config_list = settings_dict.get("pools", {}).get("disk", [])
+        if not disk_config_list:
+            self.skipTest("There are no pools that support disk")
+
+        # Disk may not be configured for COOK_TEST_DEFAULT_POOL, so we iterate over all active pools to find a pool where we can run this test.
+        active_pools, _ = util.active_pools(self.cook_url)
+        for pool in active_pools:
+            pool_name = pool['name']
+            matching_disk_types = [ii["valid-types"] for ii in disk_config_list if
+                                   re.match(ii["pool-regex"], pool_name)]
+            if len(matching_disk_types) == 0:
+                self.logger.info(f'There are no disk types configured for pool {pool_name}')
+            else:
+                # No disk specification
+                raw_job = {'command': 'ls'}
+                cp, uuids = cli.submit(stdin=cli.encode(json.dumps(raw_job)), cook_url=self.cook_url, submit_flags=f'--pool {pool_name} --raw')
+                self.assertEqual(0, cp.returncode, cp.stderr)
+                cp = cli.show(uuids, self.cook_url)
+                self.assertEqual(0, cp.returncode, cp.stderr)
+                self.assertNotIn("Disk", cli.stdout(cp))
+
+                # Disk with only request
+                raw_job = {'command': 'sleep 100', 'disk': {'request': 10.0}}
+                cp, uuids = cli.submit(stdin=cli.encode(json.dumps(raw_job)), cook_url=self.cook_url, submit_flags=f'--pool {pool_name} --raw')
+                self.assertEqual(0, cp.returncode, cp.stderr)
+                cp = cli.show(uuids, self.cook_url)
+                self.assertEqual(0, cp.returncode, cp.stderr)
+                self.assertIn("Disk Request", cli.stdout(cp))
+                self.assertNotIn("Disk Limit", cli.stdout(cp))
+                self.assertNotIn("Disk Type", cli.stdout(cp))
+
+                # Disk with only request and limit
+                raw_job = {'command': 'ls', 'disk': {'request': 10.0, 'limit': 20.0}}
+                cp, uuids = cli.submit(stdin=cli.encode(json.dumps(raw_job)), cook_url=self.cook_url, submit_flags=f'--pool {pool_name} --raw')
+                self.assertEqual(0, cp.returncode, cp.stderr)
+                cp = cli.show(uuids, self.cook_url)
+                self.assertEqual(0, cp.returncode, cp.stderr)
+                self.assertIn("Disk Request", cli.stdout(cp))
+                self.assertIn("Disk Limit", cli.stdout(cp))
+                self.assertNotIn("Disk Type", cli.stdout(cp))
+
+                # Disk with request, limit, and type
+                raw_job = {'command': 'ls', 'disk': {'request': 10.0, 'limit': 20.0, 'type': 'standard'}}
+                cp, uuids = cli.submit(stdin=cli.encode(json.dumps(raw_job)), cook_url=self.cook_url, submit_flags=f'--pool {pool_name} --raw')
+                self.assertEqual(0, cp.returncode, cp.stderr)
+                cp = cli.show(uuids, self.cook_url)
+                self.assertEqual(0, cp.returncode, cp.stderr)
+                self.assertIn("Disk Request", cli.stdout(cp))
+                self.assertIn("Disk Limit", cli.stdout(cp))
+                self.assertIn("Disk Type", cli.stdout(cp))
+
+    def test_submit_with_disk(self):
+        settings_dict = util.settings(self.cook_url)
+        # disk_config_list is a list of regexp's with pool regex, valid disk types, default disk type, and max requestable size of disk
+        disk_config_list = settings_dict.get("pools", {}).get("disk", [])
+        if not disk_config_list:
+            self.skipTest("There are no pools that support disk")
+
+        default_pool = util.default_submit_pool() or util.default_pool(self.cook_url)
+        matching_disk_types = [ii["valid-types"] for ii in disk_config_list if
+                               re.match(ii["pool-regex"], default_pool)]
+        if len(matching_disk_types) == 0:
+            self.logger.info(f'There are no disk types configured for default pool {default_pool}')
+        else:
+            # Job with disk request, limit, and type
+            cp, uuids = cli.submit('ls', self.cook_url,
+                                   submit_flags=f'--pool {default_pool} --disk-request 10240 --disk-limit 20480 --disk-type "standard"')
+            self.assertEqual(0, cp.returncode, cp.stderr)
+
+            # Job with disk request only
+            cp, uuids = cli.submit('ls', self.cook_url,
+                                   submit_flags=f'--pool {default_pool} --disk-request 10240')
+            self.assertEqual(0, cp.returncode, cp.stderr)
+
+            # Job with disk request and limit
+            cp, uuids = cli.submit('ls', self.cook_url,
+                                   submit_flags=f'--pool {default_pool} --disk-request 10240 --disk-limit 20480')
+            self.assertEqual(0, cp.returncode, cp.stderr)
+
     def test_submit_with_executor(self):
         cp, uuids = cli.submit('ls', self.cook_url, submit_flags='--executor cook')
         self.assertEqual(0, cp.returncode, cp.stderr)
@@ -1944,7 +2026,7 @@ if __name__ == '__main__':
                 self.assertEqual('Hello world!', cli.decode(cp.stdout))
 
     def test_usage(self):
-        command = 'sleep 300'
+        command = f'sleep {util.DEFAULT_TEST_TIMEOUT_SECS}'
 
         # Submit un-grouped jobs
         cp, uuids = cli.submit(command, self.cook_url, submit_flags='--cpus 0.1 --mem 16')

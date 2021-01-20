@@ -20,7 +20,11 @@
                               :compute-cluster-name "local-mesos"
                               :container-defaults {:volumes [{:host-path "/tmp/cook-integration-mount"
                                                               :container-path "/mnt/cook-integration"
-                                                              :mode "RW"}]}}}]
+                                                              :mode "RW"}]}
+                              :compute-cluster-launch-rate-limits {:expire-minutes 1200
+                                                                   :enforce? true
+                                                                   :bucket-size 10000
+                                                                   :tokens-replenished-per-minute 5000}}}]
  :cors-origins ["https?://cors.example.com"]
  :data-local {:fitness-calculator {:cache-ttl-ms 60000
                                    :cost-endpoint #config/env "DATA_LOCAL_ENDPOINT"
@@ -61,14 +65,10 @@
        :keystore-type "pkcs12"
        :keystore-pass "cookstore"}
  :rate-limit {:expire-minutes 1200 ; Expire unused rate limit entries after 20 hours.
-              ; Keep these job-launch and job-submission values as they are for integration tests. Making them smaller can cause
+              ; Keep job-submission values as they are for integration tests. Making them smaller can cause
               ; spurious failures, and making them larger will cause test_rate_limit_launching_jobs to skip itself.
-              :global-job-launch {:bucket-size 10000
-                                  :enforce? true
-                                  :tokens-replenished-per-minute 5000}
-              :job-launch {:bucket-size 10000
-                           :enforce? true
-                           :tokens-replenished-per-minute 5000}
+              :per-user-per-pool-job-launch {:expire-minutes 1440
+                                             :enforce? true}
               :job-submission {:bucket-size 1000
                                :enforce? true
                                :tokens-replenished-per-minute 600}

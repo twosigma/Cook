@@ -25,8 +25,14 @@
             [clojure.string :as str]
             [clojure.tools.logging :as log]
             [cook.cache :as ccache]
+            [cook.cached-queries :as cached-queries]
+            [cook.caches :as caches]
             [cook.config :as config]
             [cook.pool :as pool]
+            [cook.queries :as queries]
+            [cook.quota :as quota]
+            [cook.rate-limit :as ratelimit]
+            [cook.regexp-tools :as regexp-tools]
             [cook.schema :as schema]
             [datomic.api :as d :refer [q]]
             [metatransaction.core :refer [db]]
@@ -37,7 +43,7 @@
            (java.util Date)
            (org.joda.time DateTime ReadablePeriod)))
 
-(defn retrieve-system-id
+(defn retrieve-system-ids
   "Executes a shell command to retrieve the user/group id for the specified user"
   [mode-flag value]
   (let [{:keys [exit out err]} (sh/sh "/usr/bin/id" mode-flag value)]
@@ -47,7 +53,13 @@
                   :out {:exit-code exit :stderr err :stdout out}}))
     (let [result (some-> out str/trim)]
       (when-not (str/blank? result)
-        (Long/parseLong result)))))
+        (map #(Long/parseLong %) (str/split result #" "))))))
+
+(defn retrieve-system-id
+  "Returns the first id from retrieve-system-ids, if there is one"
+  [mode-flag value]
+  (when-let [ids (retrieve-system-ids mode-flag value)]
+    (first ids)))
 
 (defn user->user-id [user-name]
   "Retrieves the system user id for the specified user"
@@ -57,28 +69,20 @@
   "Retrieves the system group id for the specified user"
   (retrieve-system-id "-g" user-name))
 
-(defn new-cache []
-  "Build a new cache"
-  (-> (CacheBuilder/newBuilder)
-      (.maximumSize 1000000)
-      ;; if its not been accessed in 2 hours, whatever is going on, its not being visted by the
-      ;; scheduler loop anymore. E.g., its probably failed/done and won't be needed. So,
-      ;; lets kick it out to keep cache small.
-      (.expireAfterAccess 2 TimeUnit/HOURS)
-      (.build)))
-
-
-(defn lookup-cache-datomic-entity!
-  "Specialized function for caching where datomic entities are the key.
-  Extracts :db/id so that we don't keep the entity alive in the cache."
-  [cache miss-fn entity]
-  (ccache/lookup-cache! cache :db/id miss-fn entity))
-
-(defonce ^Cache job-ent->resources-cache (new-cache))
-(defonce ^Cache job-ent->pool-cache (new-cache))
-(defonce ^Cache task-ent->user-cache (new-cache))
-(defonce ^Cache job-ent->user-cache (new-cache))
-(defonce ^Cache task->feature-vector-cache (new-cache))
+(let [user->group-ids-miss-fn
+      (fn [user-name]
+        (log/info "Retrieving group ids for" user-name)
+        {:cache-expires-at (-> 30 t/minutes t/from-now)
+         :system-ids (retrieve-system-ids "-G" user-name)})]
+  (defn user->all-group-ids [user-name]
+    "Retrieves the (potentially cached) collection
+    of all group ids for the specified user"
+    (:system-ids
+      (ccache/lookup-cache-with-expiration!
+        caches/user->group-ids-cache
+        identity
+        user->group-ids-miss-fn
+        user-name))))
 
 (defn get-all-resource-types
   "Return a list of all supported resources types. Example, :cpus :mem :gpus ..."
@@ -88,15 +92,6 @@
             [?e :resource.type/mesos-name ?ident]]
           db)
        (map first)))
-
-(let [default-pool (config/default-pool)
-      _ (log/info "The config/default-pool is" default-pool)
-      miss-fn (fn [{:keys [job/pool]}]
-                (or (:pool/name pool) default-pool "no-pool"))]
-  (defn job->pool-name
-    "Return the pool name of the job."
-    [job]
-    (lookup-cache-datomic-entity! job-ent->pool-cache miss-fn job)))
 
 (defn without-ns
   [k]
@@ -142,20 +137,6 @@
                 (into {} xf x)
                 x))
             m))
-
-(defn deep-merge-with
-  "Like merge-with, but merges maps recursively, applying the given fn
-  only when there's a non-map at a particular level.
-  (deep-merge-with + {:a {:b {:c 1 :d {:x 1 :y 2}} :e 3} :f 4}
-               {:a {:b {:c 2 :d {:z 9} :z 3} :e 100}})
-  -> {:a {:b {:z 3, :c 3, :d {:z 9, :x 1, :y 2}}, :e 103}, :f 4}"
-  [f & maps]
-  (apply
-    (fn m [& maps]
-      (if (every? map? maps)
-        (apply merge-with m maps)
-        (apply f maps)))
-    maps))
 
 (defn entity->map
   "Takes a datomic entity and converts it along with any nested entities
@@ -262,19 +243,28 @@
   "Take a job entity and return a resource map. NOTE: the keys must be same as mesos resource keys"
   [job]
   (let [job-ent->resources-miss
-        (fn [job-ent]
+        (fn [{:keys [job/uuid] :as job-ent}]
           (reduce (fn [m r]
                     (let [resource (keyword (name (:resource/type r)))]
                       (condp contains? resource
                         #{:cpus :mem :gpus} (assoc m resource (:resource/amount r))
+                        ; We add these additional disk resources here so they're available for Fenzo binpacking, so we don't run out of disk space on a node
+                        #{:disk} (assoc m :disk (cond-> {:request (:resource.disk/request r)}
+                                                        (:resource.disk/limit r) (assoc :limit (:resource.disk/limit r))
+                                                        (:resource.disk/type r) (assoc :type (:resource.disk/type r))) )
                         #{:uri} (update-in m [:uris] (fnil conj [])
                                            {:cache (:resource.uri/cache? r false)
                                             :executable (:resource.uri/executable? r false)
                                             :value (:resource.uri/value r)
-                                            :extract (:resource.uri/extract? r false)}))))
+                                            :extract (:resource.uri/extract? r false)})
+                        (do
+                          (log/warn "Encountered unknown job resource type"
+                                    {:job-uuid uuid
+                                     :resource resource})
+                          m))))
                   {:ports (:job/ports job-ent 0)}
                   (:job/resource job-ent)))]
-    (lookup-cache-datomic-entity! job-ent->resources-cache job-ent->resources-miss job)))
+    (caches/lookup-cache-datomic-entity! caches/job-ent->resources-cache job-ent->resources-miss job)))
 
 (defn job-ent->attempts-consumed
   "Determines the amount of attempts consumed by a job-ent."
@@ -309,43 +299,7 @@
     {:cpus 0.0, :mem 0.0, :gpus 0.0, :jobs (count job-ents)}
     job-ents))
 
-(defn- get-pending-job-ents*
-  "Returns a seq of datomic entities corresponding to jobs
-
-   Parameters:
-   `unfiltered-db` a database generated by calling datomic.api/db directly
-   `committed?` boolean whether the jobs are committed or not"
-  [unfiltered-db committed?]
-  ;; This function explicitly uses the unfiltered (not metatransaction filtered)
-  ;; db to improve the performance of this query. We are working to remove
-  ;; metatransaction throughout the code
-  (->> (q '[:find [?j ...]
-            :in $ ?state ?committed?
-            :where
-            [?j :job/state ?state]
-            [?j :job/commit-latch ?cl]
-            [?cl :commit-latch/committed? ?committed?]]
-          unfiltered-db :job.state/waiting committed?)
-       (map (partial d/entity unfiltered-db))))
-
-(timers/deftimer [cook-mesos scheduler get-pending-jobs-duration])
-
-(defn get-pending-job-ents
-  "Returns a seq of datomic entities corresponding to jobs
-
-   Parameters:
-   `unfiltered-db` a database generated by calling datomic.api/db directly"
-  ([unfiltered-db]
-   (timers/time!
-     get-pending-jobs-duration
-     (get-pending-job-ents* unfiltered-db true))))
-
 (timers/deftimer [cook-mesos scheduler get-completed-jobs-by-user-duration])
-
-(defn job-ent->user
-  "Given a job entity, return the user the job runs as."
-  [job-ent]
-  (lookup-cache-datomic-entity! job-ent->user-cache :job/user job-ent))
 
 (defn job-ent->state
   "Given a job entity, returns the corresponding 'state', which means
@@ -412,7 +366,7 @@
                            (= (:v %) state-entid)))
          (map :e)
          (map (partial d/entity db))
-         (filter #(= (job-ent->user %) user))
+         (filter #(= (cached-queries/job-ent->user %) user))
          (filter #(job-submitted-in-range? % start-ms end-ms)))))
 
 ;; get-completed-jobs-by-user is a bit opaque because it is
@@ -618,7 +572,7 @@
   (let [task-ent->user-miss
         (fn [task-ent]
           (get-in task-ent [:job/_instance :job/user]))]
-    (lookup-cache-datomic-entity! task-ent->user-cache task-ent->user-miss task-ent)))
+    (caches/lookup-cache-datomic-entity! caches/task-ent->user-cache task-ent->user-miss task-ent)))
 
 (def ^:const default-job-priority 50)
 
@@ -641,7 +595,7 @@
         extract-key
         (fn [item]
           (or (:db/id item) (:db/id (:job/_instance item))))]
-    (ccache/lookup-cache! task->feature-vector-cache extract-key task->feature-vector-miss task)))
+    (ccache/lookup-cache! caches/task->feature-vector-cache extract-key task->feature-vector-miss task)))
 
 (defn same-user-task-comparator
   "Comparator to order same user's tasks"
@@ -739,8 +693,8 @@
    Returns:
    seq of uncommitted jobs deleted (or to delete in case of dry run)"
   [conn submitted-before dry-run?]
-  (let [uncommitted-jobs (get-pending-job-ents* (d/db conn) false)
-        committed-jobs (get-pending-job-ents* (d/db conn) true)
+  (let [uncommitted-jobs (queries/get-pending-job-ents* (d/db conn) false)
+        committed-jobs (queries/get-pending-job-ents* (d/db conn) true)
         committed-job-entids (set (map :db/id committed-jobs))
         uncommitted-before (filter #(t/before? (-> % :job/submit-time tc/from-date)
                                                submitted-before)
@@ -885,16 +839,9 @@
     d
     (Integer/parseInt s)))
 
-(defn time-seq
-  "Returns a sequence of date-time values growing over specific period.
-   Takes as input the starting value and the growing value, returning a lazy infinite sequence."
-  [start ^ReadablePeriod period]
-  (iterate (fn [^DateTime t] (.plus t period)) start))
-
 (defn below-quota?
   "Returns true if the usage is below quota-constraints on all dimensions"
-  [{:keys [count cpus mem] :as quota}
-   {:keys [count cpus mem] :as usage}]
+  [quota usage]
   (every? (fn [[usage-key usage-val]]
             (<= usage-val (get quota usage-key 0)))
           (seq usage)))
@@ -907,24 +854,15 @@
     (cond-> {:count 1 :cpus cpus :mem mem}
       gpus (assoc :gpus gpus))))
 
-(defn match-based-on-pool-name
-  "Given a list of dictionaries [{:pool-regexp .. :field ...} {:pool-regexp .. :field ...}
-   a pool name and a <field> name, return the first matching <field> where the regexp matches the pool name."
-  [match-list effective-pool-name field]
-  (->> match-list
-       (filter (fn [{:keys [pool-regex]}] (re-find (re-pattern pool-regex) effective-pool-name)))
-       first
-       field))
-
 (defn global-pool-quota
-  "Given a pool name, determine the quota for that pool."
+  "Given a pool name, determine the global quota for that pool across all users."
   [quotas effective-pool-name]
-  (match-based-on-pool-name quotas effective-pool-name :quota))
+  (regexp-tools/match-based-on-pool-name quotas effective-pool-name :quota))
 
 (defn filter-based-on-user-quota
   "Lazily filters jobs for which the sum of running jobs and jobs earlier in the queue exceeds one of the constraints,
    max-jobs, max-cpus or max-mem"
-  [user->quota user->usage queue]
+  [pool user->quota user->usage queue]
   (letfn [(filter-with-quota [user->usage job]
             (let [user (:job/user job)
                   job-usage (job->usage job)
@@ -941,8 +879,8 @@
 
    The input is a quota consisting of a map from resources to values:  {:mem 123 :cpus 456 ...}
    usage is a similar map containing the usage of all running jobs in this pool."
-  [quota usage queue]
-  (log/debug "Pool quota and usage:" {:quota quota :usage usage})
+  [pool quota usage queue]
+  (log/debug "Pool quota and usage:" {:pool pool :quota quota :usage usage})
   (if (nil? quota)
     queue
     (letfn [(filter-with-quota [usage job]
@@ -953,25 +891,52 @@
                 [usage' (below-quota? quota usage')]))]
       (filter-sequential filter-with-quota usage queue))))
 
+
+; This is used by the /unscheduled_jobs code to determine whether
+; or not to report rate-limiting as a reason for being pending
+(defonce pool->user->num-rate-limited-jobs (atom {}))
+
+(defn filter-pending-jobs-for-ratelimit
+  [pool-name user->rate-limit-count user->passed-count pending-jobs]
+  (let [enforcing-job-launch-rate-limit? (ratelimit/enforce? quota/per-user-per-pool-launch-rate-limiter)
+        ; Each rank cycle, we reset who's had anything rate limited this cycle.
+        user->number-jobs (atom {})
+        user-within-launch-rate-limit?-fn
+        (fn
+          [{:keys [job/user]}]
+          ; Account for each time we see a job for a user.
+          (let [token-key (quota/pool+user->token-key pool-name user)
+                _ (swap! user->number-jobs update user #(inc (or % 0)))
+                tokens-left (ratelimit/get-token-count! quota/per-user-per-pool-launch-rate-limiter token-key)
+                number-jobs-for-user-so-far (@user->number-jobs user)
+                is-rate-limited? (> number-jobs-for-user-so-far tokens-left)]
+            (if is-rate-limited?
+              (swap! user->rate-limit-count update user #(inc (or % 0)))
+              (swap! user->passed-count update user #(inc (or % 0))))
+            (not (and is-rate-limited? enforcing-job-launch-rate-limit?))))
+        filtered-queue (filter user-within-launch-rate-limit?-fn pending-jobs)]
+    filtered-queue))
+
 (defn filter-pending-jobs-for-quota
   "Lazily filters jobs to those that that are in quota.
 
   user->quota is a map from user to a quota dictionary which is {:mem 123 :cpus 456 ...}
   user->usage is a map from user to a usage dictionary which is {:mem 123 :cpus 456 ...}
   pool-quota is the quota for the current pool, a quota dictionary which is {:mem 123 :cpus 456 ...}"
-  [user->quota user->usage pool-quota queue]
+  [pool user->rate-limit-count user->passed-count user->quota user->usage pool-quota queue]
   ; Use the already precomputed user->usage map and just aggregate by users to get pool usage.
   (let [pool-usage (reduce (partial merge-with +) (vals user->usage))]
     (->> queue
-         (filter-based-on-user-quota user->quota user->usage)
-         (filter-based-on-pool-quota pool-quota pool-usage))))
+         (filter-based-on-user-quota pool user->quota user->usage)
+         (filter-pending-jobs-for-ratelimit pool user->rate-limit-count user->passed-count)
+         (filter-based-on-pool-quota pool pool-quota pool-usage))))
 
 (defn pool->user->usage
   "Returns a map from pool name to user name to usage for all users in all pools."
   [db]
   (let [running-tasks (get-running-task-ents db)
         running-jobs (map :job/_instance running-tasks)
-        pool->jobs (group-by job->pool-name running-jobs)]
+        pool->jobs (group-by cached-queries/job->pool-name running-jobs)]
     (pc/map-vals (fn [jobs]
                    (let [user->jobs (group-by :job/user jobs)]
                      (pc/map-vals (fn [jobs]
@@ -1022,3 +987,51 @@
       (let [prev-k1 (k1-extract-fn prev-item)
             prev-k2 (k2-extract-fn prev-item)]
         (swap! state-atom (fn [m] (dissoc-in m [prev-k1 prev-k2])))))))
+
+(defn offers->resource-maps
+  "Given a collection of offers, returns a collection
+   of maps, where each map is resource-type -> amount"
+  [offers]
+  (map (fn offer->resource-map
+         [{:keys [resources]}]
+         (reduce
+           (fn [resource-map {:keys [name type scalar text->scalar] :as resource}]
+             (case type
+               ; Range types (e.g. port ranges) aren't
+               ; amenable to summing across offers
+               :value-ranges
+               resource-map
+
+               :value-scalar
+               (assoc resource-map name scalar)
+
+               :value-text->scalar
+               (reduce
+                 (fn [resource-map-inner [text scalar]]
+                   (assoc resource-map-inner
+                     (str name "/" text)
+                     scalar))
+                 resource-map
+                 text->scalar)
+
+               (do
+                 (log/warn "Encountered unexpected resource type"
+                           {:resource resource :type type})
+                 resource-map)))
+           {}
+           resources))
+       offers))
+
+(defn format-resource-map
+  "Given a map with resource amount values,
+   formats the amount values for logging"
+  [resource-map]
+  (pc/map-vals #(if (float? %)
+                  (format "%.3f" %)
+                  (str %))
+               resource-map))
+
+(defn job->submit-time
+  "Get submit-time for a job. due to a bug, submit time may not exist for some jobs"
+  [job]
+  (when (:job/submit-time job) (.getTime (:job/submit-time job))))

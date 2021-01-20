@@ -2,7 +2,12 @@
 
 set -e
 
-cd ${TRAVIS_BUILD_DIR}
+cd ${GITHUB_WORKSPACE}
+
+# Create dump name
+repo=${GITHUB_REPOSITORY}
+pr_number=$(jq -r ".pull_request.number" "$GITHUB_EVENT_PATH")
+dump_name="${repo//\//-}-PR${pr_number}-${GITHUB_WORKFLOW// /-}-$GITHUB_RUN_ID"
 
 # List the last 10 containers
 docker ps --all --last 10
@@ -26,7 +31,7 @@ do
 done
 
 tarball=./dump.txz
-tar -cJf $tarball --transform="s|\./[^/]*/\.*|${TRAVIS_JOB_NUMBER}/|" --warning=no-file-changed ./scheduler/log ./travis/.minimesos ./mesos/master-logs ./mesos/agent-logs || exitcode=$?
+tar -cJf $tarball --transform="s|\./[^/]*/\.*|${dump_name}/|" --warning=no-file-changed ./scheduler/log ./travis/.minimesos ./mesos/master-logs ./mesos/agent-logs || exitcode=$?
 # GNU tar always exits with 0, 1 or 2 (https://www.gnu.org/software/tar/manual/html_section/tar_19.html)
 # 0 = Successful termination
 # 1 = Some files differ (we're OK with this)
@@ -35,4 +40,4 @@ if [ "$exitcode" == "2" ]; then
   echo "The tar command exited with exit code $exitcode, exiting..."
   exit $exitcode
 fi
-./travis/gdrive_upload "travis-${TRAVIS_JOB_NUMBER:-dump}" $tarball
+./travis/gdrive_upload "travis-${dump_name}" $tarball

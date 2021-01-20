@@ -4,6 +4,110 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.50.1] - 2021-01-14
+### Added
+- Ability to not set memory limits, from @kathryn-zhou
+- Authenticator refresh logic needed for non-GKE k8s, from @scrosby  
+- Checkpoint locality constraint, from @dposada
+### Changed
+- Logging the largest job and offer by resource, from @dposada
+
+## [1.50.0] - 2020-12-21
+### Added
+- Adds location to compute cluster, from @dposada
+- Schedules and matches jobs with disk, from @kathryn-zhou
+### Changed
+- Makes k8s API client read timeout configurable, from @dposada
+
+## [1.49.2] - 2020-12-04
+### Added
+- Add resource request and limit to init-container in pod, from @scrosby
+### Changed
+- Refactor authentication initialization, from @scrosby
+- Migrate to GitHub Actions from Travis CI, from @kevo1ution
+### Fixed
+- Allow users to use int values for disk request and disk limit, from @kathryn-zhou
+
+## [1.49.1] - 2020-11-19
+### Added
+- Add support for ignoring a taint prefix, from @scrosby
+### Changed
+- Increase limit for launch-task-num-threads, from @scrosby
+- Make progress an absolute path in k8s, from @scrosby
+### Fixed
+- Do not schedule nodes with unschedulable node-spec, from @scrosby
+- Improve error handling when calculating effective image, from @nsinkov
+
+## [1.49.0] - 2020-11-11
+### Added
+- Per-user queue length limits, from @dposada
+- API for Disk Limits, from @kathryn-zhou
+- Metadata pod env vars, from @nsinkov
+- Support for modifying pod image when checkpointing, from @nsinkov
+### Changed
+- Increases default and max :controller-lock-num-shards, from @dposada
+- Make the kill-lock be a ReentrantReadWriteLock and add metrics, from @scrosby
+- Make pool taint / label and context configurable, from @scrosby
+### Fixed
+- Gracefully handles unknown job resource type, from @dposada
+- Fix memory leak in k8s state for deleted pods, from @scrosby
+
+## [1.48.4] - 2020-10-28
+### Changed
+- Reduced excessive logging for checkpointing and launching tasks, from @dposada
+
+## [1.48.3] - 2020-10-23
+### Changed
+- Added supplemental groups to the pod security context, from @dposada
+
+## [1.48.2] - 2020-10-19
+### Changed
+- Reduced excessive logging for k8s dynamic clusters and writing tasks, from @dposada
+
+## [1.48.1] - 2020-10-15
+### Changed
+- Cache sizes to be configurable, from @scrosby
+- Tracking of how rate limiting is affecting the queue, from @scrosby
+
+## [1.48.0] - 2020-10-08
+### Added
+- Per-user per-pool job launch rate limiting, from @scrosby
+- Configurable checkpointing kill switch, from @nsinkov
+### Changed
+- Dynamic compute cluster log from `ERROR` to `WARN`, from @scrosby
+### Fixed
+- Allowing for different rate limit for auth-bypass requests, from @dposada
+
+## [1.47.1] - 2020-10-01
+### Changed
+- Added warning log when jobs go unmatched for too long, from @dposada
+- Added the ability to flush a rate limit from the cache, from @scrosby
+
+## [1.47.0] - 2020-09-25
+### Added
+- Add rate limits per compute cluster, from @scrosby
+### Changed
+- Cached job-constant fields in defrecords for gpu-host-constraint, from @kathryn-zhou
+- Cache job-constant fields in defrecords for user-defined-constraint, from @kathryn-zhou
+
+## [1.46.0] - 2020-09-21
+### Added
+- Workload fields to job application, from @dposada
+
+## [1.45.2] - 2020-09-15
+### Changed
+- Reduced excessive logging for k8s, from @dposada
+- Added logging of offer and job resource percentiles, from @dposada
+### Fixed
+- Missing compute cluster check, from @nsinkov
+- Deleting unschedulable synthetic pods, from @dposada
+
+## [1.45.1] - 2020-09-08
+### Added
+- Dynamic cluster configuration support, from @nsinkov
+### Changed
+- Improved logging for launching tasks, stop launching synthetic pods, and matching offers, from @dposada
+
 ## [1.45.0] - 2020-08-25
 ### Added
 - Support for EQUALS job constraints in k8s, from @dposada

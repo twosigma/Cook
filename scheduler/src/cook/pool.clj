@@ -15,7 +15,7 @@
   ([source eid entity->pool pool-name requesting-default-pool?]
    (check-pool (d/entity source eid) entity->pool pool-name requesting-default-pool?)))
 
-(def nil-pool (str (UUID/randomUUID)))
+(def nil-pool "nil-pool")
 
 (defn check-pool-for-listing
   "Returns true if either the provided pool-name is the 'nil' pool, or if

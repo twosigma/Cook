@@ -15,6 +15,7 @@
 ;;
 (ns cook.test.config
   (:require [clojure.test :refer :all]
+            [congestion.limits :as limits]
             [cook.config :refer [config config-settings config-string->fitness-calculator default-pool env read-edn-config]
              :as config]
             [cook.test.rest.api :as api]
@@ -95,7 +96,7 @@
       (is (thrown? ExceptionInfo (config-settings bad-config))))
     (let [bad-config (assoc-in (api/minimal-config)
                                [:config :kubernetes :controller-lock-num-shards]
-                               256)]
+                               32778)]
       (is (thrown? ExceptionInfo (config-settings bad-config))))))
 
 (deftest test-valid-gpu-models-config-settings
@@ -121,3 +122,43 @@
                           (config/guard-invalid-gpu-config [{:pool-regex "test-pool"
                                                              :valid-models #{"valid-gpu-model"}
                                                              :default-model "invalid-gpu-model"}])))))
+
+(deftest test-disk-config-settings
+  (testing "empty disk"
+    (is (nil? (config/guard-invalid-disk-config []))))
+  (testing "valid default type"
+    (is (nil? (config/guard-invalid-disk-config [{:pool-regex "^test-pool$"
+                                                  :valid-types #{"valid-disk-type"}
+                                                  :default-type "valid-disk-type"
+                                                  :max-size 256000}]))))
+  (testing "no valid types"
+    (is (thrown-with-msg? ExceptionInfo
+                          #"Valid disk types for pool-regex \^test-pool\$ is not defined"
+                          (config/guard-invalid-disk-config [{:pool-regex "^test-pool$"
+                                                              :default-type "valid-disk-type"
+                                                              :max-size 256000}]))))
+  (testing "no default type"
+    (is (thrown-with-msg? ExceptionInfo
+                          #"Default disk type for pool-regex \^test-pool\$ is not defined"
+                          (config/guard-invalid-disk-config [{:pool-regex "^test-pool$"
+                                                              :valid-types #{"valid-disk-type"}
+                                                              :max-size 256000}]))))
+  (testing "no max size"
+    (is (thrown-with-msg? ExceptionInfo
+                          #"Max requestable disk size for pool-regex \^test-pool\$ is not defined"
+                          (config/guard-invalid-disk-config [{:pool-regex "^test-pool$"
+                                                              :valid-types #{"valid-disk-type"}
+                                                              :default-type "valid-disk-type"}]))))
+  (testing "invalid default type"
+    (is (thrown-with-msg? ExceptionInfo
+                          #"Default disk type for pool-regex \^test-pool\$ is not listed as a valid disk type"
+                          (config/guard-invalid-disk-config [{:pool-regex "^test-pool$"
+                                                              :valid-types #{"valid-disk-type"}
+                                                              :default-type "invalid-disk-type"
+                                                              :max-size 256000}])))))
+
+(deftest test-user-rate-limit
+  (testing "distinct quota for auth bypass requests"
+    (let [user-rate-limit (config/->UserRateLimit :user-limit 1 10 nil)]
+      (is (= 1 (limits/get-quota user-rate-limit {:authorization/user "sally"})))
+      (is (= 10 (limits/get-quota user-rate-limit {:authorization/user nil}))))))

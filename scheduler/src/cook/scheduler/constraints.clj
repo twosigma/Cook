@@ -19,9 +19,12 @@
             [clojure.core.cache :as cache]
             [clojure.set :as set]
             [clojure.tools.logging :as log]
+            [cook.cached-queries :as cached-queries]
+            [cook.compute-cluster :as cc]
             [cook.config :as config]
             [cook.group :as group]
             [cook.rate-limit :as ratelimit]
+            [cook.regexp-tools :as regexp-tools]
             [cook.scheduler.data-locality :as dl]
             [cook.tools :as util]
             [swiss.arrows :refer :all])
@@ -97,22 +100,36 @@
     (when (pos? gpu-count)
       (or gpu-model-in-env
           ; lookup the GPU model from the pool defaults defined in config.edn
-          (util/match-based-on-pool-name (config/valid-gpu-models) pool-name :default-model)))))
+          (regexp-tools/match-based-on-pool-name (config/valid-gpu-models) pool-name :default-model)))))
 
-(defrecord gpu-host-constraint [job]
+(defn job-resources->disk-type
+  "Get disk type requested from user or use default disk type on pool"
+  [job-resources pool-name]
+  ; If user did not specify desired disk type, use the default disk type on the pool
+  (let [disk-type-for-job (or (-> job-resources :disk :type)
+                              (regexp-tools/match-based-on-pool-name (config/disk) pool-name :default-type))]
+    ; Consume the type that the disk-type-requested maps to, which is found in the config
+    (or (get (regexp-tools/match-based-on-pool-name (config/disk) pool-name :type-map) disk-type-for-job)
+        disk-type-for-job)))
+
+(defn job-resources->disk-request
+  "Given resources on job, return the disk-request from the user or the default disk-request in config"
+  [job-resources pool-name]
+  (or (-> job-resources :disk :request)
+      ; if disk config does not have default-request, use default-request of 10GiB
+      (regexp-tools/match-based-on-pool-name (config/disk) pool-name :default-request :default-value 10240)))
+
+(defrecord gpu-host-constraint [job-gpu-count-requested job-gpu-model-requested]
   JobConstraint
   (job-constraint-name [this] (get-class-name this))
   (job-constraint-evaluate
     [this _ vm-attributes]
     (job-constraint-evaluate this nil vm-attributes []))
   (job-constraint-evaluate
-    [{:keys [job]} _ vm-attributes vm-tasks-assigned]
-    (let [k8s-vm? (= (get vm-attributes "compute-cluster-type") "kubernetes")
-          job-gpu-count-requested (-> job util/job-ent->resources :gpus (or 0))]
+    [_ _ vm-attributes vm-tasks-assigned]
+    (let [k8s-vm? (= (get vm-attributes "compute-cluster-type") "kubernetes")]
           (if k8s-vm?
-            (let [job-gpu-model-requested (job->gpu-model-requested
-                                            job-gpu-count-requested job (util/job->pool-name job))
-                  vm-gpu-model->count-available (get vm-attributes "gpus")
+            (let [vm-gpu-model->count-available (get vm-attributes "gpus")
                   vm-satisfies-constraint? (if (pos? job-gpu-count-requested)
                                              ; If job requests GPUs, require that the VM has the same number of gpus available in the same model as the job requested.
                                              (and (== (get vm-gpu-model->count-available job-gpu-model-requested 0) job-gpu-count-requested)
@@ -134,7 +151,93 @@
   The constraint prevents a gpu job from running on a host that does not have the correct number and model of gpus
   and a non-gpu job from running on a gpu host because we consider gpus scarce resources."
   [job]
-  (->gpu-host-constraint job))
+  (let [job-gpu-count-requested (-> job util/job-ent->resources :gpus (or 0))
+        job-gpu-model-requested (when (pos? job-gpu-count-requested)
+                                  (job->gpu-model-requested job-gpu-count-requested job (cached-queries/job->pool-name job)))]
+    (->gpu-host-constraint job-gpu-count-requested job-gpu-model-requested)))
+
+; Cook uses mebibytes (MiB) for disk request and limit.
+; Convert bytes from k8s to MiB when passing to disk constraint,
+; and MiB back to bytes when submitting to k8s.
+(def disk-multiplier (* 1024 1024))
+
+(defrecord disk-host-constraint [job-disk-request job-disk-type]
+  JobConstraint
+  (job-constraint-name [this] (get-class-name this))
+  (job-constraint-evaluate
+    [this _ vm-attributes]
+    (job-constraint-evaluate this nil vm-attributes []))
+  (job-constraint-evaluate
+    [_ _ vm-attributes _]
+    (let [k8s-vm? (= (get vm-attributes "compute-cluster-type") "kubernetes")]
+      (if k8s-vm?
+        (let [vm-disk-type->space-available (get vm-attributes "disk")
+              ; if disk-host-constraint is being evaluated, job-disk-request should be non-nil,
+              ; but we include the following (if ..) check as another safety layer
+              vm-satisfies-constraint? (if job-disk-request
+                                         (>= (get vm-disk-type->space-available job-disk-type 0) job-disk-request)
+                                         ; if job-disk-request is nil, ignore the disk-host-constraint
+                                         true)]
+          [vm-satisfies-constraint? (when-not vm-satisfies-constraint?
+                                      "VM does not have enough disk space of requested disk type")])
+        ; Mesos jobs cannot request disk. If VM is a mesos VM, constraint always passes
+        [true]))))
+
+(defn build-disk-host-constraint
+  "Constructs a disk-host-constraint.
+  The constraint prevents a job from running on a host that does not have correct disk type that the job requested
+  and prevents a job from running on a host that does not have enough disk space. Use a constraint for disk binpacking instead of
+  using Fenzo because disk is not considered a first class resource in Fenzo."
+  [job]
+  (let [pool-name (cached-queries/job->pool-name job)]
+    ; If the pool does not have enable-constraint set to true, return nil
+    (when (regexp-tools/match-based-on-pool-name (config/disk) pool-name :enable-constraint? :default-value false)
+      (let [; If the user did not specify a disk request, use the default request amount for the pool
+            job-disk-request (job-resources->disk-request (util/job-ent->resources job) pool-name)
+            job-disk-type (when job-disk-request
+                            (job-resources->disk-type (util/job-ent->resources job) pool-name))]
+        (->disk-host-constraint job-disk-request job-disk-type)))))
+
+(defn job->last-checkpoint-location
+  "Given a job, returns the compute cluster location of the most recent
+  instance, if the job had checkpointing enabled and has at least once
+  instance. If the previous instance's compute cluster name is not present
+  in the dictionary of compute clusters, if the job doesn't have
+  checkpointing enabled, or if there simply isn't a previous instance,
+  returns nil."
+  [{:keys [job/checkpoint job/instance]}]
+  (when (and checkpoint instance)
+    (let [{{:keys [compute-cluster/cluster-name]} :instance/compute-cluster}
+          (->> instance
+               (sort-by :instance/start-time)
+               last)]
+      (-> @cc/cluster-name->compute-cluster-atom
+          (get cluster-name)
+          cc/compute-cluster->location))))
+
+(defrecord checkpoint-locality-constraint [job-last-checkpoint-location]
+  JobConstraint
+  (job-constraint-name [this]
+    (get-class-name this))
+
+  (job-constraint-evaluate
+    [this _ vm-attributes]
+    (job-constraint-evaluate this nil vm-attributes []))
+
+  (job-constraint-evaluate
+    [_ _ vm-attributes _]
+    (if (= (get vm-attributes
+                "COOK_COMPUTE_CLUSTER_LOCATION")
+           job-last-checkpoint-location)
+      [true nil]
+      [false "Host is in different location than last checkpoint"])))
+
+(defn build-checkpoint-locality-constraint
+  "Given a job, returns a corresponding checkpoint
+  locality constraint, or nil if not applicable."
+  [job]
+  (when-let [location (job->last-checkpoint-location job)]
+    (->checkpoint-locality-constraint location)))
 
 (defrecord rebalancer-reservation-constraint [reserved-hosts]
   JobConstraint
@@ -180,9 +283,9 @@
 (defn job->default-constraints
   "Returns the list of default constraints configured for the job's pool"
   [job]
-  (util/match-based-on-pool-name
+  (regexp-tools/match-based-on-pool-name
     (config/default-job-constraints)
-    (util/job->pool-name job)
+    (cached-queries/job->pool-name job)
     :default-constraints))
 
 (def machine-type-constraint-attributes
@@ -228,7 +331,7 @@
         ; threads and we want to avoid contention in LazySeq
         vec)))
 
-(defrecord user-defined-constraint [job]
+(defrecord user-defined-constraint [constraints]
   JobConstraint
   (job-constraint-name [this] (get-class-name this))
   (job-constraint-evaluate
@@ -244,7 +347,6 @@
                         (log/error (str "Unknown operator " operator
                                         " api.clj should have prevented this from happening."))
                         true))))
-          constraints (job->constraints job)
           passes? (every? vm-passes-constraint? constraints)]
       [passes? (when-not passes?
                  "Host doesn't pass at least one user supplied constraint.")]))
@@ -256,7 +358,7 @@
   "Constructs a user-defined-constraint.
    The constraint asserts that the vm passes the constraints the user supplied as host constraints"
   [job]
-  (->user-defined-constraint job))
+  (->user-defined-constraint (job->constraints job)))
 
 (defrecord estimated-completion-constraint [estimated-end-time host-lifetime-mins]
   JobConstraint
@@ -306,21 +408,6 @@
         (when (< 0 max-expected-runtime)
           (->estimated-completion-constraint expected-end-time host-lifetime-mins))))))
 
-(defn build-launch-max-tasks-constraint
-  "This returns a Fenzo hard constraint that ensures that we don't match more than a given number of tasks per cycle. Returns nil
-  if the constraint is disabled."
-  []
-  (let [enforcing? (ratelimit/enforce? ratelimit/global-job-launch-rate-limiter)
-        max-tasks (ratelimit/get-token-count! ratelimit/global-job-launch-rate-limiter ratelimit/global-job-launch-rate-limiter-key)]
-    (when enforcing?
-      (reify ConstraintEvaluator
-        (getName [_] "launch_max_tasks")
-        (evaluate [_ _ _ task-tracker-state]
-          (let [num-assigned (-> task-tracker-state .getAllCurrentlyAssignedTasks .size)]
-            (ConstraintEvaluator$Result.
-              (< num-assigned max-tasks)
-              (str "Hit the global rate limit"))))))))
-
 (defn build-max-tasks-per-host-constraint
   "Returns a Fenzo constraint that ensures that we don't
   match more tasks per host than is allowed (configured)"
@@ -346,7 +433,13 @@
             true
             ""))))))
 
-(def job-constraint-constructors [build-novel-host-constraint build-gpu-host-constraint build-user-defined-constraint build-estimated-completion-constraint build-data-locality-constraint])
+(def job-constraint-constructors [build-novel-host-constraint
+                                  build-gpu-host-constraint
+                                  build-disk-host-constraint
+                                  build-user-defined-constraint
+                                  build-estimated-completion-constraint
+                                  build-data-locality-constraint
+                                  build-checkpoint-locality-constraint])
 
 (defn fenzoize-job-constraint
   "Makes the JobConstraint 'constraint' Fenzo-compatible."
@@ -372,13 +465,11 @@
 (defn make-fenzo-job-constraints
   "Returns a sequence of all the constraints for 'job', in Fenzo-compatible format."
   [job]
-  (let [launch-max-tasks-constraint (build-launch-max-tasks-constraint)]
-    (cond-> (->> job-constraint-constructors
-                 (map (fn [constructor] (constructor job)))
-                 (remove nil?)
-                 (map fenzoize-job-constraint))
-            launch-max-tasks-constraint (conj (build-launch-max-tasks-constraint))
-            true (conj (build-max-tasks-per-host-constraint)))))
+  (conj (->> job-constraint-constructors
+             (map (fn [constructor] (constructor job)))
+             (remove nil?)
+             (map fenzoize-job-constraint))
+        (build-max-tasks-per-host-constraint)))
 
 (defn build-rebalancer-reservation-constraint
   "Constructs a rebalancer-reservation-constraint"

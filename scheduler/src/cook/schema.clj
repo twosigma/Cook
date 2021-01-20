@@ -348,6 +348,58 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db
     :db/doc "For a mesos compute cluster, what framework-id did it run under?"}
+   ;; Dynamic compute cluster configuration
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :compute-cluster-config/name
+    :db/unique :db.unique/identity
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db
+    :db/doc "name - should be unique for each compute cluster lifetime. e.g. cluster name + cluster create time."}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :compute-cluster-config/template
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db
+    :db/doc "Name of the template to use to augment the cluster configuration."}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :compute-cluster-config/base-path
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db
+    :db/doc "URL of compute cluster. e.g. URL of Kubernetes cluster API server."}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :compute-cluster-config/ca-cert
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db
+    :db/doc "Base 64 encoded CA certificate of compute cluster. e.g. Kubernetes server certificate."}
+   ; compute cluster states
+   {:db/id (d/tempid :db.part/user)
+    :db/ident :compute-cluster-config.state/running}
+   {:db/id (d/tempid :db.part/user)
+    :db/ident :compute-cluster-config.state/draining}
+   {:db/id (d/tempid :db.part/user)
+    :db/ident :compute-cluster-config.state/deleted}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :compute-cluster-config/state
+    :db/valueType :db.type/ref
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db
+    :db/doc "The state value."}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :compute-cluster-config/state-locked?
+    :db/valueType :db.type/boolean
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db
+    :db/doc "If true, the state value can't be changed unless forced when calling update function.
+             The background dynamic cluster update process does not force changes."}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :compute-cluster-config/location
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db
+    :db/doc "Location of compute cluster."}
    ;; Container Attributes
    {:db/id (d/tempid :db.part/db)
     :db/doc "variant records based on container/type"
@@ -540,6 +592,24 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
    {:db/id (d/tempid :db.part/db)
     :db/doc "Along with application name, clients can provide an application version"
     :db/ident :application/version
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/doc "The application's workload class"
+    :db/ident :application/workload-class
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/doc "The application's workload id"
+    :db/ident :application/workload-id
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/doc "The application's workload details"
+    :db/ident :application/workload-details
     :db/valueType :db.type/string
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}
@@ -938,12 +1008,33 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :db/ident :resource.type/mem
     :resource.type/mesos-name :mem}
    {:db/id (d/tempid :db.part/user)
+    :db/ident :resource.type/disk}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :resource.disk/request
+    :db/valueType :db.type/double
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :resource.disk/limit
+    :db/valueType :db.type/double
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :resource.disk/type
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/user)
     :db/ident :resource.type/gpus
     :resource.type/mesos-name :gpus}
    {:db/id (d/tempid :db.part/user)
     :db/ident :resource.type/uri}
    {:db/id (d/tempid :db.part/user)
     :db/ident :resource.type/count}
+   {:db/id (d/tempid :db.part/user)
+    :db/ident :resource.type/launch-rate-saved}
+   {:db/id (d/tempid :db.part/user)
+    :db/ident :resource.type/launch-rate-per-minute}
    ;; Functions for database manipulation
    {:db/id (d/tempid :db.part/user)
     :db/ident :instance/create

@@ -9,7 +9,7 @@
             [cook.scheduler.share :as share]
             [cook.test.testutil :refer [create-dummy-job poll-until restore-fresh-database! setup]]
             [cook.test.zz-simulator :refer [dump-jobs-to-csv pull-all-task-ents with-cook-scheduler]]
-            [cook.tools :as util]
+            [cook.util :as util]
             [datomic.api :as d]
             [mesomatic.scheduler :as mesos]
             [mesomatic.types :as mesos-types])

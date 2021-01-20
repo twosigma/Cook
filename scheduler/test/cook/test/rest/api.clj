@@ -21,12 +21,15 @@
             [clojure.string :as str]
             [clojure.test :refer :all]
             [clojure.walk :refer [keywordize-keys]]
+            [cook.cached-queries :as cached-queries]
+            [cook.caches :as caches]
             [cook.compute-cluster :as cc]
             [cook.config :as config]
             [cook.mesos.reason :as reason]
             [cook.plugins.definitions :refer [FileUrlGenerator]]
             [cook.plugins.file :as file-plugin]
             [cook.plugins.submission :as submission-plugin]
+            [cook.quota :as quota]
             [cook.rate-limit :as rate-limit]
             [cook.rest.api :as api]
             [cook.rest.authorization :as auth]
@@ -85,13 +88,13 @@
    "mem" 2048.0})
 
 (defn basic-handler
-  [conn & {:keys [cpus memory-gb gpus-enabled retry-limit is-authorized-fn]
+  [conn & {:keys [cpus memory-gb disk gpus-enabled retry-limit is-authorized-fn]
            :or {cpus 12, memory-gb 100, gpus-enabled false, retry-limit 200, is-authorized-fn authorized-fn}}]
   (fn [request & {:keys [leader?] :or {leader? true}}]
     (let [handler (api/main-handler conn (fn [] [])
                                     {:is-authorized-fn is-authorized-fn
                                      :mesos-gpu-enabled gpus-enabled
-                                     :task-constraints {:cpus cpus :memory-gb memory-gb :retry-limit retry-limit}}
+                                     :task-constraints {:cpus cpus :memory-gb memory-gb :disk disk :retry-limit retry-limit}}
                                     (Object.)
                                     (atom leader?)
                                     {:progress-aggregator-chan (async/chan)})]
@@ -172,6 +175,7 @@
                            (select-keys copy (keys gold)))
                          uris
                          (get trimmed-body "uris"))]
+      (is (= nil (get body "disk")))
       (is (zero? (get body "gpus")))
       (is (= (dissoc job "uris") (dissoc trimmed-body "uris")))
       (is (compare-uris uris (get trimmed-body "uris"))))
@@ -431,6 +435,102 @@
               [body] (response->body-data resp)
               trimmed-body (select-keys body (keys successful-job))]
           (is (= (dissoc successful-job "uris") (dissoc trimmed-body "uris"))))))))
+
+(deftest disk-api
+  (setup)
+  (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
+        _ (create-pool conn "test-pool")
+        job (fn [disk] (merge (basic-job) {"disk" disk}))
+        h (basic-handler conn)]
+    (with-redefs [config/disk (constantly [{:pool-regex "test-pool"
+                                            :valid-types #{"pd-ssd"}
+                                            :default-type "pd-ssd"
+                                            :max-size 256000}])]
+      (testing "negative disk request invalid"
+        (is (= 400
+                (:status (h {:request-method :post
+                             :scheme :http
+                             :uri "/jobs"
+                             :headers {"Content-Type" "application/json"}
+                             :authorization/user "dgrnbrg"
+                             :body-params {"jobs" [(job {"request" -4})] "pool" "test-pool"}})))))
+      (testing "Zero disk request invalid"
+        (is (= 400
+                (:status (h {:request-method :post
+                             :scheme :http
+                             :uri "/jobs"
+                             :headers {"Content-Type" "application/json"}
+                             :authorization/user "dgrnbrg"
+                             :body-params {"jobs" [(job {"request" 0})] "pool" "test-pool"}})))))
+      (testing "Non-whole request of disk valid"
+        (is (= 201
+                (:status (h {:request-method :post
+                             :scheme :http
+                             :uri "/jobs"
+                             :headers {"Content-Type" "application/json"}
+                             :authorization/user "dgrnbrg"
+                             :body-params {"jobs" [(job {"request" 2.5})] "pool" "test-pool"}})))))
+      (testing "Int request of disk valid"
+        (is (= 201
+               (:status (h {:request-method :post
+                            :scheme :http
+                            :uri "/jobs"
+                            :headers {"Content-Type" "application/json"}
+                            :authorization/user "dgrnbrg"
+                            :body-params {"jobs" [(job {"request" 20})] "pool" "test-pool"}})))))
+      (testing "Request of disk greater than max size invalid"
+        (is (= 400
+               (:status (h {:request-method :post
+                            :scheme :http
+                            :uri "/jobs"
+                            :headers {"Content-Type" "application/json"}
+                            :authorization/user "dgrnbrg"
+                            :body-params {"jobs" [(job {"request" 300000})] "pool" "test-pool"}})))))
+      (let [successful-job-1 (job {"request" 20000.0})
+            successful-job-2 (job {"request" 20000.0 "limit" 100000.0 "type" "pd-ssd"})
+            unsuccessful-job (job {"type" "pd-ssd"})]
+        (testing "Specifying only request is valid"
+          (is (= 201
+                  (:status (h {:request-method :post
+                               :scheme :http
+                               :uri "/jobs"
+                               :headers {"Content-Type" "application/json"}
+                               :authorization/user "dgrnbrg"
+                               :body-params {"jobs" [successful-job-1] "pool" "test-pool"}})))))
+        (let [resp (h {:request-method :get
+                       :scheme :http
+                       :uri "/rawscheduler"
+                       :authorization/user "dgrnbrg"
+                       :query-params {"job" (str (get successful-job-1 "uuid"))}})
+              _ (is (= 200 (:status resp)))
+              [body] (response->body-data resp)
+              trimmed-body (select-keys body (keys successful-job-1))]
+          (is (= (dissoc successful-job-1 "uris") (dissoc trimmed-body "uris"))))
+        (testing "Specifying valid request, limit, and type"
+          (is (= 201
+                  (:status (h {:request-method :post
+                               :scheme :http
+                               :uri "/jobs"
+                               :headers {"Content-Type" "application/json"}
+                               :authorization/user "dgrnbrg"
+                               :body-params {"jobs" [successful-job-2] "pool" "test-pool"}})))))
+        (let [resp (h {:request-method :get
+                       :scheme :http
+                       :uri "/rawscheduler"
+                       :authorization/user "dgrnbrg"
+                       :query-params {"job" (str (get successful-job-2 "uuid"))}})
+              _ (is (= 200 (:status resp)))
+              [body] (response->body-data resp)
+              trimmed-body (select-keys body (keys successful-job-2))]
+          (is (= (dissoc successful-job-2 "uris") (dissoc trimmed-body "uris"))))
+        (testing "Specifying valid type but no request is invalid"
+          (is (= 400
+                  (:status (h {:request-method :post
+                               :scheme :http
+                               :uri "/jobs"
+                               :headers {"Content-Type" "application/json"}
+                               :authorization/user "dgrnbrg"
+                               :body-params {"jobs" [unsuccessful-job] "pool" "test-pool"}})))))))))
 
 (deftest retries-api
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
@@ -720,7 +820,9 @@
       (is (<= 200 (:status initial-get-resp) 299)))
 
     (testing "update changes quota"
-      (let [new-quota {:cpus 9.0 :mem 4323.0 :count 43 :gpus 3.0}
+      (let [new-quota {:cpus 9.0 :mem 4323.0 :count 43 :gpus 3.0
+                       :launch-rate-per-minute quota/default-launch-rate-per-minute
+                       :launch-rate-saved quota/default-launch-rate-saved}
             update-resp (h (merge quota-req-attrs
                                   {:request-method :post
                                    :body-params {:user "foo"
@@ -1310,7 +1412,7 @@
           ; will have to dissoc it.
           [{:keys [mem max-retries max-runtime expected-runtime name gpus
                    command ports priority uuid user cpus application
-                   disable-mea-culpa-retries executor datasets checkpoint]
+                   disable-mea-culpa-retries executor datasets checkpoint disk]
             :or {disable-mea-culpa-retries false}}]
           (cond-> {;; Fields we will fill in from the provided args:
                    :command command
@@ -1337,11 +1439,12 @@
                    :uris nil}
             ;; Only assoc these fields if the job specifies one
             application (assoc :application application)
+            disk (assoc :disk disk)
             expected-runtime (assoc :expected-runtime expected-runtime)
             executor (assoc :executor executor)
             checkpoint (assoc :checkpoint checkpoint)
             datasets (assoc :datasets datasets)))]
-    (with-redefs [dl/job-uuid->dataset-maps-cache (util/new-cache)
+    (with-redefs [caches/job-uuid->dataset-maps-cache (testutil/new-cache)
                   config/compute-clusters (constantly [{:factory-fn 'cook.mesos.mesos-compute-cluster/factory-fn
                                                         :config {:framework-id "test-framework"}}])]
 
@@ -1671,7 +1774,7 @@
 (deftest test-retrieve-sandbox-url-path
   (let [agent-hostname "www.mesos-agent-com"]
     ; We have a special gate that the compute cluster isn't nil, so have this return something not nil.
-    (with-redefs [task/task-ent->ComputeCluster (constantly "JustHasToBeNonNil-ComputeCluster")
+    (with-redefs [task/get-compute-cluster-for-task-ent-if-present (constantly "JustHasToBeNonNil-ComputeCluster")
                   cc/retrieve-sandbox-url-path (fn [_ {:keys [instance/hostname instance/sandbox-directory instance/task-id]}]
                                                  (when (and hostname sandbox-directory)
                                                    (str "http://" hostname ":5051" "/" task-id "/files/read.json?path=" sandbox-directory)))]
@@ -1834,6 +1937,7 @@
         (is @fetched-default-cluster-atom)))))
 
 (deftest test-file-plugin
+  (setup)
   (with-redefs [file-plugin/plugin (reify FileUrlGenerator
                                      (file-url [this {:keys [instance/task-id]}]
                                        (str "https://cook-files/instance/" task-id "/file")))]
@@ -2305,7 +2409,7 @@
               {:keys [status] :as response} (handler request)]
           ; Assert that the request succeeded and that the pool in the database is pool-2
           (is (= 201 status) (str response))
-          (is (= "pool-2" (-> conn d/db (d/entity [:job/uuid job-uuid]) util/job->pool-name)))))
+          (is (= "pool-2" (-> conn d/db (d/entity [:job/uuid job-uuid]) cached-queries/job->pool-name)))))
 
       (testing "job labels with slashes are preserved"
         (let [handler (api/create-jobs-handler conn task-constraints gpu-enabled? is-authorized-fn)
@@ -2408,6 +2512,43 @@
               (api/validate-gpu-job gpu-enabled? "test-pool" {:gpus 2
                                                               :env {}})))))))
 
+(deftest test-validate-disk-job
+  (with-redefs [config/disk (constantly [{:pool-regex "^test-pool$"
+                                          :valid-types #{"valid-disk-type"}
+                                          :default-type "valid-disk-type"
+                                          :max-size 256000}])]
+    (testing "disk request valid"
+      (is (nil? (api/validate-job-disk "test-pool" {:disk {:request 20000}}))))
+    (testing "disk request invalid"
+      (is (thrown-with-msg?
+            ExceptionInfo
+            #"Disk request specified is greater than max disk size on pool"
+            (api/validate-job-disk "test-pool" {:disk {:request 500000}}))))
+    (testing "disk request and limit valid"
+      (is (nil? (api/validate-job-disk "test-pool" {:disk {:request 20000 :limit 20000}}))))
+    (testing "disk request is greater than disk limit - invalid"
+      (is (thrown-with-msg?
+            ExceptionInfo
+            #"Disk resource setting error. We must have disk-request <= disk-limit <= max-size."
+            (api/validate-job-disk "test-pool" {:disk {:request 20000 :limit 10000}}))))
+    (testing "disk limit invalid"
+      (is (thrown-with-msg?
+            ExceptionInfo
+            #"Disk resource setting error. We must have disk-request <= disk-limit <= max-size."
+            (api/validate-job-disk "test-pool" {:disk {:request 200000 :limit 300000}}))))
+    (testing "disk request and type valid"
+      (is (nil? (api/validate-job-disk "test-pool" {:disk {:request 20000 :type "valid-disk-type"}}))))
+    (testing "invalid disk type"
+      (is (thrown-with-msg?
+            ExceptionInfo
+            #"The following disk type is not supported: invalid-disk-type"
+            (api/validate-job-disk "test-pool" {:disk {:request 20000 :type "invalid-disk-type"}}))))
+    (testing "reject disk specifications for pools with no config"
+      (is (thrown-with-msg?
+            ExceptionInfo
+            #"Disk specifications are not supported on pool pool-without-disk"
+            (api/validate-job-disk "pool-without-disk" {:disk {:request 200000000}}))))))
+
 (let [admin-user "alice"
       is-authorized-fn
       (fn [user verb _ object]
@@ -2454,3 +2595,152 @@
             (is (= 400 status))
             (is (= {"reason" "missing-required-key"}
                    (-> response response->body-data (get "errors"))))))))))
+
+(let [admin-user "alice"
+      is-authorized-fn
+      (fn [user verb _ object]
+        (auth/admins-open-gets-allowed-users-auth
+          #{admin-user} user verb object true))
+      sample-leader-base-url "http://cook-scheduler.example:12321"
+      endpoint "/compute-clusters"]
+
+  (deftest test-create-compute-cluster
+    (setup)
+    (with-redefs [config/compute-cluster-templates
+                  (constantly {"test-template" {:config {:dynamic-cluster-config? true}
+                                                :a :bb
+                                                :c :dd
+                                                :factory-fn 'cook.test.compute-cluster/cluster-factory-fn}})]
+      (let [conn (restore-fresh-database! "datomic:mem://test-create-compute-cluster")
+            handler (basic-handler conn :is-authorized-fn is-authorized-fn)
+            name "test-name"
+            request {:authorization/user admin-user
+                     :body-params {"base-path" "test-base-path"
+                                   "ca-cert" "test-ca-cert"
+                                   "name" name
+                                   "state" "running"
+                                   "template" "test-template"}
+                     :request-method :post
+                     :scheme :http
+                     :uri endpoint}]
+        (testing "successful insert"
+          (with-redefs [api/compute-cluster-exists? (constantly false)
+                        cc/update-compute-cluster (constantly [])]
+            (let [{:keys [status] :as response} (handler request)]
+              (is (= 201 status) (-> response response->body-data str)))))
+
+        (testing "insert with existing name fails"
+          (with-redefs [api/compute-cluster-exists? (constantly true)]
+            (let [{:keys [status] :as response} (handler request)]
+              (is (= 422 status) (-> response response->body-data str))
+              (is (= (str "Compute cluster with name " name " already exists")
+                     (-> response response->body-data (get-in ["error" "message"])))))))
+
+        (testing "insert from non-admin fails"
+          (let [request-from-non-admin (assoc request :authorization/user "non-admin")
+                {:keys [status] :as response} (handler request-from-non-admin)]
+            (is (= 403 status))
+            (is (= "You are not authorized to access compute cluster information"
+                   (-> response response->body-data (get "error"))))))
+
+        (testing "specifying state-locked? succeeds"
+          (with-redefs [api/compute-cluster-exists? (constantly false)
+                        cc/update-compute-cluster (constantly [])]
+            (let [request-with-state-locked-false (assoc-in request [:body-params "state-locked?"] false)
+                  {:keys [status] :as response} (handler request-with-state-locked-false)]
+              (is (= 201 status) (-> response response->body-data str)))))
+
+        (testing "non-leader redirects"
+          (with-redefs [api/leader-selector->leader-url (constantly sample-leader-base-url)]
+            (let [{:keys [location status] :as response} (handler request :leader? false)]
+              (is (= 307 status) (-> response response->body-data str))
+              (is (= location (str sample-leader-base-url endpoint)))))))))
+
+  (deftest test-read-compute-clusters
+    (setup)
+    (let [conn (restore-fresh-database! "datomic:mem://test-read-compute-clusters")
+          handler (basic-handler conn :is-authorized-fn is-authorized-fn)
+          request {:authorization/user admin-user
+                   :request-method :get
+                   :scheme :http
+                   :uri "/compute-clusters"}]
+
+      (let [compute-clusters [{:current {:base-path "base-path-1"
+                                         :ca-cert "ca-cert-1"
+                                         :name "name-1"
+                                         :state "running"
+                                         :template "template-1"}
+                               :pending {:base-path "base-path-1"
+                                         :ca-cert "ca-cert-1"
+                                         :name "name-1"
+                                         :state "running"
+                                         :template "template-1"}}]]
+        (with-redefs [api/read-compute-clusters (constantly compute-clusters)]
+          (testing "successful query"
+            (let [{:keys [status] :as response} (handler request)
+                  response-data (response->body-data response)]
+              (is (= 200 status))
+              (is (= (clojure.walk/stringify-keys compute-clusters) response-data))))
+
+          (testing "query from non-admin succeeds"
+            (let [{:keys [status] :as response} (handler (assoc request :authorization/user "non-admin"))
+                  response-data (response->body-data response)]
+              (is (= 200 status))
+              (is (= (clojure.walk/stringify-keys compute-clusters) response-data))))
+
+          (testing "non-leader redirects"
+            (with-redefs [api/leader-selector->leader-url (constantly sample-leader-base-url)]
+              (let [{:keys [location status]} (handler request :leader? false)]
+                (is (= 307 status))
+                (is (= location (str sample-leader-base-url endpoint))))))))))
+
+  (deftest test-delete-compute-cluster
+    (let [conn (restore-fresh-database! "datomic:mem://test-delete-compute-cluster")
+          handler (basic-handler conn :is-authorized-fn is-authorized-fn)
+          name "test-name"
+          request {:authorization/user admin-user
+                   :body-params {:name name}
+                   :request-method :delete
+                   :scheme :http
+                   :uri "/compute-clusters"}
+          name-deleted-atom (atom nil)]
+      (testing "successful delete"
+        (with-redefs [cc/delete-compute-cluster
+                      (fn [_ {:keys [name]}]
+                        (reset! name-deleted-atom name))
+                      api/compute-cluster-exists?
+                      (constantly true)]
+          (let [{:keys [status]} (handler request)]
+            (is (= 204 status))
+            (is (= name @name-deleted-atom)))))))
+
+  (deftest test-update-compute-cluster
+    (let [conn (restore-fresh-database! "datomic:mem://test-delete-compute-cluster")
+          handler (basic-handler conn :is-authorized-fn is-authorized-fn)
+          name "test-name"
+          request {:authorization/user admin-user
+                   :body-params {"base-path" "test-base-path"
+                                 "ca-cert" "test-ca-cert"
+                                 "name" name
+                                 "state" "running"
+                                 "template" "test-template"}
+                   :request-method :put
+                   :scheme :http
+                   :uri "/compute-clusters"}]
+      (testing "successful update"
+        (with-redefs [cc/update-compute-cluster
+                      (constantly [])
+                      api/compute-cluster-exists?
+                      (constantly true)
+                      config/compute-cluster-templates
+                      (constantly {"test-template" {:config {:dynamic-cluster-config? true}
+                                                    :a :bb
+                                                    :c :dd
+                                                    :factory-fn 'cook.test.compute-cluster/cluster-factory-fn}})]
+          (let [{:keys [status]} (handler request)]
+            (is (= 201 status)))))
+      (testing "update with missing name fails"
+        (with-redefs [api/compute-cluster-exists? (constantly false)]
+          (let [{:keys [status] :as response} (handler request)]
+            (is (= 422 status) (-> response response->body-data str))
+            (is (= (str "Compute cluster with name " name " does not exist") (-> response response->body-data (get-in ["error" "message"]))))))))))

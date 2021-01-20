@@ -38,6 +38,9 @@
             [cook.plugins.submission :as submission-plugin]
             [cook.pool :as pool]
             [cook.progress :as progress]
+            [cook.regexp-tools :as regexp-tools]
+            [cook.queries :as queries]
+            [cook.queue-limit :as queue-limit]
             [cook.quota :as quota]
             [cook.rate-limit :as rate-limit]
             [cook.scheduler.constraints :as constraints]
@@ -264,10 +267,22 @@
     true
     (catch Exception e false)))
 
+(defn valid-k8s-pod-label-value?
+  "Returns true if s contains only '.', '_', '-' or any word or
+  number characters, has length at least 2 and at most 63, and
+  begins and ends with a word or number character. This is based
+  on the validation for k8s pod label values:
+  https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#syntax-and-character-set"
+  [s]
+  (re-matches #"[a-zA-Z0-9][\.a-zA-Z0-9_-]{0,61}[a-zA-Z0-9]" s))
+
 (def Application
   "Schema for the application a job corresponds to"
   {:name (s/constrained s/Str non-empty-max-128-characters-and-alphanum?)
-   :version (s/constrained s/Str non-empty-max-128-characters-and-alphanum?)})
+   :version (s/constrained s/Str non-empty-max-128-characters-and-alphanum?)
+   (s/optional-key :workload-class) (s/constrained s/Str valid-k8s-pod-label-value?)
+   (s/optional-key :workload-id) (s/constrained s/Str valid-k8s-pod-label-value?)
+   (s/optional-key :workload-details) (s/constrained s/Str valid-k8s-pod-label-value?)})
 
 ; Datasets represent the data dependencies of jobs, which can be used by the scheduler to schedule jobs
 ; on hosts to take advantage of data locality.
@@ -282,6 +297,12 @@
   "Schema for a job dataset"
   {:dataset {non-empty-max-128-characters-str non-empty-max-128-characters-str}
    (s/optional-key :partitions) #{{non-empty-max-128-characters-str non-empty-max-128-characters-str}}})
+
+(def Disk
+  "Schema for disk limit specifications"
+  {:request (s/pred #(> % 1.0) 'greater-than-one)
+   (s/optional-key :limit) (s/pred #(> % 1.0) 'greater-than-one)
+   (s/optional-key :type) s/Str})
 
 (def DatePartition
   "Schema for a date partition"
@@ -337,6 +358,7 @@
    (s/optional-key :disable-mea-culpa-retries) s/Bool
    :cpus PosDouble
    :mem PosDouble
+   (s/optional-key :disk) Disk
    (s/optional-key :gpus) (s/both s/Int (s/pred pos? 'pos?))
    ;; Make sure the user name is valid. It must begin with a lower case character, end with
    ;; a lower case character or a digit, and has length between 2 to (62 + 2).
@@ -386,6 +408,7 @@
               :state s/Str
               :submit-time (s/maybe PosInt)
               :user UserName
+              (s/optional-key :disk) Disk
               (s/optional-key :gpus) s/Int
               (s/optional-key :groups) [s/Uuid]
               (s/optional-key :instances) [Instance]
@@ -683,17 +706,27 @@
 (defn get-default-container-for-pool
   "Given a pool name, determine a default container that should be run on it."
   [default-containers effective-pool-name]
-  (util/match-based-on-pool-name default-containers effective-pool-name :container))
+  (regexp-tools/match-based-on-pool-name default-containers effective-pool-name :container))
 
 (defn get-gpu-models-on-pool
    "Given a pool name, determine the supported GPU models on that pool."
    [valid-gpu-models effective-pool-name]
-   (util/match-based-on-pool-name valid-gpu-models effective-pool-name :valid-models))
+   (regexp-tools/match-based-on-pool-name valid-gpu-models effective-pool-name :valid-models))
+
+(defn get-disk-types-on-pool
+  "Given a pool name, determine the supported disk types on that pool."
+  [disk effective-pool-name]
+  (regexp-tools/match-based-on-pool-name disk effective-pool-name :valid-types))
+
+(defn get-max-disk-size-on-pool
+  "Given a pool name, determine the max requestable disk size on that pool."
+  [disk effective-pool-name]
+  (regexp-tools/match-based-on-pool-name disk effective-pool-name :max-size))
 
 (s/defn make-job-txn
   "Creates the necessary txn data to insert a job into the database"
   [pool commit-latch-id db job :- Job]
-  (let [{:keys [uuid command max-retries max-runtime expected-runtime priority cpus mem gpus
+  (let [{:keys [uuid command max-retries max-runtime expected-runtime priority cpus mem disk gpus
                 user name ports uris env labels container group application disable-mea-culpa-retries
                 constraints executor progress-output-file progress-regex-string datasets checkpoint]
          :or {group nil
@@ -758,6 +791,21 @@
                                 [[:db/add db-id :job/priority priority]])
                               (when (and max-runtime (not= Long/MAX_VALUE max-runtime))
                                 [[:db/add db-id :job/max-runtime max-runtime]])
+                              (when disk
+                                (let [disk-id (d/tempid :db.part/user)
+                                      params {:db/id disk-id
+                                              :resource/type :resource.type/disk
+                                              :resource.disk/request (some-> disk :request double)}]
+                                  [[:db/add db-id :job/resource disk-id]
+                                   (reduce-kv
+                                     ;; This only adds the optional params to the DB if they were explicitly set
+                                     (fn [txn-map k v]
+                                       (if-not (nil? v)
+                                         (assoc txn-map k v)
+                                         txn-map))
+                                     params
+                                     {:resource.disk/limit (some-> disk :limit double)
+                                      :resource.disk/type (:type disk)})]))
                               (when (and gpus (not (zero? gpus)))
                                 (let [gpus-id (d/tempid :db.part/user)]
                                   [[:db/add db-id :job/resource gpus-id]
@@ -795,8 +843,21 @@
                      :job/user user
                      :job/uuid uuid}
                     application (assoc :job/application
-                                       {:application/name (:name application)
-                                        :application/version (:version application)})
+                                       (cond->
+                                         {:application/name (:name application)
+                                          :application/version (:version application)}
+                                         (:workload-class application)
+                                         (assoc
+                                           :application/workload-class
+                                           (:workload-class application))
+                                         (:workload-id application)
+                                         (assoc
+                                           :application/workload-id
+                                           (:workload-id application))
+                                         (:workload-details application)
+                                         (assoc
+                                           :application/workload-details
+                                           (:workload-details application))))
                     expected-runtime (assoc :job/expected-runtime expected-runtime)
                     executor (assoc :job/executor executor)
                     progress-output-file (assoc :job/progress-output-file progress-output-file)
@@ -928,12 +989,34 @@
                (not (contains? (get-gpu-models-on-pool (config/valid-gpu-models) pool-name) requested-gpu-model)))
       (throw (ex-info (str "The following GPU model is not supported: " requested-gpu-model) {})))))
 
+(defn validate-job-disk
+  "Validates that a job requesting disk is satisfying the following conditions:
+    - Disk specifications cannot be made on a pool that does not support disks
+    - Disk limit and disk type are optional
+    - Disk request cannot exceed disk limit, and both request and limit cannot exceed the max size in config
+    - Requested type must be a valid type in config"
+  [pool-name {:keys [disk]}]
+  (let [{disk-request :request disk-limit :limit requested-disk-type :type} disk
+        max-size (get-max-disk-size-on-pool (config/disk) pool-name)
+        disk-types-on-pool (get-disk-types-on-pool (config/disk) pool-name)]
+    (when-not disk-types-on-pool
+      (throw (ex-info (str "Disk specifications are not supported on pool " pool-name) disk)))
+    (when disk-limit
+      (when-not (<= disk-request disk-limit max-size)
+        (throw (ex-info (str "Disk resource setting error. We must have disk-request <= disk-limit <= max-size.")
+                        {:disk-request disk-request :disk-limit disk-limit :max-size max-size}))))
+    (when (> disk-request max-size)
+      (throw (ex-info (str "Disk request specified is greater than max disk size on pool") disk)))
+    (when (and requested-disk-type
+               (not (contains? disk-types-on-pool requested-disk-type)))
+      (throw (ex-info (str "The following disk type is not supported: " requested-disk-type) disk)))))
+
 (defn validate-and-munge-job
   "Takes the user, the parsed json from the job and a list of the uuids of
    new-groups (submitted in the same request as the job). Returns proper Job
    objects, or else throws an exception"
   [db pool-name user task-constraints gpu-enabled? new-group-uuids
-   {:keys [cpus mem gpus uuid command priority max-retries max-runtime expected-runtime name
+   {:keys [cpus mem disk gpus uuid command priority max-retries max-runtime expected-runtime name
            uris ports env labels container group application disable-mea-culpa-retries
            constraints executor progress-output-file progress-regex-string datasets checkpoint]
     :or {group nil
@@ -956,6 +1039,7 @@
                   :cpus (double cpus)
                   :mem (double mem)
                   :disable-mea-culpa-retries disable-mea-culpa-retries}
+                 (when disk {:disk disk})
                  (when gpus {:gpus (int gpus)})
                  (when env {:env (walk/stringify-keys env)})
                  (when uris {:uris (map (fn [{:keys [value executable cache extract]}]
@@ -997,6 +1081,7 @@
                            (* 1024 (:memory-gb task-constraints)))
                       {:constraints task-constraints
                        :job job})))
+    (when disk (validate-job-disk pool-name munged))
     (when (> (:ports munged) max-ports)
       (throw (ex-info (str "Requested " ports " ports, but only allowed to use " max-ports)
                       {:constraints task-constraints
@@ -1062,9 +1147,8 @@
   [instance-entity]
   (if-let [sandbox-url (:instance/sandbox-url instance-entity)]
     sandbox-url
-    (if-let [compute-cluster (task/task-ent->ComputeCluster instance-entity)]
-      (cc/retrieve-sandbox-url-path compute-cluster instance-entity)
-      (log/error "Unable to get sandbox URL for" instance-entity "whose compute cluster resolves to nil"))))
+    (when-let [compute-cluster (task/get-compute-cluster-for-task-ent-if-present instance-entity)]
+      (cc/retrieve-sandbox-url-path compute-cluster instance-entity))))
 
 (defn compute-cluster-entity->map
   "Attached to the the instance object when we send it in API responses"
@@ -1176,6 +1260,7 @@
     (let [resources (util/job-ent->resources job)
           groups (:group/_job job)
           application (:job/application job)
+          disk (:disk resources)
           expected-runtime (:job/expected-runtime job)
           executor (:job/executor job)
           progress-output-file (:job/progress-output-file job)
@@ -1191,8 +1276,7 @@
                                   (->> [attribute (str/upper-case (name operator)) pattern]
                                        (map str)))))
           instances (map #(fetch-instance-map db %1) (:job/instance job))
-          submit-time (when (:job/submit-time job) ; due to a bug, submit time may not exist for some jobs
-                        (.getTime (:job/submit-time job)))
+          submit-time (util/job->submit-time job)
           datasets (when (seq (:job/datasets job))
                      (dl/get-dataset-maps job))
           attempts-consumed (util/job-ent->attempts-consumed db job)
@@ -1233,6 +1317,7 @@
       (cond-> job-map
               groups (assoc :groups (map #(str (:group/uuid %)) groups))
               application (assoc :application (util/remove-datomic-namespacing application))
+              disk (assoc :disk disk)
               expected-runtime (assoc :expected-runtime expected-runtime)
               executor (assoc :executor (name executor))
               progress-output-file (assoc :progress-output-file progress-output-file)
@@ -1752,7 +1837,11 @@
 
 (defn redirect-to-leader
   "Returns a map of Liberator resource attribute functions to
-   be used when only the Cook leader should handle the request"
+   be used when only the Cook leader should handle the request.
+
+   Note: If you use this function, you need special logic in the client to follow the
+   resulting redirects. Specifically, python needs to use cook.util.request_with_redirects
+   to work correctly, and curl needs command line option --location / --location-trusted."
   [leadership-atom leader-selector]
   {:can-post-to-gone?
    (constantly true)
@@ -1878,11 +1967,12 @@
           group-txns (map #(make-group-txn % (get group-uuid->job-dbids
                                                   (:uuid %)
                                                   []))
-                          groups)]
+                          groups)
+          pool-name (pool/pool-name-or-default (:pool/name pool))]
 
       (let [user (get-in ctx [:request :authorization/user])]
-        (rate-limit/spend! rate-limit/job-submission-rate-limiter user (count jobs)))
-
+        (rate-limit/spend! rate-limit/job-submission-rate-limiter user (count jobs))
+        (queue-limit/inc-queue-length! pool-name user (count jobs)))
       @(d/transact
          conn
          (-> (vec group-asserts)
@@ -1890,9 +1980,8 @@
              (conj commit-latch)
              (into job-txns)
              (into group-txns)))
-
       (meters/mark! (meters/meter ["cook-mesos" "scheduler" "jobs-created"
-                                   (str "pool-" (pool/pool-name-or-default (:pool/name pool)))])
+                                   (str "pool-" pool-name)])
                     (count jobs))
       {::results (str/join
                    \space (concat ["submitted jobs"]
@@ -1939,6 +2028,56 @@
       (zero? (:count user-quota)) [false {::error "User quota is set to zero jobs."}]
       (seq errors) [false {::error (str/join "\n" errors)}]
       :else true)))
+
+(defn user-queue-length-within-limit?
+  "Check if the job submission would cause the user to have more jobs queued than they're
+  allowed. We refresh queue lengths from the database on a configurable interval. Note that
+  this check does not take into account any of the following in real-time, and therefore is
+  only 100% accurate as of the last refresh from the database:
+
+  - Jobs will get removed from the queue when they launch. This is going to be minor as
+    launch rate is going to be much smaller than insert rate.
+
+  - Jobs will get added to the queue if they fail and have retries. This is going to be
+    minor as failure rate is going to be much smaller than insert rate.
+
+  - If there are multiple API hosts in the cluster, each one is maintaining a separate
+    count of the queue, without knowing about the other API hosts' job submissions or
+    job kills. We hope that locality (a user tends to talk to the same host) mitigates
+    this.
+
+  In summary, we take into account submitted and killed jobs on the same API host but
+  ignore launched and retried jobs. This check is meant to prevent individual users from
+  flooding the queue with hundreds of thousands of jobs, so if it lets a few hundred too
+  many or too few in until the next refresh from the database, that's acceptable."
+  [{:keys [::jobs ::pool] :as ctx}]
+  (let [pool-name (or (:pool/name pool) (config/default-pool))
+        user (get-in ctx [:request :authorization/user])
+        user-queue-length (queue-limit/user-queue-length pool-name user)
+        user-queue-length-limit (queue-limit/user-queue-limit pool-name)]
+    (if (> (-> jobs count (+ user-queue-length))
+           user-queue-length-limit)
+      (do
+        (log/info "In" pool-name "pool, rejecting job submission due to queue length"
+                  {:number-jobs (count jobs)
+                   :user user
+                   :user-queue-length user-queue-length
+                   :user-queue-length-limit user-queue-length-limit})
+        [false {::error (format "User has too many jobs queued (the per-user queue limit is %d)"
+                                user-queue-length-limit)}])
+      true)))
+
+(defn job-create-processable?
+  "We want to return a 422 (unprocessable entity) if the requested
+   resources for a single job exceed the user's total resource quota,
+   or if the job submission would cause the user to have more jobs
+   queued than they're allowed."
+  [conn ctx]
+  (let [no-job-exceeds-quota-result
+        (no-job-exceeds-quota? conn ctx)]
+    (if (true? no-job-exceeds-quota-result)
+      (user-queue-length-within-limit? ctx)
+      no-job-exceeds-quota-result)))
 
 ;;; On POST; JSON blob that looks like:
 ;;; {"jobs": [{"command": "echo hello world",
@@ -2016,9 +2155,7 @@
                 (let [db (d/db conn)
                       existing (filter (partial job-exists? db) (map :uuid (::jobs ctx)))]
                   [(seq existing) {::existing existing}]))
-     ;; We want to return a 422 (unprocessable entity) if the requested resources
-     ;; for a single job exceed the user's total resource quota.
-     :processable? (partial no-job-exceeds-quota? conn)
+     :processable? (partial job-create-processable? conn)
      ;; To ensure compatibility with existing clients,
      ;; we need to return 409 (conflict) when a client POSTs a Job UUID that already exists.
      ;; Liberator normally only supports 409 responses to PUT requests, so we need to override
@@ -2170,7 +2307,7 @@
                     (pc/for-map [[pool-name queue] pool->queue]
                                 pool-name (->> queue
                                                (util/filter-pending-jobs-for-quota
-                                                 (pool->user->quota pool-name)
+                                                 pool-name (atom {}) (atom {}) (pool->user->quota pool-name)
                                                  (pool->user->usage pool-name)
                                                  (util/global-pool-quota (config/pool-quotas) pool-name))
                                                (take (::limit ctx)))))))))
@@ -2482,7 +2619,9 @@
   {:cpus s/Num
    :gpus s/Num
    :mem s/Num
-   (s/optional-key :count) s/Num})
+   (s/optional-key :count) s/Num
+   (s/optional-key :launch-rate-saved) s/Num
+   (s/optional-key :launch-rate-per-minute) s/Num})
 
 (def UserLimitsResponse
   (assoc UserLimitSchema (s/optional-key :pools) {s/Str UserLimitSchema}))
@@ -2532,24 +2671,26 @@
     {:handle-ok (partial retrieve-user-limit get-limit-fn conn)}))
 
 (defn destroy-limit-handler
-  [limit-type retract-limit-fn conn is-authorized-fn]
+  [limit-type retract-limit-fn conn is-authorized-fn leadership-atom leader-selector]
   (base-limit-handler
     limit-type is-authorized-fn
-    {:allowed-methods [:delete]
-     :delete! (fn [ctx]
-                (let [request-user (get-in ctx [:request :authorization/user])
-                      limit-user (get-in ctx [:request :query-params :user])
-                      pool (or (get-in ctx [:request :query-params :pool])
-                               (get-in ctx [:request :headers "x-cook-pool"]))
-                      reason (get-in ctx [:request :query-params :reason])]
-                  (log/info "Retracting limit type" limit-type {:request-user request-user
-                                                                :limit-user limit-user
-                                                                :pool pool
-                                                                :reason reason})
-                  (retract-limit-fn conn
-                                    limit-user
-                                    pool
-                                    reason)))}))
+    (merge
+      (redirect-to-leader leadership-atom leader-selector)
+      {:allowed-methods [:delete]
+       :delete! (fn [ctx]
+                  (let [request-user (get-in ctx [:request :authorization/user])
+                        limit-user (get-in ctx [:request :query-params :user])
+                        pool (or (get-in ctx [:request :query-params :pool])
+                                 (get-in ctx [:request :headers "x-cook-pool"]))
+                        reason (get-in ctx [:request :query-params :reason])]
+                    (log/info "Retracting limit type" limit-type {:request-user request-user
+                                                                  :limit-user limit-user
+                                                                  :pool pool
+                                                                  :reason reason})
+                    (retract-limit-fn conn
+                                      limit-user
+                                      pool
+                                      reason)))})))
 
 (defn coerce-limit-values
   [limits-from-request]
@@ -2557,44 +2698,46 @@
                 limits-from-request)))
 
 (defn update-limit-handler
-  [limit-type extra-resource-types get-limit-fn set-limit-fn conn is-authorized-fn]
+  [limit-type extra-resource-types get-limit-fn set-limit-fn conn is-authorized-fn leadership-atom leader-selector]
   (base-limit-handler
     limit-type is-authorized-fn
-    {:allowed-methods [:post]
-     :handle-created (partial retrieve-user-limit get-limit-fn conn)
-     :malformed? (fn [ctx]
-                   (let [resource-types
-                         (set (apply conj (util/get-all-resource-types (d/db conn))
-                                     extra-resource-types))
-                         limits (->> (get-in ctx [:request :body-params limit-type])
-                                     keywordize-keys
-                                     coerce-limit-values)]
-                     (cond
-                       (not (seq limits))
-                       [true {::error "No " (name limit-type) " set. Are you specifying that this is application/json?"}]
-                       (not (every? (partial contains? resource-types) (keys limits)))
-                       [true {::error (str "Unknown resource type(s)" (str/join \space (remove (partial contains? resource-types) (keys limits))))}]
-                       :else
-                       [false {::limits limits}])))
+    (merge
+      (redirect-to-leader leadership-atom leader-selector)
+      {:allowed-methods [:post]
+       :handle-created (partial retrieve-user-limit get-limit-fn conn)
+       :malformed? (fn [ctx]
+                     (let [resource-types
+                           (set (apply conj (queries/get-all-resource-types (d/db conn))
+                                       extra-resource-types))
+                           limits (->> (get-in ctx [:request :body-params limit-type])
+                                       keywordize-keys
+                                       coerce-limit-values)]
+                       (cond
+                         (not (seq limits))
+                         [true {::error "No " (name limit-type) " set. Are you specifying that this is application/json?"}]
+                         (not (every? (partial contains? resource-types) (keys limits)))
+                         [true {::error (str "Unknown resource type(s)" (str/join \space (remove (partial contains? resource-types) (keys limits))))}]
+                         :else
+                         [false {::limits limits}])))
 
-     :post! (fn [ctx]
-              (let [request-user (get-in ctx [:request :authorization/user])
-                    limit-user (get-in ctx [:request :body-params :user])
-                    pool (or (get-in ctx [:request :body-params :pool])
-                             (get-in ctx [:request :headers "x-cook-pool"]))
-                    reason (get-in ctx [:request :body-params :reason])
-                    limits (reduce into [] (::limits ctx))]
-                (log/info "Updating limit" limit-type {:request-user request-user
-                                                       :limit-user limit-user
-                                                       :pool pool
-                                                       :reason reason
-                                                       :limits limits})
-                (apply set-limit-fn
-                       conn
-                       limit-user
-                       pool
-                       reason
-                       limits)))}))
+       :post! (fn [ctx]
+                (let [request-user (get-in ctx [:request :authorization/user])
+                      limit-user (get-in ctx [:request :body-params :user])
+                      pool (or (get-in ctx [:request :body-params :pool])
+                               (get-in ctx [:request :headers "x-cook-pool"]))
+                      reason (get-in ctx [:request :body-params :reason])
+                      limits (reduce into [] (::limits ctx))]
+                  (log/info "Updating limit" limit-type {:request-user request-user
+                                                         :limit-user limit-user
+                                                         :pool pool
+                                                         :reason reason
+                                                         :limits limits})
+                  (apply set-limit-fn
+                         conn
+                         limit-user
+                         pool
+                         reason
+                         limits)))})))
 
 (def UserUsageParams
   "User usage endpoint query string parameters"
@@ -2981,7 +3124,7 @@
      ; TODO (pschorf) - cache this if it is a performance bottleneck
      :handle-ok (fn [_]
                   (let [uuid->datasets (->> (d/db conn)
-                                            util/get-pending-job-ents
+                                            queries/get-pending-job-ents
                                             (filter (fn [j] (not (empty? (:job/datasets j)))))
                                             (map (fn [j] [(:job/uuid j) (dl/get-dataset-maps j)]))
                                             (into {}))
@@ -3005,6 +3148,189 @@
                     false)))
      :handle-ok (fn [{:keys [costs]}]
                   costs)}))
+
+;;
+;; /compute-clusters
+;;
+
+(def InsertComputeClusterRequest
+  {; IP address / URL of the cluster
+   :base-path NonEmptyString
+   ; base-64-encoded certificate
+   :ca-cert NonEmptyString
+   ; Unique name of the cluster
+   :name NonEmptyString
+   ; State of the cluster
+   :state (s/enum
+            ; Jobs will get scheduled on this cluster
+            "running"
+            ; No new jobs / synthetic pods will
+            ; get scheduled on this cluster
+            "draining"
+            ; The cluster is gone
+            "deleted")
+   ; The state can't be modified when it's locked
+   (s/optional-key :state-locked?) s/Bool
+   ; Key used to look up the configuration template
+   :template NonEmptyString})
+
+(defn compute-cluster-exists?
+  [conn name]
+  (let [compute-cluster-names (->> (cc/get-compute-clusters conn)
+                                   :db-configs
+                                   (map :name)
+                                   set)]
+    (contains? compute-cluster-names name)))
+
+(defn create-or-update-compute-cluster!
+  [conn body-params]
+  (let [{:keys [name template base-path ca-cert state state-locked?]}
+        body-params
+        result (cc/update-compute-cluster
+                 conn
+                 {:name name
+                  :template template
+                  :base-path base-path
+                  :ca-cert ca-cert
+                  :state (keyword state)
+                  :state-locked? (boolean state-locked?)}
+                 true)]
+    {:result result :succeeded? (every? #(-> % :update-result :update-succeeded) result)}))
+
+(defn validate-compute-cluster-definition-template
+  [ctx]
+  (let [template-name (-> ctx :request :body-params :template)
+        cluster-definition-template ((config/compute-cluster-templates) template-name)
+        {:keys [reason valid?]} (cc/validate-template template-name cluster-definition-template)]
+    {:cluster-definition-template cluster-definition-template :reason reason :valid? valid?}))
+
+(defn create-compute-cluster!
+  [conn leadership-atom ctx]
+  (if @leadership-atom
+    (let [cluster-name (-> ctx :request :body-params :name)
+          exists? (compute-cluster-exists? conn cluster-name)]
+      (if exists?
+        [false {::error {:message (str "Compute cluster with name " cluster-name " already exists")}}]
+        (let [{:keys [cluster-definition-template reason valid?]} (validate-compute-cluster-definition-template ctx)]
+          (if valid?
+            (let [body-params (-> ctx :request :body-params)
+                  {:keys [result succeeded?]} (create-or-update-compute-cluster! conn body-params)]
+              (log/info "Result of create-compute-cluster! REST API call"
+                        {:input body-params
+                         :result result
+                         :succeeded? succeeded?
+                         :cluster-definition-template cluster-definition-template})
+              (if succeeded?
+                [true {:response result}]
+                [false {::error {:message "Cluster creation was not successful"
+                                 :details result}}]))
+            [false {::error {:message reason}}]))))
+    ; When we're not the leader, we need processable? to go down
+    ; the "true" branch in order to trigger the redirect flow
+    true))
+
+(defn update-compute-cluster!
+  [conn leadership-atom ctx]
+  (if @leadership-atom
+    (let [cluster-name (-> ctx :request :body-params :name)
+          exists? (compute-cluster-exists? conn cluster-name)]
+      (if-not exists?
+        [false {::error {:message (str "Compute cluster with name " cluster-name " does not exist")}}]
+        (let [{:keys [cluster-definition-template reason valid?]} (validate-compute-cluster-definition-template ctx)]
+          (if valid?
+            (let [body-params (-> ctx :request :body-params)
+                  {:keys [result succeeded?]} (create-or-update-compute-cluster! conn body-params)]
+              (log/info "Result of update-compute-cluster! REST API call"
+                        {:input body-params
+                         :result result
+                         :succeeded? succeeded?
+                         :cluster-definition-template cluster-definition-template})
+              (if succeeded?
+                [true {:response result}]
+                [false {::error {:message "Cluster update was not successful"
+                                 :details result}}]))
+            [false {::error {:message reason}}]))))
+    ; When we're not the leader, we need processable? to go down
+    ; the "true" branch in order to trigger the redirect flow
+    true))
+
+(defn check-compute-cluster-allowed
+  [is-authorized-fn ctx]
+  (let [request-user (get-in ctx [:request :authorization/user])
+        impersonator (get-in ctx [:request :authorization/impersonator])
+        request-method (get-in ctx [:request :request-method])]
+    (if-not (is-authorized-fn request-user
+                              request-method
+                              impersonator
+                              {:owner ::system :item :compute-clusters})
+      [false {::error
+              (str "You are not authorized to access compute cluster information")}]
+      true)))
+
+(defn base-compute-cluster-handler
+  [is-authorized-fn leadership-atom leader-selector resource-attrs]
+  (base-cook-handler
+    (merge
+      ;; only the leader handles compute-cluster requests
+      (redirect-to-leader leadership-atom leader-selector)
+      {:allowed? (partial check-compute-cluster-allowed is-authorized-fn)}
+      resource-attrs)))
+
+(defn post-compute-clusters-handler
+  [conn is-authorized-fn leadership-atom leader-selector]
+  (base-compute-cluster-handler
+    is-authorized-fn
+    leadership-atom
+    leader-selector
+    {:allowed-methods [:post]
+     :handle-created (fn [{:keys [response]}] response)
+     :processable? (partial create-compute-cluster! conn leadership-atom)}))
+
+(defn put-compute-clusters-handler
+  [conn is-authorized-fn leadership-atom leader-selector]
+  (base-compute-cluster-handler
+    is-authorized-fn
+    leadership-atom
+    leader-selector
+    {:allowed-methods [:put]
+     :handle-created (fn [{:keys [response]}] response)
+     :processable? (partial update-compute-cluster! conn leadership-atom)}))
+
+(defn read-compute-clusters
+  [conn _]
+  (cc/get-compute-clusters conn))
+
+(defn get-compute-clusters-handler
+  [conn is-authorized-fn leadership-atom leader-selector]
+  (base-compute-cluster-handler
+    is-authorized-fn
+    leadership-atom
+    leader-selector
+    {:allowed-methods [:get]
+     :handle-ok (partial read-compute-clusters conn)}))
+
+(defn delete-compute-cluster!
+  [conn ctx]
+  (cc/delete-compute-cluster conn (-> ctx :request :body-params)))
+
+(defn check-delete-compute-cluster-malformed
+  [conn ctx]
+  (if-let [name (-> ctx :request :body-params :name)]
+    (if (compute-cluster-exists? conn name)
+      false
+      [true {::error {:message (str "Compute cluster with name " name " does not exist")}}])
+    [true {::error {:message (str "You must specify the cluster name to delete")}}]))
+
+(defn delete-compute-clusters-handler
+  [conn is-authorized-fn leadership-atom leader-selector]
+  (base-compute-cluster-handler
+    is-authorized-fn
+    leadership-atom
+    leader-selector
+    {:allowed-methods [:delete]
+     :delete! (partial delete-compute-cluster! conn)
+     :malformed? (partial check-delete-compute-cluster-malformed conn)}))
+
 
 ;;
 ;; /shutdown-leader
@@ -3250,13 +3576,17 @@
                     :parameters (set-limit-params :share)
                     :handler (update-limit-handler :share []
                                                    share/get-share share/set-share!
-                                                   conn is-authorized-fn)}
+                                                   conn is-authorized-fn
+                                                   leadership-atom leader-selector)}
              :delete {:summary "Reset a user's share to the default"
                       :parameters {:query-params UserLimitChangeParams}
-                      :handler (destroy-limit-handler :share share/retract-share! conn is-authorized-fn)}}))
+                      :handler (destroy-limit-handler :share share/retract-share!
+                                                      conn is-authorized-fn
+                                                      leadership-atom leader-selector)}}))
 
         (c-api/context
           "/quota" []
+          ;; only the leader handles quota change requests to flush any rate limit state after any changes.
           (c-api/resource
             {:produces ["application/json"],
              :responses {200 {:schema UserLimitsResponse
@@ -3268,12 +3598,16 @@
                    :handler (read-limit-handler :quota quota/get-quota conn is-authorized-fn)}
              :post {:summary "Change a user's quota"
                     :parameters (set-limit-params :quota)
-                    :handler (update-limit-handler :quota [:count]
+                    :handler (update-limit-handler :quota [:count :launch-rate-saved :launch-rate-per-minute]
                                                    quota/get-quota quota/set-quota!
-                                                   conn is-authorized-fn)}
+                                                   conn is-authorized-fn
+                                                   leadership-atom leader-selector)}
              :delete {:summary "Reset a user's quota to the default"
                       :parameters {:query-params UserLimitChangeParams}
-                      :handler (destroy-limit-handler :delete quota/retract-quota! conn is-authorized-fn)}}))
+                      :handler (destroy-limit-handler :delete
+                                                      quota/retract-quota!
+                                                      conn is-authorized-fn
+                                                      leadership-atom leader-selector)}}))
 
         (c-api/context
           "/usage" []
@@ -3397,6 +3731,51 @@
               :responses {202 {:description "The shutdown request was accepted."}
                           307 {:description "Redirecting request to leader node."}
                           400 {:description "Invalid request format."}}}}))
+
+        (c-api/context
+          "/compute-clusters" []
+          (c-api/resource
+            {:produces ["application/json"]
+
+             :post
+             {:summary "Create a new compute cluster"
+              :parameters {:body-params InsertComputeClusterRequest}
+              :handler (post-compute-clusters-handler conn
+                                                      is-authorized-fn
+                                                      leadership-atom
+                                                      leader-selector)
+              :responses {201 {:description "The compute cluster was created."}
+                          307 {:description "Redirecting request to leader node."}
+                          409 {:description "There is already a compute cluster with the given name."}}}
+
+             :put
+             {:summary "Update an existing compute cluster"
+              :parameters {:body-params InsertComputeClusterRequest}
+              :handler (put-compute-clusters-handler conn
+                                                     is-authorized-fn
+                                                     leadership-atom
+                                                     leader-selector)
+              :responses {201 {:description "The compute cluster was updated."}
+                          307 {:description "Redirecting request to leader node."}
+                          404 {:description "Could not find a compute cluster with the given name."}}}
+
+             :get
+             {:summary "Get the set of compute clusters"
+              :handler (get-compute-clusters-handler conn
+                                                     is-authorized-fn
+                                                     leadership-atom
+                                                     leader-selector)
+              :responses {200 {:description "The compute clusters were returned."}
+                          307 {:description "Redirecting request to leader node."}}}
+
+             :delete
+             {:summary "Deletes a compute cluster"
+              :handler (delete-compute-clusters-handler conn
+                                                        is-authorized-fn
+                                                        leadership-atom
+                                                        leader-selector)
+              :responses {204 {:description "The compute cluster was deleted."}
+                          307 {:description "Redirecting request to leader node."}}}}))
 
         (c-api/undocumented
           ;; internal api endpoints (don't include in swagger)

@@ -91,12 +91,17 @@
 (def default-authorization {:authorization-fn 'cook.rest.authorization/open-auth})
 (def default-fitness-calculator "com.netflix.fenzo.plugins.BinPackingFitnessCalculators/cpuMemBinPacker")
 
-(defrecord UserRateLimit [id quota ttl]
+(defrecord UserRateLimit [id quota auth-bypass-quota ttl]
   RateLimit
-  (get-key [self req]
-    (str (.getName (type self)) id "-" (:authorization/user req)))
-  (get-quota [_ _]
-    quota)
+
+  (get-key [self {:keys [authorization/user]}]
+    (str (.getName (type self)) id "-" user))
+
+  (get-quota [_ {:keys [authorization/user]}]
+    (if user
+      quota
+      auth-bypass-quota))
+
   (get-ttl [_ _]
     ttl))
 
@@ -147,6 +152,24 @@
       (when-not (contains? valid-models default-model)
         (throw (ex-info (str "Default GPU model for pool-regex " pool-regex " is not listed as a valid GPU model") entry))))))
 
+(defn guard-invalid-disk-config
+  "Throws if either of the following is true:
+  - any one of the keys (pool-regex, valid-types, default-type, max-size) is not configured
+  - there is no disk-type in valid-disk-types matching the configured default"
+  [disk]
+  (when disk
+    (doseq [{:keys [default-type pool-regex valid-types max-size] :as entry} disk]
+      (when-not pool-regex
+        (throw (ex-info (str "pool-regex key is missing from config") entry)))
+      (when-not max-size
+        (throw (ex-info (str "Max requestable disk size for pool-regex " pool-regex " is not defined") entry)))
+      (when-not valid-types
+        (throw (ex-info (str "Valid disk types for pool-regex " pool-regex " is not defined") entry)))
+      (when-not default-type
+        (throw (ex-info (str "Default disk type for pool-regex " pool-regex " is not defined") entry)))
+      (when-not (contains? valid-types default-type)
+        (throw (ex-info (str "Default disk type for pool-regex " pool-regex " is not listed as a valid disk type") entry))))))
+
 (def config-settings
   "Parses the settings out of a config file"
   (graph/eager-compile
@@ -155,19 +178,13 @@
                             {:max-size 5000
                              :ttl-ms (* 60 1000)}
                             agent-query-cache))
-     :compute-clusters (fnk [[:config {compute-clusters []}
-                              {mesos nil}]]
-                         (if (seq compute-clusters)
-                           compute-clusters
-                           [{:factory-fn 'cook.mesos.mesos-compute-cluster/factory-fn
-                             :config {:compute-cluster-name (or (:compute-cluster-name mesos)
-                                                                "default-compute-cluster-from-config-defaulting")
-                                      :framework-id (:framework-id mesos)
-                                      :master (:master mesos)
-                                      :failover-timeout (:failover-timeout-ms mesos)
-                                      :principal (:principal mesos)
-                                      :role (:role mesos)
-                                      :framework-name (:framework-name mesos)}}]))
+     :compute-clusters (fnk [[:config {compute-clusters []}]]
+                         compute-clusters)
+     :compute-cluster-options (fnk [[:config {compute-cluster-options {}}]]
+                                (merge
+                                  {:load-clusters-on-startup? false
+                                   :compute-cluster-templates {}}
+                                  compute-cluster-options))
      :cors-origins (fnk [[:config {cors-origins nil}]]
                      (map re-pattern (or cors-origins [])))
      :exit-code-syncer (fnk [[:config {exit-code-syncer nil}]]
@@ -234,14 +251,18 @@
                                      ((util/lazy-load-var 'cook.rest.impersonation/create-impersonation-middleware) impersonators)
                                      {:json-value "config-impersonation"})))
      :rate-limit (fnk [[:config {rate-limit nil}]]
-                   (let [{:keys [expire-minutes user-limit-per-m global-job-launch job-submission job-launch]
-                          :or {expire-minutes 120
+                   (let [{:keys [auth-bypass-limit-per-m expire-minutes user-limit-per-m job-submission per-user-per-pool-job-launch]
+                          :or {auth-bypass-limit-per-m 600
+                               expire-minutes 120
                                user-limit-per-m 600}} rate-limit]
                      {:expire-minutes expire-minutes
-                      :global-job-launch global-job-launch
                       :job-submission job-submission
-                      :job-launch job-launch
-                      :user-limit (->UserRateLimit :user-limit user-limit-per-m (t/minutes 1))}))
+                      :per-user-per-pool-job-launch per-user-per-pool-job-launch
+                      :user-limit (->UserRateLimit
+                                    :user-limit
+                                    user-limit-per-m
+                                    auth-bypass-limit-per-m
+                                    (t/minutes 1))}))
      :sim-agent-path (fnk [] "/usr/bin/sim-agent")
      :executor (fnk [[:config {executor {}}]]
                  (if (str/blank? (:command executor))
@@ -420,17 +441,20 @@
                        ((util/lazy-load-var 'clojure.tools.nrepl.server/start-server) :port port)))
      :pools (fnk [[:config {pools nil}]]
               (guard-invalid-gpu-config (:valid-gpu-models pools))
+              (guard-invalid-disk-config (:disk pools))
               (cond-> pools
                 (:job-resource-adjustment pools)
                 (update :job-resource-adjustment
                         #(-> %
-                             (update :pool-regex re-pattern)))
+                           (update :pool-regex re-pattern)))
                 (not (:default-containers pools))
                 (assoc :default-containers [])
                 (not (:quotas pools))
                 (assoc :quotas [])))
      :api-only? (fnk [[:config {api-only? false}]]
                   api-only?)
+     :cache-working-set-size (fnk [[:config {cache-working-set-size 1000000}]]
+                               cache-working-set-size)
      :estimated-completion-constraint (fnk [[:config {estimated-completion-constraint nil}]]
                                         (merge {:agent-start-grace-period-mins 10}
                                                estimated-completion-constraint))
@@ -464,13 +488,13 @@
                                  pool-selection)})))
      :kubernetes (fnk [[:config {kubernetes {}}]]
                    (let [{:keys [controller-lock-num-shards]
-                          :or {controller-lock-num-shards 32}}
+                          :or {controller-lock-num-shards 4095}}
                          kubernetes
                          _
-                         (when (not (< 0 controller-lock-num-shards 256))
+                         (when (not (< 0 controller-lock-num-shards 32778))
                            (throw
                              (ex-info
-                               "Please configure :controller-lock-num-shards to > 0 and < 256 in your config file."
+                               "Please configure :controller-lock-num-shards to > 0 and < 32778 in your config file."
                                kubernetes)))
                          lock-objects
                          (repeatedly
@@ -484,12 +508,19 @@
                              :pod-condition-containers-not-initialized-seconds 120
                              :pod-condition-unschedulable-seconds 60
                              :reconnect-delay-ms 60000
-                             :set-container-cpu-limit? true}
+                             :set-container-cpu-limit? true
+                             :synthetic-pod-condition-unschedulable-seconds 900
+                             :set-memory-limit? true}
                             kubernetes)))
      :offer-matching (fnk [[:config {offer-matching {}}]]
-                          (merge {:global-min-match-interval-millis 100
-                                  :target-per-pool-match-interval-millis 3000}
-                                 offer-matching))}))
+                       (merge {:global-min-match-interval-millis 100
+                               :target-per-pool-match-interval-millis 3000
+                               :unmatched-cycles-warn-threshold 500
+                               :unmatched-fraction-warn-threshold 0.5}
+                              offer-matching))
+     :queue-limits (fnk [[:config {queue-limits {}}]]
+                     (merge {:update-interval-seconds 180}
+                            queue-limits))}))
 
 (defn read-config
   "Given a config file path, reads the config and returns the map"
@@ -545,6 +576,11 @@
     (if (str/blank? pool)
       nil
       pool)))
+
+(defn disk
+  "Returns disk configurations"
+  []
+  (-> config :settings :pools :disk))
 
 (defn valid-gpu-models
   "Returns valid GPU models for the pool the job is scheduled in"
@@ -619,6 +655,14 @@
   []
   (get-in config [:settings :compute-clusters]))
 
+(defn compute-cluster-options
+  []
+  (get-in config [:settings :compute-cluster-options]))
+
+(defn compute-cluster-templates
+  []
+  (:compute-cluster-templates (compute-cluster-options)))
+
 (defn kubernetes
   []
   (get-in config [:settings :kubernetes]))
@@ -640,3 +684,7 @@
 (defn offer-matching
   []
   (-> config :settings :offer-matching))
+
+(defn queue-limits
+  []
+  (-> config :settings :queue-limits))

@@ -22,6 +22,7 @@
             [clojure.string :as str]
             [clojure.test :refer :all]
             [clojure.tools.logging :as log]
+            [cook.caches :as caches]
             [cook.compute-cluster :as cc]
             [cook.kubernetes.api :as kapi]
             [cook.kubernetes.compute-cluster :as kcc]
@@ -31,6 +32,7 @@
             [cook.rate-limit :as rate-limit]
             [cook.rest.api :as api]
             [cook.rest.impersonation :refer [create-impersonation-middleware]]
+            [cook.scheduler.constraints :as constraints]
             [cook.scheduler.scheduler :as sched]
             [cook.schema :as schema]
             [cook.tools :as util]
@@ -39,10 +41,11 @@
             [plumbing.core :refer [mapply]]
             [qbits.jet.server :refer [run-jetty]]
             [ring.middleware.params :refer [wrap-params]])
-  (:import (com.netflix.fenzo SimpleAssignmentResult)
+  (:import (com.google.common.cache CacheBuilder)
+           (com.netflix.fenzo SimpleAssignmentResult)
            (io.kubernetes.client.custom Quantity Quantity$Format)
            (io.kubernetes.client.openapi.models V1Container V1Node V1NodeSpec V1NodeStatus V1ObjectMeta V1Pod V1PodSpec V1ResourceRequirements V1Taint)
-           (java.util.concurrent Executors)
+           (java.util.concurrent Executors TimeUnit)
            (java.util UUID)
            (org.apache.log4j ConsoleAppender Logger PatternLayout)))
 
@@ -64,7 +67,8 @@
                                trigger-chans
                                {}
                                {"no-pool" (async/chan 100)}
-                               {})))
+                               {}
+                               rate-limit/AllowAllRateLimiter)))
 
 (defn fake-test-compute-cluster-with-driver
   "Create a test compute cluster with associated driver attached to it. Returns the compute cluster."
@@ -93,6 +97,7 @@
     (or compute-cluster (cc/compute-cluster-name->ComputeCluster cluster-name))))
 
 (let [minimal-config {:authorization {:one-user ""}
+                      :cache-working-set-size 1000
                       :compute-clusters [{:factory-fn cook.mesos.mesos-compute-cluster/factory-fn
                                           :config {:compute-cluster-name fake-test-compute-cluster-name}}]
                       :database {:datomic-uri ""}
@@ -115,13 +120,20 @@
     (mount/stop)
     (mount/start-with-args (merge minimal-config config)
                            #'cook.config/config
-                           #'cook.rate-limit/job-launch-rate-limiter
-                           #'cook.rate-limit/global-job-launch-rate-limiter
                            #'cook.plugins.adjustment/plugin
                            #'cook.plugins.file/plugin
+                           #'cook.plugins.launch/job-launch-cache
                            #'cook.plugins.launch/plugin-object
                            #'cook.plugins.pool/plugin
-                           #'cook.plugins.submission/plugin-object)))
+                           #'cook.plugins.submission/plugin-object
+                           #'caches/job-ent->resources-cache
+                           #'caches/job-uuid->dataset-maps-cache
+                           #'caches/job-ent->pool-cache
+                           #'caches/task-ent->user-cache
+                           #'caches/task->feature-vector-cache
+                           #'caches/job-ent->user-cache
+                           #'cook.quota/per-user-per-pool-launch-rate-limiter
+                           #'caches/user->group-ids-cache)))
 
 (defn run-test-server-in-thread
   "Runs a minimal cook scheduler server for testing inside a thread. Note that it is not properly kerberized."
@@ -163,14 +175,23 @@
        (finally
          (async/close! exit-chan#)))))
 
+(defn new-cache []
+  "Build a new cache"
+  (-> (CacheBuilder/newBuilder)
+      (.maximumSize 100)
+      (.expireAfterAccess 2 TimeUnit/HOURS)
+      (.build)))
+
 (defn flush-caches!
   "Flush the caches. Needed in unit tests. We centralize initialization by using it to initialize the caches too."
   []
-  (.invalidateAll util/job-ent->resources-cache)
-  (.invalidateAll util/job-ent->pool-cache)
-  (.invalidateAll util/task-ent->user-cache)
-  (.invalidateAll util/task->feature-vector-cache)
-  (.invalidateAll util/job-ent->user-cache))
+  ; If you get a "java.lang.ClassCastException: mount.core.DerefableState cannot be cast to com.google.common.cache.Cache"
+  ; error here, it is because you didn't (setup) something that uses restore-fresh-database!
+  (.invalidateAll caches/job-ent->resources-cache)
+  (.invalidateAll caches/job-ent->pool-cache)
+  (.invalidateAll caches/task-ent->user-cache)
+  (.invalidateAll caches/task->feature-vector-cache)
+  (.invalidateAll caches/job-ent->user-cache))
 
 (defn restore-fresh-database!
   "Completely delete all data, start a fresh database and apply transactions if
@@ -206,7 +227,7 @@
 
 (defn create-dummy-job
   "Return the entity id for the created dummy job."
-  [conn & {:keys [command committed? container custom-executor? datasets disable-mea-culpa-retries env executor gpus group
+  [conn & {:keys [command committed? container custom-executor? datasets disable-mea-culpa-retries env executor gpus disk group
                   job-state max-runtime memory name ncpus pool priority retry-count submit-time under-investigation user
                   uuid expected-runtime]
            :or {command "dummy command"
@@ -261,6 +282,20 @@
                    (update-in job-info [:job/resource] conj {:resource/type :resource.type/gpus
                                                              :resource/amount (double gpus)})
                    job-info)
+        job-info (if disk
+                   (let [{:keys [request limit type]} disk
+                         disk-map {:resource/type :resource.type/disk
+                                   :resource.disk/request request}
+                         disk-map (reduce-kv
+                                    (fn [disk-map k v]
+                                      (if-not (nil? v)
+                                        (assoc disk-map k v)
+                                        disk-map))
+                                    disk-map
+                                    {:resource.disk/limit limit
+                                     :resource.disk/type type})]
+                     (update-in job-info [:job/resource] conj disk-map))
+                   job-info)
         environment (when (seq env)
                       (mapcat (fn [[k v]]
                                 (let [env-var-id (d/tempid :db.part/user)]
@@ -292,8 +327,7 @@
                      start-time (java.util.Date.)
                      task-id (str (str (UUID/randomUUID)))} :as cfg}]
 
-  (let [unittest-compute-cluster (setup-fake-test-compute-cluster conn)
-        id (d/tempid :db.part/user)
+  (let [id (d/tempid :db.part/user)
         val @(d/transact conn [(cond->
                                  {:db/id id
                                   :instance/executor-id executor-id
@@ -307,7 +341,8 @@
                                   :job/_instance job
                                   :instance/compute-cluster
                                   (cc/db-id
-                                    (or compute-cluster unittest-compute-cluster))}
+                                    (or compute-cluster
+                                        (setup-fake-test-compute-cluster conn)))}
                                  cancelled (assoc :instance/cancelled true)
                                  end-time (assoc :instance/end-time end-time)
                                  executor (assoc :instance/executor executor)
@@ -481,9 +516,10 @@
   (let [pod (V1Pod.)
         metadata (V1ObjectMeta.)
         spec (V1PodSpec.)]
-    (doall (for [{:keys [mem cpus gpus gpu-model]} requests]
+    (doall (for [{:keys [mem cpus gpus gpu-model] {:keys [disk-request disk-limit disk-type] :as disk} :disk} requests]
              (let [container (V1Container.)
                    resources (V1ResourceRequirements.)]
+
                (when mem
                  (.putRequestsItem resources
                                    "memory"
@@ -501,6 +537,18 @@
                  (.putNodeSelectorItem spec
                                        "cloud.google.com/gke-accelerator"
                                        (or gpu-model "nvidia-tesla-p100")))
+               (when disk (.putRequestsItem resources
+                                            "ephemeral-storage"
+                                            (Quantity. (BigDecimal. (double (* constraints/disk-multiplier (or disk-request 10000))))
+                                                       Quantity$Format/DECIMAL_SI))
+                          (when disk-limit
+                            (.putLimitsItem resources
+                                            "ephemeral-storage"
+                                            (Quantity. (BigDecimal. (double (* constraints/disk-multiplier disk-limit)))
+                                                       Quantity$Format/DECIMAL_SI)))
+                          (.putNodeSelectorItem spec
+                                                "cloud.google.com/gke-boot-disk"
+                                                (or disk-type "standard")))
                (.setResources container resources)
                (.addContainersItem spec container))))
     (.setNodeName spec node-name)
@@ -519,10 +567,10 @@
     (.setCreationTimestamp pod-metadata creation-timestamp)
     (-> outstanding-synthetic-pod
         .getSpec
-        (.addTolerationsItem (kapi/toleration-for-pool pool-name)))
+        (.addTolerationsItem (kapi/toleration-for-pool "cook-pool-taint-A" "prefix" pool-name)))
     outstanding-synthetic-pod))
 
-(defn node-helper [node-name cpus mem gpus gpu-model pool]
+(defn node-helper [node-name cpus mem gpus gpu-model {:keys [disk-amount disk-type] :as disk} pool]
   "Make a fake node for kubernetes unit tests"
   (let [node (V1Node.)
         status (V1NodeStatus.)
@@ -544,18 +592,24 @@
       (.putAllocatableItem status "nvidia.com/gpu" (Quantity. (BigDecimal. gpus)
                                                               Quantity$Format/DECIMAL_SI))
       (.putLabelsItem metadata "gpu-type" (or gpu-model "nvidia-tesla-p100")))
-
+    (when disk
+      (.putCapacityItem status "ephemeral-storage" (Quantity. (BigDecimal. (double (* constraints/disk-multiplier disk-amount)))
+                                                              Quantity$Format/DECIMAL_SI))
+      (.putAllocatableItem status "ephemeral-storage" (Quantity. (BigDecimal. (double (* constraints/disk-multiplier disk-amount)))
+                                                      Quantity$Format/DECIMAL_SI))
+      (.putLabelsItem metadata "cloud.google.com/gke-boot-disk" (or disk-type "standard")))
+    (.setUnschedulable spec false)
     (when pool
       (let [^V1Taint taint (V1Taint.)]
-        (.setKey taint kapi/cook-pool-taint)
+        (.setKey taint "foo-taint-probably-broken-TODO")
         (.setValue taint pool)
         (.setEffect taint "NoSchedule")
-        (-> spec (.addTaintsItem taint))
-        (-> node (.setSpec spec))))
+        (-> spec (.addTaintsItem taint))))
     (.setStatus node status)
     (.setName metadata node-name)
     (.setMetadata node metadata)
-  node))
+    (.setSpec node spec)
+    node))
 
 (defn make-kubernetes-compute-cluster
   [namespaced-pod-name->pod pool-names node-blocklist-labels additional-synthetic-pods-config]
@@ -582,4 +636,11 @@
                                     synthetic-pods-config ; synthetic-pods-config
                                     node-blocklist-labels ; node-blocklist-labels
                                     (Executors/newSingleThreadExecutor) ; launch-task-executor-service
-                                    )))
+                                    {} ; config that was used to create this cluster
+                                    (atom :running) ; state atom
+                                    (atom false) ; state-locked? atom
+                                    false ; dynamic-cluster-config?
+                                    rate-limit/AllowAllRateLimiter
+                                    "some-random-taint-A"
+                                    "taint-prefix-1"
+                                    "some-random-label-A")))

@@ -198,11 +198,18 @@
   [{:keys [name]} instance-id ^V1PodStatus pod-status ^V1ContainerStatus container-status]
   ; TODO map additional kubernetes failure reasons
   (let [container-terminated-reason (some-> container-status .getState .getTerminated .getReason)
-        pod-status-reason (.getReason pod-status)]
+        pod-status-reason (.getReason pod-status)
+        pod-status-message (.getMessage pod-status)]
     (cond
       (= "OutOfMemory" pod-status-reason) :reason-container-limitation-memory
       (= "Error" container-terminated-reason) :reason-command-executor-failed
       (= "OOMKilled" container-terminated-reason) :reason-container-limitation-memory
+      (and pod-status-message (or
+                                ; this message is given when pod exceeds pod ephemeral-storage limit
+                                (str/includes? pod-status-message "ephemeral local storage usage exceeds")
+                                ; this message is given when pod exceeds ephemeral-storage request and available disk space on node is low
+                                (str/includes? pod-status-message "low on resource: ephemeral-storage")))
+      :reason-container-limitation-disk
 
       ; If there is no container status and the pod status reason is Outofcpu,
       ; then the node didn't have enough CPUs to start the container
@@ -311,18 +318,13 @@
   ; At this point, we don't care about the launch pod or the metric timers, so toss their dictionary away.
   {:cook-expected-state :cook-expected-state/running})
 
-(def get-pod-ip->hostname-fn
-  (memoize
-    (fn [pod-ip->hostname-fn]
-      (if pod-ip->hostname-fn (util/lazy-load-var pod-ip->hostname-fn) identity))))
-
 (defn record-sandbox-url
   "Record the sandbox file server URL in datomic."
   [pod-name {:keys [pod]}]
   (when-not (api/synthetic-pod? pod-name)
     (let [task-id (-> pod .getMetadata .getName)
           pod-ip (-> pod .getStatus .getPodIP)
-          {:keys [default-workdir pod-ip->hostname-fn sidecar]} (config/kubernetes)
+          {:keys [default-workdir sidecar]} (config/kubernetes)
           sandbox-fileserver-port (:port sidecar)
           sandbox-health-check-endpoint (:health-check-endpoint sidecar)
           sandbox-url (try
@@ -330,7 +332,7 @@
                                    sandbox-health-check-endpoint
                                    (not (str/blank? pod-ip)))
                           (str "http://"
-                               ((get-pod-ip->hostname-fn pod-ip->hostname-fn) pod-ip)
+                               pod-ip
                                ":" sandbox-fileserver-port
                                "/files/read.json?path="
                                (URLEncoder/encode default-workdir "UTF-8")))
@@ -593,11 +595,15 @@
    (synthesize-state-and-process-pod-if-changed compute-cluster pod-name pod false))
   ([{:keys [k8s-actual-state-map name] :as compute-cluster} pod-name ^V1Pod pod force-process?]
    (let [new-state {:pod pod
-                    :synthesized-state (api/pod->synthesized-pod-state pod)
+                    :synthesized-state (api/pod->synthesized-pod-state pod-name pod)
                     :sandbox-file-server-container-state (api/pod->sandbox-file-server-container-state pod)}
          old-state (get @k8s-actual-state-map pod-name)]
-     ; We always store the updated state, but only reprocess it if it is genuinely different.
-     (swap! k8s-actual-state-map assoc pod-name new-state)
+     ; We always store the new state (to capture any changes in the pod) if the pod's not nil. If we write here unconditionally,
+     ; we may leak a deleted pod back into this dictionary where it will never be recoverable.
+     ;
+     ; We only reprocess if something important has actually changed.
+     (when (some? pod)
+       (swap! k8s-actual-state-map assoc pod-name new-state))
      (let [new-file-server-state (:sandbox-file-server-container-state new-state)
            old-file-server-state (:sandbox-file-server-container-state old-state)]
        (when (and (= new-file-server-state :running) (not= old-file-server-state :running))

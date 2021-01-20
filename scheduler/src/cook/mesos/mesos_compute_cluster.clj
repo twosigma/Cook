@@ -17,6 +17,7 @@
   (:require [clojure.core.async :as async]
             [clojure.data.json :as json]
             [clojure.tools.logging :as log]
+            [cook.cached-queries :as cached-queries]
             [cook.compute-cluster :as cc]
             [cook.compute-cluster.metrics :as ccmetrics]
             [cook.config :as config]
@@ -62,7 +63,7 @@
         instance (d/entity (d/db conn) [:instance/task-id task-id])
         prior-job-state (:job/state (:job/_instance instance))
         prior-instance-status (:instance/status instance)
-        pool-name (tools/job->pool-name (:job/_instance instance))]
+        pool-name (cached-queries/job->pool-name (:job/_instance instance))]
     (if (and
             (or (nil? instance) ; We could know nothing about the task, meaning a DB error happened and it's a waste to finish
                 (= prior-job-state :job.state/completed) ; The task is attached to a failed job, possibly due to instances running on multiple hosts
@@ -231,7 +232,7 @@
 
 (defrecord MesosComputeCluster [compute-cluster-name framework-id db-id driver-atom
                                 sandbox-syncer-state exit-code-syncer-state mesos-heartbeat-chan
-                                progress-update-chans trigger-chans mesos-config pool->offers-chan container-defaults]
+                                progress-update-chans trigger-chans mesos-config pool->offers-chan container-defaults compute-cluster-launch-rate-limiter]
   cc/ComputeCluster
   (compute-cluster-name [this]
     compute-cluster-name)
@@ -256,7 +257,7 @@
   (db-id [this]
     db-id)
 
-  (initialize-cluster [this pool->fenzo _]
+  (initialize-cluster [this pool->fenzo]
     (log/info "Initializing Mesos compute cluster" compute-cluster-name)
     (let [conn cook.datomic/conn
           {:keys [match-trigger-chan]} trigger-chans
@@ -331,7 +332,9 @@
              (URLEncoder/encode sandbox-directory "UTF-8")))
       (catch Exception e
         (log/debug e "Unable to retrieve directory path for" task-id "on agent" hostname)
-        nil))))
+        nil)))
+
+  (launch-rate-limiter [_] compute-cluster-launch-rate-limiter))
 
 ; Internal method
 (defn mesos-cluster->compute-cluster-map-for-datomic
@@ -381,7 +384,8 @@
            role
            framework-name
            gpu-enabled?
-           container-defaults]}
+           container-defaults
+           compute-cluster-launch-rate-limits]}
    {:keys [exit-code-syncer-state
            mesos-agent-query-cache
            mesos-heartbeat-chan
@@ -411,6 +415,8 @@
           pool->offer-chan (pc/map-from-keys (fn [_]
                                                (async/chan offer-chan-size))
                                              (map :pool/name synthesized-pools))
+          compute-cluster-launch-rate-limiter (cook.rate-limit/create-compute-cluster-launch-rate-limiter
+                                                compute-cluster-name compute-cluster-launch-rate-limits)
           mesos-compute-cluster (->MesosComputeCluster compute-cluster-name
                                                        framework-id
                                                        cluster-entity-id
@@ -422,7 +428,8 @@
                                                        trigger-chans
                                                        mesos-config
                                                        pool->offer-chan
-                                                       container-defaults)]
+                                                       container-defaults
+                                                       compute-cluster-launch-rate-limiter)]
       (log/info "Registering compute cluster" mesos-compute-cluster)
       (cc/register-compute-cluster! mesos-compute-cluster)
       mesos-compute-cluster)
