@@ -141,55 +141,57 @@
             (regexp-tools/match-based-on-pool-name
               (:non-gpu-jobs limits-config)
               pool-name
-              :node-type-lookup)
-            constraint-pattern-fn
-            (fn [attribute-of-interest]
-              (->> constraints
-                   (filter (fn [constraint]
-                             (let [attribute (nth constraint 0)
-                                   operator (nth constraint 1)]
-                               (and (= attribute attribute-of-interest)
-                                    (= operator "EQUALS")))))
-                   first
-                   last))
-            node-type-specified (constraint-pattern-fn "node-type")
-            node-family-specified (constraint-pattern-fn "node-family")
-            cpu-architecture-specified (constraint-pattern-fn "cpu-architecture")
-            node-type-for-validation
-            (get-in node-type-lookup-map
-                    [node-type-specified
-                     node-family-specified
-                     cpu-architecture-specified])]
-        (if node-type-for-validation
-          (let [node-type->resource-limits
-                (:node-type->limits limits-config)
-                {:keys [max-cpus max-disk max-mem] :as resource-limits}
-                (get node-type->resource-limits
-                     node-type-for-validation)]
-            (if resource-limits
-              (cond
-                (and cpus (> cpus max-cpus))
-                {:status :rejected
-                 :message (str "Invalid cpus " cpus ", max is " max-cpus)}
+              :node-type-lookup)]
+        (if node-type-lookup-map
+          (let [constraint-pattern-fn
+                (fn [attribute-of-interest]
+                  (->> constraints
+                       (filter (fn [constraint]
+                                 (let [attribute (nth constraint 0)
+                                       operator (nth constraint 1)]
+                                   (and (= attribute attribute-of-interest)
+                                        (= operator "EQUALS")))))
+                       first
+                       last))
+                node-type-specified (constraint-pattern-fn "node-type")
+                node-family-specified (constraint-pattern-fn "node-family")
+                cpu-architecture-specified (constraint-pattern-fn "cpu-architecture")
+                node-type-for-validation
+                (get-in node-type-lookup-map
+                        [node-type-specified
+                         node-family-specified
+                         cpu-architecture-specified])]
+            (if node-type-for-validation
+              (let [node-type->resource-limits
+                    (:node-type->limits limits-config)
+                    {:keys [max-cpus max-disk max-mem] :as resource-limits}
+                    (get node-type->resource-limits
+                         node-type-for-validation)]
+                (if resource-limits
+                  (cond
+                    (and cpus (> cpus max-cpus))
+                    {:status :rejected
+                     :message (str "Invalid cpus " cpus ", max is " max-cpus)}
 
-                (and disk (> disk max-disk))
-                {:status :rejected
-                 :message (str "Invalid disk " disk ", max is " max-disk)}
+                    (and disk (> (:request disk) max-disk))
+                    {:status :rejected
+                     :message (str "Invalid disk " disk ", max is " max-disk)}
 
-                (and mem (> mem max-mem))
-                {:status :rejected
-                 :message (str "Invalid mem " mem ", max is " max-mem)}
+                    (and mem (> mem max-mem))
+                    {:status :rejected
+                     :message (str "Invalid mem " mem ", max is " max-mem)}
 
-                :else
-                {:status :accepted})
+                    :else
+                    {:status :accepted})
+                  {:status :rejected
+                   :message (str "node-type " node-type-for-validation " is not configured")}))
               {:status :rejected
-               :message (str "node-type " node-type-for-validation " is not configured")}))
-          {:status :rejected
-           :message (str "Invalid combination of "
-                         "pool (" pool-name "), "
-                         "node-type (" node-type-specified "), "
-                         "node-family (" node-family-specified "), and "
-                         "cpu-architecture (" cpu-architecture-specified ")")})))))
+               :message (str "Invalid combination of "
+                             "pool (" pool-name "), "
+                             "node-type (" node-type-specified "), "
+                             "node-family (" node-family-specified "), and "
+                             "cpu-architecture (" cpu-architecture-specified ")")}))
+          {:status :accepted})))))
 
 (defn job-shape-validation-factory
   []

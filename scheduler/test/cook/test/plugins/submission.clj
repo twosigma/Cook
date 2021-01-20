@@ -92,14 +92,14 @@
       (is (= {:status :accepted}
              (plugins/check-job-submission
                plugin
-               {:cpus 1 :disk 2 :mem 3}
+               {:cpus 1 :disk {:request 2} :mem 3}
                "test-pool")))
       (is (= {:status :accepted}
              (plugins/check-job-submission
                plugin
                {:constraints [["cpu-architecture" "EQUALS" "foo-cpu-arch"]]
                 :cpus 4
-                :disk 5
+                :disk {:request 5}
                 :mem 6}
                "test-pool")))
       (is (= {:status :accepted}
@@ -107,7 +107,7 @@
                plugin
                {:constraints [["node-family" "EQUALS" "t3"]]
                 :cpus 7
-                :disk 8
+                :disk {:request 8}
                 :mem 9}
                "test-pool")))
       (is (= {:status :accepted}
@@ -116,7 +116,7 @@
                {:constraints [["node-family" "EQUALS" "t3"]
                               ["cpu-architecture" "EQUALS" "bar-cpu-arch"]]
                 :cpus 10
-                :disk 11
+                :disk {:request 11}
                 :mem 12}
                "test-pool")))
       (is (= {:status :accepted}
@@ -124,7 +124,7 @@
                plugin
                {:constraints [["node-type" "EQUALS" "t4-test-1"]]
                 :cpus 13
-                :disk 14
+                :disk {:request 14}
                 :mem 15}
                "test-pool")))
       (is (= :rejected
@@ -132,7 +132,7 @@
                         plugin
                         {:constraints [["node-type" "EQUALS" "t4-test-1"]]
                          :cpus 14
-                         :disk 14
+                         :disk {:request 14}
                          :mem 15}
                         "test-pool"))))
       (is (= :rejected
@@ -140,7 +140,7 @@
                         plugin
                         {:constraints [["node-type" "EQUALS" "t4-test-1"]]
                          :cpus 13
-                         :disk 15
+                         :disk {:request 15}
                          :mem 15}
                         "test-pool"))))
       (is (= :rejected
@@ -148,13 +148,13 @@
                         plugin
                         {:constraints [["node-type" "EQUALS" "t4-test-1"]]
                          :cpus 13
-                         :disk 14
+                         :disk {:request 14}
                          :mem 16}
                         "test-pool"))))
       (is (= :rejected
              (:status (plugins/check-job-submission
                         plugin
                         {:cpus 13
-                         :disk 14
+                         :disk {:request 14}
                          :mem 15}
                         "test-pool")))))))
