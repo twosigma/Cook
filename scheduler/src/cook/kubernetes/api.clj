@@ -23,8 +23,8 @@
            (io.kubernetes.client.openapi.apis CoreV1Api)
            (io.kubernetes.client.openapi.models
              V1Affinity V1Container V1ContainerPort V1ContainerState V1ContainerStatus V1DeleteOptions
-             V1DeleteOptionsBuilder V1EmptyDirVolumeSource V1EnvVar V1EnvVarSource V1Event V1HostPathVolumeSource
-             V1HTTPGetAction V1ObjectFieldSelector V1Node V1NodeAffinity V1NodeSelector V1NodeSelectorRequirement
+             V1DeleteOptionsBuilder V1EmptyDirVolumeSource V1EnvVar V1EnvVarSource CoreV1Event V1HostPathVolumeSource
+             V1HTTPGetAction V1ObjectFieldSelector V1Node V1NodeList V1NodeAffinity V1NodeSelector V1NodeSelectorRequirement
              V1NodeSelectorTerm V1ObjectMeta V1ObjectReference V1Pod V1PodCondition V1PodSecurityContext V1PodSpec
              V1PodStatus V1Probe V1ResourceRequirements V1Toleration V1Volume V1VolumeBuilder V1VolumeMount)
            (io.kubernetes.client.util Watch)
@@ -141,6 +141,7 @@
   (timers/time! (metrics/timer "get-all-pods" compute-cluster-name)
     (let [api (CoreV1Api. api-client)
           current-pods (.listPodForAllNamespaces api
+                                                 nil ; allowWatchBookmarks
                                                  nil ; continue
                                                  nil ; fieldSelector
                                                  nil ; includeUninitialized
@@ -264,16 +265,17 @@
   "Help creating node watch. Returns a new watch Callable"
   [{:keys [^ApiClient api-client current-nodes-atom pool->node-name->node cook-pool-taint-name cook-pool-taint-prefix] compute-cluster-name :name :as compute-cluster}]
   (let [api (CoreV1Api. api-client)
-        current-nodes-raw
+        ^V1NodeList current-nodes-raw
         (timers/time! (metrics/timer "get-all-nodes" compute-cluster-name)
           (.listNode api
-                     nil ; includeUninitialized
                      nil ; pretty
+                     nil ; allowWatchBookmarks
                      nil ; continue
                      nil ; fieldSelector
                      nil ; labelSelector
                      nil ; limit
                      nil ; resourceVersion
+                     nil ; resourceVersionMatch
                      nil ; timeoutSeconds
                      nil ; watch
                      ))
@@ -342,7 +344,7 @@
           (log/info "In" compute-cluster-name "compute cluster, handling event watch updates")
           (while (.hasNext watch)
             (let [watch-response (.next watch)
-                  ^V1Event event (.-object watch-response)]
+                  ^CoreV1Event event (.-object watch-response)]
               (when event
                 (let [^V1ObjectReference involved-object (.getInvolvedObject event)]
                   (when (and involved-object (= (.getKind involved-object) "Pod"))
@@ -919,6 +921,7 @@
     (when pod-annotations
       (.setAnnotations metadata pod-annotations))
 
+    (.setHostnameAsFQDN pod-spec false)
     ; container
     (.setName container cook-container-name-for-job)
     (.setCommand container
@@ -1291,7 +1294,7 @@
           nil ; pretty
           nil ; dryRun
           nil ; gracePeriodSeconds
-          nil ; oprphanDependents
+          nil ; orphanDependents
           nil ; propagationPolicy
           deleteOptions
           )
