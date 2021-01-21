@@ -22,7 +22,7 @@ public class WatchHelper {
     public static Watch<V1Node> createNodeWatch(ApiClient apiClient, String resourceVersion) throws ApiException {
         CoreV1Api api = new CoreV1Api(apiClient);
         return Watch.createWatch(apiClient,
-                api.listNodeCall(null, null, null,null, null,null, resourceVersion, null, null, true, null),
+                api.listNodeCall(null, null, null, null, null, null, resourceVersion, null, null, true, null),
                 new TypeToken<Watch.Response<V1Node>>() {}.getType());
     }
 
