@@ -2393,7 +2393,8 @@
               ; We thus expect 5 to submit, and 5 to fail and get rejected by
               ; out-of-timeout by the check-job-submission-default which returns
               ; Reject for accept-accept-plugin.
-              (is true (str/starts-with? "Total of 5 errors. First 3 are " (:error body)))
+              (is (= "Total of 6 errors; first 3 are:\nDefault Rejected\nDefault Rejected\nDefault Rejected"
+                    (:error body)))
               (is (str/includes? body "Default Rejected"))))))
 
       (testing "pool mover plugin"

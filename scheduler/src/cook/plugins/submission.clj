@@ -121,10 +121,21 @@
         errors (filter #(= :rejected (:status %)) results)
         error-count (count errors)
         ; Collect a few errors to show in the response. (not every error)
-        error-samples (apply list (take 3 errors))]
+        max-errors-to-show 3
+        error-samples (->> errors
+                           (map :message)
+                           (take max-errors-to-show)
+                           (apply list))]
     (if (zero? error-count)
       {:status :accepted}
-      {:status :rejected :message (str "Total of " error-count " errors. First 3 are: " error-samples)})))
+      {:status :rejected
+       :message
+       (str
+         (if (<= error-count max-errors-to-show)
+           ""
+           (str "Total of " error-count " errors; first "
+                (count error-samples) " are:\n"))
+         (str/join "\n" error-samples))})))
 
 (defrecord JopShapeValidationPlugin
   []
@@ -136,6 +147,38 @@
   (check-job-submission [_ {:keys [constraints cpus disk gpus mem]} pool-name]
     (if (and gpus (pos? gpus))
       {:status :accepted}
+
+      ; The limits-config map has the following shape:
+      ;
+      ; {:node-type->limits {"node-type-1" {:max-cpus ... :max-disk ... :max-mem ...}
+      ;                      "node-type-2" {:max-cpus ... :max-disk ... :max-mem ...}
+      ;                      ...
+      ;                      "node-type-N" {:max-cpus ... :max-disk ... :max-mem ...}}
+      ;  :non-gpu-jobs [{:pool-regex "pool-1" :node-type-lookup ...}
+      ;                 {:pool-regex "pool-2" :node-type-lookup ...}
+      ;                 ...
+      ;                 {:pool-regex "pool-N" :node-type-lookup ...}]}
+      ;
+      ; where each :node-type-lookup value is a 3-level map:
+      ;
+      ;   node-type -> node-family -> cpu-architecture -> node-type
+      ;
+      ; where the three levels represent the job constraint values for node-type,
+      ; node-family, and cpu-architecture that Cook can satisfy, and the value
+      ; node-type represents the largest node-type Cook will match the job to given
+      ; those constraints.
+      ;
+      ; Note that keys in the :node-type-lookup can be nil, representing the cases
+      ; where the user did not specify a job constraint for that field. For example,
+      ; if Cook is configured with this entry in :node-type-lookup:
+      ;
+      ;   nil -> nil -> "intel-cascade-lake" -> "c2-standard-16"
+      ;
+      ; it means that if the user only specifies the job constraint
+      ;
+      ;   ["cpu-architecure", "EQUALS", "intel-cascade-lake"]
+      ;
+      ; then Cook should use the "c2-standard-16" max sizes for validation purposes.
       (let [limits-config (config/job-resource-limits)
             node-type-lookup-map
             (regexp-tools/match-based-on-pool-name
