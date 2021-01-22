@@ -3455,6 +3455,7 @@
                          GroupResponse (partial pc/map-keys ->snake_case)
                          UserUsageResponse (partial pc/map-keys ->snake_case)
                          UsageInPool (partial pc/map-keys ->snake_case)
+                         UserUsageInPool (partial pc/map-keys ->snake_case)
                          UsageGroupInfo (partial pc/map-keys ->snake_case)
                          JobsUsageResponse (partial pc/map-keys ->snake_case)
                          s/Uuid str})]
