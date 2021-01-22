@@ -1799,7 +1799,8 @@
                                           result (sched/handle-resource-offers!
                                                    conn fenzo pool-name->pending-jobs-atom mesos-run-as-user
                                                    user->usage user->quota num-considerable offers
-                                                   rebalancer-reservation-atom pool nil)]
+                                                   rebalancer-reservation-atom pool nil
+                                                   sched/job->acceptable-compute-clusters)]
                                       (async/>!! offers-chan :end-marker)
                                       result))
       gpu-models-config [{:pool-regex "test-pool"
@@ -2319,7 +2320,7 @@
         job-2 (make-job-fn)
         job-3 (make-job-fn)
         jobs [job-1 job-2 job-3]]
-    (sched/trigger-autoscaling! jobs "test-pool" [compute-cluster])
+    (sched/trigger-autoscaling! jobs "test-pool" [compute-cluster] sched/job->acceptable-compute-clusters)
     (is (= 1 (count @autoscale!-invocations)))
     (is (= compute-cluster (-> @autoscale!-invocations first :compute-cluster)))
     (is (= "test-pool" (-> @autoscale!-invocations first :pool-name)))
@@ -2335,7 +2336,7 @@
                     d/db (fn [_])
                     pool/all-pools (fn [_] [{:pool/name "pool 1"} {:pool/name "pool 2"} {:pool/name "pool 3"}])
                     sched/make-fenzo-scheduler (fn [_ _ _])
-                    sched/make-offer-handler (fn [_ _ _ _ _ _ _ _ trigger-chan _ _ pool-name _]
+                    sched/make-offer-handler (fn [_ _ _ _ _ _ _ _ trigger-chan _ _ pool-name _ _]
                                                (tools/chime-at-ch
                                                  trigger-chan
                                                  (fn []
@@ -2510,9 +2511,11 @@
                "test-pool"
                [compute-cluster-1
                 compute-cluster-2
-                compute-cluster-3])))
+                compute-cluster-3]
+               sched/job->acceptable-compute-clusters)))
       (is (= {}
              (sched/distribute-jobs-to-compute-clusters
                [job]
                "test-pool"
-               [compute-cluster-2]))))))
+               [compute-cluster-2]
+               sched/job->acceptable-compute-clusters))))))

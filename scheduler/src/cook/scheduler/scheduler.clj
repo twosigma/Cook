@@ -1012,17 +1012,17 @@
 (defn distribute-jobs-to-compute-clusters
   "Given a collection of pending jobs and a collection of
   compute clusters, distributes the jobs amongst the compute
-  clusters, using job->acceptable-compute-clusters preferences,
+  clusters, using job->acceptable-compute-clusters-fn preferences,
   along with a hash of the pending job's uuid. Returns a
   compute-cluster->jobs map. That is the API any future
   improvements need to stick to."
-  [pending-jobs pool-name compute-clusters]
+  [pending-jobs pool-name compute-clusters job->acceptable-compute-clusters-fn]
   (let [compute-cluster->jobs
         (group-by
           (fn choose-compute-cluster-for-autoscaling
             [{:keys [job/uuid] :as job}]
             (let [preferred-compute-clusters
-                  (job->acceptable-compute-clusters job compute-clusters)]
+                  (job->acceptable-compute-clusters-fn job compute-clusters)]
               (if (empty? preferred-compute-clusters)
                 :no-acceptable-compute-cluster
                 (nth preferred-compute-clusters
@@ -1038,7 +1038,7 @@
   "Autoscales the given pool to satisfy the given pending jobs, if:
   - There is at least one pending job
   - There is at least one compute cluster configured to do autoscaling"
-  [pending-jobs pool-name compute-clusters]
+  [pending-jobs pool-name compute-clusters job->acceptable-compute-clusters-fn]
   (timers/time!
     (timers/timer (metric-title "trigger-autoscaling!-duration" pool-name))
     (try
@@ -1046,7 +1046,8 @@
             num-autoscaling-compute-clusters (count autoscaling-compute-clusters)]
         (when (and (pos? num-autoscaling-compute-clusters) (seq pending-jobs))
           (let [compute-cluster->jobs (distribute-jobs-to-compute-clusters
-                                        pending-jobs pool-name autoscaling-compute-clusters)]
+                                        pending-jobs pool-name autoscaling-compute-clusters
+                                        job->acceptable-compute-clusters-fn)]
             (log/info "In" pool-name "pool, starting autoscaling")
             (doseq [[compute-cluster jobs-for-cluster] compute-cluster->jobs]
               (cc/autoscale! compute-cluster pool-name jobs-for-cluster adjust-job-resources-for-pool-fn))
@@ -1060,7 +1061,8 @@
   "Gets a list of offers from mesos. Decides what to do with them all--they should all
    be accepted or rejected at the end of the function."
   [conn ^TaskScheduler fenzo pool-name->pending-jobs-atom mesos-run-as-user
-   user->usage user->quota num-considerable offers rebalancer-reservation-atom pool-name compute-clusters]
+   user->usage user->quota num-considerable offers rebalancer-reservation-atom pool-name compute-clusters
+   job->acceptable-compute-clusters-fn]
   (log/debug "In" pool-name "pool, invoked handle-resource-offers!")
   (let [offer-stash (atom nil)] ;; This is a way to ensure we never lose offers fenzo assigned if an error occurs in the middle of processing
     ;; TODO: It is possible to have an offer expire by mesos because we recycle it a bunch of times.
@@ -1237,7 +1239,7 @@
             ;; This call needs to happen *after* launch-matched-tasks!
             ;; in order to avoid autoscaling tasks taking up available
             ;; capacity that was already matched for real Cook tasks.
-            (trigger-autoscaling! autoscalable-jobs pool-name compute-clusters)
+            (trigger-autoscaling! autoscalable-jobs pool-name compute-clusters job->acceptable-compute-clusters-fn)
             matched-head-or-no-matches?))
         (catch Throwable t
           (meters/mark! handle-resource-offer!-errors)
@@ -1273,7 +1275,7 @@
   "Make the core scheduling loop for a pool"
   [conn fenzo pool-name->pending-jobs-atom agent-attributes-cache max-considerable scaleback
    floor-iterations-before-warn floor-iterations-before-reset trigger-chan rebalancer-reservation-atom
-   mesos-run-as-user pool-name cluster-name->compute-cluster-atom]
+   mesos-run-as-user pool-name cluster-name->compute-cluster-atom job->acceptable-compute-clusters-fn]
   (let [resources-atom (atom (view-incubating-offers fenzo))]
     (reset! fenzo-num-considerable-atom max-considerable)
     (tools/chime-at-ch
@@ -1329,7 +1331,8 @@
                         matched-head? (handle-resource-offers! conn fenzo pool-name->pending-jobs-atom
                                                                mesos-run-as-user @user->usage-future user->quota
                                                                num-considerable offers
-                                                               rebalancer-reservation-atom pool-name compute-clusters)]
+                                                               rebalancer-reservation-atom pool-name compute-clusters
+                                                               job->acceptable-compute-clusters-fn)]
                     (when (seq offers)
                       (reset! resources-atom (view-incubating-offers fenzo)))
                     ;; This check ensures that, although we value Fenzo's optimizations,
@@ -1912,6 +1915,11 @@
                                                                         fenzo-fitness-calculator good-enough-fitness)))
         pool->match-trigger-chan (pool-map pools' (fn [_] (async/chan (async/sliding-buffer 1))))
         pool-names-linked-list (LinkedList. (map :pool/name pools'))
+        job->acceptable-compute-clusters-fn
+        (if-let [fn-name-from-config
+                 (:job->acceptable-compute-clusters-fn (config/kubernetes))]
+          (util/lazy-load-var fn-name-from-config)
+          job->acceptable-compute-clusters)
         pool->resources-atom (pool-map
                                pools'
                                (fn [{:keys [pool/name]}]
@@ -1919,7 +1927,8 @@
                                    conn (pool-name->fenzo name) pool-name->pending-jobs-atom agent-attributes-cache
                                    fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn
                                    fenzo-floor-iterations-before-reset (get pool->match-trigger-chan name)
-                                   rebalancer-reservation-atom mesos-run-as-user name cluster-name->compute-cluster-atom)))]
+                                   rebalancer-reservation-atom mesos-run-as-user name
+                                   cluster-name->compute-cluster-atom job->acceptable-compute-clusters-fn)))]
     (prepare-match-trigger-chan match-trigger-chan pools')
     (async/go-loop []
       (when-let [x (async/<! match-trigger-chan)]
