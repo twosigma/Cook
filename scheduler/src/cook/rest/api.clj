@@ -2741,8 +2741,8 @@
 
 (def UserUsageParams
   "User usage endpoint query string parameters"
-  (assoc UserParam
-    (s/optional-key :group_breakdown) s/Bool))
+  {(s/optional-key :user) s/Str
+   (s/optional-key :group_breakdown) s/Bool})
 
 (def UsageInfo
   "Schema for a dictionary of job resource usage info."
@@ -2758,9 +2758,13 @@
 
 (def UserUsageInPool
   "Schema for a user's usage within a particular pool."
-  {:total_usage UsageInfo
+  {(s/optional-key :total_usage) UsageInfo
    (s/optional-key :grouped) [{:group UsageGroupInfo, :usage UsageInfo}]
-   (s/optional-key :ungrouped) JobsUsageResponse})
+   (s/optional-key :ungrouped) JobsUsageResponse
+   (s/optional-key :users)
+   {s/Str {:total_usage UsageInfo
+           (s/optional-key :grouped) [{:group UsageGroupInfo, :usage UsageInfo}]
+           (s/optional-key :ungrouped) JobsUsageResponse}}})
 
 (def UserUsageResponse
   "Schema for a usage response."
@@ -2802,32 +2806,52 @@
                                        :ungrouped {:running-jobs []
                                                    :usage zero-usage})))
 
+(defn usage
+  "Given a collection of jobs, returns the usage information for those jobs."
+  [db pool with-group-breakdown? jobs]
+  (if pool
+    (user-usage with-group-breakdown? jobs)
+    (let [pools (pool/all-pools db)]
+      (if (pos? (count pools))
+        (let [default-pool-name (config/default-pool)
+              pool-name->jobs (group-by
+                                #(if-let [pool (:job/pool %)]
+                                   (:pool/name pool)
+                                   default-pool-name)
+                                jobs)
+              no-usage (no-usage-map with-group-breakdown?)
+              pool-name->usage (pc/map-vals (partial user-usage with-group-breakdown?) pool-name->jobs)
+              pool-name->no-usage (into {} (map (fn [{:keys [pool/name]}] [name no-usage]) pools))
+              total-usage (user-usage with-group-breakdown? jobs)]
+          (assoc total-usage
+            :pools (merge pool-name->no-usage pool-name->usage)))
+        (user-usage with-group-breakdown? jobs)))))
+
 (defn get-user-usage
   "Query a user's current resource usage based on running jobs."
   [db ctx]
   (let [user (get-in ctx [:request :query-params :user])
         with-group-breakdown? (get-in ctx [:request :query-params :group_breakdown])
         pool (or (get-in ctx [:request :query-params :pool])
-                 (get-in ctx [:request :headers "x-cook-pool"]))]
-    (if pool
-      (let [jobs (util/get-user-running-job-ents-in-pool db user pool)]
-        (user-usage with-group-breakdown? jobs))
-      (let [jobs (util/get-user-running-job-ents db user)
-            pools (pool/all-pools db)]
-        (if (pos? (count pools))
-          (let [default-pool-name (config/default-pool)
-                pool-name->jobs (group-by
-                                  #(if-let [pool (:job/pool %)]
-                                     (:pool/name pool)
-                                     default-pool-name)
-                                  jobs)
-                no-usage (no-usage-map with-group-breakdown?)
-                pool-name->usage (pc/map-vals (partial user-usage with-group-breakdown?) pool-name->jobs)
-                pool-name->no-usage (into {} (map (fn [{:keys [pool/name]}] [name no-usage]) pools))
-                total-usage (user-usage with-group-breakdown? jobs)]
-            (assoc total-usage
-              :pools (merge pool-name->no-usage pool-name->usage)))
-          (user-usage with-group-breakdown? jobs))))))
+                 (get-in ctx [:request :headers "x-cook-pool"]))
+        running-jobs
+        (if user
+          (if pool
+            (util/get-user-running-job-ents-in-pool db user pool)
+            (util/get-user-running-job-ents db user))
+          (cond->>
+            (util/get-running-job-ents db)
+            pool (filter
+                   #(= pool
+                       (or (-> % :job/pool :pool/name)
+                           (config/default-pool))))))]
+    (if user
+      (usage db pool with-group-breakdown? running-jobs)
+      {:users
+       (->> running-jobs
+            (group-by :job/user)
+            (pc/map-vals
+              #(usage db pool with-group-breakdown? %)))})))
 
 (defn read-usage-handler
   "Handle GET requests for a user's current usage."
