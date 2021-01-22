@@ -3453,6 +3453,7 @@
                         {JobResponseDeprecated (partial pc/map-keys ->snake_case)
                          JobResponse (partial pc/map-keys ->snake_case)
                          GroupResponse (partial pc/map-keys ->snake_case)
+                         UsageResponse (partial pc/map-keys ->snake_case)
                          UserUsageResponse (partial pc/map-keys ->snake_case)
                          UserUsageInPool (partial pc/map-keys ->snake_case)
                          UsageGroupInfo (partial pc/map-keys ->snake_case)
