@@ -2760,16 +2760,17 @@
   "Schema for a user's usage within a particular pool."
   {(s/optional-key :total_usage) UsageInfo
    (s/optional-key :grouped) [{:group UsageGroupInfo, :usage UsageInfo}]
-   (s/optional-key :ungrouped) JobsUsageResponse
-   (s/optional-key :users)
-   {s/Str {:total_usage UsageInfo
-           (s/optional-key :grouped) [{:group UsageGroupInfo, :usage UsageInfo}]
-           (s/optional-key :ungrouped) JobsUsageResponse}}})
+   (s/optional-key :ungrouped) JobsUsageResponse})
+
+(def UsageInPool
+  "Schema for a usage within a particular pool."
+  (assoc UserUsageInPool
+    (s/optional-key :users) {s/Str UserUsageInPool}))
 
 (def UserUsageResponse
   "Schema for a usage response."
-  (assoc UserUsageInPool
-    (s/optional-key :pools) {s/Str UserUsageInPool}))
+  (assoc UsageInPool
+    (s/optional-key :pools) {s/Str UsageInPool}))
 
 (def zero-usage
   "Resource usage map 'zero' value"
@@ -3453,7 +3454,7 @@
                          JobResponse (partial pc/map-keys ->snake_case)
                          GroupResponse (partial pc/map-keys ->snake_case)
                          UserUsageResponse (partial pc/map-keys ->snake_case)
-                         UserUsageInPool (partial pc/map-keys ->snake_case)
+                         UsageInPool (partial pc/map-keys ->snake_case)
                          UsageGroupInfo (partial pc/map-keys ->snake_case)
                          JobsUsageResponse (partial pc/map-keys ->snake_case)
                          s/Uuid str})]
