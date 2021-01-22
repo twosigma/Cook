@@ -27,6 +27,7 @@
             [compojure.api.middleware :as c-mw]
             [compojure.api.sweet :as c-api]
             [compojure.core :refer [ANY GET POST routes]]
+            [cook.cached-queries :as cached-queries]
             [cook.compute-cluster :as cc]
             [cook.config :as config]
             [cook.datomic :as datomic]
@@ -2844,13 +2845,12 @@
             (util/get-running-job-ents db)
             pool (filter
                    #(= pool
-                       (or (-> % :job/pool :pool/name)
-                           (config/default-pool))))))]
+                       (cached-queries/job->pool-name %)))))]
     (if user
       (usage db pool with-group-breakdown? running-jobs)
       {:users
        (->> running-jobs
-            (group-by :job/user)
+            (group-by cached-queries/job-ent->user)
             (pc/map-vals
               #(usage db pool with-group-breakdown? %)))})))
 
