@@ -943,8 +943,8 @@
     (.setTty container true)
     (.setStdin container true)
 
-    ; add memory limit if config flag set-memory-limit? is True
-    (set-mem-cpu-resources resources computed-mem (when (:set-memory-limit? (config/kubernetes)) computed-mem) cpus cpus)
+    ; add memory limit if user sets job label to allow memory usage above request to True
+    (set-mem-cpu-resources resources computed-mem (when-not (get labels (:memory-limit-job-label-name (config/kubernetes)) false) computed-mem) cpus cpus)
 
     (when (pos? gpus)
       (.putLimitsItem resources "nvidia.com/gpu" (double->quantity gpus))

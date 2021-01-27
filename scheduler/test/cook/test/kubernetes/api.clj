@@ -139,7 +139,8 @@
 
     (testing "creates pod from metadata"
       (with-redefs [config/kubernetes (constantly {:default-workdir "/mnt/sandbox"
-                                                   :set-memory-limit? false})]
+                                                   :memory-limit-job-label-name "platform/memory.allow-usage-above-request"
+                                                   :add-job-label-to-pod-prefix "platform/"})]
         (let [task-metadata {:task-id "my-task"
                              :command {:value "foo && bar"
                                        :environment {"FOO" "BAR"}
@@ -152,7 +153,9 @@
                                                         :cpus 1.1}
                                             :scalar-requests {"mem" 512
                                                               "cpus" 1.0}
-                                            :job {:job/pool {:pool/name "fake-pool-12"}}}
+                                            :job {:job/pool {:pool/name "fake-pool-12"}
+                                                  :job/label [{:label/key "platform/memory.allow-usage-above-request"
+                                                               :label/value true}]}}
                              :hostname "kubehost"}
               pod (api/task-metadata->pod "cook" {:name "testing-cluster" :cook-pool-taint-name "test-taint" :cook-pool-taint-prefix "taint-prefix-"} task-metadata)]
           (is (= "my-task" (-> pod .getMetadata .getName)))
@@ -161,6 +164,7 @@
           (is (= "kubehost" (-> pod .getSpec .getNodeSelector (get api/k8s-hostname-label))))
           (is (= 1 (count (-> pod .getSpec .getContainers))))
           (is (= "testing-cluster" (-> pod .getMetadata .getLabels (get api/cook-pod-label))))
+          (is (true? (-> pod .getMetadata .getLabels (get (:memory-limit-job-label-name (config/kubernetes))))))
           (is (< 0 (-> pod .getSpec .getSecurityContext .getRunAsGroup)))
           (is (< 0 (-> pod .getSpec .getSecurityContext .getRunAsUser)))
 
