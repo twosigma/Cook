@@ -461,6 +461,10 @@ def missing_docker_image():
     return os.getenv('COOK_TEST_MISSING_DOCKER_IMAGE')
 
 
+def enable_unspecified_pool():
+    return os.getenv('COOK_TEST_ENABLE_UNSPECIFIED_POOL', None) is not None
+
+
 def docker_working_directory():
     return os.getenv('COOK_TEST_DOCKER_WORKING_DIRECTORY')
 
@@ -1744,6 +1748,11 @@ def using_mesos():
 
 def supports_exit_code():
     return using_kubernetes() or is_cook_executor_in_use()
+
+
+def in_cloud():
+    """Are we running tests in the cloud?"""
+    return os.getenv("COOK_TEST_RUNNING_IN_CLOUD", None) is not None
 
 
 def pool_quota_test_pool():
