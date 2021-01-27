@@ -2049,6 +2049,7 @@
     (is (= (:uuid response-1) (get (second (list-jobs-fn submit-ms-1 (inc submit-ms-2))) "uuid")))))
 
 (deftest test-list-jobs-include-custom-executor
+  (setup)
   (let [conn (restore-fresh-database! "datomic:mem://test-list-jobs-include-custom-executor")
         handler (basic-handler conn)
         before (t/now)
@@ -2392,7 +2393,8 @@
               ; We thus expect 5 to submit, and 5 to fail and get rejected by
               ; out-of-timeout by the check-job-submission-default which returns
               ; Reject for accept-accept-plugin.
-              (is true (str/starts-with? "Total of 5 errors. First 3 are " (:error body)))
+              (is (= "Total of 6 errors; first 3 are:\nDefault Rejected\nDefault Rejected\nDefault Rejected"
+                    (:error body)))
               (is (str/includes? body "Default Rejected"))))))
 
       (testing "pool mover plugin"

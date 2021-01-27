@@ -16,7 +16,7 @@
 (ns cook.test.jobclient.jobclient
   (:require [clojure.core.async :as async]
             [clojure.test :refer :all]
-            [cook.test.testutil :refer [create-dummy-instance restore-fresh-database! with-test-server]]
+            [cook.test.testutil :refer [create-dummy-instance restore-fresh-database! setup with-test-server]]
             [datomic.api :as d])
   (:import (com.twosigma.cook.jobclient FetchableURI FetchableURI$Builder Group Group$Builder Group$Status GroupListener HostPlacement
                                         HostPlacement$Builder HostPlacement$Type Job Job$Builder Job$Status JobClient JobClient$Builder
@@ -102,6 +102,7 @@
       @(d/transact conn [[:instance/update-state inst :instance.status/success [:reason/name :unknown]]]))))
 
 (deftest jobclient-tester
+  (setup)
   ; Start a mock server for testing
   (let [conn (restore-fresh-database! "datomic:mem://jobclient")
         db (d/db conn)

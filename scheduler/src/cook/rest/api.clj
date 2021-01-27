@@ -2141,7 +2141,9 @@
                                              %
                                              :override-group-immutability?
                                              override-group-immutability?) jobs)
-                               {:keys [status message]} (submission-plugin/plugin-jobs-submission jobs)]
+                               {:keys [status message]} (submission-plugin/plugin-jobs-submission
+                                                          jobs
+                                                          effective-pool-name)]
                            ; Does the plugin accept the submission?
                            (if (= :accepted status)
                              [false {::groups groups
