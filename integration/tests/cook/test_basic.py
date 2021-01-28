@@ -896,6 +896,33 @@ class CookTest(util.CookTest):
         command = self.memory_limit_script_command(count=2048)
         self.memory_limit_exceeded_helper(command, 'mesos', mem=32)
 
+    @unittest.skipUnless(util.using_kubernetes())
+    def test_memory_limit(self):
+        command = "python -c 'MB = 1024 * 1024 ; a = \"a\" * (25 * MB)'"
+
+        # job requests 20MB of memory, does not allow memory usage above request, and allocates 25MB of memory
+        job_uuid1, resp1 = util.submit_job(self.cook_url, mem=20, command=command)
+
+        # job requests 20MB of memory, allows memory usage above request, and allocates 25MB of memory
+        if util.using_kubernetes():
+            job_uuid2, resp2 = util.submit_job(self.cook_url, mem=20, command=command, env={"ts.platform/memory.allow-usage-above-request": True})
+
+        try:
+            self.assertEqual(resp1.status_code, 201, msg=resp.content)
+            job1 = util.wait_for_job(self.cook_url, job_uuid1, 'completed')
+            self.assertEqual('completed', job1['status'])
+            self.assertEqual('failed', job1['instances'][0]['status'])
+            self.assertEqual(2002, job1['instances'][0]['reason_code'])
+
+            if util.using_kubernetes():
+                self.assertEqual(resp2.status_code, 201, msg=resp.content)
+                job2 = util.wait_for_job(self.cook_url, job_uuid2, 'completed')
+                self.assertEqual('completed', job2['status'])
+                self.assertEqual('success', job2['instances'][0]['status'])
+
+        finally:
+            util.kill_jobs(self.cook_url, [job_uuid1], assert_response=False)
+
     def test_get_job(self):
         # schedule a job
         job_spec = util.minimal_job()
