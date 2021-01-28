@@ -944,7 +944,8 @@
     (.setStdin container true)
 
     ; add memory limit if user sets job label to allow memory usage above request to True
-    (set-mem-cpu-resources resources computed-mem (when-not (get labels (:memory-limit-job-label-name (config/kubernetes)) false) computed-mem) cpus cpus)
+    (let [allow-memory-usage-above-request (get labels (:memory-limit-job-label-name (config/kubernetes)) false)]
+      (set-mem-cpu-resources resources computed-mem (when-not allow-memory-usage-above-request computed-mem) cpus cpus))
 
     (when (pos? gpus)
       (.putLimitsItem resources "nvidia.com/gpu" (double->quantity gpus))
