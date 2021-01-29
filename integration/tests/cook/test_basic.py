@@ -907,13 +907,13 @@ class CookTest(util.CookTest):
         job_uuid2, resp2 = util.submit_job(self.cook_url, mem=20, command=command, env={"ts.platform/memory.allow-usage-above-request": True})
 
         try:
-            self.assertEqual(resp1.status_code, 201, msg=resp.content)
+            self.assertEqual(resp1.status_code, 201, msg=resp1.content)
             job1 = util.wait_for_job(self.cook_url, job_uuid1, 'completed')
             self.assertEqual('completed', job1['status'])
             self.assertEqual('failed', job1['instances'][0]['status'])
             self.assertEqual(2002, job1['instances'][0]['reason_code'])
 
-            self.assertEqual(resp2.status_code, 201, msg=resp.content)
+            self.assertEqual(resp2.status_code, 201, msg=resp2.content)
             job2 = util.wait_for_job(self.cook_url, job_uuid2, 'completed')
             self.assertEqual('completed', job2['status'])
             self.assertEqual('success', job2['instances'][0]['status'])
