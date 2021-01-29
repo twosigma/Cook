@@ -896,7 +896,7 @@ class CookTest(util.CookTest):
         command = self.memory_limit_script_command(count=2048)
         self.memory_limit_exceeded_helper(command, 'mesos', mem=32)
 
-    @unittest.skipUnless(util.using_kubernetes())
+    @unittest.skipUnless(util.using_kubernetes(), "Memory limit can only be removed on kubernetes")
     def test_memory_limit(self):
         command = "python -c 'MB = 1024 * 1024 ; a = \"a\" * (25 * MB)'"
 
