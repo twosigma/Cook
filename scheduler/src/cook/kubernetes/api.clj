@@ -943,8 +943,8 @@
     (.setTty container true)
     (.setStdin container true)
 
-    ; add memory limit if user sets job label to allow memory usage above request to True
-    (let [allow-memory-usage-above-request (get labels (:memory-limit-job-label-name (config/kubernetes) "ts.platform/memory.allow-usage-above-request") false)]
+    ; add memory limit if user sets job label to allow memory usage above request to "true"
+    (let [allow-memory-usage-above-request (= "true" (some-> (get labels (:memory-limit-job-label-name (config/kubernetes) "ts.platform/memory.allow-usage-above-request")) (clojure.string/lower-case )) )]
       (set-mem-cpu-resources resources computed-mem (when-not allow-memory-usage-above-request computed-mem) cpus cpus))
 
     (when (pos? gpus)
