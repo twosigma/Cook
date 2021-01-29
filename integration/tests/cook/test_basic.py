@@ -970,7 +970,7 @@ class CookTest(util.CookTest):
 
         request_body = {'jobs': [job_specs[0]]}
         resp = util.session.post('%s/rawscheduler' % self.cook_url, json=request_body)
-        self.assertEqual(resp.status_code, 201)
+        self.assertEqual(resp.status_code, 201, resp.text)
 
         time.sleep(5)
 

@@ -482,22 +482,22 @@
 ;; Accept or reject based on the name of the job.
 (def fake-submission-plugin
   (reify JobSubmissionValidator
-    (check-job-submission-default [this] {:status :rejected :message "Too slow"})
-    (check-job-submission [this {:keys [name] :as job-map}]
+    (check-job-submission-default [_] {:status :rejected :message "Too slow"})
+    (check-job-submission [_ {:keys [name]} _]
       (if (str/starts-with? name "accept")
         {:status :accepted :cache-expires-at (-> 1 t/seconds t/from-now)}
         {:status :rejected :cache-expires-at (-> 1 t/seconds t/from-now) :message "Explicitly rejected by plugin"}))))
 
 (def reject-submission-plugin
   (reify JobSubmissionValidator
-    (check-job-submission-default [this] {:status :rejected :message "Default Rejected"})
-    (check-job-submission [this _]
+    (check-job-submission-default [_] {:status :rejected :message "Default Rejected"})
+    (check-job-submission [_ _ _]
       {:status :rejected :message "Explicit-reject by test plugin"})))
 
 (def accept-submission-plugin
   (reify JobSubmissionValidator
-    (check-job-submission-default [this] {:status :rejected :message "Default Rejected"})
-    (check-job-submission [this _]
+    (check-job-submission-default [_] {:status :rejected :message "Default Rejected"})
+    (check-job-submission [_ _ _]
       {:status :accepted :message "Explicit-accept by test plugin"})))
 
 (def defer-launch-plugin

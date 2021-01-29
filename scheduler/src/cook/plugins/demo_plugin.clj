@@ -28,14 +28,14 @@
 (defrecord DemoValidateSubmission []
   chd/JobSubmissionValidator
   (chd/check-job-submission
-    [this {:keys [name] :as job-map}]
+    [this {:keys [name] :as job-map} _]
     (if (and name (str/starts-with? name "plugin_test.submit_fail"))
       (generate-result :rejected "Message1- Fail to submit")
       (generate-result :accepted "Message2"))))
 
 (defrecord DemoValidateSubmission2 []
   chd/JobSubmissionValidator
-  (chd/check-job-submission [this {:keys [name]}]
+  (chd/check-job-submission [this {:keys [name]} _]
     (if (and name (str/starts-with? name "plugin_test.submit_fail2"))
       (generate-result :rejected "Message5- Plugin2 failed")
       (generate-result :accepted "Message6"))))

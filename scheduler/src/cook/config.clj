@@ -688,3 +688,7 @@
 (defn queue-limits
   []
   (-> config :settings :queue-limits))
+
+(defn job-resource-limits
+  []
+  (-> config :settings :plugins :job-shape-validation))
