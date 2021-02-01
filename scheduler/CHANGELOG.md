@@ -4,10 +4,18 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.51.0] - 2021-02-01
+### Added
+- Support for longer pod names, from @scrosby
+- Configurable validation of job resources by node type, from @dposada
+- `/usage` for all users, from @dposada
+### Changed
+- Make `job->acceptable-compute-clusters` configurable, from @dposada
+
 ## [1.50.1] - 2021-01-14
 ### Added
 - Ability to not set memory limits, from @kathryn-zhou
-- Authenticator refresh logic needed for non-GKE k8s, from @scrosby  
+- Authenticator refresh logic needed for non-GKE k8s, from @scrosby
 - Checkpoint locality constraint, from @dposada
 ### Changed
 - Logging the largest job and offer by resource, from @dposada
