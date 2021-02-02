@@ -210,8 +210,13 @@
   -> {:a {:b {:z 3, :c 3, :d {:z 9, :x 1, :y 2}}, :e 103}, :f 4}"
   [f & maps]
   (apply
-    (fn m [& maps]
-      (if (every? map? maps)
-        (apply merge-with m maps)
-        (apply f maps)))
+    (fn merge
+      [& args]
+      (try
+        (if (every? map? args)
+          (apply merge-with merge args)
+          (apply f args))
+        (catch Exception e
+          (log/error e "Encountered exception while merging" {:args args})
+          (throw e))))
     maps))
