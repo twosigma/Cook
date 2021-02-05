@@ -72,8 +72,10 @@
 (let [user->group-ids-miss-fn
       (fn [user-name]
         (log/info "Retrieving group ids for" user-name)
-        {:cache-expires-at (-> 30 t/minutes t/from-now)
-         :system-ids (retrieve-system-ids "-G" user-name)})]
+        (let [ignore-group-ids (get-in config/config [:settings :ignore-supplemental-group-ids])
+              system-group-ids (retrieve-system-ids "-G" user-name)]
+          {:cache-expires-at (-> 30 t/minutes t/from-now)
+           :system-ids (remove ignore-group-ids system-group-ids)}))]
   (defn user->all-group-ids [user-name]
     "Retrieves the (potentially cached) collection
     of all group ids for the specified user"
