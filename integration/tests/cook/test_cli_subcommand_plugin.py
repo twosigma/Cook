@@ -1,9 +1,9 @@
-import unittest
 import pytest
 import sys
 import importlib
 import tempfile
 from multiprocessing import Process
+from tests.cook import util
 
 cook = importlib.import_module('cook.cli')
 
