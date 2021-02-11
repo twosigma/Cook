@@ -4,6 +4,7 @@ import logging
 from cook import util, http, metrics, version, configuration
 from cook.subcommands import admin, cat, config, jobs, kill, ls, show, ssh, submit, tail, usage, wait
 from cook.util import deep_merge, load_target_clusters
+from cook.plugins import SubCommandPlugin
 import cook.plugins
 
 parser = argparse.ArgumentParser(description='cs is the Cook Scheduler CLI')
@@ -39,7 +40,22 @@ def run(args, plugins):
     Main entrypoint to the cook scheduler CLI. Loads configuration files, 
     processes global command line arguments, and calls other command line 
     sub-commands (actions) if necessary.
+
+    plugins is a map from plugin-name -> function or Class.SubCommandPlugin
     """
+
+    # This has to happen before we parse the args, otherwise we might
+    # get subcommand not found.
+    for name, instance in plugins.items():
+        if isinstance(instance, SubCommandPlugin):
+            logging.debug('Adding SubCommandPlugin %s' % name)
+            instance.register(subparsers.add_parser, configuration.add_defaults)
+            logging.debug('Done adding SubCommandPlugin %s' % name)
+            name = instance.name()
+            if name in actions:
+                raise Exception('SubCommandPlugin %s clashes with an existing subcommand.' % name)
+            actions[name] = instance.run
+
     args = vars(parser.parse_args(args))
 
     util.silent = args.pop('silent')
@@ -72,6 +88,7 @@ def run(args, plugins):
             args = {k: v for k, v in args.items() if v is not None}
             defaults = config_map.get('defaults')
             action_defaults = (defaults.get(action) if defaults else None) or {}
+            logging.debug('going to execute % action' % action)
             result = actions[action](clusters, deep_merge(action_defaults, args), config_path)
             logging.debug('result: %s' % result)
             return result
