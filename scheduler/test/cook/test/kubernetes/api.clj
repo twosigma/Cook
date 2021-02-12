@@ -135,7 +135,7 @@
               ^V1Pod pod (api/task-metadata->pod "test-namespace"
                                                  fake-cc-config
                                                  task-metadata)]
-          (is (nil? (-> pod .getSpec .getSecurityContext .getSupplementalGroups))))))
+          (is (= [] (-> pod .getSpec .getSecurityContext .getSupplementalGroups))))))
 
     (testing "creates pod from metadata"
       (with-redefs [config/kubernetes (constantly {:default-workdir "/mnt/sandbox"

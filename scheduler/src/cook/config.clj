@@ -302,6 +302,9 @@
                           datomic-uri)
      :hostname (fnk [[:config {hostname (.getCanonicalHostName (InetAddress/getLocalHost))}]]
                  hostname)
+     ;; Ignore these group ID's when computing supplemental group IDs.
+     :ignore-supplemental-group-ids (fnk [[:config {ignore-supplemental-group-ids #{}}]]
+                                      ignore-supplemental-group-ids)
      :cluster-dns-name (fnk [[:config {cluster-dns-name nil}]]
                          cluster-dns-name)
      :scheduler-rest-url (fnk [cluster-dns-name hostname server-https-port server-port]

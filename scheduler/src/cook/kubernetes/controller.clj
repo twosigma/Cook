@@ -8,7 +8,6 @@
             [cook.kubernetes.metrics :as metrics]
             [cook.mesos.sandbox :as sandbox]
             [cook.scheduler.scheduler :as scheduler]
-            [cook.util :as util]
             [metrics.timers :as timers])
   (:import (clojure.lang IAtom)
            (io.kubernetes.client.openapi.models V1ContainerStatus V1Pod V1PodStatus)
