@@ -461,8 +461,8 @@ def missing_docker_image():
     return os.getenv('COOK_TEST_MISSING_DOCKER_IMAGE')
 
 
-def enable_unspecified_pool():
-    return os.getenv('COOK_TEST_ENABLE_UNSPECIFIED_POOL', None) is not None
+def disable_unspecified_pool_test():
+    return os.getenv('COOK_TEST_DISABLE_UNSPECIFIED_POOL_TEST', None) is not None
 
 
 def docker_working_directory():
