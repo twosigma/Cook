@@ -24,16 +24,31 @@ class DummySubCommandPlugin(SubCommandPlugin):
     def name(self):
         return 'int_test'
 
+class SecondSubCommandPlugin(SubCommandPlugin):
+    """Another subcommand for testing purposes.
+
+    name() intentionally returns the same value
+    as the previous subcommand to test error handling.
+    """
+    def register(self, add_parser, add_defaults):
+        pass
+
+    def run(self, cluster, args, _):
+        pass
+
+    def name(self):
+        return 'int_test'
+
 @pytest.mark.cli
 @pytest.mark.timeout(util.DEFAULT_TEST_TIMEOUT_SECS)  # individual test timeout
 class CookCliSubCommandPluginTest(util.CookTest):
 
-    def helper(self, args):
+    def helper(self, args, plugins={'test': DummySubCommandPlugin()}):
         with tempfile.NamedTemporaryFile(delete=True) as temp:
             def fn():
                 sys.stderr = open(temp.name, 'w')
                 sys.stdout = open(temp.name, 'w')
-                cli(args=args, plugins={'test': DummySubCommandPlugin()})
+                cli(args=args, plugins=plugins)
 
             p = Process(target=fn)
             p.start()
@@ -52,3 +67,12 @@ class CookCliSubCommandPluginTest(util.CookTest):
     def test_subcommand_output(self):
         output = self.helper(['int_test', '--digit', '10', '--factor', '10'])
         self.assertTrue('100' in output)
+
+    def test_failed_loading(self):
+        output = self.helper(
+                ['int_test', '--digit', '10', '--factor', '10'],
+                plugins={
+                    'test1': DummySubCommandPlugin(),
+                    'test2': SecondSubCommandPlugin()
+                })
+        self.assertTrue('Failed to load SubCommandPlugin' in output)

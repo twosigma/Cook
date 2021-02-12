@@ -1,3 +1,4 @@
+import sys
 import argparse
 import logging
 
@@ -49,12 +50,15 @@ def run(args, plugins):
     for name, instance in plugins.items():
         if isinstance(instance, SubCommandPlugin):
             logging.debug('Adding SubCommandPlugin %s' % name)
-            instance.register(subparsers.add_parser, configuration.add_defaults)
-            logging.debug('Done adding SubCommandPlugin %s' % name)
-            name = instance.name()
-            if name in actions:
-                raise Exception('SubCommandPlugin %s clashes with an existing subcommand.' % name)
-            actions[name] = instance.run
+            try:
+                instance.register(subparsers.add_parser, configuration.add_defaults)
+                logging.debug('Done adding SubCommandPlugin %s' % name)
+                name = instance.name()
+                if name in actions:
+                    raise Exception('SubCommandPlugin %s clashes with an existing subcommand.' % name)
+                actions[name] = instance.run
+            except Exception as e:
+                print('Failed to load SubCommandPlugin %s: %s' % (name, e), file=sys.stderr)
 
     args = vars(parser.parse_args(args))
 
