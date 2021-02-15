@@ -9,7 +9,7 @@ cook = importlib.import_module('cook.cli')
 
 from cook.plugins import SubCommandPlugin
 from cook.util import print_info
-from cook.__main__ import main as cli
+from cook.cli import run
 
 class DummySubCommandPlugin(SubCommandPlugin):
     def register(self, add_parser, add_defaults):
@@ -48,7 +48,7 @@ class CookCliSubCommandPluginTest(util.CookTest):
             def fn():
                 sys.stderr = open(temp.name, 'w')
                 sys.stdout = open(temp.name, 'w')
-                cli(args=args, plugins=plugins)
+                run(args=args, plugins=plugins)
 
             p = Process(target=fn)
             p.start()
