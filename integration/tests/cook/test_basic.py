@@ -404,7 +404,7 @@ class CookTest(util.CookTest):
                                 'parameters': [{'key': 'env', 'value': 'FOO=bar'},
                                                {'key': 'workdir', 'value': '/var/lib/pqr'}]},
                      'volumes': [{'mode': 'RW',
-                                  'host-path': '/lib/modules',
+                                  'host-path': '/var/lib/mno',
                                   'container-path': '/var/lib/pqr'}]}
         job_uuid, resp = util.submit_job(self.cook_url, container=container)
         try:
@@ -882,12 +882,7 @@ class CookTest(util.CookTest):
 
     @pytest.mark.memlimit
     def test_memory_limit_exceeded_mesos_python(self):
-        settings_dict = util.settings(self.cook_url)
-        set_memory_limit = settings_dict.get("kubernetes", {}).get("set-memory-limit?", True)
-        if util.using_kubernetes() and not set_memory_limit:
-            command = self.infinite_memory_python_command()
-        else:
-            command = self.memory_limit_python_command()
+        command = self.memory_limit_python_command()
         self.memory_limit_exceeded_helper(command, 'mesos')
 
     @pytest.mark.memlimit
@@ -898,13 +893,33 @@ class CookTest(util.CookTest):
 
     @pytest.mark.memlimit
     def test_memory_limit_exceeded_mesos_script(self):
-        settings_dict = util.settings(self.cook_url)
-        set_memory_limit = settings_dict.get("kubernetes", {}).get("set-memory-limit?", True)
-        if util.using_kubernetes() and not set_memory_limit:
-            command = self.infinite_memory_script_command(count=2048)
-        else:
-            command = self.memory_limit_script_command(count=2048)
+        command = self.memory_limit_script_command(count=2048)
         self.memory_limit_exceeded_helper(command, 'mesos', mem=32)
+
+    @unittest.skipUnless(util.using_kubernetes(), "Memory limit can only be removed on kubernetes")
+    def test_memory_limit(self):
+        command = "python -c 'MB = 1024 * 1024 ; a = \"a\" * (25 * MB)'"
+
+        # job requests 20MB of memory, does not allow memory usage above request, and allocates 25MB of memory
+        job_uuid1, resp1 = util.submit_job(self.cook_url, mem=20, command=command)
+
+        # job requests 20MB of memory, allows memory usage above request, and allocates 25MB of memory
+        job_uuid2, resp2 = util.submit_job(self.cook_url, mem=20, command=command, labels={"ts.platform/memory.allow-usage-above-request": "True"})
+
+        try:
+            self.assertEqual(resp1.status_code, 201, msg=resp1.content)
+            job1 = util.wait_for_job(self.cook_url, job_uuid1, 'completed')
+            self.assertEqual('completed', job1['status'])
+            self.assertEqual('failed', job1['instances'][0]['status'])
+            self.assertEqual(2002, job1['instances'][0]['reason_code'])
+
+            self.assertEqual(resp2.status_code, 201, msg=resp2.content)
+            job2 = util.wait_for_job(self.cook_url, job_uuid2, 'completed')
+            self.assertEqual('completed', job2['status'])
+            self.assertEqual('success', job2['instances'][0]['status'])
+
+        finally:
+            util.kill_jobs(self.cook_url, [job_uuid1, job_uuid2], assert_response=False)
 
     def test_get_job(self):
         # schedule a job
@@ -2896,7 +2911,7 @@ class CookTest(util.CookTest):
         finally:
             util.kill_jobs(self.cook_url, [job_uuid1, job_uuid2])
 
-    @unittest.skipUnless(util.using_kubernetes() and util.in_cloud(), 'Test requires kubernetes')
+    @unittest.skipUnless(util.using_kubernetes(), 'Test requires kubernetes')
     def test_kubernetes_checkpointing(self):
         docker_image = util.docker_image()
         container = {'type': 'docker',
@@ -3016,11 +3031,6 @@ class CookTest(util.CookTest):
         self.assertEqual('failed', job['instances'][0]['status'], job)
         self.assertEqual('Invalid task', job['instances'][0]['reason_string'], job)
 
-    @unittest.skipIf(util.disable_unspecified_pool_test(), "Test disabled in this run as default image isn't appropriate for default pool.")
-    # This test should be enabled for only one compute cluster type, e.g., GKE, mesos, etc. Because we want to run the full set of
-    # integration tests across multiple compute cluster types, if they accept different types of image formats in COOK_TEST_DOCKER_IMAGE,
-    # this test can be active when the 'wrong' format is specified and the backend gets confused with the not-understood image format.
-    # If this test fails after changing the default pool, you need to change the image format to match the new default pool.
     def test_submit_pool_unspecified(self):
         job_uuid, resp = util.submit_job(self.cook_url, pool=util.POOL_UNSPECIFIED)
         self.assertEqual(resp.status_code, 201, resp.content)
