@@ -2911,7 +2911,7 @@ class CookTest(util.CookTest):
         finally:
             util.kill_jobs(self.cook_url, [job_uuid1, job_uuid2])
 
-    @unittest.skipUnless(util.using_kubernetes(), 'Test requires kubernetes')
+    @unittest.skipUnless(util.using_kubernetes() and util.in_cloud(), 'Test requires kubernetes')
     def test_kubernetes_checkpointing(self):
         docker_image = util.docker_image()
         container = {'type': 'docker',
@@ -3031,6 +3031,11 @@ class CookTest(util.CookTest):
         self.assertEqual('failed', job['instances'][0]['status'], job)
         self.assertEqual('Invalid task', job['instances'][0]['reason_string'], job)
 
+    @unittest.skipIf(util.disable_unspecified_pool_test(), "Test disabled in this run as default image isn't appropriate for default pool.")
+    # This test should be enabled for only one compute cluster type, e.g., GKE, mesos, etc. Because we want to run the full set of
+    # integration tests across multiple compute cluster types, if they accept different types of image formats in COOK_TEST_DOCKER_IMAGE,
+    # this test can be active when the 'wrong' format is specified and the backend gets confused with the not-understood image format.
+    # If this test fails after changing the default pool, you need to change the image format to match the new default pool.
     def test_submit_pool_unspecified(self):
         job_uuid, resp = util.submit_job(self.cook_url, pool=util.POOL_UNSPECIFIED)
         self.assertEqual(resp.status_code, 201, resp.content)
