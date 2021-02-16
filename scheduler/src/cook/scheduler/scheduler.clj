@@ -1045,8 +1045,10 @@
       (let [autoscaling-compute-clusters (filter #(cc/autoscaling? % pool-name) compute-clusters)
             num-autoscaling-compute-clusters (count autoscaling-compute-clusters)]
         (when (and (pos? num-autoscaling-compute-clusters) (seq pending-jobs))
-          (let [compute-cluster->jobs (distribute-jobs-to-compute-clusters
-                                        pending-jobs pool-name autoscaling-compute-clusters
+          (let [{:keys [max-jobs-for-autoscaling]} (config/kubernetes)
+                pending-jobs-for-autoscaling (take max-jobs-for-autoscaling pending-jobs)
+                compute-cluster->jobs (distribute-jobs-to-compute-clusters
+                                        pending-jobs-for-autoscaling pool-name autoscaling-compute-clusters
                                         job->acceptable-compute-clusters-fn)]
             (log/info "In" pool-name "pool, starting autoscaling")
             (doseq [[compute-cluster jobs-for-cluster] compute-cluster->jobs]
