@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.51.1] - 2021-02-16
+### Changed
+- Support ignoring specific group ID's when computing supplemental group IDs, from @scrosby
+- Log exceptions in `deep-merge-with`, from @dposada
+### Fixed
+- Take only the top X pending jobs when triggering k8s autoscaling, from @dposada
+
 ## [1.51.0] - 2021-02-01
 ### Added
 - Support for longer pod names, from @scrosby
