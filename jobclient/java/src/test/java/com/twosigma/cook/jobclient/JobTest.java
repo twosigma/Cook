@@ -49,6 +49,14 @@ public class JobTest {
     private Constraint _constraint2;
     private static final double EPSILON = 1e-15;
 
+    private class TestInstanceDecorator implements InstanceDecorator {
+        @Override
+        public Instance.Builder decorate(Instance.Builder builder) {
+            builder.setExecutorID("test-123");
+            return builder;
+        }
+    }
+
     @Before
     public void setup() {
         _constraint1 = Constraints.buildEqualsConstraint("bar1", "foo1");
@@ -413,5 +421,35 @@ public class JobTest {
         Assert.assertEquals(job1.getConstraints().size(), job2.getConstraints().size());
         // Added an extra label to job1.
         Assert.assertEquals(job2.getLabels().size(), job1.getLabels().size() + 1);
+    }
+
+
+    @Test
+    public void testParseFromJSONWithDecorator() {
+        final Job.Builder jobBuilder1 = new Job.Builder();
+        populateBuilder(jobBuilder1);
+
+        final JSONObject instanceJson = new JSONObject();
+        instanceJson.put("slave_id", "20150311-033720-1963923116-5050-4084-34");
+        instanceJson.put("start_time", 1426632249597L);
+        instanceJson.put("end_time", 1426632249597L);
+        instanceJson.put("status", Instance.Status.SUCCESS);
+        instanceJson.put("preempted", false);
+        instanceJson.put("hostname", "foo.bar.com");
+        instanceJson.put("task_id", UUID.randomUUID());
+        instanceJson.put("executor_id", "f52fbacf-52a1-44a2-bda1-cbfa477cc164");
+
+        final JSONObject json = Job.jsonizeJob(jobBuilder1.build());
+        json.put("instances", new JSONArray().put(instanceJson));
+        final String jsonString = new JSONArray().put(json).toString();
+
+        // Decorator will set executor ID to test-123
+        final InstanceDecorator dec = new TestInstanceDecorator();
+        final List<Job> jobs = Job.parseFromJSON(jsonString, dec);
+
+        Assert.assertEquals(jobs.size(), 1);
+        final Job actualJob = jobs.get(0);
+        final Instance instance = actualJob.getInstances().get(0);
+        Assert.assertEquals(instance.getExecutorID(), "test-123");
     }
 }
