@@ -17,7 +17,7 @@ import socket
 import unittest
 import importlib
 
-cookclient = importlib.import_module('cook.jobclient.python')
+cookclient = importlib.import_module('jobclient')
 
 from cookclient import JobClient
 from cookclient.containers import DockerContainer, DockerPortMapping
