@@ -15,6 +15,7 @@
 import re
 import socket
 import unittest
+import importlib
 
 cookclient = importlib.import_module('cook.jobclient.python')
 
