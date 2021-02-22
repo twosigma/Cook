@@ -2388,7 +2388,7 @@ if __name__ == '__main__':
             'c2': {'value': str(util.make_temporal_uuid()), found: False},
         }
         cp, uuids = cli.submit('ls', self.cook_url,
-                               submit_flags=f'--constraint c1={const["c1"]["value"]} --label c2={const["c2"]["value"]}')
+                               submit_flags=f'--constraint c1={const["c1"]["value"]} --constraint c2={const["c2"]["value"]}')
         self.assertEqual(0, cp.returncode, cp.stderr)
         try:
             job = util.load_job(self.cook_url, uuids[0])
