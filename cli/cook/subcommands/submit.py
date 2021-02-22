@@ -235,7 +235,7 @@ def submit(clusters, args, _):
                 if len(parts) != 2:
                     raise Exception('Invalid constraint, must be of the form K=V')
                 constraints.append([parts[0], 'EQUALS', parts[1]])
-            job_template['constraints'].update(constraints)
+            job_template['constraints'] = constraints
 
         jobs = [deep_merge(job_template, {'command': c}) for c in commands]
 
