@@ -302,6 +302,16 @@
   ; to deleting from the map, into (missing,missing) state.
   {:cook-expected-state :cook-expected-state/completed})
 
+(defn handle-pod-failed
+  "Handles pod failure, checking to see if the failure was caused by pod preemption."
+  [{:keys [name] :as compute-cluster} pod-name {:keys [synthesized-state] :as k8s-actual-state-dict}]
+  (if (some-> synthesized-state :pod-preempted-timestamp)
+    (do
+      (log/info "In compute cluster" name ", pod" pod-name
+                "failed, seemingly due to preemption")
+      (handle-pod-preemption compute-cluster pod-name))
+    (handle-pod-completed compute-cluster pod-name k8s-actual-state-dict)))
+
 (defn handle-pod-started
   "A pod has started. So now we need to update the status in datomic."
   [compute-cluster {:keys [running-metric-timer]} pod-name]
@@ -508,7 +518,7 @@
                                           ; This indicates that something deleted it behind our back
                                           :missing (handle-pod-missing-unexpectedly synthesized-state compute-cluster pod-name)
                                           ; TODO: May need to mark mea culpa retry
-                                          :pod/failed (handle-pod-completed compute-cluster pod-name k8s-actual-state-dict)
+                                          :pod/failed (handle-pod-failed compute-cluster pod-name k8s-actual-state-dict)
                                           :pod/running cook-expected-state-dict
                                           :pod/succeeded (handle-pod-completed compute-cluster pod-name k8s-actual-state-dict)
                                           ; TODO: Should mark mea culpa retry
