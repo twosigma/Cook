@@ -2384,8 +2384,8 @@ if __name__ == '__main__':
 
     def test_submit_constraint(self):
         const = {
-            'c1': {'value': str(util.make_temporal_uuid()), found: False},
-            'c2': {'value': str(util.make_temporal_uuid()), found: False},
+            'c1': {'value': str(util.make_temporal_uuid()), 'found': False},
+            'c2': {'value': str(util.make_temporal_uuid()), 'found': False},
         }
         cp, uuids = cli.submit('ls', self.cook_url,
                                submit_flags=f'--constraint c1={const["c1"]["value"]} --constraint c2={const["c2"]["value"]}')
@@ -2398,7 +2398,7 @@ if __name__ == '__main__':
                 v = c[2]
                 self.assertTrue(k in const)
                 self.assertEqual(v, const[k]['value'])
-                const[k]["found"] = True
+                const[k]['found'] = True
             for _, v in const.items():
                 self.assertTrue(v['found'])
 
