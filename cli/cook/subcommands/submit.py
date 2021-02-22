@@ -228,6 +228,15 @@ def submit(clusters, args, _):
                 job_template['labels'] = {}
             job_template['labels'].update(labels)
 
+        if job_template.get('constraint'):
+            constraints = []
+            for c in job_template['constraint']:
+                parts = c.split('=', maxsplit=1)
+                if len(parts) != 2:
+                    raise Exception('Invalid constraint, must be of the form K=V')
+                constraints.append([parts[0], 'EQUALS', parts[1]])
+            job_template['constraints'].update(constraints)
+
         jobs = [deep_merge(job_template, {'command': c}) for c in commands]
 
     for job in jobs:
@@ -315,6 +324,8 @@ def register(add_parser, add_defaults):
     submit_parser.add_argument('--docker-image', '-i', help='docker image for job',
                                type=str, metavar='IMAGE', dest='docker-image')
     submit_parser.add_argument('--label', '-l', help='label for job (can be repeated)',
+                               metavar='KEY=VALUE', action='append')
+    submit_parser.add_argument('--constraint', help='job constraints',
                                metavar='KEY=VALUE', action='append')
     submit_parser.add_argument('--checkpoint', help='enable automatically checkpointing and restoring the application',
                                dest='checkpoint', action='store_true')
