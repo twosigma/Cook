@@ -97,6 +97,12 @@
     (is (= :cook-expected-state/completed (do-process :cook-expected-state/running :pod/succeeded)))
     (is (= :reason-normal-exit @reason))
     (is (= :cook-expected-state/completed (do-process :cook-expected-state/running :pod/failed)))
+    (is (= :unknown @reason))
+    (is (= :cook-expected-state/completed
+           (do-process :cook-expected-state/running
+                       nil
+                       :custom-test-state {:pod-preempted-timestamp 1 :state :pod/failed})))
+    (is (= :reason-slave-removed @reason))
     (is (= :cook-expected-state/running (do-process :cook-expected-state/running :pod/running)))
     (is (= :cook-expected-state/completed (do-process :cook-expected-state/running :pod/unknown)))
     (is (= :cook-expected-state/completed (do-process :cook-expected-state/running :pod/waiting)))
