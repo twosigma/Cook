@@ -175,6 +175,14 @@ and must return a dict containing two fields: `data` and `offset`.
 
 See the integration tests for simple examples of the subcommand plugins.
 
+#### Plugin based subcommands
+
+In addition to plugins for the core subcommands, we can add new subcommands through the plugin module.
+
+Simply extend SubCommandPlugin and implement register, run and name.
+
+See the integration tests for a concrete example.
+
 ### Examples
 
 Simple job creation:

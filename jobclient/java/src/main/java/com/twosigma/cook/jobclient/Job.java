@@ -1401,7 +1401,7 @@ final public class Job {
         List<Job> jobs = new ArrayList<Job>(jsonArray.length());
         for (int i = 0; i < jsonArray.length(); ++i) {
             JSONObject json = jsonArray.getJSONObject(i);
-            jobs.add(parseFromJSON(json));
+            jobs.add(parseFromJSON(json, decorator));
         }
         return jobs;
     }
