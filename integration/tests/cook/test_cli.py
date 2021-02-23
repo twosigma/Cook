@@ -2382,6 +2382,29 @@ if __name__ == '__main__':
         finally:
             util.kill_jobs(self.cook_url, uuids, assert_response=False)
 
+    def test_submit_constraint(self):
+        const = {
+            'node-family': {'value': 'n2', 'found': False},
+            'cpu-architecture': {'value': 'intel-cascade-lake', 'found': False},
+        }
+        cp, uuids = cli.submit('ls', self.cook_url,
+                               submit_flags=f'--constraint node-family={const["node-family"]["value"]} --constraint cpu-architecture={const["cpu-architecture"]["value"]}')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        try:
+            job = util.load_job(self.cook_url, uuids[0])
+            constraints = job['constraints']
+            for c in constraints:
+                k = c[0]
+                v = c[2]
+                self.assertTrue(k in const)
+                self.assertEqual(v, const[k]['value'])
+                const[k]['found'] = True
+            for _, v in const.items():
+                self.assertTrue(v['found'])
+
+        finally:
+            util.kill_jobs(self.cook_url, uuids, assert_response=False)
+
     def test_bad_cluster_argument(self):
         cluster_name = 'foo'
         config = {'clusters': [{'name': cluster_name, 'url': self.cook_url}],
