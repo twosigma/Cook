@@ -2384,11 +2384,11 @@ if __name__ == '__main__':
 
     def test_submit_constraint(self):
         const = {
-            'c1': {'value': str(util.make_temporal_uuid()), 'found': False},
-            'c2': {'value': str(util.make_temporal_uuid()), 'found': False},
+            'node-family': {'value': 'n2', 'found': False},
+            'cpu-architecture': {'value': 'intel-cascade-lake', 'found': False},
         }
         cp, uuids = cli.submit('ls', self.cook_url,
-                               submit_flags=f'--constraint c1={const["c1"]["value"]} --constraint c2={const["c2"]["value"]}')
+                               submit_flags=f'--constraint node-family={const["node-family"]["value"]} --constraint cpu-architecture={const["cpu-architecture"]["value"]}')
         self.assertEqual(0, cp.returncode, cp.stderr)
         try:
             job = util.load_job(self.cook_url, uuids[0])
