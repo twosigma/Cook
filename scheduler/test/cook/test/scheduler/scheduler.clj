@@ -2410,23 +2410,37 @@
               compute-cluster-3]))))
 
   (deftest test-distribute-jobs-to-compute-clusters
+    (testutil/setup)
     (reset! cook.compute-cluster/cluster-name->compute-cluster-atom
             {compute-cluster-1-name compute-cluster-1
              compute-cluster-2-name compute-cluster-2
              compute-cluster-3-name compute-cluster-3})
-    (let [job {:job/checkpoint true
-               :job/instance instances}]
-      (is (= {compute-cluster-1 [job]}
-             (sched/distribute-jobs-to-compute-clusters
-               [job]
-               "test-pool"
-               [compute-cluster-1
-                compute-cluster-2
-                compute-cluster-3]
-               sched/job->acceptable-compute-clusters)))
-      (is (= {}
-             (sched/distribute-jobs-to-compute-clusters
-               [job]
-               "test-pool"
-               [compute-cluster-2]
-               sched/job->acceptable-compute-clusters))))))
+    (let [base-job {:job/checkpoint true
+                    :job/instance instances}]
+      (let [uuid (UUID/randomUUID)
+            job1 (assoc base-job :job/uuid uuid)]
+        (is (= {compute-cluster-1 [job1]}
+               (sched/distribute-jobs-to-compute-clusters
+                 [job1]
+                 "test-pool"
+                 [compute-cluster-1
+                  compute-cluster-2
+                  compute-cluster-3]
+                 sched/job->acceptable-compute-clusters))))
+      (testing "max-jobs-for-autoscaling=0"
+        (let [job (assoc base-job :job/uuid (UUID/randomUUID))]
+          (is (= {}
+                 (sched/distribute-jobs-to-compute-clusters
+                   []
+                   "test-pool"
+                   [compute-cluster-1
+                    compute-cluster-2
+                    compute-cluster-3]
+                   sched/job->acceptable-compute-clusters)))))
+      (let [job (assoc base-job :job/uuid (UUID/randomUUID))]
+        (is (= {}
+               (sched/distribute-jobs-to-compute-clusters
+                 [(assoc job :job/uuid (UUID/randomUUID))]
+                 "test-pool"
+                 [compute-cluster-2]
+                 sched/job->acceptable-compute-clusters)))))))

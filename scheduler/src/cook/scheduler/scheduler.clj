@@ -25,6 +25,7 @@
             [clojure.tools.logging :as log]
             [clojure.walk :as walk]
             [cook.cached-queries :as cached-queries]
+            [cook.caches :as caches]
             [cook.compute-cluster :as cc]
             [cook.config :as config]
             [cook.datomic :as datomic]
@@ -1016,7 +1017,7 @@
   along with a hash of the pending job's uuid. Returns a
   compute-cluster->jobs map. That is the API any future
   improvements need to stick to."
-  [pending-jobs pool-name compute-clusters job->acceptable-compute-clusters-fn]
+  [autoscalable-jobs pool-name compute-clusters job->acceptable-compute-clusters-fn]
   (let [compute-cluster->jobs
         (group-by
           (fn choose-compute-cluster-for-autoscaling
@@ -1027,7 +1028,7 @@
                 :no-acceptable-compute-cluster
                 (nth preferred-compute-clusters
                      (-> uuid hash (mod (count preferred-compute-clusters)))))))
-          pending-jobs)]
+          autoscalable-jobs)]
     (when-let [jobs (:no-acceptable-compute-cluster compute-cluster->jobs)]
       (log/info "In" pool-name
                 "pool, there are jobs with no acceptable compute cluster for autoscaling"
@@ -1038,22 +1039,25 @@
   "Autoscales the given pool to satisfy the given pending jobs, if:
   - There is at least one pending job
   - There is at least one compute cluster configured to do autoscaling"
-  [pending-jobs pool-name compute-clusters job->acceptable-compute-clusters-fn]
+  [pending-jobs-for-autoscaling pool-name compute-clusters job->acceptable-compute-clusters-fn]
   (timers/time!
     (timers/timer (metric-title "trigger-autoscaling!-duration" pool-name))
     (try
       (let [autoscaling-compute-clusters (filter #(cc/autoscaling? % pool-name) compute-clusters)
             num-autoscaling-compute-clusters (count autoscaling-compute-clusters)]
-        (when (and (pos? num-autoscaling-compute-clusters) (seq pending-jobs))
-          (let [{:keys [max-jobs-for-autoscaling]} (config/kubernetes)
-                pending-jobs-for-autoscaling (take max-jobs-for-autoscaling pending-jobs)
-                compute-cluster->jobs (distribute-jobs-to-compute-clusters
+        (when (and (pos? num-autoscaling-compute-clusters) (seq pending-jobs-for-autoscaling))
+          (log/info "In" pool-name "pool, preparing for autoscaling")
+          (let [compute-cluster->jobs (distribute-jobs-to-compute-clusters
                                         pending-jobs-for-autoscaling pool-name autoscaling-compute-clusters
                                         job->acceptable-compute-clusters-fn)]
             (log/info "In" pool-name "pool, starting autoscaling")
-            (doseq [[compute-cluster jobs-for-cluster] compute-cluster->jobs]
-              (cc/autoscale! compute-cluster pool-name jobs-for-cluster adjust-job-resources-for-pool-fn))
-            (log/info "In" pool-name "pool, done autoscaling"))))
+            (->> compute-cluster->jobs
+                 (map
+                   (fn [[compute-cluster jobs-for-cluster]]
+                     (future (cc/autoscale! compute-cluster pool-name jobs-for-cluster adjust-job-resources-for-pool-fn))))
+                 doall
+                 (run! deref)))
+          (log/info "In" pool-name "pool, done autoscaling")))
       (catch Throwable e
         (log/error e "In" pool-name "pool, encountered error while triggering autoscaling")))))
 
@@ -1099,15 +1103,17 @@
                                                           frequencies)
               user->number-total-considerable-jobs (->> considerable-jobs
                                                         (map cached-queries/job-ent->user)
-                                                        frequencies)]
+                                                        frequencies)
+              number-matched (count matched-job-uuids)
+              number-total (count considerable-jobs)
+              number-unmatched (- number-total number-matched)]
 
           (log/info "In" pool-name "pool, matching offers to considerable jobs"
                     {:jobs-considerable {:head-matched? matched-considerable-jobs-head?
                                          :head-resources first-considerable-job-resources
-                                         :number-matched (count matched-job-uuids)
-                                         :number-total (count considerable-jobs)
-                                         :number-unmatched (- (count considerable-jobs)
-                                                              (count matched-job-uuids))
+                                         :number-matched number-matched
+                                         :number-total number-total
+                                         :number-unmatched number-unmatched
                                          :stats (jobs->stats considerable-jobs)
                                          :user->number-matched user->number-matched-considerable-jobs
                                          :user->number-total user->number-total-considerable-jobs
@@ -1232,16 +1238,43 @@
                     (launch-matched-tasks! matches conn db fenzo mesos-run-as-user pool-name)
                     (update-host-reservations! rebalancer-reservation-atom matched-job-uuids)
                     matched-considerable-jobs-head?))
+                ; Absolute maximum jobs we will consider autoscaling to.
+                {:keys [max-jobs-for-autoscaling autoscaling-scale-factor]} (config/kubernetes)
+                ; The fraction of jobs we tried to match that actually matched.
+                fraction-unmatched (if (pos? number-total) (/ (float number-unmatched) number-total) 0)
+                ; We want to autoscale any unmatched job, or
+                ; We want to scale our max-jobs-for-autoscaling by the fraction of the jobs we just matched.
+                ; E.g. If we matched 20% of the queue, then we want to autoscale to 20% of max-jobs-for-autoscaling)
+                ; We include a scale factor however, so that if we match 20$ and scale factor is 2.5, we'll generate
+                ; pods for 50% of max-jobs-for-autoscaling.
+                number-for-autoscaling (-> fraction-unmatched
+                                           (* autoscaling-scale-factor)
+                                           (min 1) ; Can't match more than 100% of max-jobs-for-autoscaling.
+                                           (* max-jobs-for-autoscaling)
+                                           int
+                                           (max number-unmatched)) ; Autoscale at least the pods that failed to match.
                 ;; We need to filter pending jobs based on quota so that we don't
                 ;; trigger autoscaling beyond what users have quota to actually run
                 autoscalable-jobs (->> pool-name
                                        (get @pool-name->pending-jobs-atom)
                                        (tools/filter-pending-jobs-for-quota pool-name (atom {}) (atom {})
-                                         user->quota user->usage (tools/global-pool-quota (config/pool-quotas) pool-name)))]
+                                                                            user->quota user->usage (tools/global-pool-quota (config/pool-quotas) pool-name))
+                                       (take number-for-autoscaling))
+                filtered-autoscalable-jobs (remove #(.getIfPresent caches/autoscale-retry-blacklist (:job/uuid %)) autoscalable-jobs)]
+            ; When we have at least 20 jobs being looked at, metric which fraction have matched.
+            (when (> number-total 20)
+              (histograms/update! (histograms/histogram (metric-title "fraction-unmatched" pool-name)) fraction-unmatched))
+            (when (pos? number-total)
+              (log/info "In" pool-name "autoscaling variables" {:number-total number-total
+                                                                :fraction-unmatched fraction-unmatched
+                                                                :number-for-autoscaling number-for-autoscaling
+                                                                :autoscalable-jobs (count autoscalable-jobs)
+                                                                :filtered-autoscalable-jobs (count filtered-autoscalable-jobs)
+                                                                :number-unmatched number-unmatched}))
             ;; This call needs to happen *after* launch-matched-tasks!
             ;; in order to avoid autoscaling tasks taking up available
             ;; capacity that was already matched for real Cook tasks.
-            (trigger-autoscaling! autoscalable-jobs pool-name compute-clusters job->acceptable-compute-clusters-fn)
+            (trigger-autoscaling! filtered-autoscalable-jobs pool-name compute-clusters job->acceptable-compute-clusters-fn)
             matched-head-or-no-matches?))
         (catch Throwable t
           (meters/mark! handle-resource-offer!-errors)

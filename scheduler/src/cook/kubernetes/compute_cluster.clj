@@ -485,6 +485,7 @@
                          (map (fn [{:keys [job/user job/uuid job/environment] :as job}]
                                 (let [pool-specific-resources
                                       ((adjust-job-resources-for-pool-fn pool-name) job (tools/job-ent->resources job))]
+                                  (.put cook.caches/autoscale-retry-blacklist uuid uuid)
                                   {:command {:user (or user-from-synthetic-pods-config user)
                                              :value command}
                                    :container {:docker {:image image}}
@@ -530,8 +531,9 @@
                          (take max-launchable))
                     num-synthetic-pods-to-launch (count task-metadata-seq)]
                 (meters/mark! (metrics/meter "cc-synthetic-pod-submit-rate" name) num-synthetic-pods-to-launch)
-                (log/info "In" name "compute cluster, launching" num-synthetic-pods-to-launch
-                          "synthetic pod(s) in" synthetic-task-pool-name "pool")
+                (when (pos? num-synthetic-pods-to-launch)
+                  (log/info "In" name "compute cluster, launching" num-synthetic-pods-to-launch
+                            "synthetic pod(s) in" synthetic-task-pool-name "pool"))
                 (let [timer-context-launch-tasks (timers/start (metrics/timer "cc-synthetic-pod-launch-tasks" name))]
                   (cc/launch-tasks this
                                    synthetic-task-pool-name

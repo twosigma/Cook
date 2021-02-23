@@ -30,3 +30,9 @@
 (mount/defstate ^Cache task->feature-vector-cache :start (new-cache config/config))
 (mount/defstate ^Cache job-uuid->dataset-maps-cache :start (new-cache config/config))
 (mount/defstate ^Cache user->group-ids-cache :start (new-cache config/config))
+(mount/defstate ^Cache autoscale-retry-blacklist :start
+  (-> (CacheBuilder/newBuilder)
+      (.maximumSize 50000)
+      ; We blocklist a given job from being autoscaled soon after a prior autoscaling.
+      (.expireAfterWrite (:autoscale-blocklist-seconds (config/kubernetes)) TimeUnit/SECONDS)
+      (.build)))
