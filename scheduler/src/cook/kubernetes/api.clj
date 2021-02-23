@@ -1062,11 +1062,10 @@
     (.setRestartPolicy pod-spec "Never")
 
     (.addTolerationsItem pod-spec toleration-for-deletion-candidate-of-autoscaler)
-    (when pool-name
-      (.addTolerationsItem pod-spec (toleration-for-pool cook-pool-taint-name cook-pool-taint-prefix pool-name))
-      ; We need to make sure synthetic pods --- which don't have a hostname set --- have a node selector
-      ; to run only in nodes labelled with the appropriate cook pool
-      (when-not hostname (add-node-selector pod-spec cook-pool-label-name pool-name)))
+    (.addTolerationsItem pod-spec (toleration-for-pool cook-pool-taint-name cook-pool-taint-prefix pool-name))
+    ; We need to make sure synthetic pods --- which don't have a hostname set --- have a node selector
+    ; to run only in nodes labelled with the appropriate cook pool
+    (when-not hostname (add-node-selector pod-spec cook-pool-label-name pool-name))
 
     (when pod-constraints
       (doseq [{:keys [constraint/attribute
