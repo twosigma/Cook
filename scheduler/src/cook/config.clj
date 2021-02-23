@@ -509,6 +509,8 @@
                                                         {:json-value (str lock-objects)})
                              :default-workdir "/mnt/sandbox"
                              :max-jobs-for-autoscaling 1000
+                             :autoscale-blocklist-seconds 240 ; Should be greater than the time to start a pod and have it accept workloads.
+                             :autoscaling-scale-factor 1.0
                              :pod-condition-containers-not-initialized-seconds 120
                              :pod-condition-unschedulable-seconds 60
                              :reconnect-delay-ms 60000

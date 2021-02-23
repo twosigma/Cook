@@ -112,6 +112,7 @@
                       :nrepl {}
                       :port 80
                       :scheduler {}
+                      :kubernetes {:autoscale-blocklist-seconds 1 :max-jobs-for-autoscaling 1000 :autoscaling-scale-factor 1000.0}
                       :unhandled-exceptions {}
                       :zookeeper {:local? true}}]
   (defn setup
@@ -133,7 +134,8 @@
                            #'caches/task->feature-vector-cache
                            #'caches/job-ent->user-cache
                            #'cook.quota/per-user-per-pool-launch-rate-limiter
-                           #'caches/user->group-ids-cache)))
+                           #'caches/user->group-ids-cache
+                           #'caches/autoscale-retry-blacklist)))
 
 (defn run-test-server-in-thread
   "Runs a minimal cook scheduler server for testing inside a thread. Note that it is not properly kerberized."
