@@ -307,8 +307,8 @@
   [{:keys [name] :as compute-cluster} pod-name {:keys [synthesized-state] :as k8s-actual-state-dict}]
   (if (some-> synthesized-state :pod-preempted-timestamp)
     (do
-      (log/info "In compute cluster" name ", pod" pod-name
-                "failed, seemingly due to preemption")
+      (log/info "In compute cluster" name ", pod" pod-name "failed and has"
+                ":pod-preempted-timestamp, so is being treated as preempted")
       (handle-pod-preemption compute-cluster pod-name))
     (handle-pod-completed compute-cluster pod-name k8s-actual-state-dict)))
 
