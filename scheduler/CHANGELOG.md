@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.51.2] - 2021-02-24
+### Added
+- Support for the default pool being a k8s pool, from @dposada
+### Fixed
+- Mark failure reason correctly for pod failure from preemption, from @dposada
+
 ## [1.51.1] - 2021-02-16
 ### Changed
 - Support ignoring specific group ID's when computing supplemental group IDs, from @scrosby
