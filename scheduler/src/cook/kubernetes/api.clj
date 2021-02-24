@@ -4,9 +4,9 @@
             [clojure.string :as str]
             [clojure.tools.logging :as log]
             [clojure.walk :as walk]
+            [cook.cached-queries :as cached-queries]
             [cook.config :as config]
             [cook.kubernetes.metrics :as metrics]
-            [cook.pool :as pool]
             [cook.regexp-tools :as regexp-tools]
             [cook.scheduler.constraints :as constraints]
             [cook.task :as task]
@@ -841,7 +841,7 @@
         {:keys [docker volumes]} container
         {:keys [image parameters port-mapping]} docker
         {:keys [environment]} command
-        pool-name (some-> job :job/pool :pool/name)
+        pool-name (cached-queries/job->pool-name job)
         ; gpu count is not stored in scalar-requests because Fenzo does not handle gpus in binpacking
         gpus (or (:gpus resources) 0)
         gpu-model-requested (constraints/job->gpu-model-requested gpus job pool-name)
@@ -899,7 +899,7 @@
         progress-env (task/build-executor-environment job)
         checkpoint-env (checkpoint->env checkpoint)
         metadata-env {"COOK_COMPUTE_CLUSTER_NAME" compute-cluster-name
-                      "COOK_POOL" (pool/pool-name-or-default pool-name)
+                      "COOK_POOL" pool-name
                       "COOK_SCHEDULER_REST_URL" (config/scheduler-rest-url)}
         main-env-base (merge environment params-env progress-env sandbox-env checkpoint-env metadata-env)
         progress-file-var (get main-env-base task/progress-meta-env-name task/default-progress-env-name)
@@ -1062,16 +1062,10 @@
     (.setRestartPolicy pod-spec "Never")
 
     (.addTolerationsItem pod-spec toleration-for-deletion-candidate-of-autoscaler)
-    ; TODO:
-    ; This will need to change to allow for setting the toleration
-    ; for the default pool when the pool was not specified by the
-    ; user. For the time being, this isn't a problem only if / when
-    ; the default pool is not being fed offers from Kubernetes.
-    (when pool-name
-      (.addTolerationsItem pod-spec (toleration-for-pool cook-pool-taint-name cook-pool-taint-prefix pool-name))
-      ; We need to make sure synthetic pods --- which don't have a hostname set --- have a node selector
-      ; to run only in nodes labelled with the appropriate cook pool
-      (when-not hostname (add-node-selector pod-spec cook-pool-label-name pool-name)))
+    (.addTolerationsItem pod-spec (toleration-for-pool cook-pool-taint-name cook-pool-taint-prefix pool-name))
+    ; We need to make sure synthetic pods --- which don't have a hostname set --- have a node selector
+    ; to run only in nodes labelled with the appropriate cook pool
+    (when-not hostname (add-node-selector pod-spec cook-pool-label-name pool-name))
 
     (when pod-constraints
       (doseq [{:keys [constraint/attribute
