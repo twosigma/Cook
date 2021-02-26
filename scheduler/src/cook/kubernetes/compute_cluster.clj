@@ -485,7 +485,7 @@
                          (map (fn [{:keys [job/user job/uuid job/environment] :as job}]
                                 (let [pool-specific-resources
                                       ((adjust-job-resources-for-pool-fn pool-name) job (tools/job-ent->resources job))]
-                                  (.put cook.caches/autoscale-retry-blacklist uuid uuid)
+                                  (.put cook.caches/recent-synthetic-pod-job-uuids uuid uuid)
                                   {:command {:user (or user-from-synthetic-pods-config user)
                                              :value command}
                                    :container {:docker {:image image}}

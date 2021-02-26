@@ -1260,7 +1260,7 @@
                                        (tools/filter-pending-jobs-for-quota pool-name (atom {}) (atom {})
                                                                             user->quota user->usage (tools/global-pool-quota (config/pool-quotas) pool-name))
                                        (take number-for-autoscaling))
-                filtered-autoscalable-jobs (remove #(.getIfPresent caches/autoscale-retry-blacklist (:job/uuid %)) autoscalable-jobs)]
+                filtered-autoscalable-jobs (remove #(.getIfPresent caches/recent-synthetic-pod-job-uuids (:job/uuid %)) autoscalable-jobs)]
             ; When we have at least 20 jobs being looked at, metric which fraction have matched.
             (when (> number-total 20)
               (histograms/update! (histograms/histogram (metric-title "fraction-unmatched" pool-name)) fraction-unmatched))
