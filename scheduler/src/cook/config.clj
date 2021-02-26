@@ -523,7 +523,8 @@
                        (merge {:global-min-match-interval-millis 100
                                :target-per-pool-match-interval-millis 3000
                                :unmatched-cycles-warn-threshold 500
-                               :unmatched-fraction-warn-threshold 0.5}
+                               :unmatched-fraction-warn-threshold 0.5
+                               :considerable-job-threshold-to-collect-job-match-statistics 20}
                               offer-matching))
      :queue-limits (fnk [[:config {queue-limits {}}]]
                      (merge {:update-interval-seconds 180}

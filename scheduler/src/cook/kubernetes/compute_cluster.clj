@@ -531,9 +531,8 @@
                          (take max-launchable))
                     num-synthetic-pods-to-launch (count task-metadata-seq)]
                 (meters/mark! (metrics/meter "cc-synthetic-pod-submit-rate" name) num-synthetic-pods-to-launch)
-                (when (pos? num-synthetic-pods-to-launch)
-                  (log/info "In" name "compute cluster, launching" num-synthetic-pods-to-launch
-                            "synthetic pod(s) in" synthetic-task-pool-name "pool"))
+                (log/info "In" name "compute cluster, launching" num-synthetic-pods-to-launch
+                          "synthetic pod(s) in" synthetic-task-pool-name "pool")
                 (let [timer-context-launch-tasks (timers/start (metrics/timer "cc-synthetic-pod-launch-tasks" name))]
                   (cc/launch-tasks this
                                    synthetic-task-pool-name
