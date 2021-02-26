@@ -404,7 +404,7 @@ class CookTest(util.CookTest):
                                 'parameters': [{'key': 'env', 'value': 'FOO=bar'},
                                                {'key': 'workdir', 'value': '/var/lib/pqr'}]},
                      'volumes': [{'mode': 'RW',
-                                  'host-path': '/lib/modules',
+                                  'host-path': '/lib/fail',
                                   'container-path': '/var/lib/pqr'}]}
         job_uuid, resp = util.submit_job(self.cook_url, container=container)
         try:
