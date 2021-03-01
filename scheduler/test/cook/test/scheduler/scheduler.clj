@@ -2103,7 +2103,24 @@
                 offers [offer-11]]
             (is (run-handle-resource-offers! num-considerable offers "test-pool"))
             (is (= :end-marker (async/<!! offers-chan)))
-            (is (empty? @launched-job-names-atom))))))))
+            (is (empty? @launched-job-names-atom))))
+
+        (let [autoscale-jobs (atom nil)]
+          (with-redefs [sched/trigger-autoscaling!
+                        (fn [pending-jobs _ _ _] (reset! autoscale-jobs
+                                                         (->> pending-jobs
+                                                              (map :job/name)
+                                                              set)))]
+
+            (testing "Autoscaler increases offers."
+              (let [num-considerable 6
+                    offers [offer-1 offer-2 offer-3]]
+                (is (run-handle-resource-offers! num-considerable offers "test-pool"))
+                (is (= :end-marker (async/<!! offers-chan)))
+                (is (= 3 (count @launched-offer-ids-atom)))
+                (is (= 4 (count @launched-job-names-atom)))
+                (is (= #{"job-1" "job-2" "job-3" "job-4"} (set @launched-job-names-atom)))
+                (is (= #{"job-5" "job-6" "job-7" "job-8"} @autoscale-jobs))))))))))
 
 (deftest test-monitor-tx-report-queue
   (let [uri "datomic:mem://test-monitor-tx-report-queue"
