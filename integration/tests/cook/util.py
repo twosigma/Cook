@@ -1457,20 +1457,13 @@ def is_job_progress_supported():
 
 @functools.lru_cache()
 def using_kubernetes_default_shell():
-    """Returns true if Kuberentes scheduler is configured with our default command.
+    """Returns true if Kubernetes scheduler is configured with our default command.
        Not that this predicate *does not* check whether the Kubernetes scheduler is in use."""
     cook_url = retrieve_cook_url()
     cook_settings = settings(cook_url)
     k8s_custom_shell = get_in(cook_settings, 'kubernetes', 'custom-shell')
     default_shell = ['/bin/sh', '-c']
     return k8s_custom_shell == default_shell
-
-
-def get_kubernetes_config():
-    """Returns Kuberentes settings"""
-    cook_url = retrieve_cook_url()
-    cook_settings = settings(cook_url)
-    return get_in(cook_settings, 'kubernetes')
 
 
 def slave_cpus(mesos_url, hostname):

@@ -896,11 +896,10 @@ class CookTest(util.CookTest):
         command = self.memory_limit_script_command(count=2048)
         self.memory_limit_exceeded_helper(command, 'mesos', mem=32)
 
-    @unittest.skipUnless(util.using_kubernetes(), "Memory limit can only be removed on kubernetes")
+    @unittest.skipUnless(util.using_kubernetes() and "memory-limit-job-label-name" in util.kubernetes_settings(),
+                         "Memory limit can only be removed on kubernetes with job label support")
     def test_memory_limit(self):
-        memory_limit_job_label_name = util.get_kubernetes_config().get("memory-limit-job-label-name", None)
-        if not memory_limit_job_label_name:
-            return
+        memory_limit_job_label_name = util.kubernetes_settings()["memory-limit-job-label-name"]
         command = "python -c 'MB = 1024 * 1024 ; a = \"a\" * (25 * MB)'"
 
         # job requests 20MB of memory, does not allow memory usage above request, and allocates 25MB of memory
