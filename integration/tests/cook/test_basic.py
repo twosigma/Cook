@@ -898,13 +898,16 @@ class CookTest(util.CookTest):
 
     @unittest.skipUnless(util.using_kubernetes(), "Memory limit can only be removed on kubernetes")
     def test_memory_limit(self):
+        memory_limit_job_label_name = util.get_kubernetes_config().get("memory-limit-job-label-name", None)
+        if not memory_limit_job_label_name:
+            return
         command = "python -c 'MB = 1024 * 1024 ; a = \"a\" * (25 * MB)'"
 
         # job requests 20MB of memory, does not allow memory usage above request, and allocates 25MB of memory
         job_uuid1, resp1 = util.submit_job(self.cook_url, mem=20, command=command)
 
         # job requests 20MB of memory, allows memory usage above request, and allocates 25MB of memory
-        job_uuid2, resp2 = util.submit_job(self.cook_url, mem=20, command=command, labels={"ts.platform/memory.allow-usage-above-request": "True"})
+        job_uuid2, resp2 = util.submit_job(self.cook_url, mem=20, command=command, labels={memory_limit_job_label_name: "True"})
 
         try:
             self.assertEqual(resp1.status_code, 201, msg=resp1.content)

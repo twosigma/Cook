@@ -1466,6 +1466,13 @@ def using_kubernetes_default_shell():
     return k8s_custom_shell == default_shell
 
 
+def get_kubernetes_config():
+    """Returns Kuberentes settings"""
+    cook_url = retrieve_cook_url()
+    cook_settings = settings(cook_url)
+    return get_in(cook_settings, 'kubernetes')
+
+
 def slave_cpus(mesos_url, hostname):
     """Returns the cpus of the specified Mesos agent"""
     slaves = get_mesos_slaves(mesos_url)['slaves']
