@@ -2436,14 +2436,14 @@
                     :job/instance instances}]
       (let [uuid (UUID/randomUUID)
             job1 (assoc base-job :job/uuid uuid)]
-        (is (= {compute-cluster-1 [job1]}
-               (sched/distribute-jobs-to-compute-clusters
-                 [job1]
-                 "test-pool"
-                 [compute-cluster-1
-                  compute-cluster-2
-                  compute-cluster-3]
-                 sched/job->acceptable-compute-clusters))))
+        (is (= (list [job1])
+               (vals (sched/distribute-jobs-to-compute-clusters
+                       [job1]
+                       "test-pool"
+                       [compute-cluster-1
+                        compute-cluster-2
+                        compute-cluster-3]
+                       sched/job->acceptable-compute-clusters)))))
       (testing "max-jobs-for-autoscaling=0"
         (let [job (assoc base-job :job/uuid (UUID/randomUUID))]
           (is (= {}
