@@ -1242,14 +1242,15 @@
                 {:keys [max-jobs-for-autoscaling autoscaling-scale-factor]} (config/kubernetes)
                 ; The fraction of jobs we tried to match that didn't actually get matched.
                 fraction-unmatched-jobs (if (pos? number-considerable-jobs) (/ (float number-unmatched-jobs) number-considerable-jobs) 0)
-                ; We want to autoscale any unmatched job or
+                ; We want to autoscale any unmatched job
+                ;     OR
                 ; we want to scale our max-jobs-for-autoscaling by the fraction of the jobs we weren't able to just match.
                 ; E.g. If we didn't match 20% of the queue, then we want to autoscale to 20% of max-jobs-for-autoscaling.
                 ; We include a scale factor however, so that if we don't match 20% and scale factor is 2.5, we'll generate
                 ; pods for 50% of max-jobs-for-autoscaling.
                 ; We do this to vary our aggression for autoscaling based on how well we're matching jobs on our existing resources.
                 ; If we're matching most of the jobs in the queue then we don't need to autoscale much. If we are not matching anything
-                ; then we want to autoscale maximally aggressive.
+                ; then we want to autoscale maximally aggressively.
                 max-jobs-for-autoscaling-scaled (-> fraction-unmatched-jobs
                                                     (* autoscaling-scale-factor)
                                                     (min 1) ; Can't match more than 100% of max-jobs-for-autoscaling.
@@ -1264,17 +1265,17 @@
                                                                             user->quota user->usage (tools/global-pool-quota (config/pool-quotas) pool-name))
                                        (take max-jobs-for-autoscaling-scaled))
                 filtered-autoscalable-jobs (remove #(.getIfPresent caches/recent-synthetic-pod-job-uuids (:job/uuid %)) autoscalable-jobs)]
-            ; When we have at least 20 jobs being looked at, metric which fraction have matched. This lets us measure how well we're matching on existing resources.
-            ; We only measure when there's at least 20 jobs being considered so that our measurements are less noisy.
+            ; When we have at least a minimum jobs being looked at, metric which fraction have matched. This lets us measure how well we're matching on existing resources.
+            ; We only measure when there's a minimum jobs being considered so that our measurements are less noisy.
             (when (> number-considerable-jobs (:considerable-job-threshold-to-collect-job-match-statistics (config/offer-matching)))
               (histograms/update! (histograms/histogram (metric-title "fraction-unmatched-jobs" pool-name)) fraction-unmatched-jobs))
             (when (pos? number-considerable-jobs)
-              (log/info "In" pool-name "autoscaling variables" {:autoscalable-jobs (count autoscalable-jobs)
+              (log/info "In" pool-name "pool, autoscaling variables" {:autoscalable-jobs (count autoscalable-jobs)
                                                                 :filtered-autoscalable-jobs (count filtered-autoscalable-jobs)
                                                                 :fraction-unmatched-jobs fraction-unmatched-jobs
                                                                 :max-jobs-for-autoscaling-scaled max-jobs-for-autoscaling-scaled
-                                                                :number-total number-considerable-jobs
-                                                                :number-unmatched number-unmatched-jobs})
+                                                                :number-considerable-jobs number-considerable-jobs
+                                                                :number-unmatched-jobs number-unmatched-jobs})
               ;; This call needs to happen *after* launch-matched-tasks!
               ;; in order to avoid autoscaling tasks taking up available
               ;; capacity that was already matched for real Cook tasks.
