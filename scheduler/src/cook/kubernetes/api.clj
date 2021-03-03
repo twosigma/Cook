@@ -943,8 +943,12 @@
     (.setTty container true)
     (.setStdin container true)
 
-    ; add memory limit if config flag set-memory-limit? is True
-    (set-mem-cpu-resources resources computed-mem (when (:set-memory-limit? (config/kubernetes)) computed-mem) cpus cpus)
+    ; Don't add memory limit if user sets job label to allow memory usage above request to "true"
+    (let [allow-memory-usage-above-request (some->> (:memory-limit-job-label-name (config/kubernetes))
+                                             (get labels)
+                                             clojure.string/lower-case
+                                             (= "true"))]
+      (set-mem-cpu-resources resources computed-mem (when-not allow-memory-usage-above-request computed-mem) cpus cpus))
 
     (when (pos? gpus)
       (.putLimitsItem resources "nvidia.com/gpu" (double->quantity gpus))

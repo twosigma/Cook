@@ -882,12 +882,7 @@ class CookTest(util.CookTest):
 
     @pytest.mark.memlimit
     def test_memory_limit_exceeded_mesos_python(self):
-        settings_dict = util.settings(self.cook_url)
-        set_memory_limit = settings_dict.get("kubernetes", {}).get("set-memory-limit?", True)
-        if util.using_kubernetes() and not set_memory_limit:
-            command = self.infinite_memory_python_command()
-        else:
-            command = self.memory_limit_python_command()
+        command = self.memory_limit_python_command()
         self.memory_limit_exceeded_helper(command, 'mesos')
 
     @pytest.mark.memlimit
@@ -898,13 +893,35 @@ class CookTest(util.CookTest):
 
     @pytest.mark.memlimit
     def test_memory_limit_exceeded_mesos_script(self):
-        settings_dict = util.settings(self.cook_url)
-        set_memory_limit = settings_dict.get("kubernetes", {}).get("set-memory-limit?", True)
-        if util.using_kubernetes() and not set_memory_limit:
-            command = self.infinite_memory_script_command(count=2048)
-        else:
-            command = self.memory_limit_script_command(count=2048)
+        command = self.memory_limit_script_command(count=2048)
         self.memory_limit_exceeded_helper(command, 'mesos', mem=32)
+
+    @unittest.skipUnless(util.using_kubernetes() and "memory-limit-job-label-name" in util.kubernetes_settings(),
+                         "Memory limit can only be removed on kubernetes with job label support")
+    def test_memory_limit(self):
+        memory_limit_job_label_name = util.kubernetes_settings()["memory-limit-job-label-name"]
+        command = "python -c 'MB = 1024 * 1024 ; a = \"a\" * (25 * MB)'"
+
+        # job requests 20MB of memory, does not allow memory usage above request, and allocates 25MB of memory
+        job_uuid1, resp1 = util.submit_job(self.cook_url, mem=20, command=command)
+
+        # job requests 20MB of memory, allows memory usage above request, and allocates 25MB of memory
+        job_uuid2, resp2 = util.submit_job(self.cook_url, mem=20, command=command, labels={memory_limit_job_label_name: "True"})
+
+        try:
+            self.assertEqual(resp1.status_code, 201, msg=resp1.content)
+            job1 = util.wait_for_job(self.cook_url, job_uuid1, 'completed')
+            self.assertEqual('completed', job1['status'])
+            self.assertEqual('failed', job1['instances'][0]['status'])
+            self.assertEqual(2002, job1['instances'][0]['reason_code'])
+
+            self.assertEqual(resp2.status_code, 201, msg=resp2.content)
+            job2 = util.wait_for_job(self.cook_url, job_uuid2, 'completed')
+            self.assertEqual('completed', job2['status'])
+            self.assertEqual('success', job2['instances'][0]['status'])
+
+        finally:
+            util.kill_jobs(self.cook_url, [job_uuid1, job_uuid2], assert_response=False)
 
     def test_get_job(self):
         # schedule a job
