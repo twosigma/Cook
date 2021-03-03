@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.51.3] - 2021-03-03
+### Changed
+- Optimized code for generating synthetic pods to do less work and autoscale less when we're matching more often, from @scrosby
+
 ## [1.51.2] - 2021-02-24
 ### Added
 - Support for the default pool being a k8s pool, from @dposada
