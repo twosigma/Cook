@@ -1265,17 +1265,18 @@
                                                                             user->quota user->usage (tools/global-pool-quota (config/pool-quotas) pool-name))
                                        (take max-jobs-for-autoscaling-scaled))
                 filtered-autoscalable-jobs (remove #(.getIfPresent caches/recent-synthetic-pod-job-uuids (:job/uuid %)) autoscalable-jobs)]
-            ; When we have at least a minimum jobs being looked at, metric which fraction have matched. This lets us measure how well we're matching on existing resources.
-            ; We only measure when there's a minimum jobs being considered so that our measurements are less noisy.
+            ; When we have at least a minimum number of jobs being looked at, metric which fraction have matched.
+            ; This lets us measure how well we're matching on existing resources.
+            ; We only measure when there's a minimum number of jobs being considered so that our measurements are less noisy.
             (when (> number-considerable-jobs (:considerable-job-threshold-to-collect-job-match-statistics (config/offer-matching)))
               (histograms/update! (histograms/histogram (metric-title "fraction-unmatched-jobs" pool-name)) fraction-unmatched-jobs))
             (when (pos? number-considerable-jobs)
               (log/info "In" pool-name "pool, autoscaling variables" {:autoscalable-jobs (count autoscalable-jobs)
-                                                                :filtered-autoscalable-jobs (count filtered-autoscalable-jobs)
-                                                                :fraction-unmatched-jobs fraction-unmatched-jobs
-                                                                :max-jobs-for-autoscaling-scaled max-jobs-for-autoscaling-scaled
-                                                                :number-considerable-jobs number-considerable-jobs
-                                                                :number-unmatched-jobs number-unmatched-jobs})
+                                                                      :filtered-autoscalable-jobs (count filtered-autoscalable-jobs)
+                                                                      :fraction-unmatched-jobs fraction-unmatched-jobs
+                                                                      :max-jobs-for-autoscaling-scaled max-jobs-for-autoscaling-scaled
+                                                                      :number-considerable-jobs number-considerable-jobs
+                                                                      :number-unmatched-jobs number-unmatched-jobs})
               ;; This call needs to happen *after* launch-matched-tasks!
               ;; in order to avoid autoscaling tasks taking up available
               ;; capacity that was already matched for real Cook tasks.

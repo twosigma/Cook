@@ -503,8 +503,7 @@
                          (repeatedly
                            controller-lock-num-shards
                            #(ReentrantLock.))]
-                     (merge {
-                             :autoscaling-scale-factor 1.0
+                     (merge {:autoscaling-scale-factor 1.0
                              :controller-lock-num-shards controller-lock-num-shards
                              :controller-lock-objects (with-meta
                                                         lock-objects
