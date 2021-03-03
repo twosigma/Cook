@@ -503,7 +503,8 @@
                          (repeatedly
                            controller-lock-num-shards
                            #(ReentrantLock.))]
-                     (merge {:controller-lock-num-shards controller-lock-num-shards
+                     (merge {:autoscaling-scale-factor 1.0
+                             :controller-lock-num-shards controller-lock-num-shards
                              :controller-lock-objects (with-meta
                                                         lock-objects
                                                         {:json-value (str lock-objects)})
@@ -513,11 +514,15 @@
                              :pod-condition-unschedulable-seconds 60
                              :reconnect-delay-ms 60000
                              :set-container-cpu-limit? true
+                             :set-memory-limit? true
                              :synthetic-pod-condition-unschedulable-seconds 900
-                             :set-memory-limit? true}
+                             :synthetic-pod-recency-size 50000
+                             :synthetic-pod-recency-seconds 120 ; Should be greater than the time to start a node and have it accept workloads.
+                             }
                             kubernetes)))
      :offer-matching (fnk [[:config {offer-matching {}}]]
-                       (merge {:global-min-match-interval-millis 100
+                       (merge {:considerable-job-threshold-to-collect-job-match-statistics 20
+                               :global-min-match-interval-millis 100
                                :target-per-pool-match-interval-millis 3000
                                :unmatched-cycles-warn-threshold 500
                                :unmatched-fraction-warn-threshold 0.5}

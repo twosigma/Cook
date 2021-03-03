@@ -2103,7 +2103,24 @@
                 offers [offer-11]]
             (is (run-handle-resource-offers! num-considerable offers "test-pool"))
             (is (= :end-marker (async/<!! offers-chan)))
-            (is (empty? @launched-job-names-atom))))))))
+            (is (empty? @launched-job-names-atom))))
+
+        (let [autoscale-jobs (atom nil)]
+          (with-redefs [sched/trigger-autoscaling!
+                        (fn [pending-jobs _ _ _] (reset! autoscale-jobs
+                                                         (->> pending-jobs
+                                                              (map :job/name)
+                                                              set)))]
+
+            (testing "Autoscaler increases offers."
+              (let [num-considerable 6
+                    offers [offer-1 offer-2 offer-3]]
+                (is (run-handle-resource-offers! num-considerable offers "test-pool"))
+                (is (= :end-marker (async/<!! offers-chan)))
+                (is (= 3 (count @launched-offer-ids-atom)))
+                (is (= 4 (count @launched-job-names-atom)))
+                (is (= #{"job-1" "job-2" "job-3" "job-4"} (set @launched-job-names-atom)))
+                (is (= #{"job-5" "job-6" "job-7" "job-8"} @autoscale-jobs))))))))))
 
 (deftest test-monitor-tx-report-queue
   (let [uri "datomic:mem://test-monitor-tx-report-queue"
@@ -2410,23 +2427,37 @@
               compute-cluster-3]))))
 
   (deftest test-distribute-jobs-to-compute-clusters
+    (testutil/setup)
     (reset! cook.compute-cluster/cluster-name->compute-cluster-atom
             {compute-cluster-1-name compute-cluster-1
              compute-cluster-2-name compute-cluster-2
              compute-cluster-3-name compute-cluster-3})
-    (let [job {:job/checkpoint true
-               :job/instance instances}]
-      (is (= {compute-cluster-1 [job]}
-             (sched/distribute-jobs-to-compute-clusters
-               [job]
-               "test-pool"
-               [compute-cluster-1
-                compute-cluster-2
-                compute-cluster-3]
-               sched/job->acceptable-compute-clusters)))
-      (is (= {}
-             (sched/distribute-jobs-to-compute-clusters
-               [job]
-               "test-pool"
-               [compute-cluster-2]
-               sched/job->acceptable-compute-clusters))))))
+    (let [base-job {:job/checkpoint true
+                    :job/instance instances}]
+      (let [uuid (UUID/randomUUID)
+            job1 (assoc base-job :job/uuid uuid)]
+        (is (= (list [job1])
+               (vals (sched/distribute-jobs-to-compute-clusters
+                       [job1]
+                       "test-pool"
+                       [compute-cluster-1
+                        compute-cluster-2
+                        compute-cluster-3]
+                       sched/job->acceptable-compute-clusters)))))
+      (testing "max-jobs-for-autoscaling=0"
+        (let [job (assoc base-job :job/uuid (UUID/randomUUID))]
+          (is (= {}
+                 (sched/distribute-jobs-to-compute-clusters
+                   []
+                   "test-pool"
+                   [compute-cluster-1
+                    compute-cluster-2
+                    compute-cluster-3]
+                   sched/job->acceptable-compute-clusters)))))
+      (let [job (assoc base-job :job/uuid (UUID/randomUUID))]
+        (is (= {}
+               (sched/distribute-jobs-to-compute-clusters
+                 [(assoc job :job/uuid (UUID/randomUUID))]
+                 "test-pool"
+                 [compute-cluster-2]
+                 sched/job->acceptable-compute-clusters)))))))

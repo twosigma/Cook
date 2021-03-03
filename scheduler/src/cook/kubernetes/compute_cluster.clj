@@ -482,9 +482,11 @@
                     user-from-synthetic-pods-config user
                     task-metadata-seq
                     (->> new-jobs
+                         (take max-launchable)
                          (map (fn [{:keys [job/user job/uuid job/environment] :as job}]
                                 (let [pool-specific-resources
                                       ((adjust-job-resources-for-pool-fn pool-name) job (tools/job-ent->resources job))]
+                                  (.put cook.caches/recent-synthetic-pod-job-uuids uuid uuid)
                                   {:command {:user (or user-from-synthetic-pods-config user)
                                              :value command}
                                    :container {:docker {:image image}}
@@ -526,8 +528,7 @@
                                                   :job {:job/pool {:pool/name synthetic-task-pool-name}
                                                         :job/environment environment}
                                                   ; Need to pass in resources to task-metadata->pod for gpu count
-                                                  :resources pool-specific-resources}})))
-                         (take max-launchable))
+                                                  :resources pool-specific-resources}}))))
                     num-synthetic-pods-to-launch (count task-metadata-seq)]
                 (meters/mark! (metrics/meter "cc-synthetic-pod-submit-rate" name) num-synthetic-pods-to-launch)
                 (log/info "In" name "compute cluster, launching" num-synthetic-pods-to-launch
