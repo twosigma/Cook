@@ -943,7 +943,7 @@
     (.setTty container true)
     (.setStdin container true)
 
-    ; add memory limit if user sets job label to allow memory usage above request to "true"
+    ; Don't add memory limit if user sets job label to allow memory usage above request to "true"
     (let [allow-memory-usage-above-request (some->> (:memory-limit-job-label-name (config/kubernetes))
                                              (get labels)
                                              clojure.string/lower-case
