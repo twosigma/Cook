@@ -1360,13 +1360,12 @@
                                                         (list))))
                                                   compute-clusters))
                         _ (doseq [offer offers
-                                  :let [slave-id (-> offer :slave-id :value)
-                                        attrs (get-offer-attr-map offer)]]
+                                  :let [slave-id (-> offer :slave-id :value)]]
                             ; Cache all used offers (offer-cache is a map of hostnames to most recent offer)
                             (swap! agent-attributes-cache (fn [c]
                                                             (if (cache/has? c slave-id)
                                                               (cache/hit c slave-id)
-                                                              (cache/miss c slave-id attrs)))))
+                                                              (cache/miss c slave-id (get-offer-attr-map offer))))))
                         using-pools? (not (nil? (config/default-pool)))
                         user->quota (quota/create-user->quota-fn (d/db conn) (if using-pools? pool-name nil))
                         matched-head? (handle-resource-offers! conn fenzo pool-name->pending-jobs-atom
