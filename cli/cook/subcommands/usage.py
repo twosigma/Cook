@@ -8,6 +8,7 @@ from cook.format import format_job_memory, format_memory_amount
 from cook.querying import query_across_clusters, make_job_request
 from cook.util import guard_no_cluster, current_user, print_info, print_error
 
+
 def get_job_data(cluster, usage_map):
     """Gets data for jobs in usage map if it has any"""
     ungrouped_running_job_uuids = usage_map['ungrouped']['running_jobs']
@@ -50,6 +51,7 @@ def get_job_data(cluster, usage_map):
 
     return {'count': num_running_jobs,
             'applications': applications}
+
 
 def get_usage_on_cluster(cluster, user):
     """Queries cluster for usage information for the given user"""
@@ -123,6 +125,7 @@ def get_usage_on_cluster(cluster, user):
     else:
         return make_query_result(using_pools, usage_map, share_map, quota_map)
 
+
 def query(clusters, user):
     """
     Uses query_across_clusters to make the /usage
@@ -133,6 +136,7 @@ def query(clusters, user):
         return executor.submit(get_usage_on_cluster, cluster, user)
 
     return query_across_clusters(clusters, submit)
+
 
 def print_as_json(query_result):
     """Prints the query result as raw JSON"""
@@ -153,6 +157,7 @@ def format_usage(usage_map):
         s += f', {gpus} GPU{"s" if gpus > 1 else ""}'
     return s
 
+
 def print_formatted_cluster_or_pool_usage(cluster_or_pool, cluster_or_pool_usage):
     """Prints the query result for a cluster or pool in a cluster as a hierarchical set of bullets"""
     usage_map = cluster_or_pool_usage['usage']
@@ -164,12 +169,12 @@ def print_formatted_cluster_or_pool_usage(cluster_or_pool, cluster_or_pool_usage
         'Unlimited' if limit == sys.float_info.max else formatter(limit)
 
     rows = [
-        ['Max Quota',
+        ['Quota',
          format_limit(quota_map['cpus']),
          format_limit(quota_map['mem'], format_memory_amount),
          format_limit(quota_map['gpus']),
-         'Unlimited' if quota_map['count'] == (2**31 - 1) else quota_map['count']],
-        ['Non-preemptible Share',
+         'Unlimited' if quota_map['count'] == (2 ** 31 - 1) else quota_map['count']],
+        ['Share',
          format_limit(share_map['cpus']),
          format_limit(share_map['mem'], format_memory_amount),
          format_limit(share_map['gpus']),
@@ -199,6 +204,7 @@ def print_formatted_cluster_or_pool_usage(cluster_or_pool, cluster_or_pool_usage
             print_info('')
     print_info('')
 
+
 def print_formatted(query_result):
     """Prints the query result as a hierarchical set of bullets"""
     for cluster, cluster_usage in query_result['clusters'].items():
@@ -210,8 +216,12 @@ def print_formatted(query_result):
             else:
                 print_formatted_cluster_or_pool_usage(cluster, cluster_usage)
 
+
 def filter_query_result_by_pools(query_result, pools):
-    """Filter query result if pools are provided. Return warning message if some of the pools not found in any cluster"""
+    """
+    Filter query result if pools are provided. Return warning
+    message if some of the pools not found in any cluster.
+    """
 
     clusters = []
     known_pools = []
@@ -244,6 +254,7 @@ def filter_query_result_by_pools(query_result, pools):
             print_error('')
 
     return query_result
+
 
 def usage(clusters, args, _):
     """Prints cluster usage info for the given user"""
