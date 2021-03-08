@@ -945,7 +945,7 @@
 
     ; Don't add memory limit if user sets job label to allow memory usage above request to "true"
     (let [allow-memory-usage-above-request (some->> (:memory-limit-job-label-name (config/kubernetes))
-                                             (get labels)
+                                             (get (tools/job-ent->label job))
                                              clojure.string/lower-case
                                              (= "true"))]
       (set-mem-cpu-resources resources computed-mem (when-not allow-memory-usage-above-request computed-mem) cpus cpus))
