@@ -504,6 +504,7 @@
                            controller-lock-num-shards
                            #(ReentrantLock.))]
                      (merge {:autoscaling-scale-factor 1.0
+                             :clobber-synthetic-pods false
                              :controller-lock-num-shards controller-lock-num-shards
                              :controller-lock-objects (with-meta
                                                         lock-objects

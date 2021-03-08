@@ -500,12 +500,12 @@
   Ignores pods that do not have an assigned node.
   When accounting for resources, we use resource requests to determine how much is used, not limits.
   See https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/#resource-requests-and-limits-of-pod-and-container"
-  [node-name->pods pool-name]
+  [clobber-synthetic-pods node-name->pods pool-name]
   (->> node-name->pods
        (filter first) ; Keep those with non-nil node names.
        (pc/map-vals (fn [pods]
                       (->> pods
-                           (remove #(some-> % .getMetadata .getName synthetic-pod?))
+                           (remove #(and clobber-synthetic-pods (some-> % .getMetadata .getName synthetic-pod?)))
                            (map (fn [^V1Pod pod]
                                   (let [containers (some-> pod .getSpec .getContainers)
                                         container-requests (map (fn [^V1Container c]
