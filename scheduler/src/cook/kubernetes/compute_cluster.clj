@@ -57,7 +57,8 @@
 (defn generate-offers
   "Given a compute cluster and maps with node capacity and existing pods, return a map from pool to offers."
   [compute-cluster node-name->node node-name->pods pool-name]
-  (let [compute-cluster-name (cc/compute-cluster-name compute-cluster)
+  (let [clobber-synthetic-pods (:clobber-synthetic-pods (config/kubernetes))
+        compute-cluster-name (cc/compute-cluster-name compute-cluster)
         node-name->capacity (api/get-capacity node-name->node pool-name)
         ; node-name->node map, used to calculate node-name->capacity includes nodes from the one pool,
         ; gotten via the pools->node-name->node map.
@@ -72,7 +73,7 @@
         ; If we have consumption calculation on a node that doesn't have a capacity calculated, there's not not much
         ; point in further computation on it. We won't make an offer in any case. So we filter them out.
         ; This also cleanly avoids the logged ERROR.
-        node-name->consumed (->> (api/get-consumption node-name->pods pool-name)
+        node-name->consumed (->> (api/get-consumption clobber-synthetic-pods node-name->pods pool-name)
                                  (filter #(node-name->capacity (first %)))
                                  (into {}))
         node-name->available (util/deep-merge-with - node-name->capacity node-name->consumed)

@@ -19,7 +19,7 @@
           node-name->pods (api/pods->node-name->pods pods)]
       (is (= {"hostA" {:cpus 1.0
                        :mem 100.0}}
-             (api/get-consumption node-name->pods "test-pool")))))
+             (api/get-consumption false node-name->pods "test-pool")))))
 
   (testing "correctly computes consumption for a single pod with gpus"
 
@@ -28,7 +28,7 @@
       (is (= {"hostA" {:cpus 1.0
                        :mem 100.0
                        :gpus {"nvidia-tesla-p100" 2}}}
-             (api/get-consumption node-name->pods "test-pool")))))
+             (api/get-consumption false node-name->pods "test-pool")))))
 
   (testing "correctly computes consumption for a pod with multiple containers without gpus"
     (let [pods [(tu/pod-helper "podA" "hostA"
@@ -38,7 +38,7 @@
           node-name->pods (api/pods->node-name->pods pods)]
       (is (= {"hostA" {:cpus 2.0
                        :mem 200.0}}
-             (api/get-consumption node-name->pods "test-pool")))))
+             (api/get-consumption false node-name->pods "test-pool")))))
 
   (testing "correctly computes consumption for a pod with multiple containers with gpus"
     (let [pods [(tu/pod-helper "podA" "hostA"
@@ -49,10 +49,10 @@
       (is (= {"hostA" {:cpus 2.0
                        :mem 200.0
                        :gpus {"nvidia-tesla-p100" 5}}}
-             (api/get-consumption node-name->pods "test-pool")))))
+             (api/get-consumption false node-name->pods "test-pool")))))
 
   (testing "correctly aggregates pods by node name"
-    (let [pods [(tu/pod-helper "podA" "hostA"
+    (let [pods [(tu/pod-helper (str api/cook-synthetic-pod-name-prefix "podA") "hostA"
                                {:cpus 1.0
                                 :mem 100.0
                                 :gpus "2"
@@ -83,7 +83,12 @@
       (is (= {"hostA" {:cpus 2.0 :mem 100.0 :gpus {"nvidia-tesla-p100" 3}}
               "hostB" {:cpus 3.0 :mem 130.0 :gpus {"nvidia-tesla-k80" 1} :disk {"standard" 10.0}}
               "hostC" {:cpus 2.0 :mem 0.0 :disk {"pd-ssd" 10100.0}}}
-             (api/get-consumption node-name->pods "test-pool"))))))
+             (api/get-consumption false node-name->pods "test-pool")))
+      ; Exclude synthetic pods (in this case, podA)
+      (is (= {"hostA" {:cpus 1.0 :mem 0.0 :gpus {"nvidia-tesla-p100" 1}}
+              "hostB" {:cpus 3.0 :mem 130.0 :gpus {"nvidia-tesla-k80" 1} :disk {"standard" 10.0}}
+              "hostC" {:cpus 2.0 :mem 0.0 :disk {"pd-ssd" 10100.0}}}
+             (api/get-consumption true node-name->pods "test-pool"))))))
 
 (deftest test-get-capacity
   (let [node-name->node {"nodeA" (tu/node-helper "nodeA" 1.0 100.0 2 "nvidia-tesla-p100" nil nil)
