@@ -505,6 +505,7 @@
        (filter first) ; Keep those with non-nil node names.
        (pc/map-vals (fn [pods]
                       (->> pods
+                           (remove #(some-> % .getMetadata .getName synthetic-pod?))
                            (map (fn [^V1Pod pod]
                                   (let [containers (some-> pod .getSpec .getContainers)
                                         container-requests (map (fn [^V1Container c]

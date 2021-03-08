@@ -447,7 +447,7 @@
               total-pods (-> @all-pods-atom keys count)
               total-nodes (-> @current-nodes-atom keys count)
               {:keys [image user command max-pods-outstanding max-total-pods max-total-nodes]
-               :or {command "exit 0" max-total-pods 32000 max-total-nodes 1000}} synthetic-pods-config]
+               :or {command "sleep 300" max-total-pods 32000 max-total-nodes 1000}} synthetic-pods-config]
 
           (when (>= total-pods max-total-pods)
             (log/warn "In" name "compute cluster, total pods are maxed out"
