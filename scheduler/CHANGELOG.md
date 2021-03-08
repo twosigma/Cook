@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.51.5] - 2021-03-08
+### Changed
+- A knob letting Cook clobber syhthetic pods with real jobs for k8s, from @scrosby
+### Fixed
+- Look for Cook memory labels on job labels, not pod labels, from @nsinkov
+
 ## [1.51.4] - 2021-03-04
 ### Changed
 - Optimization to the match cycle, from @scrosby
