@@ -1102,6 +1102,13 @@
     (.setMetadata pod metadata)
     (.setSpec pod pod-spec)
 
+    ; We want to allow synthetic pods to have a non-default (typically 0) termination grace period,
+    ; so that they can be deleted quickly to free up space on nodes for real job pods. The default
+    ; grace period of 30 seconds can cause real job pods to be deemed unschedulable and fail.
+    (when (synthetic-pod? pod-name)
+      (when-let [{:keys [sythetic-pod-termination-grace-period-seconds]} (config/kubernetes)]
+        (.setTerminationGracePeriodSeconds pod-spec sythetic-pod-termination-grace-period-seconds)))
+
     pod))
 
 (defn V1Pod->name
