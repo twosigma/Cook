@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.51.6] - 2021-03-09
+### Changed
+- Allowed synthetic pods to have a non-default termination grace period, from @dposada
+
 ## [1.51.5] - 2021-03-08
 ### Changed
 - A knob letting Cook clobber syhthetic pods with real jobs for k8s, from @scrosby
