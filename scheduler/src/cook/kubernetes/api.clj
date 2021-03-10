@@ -46,6 +46,11 @@
 ; This pod annotation signals to the cluster autoscaler that
 ; it's safe to remove the node on which the pod is running
 (def k8s-safe-to-evict-annotation "cluster-autoscaler.kubernetes.io/safe-to-evict")
+; We want nodes older than 5 minutes to get this taint. A separate process taints those old nodes
+; with this taint. Cook ignores it for scheduling purposes, but synthetic pods are configured so they
+; don't ignore it. Cook creates synthetic pods as a scaling signal. When they run on existing nodes,
+; the signal we intend to send to the autoscaler is attenuated and we autoscale much less than intended.
+(def tenured-node-taint "cook-node-tenured")
 
 (def default-shell
   "Default shell command used by our k8s scheduler to wrap and launch a job command
@@ -433,7 +438,7 @@
     false
     (let [taints-on-node (or (some-> node .getSpec .getTaints) [])
           other-taints (remove #(contains?
-                                  #{cook-pool-taint-name k8s-deletion-candidate-taint gpu-node-taint}
+                                  #{cook-pool-taint-name k8s-deletion-candidate-taint gpu-node-taint tenured-node-taint}
                                   (.getKey %))
                                taints-on-node)
           node-name (some-> node .getMetadata .getName)
@@ -603,6 +608,12 @@
     (.setOperator toleration "Equal")
     (.setEffect toleration "NoSchedule")
     toleration))
+
+(def toleration-tenured-node
+  (doto (V1Toleration.)
+    (.setKey tenured-node-taint)
+    (.setOperator "Exists")
+    (.setEffect "NoSchedule")))
 
 (def toleration-for-deletion-candidate-of-autoscaler
   (doto (V1Toleration.)
@@ -1068,6 +1079,7 @@
 
     (.addTolerationsItem pod-spec toleration-for-deletion-candidate-of-autoscaler)
     (.addTolerationsItem pod-spec (toleration-for-pool cook-pool-taint-name cook-pool-taint-prefix pool-name))
+    (.addTolerationsItem pod-spec toleration-tenured-node)
     ; We need to make sure synthetic pods --- which don't have a hostname set --- have a node selector
     ; to run only in nodes labelled with the appropriate cook pool
     (when-not hostname (add-node-selector pod-spec cook-pool-label-name pool-name))
