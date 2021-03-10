@@ -154,7 +154,11 @@
                (str "Multiple compute-clusters have the same name: " compute-cluster
                     " and " (@cluster-name->compute-cluster-atom compute-cluster-name)
                     " with name " compute-cluster-name))))
-    (log/info "Setting up compute cluster: " compute-cluster)
+    (log/info "Setting up compute cluster: "
+              ; We convert to a string here so that log/info
+              ; doesn't attempt to json-ize the compute-cluster map,
+              ; which contains non json-serializable objects
+              (str compute-cluster))
     (swap! cluster-name->compute-cluster-atom assoc compute-cluster-name compute-cluster)
     nil))
 
