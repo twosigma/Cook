@@ -1054,9 +1054,10 @@
       ; (https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/)
       ; from happening. We want this pod to preempt lower priority pods
       ; (e.g. synthetic pods).
-      (add-node-selector pod-spec k8s-hostname-label hostname)
-      ; Allow real pods to run on tenured nodes.
-      (.addTolerationsItem pod-spec toleration-tenured-node)
+      (do
+        (add-node-selector pod-spec k8s-hostname-label hostname)
+        ; Allow real pods to run on tenured nodes.
+        (.addTolerationsItem pod-spec toleration-tenured-node))
       (when (seq pod-hostnames-to-avoid)
         ; Use node "anti"-affinity to disallow scheduling on nodes with particular labels
         ; (https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#node-affinity)
