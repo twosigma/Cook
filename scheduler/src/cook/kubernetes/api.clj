@@ -1055,6 +1055,8 @@
       ; from happening. We want this pod to preempt lower priority pods
       ; (e.g. synthetic pods).
       (add-node-selector pod-spec k8s-hostname-label hostname)
+      ; Allow real pods to run on tenured nodes.
+      (.addTolerationsItem pod-spec toleration-tenured-node)
       (when (seq pod-hostnames-to-avoid)
         ; Use node "anti"-affinity to disallow scheduling on nodes with particular labels
         ; (https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#node-affinity)
@@ -1080,10 +1082,8 @@
     (.addTolerationsItem pod-spec toleration-for-deletion-candidate-of-autoscaler)
     (.addTolerationsItem pod-spec (toleration-for-pool cook-pool-taint-name cook-pool-taint-prefix pool-name))
     ; We need to make sure synthetic pods --- which don't have a hostname set --- have a node selector
-    ; to run only in nodes labelled with the appropriate cook pool and only in un-tenured nodes.
-    (when-not hostname
-      (add-node-selector pod-spec cook-pool-label-name pool-name)
-      (.addTolerationsItem pod-spec toleration-tenured-node))
+    ; to run only in nodes labelled with the appropriate cook pool
+    (when-not hostname (add-node-selector pod-spec cook-pool-label-name pool-name))
 
     (when pod-constraints
       (doseq [{:keys [constraint/attribute
