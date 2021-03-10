@@ -15,7 +15,7 @@
 ;;
 (ns cook.scheduler.optimizer
   (:require [chime :refer [chime-at chime-ch]]
-            [clojure.tools.logging :as log]
+            [cook.logging :as log]
             [cook.tools :as util]
             [cook.util :refer [lazy-load-var NonNegInt PosInt PosNum]]
             [datomic.api :refer [q]]

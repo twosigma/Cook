@@ -95,7 +95,7 @@
   For example, you could consult an external authorization system that
   manages user credits or billing, or you could implement a \"teams\"
   feature, where users are allowed to modify their teammates' jobs."
-  (:require [clojure.tools.logging :as log]
+  (:require [cook.logging :as log]
             [cook.util :refer [lazy-load-var]]
             [plumbing.core :refer [defnk fnk]])
   (:import (clojure.lang Keyword)))

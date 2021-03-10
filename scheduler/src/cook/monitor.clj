@@ -17,7 +17,7 @@
   (:require [chime :refer [chime-at]]
             [clj-time.core :as time]
             [clojure.set :refer [difference union]]
-            [clojure.tools.logging :as log]
+            [cook.logging :as log]
             [cook.cached-queries :as cached-queries]
             [cook.config :refer [config]]
             [cook.datomic :as datomic]

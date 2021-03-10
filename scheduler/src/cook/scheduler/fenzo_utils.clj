@@ -14,7 +14,7 @@
 ;; limitations under the License.
 ;;
 (ns cook.scheduler.fenzo-utils
-  (:require [clojure.tools.logging :as log]
+  (:require [cook.logging :as log]
             [datomic.api :as d]))
 
 (defn extract-message

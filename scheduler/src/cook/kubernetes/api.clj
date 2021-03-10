@@ -2,7 +2,7 @@
   (:require [clj-time.core :as t]
             [clojure.set :as set]
             [clojure.string :as str]
-            [clojure.tools.logging :as log]
+            [cook.logging :as log]
             [clojure.walk :as walk]
             [cook.cached-queries :as cached-queries]
             [cook.config :as config]

@@ -18,7 +18,7 @@
             [clj-time.core :as t]
             [clj-time.periodic]
             [clojure.string :as str]
-            [clojure.tools.logging :as log]
+            [cook.logging :as log]
             [cook.config :as config]
             [cook.plugins.definitions :refer [check-job-submission check-job-submission-default JobSubmissionValidator]]
             [cook.plugins.util]

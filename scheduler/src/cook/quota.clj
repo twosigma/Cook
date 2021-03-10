@@ -15,7 +15,7 @@
 ;;
 (ns cook.quota
   (:require [clojure.set :as set]
-            [clojure.tools.logging :as log]
+            [cook.logging :as log]
             [cook.config :as config]
             [cook.datomic]
             [cook.pool :as pool]

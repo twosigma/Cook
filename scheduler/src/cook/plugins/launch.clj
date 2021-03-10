@@ -16,7 +16,7 @@
 (ns cook.plugins.launch
   (:require [clj-time.core :as t]
             [clj-time.periodic]
-            [clojure.tools.logging :as log]
+            [cook.logging :as log]
             [cook.cache :as ccache]
             [cook.config :as config]
             [cook.plugins.definitions :refer [check-job-launch JobLaunchFilter]]

@@ -14,7 +14,7 @@
 ;; limitations under the License.
 ;;
 (ns cook.scheduler.share
-  (:require [clojure.tools.logging :as log]
+  (:require [cook.logging :as log]
             [cook.config :as config]
             [cook.pool :as pool]
             [cook.queries :as queries]

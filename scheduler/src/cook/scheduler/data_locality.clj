@@ -5,7 +5,7 @@
             [clj-time.core :as t]
             [clj-time.format :as tf]
             [clojure.set :as set]
-            [clojure.tools.logging :as log]
+            [cook.logging :as log]
             [cook.cache :as ccache]
             [cook.caches :as caches]
             [cook.config :as config]

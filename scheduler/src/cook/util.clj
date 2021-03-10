@@ -20,7 +20,7 @@
             [clojure.java.shell :refer :all]
             [clojure.pprint :refer :all]
             [clojure.string :refer :all]
-            [clojure.tools.logging :as log]
+            [cook.logging :as log]
             [clojure.tools.namespace.dependency :refer :all]
             [postal.core :as postal]
             [schema.core :as s])

@@ -17,7 +17,7 @@
   (:require [clojure.core.async :as async]
             [clojure.pprint :refer [pprint]]
             [clojure.string :as str]
-            [clojure.tools.logging :as log]
+            [cook.logging :as log]
             [cook.config :refer [config]]
             [cook.util :as util]
             [datomic.api :as d :refer [q]]

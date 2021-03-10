@@ -22,7 +22,7 @@
             [clojure.core.async :as async]
             [clojure.set :as set]
             [clojure.string :as str]
-            [clojure.tools.logging :as log]
+            [cook.logging :as log]
             [clojure.walk :as walk :refer [keywordize-keys]]
             [compojure.api.middleware :as c-mw]
             [compojure.api.sweet :as c-api]

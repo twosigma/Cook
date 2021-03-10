@@ -1,6 +1,6 @@
 (ns cook.kubernetes.controller
   (:require [clojure.string :as str]
-            [clojure.tools.logging :as log]
+            [cook.logging :as log]
             [cook.compute-cluster :as cc]
             [cook.config :as config]
             [cook.datomic :as datomic]

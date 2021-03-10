@@ -14,7 +14,7 @@
 ;; limitations under the License.
 ;;
 (ns cook.reporter
-  (:require [clojure.tools.logging :as log]
+  (:require [cook.logging :as log]
             [datomic.api :refer [q]]
             [metatransaction.core :refer [db]]
             [metrics.core :as metrics])

@@ -23,7 +23,7 @@
             [clojure.core.cache :as cache]
             [clojure.java.shell :as sh]
             [clojure.string :as str]
-            [clojure.tools.logging :as log]
+            [cook.logging :as log]
             [cook.cache :as ccache]
             [cook.cached-queries :as cached-queries]
             [cook.caches :as caches]

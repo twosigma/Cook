@@ -18,7 +18,7 @@
             [clojure.core.async :as async]
             [clojure.core.cache :as cache]
             [clojure.data.priority-map :as pm]
-            [clojure.tools.logging :as log]
+            [cook.logging :as log]
             [clojure.walk :refer [keywordize-keys]]
             [cook.cached-queries :as cached-queries]
             [cook.compute-cluster :as cc]

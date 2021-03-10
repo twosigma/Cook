@@ -17,7 +17,7 @@
   (:require [chime :refer [chime-at chime-ch]]
             [clj-time.core :as t]
             [clojure.core.async :as async]
-            [clojure.tools.logging :as log]
+            [cook.logging :as log]
             [cook.tools :as tools]
             [cook.util :as util]
             [datomic.api :refer [q]]

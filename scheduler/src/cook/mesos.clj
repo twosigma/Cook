@@ -18,7 +18,7 @@
             [clj-time.core :as time]
             [clojure.core.async :as async]
             [clojure.data :as data]
-            [clojure.tools.logging :as log]
+            [cook.logging :as log]
             [cook.compute-cluster :as cc]
             [cook.config :as config]
             [cook.datomic :refer [transact-with-retries]]

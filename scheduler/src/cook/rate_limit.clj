@@ -14,7 +14,7 @@
 ;; limitations under the License.
 ;;
 (ns cook.rate-limit
-  (:require [clojure.tools.logging :as log]
+  (:require [cook.logging :as log]
             [cook.config :refer [config]]
             [cook.rate-limit.generic :as rtg]
             [cook.regexp-tools :as regexp-tools]

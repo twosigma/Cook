@@ -17,7 +17,7 @@
   (:require [clojure.core.async :as async]
             [clojure.core.cache :as cache]
             [clojure.pprint :refer [pprint]]
-            [clojure.tools.logging :as log]
+            [cook.logging :as log]
             [compojure.core :refer [context GET POST routes]]
             [compojure.route :as route]
             [congestion.middleware :refer [ip-rate-limit wrap-rate-limit]]

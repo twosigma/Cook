@@ -19,7 +19,7 @@
             [clojure.edn :as edn]
             [clojure.stacktrace :as stacktrace]
             [clojure.string :as str]
-            [clojure.tools.logging :as log]
+            [cook.logging :as log]
             [congestion.limits :refer [RateLimit]]
             [cook.rest.impersonation :refer [impersonation-authorized-wrapper]]
             [cook.util :as util]
@@ -702,3 +702,7 @@
 (defn job-resource-limits
   []
   (-> config :settings :plugins :job-shape-validation))
+
+(defn structured-logging?
+  []
+  (-> config :settings :log :structured-logging?))

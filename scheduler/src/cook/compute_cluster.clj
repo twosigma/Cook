@@ -15,7 +15,7 @@
 ;;
 (ns cook.compute-cluster
   (:require [clojure.data :as data]
-            [clojure.tools.logging :as log]
+            [cook.logging :as log]
             [cook.config :as config]
             [cook.datomic :as datomic]
             [cook.util :as util]

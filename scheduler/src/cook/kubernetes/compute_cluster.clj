@@ -4,7 +4,7 @@
             [clj-time.periodic :refer [periodic-seq]]
             [clojure.core.async :as async]
             [clojure.set :as set]
-            [clojure.tools.logging :as log]
+            [cook.logging :as log]
             [clojure.walk :as walk]
             [cook.compute-cluster :as cc]
             [cook.compute-cluster.metrics :as ccmetrics]

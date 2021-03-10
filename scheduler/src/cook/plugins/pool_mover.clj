@@ -1,5 +1,5 @@
 (ns cook.plugins.pool-mover
-  (:require [clojure.tools.logging :as log]
+  (:require [cook.logging :as log]
             [cook.cached-queries :as cached-queries]
             [cook.config :as config]
             [cook.plugins.definitions :as chd]

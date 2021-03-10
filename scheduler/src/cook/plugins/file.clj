@@ -1,5 +1,5 @@
 (ns cook.plugins.file
-  (:require [clojure.tools.logging :as log]
+  (:require [cook.logging :as log]
             [cook.config :as config]
             [cook.plugins.definitions :refer [FileUrlGenerator]]
             [cook.plugins.util]

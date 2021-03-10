@@ -20,7 +20,7 @@
             [clojure.core.cache :as cache]
             [clojure.set :as set]
             [clojure.string :as str]
-            [clojure.tools.logging :as log]
+            [cook.logging :as log]
             [cook.util :as util]
             [datomic.api :as d]
             [metrics.counters :as counters]

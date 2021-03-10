@@ -15,7 +15,7 @@
             [clojure.java.io :as io]
             [clojure.test :refer :all]
             [clojure.tools.cli :refer [parse-opts]]
-            [clojure.tools.logging :as log]
+            [cook.logging :as log]
             [clojure.walk :refer [keywordize-keys]]
             [com.rpl.specter :refer [ALL FIRST MAP-KEYS MAP-VALS select transform]]
             [cook.config :refer [executor-config init-logger]]

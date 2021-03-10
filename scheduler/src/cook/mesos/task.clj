@@ -16,7 +16,7 @@
 (ns cook.mesos.task
   (:require [clojure.data.json :as json]
             [clojure.set :as set]
-            [clojure.tools.logging :as log]
+            [cook.logging :as log]
             [cook.compute-cluster :as cc]
             [cook.config :as config]
             [cook.task :as task]

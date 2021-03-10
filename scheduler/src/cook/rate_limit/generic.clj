@@ -16,7 +16,7 @@
 (ns cook.rate-limit.generic
   (:require [clj-time.coerce]
             [clj-time.core]
-            [clojure.tools.logging :as log]
+            [cook.logging :as log]
             [cook.rate-limit.token-bucket-filter :as tbf])
   (:import (com.google.common.cache LoadingCache CacheLoader CacheBuilder)
            (java.util.concurrent TimeUnit)))

@@ -21,7 +21,7 @@
             [clojure.core.cache :as cache]
             [clojure.string :as str]
             [clojure.test :refer :all]
-            [clojure.tools.logging :as log]
+            [cook.logging :as log]
             [cook.caches :as caches]
             [cook.compute-cluster :as cc]
             [cook.kubernetes.api :as kapi]

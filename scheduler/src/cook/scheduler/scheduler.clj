@@ -22,7 +22,7 @@
             [clojure.edn :as edn]
             [clojure.set :as set]
             [clojure.string :as str]
-            [clojure.tools.logging :as log]
+            [cook.logging :as log]
             [clojure.walk :as walk]
             [cook.cached-queries :as cached-queries]
             [cook.caches :as caches]

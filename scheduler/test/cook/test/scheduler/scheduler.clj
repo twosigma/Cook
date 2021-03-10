@@ -22,7 +22,7 @@
             [clojure.core.cache :as cache]
             [clojure.string :as str]
             [clojure.test :refer :all]
-            [clojure.tools.logging :as log]
+            [cook.logging :as log]
             [clojure.walk :as walk]
             [cook.caches :as caches]
             [cook.compute-cluster :as cc]

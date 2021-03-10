@@ -1,5 +1,5 @@
 (ns cook.pool
-  (:require [clojure.tools.logging :as log]
+  (:require [cook.logging :as log]
             [cook.config :as config]
             [datomic.api :as d])
   (:import (java.util UUID)))

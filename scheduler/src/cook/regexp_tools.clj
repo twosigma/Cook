@@ -14,7 +14,7 @@
 ;; limitations under the License.
 ;;
 (ns cook.regexp-tools
-  (:require [clojure.tools.logging :as log]))
+  (:require [cook.logging :as log]))
 
 (defn match-based-on-regexp
   "Given a list of dictionaries [{:<regexp-name> <regexp> :<field-name> <field>} {:<regexp-name> <regexp> :<field-name> <field>} ...], match-list,

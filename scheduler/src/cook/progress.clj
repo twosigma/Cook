@@ -17,7 +17,7 @@
   (:require [chime :refer [chime-at chime-ch]]
             [clojure.core.async :as async]
             [clojure.core.cache :as cache]
-            [clojure.tools.logging :as log]
+            [cook.logging :as log]
             [cook.tools :as util]
             [datomic.api :as d]
             [metrics.counters :as counters]

@@ -3,7 +3,7 @@
             [clj-time.core :as t]
             [clojure.core.async :as async]
             [clojure.test :refer :all]
-            [clojure.tools.logging :as log]
+            [cook.logging :as log]
             [cook.compute-cluster :as cc]
             [cook.mesos.mesos-mock :as mm]
             [cook.scheduler.share :as share]

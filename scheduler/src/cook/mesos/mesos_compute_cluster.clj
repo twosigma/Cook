@@ -16,7 +16,7 @@
 (ns cook.mesos.mesos-compute-cluster
   (:require [clojure.core.async :as async]
             [clojure.data.json :as json]
-            [clojure.tools.logging :as log]
+            [cook.logging :as log]
             [cook.cached-queries :as cached-queries]
             [cook.compute-cluster :as cc]
             [cook.compute-cluster.metrics :as ccmetrics]

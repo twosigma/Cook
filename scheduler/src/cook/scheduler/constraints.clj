@@ -18,7 +18,7 @@
             [clj-time.core :as t]
             [clojure.core.cache :as cache]
             [clojure.set :as set]
-            [clojure.tools.logging :as log]
+            [cook.logging :as log]
             [cook.cached-queries :as cached-queries]
             [cook.compute-cluster :as cc]
             [cook.config :as config]

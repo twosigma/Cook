@@ -14,7 +14,7 @@
 ;; limitations under the License.
 ;;
 (ns cook.mesos.reason
-  (:require [clojure.tools.logging :as log]
+  (:require [cook.logging :as log]
             [datomic.api :as d]))
 
 (defn reason-code->reason-entity

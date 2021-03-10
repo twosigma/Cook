@@ -1,6 +1,6 @@
 (ns cook.queue-limit
   (:require [clj-time.core :as time]
-            [clojure.tools.logging :as log]
+            [cook.logging :as log]
             [cook.cached-queries :as cached-queries]
             [cook.config :as config]
             [cook.datomic :as datomic]
