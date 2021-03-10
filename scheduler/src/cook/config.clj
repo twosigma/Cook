@@ -565,7 +565,11 @@
       (log/info "Configured logging")
       (log/info "Cook" @util/version "( commit" @util/commit ")")
       (let [settings {:settings (config-settings literal-config)}]
-        (log/info "Interpreted settings:" settings)
+        (log/info "Interpreted settings:"
+                  ; We convert to a string here so that log/info
+                  ; doesn't attempt to json-ize the settings map,
+                  ; which can contain non json-serializable objects
+                  (str settings))
         settings))
     (catch Throwable t
       (log/error t "Failed to initialize settings")
