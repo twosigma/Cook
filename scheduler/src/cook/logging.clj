@@ -34,3 +34,7 @@
 (defmacro fatal
   [& args]
   `(logp ctl/fatal ~@args))
+
+(defmacro enabled?
+  [level]
+  `(ctl/enabled? ~level))
