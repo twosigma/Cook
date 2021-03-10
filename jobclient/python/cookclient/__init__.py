@@ -170,6 +170,9 @@ class JobClient:
         :rtype: UUID
         :param disk: Disk information to assign to the job, which includes request, limit, and type
         :type disk: Disk, optional
+        :param disable_mea_culpa_retries: Flag to disable mea culpa retries.
+            If true, mea culpa retries will count against the job’s retry count.
+        :type disable_mea_culpa_retries: bool, optional
         """
         uuid = str(uuid or util.make_temporal_uuid())
         jobspec = {
