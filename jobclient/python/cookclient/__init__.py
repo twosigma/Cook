@@ -112,6 +112,7 @@ class JobClient:
                application: Application = _CLIENT_APP,
                gpus: Optional[int] = None,
                disk: Optional[Disk] = None,
+               disable_mea_culpa_retries: Optional[bool] = None,
 
                pool: Optional[str] = None,
 
@@ -196,6 +197,10 @@ class JobClient:
             jobspec['gpus'] = gpus
         if disk is not None:
             jobspec['disk'] = disk
+        if disable_mea_culpa_retries is not None:
+            jobspec['disable_mea_culpa_retries'] \
+                = disable_mea_culpa_retries
+
         return self.submit_all([jobspec], pool=pool, **kwargs)[0]
 
     def submit_all(self, jobspecs: Iterable[dict], *,
