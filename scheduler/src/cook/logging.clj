@@ -1,18 +1,15 @@
 (ns cook.logging
   (:require [clojure.data.json :as json]
             [clojure.string :as str]
-            [clojure.tools.logging :as ctl]
-            [cook.config :as config]))
+            [clojure.tools.logging :as ctl]))
 
 (defmacro logp
   [log-fn & args]
-  `(if (config/structured-logging?)
-     (~log-fn
-       (json/write-str
-         (if (map? ~(last args))
-           (assoc ~(last args) :msg ~(str/join " " (butlast args)))
-           {:msg ~(str/join " " args)})))
-     (~log-fn ~@args)))
+  `(~log-fn
+     (json/write-str
+       (if (map? ~(last args))
+         (assoc ~(last args) :msg ~(str/join " " (butlast args)))
+         {:msg ~(str/join " " args)}))))
 
 (defmacro trace
   [& args]

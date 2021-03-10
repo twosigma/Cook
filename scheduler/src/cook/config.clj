@@ -702,7 +702,3 @@
 (defn job-resource-limits
   []
   (-> config :settings :plugins :job-shape-validation))
-
-(defn structured-logging?
-  []
-  (-> config :settings :log :structured-logging?))
