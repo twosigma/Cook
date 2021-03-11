@@ -112,6 +112,7 @@ class JobClient:
                application: Application = _CLIENT_APP,
                gpus: Optional[int] = None,
                disk: Optional[Disk] = None,
+               disable_mea_culpa_retries: Optional[bool] = None,
 
                pool: Optional[str] = None,
 
@@ -169,6 +170,9 @@ class JobClient:
         :rtype: UUID
         :param disk: Disk information to assign to the job, which includes request, limit, and type
         :type disk: Disk, optional
+        :param disable_mea_culpa_retries: Flag to disable mea culpa retries.
+            If true, mea culpa retries will count against the job’s retry count.
+        :type disable_mea_culpa_retries: bool, optional
         """
         uuid = str(uuid or util.make_temporal_uuid())
         jobspec = {
@@ -196,6 +200,10 @@ class JobClient:
             jobspec['gpus'] = gpus
         if disk is not None:
             jobspec['disk'] = disk
+        if disable_mea_culpa_retries is not None:
+            jobspec['disable_mea_culpa_retries'] \
+                = disable_mea_culpa_retries
+
         return self.submit_all([jobspec], pool=pool, **kwargs)[0]
 
     def submit_all(self, jobspecs: Iterable[dict], *,
