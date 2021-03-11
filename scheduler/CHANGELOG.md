@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.51.7] - 2021-03-11
+### Added
+- Make cook pods ignore a tenured node taint, from @scrosby
+- Fix the memory request value sent to pod via environmental variable to exclude sidecar memory, from @nsinkov
+
 ## [1.51.6] - 2021-03-09
 ### Changed
 - Allowed synthetic pods to have a non-default termination grace period, from @dposada
