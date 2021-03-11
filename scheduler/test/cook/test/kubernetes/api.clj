@@ -197,6 +197,7 @@
                     "COOK_POOL"
                     "COOK_SANDBOX"
                     "COOK_SCHEDULER_REST_URL"
+                    "COOK_USER_MEMORY_REQUEST_BYTES"
                     "EXECUTOR_PROGRESS_OUTPUT_FILE"
                     "FOO"
                     "HOME"
