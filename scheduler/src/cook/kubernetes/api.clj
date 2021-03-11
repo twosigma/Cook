@@ -924,8 +924,10 @@
                    ;; preserving compatibility with Meosos + Cook Executor.
                    (not progress-file-path)
                    (assoc progress-file-var (str workdir "/" task-id ".progress"))
+                   mem
+                   (assoc "COOK_USER_MEMORY_REQUEST_BYTES" (* memory-multiplier mem))
                    computed-mem
-                   (assoc "COOK_MEMORY_REQUEST_BYTES" (* memory-multiplier mem)))
+                   (assoc "COOK_MEMORY_REQUEST_BYTES" (* memory-multiplier computed-mem)))
         main-env-vars (make-filtered-env-vars main-env)]
 
     ; metadata
