@@ -51,7 +51,7 @@
 ; don't ignore it. Cook creates synthetic pods as a scaling signal. When they run on existing nodes,
 ; the signal we intend to send to the autoscaler is attenuated and we autoscale much less than intended.
 ;
-; We prefix the taint with the ignore-taint string so that the autoscaler won't use this when constructing exlempar new nodes.
+; We prefix the taint with the ignore-taint string so that the autoscaler won't use this when constructing exemplar new nodes.
 (def tenured-node-taint "ignore-taint.cluster-autoscaler.kubernetes.io/cook-node-tenured")
 
 (def default-shell
