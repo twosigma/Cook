@@ -27,7 +27,7 @@
              V1HTTPGetAction V1LabelSelector V1ObjectFieldSelector V1Node V1NodeList V1NodeAffinity V1NodeSelector
              V1NodeSelectorRequirement V1NodeSelectorTerm V1ObjectMeta V1ObjectReference V1Pod V1PodAffinity
              V1PodAffinityTerm V1PodCondition V1PodSecurityContext V1PodSpec V1PodStatus V1Probe V1ResourceRequirements
-             V1Toleration V1Volume V1VolumeBuilder V1VolumeMount)
+             V1Toleration V1Volume V1VolumeBuilder V1VolumeMount V1WeightedPodAffinityTerm)
            (io.kubernetes.client.util Watch)
            (java.net SocketTimeoutException)
            (java.util.concurrent Executors ExecutorService)))
@@ -1149,7 +1149,10 @@
             (.setTopologyKey pod-affinity-term k8s-hostname-label)
             (if synthetic-pod-affinity-required?
               (.setRequiredDuringSchedulingIgnoredDuringExecution pod-affinity [pod-affinity-term])
-              (.setPreferredDuringSchedulingIgnoredDuringExecution pod-affinity [pod-affinity-term]))
+              (let [weighted-pod-affinity-term (V1WeightedPodAffinityTerm.)]
+                (.setWeight weighted-pod-affinity-term 100)
+                (.setPodAffinityTerm weighted-pod-affinity-term pod-affinity-term)
+                (.setPreferredDuringSchedulingIgnoredDuringExecution pod-affinity [weighted-pod-affinity-term])))
             (.setPodAffinity affinity pod-affinity)
             (.setAffinity pod-spec affinity)))))
 
