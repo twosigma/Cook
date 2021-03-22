@@ -25,8 +25,8 @@
              CoreV1Event V1Affinity V1Container V1ContainerPort V1ContainerState V1ContainerStatus V1DeleteOptions
              V1DeleteOptionsBuilder V1EmptyDirVolumeSource V1EnvVar V1EnvVarSource V1HostPathVolumeSource
              V1HTTPGetAction V1LabelSelector V1ObjectFieldSelector V1Node V1NodeList V1NodeAffinity V1NodeSelector
-             V1NodeSelectorRequirement V1NodeSelectorTerm V1ObjectMeta V1ObjectReference V1Pod V1PodAffinity
-             V1PodAffinityTerm V1PodCondition V1PodSecurityContext V1PodSpec V1PodStatus V1Probe V1ResourceRequirements
+             V1NodeSelectorRequirement V1NodeSelectorTerm V1ObjectMeta V1ObjectReference V1Pod V1PodAffinityTerm
+             V1PodAntiAffinity V1PodCondition V1PodSecurityContext V1PodSpec V1PodStatus V1Probe V1ResourceRequirements
              V1Toleration V1Volume V1VolumeBuilder V1VolumeMount V1WeightedPodAffinityTerm)
            (io.kubernetes.client.util Watch)
            (java.net SocketTimeoutException)
@@ -1139,7 +1139,7 @@
           ; The synthetic pod pod-spec may or may not already have an affinity defined
           ; (see pod-hostnames-to-avoid above), so we need to allow for either case
           (let [affinity (or (.getAffinity pod-spec) (V1Affinity.))
-                pod-affinity (V1PodAffinity.)
+                pod-affinity (V1PodAntiAffinity.)
                 pod-affinity-term (V1PodAffinityTerm.)
                 label-selector (V1LabelSelector.)]
             (.setMatchLabels label-selector
@@ -1153,7 +1153,7 @@
                 (.setWeight weighted-pod-affinity-term (int 100))
                 (.setPodAffinityTerm weighted-pod-affinity-term pod-affinity-term)
                 (.setPreferredDuringSchedulingIgnoredDuringExecution pod-affinity [weighted-pod-affinity-term])))
-            (.setPodAffinity affinity pod-affinity)
+            (.setPodAntiAffinity affinity pod-affinity)
             (.setAffinity pod-spec affinity)))))
 
     pod))

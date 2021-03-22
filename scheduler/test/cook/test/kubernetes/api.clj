@@ -488,7 +488,17 @@
             pod-labels (-> pod .getMetadata .getLabels)]
         (is (= "cook-job" (get pod-labels "workload-class")))
         (is (= "unspecified" (get pod-labels "workload-id")))
-        (is (= "none" (get pod-labels "workload-details")))))))
+        (is (= "none" (get pod-labels "workload-details")))))
+
+    (testing "synthetic pod affinity"
+      (let [task-metadata {:command {:user "test-user"}
+                           :task-id "synthetic"
+                           :task-request {:scalar-requests {"mem" 512 "cpus" 1.0}}}]
+        (with-redefs [config/kubernetes (constantly {:synthetic-pod-affinity-pod-label-key "foo"
+                                                     :synthetic-pod-affinity-pod-label-value "bar"})]
+          (api/task-metadata->pod "test-namespace" fake-cc-config task-metadata)))
+      ; TODO: Assert that the pod has the expected affinity
+      )))
 
 (defn- k8s-volume->clj [^V1Volume volume]
   {:name (.getName volume)
