@@ -1150,7 +1150,7 @@
             (if synthetic-pod-affinity-required?
               (.setRequiredDuringSchedulingIgnoredDuringExecution pod-affinity [pod-affinity-term])
               (let [weighted-pod-affinity-term (V1WeightedPodAffinityTerm.)]
-                (.setWeight weighted-pod-affinity-term 100)
+                (.setWeight weighted-pod-affinity-term (int 100))
                 (.setPodAffinityTerm weighted-pod-affinity-term pod-affinity-term)
                 (.setPreferredDuringSchedulingIgnoredDuringExecution pod-affinity [weighted-pod-affinity-term])))
             (.setPodAffinity affinity pod-affinity)
