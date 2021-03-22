@@ -1131,7 +1131,8 @@
       ; We want to allow synthetic pods to be attracted to certain nodes via inter-pod affinity
       ; (https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#inter-pod-affinity-and-anti-affinity)
       (let [{:keys [synthetic-pod-affinity-pod-label-key
-                    synthetic-pod-affinity-pod-label-value]}
+                    synthetic-pod-affinity-pod-label-value
+                    synthetic-pod-affinity-required?]}
             (config/kubernetes)]
         (when (and synthetic-pod-affinity-pod-label-key
                    synthetic-pod-affinity-pod-label-value)
@@ -1146,7 +1147,9 @@
                               synthetic-pod-affinity-pod-label-value})
             (.setLabelSelector pod-affinity-term label-selector)
             (.setTopologyKey pod-affinity-term k8s-hostname-label)
-            (.setRequiredDuringSchedulingIgnoredDuringExecution pod-affinity [pod-affinity-term])
+            (if synthetic-pod-affinity-required?
+              (.setRequiredDuringSchedulingIgnoredDuringExecution pod-affinity [pod-affinity-term])
+              (.setPreferredDuringSchedulingIgnoredDuringExecution pod-affinity [pod-affinity-term]))
             (.setPodAffinity affinity pod-affinity)
             (.setAffinity pod-spec affinity)))))
 
