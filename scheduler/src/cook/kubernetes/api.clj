@@ -1130,13 +1130,17 @@
 
       ; We want to allow synthetic pods to be repelled from certain nodes via inter-pod (anti-)affinity
       ; (https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#inter-pod-affinity-and-anti-affinity)
+      ; in order to repel them from "tenured" nodes, e.g. by running a "repeller" pod on nodes that
+      ; have been up and running for a certain amount of time. Without this, synthetic pods will often
+      ; run on nodes that have been alive for a while (tenured nodes) when job pods complete and free
+      ; up space, causing those synthetic pods to not serve their purpose of triggering scale-up.
       (let [{:keys [synthetic-pod-anti-affinity-pod-label-key
                     synthetic-pod-anti-affinity-pod-label-value]}
             (config/kubernetes)]
         (when (and synthetic-pod-anti-affinity-pod-label-key
                    synthetic-pod-anti-affinity-pod-label-value)
-          ; The synthetic pod pod-spec may or may not already have an affinity defined
-          ; (see pod-hostnames-to-avoid above), so we need to allow for either case
+          ; If the synthetic pod spec already has an affinity defined (see the code for
+          ; pod-hostnames-to-avoid above), we add to it; otherwise, we create a new one
           (let [affinity (or (.getAffinity pod-spec) (V1Affinity.))
                 pod-anti-affinity (V1PodAntiAffinity.)
                 pod-affinity-term (V1PodAffinityTerm.)
