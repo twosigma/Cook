@@ -1128,32 +1128,26 @@
       (when-let [{:keys [synthetic-pod-termination-grace-period-seconds]} (config/kubernetes)]
         (.setTerminationGracePeriodSeconds pod-spec synthetic-pod-termination-grace-period-seconds))
 
-      ; We want to allow synthetic pods to be attracted to certain nodes via inter-pod affinity
+      ; We want to allow synthetic pods to be repelled from certain nodes via inter-pod (anti-)affinity
       ; (https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#inter-pod-affinity-and-anti-affinity)
-      (let [{:keys [synthetic-pod-affinity-pod-label-key
-                    synthetic-pod-affinity-pod-label-value
-                    synthetic-pod-affinity-required?]}
+      (let [{:keys [synthetic-pod-anti-affinity-pod-label-key
+                    synthetic-pod-anti-affinity-pod-label-value]}
             (config/kubernetes)]
-        (when (and synthetic-pod-affinity-pod-label-key
-                   synthetic-pod-affinity-pod-label-value)
+        (when (and synthetic-pod-anti-affinity-pod-label-key
+                   synthetic-pod-anti-affinity-pod-label-value)
           ; The synthetic pod pod-spec may or may not already have an affinity defined
           ; (see pod-hostnames-to-avoid above), so we need to allow for either case
           (let [affinity (or (.getAffinity pod-spec) (V1Affinity.))
-                pod-affinity (V1PodAntiAffinity.)
+                pod-anti-affinity (V1PodAntiAffinity.)
                 pod-affinity-term (V1PodAffinityTerm.)
                 label-selector (V1LabelSelector.)]
             (.setMatchLabels label-selector
-                             {synthetic-pod-affinity-pod-label-key
-                              synthetic-pod-affinity-pod-label-value})
+                             {synthetic-pod-anti-affinity-pod-label-key
+                              synthetic-pod-anti-affinity-pod-label-value})
             (.setLabelSelector pod-affinity-term label-selector)
             (.setTopologyKey pod-affinity-term k8s-hostname-label)
-            (if synthetic-pod-affinity-required?
-              (.setRequiredDuringSchedulingIgnoredDuringExecution pod-affinity [pod-affinity-term])
-              (let [weighted-pod-affinity-term (V1WeightedPodAffinityTerm.)]
-                (.setWeight weighted-pod-affinity-term (int 100))
-                (.setPodAffinityTerm weighted-pod-affinity-term pod-affinity-term)
-                (.setPreferredDuringSchedulingIgnoredDuringExecution pod-affinity [weighted-pod-affinity-term])))
-            (.setPodAntiAffinity affinity pod-affinity)
+            (.setRequiredDuringSchedulingIgnoredDuringExecution pod-anti-affinity [pod-affinity-term])
+            (.setPodAntiAffinity affinity pod-anti-affinity)
             (.setAffinity pod-spec affinity)))))
 
     pod))
