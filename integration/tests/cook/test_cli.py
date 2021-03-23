@@ -432,10 +432,7 @@ if __name__ == '__main__':
     def test_quoting(self):
         cp, uuids = cli.submit('echo "Hello; exit 1"', self.cook_url, submit_flags=f'--max-retries 5')
         self.assertEqual(0, cp.returncode, cp.stderr)
-        cp = cli.wait(uuids, self.cook_url)
-        self.assertEqual(0, cp.returncode, cp.stderr)
-        cp, jobs = cli.show_jobs(uuids, self.cook_url)
-        self.assertEqual(0, cp.returncode, cp.stderr)
+        jobs = util.wait_for_jobs(self.cook_url, uuids, 'completed')
         self.assertEqual('completed', jobs[0]['status'])
         self.assertEqual('success', jobs[0]['state'])
 
