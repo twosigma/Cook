@@ -1493,9 +1493,7 @@ if __name__ == '__main__':
                                                                                f'--name {self.current_name()} '
                                                                                f'--max-retries 5')
         self.assertEqual(0, cp.returncode, cp.stderr)
-        cp = cli.wait(uuids, self.cook_url)
-        self.assertEqual(0, cp.returncode, cp.stderr)
-        cp, jobs = cli.show_jobs(uuids, self.cook_url)
+        jobs = util.wait_for_jobs(self.cook_url, uuids, 'completed')
         self.assertEqual('FOO=0; exit ${FOO:-1}', jobs[0]['command'])
         self.assertEqual('success', jobs[0]['state'])
 
@@ -1506,9 +1504,7 @@ if __name__ == '__main__':
             cp, uuids = cli.submit('"exit ${FOO:-1}"', self.cook_url, flags=flags,
                                    submit_flags=f'--name {self.current_name()}')
             self.assertEqual(0, cp.returncode, cp.stderr)
-            cp = cli.wait(uuids, self.cook_url)
-            self.assertEqual(0, cp.returncode, cp.stderr)
-            cp, jobs = cli.show_jobs(uuids, self.cook_url)
+            jobs = util.wait_for_jobs(self.cook_url, uuids, 'completed')
             self.assertEqual('exit ${FOO:-1}', jobs[0]['command'])
             self.assertEqual('failed', jobs[0]['state'])
 
@@ -1519,9 +1515,7 @@ if __name__ == '__main__':
             cp, uuids = cli.submit('"exit ${FOO:-1}"', self.cook_url, flags=flags,
                                    submit_flags=f'--name {self.current_name()} --max-retries 5')
             self.assertEqual(0, cp.returncode, cp.stderr)
-            cp = cli.wait(uuids, self.cook_url)
-            self.assertEqual(0, cp.returncode, cp.stderr)
-            cp, jobs = cli.show_jobs(uuids, self.cook_url)
+            jobs = util.wait_for_jobs(self.cook_url, uuids, 'completed')
             self.assertEqual('export FOO=0; exit ${FOO:-1}', jobs[0]['command'])
             self.assertEqual('success', jobs[0]['state'])
 
