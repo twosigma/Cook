@@ -8,9 +8,9 @@
             [cook.test.testutil :as tu]
             [datomic.api :as d])
   (:import (io.kubernetes.client.openapi.models V1Container V1ContainerState V1ContainerStateWaiting V1ContainerStatus
-                                                V1EnvVar V1ListMeta V1Node V1NodeSpec V1ObjectMeta V1Pod V1PodCondition
-                                                V1PodList V1PodSpec V1PodStatus V1ResourceRequirements V1Taint V1Volume
-                                                V1VolumeMount)))
+                                                V1EnvVar V1ListMeta V1Node V1NodeSpec V1ObjectMeta V1Pod
+                                                V1PodAffinityTerm V1PodCondition V1PodList V1PodSpec V1PodStatus
+                                                V1ResourceRequirements V1Taint V1Volume V1VolumeMount)))
 
 (deftest test-get-consumption
   (testing "correctly computes consumption for a single pod without gpus"
@@ -488,7 +488,24 @@
             pod-labels (-> pod .getMetadata .getLabels)]
         (is (= "cook-job" (get pod-labels "workload-class")))
         (is (= "unspecified" (get pod-labels "workload-id")))
-        (is (= "none" (get pod-labels "workload-details")))))))
+        (is (= "none" (get pod-labels "workload-details")))))
+
+    (testing "synthetic pod anti-affinity"
+      (with-redefs [config/kubernetes (constantly {:synthetic-pod-anti-affinity-pod-label-key "test-key"
+                                                   :synthetic-pod-anti-affinity-pod-label-value "test-value"})]
+        (let [task-metadata {:command {:user "test-user"}
+                             :task-id "synthetic"
+                             :task-request {:scalar-requests {"mem" 512 "cpus" 1.0}}}
+              pod (api/task-metadata->pod "test-namespace" fake-cc-config task-metadata)
+              ^V1PodAffinityTerm pod-affinity-term (-> pod
+                                                       .getSpec
+                                                       .getAffinity
+                                                       .getPodAntiAffinity
+                                                       .getRequiredDuringSchedulingIgnoredDuringExecution
+                                                       first)]
+          (is pod-affinity-term)
+          (is (= api/k8s-hostname-label (.getTopologyKey pod-affinity-term)))
+          (is (= {"test-key" "test-value"} (-> pod-affinity-term .getLabelSelector .getMatchLabels))))))))
 
 (defn- k8s-volume->clj [^V1Volume volume]
   {:name (.getName volume)

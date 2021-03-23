@@ -22,11 +22,12 @@
            (io.kubernetes.client.openapi ApiClient ApiException JSON)
            (io.kubernetes.client.openapi.apis CoreV1Api)
            (io.kubernetes.client.openapi.models
-             V1Affinity V1Container V1ContainerPort V1ContainerState V1ContainerStatus V1DeleteOptions
-             V1DeleteOptionsBuilder V1EmptyDirVolumeSource V1EnvVar V1EnvVarSource CoreV1Event V1HostPathVolumeSource
-             V1HTTPGetAction V1ObjectFieldSelector V1Node V1NodeList V1NodeAffinity V1NodeSelector V1NodeSelectorRequirement
-             V1NodeSelectorTerm V1ObjectMeta V1ObjectReference V1Pod V1PodCondition V1PodSecurityContext V1PodSpec
-             V1PodStatus V1Probe V1ResourceRequirements V1Toleration V1Volume V1VolumeBuilder V1VolumeMount)
+             CoreV1Event V1Affinity V1Container V1ContainerPort V1ContainerState V1ContainerStatus V1DeleteOptions
+             V1DeleteOptionsBuilder V1EmptyDirVolumeSource V1EnvVar V1EnvVarSource V1HostPathVolumeSource
+             V1HTTPGetAction V1LabelSelector V1ObjectFieldSelector V1Node V1NodeList V1NodeAffinity V1NodeSelector
+             V1NodeSelectorRequirement V1NodeSelectorTerm V1ObjectMeta V1ObjectReference V1Pod V1PodAffinityTerm
+             V1PodAntiAffinity V1PodCondition V1PodSecurityContext V1PodSpec V1PodStatus V1Probe V1ResourceRequirements
+             V1Toleration V1Volume V1VolumeBuilder V1VolumeMount V1WeightedPodAffinityTerm)
            (io.kubernetes.client.util Watch)
            (java.net SocketTimeoutException)
            (java.util.concurrent Executors ExecutorService)))
@@ -1120,12 +1121,38 @@
     (.setMetadata pod metadata)
     (.setSpec pod pod-spec)
 
-    ; We want to allow synthetic pods to have a non-default (typically 0) termination grace period,
-    ; so that they can be deleted quickly to free up space on nodes for real job pods. The default
-    ; grace period of 30 seconds can cause real job pods to be deemed unschedulable and fail.
     (when (synthetic-pod? pod-name)
+      ; We want to allow synthetic pods to have a non-default (typically 0) termination grace period,
+      ; so that they can be deleted quickly to free up space on nodes for real job pods. The default
+      ; grace period of 30 seconds can cause real job pods to be deemed unschedulable and fail.
       (when-let [{:keys [synthetic-pod-termination-grace-period-seconds]} (config/kubernetes)]
-        (.setTerminationGracePeriodSeconds pod-spec synthetic-pod-termination-grace-period-seconds)))
+        (.setTerminationGracePeriodSeconds pod-spec synthetic-pod-termination-grace-period-seconds))
+
+      ; We want to allow synthetic pods to be repelled from certain nodes via inter-pod (anti-)affinity
+      ; (https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#inter-pod-affinity-and-anti-affinity)
+      ; in order to repel them from "tenured" nodes, e.g. by running a "repeller" pod on nodes that
+      ; have been up and running for a certain amount of time. Without this, synthetic pods will often
+      ; run on nodes that have been alive for a while (tenured nodes) when job pods complete and free
+      ; up space, causing those synthetic pods to not serve their purpose of triggering scale-up.
+      (let [{:keys [synthetic-pod-anti-affinity-pod-label-key
+                    synthetic-pod-anti-affinity-pod-label-value]}
+            (config/kubernetes)]
+        (when (and synthetic-pod-anti-affinity-pod-label-key
+                   synthetic-pod-anti-affinity-pod-label-value)
+          ; If the synthetic pod spec already has an affinity defined (see the code for
+          ; pod-hostnames-to-avoid above), we add to it; otherwise, we create a new one
+          (let [affinity (or (.getAffinity pod-spec) (V1Affinity.))
+                pod-anti-affinity (V1PodAntiAffinity.)
+                pod-affinity-term (V1PodAffinityTerm.)
+                label-selector (V1LabelSelector.)]
+            (.setMatchLabels label-selector
+                             {synthetic-pod-anti-affinity-pod-label-key
+                              synthetic-pod-anti-affinity-pod-label-value})
+            (.setLabelSelector pod-affinity-term label-selector)
+            (.setTopologyKey pod-affinity-term k8s-hostname-label)
+            (.setRequiredDuringSchedulingIgnoredDuringExecution pod-anti-affinity [pod-affinity-term])
+            (.setPodAntiAffinity affinity pod-anti-affinity)
+            (.setAffinity pod-spec affinity)))))
 
     pod))
 
