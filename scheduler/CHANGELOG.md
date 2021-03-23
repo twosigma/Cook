@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.51.8] - 2021-03-23
+### Changed
+- Allowed synthetic pods to have inter-pod anti-affinity, from @dposada
+
 ## [1.51.7] - 2021-03-11
 ### Added
 - Make cook pods ignore a tenured node taint, from @scrosby
