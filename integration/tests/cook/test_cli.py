@@ -532,11 +532,11 @@ if __name__ == '__main__':
             def running_jobs():
                 _cp, _jobs = self.list_jobs(name, user, ['running'])
                 assert 0 == _cp.returncode, _cp.stderr
+                self.logger.info(f'Running jobs: {_jobs}')
                 return _jobs
 
             def one_running_job(_jobs):
-                assert 1 == len(_jobs)
-                assert running_uuid == _jobs[0]['uuid']
+                return 1 == len(_jobs) and running_uuid == _jobs[0]['uuid']
 
             util.wait_until(running_jobs, one_running_job)
 
