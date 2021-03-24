@@ -522,8 +522,8 @@ if __name__ == '__main__':
             # waiting
             cp, jobs = self.list_jobs(name, user, ['waiting'])
             self.assertEqual(0, cp.returncode, cp.stderr)
-            self.assertEqual(1, len(jobs))
-            self.assertEqual(waiting_uuid, jobs[0]['uuid'])
+            self.assertLessEqual(1, len(jobs), jobs)
+            self.assertIn(waiting_uuid, [job['uuid'] for job in jobs])
 
             # running
             def running_jobs():
