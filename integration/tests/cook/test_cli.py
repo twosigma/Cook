@@ -130,7 +130,8 @@ if __name__ == '__main__':
         cp, jobs = cli.show_jobs(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(3, len(jobs))
-        cp, uuids = cli.submit_stdin(['ls', 'ls', 'ls'], self.cook_url, submit_flags='--uuid %s' % util.make_temporal_uuid())
+        cp, uuids = cli.submit_stdin(['ls', 'ls', 'ls'], self.cook_url,
+                                     submit_flags='--uuid %s' % util.make_temporal_uuid())
         self.assertEqual(1, cp.returncode, cp.stderr)
         self.assertIn('cannot specify multiple subcommands with a single UUID', cli.decode(cp.stderr))
 
@@ -431,10 +432,7 @@ if __name__ == '__main__':
     def test_quoting(self):
         cp, uuids = cli.submit('echo "Hello; exit 1"', self.cook_url, submit_flags=f'--max-retries 5')
         self.assertEqual(0, cp.returncode, cp.stderr)
-        cp = cli.wait(uuids, self.cook_url)
-        self.assertEqual(0, cp.returncode, cp.stderr)
-        cp, jobs = cli.show_jobs(uuids, self.cook_url)
-        self.assertEqual(0, cp.returncode, cp.stderr)
+        jobs = util.wait_for_jobs(self.cook_url, uuids, 'completed')
         self.assertEqual('completed', jobs[0]['status'])
         self.assertEqual('success', jobs[0]['state'])
 
@@ -500,7 +498,7 @@ if __name__ == '__main__':
 
         # Submit a long-running job
         sleep_command = f'sleep {util.DEFAULT_TEST_TIMEOUT_SECS}'
-        cp, uuids = cli.submit(sleep_command, self.cook_url, submit_flags='--name %s' % name)
+        cp, uuids = cli.submit(sleep_command, self.cook_url, submit_flags='--name %s --max-retries 5' % name)
         self.assertEqual(0, cp.returncode, cp.stderr)
         running_uuid = uuids[0]
 
@@ -524,13 +522,21 @@ if __name__ == '__main__':
             # waiting
             cp, jobs = self.list_jobs(name, user, ['waiting'])
             self.assertEqual(0, cp.returncode, cp.stderr)
-            self.assertEqual(1, len(jobs))
-            self.assertEqual(waiting_uuid, jobs[0]['uuid'])
+            self.assertLessEqual(1, len(jobs), jobs)
+            self.assertIn(waiting_uuid, [job['uuid'] for job in jobs])
+
             # running
-            cp, jobs = self.list_jobs(name, user, ['running'])
-            self.assertEqual(0, cp.returncode, cp.stderr)
-            self.assertEqual(1, len(jobs))
-            self.assertEqual(running_uuid, jobs[0]['uuid'])
+            def running_jobs():
+                _cp, _jobs = self.list_jobs(name, user, ['running'])
+                assert 0 == _cp.returncode, _cp.stderr
+                self.logger.info(f'Running jobs: {_jobs}')
+                return _jobs
+
+            def one_running_job(_jobs):
+                return 1 == len(_jobs) and running_uuid == _jobs[0]['uuid']
+
+            util.wait_until(running_jobs, one_running_job)
+
             # completed
             cp, jobs = self.list_jobs(name, user, ['completed'])
             uuids = [j['uuid'] for j in jobs]
@@ -654,7 +660,7 @@ if __name__ == '__main__':
         self.assertEqual(1, len(jobs))
         self.assertIn(uuids[0], jobs[0]['uuid'])
 
-    @pytest.mark.xfail # Test is buggy and breaks if /jobs occurs anywhere in stderr, eg., in an environmental variable name.
+    @pytest.mark.xfail  # Test is buggy and breaks if /jobs occurs anywhere in stderr, eg., in an environmental variable name.
     def test_jobs_exclude_custom_executor(self):
         # Unfortunately, there is no easy way to create a job with a custom executor.
         # Instead, we will check that we are making a request to the correct endpoint by
@@ -884,12 +890,12 @@ if __name__ == '__main__':
             lines = util.wait_until(readlines, lambda l: len(l) > 0)
             start = int(lines[0].decode().strip())
             for i, line in enumerate(lines):
-                self.assertEqual(f'{start+i}\n', line.decode())
+                self.assertEqual(f'{start + i}\n', line.decode())
 
             # Wait until it prints some more lines and then check the (new) output
             lines = util.wait_until(readlines, lambda l: len(l) > 0)
             for j, line in enumerate(lines):
-                self.assertEqual(f'{start+i+j+1}\n', line.decode())
+                self.assertEqual(f'{start + i + j + 1}\n', line.decode())
         finally:
             proc.kill()
             cli.kill(uuids, self.cook_url)
@@ -1171,13 +1177,13 @@ if __name__ == '__main__':
 
     def __wait_for_progress_message(self, uuids):
         return util.wait_until(
-            lambda: next(i for i in cli.show_jobs(uuids, self.cook_url)[1][0]['instances'] 
+            lambda: next(i for i in cli.show_jobs(uuids, self.cook_url)[1][0]['instances']
                          if 'progress' in i and 'progress_message' in i),
             lambda i: True)
 
     def __wait_for_exit_code(self, uuids):
         return util.wait_until(
-            lambda: next(i for i in cli.show_jobs(uuids, self.cook_url)[1][0]['instances'] 
+            lambda: next(i for i in cli.show_jobs(uuids, self.cook_url)[1][0]['instances']
                          if 'exit_code' in i),
             lambda i: True)
 
@@ -1273,7 +1279,8 @@ if __name__ == '__main__':
             else:
                 # No disk specification
                 raw_job = {'command': 'ls'}
-                cp, uuids = cli.submit(stdin=cli.encode(json.dumps(raw_job)), cook_url=self.cook_url, submit_flags=f'--pool {pool_name} --raw')
+                cp, uuids = cli.submit(stdin=cli.encode(json.dumps(raw_job)), cook_url=self.cook_url,
+                                       submit_flags=f'--pool {pool_name} --raw')
                 self.assertEqual(0, cp.returncode, cp.stderr)
                 cp = cli.show(uuids, self.cook_url)
                 self.assertEqual(0, cp.returncode, cp.stderr)
@@ -1281,7 +1288,8 @@ if __name__ == '__main__':
 
                 # Disk with only request
                 raw_job = {'command': 'sleep 100', 'disk': {'request': 10.0}}
-                cp, uuids = cli.submit(stdin=cli.encode(json.dumps(raw_job)), cook_url=self.cook_url, submit_flags=f'--pool {pool_name} --raw')
+                cp, uuids = cli.submit(stdin=cli.encode(json.dumps(raw_job)), cook_url=self.cook_url,
+                                       submit_flags=f'--pool {pool_name} --raw')
                 self.assertEqual(0, cp.returncode, cp.stderr)
                 cp = cli.show(uuids, self.cook_url)
                 self.assertEqual(0, cp.returncode, cp.stderr)
@@ -1291,7 +1299,8 @@ if __name__ == '__main__':
 
                 # Disk with only request and limit
                 raw_job = {'command': 'ls', 'disk': {'request': 10.0, 'limit': 20.0}}
-                cp, uuids = cli.submit(stdin=cli.encode(json.dumps(raw_job)), cook_url=self.cook_url, submit_flags=f'--pool {pool_name} --raw')
+                cp, uuids = cli.submit(stdin=cli.encode(json.dumps(raw_job)), cook_url=self.cook_url,
+                                       submit_flags=f'--pool {pool_name} --raw')
                 self.assertEqual(0, cp.returncode, cp.stderr)
                 cp = cli.show(uuids, self.cook_url)
                 self.assertEqual(0, cp.returncode, cp.stderr)
@@ -1301,7 +1310,8 @@ if __name__ == '__main__':
 
                 # Disk with request, limit, and type
                 raw_job = {'command': 'ls', 'disk': {'request': 10.0, 'limit': 20.0, 'type': 'standard'}}
-                cp, uuids = cli.submit(stdin=cli.encode(json.dumps(raw_job)), cook_url=self.cook_url, submit_flags=f'--pool {pool_name} --raw')
+                cp, uuids = cli.submit(stdin=cli.encode(json.dumps(raw_job)), cook_url=self.cook_url,
+                                       submit_flags=f'--pool {pool_name} --raw')
                 self.assertEqual(0, cp.returncode, cp.stderr)
                 cp = cli.show(uuids, self.cook_url)
                 self.assertEqual(0, cp.returncode, cp.stderr)
@@ -1480,9 +1490,7 @@ if __name__ == '__main__':
                                                                                f'--name {self.current_name()} '
                                                                                f'--max-retries 5')
         self.assertEqual(0, cp.returncode, cp.stderr)
-        cp = cli.wait(uuids, self.cook_url)
-        self.assertEqual(0, cp.returncode, cp.stderr)
-        cp, jobs = cli.show_jobs(uuids, self.cook_url)
+        jobs = util.wait_for_jobs(self.cook_url, uuids, 'completed')
         self.assertEqual('FOO=0; exit ${FOO:-1}', jobs[0]['command'])
         self.assertEqual('success', jobs[0]['state'])
 
@@ -1493,9 +1501,7 @@ if __name__ == '__main__':
             cp, uuids = cli.submit('"exit ${FOO:-1}"', self.cook_url, flags=flags,
                                    submit_flags=f'--name {self.current_name()}')
             self.assertEqual(0, cp.returncode, cp.stderr)
-            cp = cli.wait(uuids, self.cook_url)
-            self.assertEqual(0, cp.returncode, cp.stderr)
-            cp, jobs = cli.show_jobs(uuids, self.cook_url)
+            jobs = util.wait_for_jobs(self.cook_url, uuids, 'completed')
             self.assertEqual('exit ${FOO:-1}', jobs[0]['command'])
             self.assertEqual('failed', jobs[0]['state'])
 
@@ -1506,9 +1512,7 @@ if __name__ == '__main__':
             cp, uuids = cli.submit('"exit ${FOO:-1}"', self.cook_url, flags=flags,
                                    submit_flags=f'--name {self.current_name()} --max-retries 5')
             self.assertEqual(0, cp.returncode, cp.stderr)
-            cp = cli.wait(uuids, self.cook_url)
-            self.assertEqual(0, cp.returncode, cp.stderr)
-            cp, jobs = cli.show_jobs(uuids, self.cook_url)
+            jobs = util.wait_for_jobs(self.cook_url, uuids, 'completed')
             self.assertEqual('export FOO=0; exit ${FOO:-1}', jobs[0]['command'])
             self.assertEqual('success', jobs[0]['state'])
 
@@ -1855,7 +1859,7 @@ if __name__ == '__main__':
         cp = subprocess.run(command, shell=True, stdout=subprocess.PIPE)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertIn('Waiting for 100 jobs', cli.stdout(cp))
-        self.assertIn(f'Waiting for {num_jobs-100} job', cli.stdout(cp))
+        self.assertIn(f'Waiting for {num_jobs - 100} job', cli.stdout(cp))
 
     def test_show_non_v4_uuid(self):
         cp = cli.show(['019c34c3-13b3-b370-01a5-d1ecc9071249'], self.cook_url)
@@ -2354,7 +2358,8 @@ if __name__ == '__main__':
     def test_submit_docker(self):
         docker_image = util.docker_image()
         self.assertIsNotNone(docker_image)
-        cp, uuids = cli.submit('sleep 600', self.cook_url, submit_flags=f'--docker-image {docker_image} --executor mesos')
+        cp, uuids = cli.submit('sleep 600', self.cook_url,
+                               submit_flags=f'--docker-image {docker_image} --executor mesos')
         self.assertEqual(0, cp.returncode, cp.stderr)
         try:
             job = util.load_job(self.cook_url, uuids[0])
