@@ -28,7 +28,7 @@ from . import util
 from .containers import AbstractContainer
 from .jobs import Application, Disk, Job
 
-CLIENT_VERSION = '0.3.3'
+CLIENT_VERSION = '0.3.4'
 
 _LOG = logging.getLogger(__name__)
 _LOG.addHandler(logging.StreamHandler())
@@ -113,6 +113,7 @@ class JobClient:
                gpus: Optional[int] = None,
                disk: Optional[Disk] = None,
                disable_mea_culpa_retries: Optional[bool] = None,
+               constraints: Optional[list] = None,
 
                pool: Optional[str] = None,
 
@@ -203,6 +204,8 @@ class JobClient:
         if disable_mea_culpa_retries is not None:
             jobspec['disable_mea_culpa_retries'] \
                 = disable_mea_culpa_retries
+        if constraints is not None:
+            jobspec['constraints'] = constraints
 
         return self.submit_all([jobspec], pool=pool, **kwargs)[0]
 
