@@ -689,6 +689,13 @@
          (mapv #(apply make-env %))
          (cons hostIpEnvVar))))
 
+(defn get-default-env-for-pool
+  "Given a pool name, determine the default environment for containers in that pool"
+  [pool-name]
+  (let [effective-pool-name (or pool-name config/default-pool "")
+        default-envs (get-in config/config [:settings :pools :default-env])]
+    (regexp-tools/match-based-on-pool-name default-envs effective-pool-name :env :default-value {})))
+
 (defn- add-as-decimals
   "Takes two doubles and adds them as decimals to avoid floating point error. Kubernetes will not be able to launch a
    pod if the required cpu has too much precision. For example, adding 0.1 and 0.02 as doubles results in 0.12000000000000001"
@@ -929,7 +936,9 @@
                    (assoc "COOK_USER_MEMORY_REQUEST_BYTES" (* memory-multiplier mem))
                    computed-mem
                    (assoc "COOK_MEMORY_REQUEST_BYTES" (* memory-multiplier computed-mem)))
-        main-env-vars (make-filtered-env-vars main-env)]
+        main-env-vars (-> main-env
+                          (merge (get-default-env-for-pool pool-name))
+                          make-filtered-env-vars)]
 
     ; metadata
     (.setName metadata pod-name)
