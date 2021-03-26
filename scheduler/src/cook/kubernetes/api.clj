@@ -113,27 +113,22 @@
 
 (defn process-watch-response!
   "Given a watch response object (for pods or nodes), updates the state atom and
-  invokes the provided callbacks on the previous and new values for the key. Note that
-  the watch object can be nil, so we log a warning and move on when that is the case."
+  invokes the provided callbacks on the previous and new values for the key."
   [state-atom watch-object watch-type key-fn callbacks]
-  (if (some? watch-object)
-    (let [key (key-fn watch-object)
-          prev-item (get @state-atom key)
-          ; Now we want to re-bind prev-item and item to the real previous and current,
-          ; embedding ADDED/MODIFIED/DELETED based on the location of nils.
-          [prev-item item]
-          (case watch-type
-            "ADDED" [nil watch-object]
-            "MODIFIED" [prev-item watch-object]
-            "DELETED" [prev-item nil])]
-      (doseq [callback callbacks]
-        (try
-          (callback key prev-item item)
-          (catch Exception e
-            (log/error e "Error while processing callback")))))
-    (log/warn "Encountered nil object on watch response"
-              {:watch-object watch-object
-               :watch-type watch-type})))
+  (let [key (key-fn watch-object)
+        prev-item (get @state-atom key)
+        ; Now we want to re-bind prev-item and item to the real previous and current,
+        ; embedding ADDED/MODIFIED/DELETED based on the location of nils.
+        [prev-item item]
+        (case watch-type
+          "ADDED" [nil watch-object]
+          "MODIFIED" [prev-item watch-object]
+          "DELETED" [prev-item nil])]
+    (doseq [callback callbacks]
+      (try
+        (callback key prev-item item)
+        (catch Exception e
+          (log/error e "Error while processing callback"))))))
 
 (defn handle-watch-updates
   "When a watch update occurs (for pods or nodes) update both the state atom as well as
@@ -143,7 +138,12 @@
     (let [watch-response (.next watch)
           item (.-object watch-response)
           type (.-type watch-response)]
-      (process-watch-response! state-atom item type key-fn callbacks))))
+      (if (some? item)
+        (process-watch-response! state-atom item type key-fn callbacks)
+        (throw (ex-info "Encountered nil object on watch response"
+                        {:watch-object item
+                         :watch-response watch-response
+                         :watch-type type}))))))
 
 (defn get-pod-namespaced-key
   [^V1Pod pod]

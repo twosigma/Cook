@@ -932,12 +932,3 @@
       (.addContainerStatusesItem pod-status container-status)
       (.setStatus pod pod-status)
       (= :not-running (api/pod->sandbox-file-server-container-state pod)))))
-
-(deftest test-process-watch-response!
-  (testing "graceful handling of nil watch object"
-    (api/process-watch-response!
-      (atom nil)
-      nil
-      "ADDED"
-      #(when (nil? %) (throw (ex-info "nil key" {})))
-      nil)))
