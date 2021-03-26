@@ -512,7 +512,9 @@
   (->> node-name->pods
        ; Keep those with non-nil node names
        (filter first)
-       ; Keep those with non-nil and non-empty pods
+       ; Keep those with non-nil and non-empty pods (in the wild, we occasionally see nodes at the
+       ; beginning of their lifetime come through this code path with no pods associated to them, and
+       ; when this happens, an exception is thrown in the calling code and no offers are generated)
        (filter #(-> % second seq))
        (pc/map-vals (fn [pods]
                       (->> pods
