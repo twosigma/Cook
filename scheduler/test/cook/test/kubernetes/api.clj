@@ -491,7 +491,8 @@
         (is (= "none" (get pod-labels "workload-details")))))
 
     (testing "synthetic pod anti-affinity"
-      (with-redefs [config/kubernetes (constantly {:synthetic-pod-anti-affinity-pod-label-key "test-key"
+      (with-redefs [config/kubernetes (constantly {:synthetic-pod-anti-affinity-namespace "test-namespace"
+                                                   :synthetic-pod-anti-affinity-pod-label-key "test-key"
                                                    :synthetic-pod-anti-affinity-pod-label-value "test-value"})]
         (let [task-metadata {:command {:user "test-user"}
                              :task-id "synthetic"
@@ -502,10 +503,13 @@
                                                        .getAffinity
                                                        .getPodAntiAffinity
                                                        .getRequiredDuringSchedulingIgnoredDuringExecution
-                                                       first)]
+                                                       first)
+              namespaces (-> pod-affinity-term .getNamespaces)]
           (is pod-affinity-term)
           (is (= api/k8s-hostname-label (.getTopologyKey pod-affinity-term)))
-          (is (= {"test-key" "test-value"} (-> pod-affinity-term .getLabelSelector .getMatchLabels))))))))
+          (is (= {"test-key" "test-value"} (-> pod-affinity-term .getLabelSelector .getMatchLabels)))
+          (is (= 1 (count namespaces)))
+          (is (= "test-namespace" (first namespaces))))))))
 
 (defn- k8s-volume->clj [^V1Volume volume]
   {:name (.getName volume)

@@ -1145,7 +1145,8 @@
       ; have been up and running for a certain amount of time. Without this, synthetic pods will often
       ; run on nodes that have been alive for a while (tenured nodes) when job pods complete and free
       ; up space, causing those synthetic pods to not serve their purpose of triggering scale-up.
-      (let [{:keys [synthetic-pod-anti-affinity-pod-label-key
+      (let [{:keys [synthetic-pod-anti-affinity-namespace
+                    synthetic-pod-anti-affinity-pod-label-key
                     synthetic-pod-anti-affinity-pod-label-value]}
             (config/kubernetes)]
         (when (and synthetic-pod-anti-affinity-pod-label-key
@@ -1161,6 +1162,8 @@
                               synthetic-pod-anti-affinity-pod-label-value})
             (.setLabelSelector pod-affinity-term label-selector)
             (.setTopologyKey pod-affinity-term k8s-hostname-label)
+            (when synthetic-pod-anti-affinity-namespace
+              (.addNamespacesItem pod-affinity-term synthetic-pod-anti-affinity-namespace))
             (.setRequiredDuringSchedulingIgnoredDuringExecution pod-anti-affinity [pod-affinity-term])
             (.setPodAntiAffinity affinity pod-anti-affinity)
             (.setAffinity pod-spec affinity)))))
