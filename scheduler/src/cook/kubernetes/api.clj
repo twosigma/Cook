@@ -111,28 +111,39 @@
   (when (or (is-cook-scheduler-pod prev-item compute-cluster-name) (is-cook-scheduler-pod item compute-cluster-name))
     (callback key prev-item item)))
 
+(defn process-watch-response!
+  "Given a watch response object (for pods or nodes), updates the state atom and
+  invokes the provided callbacks on the previous and new values for the key. Note that
+  the watch object can be nil, so we log a warning and move on when that is the case."
+  [state-atom watch-object watch-type key-fn callbacks]
+  (if (some? watch-object)
+    (let [key (key-fn watch-object)
+          prev-item (get @state-atom key)
+          ; Now we want to re-bind prev-item and item to the real previous and current,
+          ; embedding ADDED/MODIFIED/DELETED based on the location of nils.
+          [prev-item item]
+          (case watch-type
+            "ADDED" [nil watch-object]
+            "MODIFIED" [prev-item watch-object]
+            "DELETED" [prev-item nil])]
+      (doseq [callback callbacks]
+        (try
+          (callback key prev-item item)
+          (catch Exception e
+            (log/error e "Error while processing callback")))))
+    (log/warn "Encountered nil object on watch response"
+              {:watch-object watch-object
+               :watch-type watch-type})))
+
 (defn handle-watch-updates
   "When a watch update occurs (for pods or nodes) update both the state atom as well as
   invoke the callbacks on the previous and new values for the key."
   [state-atom ^Watch watch key-fn callbacks]
   (while (.hasNext watch)
     (let [watch-response (.next watch)
-          item (.-object watch-response) ;is always non-nil, even for deleted items.
-          key (key-fn item)
-          prev-item (get @state-atom key)
-          ; Now we want to re-bind prev-item and item to the real previous and current,
-          ; embedding ADDED/MODIFIED/DELETED based on the location of nils.
-          [prev-item item]
-          (case (.-type watch-response)
-            "ADDED" [nil item]
-            "MODIFIED" [prev-item item]
-            "DELETED" [prev-item nil])]
-
-      (doseq [callback callbacks]
-        (try
-          (callback key prev-item item)
-          (catch Exception e
-            (log/error e "Error while processing callback")))))))
+          item (.-object watch-response)
+          type (.-type watch-response)]
+      (process-watch-response! state-atom item type key-fn callbacks))))
 
 (defn get-pod-namespaced-key
   [^V1Pod pod]
