@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.51.9] - 2021-03-26
+### Changed
+- Allowed synthetic pod anti-affinity to specify a namespace, from @dposada
+- Improved logging when k8s watch response object is nil, from @dposada
+### Fixed
+- Gracefully ignore nodes with no pods during consumption calculation, from @dposada
+
 ## [1.51.8] - 2021-03-23
 ### Changed
 - Allowed synthetic pods to have inter-pod anti-affinity, from @dposada
