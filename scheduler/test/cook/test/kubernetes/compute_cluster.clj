@@ -184,7 +184,41 @@
                 {:name "cpus" :type :value-scalar :scalar 1.0}
                 {:name "disk" :type :value-text->scalar :text->scalar {"pd-standard" 255950.0}}
                 {:name "gpus" :type :value-text->scalar :text->scalar {}}]
-               (:resources offer)))))))
+               (:resources offer))))
+
+      (let [entire-node-a-capacity [{:name "mem"
+                                     :type :value-scalar
+                                     :scalar 1000.0}
+                                    {:name "cpus"
+                                     :type :value-scalar
+                                     :scalar 1.0}
+                                    {:name "disk"
+                                     :type :value-text->scalar
+                                     :text->scalar {}}
+                                    {:name "gpus"
+                                     :type :value-text->scalar
+                                     :text->scalar {"nvidia-tesla-p100" 10}}]]
+        (testing "graceful handling of node with empty pod list"
+          (let [offers
+                (kcc/generate-offers
+                  compute-cluster
+                  node-name->node
+                  (assoc node-name->pods "nodeA" [])
+                  "test-pool")
+                offer (first (filter #(= "nodeA" (:hostname %)) offers))]
+            (is offer)
+            (is (= entire-node-a-capacity (:resources offer)))))
+
+        (testing "graceful handling of node with nil pod list"
+          (let [offers
+                (kcc/generate-offers
+                  compute-cluster
+                  node-name->node
+                  (assoc node-name->pods "nodeA" nil)
+                  "test-pool")
+                offer (first (filter #(= "nodeA" (:hostname %)) offers))]
+            (is offer)
+            (is (= entire-node-a-capacity (:resources offer)))))))))
 
 (deftest determine-cook-expected-state
   ; TODO

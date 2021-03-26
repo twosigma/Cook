@@ -521,7 +521,12 @@
   See https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/#resource-requests-and-limits-of-pod-and-container"
   [clobber-synthetic-pods node-name->pods pool-name]
   (->> node-name->pods
-       (filter first) ; Keep those with non-nil node names.
+       ; Keep those with non-nil node names
+       (filter first)
+       ; Keep those with non-nil and non-empty pods (in the wild, we occasionally see nodes at the
+       ; beginning of their lifetime come through this code path with no pods associated to them, and
+       ; when this happens, an exception is thrown in the calling code and no offers are generated)
+       (filter #(-> % second seq))
        (pc/map-vals (fn [pods]
                       (->> pods
                            (remove #(and clobber-synthetic-pods (some-> % .getMetadata .getName synthetic-pod?)))
