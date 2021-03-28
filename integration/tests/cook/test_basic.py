@@ -103,7 +103,7 @@ class CookTest(util.CookTest):
 
     @pytest.mark.travis_skip
     @unittest.skipIf(util.using_kubernetes(), 'We do not currently support output_url in k8s')
-    @pytest.mark.xfail # output url api is flaky, even on Mesos
+    @pytest.mark.xfail  # output url api is flaky, even on Mesos
     def test_output_url(self):
         job_executor_type = util.get_job_executor_type()
         job_uuid, resp = util.submit_job(self.cook_url,
@@ -240,7 +240,9 @@ class CookTest(util.CookTest):
                 resp = util.session.get(f'{output_url}/stdout&offset=0&length={max_length_plus_one}')
                 self.logger.info(resp.text)
                 self.assertEqual(400, resp.status_code)
-                self.assertIn(f'Requested length for file read, {max_length_plus_one} is greater than max allowed length, {max_length}', resp.text)
+                self.assertIn(
+                    f'Requested length for file read, {max_length_plus_one} is greater than max allowed length, {max_length}',
+                    resp.text)
 
             # invalid path and offset not a valid number
             resp = util.session.get(f'{output_url}/{uuid.uuid4()}&offset=foo')
@@ -484,12 +486,15 @@ class CookTest(util.CookTest):
                      if cc['config']['name'] == instance_compute_cluster_name])
             finally:
                 pass
-            self.assertEqual(1, len(filtered_compute_clusters), "Unable to find " + instance_compute_cluster_name + " in compute clusters")
+            self.assertEqual(1, len(filtered_compute_clusters),
+                             "Unable to find " + instance_compute_cluster_name + " in compute clusters")
             found_compute_cluster = filtered_compute_clusters[0]
 
-            self.assertIsNotNone(found_compute_cluster, message + str(settings_dict['compute-clusters']) + str(in_mem_compute_clusters))
+            self.assertIsNotNone(found_compute_cluster,
+                                 message + str(settings_dict['compute-clusters']) + str(in_mem_compute_clusters))
 
-            self.assertEqual(util.get_compute_cluster_type(found_compute_cluster), instance_compute_cluster_type, message)
+            self.assertEqual(util.get_compute_cluster_type(found_compute_cluster), instance_compute_cluster_type,
+                             message)
             if found_compute_cluster['factory-fn'] == 'cook.mesos.mesos-compute-cluster/factory-fn':
                 expected_mesos_framework = found_compute_cluster['config'].get('framework-id', None)
                 self.assertEqual(expected_mesos_framework, instance['compute-cluster']['mesos']['framework-id'],
@@ -612,7 +617,7 @@ class CookTest(util.CookTest):
                   f'{line_5} && sleep 2 && echo "Done" && exit 0'
         job_uuid, resp = util.submit_job(self.cook_url, command=command, executor=job_executor_type, max_retries=5)
         self.assertEqual(201, resp.status_code, msg=resp.content)
-        time.sleep(10) # since the job sleeps for 10 seconds, it won't be done for at least 10 seconds
+        time.sleep(10)  # since the job sleeps for 10 seconds, it won't be done for at least 10 seconds
         util.wait_for_job(self.cook_url, job_uuid, 'completed')
         instance = util.wait_for_instance_with_progress(self.cook_url, job_uuid, 75)
         message = json.dumps(instance, sort_keys=True)
@@ -634,7 +639,7 @@ class CookTest(util.CookTest):
                   f'echo "{line_5}" && sleep 2 && echo "Done" && exit 0'
         job_uuid, resp = util.submit_job(self.cook_url, command=command, executor=job_executor_type, max_retries=5)
         self.assertEqual(201, resp.status_code, msg=resp.content)
-        time.sleep(10) # since the job sleeps for 10 seconds, it won't be done for at least 10 seconds
+        time.sleep(10)  # since the job sleeps for 10 seconds, it won't be done for at least 10 seconds
         util.wait_for_job(self.cook_url, job_uuid, 'completed')
         instance = util.wait_for_instance_with_progress(self.cook_url, job_uuid, 75)
         message = json.dumps(instance, sort_keys=True)
@@ -667,11 +672,13 @@ class CookTest(util.CookTest):
         publish_interval_ms = util.get_publish_interval_ms(self.cook_url)
         progress_wait_timeout_ms = 10 * publish_interval_ms
         progress_wait_interval_ms = min(1000, publish_interval_ms // 2)
+
         def wait_until_instance(predicate):
             util.wait_until(lambda: util.load_instance(self.cook_url, instance_uuid),
                             predicate,
                             max_wait_ms=progress_wait_timeout_ms,
                             wait_interval_ms=progress_wait_interval_ms)
+
         # send progress percentage update
         util.send_progress_update(self.cook_url, instance_uuid, sequence=100, percent=10)
         wait_until_instance(lambda i: i['progress'] == 10)
@@ -696,13 +703,16 @@ class CookTest(util.CookTest):
         response = util.send_progress_update(self.cook_url, instance_uuid, assert_response=False, sequence=600)
         assert response.status_code == 400, response.content
         # send progress update with non-integer sequence id
-        response = util.send_progress_update(self.cook_url, instance_uuid, assert_response=False, sequence=0.1, percent=0)
+        response = util.send_progress_update(self.cook_url, instance_uuid, assert_response=False, sequence=0.1,
+                                             percent=0)
         assert response.status_code == 400, response.content
         # send progress update with non-integer percentage
-        response = util.send_progress_update(self.cook_url, instance_uuid, assert_response=False, sequence=700, percent=0.1)
+        response = util.send_progress_update(self.cook_url, instance_uuid, assert_response=False, sequence=700,
+                                             percent=0.1)
         assert response.status_code == 400, response.content
         # send progress update with non-string message
-        response = util.send_progress_update(self.cook_url, instance_uuid, assert_response=False, sequence=800, message=12345)
+        response = util.send_progress_update(self.cook_url, instance_uuid, assert_response=False, sequence=800,
+                                             message=12345)
         assert response.status_code == 400, response.content
         # send progress update with instance id that does not exist
         response = util.send_progress_update(self.cook_url, job_uuid, assert_response=False, sequence=900, percent=0)
@@ -917,9 +927,10 @@ class CookTest(util.CookTest):
 
         try:
             self.assertEqual(resp1.status_code, 201, msg=resp1.content)
-            job1 = util.wait_for_job(self.cook_url, job_uuid1, 'completed')
-            self.assertIn(2002, [i['reason_code'] for i in job1['instances']])
-            self.assertIn('Container memory limit exceeded', [i['reason_string'] for i in job1['instances']])
+            util.wait_until(lambda: util.load_job(self.cook_url, job_uuid1),
+                            lambda job:
+                            (2002, 'Container memory limit exceeded')
+                            in [(i['reason_code'], i['reason_string']) for i in job['instances']])
 
             self.assertEqual(resp2.status_code, 201, msg=resp2.content)
             job2 = util.wait_for_job(self.cook_url, job_uuid2, 'completed')
@@ -1445,7 +1456,8 @@ class CookTest(util.CookTest):
             util.kill_jobs(self.cook_url, jobs)
 
     def test_cancel_instance(self):
-        job_uuid, _ = util.submit_job(self.cook_url, command=f'sleep {util.DEFAULT_WAIT_INTERVAL_MS * 3 / 1000}', max_retries=2)
+        job_uuid, _ = util.submit_job(self.cook_url, command=f'sleep {util.DEFAULT_WAIT_INTERVAL_MS * 3 / 1000}',
+                                      max_retries=2)
         job = util.wait_for_job(self.cook_url, job_uuid, 'running')
         task_id = job['instances'][0]['task_id']
         resp = util.session.delete('%s/rawscheduler?instance=%s' % (self.cook_url, task_id))
@@ -1887,7 +1899,7 @@ class CookTest(util.CookTest):
                       'type': 'pd-ssd'})
             self.assertEqual(resp.status_code, 400)
             self.assertTrue(f"Disk specifications are not supported on pool {default_pool}" in resp.text,
-                             msg=resp.content)
+                            msg=resp.content)
 
         else:
             # Disk may not be configured for COOK_TEST_DEFAULT_POOL, so we iterate over all active pools to find a pool where we can run this test.
@@ -1897,7 +1909,7 @@ class CookTest(util.CookTest):
                 matching_disk_types = [ii["valid-types"] for ii in disk_config_list if
                                        re.match(ii["pool-regex"], pool_name)]
                 disk_max_size = [ii["max-size"] for ii in disk_config_list if
-                                    re.match(ii["pool-regex"], pool_name)]
+                                 re.match(ii["pool-regex"], pool_name)]
                 # If there are no supported disk types for pool, assert submission gets rejected
                 if len(matching_disk_types) == 0 or len(matching_disk_types[0]) == 0:
                     self.logger.info(f'There are no disk types configured for pool {pool_name}')
@@ -1985,7 +1997,8 @@ class CookTest(util.CookTest):
                     gpus=1,
                     env={'COOK_GPU_MODEL': 'nvidia-tesla-p100'})
                 self.assertEqual(resp.status_code, 400)
-                self.assertTrue(f"Job requested GPUs but pool {default_pool} does not have any valid GPU models" in resp.text,
+                self.assertTrue(
+                    f"Job requested GPUs but pool {default_pool} does not have any valid GPU models" in resp.text,
                     msg=resp.content)
             else:
                 # GPU's may not be enabled for COOK_TEST_DEFAULT_SUBMIT_POOL, so we iterate over all active pools to find a pool where we can run this test.
@@ -2005,15 +2018,17 @@ class CookTest(util.CookTest):
                             gpus=1,
                             env={'COOK_GPU_MODEL': 'nvidia-tesla-p100'})
                         self.assertEqual(resp.status_code, 400)
-                        self.assertTrue(f"Job requested GPUs but pool {pool_name} does not have any valid GPU models" in resp.text,
+                        self.assertTrue(
+                            f"Job requested GPUs but pool {pool_name} does not have any valid GPU models" in resp.text,
                             msg=resp.content)
                         job_uuid, resp = util.submit_job(
                             self.cook_url,
                             pool=pool_name,
                             gpus=2)
                         self.assertEqual(resp.status_code, 400)
-                        self.assertTrue(f"Job requested GPUs but pool {pool_name} does not have any valid GPU models" in resp.text,
-                                        msg=resp.content)
+                        self.assertTrue(
+                            f"Job requested GPUs but pool {pool_name} does not have any valid GPU models" in resp.text,
+                            msg=resp.content)
                     else:
                         # Job submission with valid GPU model
                         self.logger.info(f'Submitting to {pool}')
@@ -2357,7 +2372,7 @@ class CookTest(util.CookTest):
                             'command': 'ls',
                             'cpus': 0.1,
                             'mem': 16,
-                            'name' : None,
+                            'name': None,
                             'max-retries': 1}
         util.add_container_to_job_if_needed(job_with_no_name)
         job_uuid, resp = util.submit_job(self.cook_url, **job_with_no_name)
@@ -2918,17 +2933,19 @@ class CookTest(util.CookTest):
             util.kill_jobs(self.cook_url, [job_uuid1, job_uuid2])
 
     @unittest.skipUnless(util.using_kubernetes() and util.in_cloud(), 'Test requires kubernetes')
-    @pytest.mark.xfail # Temporarily disable because of infrastructure issue. TODO: this should not exist past 20210312
+    @pytest.mark.xfail  # Temporarily disable because of infrastructure issue. TODO: this should not exist past 20210312
     def test_kubernetes_checkpointing(self):
         docker_image = util.docker_image()
         container = {'type': 'docker',
                      'docker': {'image': docker_image}}
         try:
             command_disabled = 'bash -c \'if [[ "${COOK_CHECKPOINT_MODE:-none}" == "none" ]] && [[ "${COOK_CHECKPOINT_PERIOD_SEC:-zzz}" == "zzz" ]]; then exit 0; else exit 1; fi\''
-            job_uuid_disabled, resp_disabled = util.submit_job(self.cook_url, command=command_disabled, container=container)
+            job_uuid_disabled, resp_disabled = util.submit_job(self.cook_url, command=command_disabled,
+                                                               container=container)
             self.assertEqual(201, resp_disabled.status_code, resp_disabled.text)
             command_enabled = 'bash -c \'if [[ "${COOK_CHECKPOINT_MODE}" == "auto" ]] && [[ "${COOK_CHECKPOINT_PERIOD_SEC}" == "555" ]] && [[ "${COOK_CHECKPOINT_PRESERVE_PATH_0}" == "p1" ]] && [[ "${COOK_CHECKPOINT_PRESERVE_PATH_1}" == "p2" ]]; then exit 0; else exit 1; fi\''
-            job_uuid_enabled, resp_enabled = util.submit_job(self.cook_url, command=command_enabled, container=container,
+            job_uuid_enabled, resp_enabled = util.submit_job(self.cook_url, command=command_enabled,
+                                                             container=container,
                                                              checkpoint={"mode": "auto",
                                                                          "periodic-options": {"period-sec": 555},
                                                                          "options": {"preserve-paths": ["p2", "p1"]}})
@@ -2948,14 +2965,13 @@ class CookTest(util.CookTest):
         try:
             # need to figure out how to match up COOK_SCHEDULER_REST_URL
             # leader url and COOK_SCHEDULER_REST_URL can have different schemes right now
-            #command = 'bash -c \'if [[ "${COOK_POOL:-zzz}" == "' + default_pool + '" ]] && [[ "${COOK_SCHEDULER_REST_URL:-zzz}" == "' + info['leader-url'] + '" ]]; then exit 0; else exit 1; fi\''
+            # command = 'bash -c \'if [[ "${COOK_POOL:-zzz}" == "' + default_pool + '" ]] && [[ "${COOK_SCHEDULER_REST_URL:-zzz}" == "' + info['leader-url'] + '" ]]; then exit 0; else exit 1; fi\''
             command = 'bash -c \'if [[ "${COOK_POOL:-zzz}" == "' + default_pool + '" ]] && [[ "${COOK_SCHEDULER_REST_URL:-zzz}" != "zzz" ]]; then exit 0; else exit 1; fi\''
             job_uuid, resp = util.submit_job(self.cook_url, command=command, container=container, max_retries=5)
             self.assertEqual(201, resp.status_code, resp.text)
             util.wait_for_instance(self.cook_url, job_uuid, status='success')
         finally:
             util.kill_jobs(self.cook_url, [job_uuid])
-
 
     @unittest.skipUnless(util.docker_tests_enabled(), 'Requires docker support')
     def test_disallowed_docker_parameters(self):
@@ -2996,7 +3012,7 @@ class CookTest(util.CookTest):
         job_uuid, resp = util.submit_job(self.cook_url, ports=(max_ports + 1))
         try:
             self.assertEqual(resp.status_code, 400, resp.content)
-            self.assertTrue(f'Requested {max_ports+1} ports, but only allowed to use {max_ports}'
+            self.assertTrue(f'Requested {max_ports + 1} ports, but only allowed to use {max_ports}'
                             in resp.text,
                             resp.text)
         finally:
@@ -3038,7 +3054,8 @@ class CookTest(util.CookTest):
         self.assertEqual('failed', job['instances'][0]['status'], job)
         self.assertEqual('Invalid task', job['instances'][0]['reason_string'], job)
 
-    @unittest.skipIf(util.disable_unspecified_pool_test(), "Test disabled in this run as default image isn't appropriate for default pool.")
+    @unittest.skipIf(util.disable_unspecified_pool_test(),
+                     "Test disabled in this run as default image isn't appropriate for default pool.")
     # This test should be enabled for only one compute cluster type, e.g., GKE, mesos, etc. Because we want to run the full set of
     # integration tests across multiple compute cluster types, if they accept different types of image formats in COOK_TEST_DOCKER_IMAGE,
     # this test can be active when the 'wrong' format is specified and the backend gets confused with the not-understood image format.
