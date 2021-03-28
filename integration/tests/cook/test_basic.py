@@ -903,23 +903,27 @@ class CookTest(util.CookTest):
         command = "python -c 'MB = 1024 * 1024 ; a = \"a\" * (25 * MB)'"
 
         # job requests 20MB of memory, does not allow memory usage above request, and allocates 25MB of memory
-        job_uuid1, resp1 = util.submit_job(self.cook_url, mem=20, command=command)
+        job_uuid1, resp1 = util.submit_job(self.cook_url,
+                                           mem=20,
+                                           command=command,
+                                           max_retries=5)
 
         # job requests 20MB of memory, allows memory usage above request, and allocates 25MB of memory
-        job_uuid2, resp2 = util.submit_job(self.cook_url, mem=20, command=command, labels={memory_limit_job_label_name: "True"})
+        job_uuid2, resp2 = util.submit_job(self.cook_url,
+                                           mem=20,
+                                           command=command,
+                                           max_retries=5,
+                                           labels={memory_limit_job_label_name: "True"})
 
         try:
             self.assertEqual(resp1.status_code, 201, msg=resp1.content)
             job1 = util.wait_for_job(self.cook_url, job_uuid1, 'completed')
-            self.assertEqual('completed', job1['status'])
-            self.assertEqual('failed', job1['instances'][0]['status'])
-            self.assertEqual(2002, job1['instances'][0]['reason_code'])
+            self.assertIn(2002, [i['reason_code'] for i in job1['instances']])
+            self.assertIn('Container memory limit exceeded', [i['reason_string'] for i in job1['instances']])
 
             self.assertEqual(resp2.status_code, 201, msg=resp2.content)
             job2 = util.wait_for_job(self.cook_url, job_uuid2, 'completed')
-            self.assertEqual('completed', job2['status'])
-            self.assertEqual('success', job2['instances'][0]['status'])
-
+            self.assertIn('success', [i['status'] for i in job2['instances']])
         finally:
             util.kill_jobs(self.cook_url, [job_uuid1, job_uuid2], assert_response=False)
 
