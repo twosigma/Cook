@@ -142,7 +142,7 @@
         (process-watch-response! state-atom item type key-fn callbacks)
         (throw (ex-info "Encountered nil object on watch response"
                         {:watch-object item
-                         :watch-response watch-response
+                         :watch-status (.-status watch-response)
                          :watch-type type}))))))
 
 (defn get-pod-namespaced-key
