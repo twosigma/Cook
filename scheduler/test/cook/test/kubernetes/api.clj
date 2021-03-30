@@ -717,6 +717,24 @@
                   :reason "ContainersNotInitialized"}
                  (api/pod->synthesized-pod-state pod-name pod))))))
 
+    (testing "containers not ready"
+      (let [pod-name "test-pod"
+            pod (make-pod-with-condition-fn pod-name "ContainersReady" "False" "ContainersNotReady" (t/epoch))
+            container-status (V1ContainerStatus.)
+            container-state (V1ContainerState.)
+            waiting (V1ContainerStateWaiting.)
+            pod-status (.getStatus pod)]
+        (.setReason waiting "waiting")
+        (.setWaiting container-state waiting)
+        (.setState container-status container-state)
+        (.setName container-status "required-cook-job-container")
+        (.setContainerStatuses pod-status [container-status])
+        (with-redefs [config/kubernetes
+                      (constantly {:pod-condition-containers-not-ready-seconds 60})]
+          (is (= {:state :pod/failed
+                  :reason "ContainersNotReady"}
+                 (api/pod->synthesized-pod-state pod-name pod))))))
+
     (testing "node preempted default label"
       (let [pod (V1Pod.)
             pod-metadata (V1ObjectMeta.)
