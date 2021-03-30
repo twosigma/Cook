@@ -760,7 +760,7 @@
                                     use-token-refreshing-authenticator?)
         launch-task-executor-service (Executors/newFixedThreadPool launch-task-num-threads)
         compute-cluster-launch-rate-limiter (cook.rate-limit/create-compute-cluster-launch-rate-limiter name compute-cluster-launch-rate-limits)
-        lock-shard-count (:controller-lock-num-shards config/kubernetes)
+        lock-shard-count (:controller-lock-num-shards (config/kubernetes))
         compute-cluster (->KubernetesComputeCluster api-client
                                                     name
                                                     cluster-entity-id

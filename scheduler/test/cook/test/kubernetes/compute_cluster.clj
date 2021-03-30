@@ -367,7 +367,7 @@
   (testing "guards against inappropriate number of threads"
     (with-redefs [kcc/get-or-create-cluster-entity-id (constantly 1)
                   cc/register-compute-cluster! (constantly nil)
-                  config/kubernetes {:controller-lock-num-shards 5}]
+                  config/kubernetes (constantly {:controller-lock-num-shards 5})]
       (is (kcc/factory-fn {:use-google-service-account? false} nil))
       (is (kcc/factory-fn {:launch-task-num-threads 1
                            :use-google-service-account? false}
