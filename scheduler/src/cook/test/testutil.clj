@@ -46,6 +46,7 @@
            (io.kubernetes.client.custom Quantity Quantity$Format)
            (io.kubernetes.client.openapi.models V1Container V1Node V1NodeSpec V1NodeStatus V1ObjectMeta V1Pod V1PodSpec V1ResourceRequirements V1Taint)
            (java.util.concurrent Executors TimeUnit)
+           (java.util.concurrent.locks ReentrantLock)
            (java.util UUID)
            (org.apache.log4j ConsoleAppender Logger PatternLayout)))
 
@@ -645,4 +646,5 @@
                                     rate-limit/AllowAllRateLimiter
                                     "some-random-taint-A"
                                     "taint-prefix-1"
-                                    "some-random-label-A")))
+                                    "some-random-label-A"
+                                    (repeatedly 16 #(ReentrantLock.)))))

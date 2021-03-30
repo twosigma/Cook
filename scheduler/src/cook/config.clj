@@ -498,17 +498,10 @@
                            (throw
                              (ex-info
                                "Please configure :controller-lock-num-shards to > 0 and < 32778 in your config file."
-                               kubernetes)))
-                         lock-objects
-                         (repeatedly
-                           controller-lock-num-shards
-                           #(ReentrantLock.))]
+                               kubernetes)))]
                      (merge {:autoscaling-scale-factor 1.0
                              :clobber-synthetic-pods false
                              :controller-lock-num-shards controller-lock-num-shards
-                             :controller-lock-objects (with-meta
-                                                        lock-objects
-                                                        {:json-value (str lock-objects)})
                              :default-workdir "/mnt/sandbox"
                              :max-jobs-for-autoscaling 1000
                              :pod-condition-containers-not-initialized-seconds 120

@@ -11,6 +11,7 @@
   (:import (clojure.lang ExceptionInfo)
            (io.kubernetes.client.openapi.models V1NodeSelectorRequirement V1Pod V1PodSecurityContext)
            (java.util.concurrent Executors)
+           (java.util.concurrent.locks ReentrantLock)
            (java.util UUID)))
 
 (deftest test-get-or-create-cluster-entity-id
@@ -71,7 +72,7 @@
                                                               {:kind :static :namespace "cook"} nil nil nil nil
                                                               (Executors/newSingleThreadExecutor)
                                                               {} (atom :running) (atom false) false
-                                                              cook.rate-limit/AllowAllRateLimiter "t-a" "p-a" "l-a")
+                                                              cook.rate-limit/AllowAllRateLimiter "t-a" "p-a" "l-a" (repeatedly 16 #(ReentrantLock.)))
               task-metadata (task/TaskAssignmentResult->task-metadata (d/db conn)
                                                                       nil
                                                                       compute-cluster
@@ -89,7 +90,7 @@
                                                               {:kind :per-user} nil nil nil nil
                                                               (Executors/newSingleThreadExecutor)
                                                               {} (atom :running) (atom false) false
-                                                              cook.rate-limit/AllowAllRateLimiter "t-b" "p-b" "l-b")
+                                                              cook.rate-limit/AllowAllRateLimiter "t-b" "p-b" "l-b" (repeatedly 16 #(ReentrantLock.)))
               task-metadata (task/TaskAssignmentResult->task-metadata (d/db conn)
                                                                       nil
                                                                       compute-cluster
@@ -117,7 +118,7 @@
                                                           {:kind :static :namespace "cook"} nil 3 nil nil
                                                           (Executors/newSingleThreadExecutor)
                                                           {} (atom :running) (atom false) false
-                                                          cook.rate-limit/AllowAllRateLimiter "t-c" "p-c" "l-c")
+                                                          cook.rate-limit/AllowAllRateLimiter "t-c" "p-c" "l-c" (repeatedly 16 #(ReentrantLock.)))
           node-name->node {"nodeA" (tu/node-helper "nodeA" 1.0 1000.0 10 "nvidia-tesla-p100" nil nil)
                            "nodeB" (tu/node-helper "nodeB" 1.0 1000.0 25 "nvidia-tesla-p100" nil nil)
                            "nodeC" (tu/node-helper "nodeC" 1.0 1000.0 nil nil nil nil)
@@ -365,7 +366,8 @@
 (deftest test-factory-fn
   (testing "guards against inappropriate number of threads"
     (with-redefs [kcc/get-or-create-cluster-entity-id (constantly 1)
-                  cc/register-compute-cluster! (constantly nil)]
+                  cc/register-compute-cluster! (constantly nil)
+                  config/kubernetes {:controller-lock-num-shards 5}]
       (is (kcc/factory-fn {:use-google-service-account? false} nil))
       (is (kcc/factory-fn {:launch-task-num-threads 1
                            :use-google-service-account? false}

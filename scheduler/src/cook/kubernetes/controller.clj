@@ -17,21 +17,22 @@
 (defmacro with-process-lock
   "Evaluates body (which should contain a call to
   process) after acquiring the pod-name-based lock"
-  [compute-cluster-name pod-name & body]
+  [compute-cluster pod-name & body]
   `(timers/time!
-     (metrics/timer "process-lock" ~compute-cluster-name)
+     (metrics/timer "process-lock" (:name ~compute-cluster))
      (let [lock-objects#
-           (:controller-lock-objects (config/kubernetes))
+           (:controller-lock-objects ~compute-cluster)
+           lock-count# (count lock-objects#)
            ^Lock lock-object#
            (nth lock-objects#
                 (-> ~pod-name
                     hash
-                    (mod (:controller-lock-num-shards (config/kubernetes)))))
+                    (mod lock-count#)))
            timer-context#
            (timers/start
              (metrics/timer
                "process-lock-acquire"
-               ~compute-cluster-name))]
+               (:name ~compute-cluster)))]
        (.lock lock-object#)
        (try
          (.stop timer-context#)
@@ -636,7 +637,7 @@
     (timers/time!
       (metrics/timer "pod-update" name)
       (with-process-lock
-        name
+        compute-cluster
         pod-name
         (synthesize-state-and-process-pod-if-changed compute-cluster pod-name new-pod)))))
 
@@ -648,7 +649,7 @@
     (timers/time!
       (metrics/timer "pod-deleted" name)
       (with-process-lock
-        name
+        compute-cluster
         pod-name
         (swap! k8s-actual-state-map dissoc pod-name)
         (try
@@ -664,7 +665,7 @@
   (timers/time!
     (metrics/timer "update-cook-expected-state" name)
     (with-process-lock
-      name
+      compute-cluster
       pod-name
       (let [old-state (get @cook-expected-state-map pod-name)
             ; Save the launch pod. We may need it in order to kill it.
@@ -693,7 +694,7 @@
   (timers/time!
     (metrics/timer "scan-process" name)
     (with-process-lock
-      name
+      compute-cluster
       pod-name
       (let [{:keys [pod]} (get @k8s-actual-state-map pod-name)]
         (synthesize-state-and-process-pod-if-changed compute-cluster pod-name pod true)))))
