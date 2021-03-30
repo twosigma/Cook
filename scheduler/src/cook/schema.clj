@@ -1379,6 +1379,12 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :reason/name :killed-externally
     :reason/mea-culpa? true
     :reason/mesos-reason :reason-killed-externally}
+   {:db/id (d/tempid :db.part/user)
+    :reason/code 1009
+    :reason/string "Container readiness timed out"
+    :reason/name :container-readiness-timed-out
+    :reason/mea-culpa? true
+    :reason/mesos-reason :reason-container-readiness-timed-out}
 
    {:db/id (d/tempid :db.part/user)
     :reason/code 2000
