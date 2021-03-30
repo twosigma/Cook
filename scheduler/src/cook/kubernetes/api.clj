@@ -199,7 +199,7 @@
 (declare initialize-pod-watch)
 (defn ^Callable initialize-pod-watch-helper
   "Help creating pod watch. Returns a new watch Callable"
-  [{:keys [^ApiClient api-client all-pods-atom node-name->pod-name->pod] compute-cluster-name :name :as compute-cluster} cook-pod-callback]
+  [{:keys [^ApiClient api-client all-pods-atom launch-task-executor-service node-name->pod-name->pod] compute-cluster-name :name :as compute-cluster}  cook-pod-callback]
   (let [[current-pods namespaced-pod-name->pod] (get-all-pods-in-kubernetes api-client compute-cluster-name)
         callbacks
         [(tools/make-atom-updater all-pods-atom) ; Update the set of all pods.
@@ -213,18 +213,25 @@
     ; We want to process all changes through the callback process.
     ; So compute the delta between the old and new and process those via the callbacks.
     ; Note as a side effect, the callbacks mutate all-pods-atom
-    (doseq [task (set/union new-pod-names old-pod-names)]
-      (log/info "In" compute-cluster-name "compute cluster, pod watch doing callback"
-                {:new? (contains? new-pod-names task)
-                 :old? (contains? old-pod-names task)
-                 :pod-name task})
-      (doseq [callback callbacks]
-        (try
-          (callback task (get old-all-pods task) (get namespaced-pod-name->pod task))
-          (catch Exception e
-            (log/error e "In" compute-cluster-name
-                       "compute cluster, pod watch error while processing callback for" task)))))
-
+    (let [tasks (set/union new-pod-names old-pod-names)
+          futures
+          (doall
+            (map (fn [task]
+                   (.submit
+                     launch-task-executor-service
+                     ^Callable (fn []
+                                 (log/info "In" compute-cluster-name "compute cluster, pod watch doing callback"
+                                           {:new? (contains? new-pod-names task)
+                                            :old? (contains? old-pod-names task)
+                                            :pod-name task})
+                                 (doseq [callback callbacks]
+                                   (try
+                                     (callback task (get old-all-pods task) (get namespaced-pod-name->pod task))
+                                     (catch Exception e
+                                       (log/error e "In" compute-cluster-name
+                                                  "compute cluster, pod watch error while processing callback for" task)))))))
+                 tasks))]
+      (run! deref futures))
     (let [watch (create-pod-watch api-client (-> current-pods
                                                  .getMetadata
                                                  .getResourceVersion))]
