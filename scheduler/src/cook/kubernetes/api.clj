@@ -1204,8 +1204,8 @@
                           (t/plus (t/seconds unschedulable-seconds))
                           (t/before? (t/now)))))))))
 
-(defn pod-has-terminal-condition?
-  "Returns true if the given pod status has a pod condition that is deemed terminal,
+(defn pod-has-stuck-condition?
+  "Returns true if the given pod status has a pod condition that is deemed stuck,
   meaning that it's been in some unready state for long enough that we assume it
   will not recover, and we should fail the job instance altogether."
   [pod-name ^V1PodStatus pod-status pod-condition-type pod-condition-reason pod-condition-seconds]
@@ -1241,7 +1241,7 @@
   False and reason ContainersNotInitialized, and the last transition was more than
   pod-condition-containers-not-initialized-seconds seconds ago"
   [pod-name ^V1PodStatus pod-status]
-  (pod-has-terminal-condition?
+  (pod-has-stuck-condition?
     pod-name
     pod-status
     "Initialized"
@@ -1253,7 +1253,7 @@
   False and reason ContainersNotReady, and the last transition was more than
   pod-condition-containers-not-ready-seconds seconds ago"
   [pod-name ^V1PodStatus pod-status]
-  (pod-has-terminal-condition?
+  (pod-has-stuck-condition?
     pod-name
     pod-status
     "ContainersReady"
