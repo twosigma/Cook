@@ -227,6 +227,11 @@
         (log/info "In compute cluster" name ", encountered containers not initialized in pod" instance-id)
         :reason-container-initialization-timed-out)
 
+      (api/pod-containers-not-ready? instance-id pod-status)
+      (do
+        (log/info "In compute cluster" name ", encountered containers not ready in pod" instance-id)
+        :reason-container-readiness-timed-out)
+
       :default
       (do
         (log/warn "In compute cluster" name ", unable to determine failure reason for" instance-id

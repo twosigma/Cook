@@ -512,6 +512,7 @@
                              :default-workdir "/mnt/sandbox"
                              :max-jobs-for-autoscaling 1000
                              :pod-condition-containers-not-initialized-seconds 120
+                             :pod-condition-containers-not-ready-seconds 120
                              :pod-condition-unschedulable-seconds 60
                              :reconnect-delay-ms 60000
                              :set-container-cpu-limit? true
