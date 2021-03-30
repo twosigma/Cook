@@ -69,9 +69,8 @@
   (job-constraint-name [this] (get-class-name this))
   (job-constraint-evaluate
     [this _ vm-attributes]
-    (let [job (:job this)
-          target-hostname (get vm-attributes "HOSTNAME")]
-      [(not-any? #(= target-hostname %) previous-hosts)
+    (let [target-hostname (get vm-attributes "HOSTNAME")]
+      [(not (get previous-hosts target-hostname))
        "Already ran on host"]))
   (job-constraint-evaluate
     [this _ vm-attributes _]
@@ -90,7 +89,7 @@
   "Constructs a novel-host-constraint.
   The constraint prevents the job from running on hosts it has already run on"
   [job]
-  (let [previous-hosts (job->previous-hosts-to-avoid job)]
+  (let [previous-hosts (set (job->previous-hosts-to-avoid job))]
     (->novel-host-constraint job previous-hosts)))
 
 (defn job->gpu-model-requested
