@@ -638,7 +638,7 @@
                                     nil ; max-pods-per-node
                                     synthetic-pods-config ; synthetic-pods-config
                                     node-blocklist-labels ; node-blocklist-labels
-                                    (Executors/newSingleThreadExecutor) ; launch-task-executor-service
+                                    (Executors/newSingleThreadExecutor) ; controller-executor-service
                                     {} ; config that was used to create this cluster
                                     (atom :running) ; state atom
                                     (atom false) ; state-locked? atom

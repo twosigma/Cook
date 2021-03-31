@@ -10,7 +10,8 @@
   (:import (io.kubernetes.client.openapi.models V1Container V1ContainerState V1ContainerStateWaiting V1ContainerStatus
                                                 V1EnvVar V1ListMeta V1Node V1NodeSpec V1ObjectMeta V1Pod
                                                 V1PodAffinityTerm V1PodCondition V1PodList V1PodSpec V1PodStatus
-                                                V1ResourceRequirements V1Taint V1Volume V1VolumeMount)))
+                                                V1ResourceRequirements V1Taint V1Volume V1VolumeMount)
+           (java.util.concurrent Executors)))
 
 (deftest test-get-consumption
   (testing "correctly computes consumption for a single pod without gpus"
@@ -868,7 +869,9 @@
           all-pods-atom (atom {namespaced-pod-name pod})]
       (with-redefs [api/get-all-pods-in-kubernetes (constantly [pod-list {namespaced-pod-name pod}])
                     api/create-pod-watch (constantly nil)]
-        (api/initialize-pod-watch-helper {:name compute-cluster-name :all-pods-atom all-pods-atom :node-name->pod-name->pod (atom {})} callback-fn))
+        (api/initialize-pod-watch-helper {:name compute-cluster-name :all-pods-atom all-pods-atom
+                                          :node-name->pod-name->pod (atom {}) :controller-executor-service (Executors/newSingleThreadExecutor)}
+                                         callback-fn))
       (is (= 1 (count @namespaced-pod-names-visited)))
       (is (= [namespaced-pod-name] @namespaced-pod-names-visited)))))
 

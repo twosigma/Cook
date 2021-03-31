@@ -380,18 +380,18 @@
                   cc/register-compute-cluster! (constantly nil)
                   config/kubernetes (constantly {:controller-lock-num-shards 5})]
       (is (kcc/factory-fn {:use-google-service-account? false} nil))
-      (is (kcc/factory-fn {:launch-task-num-threads 1
+      (is (kcc/factory-fn {:controller-num-threads 1
                            :use-google-service-account? false}
                           nil))
-      (is (kcc/factory-fn {:launch-task-num-threads 511
+      (is (kcc/factory-fn {:controller-num-threads 511
                            :use-google-service-account? false}
                           nil))
       (is (thrown? ExceptionInfo
-                   (kcc/factory-fn {:launch-task-num-threads 0
+                   (kcc/factory-fn {:controller-num-threads 0
                                     :use-google-service-account? false}
                                    nil)))
       (is (thrown? ExceptionInfo
-                   (kcc/factory-fn {:launch-task-num-threads 512
+                   (kcc/factory-fn {:controller-num-threads 512
                                     :use-google-service-account? false}
                                    nil))))))
 
