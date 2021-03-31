@@ -218,6 +218,17 @@
                   "test-pool")
                 offer (first (filter #(= "nodeA" (:hostname %)) offers))]
             (is offer)
+            (is (= entire-node-a-capacity (:resources offer)))))
+
+        (testing "graceful handling of node with pods with no resource requests"
+          (let [offers
+                (kcc/generate-offers
+                  compute-cluster
+                  node-name->node
+                  (assoc node-name->pods "nodeA" [(V1Pod.) (V1Pod.)])
+                  "test-pool")
+                offer (first (filter #(= "nodeA" (:hostname %)) offers))]
+            (is offer)
             (is (= entire-node-a-capacity (:resources offer)))))))))
 
 (deftest determine-cook-expected-state
