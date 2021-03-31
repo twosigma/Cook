@@ -64,6 +64,11 @@
   [pool]
   (= :pool.state/active (:pool/state pool)))
 
+(defn schedules-jobs?
+  "Returns true if the given pool should schedule jobs"
+  [pool]
+  (= :pool.state/active (:pool/state pool)))
+
 (defn guard-invalid-default-pool
   "Throws if either of the following is true:
    - there are pools in the database, but no default pool is configured
