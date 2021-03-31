@@ -12,8 +12,7 @@
 
 (defn make-test-kubernetes-config
   []
-  {:controller-lock-num-shards 1
-   :controller-lock-objects [(ReentrantLock.)]})
+  {:controller-lock-num-shards 1})
 
 (deftest test-k8s-actual-state-equivalent?
   (testing "different states"
@@ -149,7 +148,8 @@
         mock-cc {:api-client nil
                  :cook-expected-state-map cook-expected-state-map
                  :k8s-actual-state-map k8s-actual-state-map
-                 :cook-starting-pods (atom {})}
+                 :cook-starting-pods (atom {})
+                 :controller-lock-objects [(ReentrantLock.)]}
         extract-cook-expected-state (fn []
                                       (:cook-expected-state (get @cook-expected-state-map pod-name {})))
         count-kill-pod (atom 0)]
@@ -272,7 +272,8 @@
 (deftest test-scan-process
   (testing "gracefully handles nil pod"
     (let [compute-cluster {:k8s-actual-state-map (atom {})
-                           :cook-expected-state-map (atom {})}
+                           :cook-expected-state-map (atom {})
+                           :controller-lock-objects [(ReentrantLock.)]}
           pod-name "test-pod"]
       (with-redefs [config/kubernetes make-test-kubernetes-config]
         (controller/scan-process compute-cluster pod-name)))))

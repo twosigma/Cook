@@ -29,6 +29,7 @@
            (java.nio.charset StandardCharsets)
            (java.io ByteArrayInputStream File FileInputStream InputStreamReader)
            (java.util.concurrent Executors ExecutorService ScheduledExecutorService TimeUnit)
+           (java.util.concurrent.locks ReentrantLock)
            (java.util Base64 UUID)
            (okhttp3 OkHttpClient$Builder)))
 
@@ -318,7 +319,8 @@
                                      synthetic-pods-config node-blocklist-labels
                                      ^ExecutorService launch-task-executor-service
                                      cluster-definition state-atom state-locked?-atom dynamic-cluster-config?
-                                     compute-cluster-launch-rate-limiter cook-pool-taint-name cook-pool-taint-prefix cook-pool-label-name]
+                                     compute-cluster-launch-rate-limiter cook-pool-taint-name cook-pool-taint-prefix cook-pool-label-name
+                                     controller-lock-objects]
   cc/ComputeCluster
   (launch-tasks [this pool-name matches process-task-post-launch-fn]
     (let [task-metadata-seq (mapcat :task-metadata-seq matches)]
@@ -758,7 +760,8 @@
                                     use-token-refreshing-authenticator?)
         launch-task-executor-service (Executors/newFixedThreadPool launch-task-num-threads)
         compute-cluster-launch-rate-limiter (cook.rate-limit/create-compute-cluster-launch-rate-limiter name compute-cluster-launch-rate-limits)
-        compute-cluster (->KubernetesComputeCluster api-client 
+        lock-shard-count (:controller-lock-num-shards (config/kubernetes))
+        compute-cluster (->KubernetesComputeCluster api-client
                                                     name
                                                     cluster-entity-id
                                                     exit-code-syncer-state
@@ -781,6 +784,8 @@
                                                     (atom state)
                                                     (atom state-locked?)
                                                     dynamic-cluster-config?
-                                                    compute-cluster-launch-rate-limiter cook-pool-taint-name cook-pool-taint-prefix cook-pool-label-name)]
+                                                    compute-cluster-launch-rate-limiter cook-pool-taint-name cook-pool-taint-prefix cook-pool-label-name
+                                                    (with-meta (repeatedly lock-shard-count #(ReentrantLock.))
+                                                        {:json-value (str "<count of " lock-shard-count " ReentrantLocks>")}))]
     (cc/register-compute-cluster! compute-cluster)
     compute-cluster))
