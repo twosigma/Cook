@@ -1947,7 +1947,7 @@
   (persist-mea-culpa-failure-limit! conn mea-culpa-failure-limit)
 
   (let [{:keys [match-trigger-chan rank-trigger-chan]} trigger-chans
-        pools (pool/all-pools (d/db conn))
+        pools (->> conn d/db pool/all-pools (filter pool/schedules-jobs?))
         pools' (if (-> pools count pos?)
                  pools
                  [{:pool/name "no-pool"}])

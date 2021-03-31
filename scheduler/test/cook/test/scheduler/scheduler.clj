@@ -2262,7 +2262,16 @@
           output-atom (atom [])]
       (with-redefs [sched/persist-mea-culpa-failure-limit! (fn [_ _])
                     d/db (fn [_])
-                    pool/all-pools (fn [_] [{:pool/name "pool 1"} {:pool/name "pool 2"} {:pool/name "pool 3"}])
+                    pool/all-pools
+                    (fn [_]
+                      [{:pool/name "pool 1"
+                        :pool/state :pool.state/active}
+                       {:pool/name "pool 2"
+                        :pool/state :pool.state/active}
+                       {:pool/name "pool 3"
+                        :pool/state :pool.state/active}
+                       {:pool/name "old pool"
+                        :pool/state :pool.state/inactive}])
                     sched/make-fenzo-scheduler (fn [_ _ _])
                     sched/make-offer-handler (fn [_ _ _ _ _ _ _ _ trigger-chan _ _ pool-name _ _]
                                                (tools/chime-at-ch
