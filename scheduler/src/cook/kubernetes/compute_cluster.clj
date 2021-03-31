@@ -316,7 +316,7 @@
                                      node-name->pod-name->pod cook-expected-state-map cook-starting-pods k8s-actual-state-map
                                      pool->fenzo-atom namespace-config scan-frequency-seconds-config max-pods-per-node
                                      synthetic-pods-config node-blocklist-labels
-                                     ^ExecutorService launch-task-executor-service
+                                     ^ExecutorService controller-executor-service
                                      cluster-definition state-atom state-locked?-atom dynamic-cluster-config?
                                      compute-cluster-launch-rate-limiter cook-pool-taint-name cook-pool-taint-prefix cook-pool-label-name]
   cc/ComputeCluster
@@ -329,7 +329,7 @@
             (doall
               (map (fn [task-metadata]
                      (.submit
-                       launch-task-executor-service
+                       controller-executor-service
                        ^Callable (fn []
                                    (launch-task! this task-metadata)
                                    (process-task-post-launch-fn task-metadata))))
@@ -707,7 +707,7 @@
            dynamic-cluster-config?
            compute-cluster-launch-rate-limits
            kubeconfig-context
-           launch-task-num-threads
+           controller-num-threads
            max-pods-per-node
            name
            namespace
@@ -722,7 +722,7 @@
            use-token-refreshing-authenticator?]
     :or {bearer-token-refresh-seconds 300
          dynamic-cluster-config? false
-         launch-task-num-threads 8
+         controller-num-threads 8
          max-pods-per-node 32
          namespace {:kind :static
                     :namespace "cook"}
@@ -739,10 +739,10 @@
     :as compute-cluster-config}
    {:keys [exit-code-syncer-state]}]
   (guard-invalid-synthetic-pods-config name synthetic-pods)
-  (when (not (< 0 launch-task-num-threads 512))
+  (when (not (< 0 controller-num-threads 512))
     (throw
       (ex-info
-        "Please configure :launch-task-num-threads to > 0 and < 512 in your config."
+        "Please configure :controller-num-threads to > 0 and < 512 in your config."
         compute-cluster-config)))
   (let [conn cook.datomic/conn
         cluster-entity-id (get-or-create-cluster-entity-id conn name)
@@ -756,7 +756,7 @@
                                     kubeconfig-context
                                     read-timeout-seconds
                                     use-token-refreshing-authenticator?)
-        launch-task-executor-service (Executors/newFixedThreadPool launch-task-num-threads)
+        controller-executor-service (Executors/newFixedThreadPool controller-num-threads)
         compute-cluster-launch-rate-limiter (cook.rate-limit/create-compute-cluster-launch-rate-limiter name compute-cluster-launch-rate-limits)
         compute-cluster (->KubernetesComputeCluster api-client 
                                                     name
@@ -775,7 +775,7 @@
                                                     max-pods-per-node
                                                     synthetic-pods
                                                     node-blocklist-labels
-                                                    launch-task-executor-service
+                                                    controller-executor-service
                                                     {:factory-fn 'cook.kubernetes.compute-cluster/factory-fn
                                                      :config compute-cluster-config}
                                                     (atom state)

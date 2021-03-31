@@ -870,7 +870,7 @@
       (with-redefs [api/get-all-pods-in-kubernetes (constantly [pod-list {namespaced-pod-name pod}])
                     api/create-pod-watch (constantly nil)]
         (api/initialize-pod-watch-helper {:name compute-cluster-name :all-pods-atom all-pods-atom
-                                          :node-name->pod-name->pod (atom {}) :launch-task-executor-service (Executors/newSingleThreadExecutor)}
+                                          :node-name->pod-name->pod (atom {}) :controller-executor-service (Executors/newSingleThreadExecutor)}
                                          callback-fn))
       (is (= 1 (count @namespaced-pod-names-visited)))
       (is (= [namespaced-pod-name] @namespaced-pod-names-visited)))))

@@ -199,7 +199,7 @@
 (declare initialize-pod-watch)
 (defn ^Callable initialize-pod-watch-helper
   "Help creating pod watch. Returns a new watch Callable"
-  [{:keys [^ApiClient api-client all-pods-atom launch-task-executor-service node-name->pod-name->pod]
+  [{:keys [^ApiClient api-client all-pods-atom controller-executor-service node-name->pod-name->pod]
     compute-cluster-name :name :as compute-cluster} cook-pod-callback]
   (let [[current-pods namespaced-pod-name->pod] (get-all-pods-in-kubernetes api-client compute-cluster-name)
         callbacks
@@ -219,7 +219,7 @@
           (doall
             (map (fn [task]
                    (.submit
-                     launch-task-executor-service
+                     controller-executor-service
                      ^Callable (fn []
                                  (log/info "In" compute-cluster-name "compute cluster, pod watch doing callback"
                                            {:new? (contains? new-pod-names task)
