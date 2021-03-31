@@ -515,7 +515,7 @@
                node-name->node))
 
 (defn get-consumption
-  "Given a map from pod-name to pod, generate a map from node-name->resource-type->capacity.
+  "Given a map from pod-name to pod, generate a map from node-name->resource-type->consumption.
   Ignores pods that do not have an assigned node.
   When accounting for resources, we use resource requests to determine how much is used, not limits.
   See https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/#resource-requests-and-limits-of-pod-and-container"
@@ -548,7 +548,11 @@
                            ; remove nil resource-maps from collection before deep-merge-with because some pods do not
                            ; have container resource requests, and deep-merge-with does not gracefully handle nil values
                            (remove nil?)
-                           (apply util/deep-merge-with +))))))
+                           (apply util/deep-merge-with +))))
+       ; Keep entries with non-nil resource-type -> consumption maps
+       ; (the resource-type -> consumption map can be nil, for
+       ; example, if all pods on the node have no resource request)
+       (filter #(-> % second some?))))
 
 ; see pod->synthesized-pod-state comment for container naming conventions
 (def cook-container-name-for-job
