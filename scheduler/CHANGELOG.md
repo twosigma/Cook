@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.51.11] - 2021-03-31
+### Changed
+- Split k8s lock shards by compute cluster, from @scrosby
+- Do watch event processing in parallel at watch startup, from @scrosby
+- Optimize novel host constraint by 10%, from @scrosby
+- Prevent an inactive pool from having a scheduling loop, from @dposada
+### Fixed
+- Gracefully handle nodes with nil consumption maps, from @dposada
+
 ## [1.51.10] - 2021-03-30
 ### Changed
 - Made prolonged `ContainersNotReady` pod condition result in failure, from @dposada
