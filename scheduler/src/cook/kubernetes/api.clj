@@ -552,7 +552,8 @@
        ; Keep entries with non-nil resource-type -> consumption maps
        ; (the resource-type -> consumption map can be nil, for
        ; example, if all pods on the node have no resource request)
-       (filter #(-> % second some?))))
+       (filter #(-> % second some?))
+       (into {})))
 
 ; see pod->synthesized-pod-state comment for container naming conventions
 (def cook-container-name-for-job
