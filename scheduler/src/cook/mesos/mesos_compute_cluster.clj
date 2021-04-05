@@ -58,7 +58,7 @@
 (defn handle-status-update
   "Handles a status update from mesos. When a task/job is in an inconsistent state it may kill the task. It also writes the
   status back to datomic."
-  [conn compute-cluster sync-agent-sandboxes-fn pool->fenzo {:keys [reason state] :as status}]
+  [conn compute-cluster sync-agent-sandboxes-fn pool-name->fenzo-state {:keys [reason state] :as status}]
   (let [task-id (-> status :task-id :value)
         instance (d/entity (d/db conn) [:instance/task-id task-id])
         prior-job-state (:job/state (:job/_instance instance))
@@ -89,12 +89,12 @@
       (let [status' (cond-> status
                       (= reason Protos$TaskStatus$Reason/REASON_TASK_KILLED_DURING_LAUNCH)
                       (assoc :reason :reason-killed-during-launch))]
-        (sched/write-status-to-datomic conn pool->fenzo status')))
+        (sched/write-status-to-datomic conn pool-name->fenzo-state status')))
     (conditionally-sync-sandbox conn task-id (:state status) sync-agent-sandboxes-fn)))
 
 (defn create-mesos-scheduler
   "Creates the mesos scheduler which processes status updates asynchronously but in order of receipt."
-  [gpu-enabled? conn heartbeat-ch pool->fenzo pool->offers-chan match-trigger-chan
+  [gpu-enabled? conn heartbeat-ch pool-name->fenzo-state pool->offers-chan match-trigger-chan
    handle-exit-code handle-progress-message sandbox-syncer-state framework-id compute-cluster]
   (let [sync-agent-sandboxes-fn #(sandbox/sync-agent-sandboxes sandbox-syncer-state framework-id %1 %2)
         message-handlers {:handle-exit-code handle-exit-code
@@ -120,7 +120,7 @@
         (future
           (try
             (sched/reconcile-jobs conn)
-            (sched/reconcile-tasks (d/db conn) compute-cluster driver pool->fenzo)
+            (sched/reconcile-tasks (d/db conn) compute-cluster driver pool-name->fenzo-state)
             (catch Exception e
               (log/error e "Reconciliation error")))))
       (reregistered
@@ -129,7 +129,7 @@
         (future
           (try
             (sched/reconcile-jobs conn)
-            (sched/reconcile-tasks (d/db conn) compute-cluster driver pool->fenzo)
+            (sched/reconcile-tasks (d/db conn) compute-cluster driver pool-name->fenzo-state)
             (catch Exception e
               (log/error e "Reconciliation error")))))
       ;; Ignore this--we can just wait for new offers
@@ -193,7 +193,7 @@
         (meters/mark! handle-status-update-rate)
         (let [task-id (-> status :task-id :value)]
           (sched/async-in-order-processing
-            task-id (fn [] (handle-status-update conn compute-cluster sync-agent-sandboxes-fn pool->fenzo status))))))))
+            task-id (fn [] (handle-status-update conn compute-cluster sync-agent-sandboxes-fn pool-name->fenzo-state status))))))))
 
 
 (defn make-mesos-driver
@@ -257,7 +257,7 @@
   (db-id [this]
     db-id)
 
-  (initialize-cluster [this pool->fenzo]
+  (initialize-cluster [this pool-name->fenzo-state]
     (log/info "Initializing Mesos compute cluster" compute-cluster-name)
     (let [conn cook.datomic/conn
           {:keys [match-trigger-chan]} trigger-chans
@@ -270,7 +270,7 @@
           scheduler (create-mesos-scheduler (:gpu-enabled? mesos-config)
                                             conn
                                             mesos-heartbeat-chan
-                                            pool->fenzo
+                                            pool-name->fenzo-state
                                             pool->offers-chan
                                             match-trigger-chan
                                             handle-exit-code

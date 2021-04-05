@@ -632,7 +632,7 @@
                                     (atom {}) ; cook-expected-state-map
                                     (atom {}) ; cook-starting-pods
                                     (atom {}) ; k8s-actual-state-map
-                                    (atom nil) ; pool->fenzo-atom
+                                    (atom nil) ; pool-name->fenzo-state-atom
                                     {:kind :per-user} ; namespace-config
                                     nil ; scan-frequency-seconds-config
                                     nil ; max-pods-per-node

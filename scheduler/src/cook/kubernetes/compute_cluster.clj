@@ -315,7 +315,7 @@
 (defrecord KubernetesComputeCluster [^ApiClient api-client name entity-id exit-code-syncer-state
                                      all-pods-atom current-nodes-atom pool->node-name->node
                                      node-name->pod-name->pod cook-expected-state-map cook-starting-pods k8s-actual-state-map
-                                     pool->fenzo-atom namespace-config scan-frequency-seconds-config max-pods-per-node
+                                     pool-name->fenzo-state-atom namespace-config scan-frequency-seconds-config max-pods-per-node
                                      synthetic-pods-config node-blocklist-labels
                                      ^ExecutorService controller-executor-service
                                      cluster-definition state-atom state-locked?-atom dynamic-cluster-config?
@@ -359,18 +359,18 @@
   (compute-cluster-name [this]
     name)
 
-  (initialize-cluster [this pool->fenzo]
+  (initialize-cluster [this pool-name->fenzo-state]
     ; We may iterate forever trying to bring up kubernetes. However, our caller expects us to eventually return,
     ; so we launch within a future so that our caller can continue initializing other clusters.
     (future
       (try
         (log/info "Initializing Kubernetes compute cluster" name)
 
-        ; We need to reset! the pool->fenzo atom before initializing the
+        ; We need to reset! the pool-name->fenzo-state atom before initializing the
         ; watches, because otherwise, we will start to see and handle events
         ; for pods, but we won't be able to update the corresponding Fenzo
         ; instance (e.g. unassigning a completed task from its host)
-        (reset! pool->fenzo-atom pool->fenzo)
+        (reset! pool-name->fenzo-state-atom pool-name->fenzo-state)
 
         ; Initialize the pod watch path.
         (let [conn cook.datomic/conn
