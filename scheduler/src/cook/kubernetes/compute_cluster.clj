@@ -785,7 +785,7 @@
                                                     (atom state-locked?)
                                                     dynamic-cluster-config?
                                                     compute-cluster-launch-rate-limiter cook-pool-taint-name cook-pool-taint-prefix cook-pool-label-name
-                                                    (with-meta (repeatedly lock-shard-count #(ReentrantLock.))
+                                                    (with-meta (vec (repeatedly lock-shard-count #(ReentrantLock.)))
                                                         {:json-value (str "<count of " lock-shard-count " ReentrantLocks>")}))]
     (cc/register-compute-cluster! compute-cluster)
     compute-cluster))
