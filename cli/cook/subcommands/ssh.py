@@ -51,7 +51,7 @@ def ssh_to_instance(job, instance, sandbox_dir_fn, cluster, command_to_run=None)
                     'literal': False,
                     'long_format': True,
                     'path': None,
-                    'uuid': instance_uuid}
+                    'uuid': [instance_uuid]}
             ls([cluster], args, _=None)
             return
 
