@@ -785,6 +785,7 @@
                                                     (atom state-locked?)
                                                     dynamic-cluster-config?
                                                     compute-cluster-launch-rate-limiter cook-pool-taint-name cook-pool-taint-prefix cook-pool-label-name
+                                                    ; Vector instead of seq for O(1) access.
                                                     (with-meta (vec (repeatedly lock-shard-count #(ReentrantLock.)))
                                                         {:json-value (str "<count of " lock-shard-count " ReentrantLocks>")}))]
     (cc/register-compute-cluster! compute-cluster)
