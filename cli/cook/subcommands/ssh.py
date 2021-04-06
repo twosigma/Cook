@@ -5,7 +5,7 @@ from functools import partial
 
 from cook import plugins, terminal
 from cook.querying import get_compute_cluster_config, query_unique_and_run, parse_entity_refs
-from cook.subcommands.ls import kubectl_ls_for_instance
+from cook.subcommands.ls import ls
 from cook.util import print_info, guard_no_cluster
 
 
@@ -47,7 +47,12 @@ def ssh_to_instance(job, instance, sandbox_dir_fn, cluster, command_to_run=None)
             print_info(f'Here are the results of running {cs_command} ls:')
             print_info('')
             print_info(f'{cs_command} ls -l {instance_uuid}')
-            kubectl_ls_for_instance(instance_uuid, path=None, long_format=True, as_json=False)
+            args = {'json': False,
+                    'literal': False,
+                    'long_format': True,
+                    'path': None,
+                    'uuid': instance_uuid}
+            ls([cluster], args, _=None)
             return
 
     print_info(f'Attempting ssh for job instance {terminal.bold(instance_uuid)}...')
