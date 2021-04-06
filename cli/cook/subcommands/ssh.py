@@ -5,6 +5,7 @@ from functools import partial
 
 from cook import plugins, terminal
 from cook.querying import get_compute_cluster_config, query_unique_and_run, parse_entity_refs
+from cook.subcommands.ls import kubectl_ls_for_instance
 from cook.util import print_info, guard_no_cluster
 
 
@@ -21,14 +22,40 @@ def ssh_to_instance(job, instance, sandbox_dir_fn, cluster, command_to_run=None)
     When using Mesos, attempts to ssh (using os.execlp) to the Mesos agent corresponding to the given instance.
     When using Kubernetes, calls the exec command of the kubectl cli.
     """
-    print_info(f'Attempting ssh for job instance {terminal.bold(instance["task_id"])}...')
-    compute_cluster = instance["compute-cluster"]
-    compute_cluster_type = compute_cluster["type"]
-    compute_cluster_name = compute_cluster["name"]
-    if compute_cluster_type == "kubernetes":
+    compute_cluster = instance['compute-cluster']
+    compute_cluster_type = compute_cluster['type']
+    instance_status = instance['status']
+    instance_uuid = instance['task_id']
+
+    if compute_cluster_type == 'kubernetes':
+        if instance_status == 'unknown':
+            print_info(f'Job instance {terminal.bold(instance_uuid)} is not yet running.')
+            return
+        elif instance_status == 'success' or instance_status == 'failed':
+            cs_command = 'cs'
+            print_info(f'Job instance {terminal.bold(instance_uuid)} already completed, so you cannot ssh to it.')
+            print_info('')
+            print_info('To inspect individual files, e.g. stdout, try one of these:')
+            print_info('')
+            print_info(f'{cs_command} cat {instance_uuid} stdout')
+            print_info(f'{cs_command} tail {instance_uuid} stdout')
+            print_info('')
+            print_info('To retrieve the entire output directory, try:')
+            print_info('')
+            print_info(f'{cs_command} download {instance_uuid}')
+            print_info('')
+            print_info(f'Here are the results of running {cs_command} ls:')
+            print_info('')
+            print_info(f'{cs_command} ls -l {instance_uuid}')
+            kubectl_ls_for_instance(instance_uuid, path=None, long_format=True, as_json=False)
+            return
+
+    print_info(f'Attempting ssh for job instance {terminal.bold(instance_uuid)}...')
+    compute_cluster_name = compute_cluster['name']
+    if compute_cluster_type == 'kubernetes':
         kubectl_exec_to_instance_fn = plugins.get_fn('kubectl-exec-to-instance', kubectl_exec_to_instance)
         compute_cluster_config = get_compute_cluster_config(cluster, compute_cluster_name)
-        kubectl_exec_to_instance_fn(job["user"], instance["task_id"], compute_cluster_config, command_to_run)
+        kubectl_exec_to_instance_fn(job['user'], instance_uuid, compute_cluster_config, command_to_run)
     else:
         command_to_run = command_to_run or ['bash']
         sandbox_dir = sandbox_dir_fn()
