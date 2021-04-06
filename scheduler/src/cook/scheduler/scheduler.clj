@@ -275,12 +275,12 @@
                                    (.getTime (or (:instance/start-time instance-ent) current-time)))
                job-resources (tools/job-ent->resources job-ent)
                pool-name (cached-queries/job->pool-name job-ent)
-               unassign-task-set (some-> (pool-name->fenzo-state pool-name) :unassign-task-set)]
+               unassign-task-set (some-> pool-name pool-name->fenzo-state :unassign-task-set)]
            (when (#{:instance.status/success :instance.status/failed} instance-status)
              (if unassign-task-set
-               (swap! unassign-task-set conj [task-id (:instance/hostname instance-ent)])
+               (swap! unassign-task-set conj {:task-id task-id :hostname (:instance/hostname instance-ent)})
                (log/error "In" pool-name "pool, unable to unassign task" task-id "from"
-                          (:instance/hostname instance-ent) "because fenzo is nil:" (keys pool-name->fenzo-state))))
+                          (:instance/hostname instance-ent) "because fenzo state or unassign-task-set is nil:" (keys pool-name->fenzo-state))))
            (when (= instance-status :instance.status/success)
              (handle-throughput-metrics job-resources instance-runtime :succeeded pool-name)
              (handle-throughput-metrics job-resources instance-runtime :completed pool-name))
@@ -624,6 +624,21 @@
         (log/error e message)
         message))))
 
+(defn unassign-all
+  "Unassigns all items in the to-unassign set with the given unassigner. Must be run with the fenzo lock held."
+  [pool-name unassigner to-unassign]
+  (doseq [{:keys [task-id hostname]} to-unassign]
+    (try
+      ; Fenzo tracks which tasks are on which nodes with assignment. To, e.g., make
+      ; sure it can distribute tasks across hosts. This instructs fenzo that a task
+      ; is no longer on a given host.
+      (log/debug "In" pool-name "pool, unassigning task"
+                 task-id "from" hostname)
+      (.call unassigner task-id hostname)
+      (catch Exception e
+        (log/error e "In" pool-name "pool, failed to unassign task"
+                   task-id "from" hostname)))))
+
 (defn match-offer-to-schedule
   "Given an offer and a schedule, computes all the tasks should be launched as a result.
 
@@ -667,14 +682,7 @@
             to-unassign (util/set-atom! unassign-task-set #{})
             ^Action2 unassigner (.getTaskUnAssigner fenzo)
             result (locking fenzo
-                     (doseq [[task-id hostname] to-unassign]
-                       (try
-                         (log/debug "In" pool-name "pool, unassigning task"
-                                    task-id "from" hostname)
-                         (.call unassigner task-id hostname)
-                         (catch Exception e
-                           (log/error e "In" pool-name "pool, failed to unassign task"
-                                      task-id "from" hostname))))
+                     (unassign-all pool-name unassigner to-unassign)
                      (timers/time!
                        (timers/timer (metric-title "fenzo-schedule-once-duration" pool-name))
                        (.scheduleOnce fenzo requests leases)))
@@ -1464,14 +1472,7 @@
                                        ;; Need to lock on fenzo when accessing taskAssigner because taskAssigner and
                                        ;; scheduleOnce can not be called at the same time.
                                        (locking fenzo
-                                         (doseq [[task-id hostname] to-unassign]
-                                           (try
-                                             (log/debug "In" pool-name "pool, unassigning task"
-                                                        task-id "from" hostname)
-                                             (.call unassigner task-id hostname)
-                                             (catch Exception e
-                                               (log/error e "In" pool-name "pool, failed to unassign task"
-                                                          task-id "from" hostname))))
+                                         (unassign-all pool-name unassigner to-unassign)
                                          (.. fenzo
                                              (getTaskAssigner)
                                              (call task-request hostname)))
@@ -1997,7 +1998,7 @@
             (log/error e "Exception in match-trigger-chan chime handler")
             (throw e)))
         (recur)))
-    (log/info "Pool name to fenzo scheduler map:" (keys pool-name->fenzo-state))
+    (log/info "Pool name to fenzo scheduler keys:" (keys pool-name->fenzo-state))
     (start-jobs-prioritizer! conn pool-name->pending-jobs-atom task-constraints rank-trigger-chan)
     {:pool-name->fenzo-state pool-name->fenzo-state
      :view-incubating-offers (fn get-resources-atom [p]
