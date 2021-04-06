@@ -165,7 +165,7 @@
         tasks-killed (atom #{})
         driver (reify msched/SchedulerDriver
                  (kill-task! [_ task] (swap! tasks-killed conj (:value task)))) ; Conjoin the task-id
-        fenzo (sched/make-fenzo-scheduler 1500 nil 0.8)
+        fenzo-state (sched/make-fenzo-state 1500 nil 0.8)
         synced-agents-atom (atom [])
         sync-agent-sandboxes-fn (fn sync-agent-sandboxes-fn [hostname _]
                                   (swap! synced-agents-atom conj hostname))]
@@ -189,7 +189,7 @@
                                :reason :unknown)
         (reset! synced-agents-atom [])
         (->> (make-dummy-status-update task-id-a :mesos-slave-restarted :task-running)
-             (mcc/handle-status-update conn compute-cluster sync-agent-sandboxes-fn (constantly fenzo)))
+             (mcc/handle-status-update conn compute-cluster sync-agent-sandboxes-fn (constantly fenzo-state)))
         (is (true? (contains? @tasks-killed task-id-a)))
         (is (= ["www.test-host.com"] @synced-agents-atom))))
 
@@ -208,7 +208,7 @@
           (->> (make-dummy-status-update task-id-a
                                          Protos$TaskStatus$Reason/REASON_TASK_KILLED_DURING_LAUNCH
                                          :task-running)
-               (mcc/handle-status-update conn compute-cluster sync-agent-sandboxes-fn (constantly fenzo))))
+               (mcc/handle-status-update conn compute-cluster sync-agent-sandboxes-fn (constantly fenzo-state))))
         (is (= :reason-killed-during-launch @mapped-reason))))))
 
 (defn- task-id->instance-entity
@@ -224,6 +224,7 @@
          d/touch)))
 
 (deftest test-sandbox-directory-population-for-mesos-executor-tasks
+  (testutil/setup)
   (let [db-conn (testutil/restore-fresh-database! "datomic:mem://test-sandbox-directory-population")
         executing-tasks-atom (atom #{})
         num-jobs 25

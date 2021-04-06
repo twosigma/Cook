@@ -49,3 +49,11 @@
                (deep-merge-with - {"foo" nil} {"foo" 1})))
   (is (thrown? NullPointerException
                (deep-merge-with - {"foo" 1} {"foo" nil}))))
+
+
+(deftest test-set-atom!
+  (let [state (atom {})]
+    (is (= @state {}))
+    (is (= (set-atom! state "a") {}))
+    (is (= (set-atom! state {:a :b}) "a"))
+    (is (= @state {:a :b}))))

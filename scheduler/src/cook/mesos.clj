@@ -195,7 +195,7 @@
                           ;clojure.lang.Agent/pooledExecutor
                           (reify LeaderSelectorListener
                             (takeLeadership [_ client]
-                              (let [{:keys [pool-name->fenzo view-incubating-offers] :as scheduler}
+                              (let [{:keys [pool-name->fenzo-state view-incubating-offers] :as scheduler}
                                     (sched/create-datomic-scheduler
                                       {:conn mesos-datomic-conn
                                        :cluster-name->compute-cluster-atom cook.compute-cluster/cluster-name->compute-cluster-atom
@@ -213,10 +213,10 @@
                                        :rebalancer-reservation-atom rebalancer-reservation-atom
                                        :task-constraints task-constraints
                                        :trigger-chans trigger-chans})]
-                                ; we need to make sure to initialize cc/pool-name->fenzo-atom before we take leadership
-                                ; after we take leadership, we should be able to create dynamic clusters, so cc/pool-name->fenzo-atom
+                                ; we need to make sure to initialize cc/pool-name->fenzo-state-atom before we take leadership
+                                ; after we take leadership, we should be able to create dynamic clusters, so cc/pool-name->fenzo-state-atom
                                 ; needs to be set
-                                (reset! cc/pool-name->fenzo-atom (:pool-name->fenzo scheduler))
+                                (reset! cc/pool-name->fenzo-state-atom (:pool-name->fenzo-state scheduler))
                                 (dynamic-compute-cluster-configurations-setup mesos-datomic-conn (config/compute-cluster-options))
                                 (log/warn "Taking leadership")
                                 (reset! leadership-atom true)
@@ -229,7 +229,7 @@
                                                                          (map (fn [[compute-cluster-name compute-cluster]]
                                                                                 (try
                                                                                   (cc/initialize-cluster compute-cluster
-                                                                                                         pool-name->fenzo)
+                                                                                                         pool-name->fenzo-state)
                                                                                   (catch Throwable t
                                                                                     (log/error t "Error launching compute cluster" compute-cluster-name)
                                                                                     ; Return a chan that never gets a message on it.

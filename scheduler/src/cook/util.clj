@@ -220,3 +220,11 @@
           (log/error e "Encountered exception while merging" {:args args})
           (throw e))))
     maps))
+
+(defn set-atom!
+  "Atomically set the atom to the new value, return the old val"
+  [atom newval]
+  (loop []
+    (let [old-val @atom
+          swap-happened (compare-and-set! atom old-val newval)]
+      (if swap-happened old-val (recur)))))

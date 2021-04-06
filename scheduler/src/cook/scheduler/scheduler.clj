@@ -60,7 +60,7 @@
   (:import (com.netflix.fenzo
              TaskAssignmentResult TaskRequest TaskScheduler TaskScheduler$Builder VirtualMachineCurrentState
              VirtualMachineLease VirtualMachineLease$Range)
-           (com.netflix.fenzo.functions Action1 Func1)
+           (com.netflix.fenzo.functions Action1 Action2 Func1)
            (java.util LinkedList)))
 
 (defn now
@@ -236,7 +236,7 @@
 
 (defn write-status-to-datomic
   "Takes a status update from mesos."
-  [conn pool->fenzo status]
+  [conn pool-name->fenzo-state status]
   (log/info "Instance status is:" status)
   (timers/time!
     handle-status-update-duration
@@ -275,21 +275,12 @@
                                    (.getTime (or (:instance/start-time instance-ent) current-time)))
                job-resources (tools/job-ent->resources job-ent)
                pool-name (cached-queries/job->pool-name job-ent)
-               ^TaskScheduler fenzo (get pool->fenzo pool-name)]
+               unassign-task-set (some-> pool-name pool-name->fenzo-state :unassign-task-set)]
            (when (#{:instance.status/success :instance.status/failed} instance-status)
-             (if fenzo
-               (try
-                 (log/debug "In" pool-name "pool, unassigning task"
-                            task-id "from" (:instance/hostname instance-ent))
-                 (locking fenzo
-                   (.. fenzo
-                       (getTaskUnAssigner)
-                       (call task-id (:instance/hostname instance-ent))))
-                 (catch Exception e
-                   (log/error e "In" pool-name "pool, failed to unassign task"
-                              task-id "from" (:instance/hostname instance-ent))))
+             (if unassign-task-set
+               (swap! unassign-task-set conj {:task-id task-id :hostname (:instance/hostname instance-ent)})
                (log/error "In" pool-name "pool, unable to unassign task" task-id "from"
-                          (:instance/hostname instance-ent) "because fenzo is nil:" pool->fenzo)))
+                          (:instance/hostname instance-ent) "because fenzo state or unassign-task-set is nil:" (keys pool-name->fenzo-state))))
            (when (= instance-status :instance.status/success)
              (handle-throughput-metrics job-resources instance-runtime :succeeded pool-name)
              (handle-throughput-metrics job-resources instance-runtime :completed pool-name))
@@ -633,6 +624,21 @@
         (log/error e message)
         message))))
 
+(defn unassign-all
+  "Unassigns all items in the to-unassign set with the given unassigner. Must be run with the fenzo lock held."
+  [pool-name unassigner to-unassign]
+  (doseq [{:keys [task-id hostname]} to-unassign]
+    (try
+      ; Fenzo tracks which tasks are on which nodes with assignment. To, e.g., make
+      ; sure it can distribute tasks across hosts. This instructs fenzo that a task
+      ; is no longer on a given host.
+      (log/debug "In" pool-name "pool, unassigning task"
+                 task-id "from" hostname)
+      (.call unassigner task-id hostname)
+      (catch Exception e
+        (log/error e "In" pool-name "pool, failed to unassign task"
+                   task-id "from" hostname)))))
+
 (defn match-offer-to-schedule
   "Given an offer and a schedule, computes all the tasks should be launched as a result.
 
@@ -641,7 +647,7 @@
 
    Returns {:matches (list of tasks that got matched to the offer)
             :failures (list of unmatched tasks, and why they weren't matched)}"
-  [db ^TaskScheduler fenzo considerable offers rebalancer-reservation-atom pool-name]
+  [db {:keys [^TaskScheduler fenzo unassign-task-set]} considerable offers rebalancer-reservation-atom pool-name]
   (if (and (-> considerable count zero?)
            (-> offers count pos?)
            (every? :reject-after-match-attempt offers))
@@ -673,7 +679,10 @@
             ;; Need to lock on fenzo when accessing scheduleOnce because scheduleOnce and
             ;; task assigner can not be called at the same time.
             ;; task assigner may be called when reconciling
+            to-unassign (util/set-atom! unassign-task-set #{})
+            ^Action2 unassigner (.getTaskUnAssigner fenzo)
             result (locking fenzo
+                     (unassign-all pool-name unassigner to-unassign)
                      (timers/time!
                        (timers/timer (metric-title "fenzo-schedule-once-duration" pool-name))
                        (.scheduleOnce fenzo requests leases)))
@@ -1066,7 +1075,7 @@
 (defn handle-resource-offers!
   "Gets a list of offers from mesos. Decides what to do with them all--they should all
    be accepted or rejected at the end of the function."
-  [conn ^TaskScheduler fenzo pool-name->pending-jobs-atom mesos-run-as-user
+  [conn fenzo-state pool-name->pending-jobs-atom mesos-run-as-user
    user->usage user->quota num-considerable offers rebalancer-reservation-atom pool-name compute-clusters
    job->acceptable-compute-clusters-fn]
   (log/debug "In" pool-name "pool, invoked handle-resource-offers!")
@@ -1085,7 +1094,7 @@
               ; matches is a vector of maps of {:hostname .. :leases .. :tasks}
               {:keys [matches failures]} (timers/time!
                                            (timers/timer (metric-title "handle-resource-offer!-match-duration" pool-name))
-                                           (match-offer-to-schedule db fenzo considerable-jobs offers
+                                           (match-offer-to-schedule db fenzo-state considerable-jobs offers
                                                                     rebalancer-reservation-atom pool-name))
               matches (filter-matches-for-ratelimit matches)
               _ (log/debug "In" pool-name "pool, got matches after rate limit:" matches)
@@ -1235,7 +1244,7 @@
                     (log/debug "In" pool-name
                                "pool, updated pool-name->pending-jobs-atom:"
                                @pool-name->pending-jobs-atom)
-                    (launch-matched-tasks! matches conn db fenzo mesos-run-as-user pool-name)
+                    (launch-matched-tasks! matches conn db (:fenzo fenzo-state) mesos-run-as-user pool-name)
                     (update-host-reservations! rebalancer-reservation-atom matched-job-uuids)
                     matched-considerable-jobs-head?))
                 ; Absolute maximum jobs we will consider autoscaling to.
@@ -1314,10 +1323,11 @@
 
 (defn make-offer-handler
   "Make the core scheduling loop for a pool"
-  [conn fenzo pool-name->pending-jobs-atom agent-attributes-cache max-considerable scaleback
+  [conn fenzo-state pool-name->pending-jobs-atom agent-attributes-cache max-considerable scaleback
    floor-iterations-before-warn floor-iterations-before-reset trigger-chan rebalancer-reservation-atom
    mesos-run-as-user pool-name cluster-name->compute-cluster-atom job->acceptable-compute-clusters-fn]
-  (let [resources-atom (atom (view-incubating-offers fenzo))]
+  (let [fenzo (:fenzo fenzo-state)
+        resources-atom (atom (view-incubating-offers fenzo))]
     (reset! fenzo-num-considerable-atom max-considerable)
     (tools/chime-at-ch
       trigger-chan
@@ -1368,7 +1378,7 @@
                                                               (cache/miss c slave-id (get-offer-attr-map offer))))))
                         using-pools? (not (nil? (config/default-pool)))
                         user->quota (quota/create-user->quota-fn (d/db conn) (if using-pools? pool-name nil))
-                        matched-head? (handle-resource-offers! conn fenzo pool-name->pending-jobs-atom
+                        matched-head? (handle-resource-offers! conn fenzo-state pool-name->pending-jobs-atom
                                                                mesos-run-as-user @user->usage-future user->quota
                                                                num-considerable offers
                                                                rebalancer-reservation-atom pool-name compute-clusters
@@ -1432,7 +1442,7 @@
 ;; TODO test that this fenzo recovery system actually works
 (defn reconcile-tasks
   "Finds all non-completed tasks, and has Mesos let us know if any have changed."
-  [db compute-cluster driver pool->fenzo]
+  [db compute-cluster driver pool-name->fenzo-state]
   (let [running-tasks (q '[:find ?task-id ?status ?slave-id
                            :in $ [?status ...] ?compute-cluster-id
                            :where
@@ -1456,10 +1466,13 @@
                                    (when-let [job (tools/job-ent->map (:job/_instance task-ent))]
                                      (let [pool-name (cached-queries/job->pool-name job)
                                            task-request (make-task-request db job pool-name :task-id task-id)
-                                           ^TaskScheduler fenzo (pool->fenzo pool-name)]
+                                           {:keys [^TaskScheduler fenzo unassign-task-set]} (pool-name->fenzo-state pool-name)
+                                           to-unassign (util/set-atom! unassign-task-set #{})
+                                           ^Action2 unassigner (.getTaskUnAssigner fenzo)]
                                        ;; Need to lock on fenzo when accessing taskAssigner because taskAssigner and
                                        ;; scheduleOnce can not be called at the same time.
                                        (locking fenzo
+                                         (unassign-all pool-name unassigner to-unassign)
                                          (.. fenzo
                                              (getTaskAssigner)
                                              (call task-request hostname)))
@@ -1838,26 +1851,30 @@
 (meters/defmeter [cook-mesos scheduler mesos-error])
 (meters/defmeter [cook-mesos scheduler offer-chan-full-error])
 
-(defn make-fenzo-scheduler
+(defn make-fenzo-state
+  "Make a fenzo scheduler state. This consists of the fenzo scheduler itself and a set of tasks that
+  should be unassigned the next iteration through."
   [offer-incubate-time-ms fitness-calculator good-enough-fitness]
-  (.. (TaskScheduler$Builder.)
-      (disableShortfallEvaluation) ;; We're not using the autoscaling features
-      (withLeaseOfferExpirySecs (max (-> offer-incubate-time-ms time/millis time/in-seconds) 1)) ;; should be at least 1 second
-      (withRejectAllExpiredOffers)
-      (withFitnessCalculator (config/fitness-calculator fitness-calculator))
-      (withFitnessGoodEnoughFunction (reify Func1
-                                       (call [_ fitness]
-                                         (> fitness good-enough-fitness))))
-      (withLeaseRejectAction (reify Action1
-                               (call [_ lease]
-                                 (let [offer (:offer lease)
-                                       id (:id offer)]
-                                   (log/debug "Fenzo is declining offer" offer)
-                                   (try
-                                     (decline-offers (:compute-cluster offer) [id])
-                                     (catch Exception e
-                                       (log/error e "Unable to decline fenzos rejected offers")))))))
-      (build)))
+  {:unassign-task-set (atom #{})
+   :fenzo
+   (.. (TaskScheduler$Builder.)
+       (disableShortfallEvaluation) ;; We're not using the autoscaling features
+       (withLeaseOfferExpirySecs (max (-> offer-incubate-time-ms time/millis time/in-seconds) 1)) ;; should be at least 1 second
+       (withRejectAllExpiredOffers)
+       (withFitnessCalculator (config/fitness-calculator fitness-calculator))
+       (withFitnessGoodEnoughFunction (reify Func1
+                                        (call [_ fitness]
+                                          (> fitness good-enough-fitness))))
+       (withLeaseRejectAction (reify Action1
+                                (call [_ lease]
+                                  (let [offer (:offer lease)
+                                        id (:id offer)]
+                                    (log/debug "Fenzo is declining offer" offer)
+                                    (try
+                                      (decline-offers (:compute-cluster offer) [id])
+                                      (catch Exception e
+                                        (log/error e "Unable to decline fenzos rejected offers")))))))
+       (build))})
 
 (defn persist-mea-culpa-failure-limit!
   "The Datomic transactor needs to be able to access this part of the
@@ -1951,8 +1968,8 @@
         pools' (if (-> pools count pos?)
                  pools
                  [{:pool/name "no-pool"}])
-        pool-name->fenzo (pool-map pools' (fn [_] (make-fenzo-scheduler offer-incubate-time-ms
-                                                                        fenzo-fitness-calculator good-enough-fitness)))
+        pool-name->fenzo-state (pool-map pools' (fn [_] (make-fenzo-state offer-incubate-time-ms
+                                                                          fenzo-fitness-calculator good-enough-fitness)))
         pool->match-trigger-chan (pool-map pools' (fn [_] (async/chan (async/sliding-buffer 1))))
         pool-names-linked-list (LinkedList. (map :pool/name pools'))
         job->acceptable-compute-clusters-fn
@@ -1964,7 +1981,8 @@
                                pools'
                                (fn [{:keys [pool/name]}]
                                  (make-offer-handler
-                                   conn (pool-name->fenzo name) pool-name->pending-jobs-atom agent-attributes-cache
+                                   conn (get pool-name->fenzo-state name)
+                                   pool-name->pending-jobs-atom agent-attributes-cache
                                    fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn
                                    fenzo-floor-iterations-before-reset (get pool->match-trigger-chan name)
                                    rebalancer-reservation-atom mesos-run-as-user name
@@ -1980,8 +1998,8 @@
             (log/error e "Exception in match-trigger-chan chime handler")
             (throw e)))
         (recur)))
-    (log/info "Pool name to fenzo scheduler map:" pool-name->fenzo)
+    (log/info "Pool name to fenzo scheduler keys:" (keys pool-name->fenzo-state))
     (start-jobs-prioritizer! conn pool-name->pending-jobs-atom task-constraints rank-trigger-chan)
-    {:pool-name->fenzo pool-name->fenzo
+    {:pool-name->fenzo-state pool-name->fenzo-state
      :view-incubating-offers (fn get-resources-atom [p]
                                (deref (get pool->resources-atom p)))}))

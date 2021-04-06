@@ -62,7 +62,7 @@
   (db-id [this]
     "Get a database entity-id for this compute cluster (used for putting it into a task structure).")
 
-  (initialize-cluster [this pool->fenzo]
+  (initialize-cluster [this pool-name->fenzo-state]
     "Initializes the cluster. Returns a channel that will be delivered on when the cluster loses leadership.
      We expect Cook to give up leadership when a compute cluster loses leadership, so leadership is not expected to be regained.
      The channel result will be an exception if an error occurred, or a status message if leadership was lost normally.")
@@ -453,9 +453,9 @@
       (check-for-unique-constraint-violations resulting-active-configs :base-path)
       (check-for-unique-constraint-violations resulting-active-configs :ca-cert))))
 
-; we need to save pool->fenzo and exit-code-syncer so that clusters created later have access to them
+; we need to save pool-name->fenzo-state and exit-code-syncer so that clusters created later have access to them
 (def exit-code-syncer-state-atom (atom nil))
-(def pool-name->fenzo-atom (atom nil))
+(def pool-name->fenzo-state-atom (atom nil))
 
 (defn initialize-cluster!
   "Create and initialize a ComputeCluster"
@@ -471,7 +471,7 @@
                             {:template template})))
         full-cluster-config (-> (:config cluster-definition-template) (merge config) (assoc :dynamic-cluster-config? true))
         cluster (resolved full-cluster-config {:exit-code-syncer-state @exit-code-syncer-state-atom})]
-    (initialize-cluster cluster @pool-name->fenzo-atom)))
+    (initialize-cluster cluster @pool-name->fenzo-state-atom)))
 
 (defn execute-update!
   "Attempt to execute a valid cluster configuration update.

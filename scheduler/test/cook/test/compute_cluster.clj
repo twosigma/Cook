@@ -522,7 +522,7 @@
            dynamic-cluster-config?]
     :as compute-cluster-config} _]
   (when (= "fail" (:name compute-cluster-config)) (throw (ex-info "fail" {})))
-  (reset! pool-name->fenzo-atom {:pool-name :fenzo})
+  (reset! pool-name->fenzo-state-atom {:pool-name {:fenzo :fenzo}})
   (let [backing-map {:name name
                      :dynamic-cluster-config? dynamic-cluster-config?
                      :state-atom (atom state)
@@ -530,8 +530,8 @@
                      :cluster-definition {:factory-fn 'cook.kubernetes.compute-cluster/factory-fn :config compute-cluster-config}}
         compute-cluster (reify ComputeCluster
                           (compute-cluster-name [cluster] (:name cluster))
-                          (initialize-cluster [cluster pool->fenzo]
-                            (is (= {:pool-name :fenzo} pool->fenzo))
+                          (initialize-cluster [cluster pool-name->fenzo-state]
+                            (is (= {:pool-name {:fenzo :fenzo}} pool-name->fenzo-state))
                             (swap! initialize-cluster-fn-invocations-atom conj (:name cluster)))
                           java.util.Map
                           (get [_ val] (backing-map val))

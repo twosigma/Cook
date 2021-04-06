@@ -426,7 +426,7 @@
                         :slave-id {:value (str "slave-" (UUID/randomUUID))}
                         :hostname (str "host-" (UUID/randomUUID))}])
         framework-id (str "framework-id-" (UUID/randomUUID))
-        fenzo-maker #(sched/make-fenzo-scheduler 100000 nil 1)] ; The params are for offer declining, which should never happen
+        fenzo-maker #(sched/make-fenzo-state 100000 nil 1)] ; The params are for offer declining, which should never happen
 
     (testing "Consume no schedule cases"
       (are [schedule offers] (= [] (:matches (sched/match-offer-to-schedule (db c) (fenzo-maker) schedule
@@ -556,6 +556,7 @@
                                                                 :job-state :job.state/waiting)))
         framework-id (str "framework-id-" (java.util.UUID/randomUUID))
         fenzo (make-dummy-scheduler)
+        fenzo-state {:fenzo fenzo :unassign-task-set (atom #{})}
         ; Schedule conflicting
         _ (schedule-and-run-jobs conn fenzo [(make-mesos-vm-offer (make-uuid)
                                                                   conflict-host
@@ -564,7 +565,7 @@
         high-priority (map #(d/entity (d/db conn) %) high-priority-ids)
         considerable (concat high-priority low-priority)]
     (testing "Scheduling order respected?"
-      (let [schedule (sched/match-offer-to-schedule (d/db conn) fenzo considerable
+      (let [schedule (sched/match-offer-to-schedule (d/db conn) fenzo-state considerable
                                                     [(offer-maker 1.0 "empty_host")] (atom {}) nil)]
         (is (= {"empty_host" ["high-priority"]}
                (->> schedule
@@ -1098,7 +1099,7 @@
   (with-redefs [completion/plugin completion/no-op]
     (let [uri "datomic:mem://test-handle-status-update"
           conn (restore-fresh-database! uri)
-          fenzo (sched/make-fenzo-scheduler 1500 nil 0.8)]
+          fenzo-state (sched/make-fenzo-state 1500 nil 0.8)]
       (testutil/setup-fake-test-compute-cluster conn)
 
 
@@ -1110,7 +1111,7 @@
                                                  :task-id task-id)]
                                         ; Wait for async database transaction inside handle-status-update
           (->> (make-dummy-status-update task-id :reason-gc-error :task-killed)
-               (sched/write-status-to-datomic conn (constantly fenzo))
+               (sched/write-status-to-datomic conn (constantly fenzo-state))
                async/<!!)
 
           (is (= :instance.status/failed
@@ -1135,7 +1136,7 @@
                 original-end-time (get-end-time)]
             (Thread/sleep 100)
             (->> (make-dummy-status-update task-id :reason-gc-error :task-killed)
-                 (sched/write-status-to-datomic conn (constantly fenzo))
+                 (sched/write-status-to-datomic conn (constantly fenzo-state))
                  async/<!!)
             (is (= original-end-time (get-end-time))))))
 
@@ -1160,7 +1161,7 @@
                                                  :reason :max-runtime-exceeded)] ; Previous reason is not mea-culpa
                                         ; Status update says slave got restarted (mea-culpa)
           (->> (make-dummy-status-update task-id :mesos-slave-restarted :task-killed)
-               (sched/write-status-to-datomic conn (constantly fenzo))
+               (sched/write-status-to-datomic conn (constantly fenzo-state))
                async/<!!)
                                         ; Assert old reason persists
           (is (= :max-runtime-exceeded
@@ -1196,17 +1197,17 @@
                                  :task-id task-id)
           (is (nil? (mesos-start-time)))
           (->> (make-dummy-status-update task-id :unknown :task-staging)
-               (sched/write-status-to-datomic conn (constantly fenzo))
+               (sched/write-status-to-datomic conn (constantly fenzo-state))
                async/<!!)
           (is (nil? (mesos-start-time)))
           (->> (make-dummy-status-update task-id :unknown :task-running)
-               (sched/write-status-to-datomic conn (constantly fenzo))
+               (sched/write-status-to-datomic conn (constantly fenzo-state))
                async/<!!)
           (is (not (nil? (mesos-start-time))))
           (let [first-observed-start-time (.getTime (mesos-start-time))]
             (is (not (nil? first-observed-start-time)))
             (->> (make-dummy-status-update task-id :unknown :task-running)
-                 (sched/write-status-to-datomic conn (constantly fenzo))
+                 (sched/write-status-to-datomic conn (constantly fenzo-state))
                  async/<!!)
             (is (= first-observed-start-time (.getTime (mesos-start-time))))))))))
 
@@ -1219,7 +1220,7 @@
                                   (reset! plugin-invocation-atom {:instance instance
                                                                   :job job})))
         conn (restore-fresh-database! "datomic:mem://test-instance-completion-plugin")
-        fenzo (sched/make-fenzo-scheduler 1500 nil 0.8)]
+        fenzo-state (sched/make-fenzo-state 1500 nil 0.8)]
     (with-redefs [completion/plugin plugin-implementation]
       (testing "Mesos task death"
         (let [job-id (create-dummy-job conn :user "testuser" :job-state :job.state/running
@@ -1229,13 +1230,13 @@
                                                  :instance-status :instance.status/unknown
                                                  :task-id task-id)]
           (->> (make-dummy-status-update task-id :reason-command-executor-failed :task-running)
-               (sched/write-status-to-datomic conn (constantly fenzo))
+               (sched/write-status-to-datomic conn (constantly fenzo-state))
                async/<!!)
           ; instance not complete, plugin should not have been invoked
           (is (= {} @plugin-invocation-atom))
 
           (->> (make-dummy-status-update task-id :reason-command-executor-failed :task-killed)
-               (sched/write-status-to-datomic conn (constantly fenzo))
+               (sched/write-status-to-datomic conn (constantly fenzo-state))
                async/<!!)
           ; instance complete, plugin should have been invoked with resulting job/instance
           (let [job (:job @plugin-invocation-atom)
@@ -1724,7 +1725,7 @@
                                     (let [conn (restore-fresh-database! uri)
                                           test-db (d/db conn)
                                           _ (create-pool conn "test-pool")
-                                          ^TaskScheduler fenzo (sched/make-fenzo-scheduler 1500 nil 0.8)
+                                          ^TaskScheduler fenzo-state (sched/make-fenzo-state 1500 nil 0.8)
                                           group-ent-id (create-dummy-group conn)
                                           get-uuid (fn [name] (get job-name->uuid name (d/squuid)))
                                           job-1 (d/entity test-db (create-dummy-job conn
@@ -1797,7 +1798,7 @@
                                           user->quota (or user-quota {test-user {:count 10, :cpus 70, :mem 32768, :gpus 10}})
                                           mesos-run-as-user nil
                                           result (sched/handle-resource-offers!
-                                                   conn fenzo pool-name->pending-jobs-atom mesos-run-as-user
+                                                   conn fenzo-state pool-name->pending-jobs-atom mesos-run-as-user
                                                    user->usage user->quota num-considerable offers
                                                    rebalancer-reservation-atom pool nil
                                                    sched/job->acceptable-compute-clusters)]
@@ -2184,6 +2185,8 @@
 (deftest test-reconcile-tasks
   (let [conn (restore-fresh-database! "datomic:mem://test-reconcile-tasks")
         fenzo (make-dummy-scheduler)
+        fenzo-state {:fenzo fenzo :unassign-task-set (atom #{})}
+
         task-atom (atom [])
         mock-driver (reify msched/SchedulerDriver
                       (reconcile-tasks [_ tasks]
@@ -2199,7 +2202,7 @@
         _ (create-dummy-job-with-instances conn
                                            :job-state :job.state/completed
                                            :instances [{:instance-status :instance.status/success :instance/compute-cluster fake-compute-cluster-dbid}])]
-    (sched/reconcile-tasks (d/db conn) fake-compute-cluster mock-driver (constantly fenzo))
+    (sched/reconcile-tasks (d/db conn) fake-compute-cluster mock-driver (constantly fenzo-state))
     (let [reconciled-tasks (set @task-atom)
           running-instance (d/entity (d/db conn) running-instance-id)
           unknown-instance (d/entity (d/db conn) unknown-instance-id)]
@@ -2272,7 +2275,7 @@
                         :pool/state :pool.state/active}
                        {:pool/name "old pool"
                         :pool/state :pool.state/inactive}])
-                    sched/make-fenzo-scheduler (fn [_ _ _])
+                    sched/make-fenzo-state (fn [_ _ _])
                     sched/make-offer-handler (fn [_ _ _ _ _ _ _ _ trigger-chan _ _ pool-name _ _]
                                                (tools/chime-at-ch
                                                  trigger-chan

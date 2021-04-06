@@ -133,7 +133,7 @@
   "Helper function for calling scheduler/write-status-to-datomic"
   [compute-cluster mesos-status]
   (scheduler/write-status-to-datomic datomic/conn
-                                     @(:pool->fenzo-atom compute-cluster)
+                                     @(:pool-name->fenzo-state-atom compute-cluster)
                                      mesos-status))
 
 (defn handle-pod-submission-failed

@@ -82,6 +82,7 @@
                                :factory-fn "cook.plugins.demo-plugin/launch-factory"}}
  :hostname #config/env "COOK_HOSTNAME"
  :kubernetes {:add-job-label-to-pod-prefix "platform/"
+              :clobber-synthetic-pods true
               :disallowed-container-paths #{"/mnt/bad"}
               :disallowed-var-names #{"BADVAR"}
               :init-container {:command ["/bin/sh" "-c" "echo sample init container running"]
