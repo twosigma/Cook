@@ -180,9 +180,10 @@
   (if (api/launch-pod api-client name cook-expected-state-dict pod-name)
     ; These metrics only measure the happy paths to avoid wide variations from error rates changing.
     ; k8s-response-time-until-waiting helps us characterize watch latency
-    (merge {:waiting-metric-timer (timers/start (metrics/timer "k8s-response-time-until-waiting" name))
-            :running-metric-timer (timers/start (metrics/timer "k8s-response-time-until-running" name))}
-           cook-expected-state-dict)
+    (let [metric-suffix (if (api/synthetic-pod? pod-name) "-synthetic" "")]
+    (merge {:waiting-metric-timer (timers/start (metrics/timer (str "k8s-response-time-until-waiting" metric-suffix) name))
+            :running-metric-timer (timers/start (metrics/timer (str "k8s-response-time-until-running" metric-suffix) name))}
+           cook-expected-state-dict))
     (handle-pod-submission-failed compute-cluster pod-name)))
 
 (defn update-or-delete!
