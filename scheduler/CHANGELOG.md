@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.51.12] - 2021-04-06
+### Changed
+- Do fenzo unassigns in batches outside of the k8s state locks, from @scrosby
+- Make the k8s lock vector a vector not a sequence, from @scrosby
+- Split metrics for synthetic pods and regular pods in k8s, from @scrosby
+
 ## [1.51.11] - 2021-03-31
 ### Changed
 - Split k8s lock shards by compute cluster, from @scrosby
