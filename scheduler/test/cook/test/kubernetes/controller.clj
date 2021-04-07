@@ -5,7 +5,8 @@
             [cook.config :as config]
             [cook.kubernetes.api :as api]
             [cook.kubernetes.controller :as controller]
-            [cook.test.testutil :as tu])
+            [cook.test.testutil :as tu]
+            [metrics.timers :as timers])
   (:import (io.kubernetes.client.openapi ApiException)
            (io.kubernetes.client.openapi.models V1PodCondition V1PodStatus)
            (java.util.concurrent.locks ReentrantLock)))
@@ -29,6 +30,40 @@
 (deftest test-process
   (let [name "TestPodName"
         reason (atom nil)
+        do-process-full-state (fn [cook-expected-state k8s-actual-state & {:keys [create-namespaced-pod-fn
+                                                                                  ^V1PodCondition pod-condition
+                                                                                  custom-test-state
+                                                                                  force-nil-pod?]
+                                                                           :or {create-namespaced-pod-fn (constantly true)
+                                                                                custom-test-state nil
+                                                                                force-nil-pod? false}}]
+                                (reset! reason nil)
+                                (with-redefs [controller/delete-pod (fn [_ _ cook-expected-state-dict _]
+                                                                      cook-expected-state-dict)
+                                              controller/kill-pod (fn [_ _ cook-expected-state-dict _]
+                                                                    cook-expected-state-dict)
+                                              controller/handle-pod-killed (fn [_ _]
+                                                                             {:cook-expected-state :cook-expected-state/completed})
+                                              controller/write-status-to-datomic (fn [_ status]
+                                                                                   (reset! reason (:reason status)))
+                                              api/create-namespaced-pod create-namespaced-pod-fn
+                                              cc/compute-cluster-name (constantly "compute-cluster-name")]
+                                  (let [pod (tu/pod-helper name "hostA" {:cpus 1.0 :mem 100.0})
+                                        pod-status (V1PodStatus.)
+                                        _ (when pod-condition (.addConditionsItem pod-status pod-condition))
+                                        _ (.setStatus pod pod-status)
+                                        cook-expected-state-map
+                                        (atom {name {:cook-expected-state cook-expected-state
+                                                     :launch-pod {:pod pod}
+                                                     :waiting-metric-timer (timers/start (timers/timer "fake-timer-name"))}})]
+                                    (controller/process
+                                      {:api-client nil
+                                       :cook-expected-state-map cook-expected-state-map
+                                       :k8s-actual-state-map (atom {name {:synthesized-state (or custom-test-state {:state k8s-actual-state})
+                                                                          :pod (if force-nil-pod? nil pod)}})
+                                       :cook-starting-pods (atom {})}
+                                      name)
+                                    (get @cook-expected-state-map name {}))))
         do-process (fn [cook-expected-state k8s-actual-state & {:keys [create-namespaced-pod-fn
                                                                        ^V1PodCondition pod-condition
                                                                        custom-test-state
@@ -36,32 +71,12 @@
                                                                 :or {create-namespaced-pod-fn (constantly true)
                                                                      custom-test-state nil
                                                                      force-nil-pod? false}}]
-                     (reset! reason nil)
-                     (with-redefs [controller/delete-pod (fn [_ _ cook-expected-state-dict _]
-                                                           cook-expected-state-dict)
-                                   controller/kill-pod (fn [_ _ cook-expected-state-dict _]
-                                                         cook-expected-state-dict)
-                                   controller/handle-pod-killed (fn [_ _]
-                                                                  {:cook-expected-state :cook-expected-state/completed})
-                                   controller/write-status-to-datomic (fn [_ status]
-                                                                        (reset! reason (:reason status)))
-                                   api/create-namespaced-pod create-namespaced-pod-fn
-                                   cc/compute-cluster-name (constantly "compute-cluster-name")]
-                       (let [pod (tu/pod-helper name "hostA" {:cpus 1.0 :mem 100.0})
-                             pod-status (V1PodStatus.)
-                             _ (when pod-condition (.addConditionsItem pod-status pod-condition))
-                             _ (.setStatus pod pod-status)
-                             cook-expected-state-map
-                             (atom {name {:cook-expected-state cook-expected-state
-                                          :launch-pod {:pod pod}}})]
-                         (controller/process
-                           {:api-client nil
-                            :cook-expected-state-map cook-expected-state-map
-                            :k8s-actual-state-map (atom {name {:synthesized-state (or custom-test-state {:state k8s-actual-state})
-                                                               :pod (if force-nil-pod? nil pod)}})
-                            :cook-starting-pods (atom {})}
-                           name)
-                         (:cook-expected-state (get @cook-expected-state-map name {})))))]
+                     (:cook-expected-state (do-process-full-state cook-expected-state k8s-actual-state
+                                                                  :create-namespaced-pod-fn create-namespaced-pod-fn
+                                                                  :pod-condition pod-condition
+
+                                                                  :custom-test-state custom-test-state
+                                                                  :force-nil-pod? force-nil-pod?)))]
 
     (is (nil? (do-process :cook-expected-state/completed :missing)))
     (is (= :cook-expected-state/completed  (do-process :cook-expected-state/completed :pod/succeeded)))
@@ -133,6 +148,10 @@
     (is (= :reason-running @reason))
     (is (= :cook-expected-state/completed (do-process :cook-expected-state/starting :pod/unknown)))
     (is (= :cook-expected-state/starting (do-process :cook-expected-state/starting :pod/waiting)))
+
+    (testing "Make sure we remove the waiting metric at the right time"
+      (is (nil? (:waiting-metric-timer (do-process-full-state :cook-expected-state/starting :pod/waiting))))
+      (is (not (nil? (:waiting-metric-timer (do-process-full-state :cook-expected-state/starting :missing))))))
 
     (is (nil? (do-process :missing :missing)))
     (is (nil? (do-process :missing :pod/succeeded)))
