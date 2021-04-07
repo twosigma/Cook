@@ -566,7 +566,7 @@
                                           :pod/waiting (do
                                                          (when waiting-metric-timer (timers/stop waiting-metric-timer))
                                                          ; Delete the timer so we only track the first time.
-                                                         (dissoc cook-expected-state-dict waiting-metric-timer)))
+                                                         (dissoc cook-expected-state-dict :waiting-metric-timer)))
 
                                         :missing
                                         (case pod-synthesized-state-modified
