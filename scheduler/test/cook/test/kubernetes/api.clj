@@ -449,7 +449,7 @@
                                                fake-cc-config
                                                task-metadata)
             pod-labels (-> pod .getMetadata .getLabels)]
-        (is (= "cook-job" (get pod-labels "workload-class")))
+        (is (= "undefined" (get pod-labels "workload-class")))
         (is (= "bar" (get pod-labels "workload-id")))
         (is (= "baz" (get pod-labels "workload-details"))))
 
@@ -463,7 +463,7 @@
                                                task-metadata)
             pod-labels (-> pod .getMetadata .getLabels)]
         (is (= "foo" (get pod-labels "workload-class")))
-        (is (= "unspecified" (get pod-labels "workload-id")))
+        (is (= "undefined" (get pod-labels "workload-id")))
         (is (= "baz" (get pod-labels "workload-details"))))
 
       ; No workload-details specified
@@ -477,7 +477,7 @@
             pod-labels (-> pod .getMetadata .getLabels)]
         (is (= "foo" (get pod-labels "workload-class")))
         (is (= "bar" (get pod-labels "workload-id")))
-        (is (= "none" (get pod-labels "workload-details"))))
+        (is (= "undefined" (get pod-labels "workload-details"))))
 
       ; No workload- fields specified
       (let [task-metadata {:command {:user "test-user"}
@@ -487,9 +487,9 @@
                                                fake-cc-config
                                                task-metadata)
             pod-labels (-> pod .getMetadata .getLabels)]
-        (is (= "cook-job" (get pod-labels "workload-class")))
-        (is (= "unspecified" (get pod-labels "workload-id")))
-        (is (= "none" (get pod-labels "workload-details")))))
+        (is (= "undefined" (get pod-labels "workload-class")))
+        (is (= "undefined" (get pod-labels "workload-id")))
+        (is (= "undefined" (get pod-labels "workload-details")))))
 
     (testing "synthetic pod anti-affinity"
       (with-redefs [config/kubernetes (constantly {:synthetic-pod-anti-affinity-namespace "test-namespace"
