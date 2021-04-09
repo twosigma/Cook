@@ -87,10 +87,13 @@
 ; and MiB back to bytes when submitting to k8s.
 (def memory-multiplier (* 1024 1024))
 
-(def pod-labels-defaults
-  {"workload-class" "cook-job"
-   "workload-id" "unspecified"
-   "workload-details" "none"})
+(defn pod-labels-defaults
+  "Returns a map with default pod labels"
+  []
+  (let [prefix (:add-job-label-to-pod-prefix (config/kubernetes))]
+    {(str prefix "workload-class") "undefined"
+     (str prefix "workload-id") "undefined"
+     (str prefix "workload-details") "undefined"}))
 
 (defn is-cook-scheduler-pod
   "Is this a cook pod? Uses some-> so is null-safe."
@@ -837,21 +840,26 @@
   added to the job's pod based on the job's labels
   and/or the job's application fields."
   [job]
-  (let [pod-labels-from-job-labels
-        (if-let [prefix (:add-job-label-to-pod-prefix (config/kubernetes))]
+  (let [prefix (:add-job-label-to-pod-prefix (config/kubernetes))
+        pod-labels-from-job-labels
+        (if prefix
           (->> job
                tools/job-ent->label
                (filter (fn [[k _]] (str/starts-with? k prefix)))
                (into {}))
           {})
+        add-pod-label-prefix
+        (fn [m]
+          (pc/map-keys (fn [k] (str prefix k)) m))
         pod-labels-from-job-application
         (some-> job
                 :job/application
                 (select-keys [:application/workload-class
                               :application/workload-id
                               :application/workload-details])
-                walk/stringify-keys)]
-    (merge pod-labels-defaults
+                walk/stringify-keys
+                add-pod-label-prefix)]
+    (merge (pod-labels-defaults)
            pod-labels-from-job-labels
            pod-labels-from-job-application)))
 

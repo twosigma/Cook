@@ -449,7 +449,7 @@
                                                fake-cc-config
                                                task-metadata)
             pod-labels (-> pod .getMetadata .getLabels)]
-        (is (= "cook-job" (get pod-labels "workload-class")))
+        (is (= "undefined" (get pod-labels "workload-class")))
         (is (= "bar" (get pod-labels "workload-id")))
         (is (= "baz" (get pod-labels "workload-details"))))
 
@@ -463,7 +463,7 @@
                                                task-metadata)
             pod-labels (-> pod .getMetadata .getLabels)]
         (is (= "foo" (get pod-labels "workload-class")))
-        (is (= "unspecified" (get pod-labels "workload-id")))
+        (is (= "undefined" (get pod-labels "workload-id")))
         (is (= "baz" (get pod-labels "workload-details"))))
 
       ; No workload-details specified
@@ -477,7 +477,7 @@
             pod-labels (-> pod .getMetadata .getLabels)]
         (is (= "foo" (get pod-labels "workload-class")))
         (is (= "bar" (get pod-labels "workload-id")))
-        (is (= "none" (get pod-labels "workload-details"))))
+        (is (= "undefined" (get pod-labels "workload-details"))))
 
       ; No workload- fields specified
       (let [task-metadata {:command {:user "test-user"}
@@ -487,9 +487,9 @@
                                                fake-cc-config
                                                task-metadata)
             pod-labels (-> pod .getMetadata .getLabels)]
-        (is (= "cook-job" (get pod-labels "workload-class")))
-        (is (= "unspecified" (get pod-labels "workload-id")))
-        (is (= "none" (get pod-labels "workload-details")))))
+        (is (= "undefined" (get pod-labels "workload-class")))
+        (is (= "undefined" (get pod-labels "workload-id")))
+        (is (= "undefined" (get pod-labels "workload-details")))))
 
     (testing "synthetic pod anti-affinity"
       (with-redefs [config/kubernetes (constantly {:synthetic-pod-anti-affinity-namespace "test-namespace"
@@ -957,3 +957,32 @@
       (.addContainerStatusesItem pod-status container-status)
       (.setStatus pod pod-status)
       (= :not-running (api/pod->sandbox-file-server-container-state pod)))))
+
+(deftest test-job->pod-labels
+  (let [job {:job/application {:application/workload-class "test-class"
+                               :application/workload-details "test-details"
+                               :application/workload-id "test-id"}}]
+    (testing "no prefix + no job labels"
+      (is (= {"workload-class" "undefined"
+              "workload-details" "undefined"
+              "workload-id" "undefined"}
+             (api/job->pod-labels {}))))
+
+    (testing "no prefix + job labels"
+      (is (= {"workload-class" "test-class"
+              "workload-details" "test-details"
+              "workload-id" "test-id"}
+             (api/job->pod-labels job))))
+
+    (with-redefs [config/kubernetes (constantly {:add-job-label-to-pod-prefix "test-prefix/"})]
+      (testing "prefix + no job labels"
+        (is (= {"test-prefix/workload-class" "undefined"
+                "test-prefix/workload-details" "undefined"
+                "test-prefix/workload-id" "undefined"}
+               (api/job->pod-labels {}))))
+
+      (testing "prefix + job labels"
+        (is (= {"test-prefix/workload-class" "test-class"
+                "test-prefix/workload-details" "test-details"
+                "test-prefix/workload-id" "test-id"}
+               (api/job->pod-labels job)))))))
