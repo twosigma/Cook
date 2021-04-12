@@ -436,9 +436,9 @@
                                                fake-cc-config
                                                task-metadata)
             pod-labels (-> pod .getMetadata .getLabels)]
-        (is (= "foo" (get pod-labels "workload-class")))
-        (is (= "bar" (get pod-labels "workload-id")))
-        (is (= "baz" (get pod-labels "workload-details"))))
+        (is (= "foo" (get pod-labels "application.workload-class")))
+        (is (= "bar" (get pod-labels "application.workload-id")))
+        (is (= "baz" (get pod-labels "application.workload-details"))))
 
       ; No workload-class specified
       (let [task-metadata {:command {:user "test-user"}
@@ -449,9 +449,9 @@
                                                fake-cc-config
                                                task-metadata)
             pod-labels (-> pod .getMetadata .getLabels)]
-        (is (= "undefined" (get pod-labels "workload-class")))
-        (is (= "bar" (get pod-labels "workload-id")))
-        (is (= "baz" (get pod-labels "workload-details"))))
+        (is (= "undefined" (get pod-labels "application.workload-class")))
+        (is (= "bar" (get pod-labels "application.workload-id")))
+        (is (= "baz" (get pod-labels "application.workload-details"))))
 
       ; No workload-id specified
       (let [task-metadata {:command {:user "test-user"}
@@ -462,9 +462,9 @@
                                                fake-cc-config
                                                task-metadata)
             pod-labels (-> pod .getMetadata .getLabels)]
-        (is (= "foo" (get pod-labels "workload-class")))
-        (is (= "undefined" (get pod-labels "workload-id")))
-        (is (= "baz" (get pod-labels "workload-details"))))
+        (is (= "foo" (get pod-labels "application.workload-class")))
+        (is (= "undefined" (get pod-labels "application.workload-id")))
+        (is (= "baz" (get pod-labels "application.workload-details"))))
 
       ; No workload-details specified
       (let [task-metadata {:command {:user "test-user"}
@@ -475,9 +475,9 @@
                                                fake-cc-config
                                                task-metadata)
             pod-labels (-> pod .getMetadata .getLabels)]
-        (is (= "foo" (get pod-labels "workload-class")))
-        (is (= "bar" (get pod-labels "workload-id")))
-        (is (= "undefined" (get pod-labels "workload-details"))))
+        (is (= "foo" (get pod-labels "application.workload-class")))
+        (is (= "bar" (get pod-labels "application.workload-id")))
+        (is (= "undefined" (get pod-labels "application.workload-details"))))
 
       ; No workload- fields specified
       (let [task-metadata {:command {:user "test-user"}
@@ -487,9 +487,9 @@
                                                fake-cc-config
                                                task-metadata)
             pod-labels (-> pod .getMetadata .getLabels)]
-        (is (= "undefined" (get pod-labels "workload-class")))
-        (is (= "undefined" (get pod-labels "workload-id")))
-        (is (= "undefined" (get pod-labels "workload-details")))))
+        (is (= "undefined" (get pod-labels "application.workload-class")))
+        (is (= "undefined" (get pod-labels "application.workload-id")))
+        (is (= "undefined" (get pod-labels "application.workload-details")))))
 
     (testing "synthetic pod anti-affinity"
       (with-redefs [config/kubernetes (constantly {:synthetic-pod-anti-affinity-namespace "test-namespace"
@@ -963,26 +963,95 @@
                                :application/workload-details "test-details"
                                :application/workload-id "test-id"}}]
     (testing "no prefix + no job labels"
-      (is (= {"workload-class" "undefined"
-              "workload-details" "undefined"
-              "workload-id" "undefined"}
+      (is (= {"application.name" "undefined"
+              "application.version" "undefined"
+              "application.workload-class" "undefined"
+              "application.workload-details" "undefined"
+              "application.workload-id" "undefined"}
              (api/job->pod-labels {}))))
 
     (testing "no prefix + job labels"
-      (is (= {"workload-class" "test-class"
-              "workload-details" "test-details"
-              "workload-id" "test-id"}
+      (is (= {"application.name" "undefined"
+              "application.version" "undefined"
+              "application.workload-class" "test-class"
+              "application.workload-details" "test-details"
+              "application.workload-id" "test-id"}
              (api/job->pod-labels job))))
 
     (with-redefs [config/kubernetes (constantly {:add-job-label-to-pod-prefix "test-prefix/"})]
       (testing "prefix + no job labels"
-        (is (= {"test-prefix/workload-class" "undefined"
-                "test-prefix/workload-details" "undefined"
-                "test-prefix/workload-id" "undefined"}
+        (is (= {"test-prefix/application.name" "undefined"
+                "test-prefix/application.version" "undefined"
+                "test-prefix/application.workload-class" "undefined"
+                "test-prefix/application.workload-details" "undefined"
+                "test-prefix/application.workload-id" "undefined"}
                (api/job->pod-labels {}))))
 
       (testing "prefix + job labels"
-        (is (= {"test-prefix/workload-class" "test-class"
-                "test-prefix/workload-details" "test-details"
-                "test-prefix/workload-id" "test-id"}
-               (api/job->pod-labels job)))))))
+        (is (= {"test-prefix/application.name" "undefined"
+                "test-prefix/application.version" "undefined"
+                "test-prefix/application.workload-class" "test-class"
+                "test-prefix/application.workload-details" "test-details"
+                "test-prefix/application.workload-id" "test-id"}
+               (api/job->pod-labels job))))))
+
+  (testing "coercing name and version"
+    (is (= {"application.name" "no-coercion-needed"
+            "application.version" "also-no-coercion-needed"
+            "application.workload-class" "undefined"
+            "application.workload-details" "undefined"
+            "application.workload-id" "undefined"}
+           (api/job->pod-labels
+             {:job/application
+              {:application/name "no-coercion-needed"
+               :application/version "also-no-coercion-needed"}})))
+
+    (is (= {"application.name" "too-long-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+            "application.version" "also-too-long-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+            "application.workload-class" "undefined"
+            "application.workload-details" "undefined"
+            "application.workload-id" "undefined"}
+           (api/job->pod-labels
+             {:job/application
+              {:application/name "too-long-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+               :application/version "also-too-long-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"}})))
+
+    (is (= {"application.name" "0_invalid-start-char"
+            "application.version" "0_also-invalid-start-char"
+            "application.workload-class" "undefined"
+            "application.workload-details" "undefined"
+            "application.workload-id" "undefined"}
+           (api/job->pod-labels
+             {:job/application
+              {:application/name "_invalid-start-char"
+               :application/version "_also-invalid-start-char"}})))
+
+    (is (= {"application.name" "invalid-end-char_0"
+            "application.version" "also-invalid-end-char_0"
+            "application.workload-class" "undefined"
+            "application.workload-details" "undefined"
+            "application.workload-id" "undefined"}
+           (api/job->pod-labels
+             {:job/application
+              {:application/name "invalid-end-char_"
+               :application/version "also-invalid-end-char_"}})))
+
+    (is (= {"application.name" "0_multiple-problems-__________________________________________0"
+            "application.version" "0_also-multiple-problems-_____________________________________0"
+            "application.workload-class" "undefined"
+            "application.workload-details" "undefined"
+            "application.workload-id" "undefined"}
+           (api/job->pod-labels
+             {:job/application
+              {:application/name "_multiple-problems-_____________________________________________"
+               :application/version "_also-multiple-problems-________________________________________"}})))
+
+    (is (= {"application.name" "invalid"
+            "application.version" "invalid"
+            "application.workload-class" "undefined"
+            "application.workload-details" "undefined"
+            "application.workload-id" "undefined"}
+           (api/job->pod-labels
+             {:job/application
+              {:application/name "~!@-completely-broken#$%"
+               :application/version "~!@-also-completely-broken#$%"}})))))
