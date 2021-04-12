@@ -436,9 +436,9 @@
                                                fake-cc-config
                                                task-metadata)
             pod-labels (-> pod .getMetadata .getLabels)]
-        (is (= "foo" (get pod-labels "workload-class")))
-        (is (= "bar" (get pod-labels "workload-id")))
-        (is (= "baz" (get pod-labels "workload-details"))))
+        (is (= "foo" (get pod-labels "application.workload-class")))
+        (is (= "bar" (get pod-labels "application.workload-id")))
+        (is (= "baz" (get pod-labels "application.workload-details"))))
 
       ; No workload-class specified
       (let [task-metadata {:command {:user "test-user"}
@@ -449,9 +449,9 @@
                                                fake-cc-config
                                                task-metadata)
             pod-labels (-> pod .getMetadata .getLabels)]
-        (is (= "undefined" (get pod-labels "workload-class")))
-        (is (= "bar" (get pod-labels "workload-id")))
-        (is (= "baz" (get pod-labels "workload-details"))))
+        (is (= "undefined" (get pod-labels "application.workload-class")))
+        (is (= "bar" (get pod-labels "application.workload-id")))
+        (is (= "baz" (get pod-labels "application.workload-details"))))
 
       ; No workload-id specified
       (let [task-metadata {:command {:user "test-user"}
@@ -462,9 +462,9 @@
                                                fake-cc-config
                                                task-metadata)
             pod-labels (-> pod .getMetadata .getLabels)]
-        (is (= "foo" (get pod-labels "workload-class")))
-        (is (= "undefined" (get pod-labels "workload-id")))
-        (is (= "baz" (get pod-labels "workload-details"))))
+        (is (= "foo" (get pod-labels "application.workload-class")))
+        (is (= "undefined" (get pod-labels "application.workload-id")))
+        (is (= "baz" (get pod-labels "application.workload-details"))))
 
       ; No workload-details specified
       (let [task-metadata {:command {:user "test-user"}
@@ -475,9 +475,9 @@
                                                fake-cc-config
                                                task-metadata)
             pod-labels (-> pod .getMetadata .getLabels)]
-        (is (= "foo" (get pod-labels "workload-class")))
-        (is (= "bar" (get pod-labels "workload-id")))
-        (is (= "undefined" (get pod-labels "workload-details"))))
+        (is (= "foo" (get pod-labels "application.workload-class")))
+        (is (= "bar" (get pod-labels "application.workload-id")))
+        (is (= "undefined" (get pod-labels "application.workload-details"))))
 
       ; No workload- fields specified
       (let [task-metadata {:command {:user "test-user"}
@@ -487,9 +487,9 @@
                                                fake-cc-config
                                                task-metadata)
             pod-labels (-> pod .getMetadata .getLabels)]
-        (is (= "undefined" (get pod-labels "workload-class")))
-        (is (= "undefined" (get pod-labels "workload-id")))
-        (is (= "undefined" (get pod-labels "workload-details")))))
+        (is (= "undefined" (get pod-labels "application.workload-class")))
+        (is (= "undefined" (get pod-labels "application.workload-id")))
+        (is (= "undefined" (get pod-labels "application.workload-details")))))
 
     (testing "synthetic pod anti-affinity"
       (with-redefs [config/kubernetes (constantly {:synthetic-pod-anti-affinity-namespace "test-namespace"
