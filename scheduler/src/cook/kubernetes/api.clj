@@ -8,6 +8,7 @@
             [cook.config :as config]
             [cook.kubernetes.metrics :as metrics]
             [cook.regexp-tools :as regexp-tools]
+            [cook.rest.api :as api]
             [cook.scheduler.constraints :as constraints]
             [cook.task :as task]
             [cook.tools :as tools]
@@ -91,9 +92,11 @@
   "Returns a map with default pod labels"
   []
   (let [prefix (:add-job-label-to-pod-prefix (config/kubernetes))]
-    {(str prefix "workload-class") "undefined"
-     (str prefix "workload-id") "undefined"
-     (str prefix "workload-details") "undefined"}))
+    {(str prefix "application.name") "undefined"
+     (str prefix "application.version") "undefined"
+     (str prefix "application.workload-class") "undefined"
+     (str prefix "application.workload-id") "undefined"
+     (str prefix "application.workload-details") "undefined"}))
 
 (defn is-cook-scheduler-pod
   "Is this a cook pod? Uses some-> so is null-safe."
@@ -850,15 +853,44 @@
           {})
         add-pod-label-prefix
         (fn [m]
-          (pc/map-keys (fn [k] (str prefix k)) m))
+          (pc/map-keys (fn [k] (str prefix "application." k)) m))
+        force-valid-pod-label-values
+        (fn [m]
+          (->> m
+               (map
+                 (fn [[key val]]
+                   ; The workload-* field values are already checked for
+                   ; pod-label-value validity at job submission time, but
+                   ; the name and version fields existed prior to the k8s
+                   ; support in Cook, so we need to coerce names and
+                   ; versions that are too long and/or start/end in a
+                   ; non-alphanumeric character.
+                   (if (or (#{:application/workload-class
+                              :application/workload-details
+                              :application/workload-id} key)
+                           (api/valid-k8s-pod-label-value? val))
+                     [key val]
+                     (let [shortened-val (if (-> val count (> 61))
+                                           (subs val 0 61)
+                                           val)
+                           prefixed-val (if (Character/isLetterOrDigit ^char (nth shortened-val 0))
+                                          shortened-val
+                                          (str "0" shortened-val))
+                           last-index (-> prefixed-val count dec)
+                           suffixed-val (if (Character/isLetterOrDigit ^char (nth prefixed-val last-index))
+                                          prefixed-val
+                                          (str prefixed-val "0"))
+                           final-val (if (api/valid-k8s-pod-label-value? suffixed-val)
+                                       suffixed-val
+                                       "invalid")]
+                       [key final-val]))))
+               (into {})))
         pod-labels-from-job-application
         (some-> job
                 :job/application
-                (select-keys [:application/workload-class
-                              :application/workload-id
-                              :application/workload-details])
                 walk/stringify-keys
-                add-pod-label-prefix)]
+                add-pod-label-prefix
+                force-valid-pod-label-values)]
     (merge (pod-labels-defaults)
            pod-labels-from-job-labels
            pod-labels-from-job-application)))
