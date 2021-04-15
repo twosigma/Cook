@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.51.14] - 2021-04-15
+### Changed
+- Added pod labels for application name and version, from @dposada
+- Prefixed all application pod labels with the configured pod label prefix, from @dposada
+
 ## [1.51.13] - 2021-04-07
 ### Fixed
 - Calculate the time-until-waiting metric correctly, from @scrosby
