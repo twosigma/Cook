@@ -106,6 +106,7 @@ final public class Job {
         private String _progressRegexString;
         private String _user;
         private JSONArray _datasets;
+        private Boolean _overrideGroupImmutability;
 
         /**
          * Prior to {@code build()}, command, memory and cpus for a job must be provided.<br>
@@ -148,7 +149,8 @@ final public class Job {
             }
             return new Job(_uuid, _name, _command, _executor, _memory, _cpus, _disk, _gpus, _retries, _maxRuntime,
                     _expectedRuntime, _status, _priority, _pool, _isMeaCulpaRetriesDisabled, _instances, _env, _uris, _container,
-                    _labels, _constraints, _groups, _application, _checkpoint, _progressOutputFile, _progressRegexString, _user, _datasets);
+                    _labels, _constraints, _groups, _application, _checkpoint, _progressOutputFile, _progressRegexString, _user, _datasets,
+                    _overrideGroupImmutability);
         }
 
         /**
@@ -180,6 +182,7 @@ final public class Job {
             } else {
                 enableMeaCulpaRetries();
             }
+            setOverrideGroupImmutability(job.getOverrideGroupImmutability());
             return this;
         }
 
@@ -725,6 +728,21 @@ final public class Job {
             return this;
         }
 
+        /**
+         * Override job group immutability. Normally the groups for a job are immutable. Use this feature with care.
+         *
+         * @param overrideGroupImmutability {@link Boolean} Set job group mutability. true: job group can be changed.
+         *                                                 false: job group can not be changed.
+         * @return this builder.
+         * @see <a href ="https://github.com/twosigma/Cook/blob/master/scheduler/docs/groups.md#how-to-make-a-group">
+         * how-to-make-a-group
+         * </a>
+         */
+        public Builder setOverrideGroupImmutability(Boolean overrideGroupImmutability) {
+            _overrideGroupImmutability = overrideGroupImmutability;
+            return this;
+        }
+
 
         /**
          * Parse a JSON object into this Builder object, e.g.
@@ -865,6 +883,9 @@ final public class Job {
             if (json.has("pool")) {
                 setPool(json.getString("pool"));
             }
+            if (json.has("override_group_immutability")) {
+                setOverrideGroupImmutability(json.getBoolean("override_group_immutability"));
+            }
             return this;
         }
 
@@ -911,12 +932,13 @@ final public class Job {
     final private String _progressRegexString;
     final private String _user;
     final private JSONArray _datasets;
+    final private Boolean _overrideGroupImmutability;
 
     private Job(UUID uuid, String name, String command, Executor executor, Double memory, Double cpus, Disk disk, Integer gpus, Integer retries,
                 Long maxRuntime, Long expectedRuntime, Status status, Integer priority, String pool, Boolean isMeaCulpaRetriesDisabled,
                 List<Instance> instances, Map<String, String> env, List<FetchableURI> uris, JSONObject container,
                 Map<String, String> labels, Set<Constraint> constraints, List<UUID> groups, Application application, Checkpoint checkpoint,
-                String progressOutputFile, String progressRegexString, String user, JSONArray datasets) {
+                String progressOutputFile, String progressRegexString, String user, JSONArray datasets, Boolean overrideGroupImmutability) {
         _uuid = uuid;
         _name = name;
         _command = command;
@@ -963,6 +985,7 @@ final public class Job {
         _labels = ImmutableMap.copyOf(labels);
         _constraints = ImmutableSet.copyOf(constraints);
         _groups = groups;
+        _overrideGroupImmutability = overrideGroupImmutability;
     }
 
     /**
@@ -1173,6 +1196,13 @@ final public class Job {
     }
 
     /**
+     * @return Get job group mutability. true: job group can be changed. false: job group can not be changed.
+     */
+    public Boolean getOverrideGroupImmutability() {
+        return _overrideGroupImmutability;
+    }
+
+    /**
      * @return the job instance with the running state or {@code null} if can't find one.
      */
     public Instance getRunningInstance() {
@@ -1278,6 +1308,9 @@ final public class Job {
         }
         if (job._datasets != null) {
             object.put("datasets", job._datasets);
+        }
+        if (job._overrideGroupImmutability != null) {
+            object.put("override_group_immutability", job._overrideGroupImmutability);
         }
         return object;
     }
@@ -1426,7 +1459,8 @@ final public class Job {
                     + ", _memory=" + _memory + ", _cpus=" + _cpus + ", _gpus=" + _gpus + ", _retries=" + _retries
                     + ", _maxRuntime=" + _maxRuntime + ", _status=" + _status + ", _priority=" + _priority + ", _pool=" + _pool
                     + ", _progressOutputFile=" + _progressOutputFile + ", _progressRegexString=" + _progressRegexString
-                    + ", _isMeaCulpaRetriesDisabled=" + _isMeaCulpaRetriesDisabled + ", _user=" + _user + "]");
+                    + ", _isMeaCulpaRetriesDisabled=" + _isMeaCulpaRetriesDisabled + ", _user=" + _user
+                    + ", _overrideGroupImmutability=" + _overrideGroupImmutability + "]");
         stringBuilder.append('\n');
         for (Instance instance : getInstances()) {
             stringBuilder.append(instance.toString()).append('\n');

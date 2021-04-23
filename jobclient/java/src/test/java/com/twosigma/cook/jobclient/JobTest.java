@@ -85,6 +85,7 @@ public class JobTest {
         jobBuilder.addNodeTypeConstraint("c2-standard-16");
         jobBuilder.addNodeFamilyConstraint("c2");
         jobBuilder.addCpuArchitectureConstraint("intel-cascade-lake");
+        jobBuilder.setOverrideGroupImmutability(true);
     }
 
     @Test
@@ -125,6 +126,7 @@ public class JobTest {
         Assert.assertEquals(
                 jsonJob.getJSONObject("env").toString(),
                 new JSONObject().put("COOK_GPU_MODEL", "nvidia-tesla-p100").put("FOO", "test").toString());
+        Assert.assertTrue(jsonJob.getBoolean("override_group_immutability"));
     }
 
     @Test
@@ -174,6 +176,7 @@ public class JobTest {
         constraint = iter.next();
         Assert.assertEquals("cpu-architecture", constraint.getAttribute());
         Assert.assertEquals(Operator.EQUALS, constraint.getOperator());
+        Assert.assertTrue(basicJob.getOverrideGroupImmutability());
     }
 
     @Test
