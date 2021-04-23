@@ -1413,7 +1413,7 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :reason/code 2004
     :reason/string "Task was a straggler"
     :reason/name :straggler
-    :reason/mea-culpa? false}
+    :reason/mea-culpa? true}
 
    {:db/id (d/tempid :db.part/user)
     :reason/code 3000
