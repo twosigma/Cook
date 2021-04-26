@@ -817,28 +817,35 @@
               first-offer (-> offers first)
               slave-id (-> first-offer :slave-id :value)]
         {:keys [executor hostname ports-assigned task-id task-request]} task-metadata-seq
-        :let [job-ref [:job/uuid (get-in task-request [:job :job/uuid])]]]
+        :let [{:keys [job/last-waiting-start-time job/uuid]} (:job task-request)
+              job-ref [:job/uuid uuid]
+              instance-start-time (now)]]
     [[:job/allowed-to-start? job-ref]
      ;; NB we set any job with an instance in a non-terminal
      ;; state to running to prevent scheduling the same job
      ;; twice; see schema definition for state machine
      [:db/add job-ref :job/state :job.state/running]
-     {:db/id (d/tempid :db.part/user)
-      :job/_instance job-ref
-      :instance/executor executor
-      :instance/executor-id task-id ;; NB command executor uses the task-id as the executor-id
-      :instance/hostname hostname
-      :instance/ports ports-assigned
-      :instance/preempted? false
-      :instance/progress 0
-      :instance/slave-id slave-id
-      :instance/start-time (now)
-      :instance/status :instance.status/unknown
-      :instance/task-id task-id
-      :instance/compute-cluster
-      (-> first-offer
-          :compute-cluster
-          cc/db-id)}]))
+     (cond->
+       {:db/id (d/tempid :db.part/user)
+        :job/_instance job-ref
+        :instance/executor executor
+        :instance/executor-id task-id ;; NB command executor uses the task-id as the executor-id
+        :instance/hostname hostname
+        :instance/ports ports-assigned
+        :instance/preempted? false
+        :instance/progress 0
+        :instance/slave-id slave-id
+        :instance/start-time instance-start-time
+        :instance/status :instance.status/unknown
+        :instance/task-id task-id
+        :instance/compute-cluster
+        (-> first-offer
+            :compute-cluster
+            cc/db-id)}
+       last-waiting-start-time
+       (assoc :instance/queue-time
+              (- (.getTime instance-start-time)
+                 (.getTime last-waiting-start-time))))]))
 
 (defn- match->compute-cluster
   "Given a match object, returns the

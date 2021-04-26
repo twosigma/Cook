@@ -200,6 +200,12 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :db/cardinality :db.cardinality/many
     :db.install/_attribute :db.part/db
     :db/doc "Datasets required by a job"}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :job/last-waiting-start-time
+    :db/doc "represents the last time the job entered the waiting state"
+    :db/valueType :db.type/instant
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
    ;; Group attributes
    {:db/id (d/tempid :db.part/db)
     :db/ident :group/uuid
@@ -775,6 +781,12 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db
     :db/doc "On which compute cluster did the instance run?"}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :instance/queue-time
+    :db/doc "represents the amount of time (in milliseconds) the job was queued before this instance was created"
+    :db/valueType :db.type/long
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
 
    ;; Share attributes
    {:db/id (d/tempid :db.part/db)
@@ -1164,6 +1176,7 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :db/fn #db/fn {:lang "clojure"
                    :params [db j]
                    :requires [[metatransaction.core :as mt]]
+                   :imports [(java.util Date)]
                    :code
                    (let [db (mt/filter-committed db)
                          job (d/entity db j)
@@ -1188,7 +1201,8 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
                        [[:db/add j :job/state :job.state/running]]
 
                        :else
-                       [[:db/add j :job/state :job.state/waiting]]))}}
+                       [[:db/add j :job/state :job.state/waiting]
+                        [:db/add j :job/last-waiting-start-time (Date.)]]))}}
 
    {:db/id (d/tempid :db.part/user)
     :db/ident :instance/update-state
@@ -1205,6 +1219,7 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :db/fn #db/fn {:lang "clojure"
                    :params [db instance new-state reason]
                    :requires [[metatransaction.core :as mt]]
+                   :imports [(java.util Date)]
                    :code
                    (let [db (mt/filter-committed db)
                          state-transitions {:instance.status/unknown #{:instance.status/running :instance.status/failed
@@ -1255,7 +1270,8 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
                                  [[:db/add job :job/state :job.state/running]]
 
                                  :else
-                                 [[:db/add job :job/state :job.state/waiting]])))))}}
+                                 [[:db/add job :job/state :job.state/waiting]
+                                  [:db/add job :job/last-waiting-start-time (Date.)]])))))}}
 
    {:db/id (d/tempid :db.part/user)
     :db/ident :job/allowed-to-start?
@@ -1317,12 +1333,14 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :db/doc "Updates a jobs state on retry"
     :db/fn #db/fn {:lang "clojure"
                    :params [db job-entity-id retries]
+                   :imports [(java.util Date)]
                    :code
                    (let [job-ent (d/entity db job-entity-id)
                          attempts-consumed (d/invoke db :job/attempts-consumed db job-ent)]
                      (if (and (= :job.state/completed (:job/state job-ent))
                               (< attempts-consumed retries))
-                       [[:db/add job-entity-id :job/state :job.state/waiting]]
+                       [[:db/add job-entity-id :job/state :job.state/waiting]
+                        [:db/add job-entity-id :job/last-waiting-start-time (Date.)]]
                        []))}}])
 
 (def reason-entities
