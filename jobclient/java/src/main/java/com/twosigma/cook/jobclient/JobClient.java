@@ -624,19 +624,19 @@ public class JobClient implements Closeable, JobClientInterface {
     @Override
     public void submit(List<Job> jobs, JobListener listener)
             throws JobClientException {
-        submit(jobs, null, listener, null);
+        submit(jobs, null, listener, null, false);
     }
 
     @Override
     public void submit(List<Job> jobs, String pool, JobListener listener)
         throws JobClientException {
-        submit(jobs, pool, listener, null);
+        submit(jobs, pool, listener, null, false);
     }
 
     @Override
     public void submitWithGroups(List<Job> jobs, String pool, List<Group> groups)
         throws JobClientException {
-        submitWithGroups(jobs, pool, groups, null, null);
+        submitWithGroups(jobs, pool, groups, null, null, false);
     }
 
     @Override
@@ -650,7 +650,7 @@ public class JobClient implements Closeable, JobClientInterface {
     /**
      * @see #submitWithGroups(List, List, GroupListener)
      */
-    private void submitWithGroups(List<Job> jobs, String pool, List<Group> groups, GroupListener listener, String impersonatedUser)
+    private void submitWithGroups(List<Job> jobs, String pool, List<Group> groups, GroupListener listener, String impersonatedUser, boolean overrideGroupImmutability)
         throws JobClientException {
         // It is ok to change the listeners map even if the actual submission fails because it won't
         // update the internal status map {@code _activeUUIDTOJob}.
@@ -668,6 +668,9 @@ public class JobClient implements Closeable, JobClientInterface {
             json.put("jobs", jobsJSON.getJSONArray("jobs"));
             if (pool != null) {
                 json.put("pool", pool);
+            }
+            if (overrideGroupImmutability) {
+                json.put("override_group_immutability", true);
             }
         } catch (JSONException e) {
             throw new JobClientException("Can not jsonize jobs or groups to submit.", e);
@@ -751,7 +754,7 @@ public class JobClient implements Closeable, JobClientInterface {
     @Override
     public void submitWithGroups(List<Job> jobs, String pool, List<Group> groups, GroupListener listener)
             throws JobClientException {
-        submitWithGroups(jobs, pool, groups, listener, null);
+        submitWithGroups(jobs, pool, groups, listener, null, false);
     }
 
     private JobClientException releaseAndCreateException(HttpRequestBase httpRequest, HttpResponse httpResponse, final String msg, final Throwable cause) {
@@ -831,7 +834,7 @@ public class JobClient implements Closeable, JobClientInterface {
     /**
      * @see #submit(List, JobListener).
      */
-    private void submit(List<Job> jobs, String pool, JobListener listener, String impersonatedUser)
+    private void submit(List<Job> jobs, String pool, JobListener listener, String impersonatedUser, boolean overrideGroupImmutability)
         throws JobClientException {
         // It is ok to change the listeners map even if the actual submission fails because it won't
         // update the internal status map {@code _activeUUIDTOJob}.
@@ -846,6 +849,9 @@ public class JobClient implements Closeable, JobClientInterface {
             json = Job.jsonizeJob(jobs);
             if (pool != null) {
                 json.put("pool", pool);
+            }
+            if (overrideGroupImmutability) {
+                json.put("override_group_immutability", true);
             }
         } catch (JSONException e) {
             throw new JobClientException("Can not jsonize jobs to submit.", e);
@@ -1290,7 +1296,7 @@ public class JobClient implements Closeable, JobClientInterface {
         @Override
         public void submit(List<Job> jobs, String pool, JobListener listener)
                 throws JobClientException {
-            JobClient.this.submit(jobs, pool, listener, _impersonatedUser);
+            JobClient.this.submit(jobs, pool, listener, _impersonatedUser, false);
         }
 
 
@@ -1303,7 +1309,7 @@ public class JobClient implements Closeable, JobClientInterface {
         @Override
         public void submitWithGroups(List<Job> jobs, String pool, List<Group> groups)
                 throws JobClientException {
-            JobClient.this.submitWithGroups(jobs, pool, groups, null, _impersonatedUser);
+            JobClient.this.submitWithGroups(jobs, pool, groups, null, _impersonatedUser, false);
         }
 
         @Override
@@ -1315,7 +1321,7 @@ public class JobClient implements Closeable, JobClientInterface {
         @Override
         public void submitWithGroups(List<Job> jobs, String pool, List<Group> groups, GroupListener listener)
                 throws JobClientException {
-            JobClient.this.submitWithGroups(jobs, pool, groups, listener, _impersonatedUser);
+            JobClient.this.submitWithGroups(jobs, pool, groups, listener, _impersonatedUser, false);
         }
 
         @Override
@@ -1327,7 +1333,7 @@ public class JobClient implements Closeable, JobClientInterface {
         @Override
         public void submit(List<Job> jobs, String pool)
                 throws JobClientException {
-            JobClient.this.submit(jobs, pool, null, _impersonatedUser);
+            JobClient.this.submit(jobs, pool, null, _impersonatedUser, false);
         }
 
         @Override
