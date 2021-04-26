@@ -54,6 +54,22 @@ public interface JobClientInterface {
             throws JobClientException;
 
     /**
+     * Submit a list of jobs to Cook scheduler. It will <br>
+     * -- firstly associate each job with the provided {@link JobListener}<br>
+     * -- secondly submit these jobs to Cook scheduler and track them until they complete.<br>
+     * Behaves identically to {@link #submit(List) submit(jobs)} if <code>listener</code> is <code>null</code>.
+     *
+     * @param jobs The list of jobs expected to submit.
+     * @param pool The pool for the jobs to run in
+     * @param listener specifies an instance of {@link JobListener} listening all job status updates.
+     * @param overrideGroupImmutability If true, allows creating jobs that share a group ID with an existing job group.
+     *                                  Normally the groups for a job are immutable. Use this feature with care.
+     * @throws JobClientException
+     */
+    public void submit(List<Job> jobs, String pool, JobListener listener, boolean overrideGroupImmutability)
+            throws JobClientException;
+
+    /**
      * Submits jobs and groups to Cook scheduler and start to track the jobs until they complete. Note that jobs
      * submitted through this API will not be listened by any listener.
      *
@@ -107,6 +123,24 @@ public interface JobClientInterface {
      * @throws JobClientException
      */
     public void submitWithGroups(List<Job> jobs, String pool, List<Group> groups, GroupListener listener)
+            throws JobClientException;
+
+    /**
+     * Submit a list of jobs and groups to Cook scheduler. It will <br>
+     * -- firstly associate each group with the provided {@link JobListener}<br>
+     * -- secondly submit these jobs to Cook scheduler and track them until they complete.<br>
+     * Behaves identically to {@link #submitWithGroups(List, List) submit(jobs, groups)}
+     * if <code>listener</code> is <code>null</code>.
+     *
+     * @param jobs The list of jobs to be submitted.
+     * @param pool The pool the jobs will run in
+     * @param groups The list of groups to be submitted.
+     * @param listener specifies an instance of {@link JobListener} listening all job status updates.
+     * @param overrideGroupImmutability If true, allows creating jobs that share a group ID with an existing job group.
+     *                                  Normally the groups for a job are immutable. Use this feature with care.
+     * @throws JobClientException
+     */
+    public void submitWithGroups(List<Job> jobs, String pool, List<Group> groups, GroupListener listener, boolean overrideGroupImmutability)
             throws JobClientException;
 
     /**

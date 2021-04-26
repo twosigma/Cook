@@ -629,8 +629,14 @@ public class JobClient implements Closeable, JobClientInterface {
 
     @Override
     public void submit(List<Job> jobs, String pool, JobListener listener)
-        throws JobClientException {
+            throws JobClientException {
         submit(jobs, pool, listener, null, false);
+    }
+
+    @Override
+    public void submit(List<Job> jobs, String pool, JobListener listener, boolean overrideGroupImmutability)
+            throws JobClientException {
+        submit(jobs, pool, listener, null, overrideGroupImmutability);
     }
 
     @Override
@@ -670,7 +676,7 @@ public class JobClient implements Closeable, JobClientInterface {
                 json.put("pool", pool);
             }
             if (overrideGroupImmutability) {
-                json.put("override_group_immutability", true);
+                json.put("override-group-immutability", true);
             }
         } catch (JSONException e) {
             throw new JobClientException("Can not jsonize jobs or groups to submit.", e);
@@ -755,6 +761,12 @@ public class JobClient implements Closeable, JobClientInterface {
     public void submitWithGroups(List<Job> jobs, String pool, List<Group> groups, GroupListener listener)
             throws JobClientException {
         submitWithGroups(jobs, pool, groups, listener, null, false);
+    }
+
+    @Override
+    public void submitWithGroups(List<Job> jobs, String pool, List<Group> groups, GroupListener listener, boolean overrideGroupImmutability)
+            throws JobClientException {
+        submitWithGroups(jobs, pool, groups, listener, null, overrideGroupImmutability);
     }
 
     private JobClientException releaseAndCreateException(HttpRequestBase httpRequest, HttpResponse httpResponse, final String msg, final Throwable cause) {
@@ -851,7 +863,7 @@ public class JobClient implements Closeable, JobClientInterface {
                 json.put("pool", pool);
             }
             if (overrideGroupImmutability) {
-                json.put("override_group_immutability", true);
+                json.put("override-group-immutability", true);
             }
         } catch (JSONException e) {
             throw new JobClientException("Can not jsonize jobs to submit.", e);
@@ -1299,6 +1311,11 @@ public class JobClient implements Closeable, JobClientInterface {
             JobClient.this.submit(jobs, pool, listener, _impersonatedUser, false);
         }
 
+        @Override
+        public void submit(List<Job> jobs, String pool, JobListener listener, boolean overrideGroupImmutability)
+                throws JobClientException {
+            JobClient.this.submit(jobs, pool, listener, _impersonatedUser, overrideGroupImmutability);
+        }
 
         @Override
         public void submitWithGroups(List<Job> jobs, List<Group> groups)
@@ -1322,6 +1339,12 @@ public class JobClient implements Closeable, JobClientInterface {
         public void submitWithGroups(List<Job> jobs, String pool, List<Group> groups, GroupListener listener)
                 throws JobClientException {
             JobClient.this.submitWithGroups(jobs, pool, groups, listener, _impersonatedUser, false);
+        }
+
+        @Override
+        public void submitWithGroups(List<Job> jobs, String pool, List<Group> groups, GroupListener listener, boolean overrideGroupImmutability)
+                throws JobClientException {
+            JobClient.this.submitWithGroups(jobs, pool, groups, listener, _impersonatedUser, overrideGroupImmutability);
         }
 
         @Override
