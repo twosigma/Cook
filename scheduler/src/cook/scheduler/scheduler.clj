@@ -1750,7 +1750,7 @@
         pool-name->pending-task-ents (pc/map-vals #(map tools/create-task-ent %1) pool-name->pending-job-ents)
         pool-name->running-task-ents (group-by (comp cached-queries/job->pool-name :job/_instance)
                                                (tools/get-running-task-ents unfiltered-db))
-        pools (pool/all-pools unfiltered-db)
+        pools (->> unfiltered-db pool/all-pools (filter pool/schedules-jobs?))
         using-pools? (-> pools count pos?)
         pool-name->user->dru-divisors (if using-pools?
                                         (pool-map pools (fn [{:keys [pool/name]}]
