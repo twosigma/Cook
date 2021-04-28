@@ -482,7 +482,7 @@
 
 
 
-; job and resources appear to be unused. They're not. Other code paths destructure job and resource out.
+; job and resources appear to be unused, but they are used. Other code paths destructure job and resource out.
 (defrecord TaskRequestAdapter [job resources cpus mem ports uuid task-id assigned-resources guuid->considerable-cotask-ids constraints scalar-requests]
   TaskRequest
   (getCPUs [_] cpus)
