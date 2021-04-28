@@ -116,7 +116,7 @@
                               (getHostname [_] "test-host")
                               (getRunningTasks [_] [])
                               (getTasksCurrentlyAssigned [_] [])
-                              (getCurrAvailableResources [_] (sched/->VirtualMachineLeaseAdapter k8s-gpu-offer 0)))
+                              (getCurrAvailableResources [_] (sched/offer->lease k8s-gpu-offer 0)))
                             nil)))
           (str "GPU task on GPU host with too many GPUs should fail"))
       (is (not (.isSuccessful
@@ -126,7 +126,7 @@
                               (getHostname [_] "test-host")
                               (getRunningTasks [_] [])
                               (getTasksCurrentlyAssigned [_] [])
-                              (getCurrAvailableResources [_] (sched/->VirtualMachineLeaseAdapter k8s-gpu-offer 0)))
+                              (getCurrAvailableResources [_] (sched/offer->lease k8s-gpu-offer 0)))
                             nil)))
           (str "GPU task on GPU host with too little GPUs should fail"))
       (is (not (.isSuccessful
@@ -136,7 +136,7 @@
                               (getHostname [_] "test-host")
                               (getRunningTasks [_] [])
                               (getTasksCurrentlyAssigned [_] [])
-                              (getCurrAvailableResources [_] (sched/->VirtualMachineLeaseAdapter k8s-gpu-offer 0)))
+                              (getCurrAvailableResources [_] (sched/offer->lease k8s-gpu-offer 0)))
                             nil)))
           (str "GPU task on GPU host with correct number of GPUs but without correct GPU models should fail"))
       (is (.isSuccessful
@@ -146,7 +146,7 @@
                          (getHostname [_] "test-host")
                          (getRunningTasks [_] [])
                          (getTasksCurrentlyAssigned [_] [])
-                         (getCurrAvailableResources [_] (sched/->VirtualMachineLeaseAdapter k8s-gpu-offer 0)))
+                         (getCurrAvailableResources [_] (sched/offer->lease k8s-gpu-offer 0)))
                        nil))
           (str "GPU task on GPU host with the correct number of GPUs should succeed"))
       (is (not (.isSuccessful
@@ -156,7 +156,7 @@
                               (getHostname [_] "test-host")
                               (getRunningTasks [_] [])
                               (getTasksCurrentlyAssigned [_] [gpu-task-assignment])
-                              (getCurrAvailableResources [_] (sched/->VirtualMachineLeaseAdapter k8s-gpu-offer 0)))
+                              (getCurrAvailableResources [_] (sched/offer->lease k8s-gpu-offer 0)))
                             nil)))
           (str "We only allow one GPU job per VM. This VM already has a GPU job assigned to it, so it should not get any additional GPU tasks."))
       (is (not (.isSuccessful
@@ -166,7 +166,7 @@
                               (getHostname [_] "test-host")
                               (getRunningTasks [_] [])
                               (getTasksCurrentlyAssigned [_] [])
-                              (getCurrAvailableResources [_] (sched/->VirtualMachineLeaseAdapter k8s-gpu-offer 0)))
+                              (getCurrAvailableResources [_] (sched/offer->lease k8s-gpu-offer 0)))
                             nil)))
           (str "non GPU task on GPU host should fail"))
       (is (not (.isSuccessful
@@ -176,7 +176,7 @@
                               (getHostname [_] "test-host")
                               (getRunningTasks [_] [])
                               (getTasksCurrentlyAssigned [_] [])
-                              (getCurrAvailableResources [_] (sched/->VirtualMachineLeaseAdapter k8s-non-gpu-offer 0)))
+                              (getCurrAvailableResources [_] (sched/offer->lease k8s-non-gpu-offer 0)))
                             nil)))
           "GPU task on non GPU host should fail")
       (is (.isSuccessful
@@ -186,7 +186,7 @@
                          (getHostname [_] "test-host")
                          (getRunningTasks [_] [])
                          (getTasksCurrentlyAssigned [_] [])
-                         (getCurrAvailableResources [_] (sched/->VirtualMachineLeaseAdapter k8s-non-gpu-offer 0)))
+                         (getCurrAvailableResources [_] (sched/offer->lease k8s-non-gpu-offer 0)))
                        nil))
           "non GPU task on non GPU host should succeed")
       (is (not (.isSuccessful
@@ -196,7 +196,7 @@
                               (getHostname [_] "test-host")
                               (getRunningTasks [_] [])
                               (getTasksCurrentlyAssigned [_] [])
-                              (getCurrAvailableResources [_] (sched/->VirtualMachineLeaseAdapter mesos-gpu-job 0)))
+                              (getCurrAvailableResources [_] (sched/offer->lease mesos-gpu-job 0)))
                             nil)))
           "GPU task on mesos GPU host should fail")
       (is (.isSuccessful
@@ -206,7 +206,7 @@
                          (getHostname [_] "test-host")
                          (getRunningTasks [_] [])
                          (getTasksCurrentlyAssigned [_] [])
-                         (getCurrAvailableResources [_] (sched/->VirtualMachineLeaseAdapter mesos-non-gpu-job 0)))
+                         (getCurrAvailableResources [_] (sched/offer->lease mesos-non-gpu-job 0)))
                        nil))
           "non GPU task on non GPU mesos host should succeed"))
     (is (.isSuccessful
@@ -216,7 +216,7 @@
                        (getHostname [_] "test-host")
                        (getRunningTasks [_] [])
                        (getTasksCurrentlyAssigned [_] [])
-                       (getCurrAvailableResources [_] (sched/->VirtualMachineLeaseAdapter k8s-non-gpu-offer 0)))
+                       (getCurrAvailableResources [_] (sched/offer->lease k8s-non-gpu-offer 0)))
                      nil))
         "non GPU task on non GPU host should succeed")))
 
@@ -265,7 +265,7 @@
                          (getHostname [_] "test-host")
                          (getRunningTasks [_] [])
                          (getTasksCurrentlyAssigned [_] [])
-                         (getCurrAvailableResources [_] (sched/->VirtualMachineLeaseAdapter offer 0)))
+                         (getCurrAvailableResources [_] (sched/offer->lease offer 0)))
                        nil))
           (str "Disk task on host with enough disk and correct type should succeed"))
       (is (.isSuccessful
@@ -275,7 +275,7 @@
                          (getHostname [_] "test-host")
                          (getRunningTasks [_] [])
                          (getTasksCurrentlyAssigned [_] [])
-                         (getCurrAvailableResources [_] (sched/->VirtualMachineLeaseAdapter offer 0)))
+                         (getCurrAvailableResources [_] (sched/offer->lease offer 0)))
                        nil))
           (str "Disk task on host with enough disk and correct type should succeed"))
       (is (not (.isSuccessful
@@ -285,7 +285,7 @@
                               (getHostname [_] "test-host")
                               (getRunningTasks [_] [])
                               (getTasksCurrentlyAssigned [_] [])
-                              (getCurrAvailableResources [_] (sched/->VirtualMachineLeaseAdapter offer 0)))
+                              (getCurrAvailableResources [_] (sched/offer->lease offer 0)))
                             nil)))
           (str "Disk task on host without enough disk should fail"))
       (is (not (.isSuccessful
@@ -295,7 +295,7 @@
                               (getHostname [_] "test-host")
                               (getRunningTasks [_] [])
                               (getTasksCurrentlyAssigned [_] [])
-                              (getCurrAvailableResources [_] (sched/->VirtualMachineLeaseAdapter offer 0)))
+                              (getCurrAvailableResources [_] (sched/offer->lease offer 0)))
                             nil)))
           (str "Disk task on host without correct disk type should fail"))
       (is (nil? (constraints/build-disk-host-constraint disk-request-job-5))))))
@@ -337,7 +337,7 @@
                            (getHostname [_] "hostB")
                            (getRunningTasks [_] [])
                            (getTasksCurrentlyAssigned [_] [])
-                           (getCurrAvailableResources [_]  (sched/->VirtualMachineLeaseAdapter hostB-offer 0)))
+                           (getCurrAvailableResources [_]  (sched/offer->lease hostB-offer 0)))
                          nil))))
     (is (.isSuccessful
          (.evaluate constraint
@@ -346,7 +346,7 @@
                       (getHostname [_] "hostA")
                       (getRunningTasks [_] [])
                       (getTasksCurrentlyAssigned [_] [])
-                      (getCurrAvailableResources [_]  (sched/->VirtualMachineLeaseAdapter hostA-offer 0)))
+                      (getCurrAvailableResources [_]  (sched/offer->lease hostA-offer 0)))
                     nil)))))
 
 

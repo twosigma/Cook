@@ -454,7 +454,7 @@
 ;;; API for matcher
 ;;; ===========================================================================
 
-(defrecord VirtualMachineLeaseAdapter [offer time]
+(defrecord VirtualMachineLeaseAdapter [offer time attr-map]
   VirtualMachineLease
   (cpuCores [_] (or (offer-resource-scalar offer "cpus") 0.0))
   ; We support disk but support different types of disk, so we set this metric to 0.0 and take care of binpacking disk in the disk-host-constraint
@@ -468,7 +468,7 @@
                 result))
             {}
             (:resources offer)))
-  (getAttributeMap [_] (get-offer-attr-map offer))
+  (getAttributeMap [_] attr-map)
   (getId [_] (-> offer :id :value))
   (getOffer [_] (throw (UnsupportedOperationException.)))
   (getOfferedTime [_] time)
@@ -480,6 +480,9 @@
                           (VirtualMachineLease$Range. begin end))
                         (offer-resource-ranges offer "ports"))))
 
+(defn offer->lease
+  [offer time]
+  (->VirtualMachineLeaseAdapter offer time (get-offer-attr-map offer)))
 
 
 ; job and resources appear to be unused, but they are used. Other code paths destructure job and resource out.
@@ -669,7 +672,7 @@
       (log/debug "In" pool-name "pool, tasks to scheduleOnce" considerable)
       (dl/update-cost-staleness-metric considerable)
       (let [t (System/currentTimeMillis)
-            leases (mapv #(->VirtualMachineLeaseAdapter % t) offers)
+            leases (mapv #(offer->lease % t) offers)
             considerable->task-id (plumbing.core/map-from-keys (fn [_] (str (d/squuid))) considerable)
             guuid->considerable-cotask-ids (tools/make-guuid->considerable-cotask-ids considerable->task-id)
             running-cotask-cache (atom (cache/fifo-cache-factory {} :threshold (max 1 (count considerable))))
