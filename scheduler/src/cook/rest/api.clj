@@ -238,7 +238,8 @@
    (s/optional-key :progress) s/Int
    (s/optional-key :progress_message) s/Str
    (s/optional-key :sandbox_directory) s/Str
-   (s/optional-key :file_url) s/Str})
+   (s/optional-key :file_url) s/Str
+   (s/optional-key :queue_time) s/Int})
 
 (defn max-128-characters-and-alphanum?
   "Returns true if s contains only '.', '_', '-' or
@@ -828,11 +829,13 @@
                             {:db/id (d/tempid :db.part/user)
                              :dataset/parameters parameters})))
                       datasets)
+        job-submit-time (Date.)
         txn (cond-> {:db/id db-id
                      :job/command command
                      :job/commit-latch commit-latch-id
                      :job/custom-executor false
                      :job/disable-mea-culpa-retries disable-mea-culpa-retries
+                     :job/last-waiting-start-time job-submit-time
                      :job/max-retries max-retries
                      :job/name (or name "cookjob") ; set the default job name if not provided.
                      :job/resource [{:resource/type :resource.type/cpus
@@ -840,7 +843,7 @@
                                     {:resource/type :resource.type/mem
                                      :resource/amount mem}]
                      :job/state :job.state/waiting
-                     :job/submit-time (Date.)
+                     :job/submit-time job-submit-time
                      :job/user user
                      :job/uuid uuid}
                     application (assoc :job/application
@@ -1190,7 +1193,8 @@
           exit-code (:instance/exit-code instance)
           progress (:instance/progress instance)
           progress-message (:instance/progress-message instance)
-          file-url (plugins/file-url file-plugin/plugin instance)]
+          file-url (plugins/file-url file-plugin/plugin instance)
+          queue-time (:instance/queue-time instance)]
       (cond-> {:backfilled false ;; Backfill has been deprecated
                :compute-cluster (fetch-compute-cluster-map db (:instance/compute-cluster instance))
                :executor_id (:instance/executor-id instance)
@@ -1214,7 +1218,8 @@
                             :reason_mea_culpa (:reason/mea-culpa? reason))
               progress (assoc :progress progress)
               progress-message (assoc :progress_message progress-message)
-              sandbox-directory (assoc :sandbox_directory sandbox-directory)))))
+              sandbox-directory (assoc :sandbox_directory sandbox-directory)
+              queue-time (assoc :queue_time queue-time)))))
 
 (defn- docker-parameter->response-map
   [{:keys [docker.param/key docker.param/value]}]
