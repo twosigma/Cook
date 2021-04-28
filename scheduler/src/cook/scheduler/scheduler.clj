@@ -481,9 +481,11 @@
                         (offer-resource-ranges offer "ports"))))
 
 
-(defrecord TaskRequestAdapter [job resources task-id assigned-resources guuid->considerable-cotask-ids constraints scalar-requests]
+
+; job and resources appear to be unused, but they are used. Other code paths destructure job and resource out.
+(defrecord TaskRequestAdapter [job resources cpus mem ports uuid task-id assigned-resources guuid->considerable-cotask-ids constraints scalar-requests]
   TaskRequest
-  (getCPUs [_] (:cpus resources))
+  (getCPUs [_] cpus)
   ; We support disk but support different types of disk, so we set this metric to 0.0 and take care of binpacking disk in the disk-host-constraint
   (getDisk [_] 0.0)
   (getHardConstraints [_] constraints)
@@ -492,11 +494,11 @@
   (getAssignedResources [_] @assigned-resources)
   (setAssignedResources [_ v] (reset! assigned-resources v))
   (getCustomNamedResources [_] {})
-  (getMemory [_] (:mem resources))
+  (getMemory [_] mem)
   (getNetworkMbps [_] 0.0)
-  (getPorts [_] (:ports resources))
+  (getPorts [_] ports)
   (getSoftConstraints [_] [])
-  (taskGroupName [_] (str (:job/uuid job))))
+  (taskGroupName [_] uuid))
 
 (def adjust-job-resources-for-pool-fn
   (memoize
@@ -529,7 +531,12 @@
         constraints-list (into (list) constraints)
         scalar-requests (job->scalar-request job)
         pool-specific-resources ((adjust-job-resources-for-pool-fn pool-name) job resources)]
-    (->TaskRequestAdapter job pool-specific-resources task-id assigned-resources guuid->considerable-cotask-ids constraints-list scalar-requests)))
+    (->TaskRequestAdapter job resources
+                          (:cpus pool-specific-resources)
+                          (:mem pool-specific-resources)
+                          (:ports pool-specific-resources)
+                          (-> job :job/uuid str)
+                           task-id assigned-resources guuid->considerable-cotask-ids constraints-list scalar-requests)))
 
 (defn jobs->resource-maps
   "Given a collection of jobs, returns a collection
