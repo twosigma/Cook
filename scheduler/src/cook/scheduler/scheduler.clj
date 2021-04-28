@@ -1005,7 +1005,7 @@
   [rebalancer-reservation-atom matched-job-uuids]
   (swap! rebalancer-reservation-atom (fn [{:keys [job-uuid->reserved-host launched-job-uuids]}]
                                        {:job-uuid->reserved-host (apply dissoc job-uuid->reserved-host matched-job-uuids)
-                                        :launched-job-uuids (into matched-job-uuids launched-job-uuids)})))
+                                        :launched-job-uuids (into launched-job-uuids matched-job-uuids)})))
 
 (defn job->acceptable-compute-clusters
   "Given a job and a collection of compute clusters, returns the

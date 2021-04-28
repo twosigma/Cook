@@ -1989,7 +1989,8 @@
               job-1-uuid (d/squuid)
               job-2-uuid (d/squuid)
               initial-reservation-state {:job-uuid->reserved-host {job-1-uuid (:hostname offer-9)
-                                                                   job-2-uuid (:hostname offer-9)}}
+                                                                   job-2-uuid (:hostname offer-9)}
+                                         :launched-job-uuids #{}}
               rebalancer-reservation-atom (atom initial-reservation-state)]
           (is (run-handle-resource-offers! num-considerable offers "test-pool" :rebalancer-reservation-atom rebalancer-reservation-atom
                                            :job-name->uuid {"job-1" job-1-uuid "job-2" job-2-uuid}))
