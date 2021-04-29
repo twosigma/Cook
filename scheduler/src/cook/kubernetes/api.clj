@@ -1337,12 +1337,8 @@
           pod-preempted-timestamp (some-> pod .getMetadata .getLabels (get (or (-> (config/kubernetes) :node-preempted-label) "node-preempted")))
           synthesized-pod-state
           (if (some-> pod .getMetadata .getDeletionTimestamp)
-            ; If a pod has been ordered deleted, treat it as if it was gone, It's being async removed.
-            ; Note that we distinguish between this explicit :missing, and not being there at all when processing
-            ; (:cook-expected-state/killed, :missing) in cook.kubernetes.controller/process
-            {:state :missing
-             :reason "Pod was explicitly deleted"
-             :pod-deleted? true}
+            {:state :pod/deleting
+             :reason "Pod was explicitly deleted"}
             ; If pod isn't being async removed, then look at the containers inside it.
             (if job-status
               (let [^V1ContainerState state (.getState job-status)]
