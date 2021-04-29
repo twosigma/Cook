@@ -1007,13 +1007,6 @@
                          computed-mem
                          (assoc "COOK_MEMORY_REQUEST_BYTES" (* memory-multiplier computed-mem))
 
-                         telemetry-agent-host-var-name
-                         (assoc telemetry-agent-host-var-name
-                                (doto
-                                  (V1EnvVar.)
-                                  (.setName telemetry-agent-host-var-name)
-                                  (.valueFrom hostIpEnvVarSource)))
-
                          (and telemetry-env-var-name telemetry-env-value)
                          (assoc telemetry-env-var-name
                                 telemetry-env-value)
@@ -1034,7 +1027,12 @@
                          telemetry-version-var-name
                          (assoc telemetry-version-var-name
                                 (or (:application/version application) "undefined")))
-        main-env-vars (make-filtered-env-vars main-env)]
+        main-env-vars (cond->> (make-filtered-env-vars main-env)
+                               telemetry-agent-host-var-name
+                               (cons (doto
+                                       (V1EnvVar.)
+                                       (.setName telemetry-agent-host-var-name)
+                                       (.valueFrom hostIpEnvVarSource))))]
 
     ; metadata
     (.setName metadata pod-name)
