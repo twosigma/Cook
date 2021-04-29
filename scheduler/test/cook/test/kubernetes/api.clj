@@ -1,6 +1,7 @@
 (ns cook.test.kubernetes.api
   (:require [clj-time.core :as t]
             [clojure.java.shell :as sh]
+            [clojure.set :as set]
             [clojure.test :refer :all]
             [cook.config :as config]
             [cook.kubernetes.api :as api]
@@ -510,7 +511,45 @@
           (is (= api/k8s-hostname-label (.getTopologyKey pod-affinity-term)))
           (is (= {"test-key" "test-value"} (-> pod-affinity-term .getLabelSelector .getMatchLabels)))
           (is (= 1 (count namespaces)))
-          (is (= "test-namespace" (first namespaces))))))))
+          (is (= "test-namespace" (first namespaces))))))
+
+    (testing "telemetry environment"
+      (with-redefs [config/kubernetes (constantly {:add-job-label-to-pod-prefix "test-prefix/"
+                                                   :telemetry-agent-host-var-name "TEST_AGENT"
+                                                   :telemetry-env-var-name "TEST_ENV"
+                                                   :telemetry-env-value "test-env"
+                                                   :telemetry-service-var-name "TEST_SERVICE"
+                                                   :telemetry-tags-entry-separator " "
+                                                   :telemetry-tags-key-value-separator ":"
+                                                   :telemetry-tags-var-name "TEST_TAGS"
+                                                   :telemetry-version-var-name "TEST_VERSION"})]
+        (let [task-metadata {:command {:user "test-user"}
+                             :task-request {:job {:job/application {:application/name "test-name"
+                                                                    :application/version "test-version"
+                                                                    :application/workload-class "foo"
+                                                                    :application/workload-id "bar"
+                                                                    :application/workload-details "baz"}}
+                                            :scalar-requests {"mem" 512 "cpus" 1.0}}}
+              pod (api/task-metadata->pod "test-namespace" fake-cc-config task-metadata)
+              ^V1Container container (-> pod .getSpec .getContainers first)
+              container-env (.getEnv container)]
+          (is (= "required-cook-job-container" (.getName container)))
+          (is (set/subset?
+                #{"TEST_AGENT"
+                  "TEST_ENV"
+                  "TEST_SERVICE"
+                  "TEST_TAGS"
+                  "TEST_VERSION"}
+                (->> container-env (map #(.getName %)) set)))
+          (assert-env-var-value container "TEST_ENV" "test-env")
+          (assert-env-var-value container "TEST_SERVICE" "test-name")
+          (assert-env-var-value container "TEST_TAGS"
+                                (str "test-prefix/application.name:test-name "
+                                     "test-prefix/application.version:test-version "
+                                     "test-prefix/application.workload-class:foo "
+                                     "test-prefix/application.workload-id:bar "
+                                     "test-prefix/application.workload-details:baz"))
+          (assert-env-var-value container "TEST_VERSION" "test-version"))))))
 
 (defn- k8s-volume->clj [^V1Volume volume]
   {:name (.getName volume)
