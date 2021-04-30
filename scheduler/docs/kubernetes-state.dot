@@ -1,21 +1,21 @@
 # A graph showing valid transitions from expected states to expected states. Edges are annotated with
-# which kubernetes staes the system may be in when it makes the transition.
+# which kubernetes states the system may be in when it makes the transition.
 
 digraph g {
         Starting -> Starting [label=":waiting\n:missing"]
         Starting -> Running [label=":running"]
         // (Starting, missing) -> Completed happens for some failed pod submissions
-        Starting -> Completed [label=":succeeded\n:failed\n:unknown\n:missing"]
+        Starting -> Completed [label=":succeeded\n:failed\n:unknown\n:deleting"]
 
         Running -> Running [label=":running"]
-        Running -> Completed [label=":waiting\n:succeeded\n:failed\n:unknown\n:missing"]
+        Running -> Completed [label=":waiting\n:succeeded\n:failed\n:unknown\n:missing\n:deleting"]
 
         Completed -> Completed [label=":waiting\n:running\n:unknown\n:succeeded\n:failed"]
-        Completed -> Missing [label=":missing"]
+        Completed -> Missing [label=":missing\n:deleting"]
 
         Killed -> Killed [label=":waiting\n:running\n:unknown\n"]
-        Killed -> Completed [label=":succeeded\n:failed\n:missing"]
+        Killed -> Completed [label=":succeeded\n:failed\n:missing\n:deleting"]
 
         Missing [peripheries=2]
-        Missing -> Missing [label=":waiting\n:running\n:succeeded\n:failed\n:unknown\n:missing"]
+        Missing -> Missing [label=":waiting\n:running\n:succeeded\n:failed\n:unknown\n:missing\n:deleting"]
 }

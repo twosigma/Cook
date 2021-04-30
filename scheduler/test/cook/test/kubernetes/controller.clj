@@ -74,11 +74,11 @@
                      (:cook-expected-state (do-process-full-state cook-expected-state k8s-actual-state
                                                                   :create-namespaced-pod-fn create-namespaced-pod-fn
                                                                   :pod-condition pod-condition
-
                                                                   :custom-test-state custom-test-state
                                                                   :force-nil-pod? force-nil-pod?)))]
 
     (is (nil? (do-process :cook-expected-state/completed :missing)))
+    (is (nil? (do-process :cook-expected-state/completed :pod/deleting)))
     (is (= :cook-expected-state/completed  (do-process :cook-expected-state/completed :pod/succeeded)))
     (is (= :cook-expected-state/completed  (do-process :cook-expected-state/completed :pod/failed)))
     (is (= :cook-expected-state/completed (do-process :cook-expected-state/completed :pod/running)))
@@ -86,6 +86,7 @@
     (is (= :cook-expected-state/completed (do-process :cook-expected-state/completed :pod/waiting)))
 
     (is (nil? (do-process :cook-expected-state/killed :missing)))
+    (is (nil? (do-process :cook-expected-state/killed :pod/deleting)))
     (is (= :cook-expected-state/completed (do-process :cook-expected-state/killed :pod/succeeded)))
     (is (= :cook-expected-state/completed (do-process :cook-expected-state/killed :pod/failed)))
     (is (= :cook-expected-state/killed (do-process :cook-expected-state/killed :pod/running)))
@@ -108,6 +109,8 @@
                                                                                     :reason "Pod was explicitly deleted"
                                                                                     :pod-deleted? true})))
     (is (= :reason-killed-externally @reason))
+    (is (nil? (do-process :cook-expected-state/running :pod/deleting)))
+    (is (= :reason-killed-externally @reason))
     (is (= :cook-expected-state/completed (do-process :cook-expected-state/running :pod/succeeded)))
     (is (= :reason-normal-exit @reason))
     (is (= :cook-expected-state/completed (do-process :cook-expected-state/running :pod/failed)))
@@ -123,15 +126,21 @@
     (is (= :reason-slave-removed @reason))
 
     (is (= :cook-expected-state/starting (do-process :cook-expected-state/starting :missing)))
-    (is (nil? (do-process :cook-expected-state/starting :missing :custom-test-state {:state :missing
-                                                                                    :reason "Pod was explicitly deleted"
-                                                                                    :pod-deleted? true
-                                                                                    :pod-preempted-timestamp 1589084484537})))
+    (is (nil? (do-process
+                :cook-expected-state/starting
+                nil
+                :custom-test-state
+                {:state :pod/deleting
+                 :reason "Pod was explicitly deleted"
+                 :pod-preempted-timestamp 1589084484537})))
     (is (= :reason-slave-removed @reason))
-    (is (nil? (do-process :cook-expected-state/starting :missing :custom-test-state {:state :missing
-                                                                                    :reason "Pod was explicitly deleted"
-                                                                                    :pod-deleted? true}
-                          :force-nil-pod? true)))
+    (is (nil? (do-process
+                :cook-expected-state/starting
+                nil
+                :custom-test-state
+                {:state :pod/deleting
+                 :reason "Pod was explicitly deleted"}
+                :force-nil-pod? true)))
     (is (= :reason-killed-externally @reason))
     (is (nil? (do-process :cook-expected-state/starting :missing :create-namespaced-pod-fn
                           (fn [_ _ _] (throw (ApiException. nil nil 422 nil nil))))))
@@ -154,6 +163,7 @@
       (is (not (nil? (:waiting-metric-timer (do-process-full-state :cook-expected-state/starting :missing))))))
 
     (is (nil? (do-process :missing :missing)))
+    (is (nil? (do-process :missing :pod/deleting)))
     (is (nil? (do-process :missing :pod/succeeded)))
     (is (nil? (do-process :missing :pod/failed)))
     (is (= :missing (do-process :missing :pod/running)))
