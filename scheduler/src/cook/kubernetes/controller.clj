@@ -499,9 +499,12 @@
                                               ; sure to write the status to datomic. Recall we're in kubernetes state missing.
                                               (handle-pod-killed compute-cluster pod-name))
                                             (do
+                                              ; This shouldn't occur except in cases of extreme
+                                              ; staleness (if we miss the deleting intermediate states)
                                               (log-weird-state compute-cluster pod-name
                                                                cook-expected-state-dict k8s-actual-state-dict)
                                               (handle-pod-killed compute-cluster pod-name)))
+                                          ; This is an expected transition in the deletion path
                                           :pod/deleting
                                           (do
                                             (log/info "In compute cluster" name ", pod" pod-name
