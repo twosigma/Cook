@@ -80,8 +80,8 @@
   Delete is used for completed pods that we're done with.
   Kill is used for possibly running pods we want to kill so that they fail.
   Returns the cook-expected-state-dict passed in."
-  [api-client compute-cluster-name cook-expected-state-dict pod]
-  (api/delete-pod api-client compute-cluster-name pod)
+  [api-client compute-cluster-name cook-expected-state-dict pod & {:keys [grace-period-seconds]}]
+  (api/delete-pod api-client compute-cluster-name pod :grace-period-seconds grace-period-seconds)
   cook-expected-state-dict)
 
 (defn prepare-cook-expected-state-dict-for-logging
@@ -128,6 +128,15 @@
   [{:keys [api-client name] :as compute-cluster} pod-name cook-expected-state-dict {:keys [pod] :as k8s-actual-state-dict}]
   (log-weird-state compute-cluster pod-name cook-expected-state-dict k8s-actual-state-dict)
   (kill-pod api-client name cook-expected-state-dict pod))
+
+(defn kill-pod-hard
+  "Kills the pod with a grace period of 0 (a 'hard kill'). This is used when pods
+  are in the :pod/deleting state for an extended period of time, to force them to
+  actually go away. We don't do this for every kill because under normal
+  circumstances, we want to give processes a chance to properly handle SIGTERM."
+  [{:keys [api-client name]} pod-name {:keys [pod]}]
+  (log/info "In compute cluster" name ", pod" pod-name "needs to be hard-killed")
+  (kill-pod api-client name nil pod :grace-period-seconds 0))
 
 (defn write-status-to-datomic
   "Helper function for calling scheduler/write-status-to-datomic"
@@ -579,7 +588,10 @@
                                         :missing
                                         (case pod-synthesized-state-modified
                                           :missing nil
-                                          :pod/deleting nil
+                                          :pod/deleting
+                                          (if (:hard-delete? synthesized-state)
+                                            (kill-pod-hard compute-cluster pod-name k8s-actual-state-dict)
+                                            nil)
                                           ; We shouldn't hit these unless we get a database rollback.
                                           :pod/failed (kill-pod-in-weird-state compute-cluster pod-name
                                                                                nil k8s-actual-state-dict)
