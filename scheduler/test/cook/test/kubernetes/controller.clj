@@ -163,7 +163,15 @@
       (is (not (nil? (:waiting-metric-timer (do-process-full-state :cook-expected-state/starting :missing))))))
 
     (is (nil? (do-process :missing :missing)))
-    (is (nil? (do-process :missing :pod/deleting)))
+    (let [hard-kill-atom (atom false)]
+      (with-redefs [controller/kill-pod-hard
+                    (fn [_ _ _]
+                      (reset! hard-kill-atom true)
+                      nil)]
+        (is (nil? (do-process :missing :pod/deleting)))
+        (is (false? @hard-kill-atom))
+        (is (nil? (do-process :missing nil :custom-test-state {:state :pod/deleting :hard-delete? true})))
+        (is (true? @hard-kill-atom))))
     (is (nil? (do-process :missing :pod/succeeded)))
     (is (nil? (do-process :missing :pod/failed)))
     (is (= :missing (do-process :missing :pod/running)))
