@@ -169,22 +169,23 @@
       (is (not (nil? (:waiting-metric-timer (do-process-full-state :cook-expected-state/starting :missing))))))
 
     (is (nil? (do-process :missing :missing)))
-    (let [hard-kill-atom (atom false)
-          pod-metadata (V1ObjectMeta.)]
-      (with-redefs [controller/kill-pod-hard
-                    (fn [_ _ _]
-                      (reset! hard-kill-atom true)
-                      nil)
-                    config/kubernetes
-                    (constantly {:pod-deletion-timeout-seconds (* 60 15)})]
-        ; Recent deletion timestamp
-        (.setDeletionTimestamp pod-metadata (t/now))
-        (is (nil? (do-process :missing :pod/deleting :pod-metadata pod-metadata)))
-        (is (false? @hard-kill-atom))
-        ; Old deletion timestamp
-        (.setDeletionTimestamp pod-metadata (t/epoch))
-        (is (nil? (do-process :missing :pod/deleting :pod-metadata pod-metadata)))
-        (is (true? @hard-kill-atom))))
+    (testing "(:missing, :pod/deleting)"
+      (let [hard-kill-atom (atom false)
+            pod-metadata (V1ObjectMeta.)]
+        (with-redefs [controller/kill-pod-hard
+                      (fn [_ _ _]
+                        (reset! hard-kill-atom true)
+                        nil)
+                      config/kubernetes
+                      (constantly {:pod-deletion-timeout-seconds (* 60 15)})]
+          (testing "No hard kill on pods with a recent deletion timestamp"
+            (.setDeletionTimestamp pod-metadata (t/now))
+            (is (nil? (do-process :missing :pod/deleting :pod-metadata pod-metadata)))
+            (is (false? @hard-kill-atom)))
+          (testing "Hard kill on pods with an old deletion timestamp"
+            (.setDeletionTimestamp pod-metadata (t/epoch))
+            (is (nil? (do-process :missing :pod/deleting :pod-metadata pod-metadata)))
+            (is (true? @hard-kill-atom))))))
     (is (nil? (do-process :missing :pod/succeeded)))
     (is (nil? (do-process :missing :pod/failed)))
     (is (= :missing (do-process :missing :pod/running)))
