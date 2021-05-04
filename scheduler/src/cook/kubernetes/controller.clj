@@ -589,7 +589,9 @@
                                         (case pod-synthesized-state-modified
                                           :missing nil
                                           :pod/deleting
-                                          (if (:hard-delete? synthesized-state)
+                                          (if (api/has-old-deletion-timestamp? pod)
+                                            ; If the pod has an "old" deletion timestamp, then we should
+                                            ; stop waiting and submit a hard-kill (grace period sec = 0)
                                             (kill-pod-hard compute-cluster pod-name k8s-actual-state-dict)
                                             nil)
                                           ; We shouldn't hit these unless we get a database rollback.

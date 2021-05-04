@@ -1313,6 +1313,19 @@
     "ContainersNotReady"
     (:pod-condition-containers-not-ready-seconds (config/kubernetes))))
 
+(defn has-old-deletion-timestamp?
+  "Returns true if the given pod has a deletion timestamp that is older
+  than the configurable timeout, meaning we should hard-kill the pod"
+  [^V1Pod pod]
+  (let [{:keys [pod-deletion-timeout-seconds]} (config/kubernetes)
+        pod-metadata (some-> pod .getMetadata)
+        pod-deletion-timestamp (some-> pod-metadata .getDeletionTimestamp)]
+    (and pod-deletion-timestamp
+         pod-deletion-timeout-seconds
+         (-> pod-deletion-timestamp
+             (t/plus (t/seconds pod-deletion-timeout-seconds))
+             (t/before? (t/now))))))
+
 (defn pod->synthesized-pod-state
   "From a V1Pod object, determine the state of the pod, waiting running, succeeded, failed or unknown.
 
@@ -1334,8 +1347,7 @@
           ; * A job may have additional containers with the name aux-*
           job-status (first (filter (fn [c] (= cook-container-name-for-job (.getName c)))
                                     container-statuses))
-          {:keys [node-preempted-label pod-deletion-timeout-seconds]}
-          (config/kubernetes)
+          {:keys [node-preempted-label]} (config/kubernetes)
           pod-metadata (some-> pod .getMetadata)
           pod-preempted-timestamp
           (some-> pod-metadata
@@ -1344,15 +1356,8 @@
           pod-deletion-timestamp (some-> pod-metadata .getDeletionTimestamp)
           synthesized-pod-state
           (if pod-deletion-timestamp
-            (if (and pod-deletion-timeout-seconds
-                     (-> pod-deletion-timestamp
-                         (t/plus (t/seconds pod-deletion-timeout-seconds))
-                         (t/before? (t/now))))
-              {:state :pod/deleting
-               :reason "Pod deletion timed out"
-               :hard-delete? true}
-              {:state :pod/deleting
-               :reason "Pod was explicitly deleted"})
+            {:state :pod/deleting
+             :reason "Pod was explicitly deleted"}
             ; If pod isn't being async removed, then look at the containers inside it.
             (if job-status
               (let [^V1ContainerState state (.getState job-status)]
