@@ -136,7 +136,14 @@
   circumstances, we want to give processes a chance to properly handle SIGTERM."
   [{:keys [api-client name]} pod-name {:keys [pod]}]
   (log/info "In compute cluster" name ", pod" pod-name "needs to be hard-killed")
-  (kill-pod api-client name nil pod :grace-period-seconds 0))
+  (kill-pod
+    api-client
+    name
+    ; It's ok to pass nil for cook-expected-state-dict because we only use this
+    ; code path when the cook-expected-state-dict is already nil (aka :missing)
+    nil
+    pod
+    :grace-period-seconds 0))
 
 (defn write-status-to-datomic
   "Helper function for calling scheduler/write-status-to-datomic"
