@@ -520,6 +520,8 @@
                                                    :telemetry-env-value "test-env"
                                                    :telemetry-service-var-name "TEST_SERVICE"
                                                    :telemetry-tags-entry-separator " "
+                                                   :telemetry-tags-key-invalid-char-pattern #"[^a-zA-Z0-9-]"
+                                                   :telemetry-tags-key-invalid-char-replacement "."
                                                    :telemetry-tags-key-value-separator ":"
                                                    :telemetry-tags-var-name "TEST_TAGS"
                                                    :telemetry-version-var-name "TEST_VERSION"})]
@@ -544,11 +546,11 @@
           (assert-env-var-value container "TEST_ENV" "test-env")
           (assert-env-var-value container "TEST_SERVICE" "test-name")
           (assert-env-var-value container "TEST_TAGS"
-                                (str "test-prefix/application.name:test-name "
-                                     "test-prefix/application.version:test-version "
-                                     "test-prefix/application.workload-class:foo "
-                                     "test-prefix/application.workload-id:bar "
-                                     "test-prefix/application.workload-details:baz"))
+                                (str "test-prefix.application.name:test-name "
+                                     "test-prefix.application.version:test-version "
+                                     "test-prefix.application.workload-class:foo "
+                                     "test-prefix.application.workload-id:bar "
+                                     "test-prefix.application.workload-details:baz"))
           (assert-env-var-value container "TEST_VERSION" "test-version"))))))
 
 (defn- k8s-volume->clj [^V1Volume volume]
