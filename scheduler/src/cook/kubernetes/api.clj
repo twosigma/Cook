@@ -1347,6 +1347,19 @@
     "ContainersNotReady"
     (:pod-condition-containers-not-ready-seconds (config/kubernetes))))
 
+(defn has-old-deletion-timestamp?
+  "Returns true if the given pod has a deletion timestamp that is older
+  than the configurable timeout, meaning we should hard-kill the pod"
+  [^V1Pod pod]
+  (let [{:keys [pod-deletion-timeout-seconds]} (config/kubernetes)
+        pod-metadata (some-> pod .getMetadata)
+        pod-deletion-timestamp (some-> pod-metadata .getDeletionTimestamp)]
+    (and pod-deletion-timestamp
+         pod-deletion-timeout-seconds
+         (-> pod-deletion-timestamp
+             (t/plus (t/seconds pod-deletion-timeout-seconds))
+             (t/before? (t/now))))))
+
 (defn pod->synthesized-pod-state
   "From a V1Pod object, determine the state of the pod, waiting running, succeeded, failed or unknown.
 
@@ -1368,9 +1381,15 @@
           ; * A job may have additional containers with the name aux-*
           job-status (first (filter (fn [c] (= cook-container-name-for-job (.getName c)))
                                     container-statuses))
-          pod-preempted-timestamp (some-> pod .getMetadata .getLabels (get (or (-> (config/kubernetes) :node-preempted-label) "node-preempted")))
+          {:keys [node-preempted-label]} (config/kubernetes)
+          pod-metadata (some-> pod .getMetadata)
+          pod-preempted-timestamp
+          (some-> pod-metadata
+                  .getLabels
+                  (get (or node-preempted-label "node-preempted")))
+          pod-deletion-timestamp (some-> pod-metadata .getDeletionTimestamp)
           synthesized-pod-state
-          (if (some-> pod .getMetadata .getDeletionTimestamp)
+          (if pod-deletion-timestamp
             {:state :pod/deleting
              :reason "Pod was explicitly deleted"}
             ; If pod isn't being async removed, then look at the containers inside it.
@@ -1467,9 +1486,13 @@
 
 (defn delete-pod
   "Kill this kubernetes pod. This is the same as deleting it."
-  [^ApiClient api-client compute-cluster-name ^V1Pod pod]
+  [^ApiClient api-client compute-cluster-name ^V1Pod pod & {:keys [grace-period-seconds]}]
   (let [api (CoreV1Api. api-client)
-        ^V1DeleteOptions deleteOptions (-> (V1DeleteOptionsBuilder.) (.withPropagationPolicy "Background") .build)
+        delete-options-builder
+        (cond-> (V1DeleteOptionsBuilder.)
+                true (.withPropagationPolicy "Background")
+                grace-period-seconds (.withGracePeriodSeconds grace-period-seconds))
+        ^V1DeleteOptions deleteOptions (.build delete-options-builder)
         pod-name (-> pod .getMetadata .getName)
         pod-namespace (-> pod .getMetadata .getNamespace)]
     ; TODO: This likes to noisily throw NotFound multiple times as we delete away from kubernetes.
