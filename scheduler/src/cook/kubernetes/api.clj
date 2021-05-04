@@ -701,17 +701,19 @@
     (.setName (str var-name))
     (.setValue (str var-value))))
 
+(def hostIpEnvVarSource
+  (doto
+    (V1EnvVarSource.)
+    (.fieldRef
+      (doto
+        (V1ObjectFieldSelector.)
+        (.fieldPath "status.hostIP")))))
+
 (def hostIpEnvVar
   (doto
     (V1EnvVar.)
     (.setName "HOST_IP")
-    (.valueFrom
-      (doto
-        (V1EnvVarSource.)
-        (.fieldRef
-          (doto
-            (V1ObjectFieldSelector.)
-            (.fieldPath "status.hostIP")))))))
+    (.valueFrom hostIpEnvVarSource)))
 
 (defn make-filtered-env-vars
   "Create a Kubernetes API compatible var list from an environment vars map,
@@ -949,7 +951,10 @@
         sandbox-dir (:default-workdir (config/kubernetes))
         workdir (get-workdir parameters sandbox-dir)
         {:keys [volumes volume-mounts sandbox-volume-mount-fn]} (make-volumes volumes sandbox-dir)
-        {:keys [custom-shell init-container set-container-cpu-limit? sidecar]} (config/kubernetes)
+        {:keys [custom-shell init-container sidecar telemetry-agent-host-var-name telemetry-env-var-name
+                telemetry-env-value telemetry-service-var-name telemetry-tags-entry-separator
+                telemetry-tags-key-value-separator telemetry-tags-var-name telemetry-version-var-name]}
+        (config/kubernetes)
         checkpoint (calculate-effective-checkpointing-config job task-id)
         job-submit-time (tools/job->submit-time job)
         pod-name (str task-id)
@@ -989,16 +994,45 @@
         progress-file-var (get main-env-base task/progress-meta-env-name task/default-progress-env-name)
         progress-file-path (get main-env-base progress-file-var)
         computed-mem (if checkpoint-memory-overhead (add-as-decimals mem checkpoint-memory-overhead) mem)
+        application (:job/application job)
         main-env (cond-> main-env-base
-                   ;; Add a default progress file path to the environment when missing,
-                   ;; preserving compatibility with Meosos + Cook Executor.
-                   (not progress-file-path)
-                   (assoc progress-file-var (str workdir "/" task-id ".progress"))
-                   mem
-                   (assoc "COOK_USER_MEMORY_REQUEST_BYTES" (* memory-multiplier mem))
-                   computed-mem
-                   (assoc "COOK_MEMORY_REQUEST_BYTES" (* memory-multiplier computed-mem)))
-        main-env-vars (make-filtered-env-vars main-env)]
+                         ;; Add a default progress file path to the environment when missing,
+                         ;; preserving compatibility with Meosos + Cook Executor.
+                         (not progress-file-path)
+                         (assoc progress-file-var (str workdir "/" task-id ".progress"))
+
+                         mem
+                         (assoc "COOK_USER_MEMORY_REQUEST_BYTES" (* memory-multiplier mem))
+
+                         computed-mem
+                         (assoc "COOK_MEMORY_REQUEST_BYTES" (* memory-multiplier computed-mem))
+
+                         (and telemetry-env-var-name telemetry-env-value)
+                         (assoc telemetry-env-var-name
+                                telemetry-env-value)
+
+                         telemetry-service-var-name
+                         (assoc telemetry-service-var-name
+                                (or (:application/name application) "cook-job"))
+
+                         (and telemetry-tags-entry-separator
+                              telemetry-tags-key-value-separator
+                              telemetry-tags-var-name)
+                         (assoc telemetry-tags-var-name
+                                (->> pod-labels
+                                     (map (fn [[k v]]
+                                            (str k telemetry-tags-key-value-separator v)))
+                                     (str/join telemetry-tags-entry-separator)))
+
+                         telemetry-version-var-name
+                         (assoc telemetry-version-var-name
+                                (or (:application/version application) "undefined")))
+        main-env-vars (cond->> (make-filtered-env-vars main-env)
+                               telemetry-agent-host-var-name
+                               (cons (doto
+                                       (V1EnvVar.)
+                                       (.setName telemetry-agent-host-var-name)
+                                       (.valueFrom hostIpEnvVarSource))))]
 
     ; metadata
     (.setName metadata pod-name)
