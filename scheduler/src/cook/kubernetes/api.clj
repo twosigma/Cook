@@ -1026,7 +1026,7 @@
                                                           telemetry-tags-key-invalid-char-replacement)
                                                    (str/replace
                                                      k
-                                                     (re-pattern telemetry-tags-key-invalid-char-pattern)
+                                                     telemetry-tags-key-invalid-char-pattern
                                                      telemetry-tags-key-invalid-char-replacement)
                                                    k)
                                                  telemetry-tags-key-value-separator

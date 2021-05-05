@@ -490,7 +490,8 @@
                                   :default-pool "no-pool"}
                                  pool-selection)})))
      :kubernetes (fnk [[:config {kubernetes {}}]]
-                   (let [{:keys [controller-lock-num-shards]
+                   (let [{:keys [controller-lock-num-shards
+                                 telemetry-tags-key-invalid-char-pattern]
                           :or {controller-lock-num-shards 4095}}
                          kubernetes
                          _
@@ -514,7 +515,10 @@
                              :synthetic-pod-recency-size 50000
                              :synthetic-pod-recency-seconds 120 ; Should be greater than the time to start a node and have it accept workloads.
                              }
-                            kubernetes)))
+                            (cond-> kubernetes
+                                    telemetry-tags-key-invalid-char-pattern
+                                    (assoc :telemetry-tags-key-invalid-char-pattern
+                                           (re-pattern telemetry-tags-key-invalid-char-pattern))))))
      :offer-matching (fnk [[:config {offer-matching {}}]]
                        (merge {:considerable-job-threshold-to-collect-job-match-statistics 20
                                :global-min-match-interval-millis 100

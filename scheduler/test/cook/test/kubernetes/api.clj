@@ -520,7 +520,7 @@
                                                    :telemetry-env-value "test-env"
                                                    :telemetry-service-var-name "TEST_SERVICE"
                                                    :telemetry-tags-entry-separator " "
-                                                   :telemetry-tags-key-invalid-char-pattern "[^a-zA-Z0-9-]"
+                                                   :telemetry-tags-key-invalid-char-pattern (re-pattern "[^a-zA-Z0-9-]")
                                                    :telemetry-tags-key-invalid-char-replacement "."
                                                    :telemetry-tags-key-value-separator ":"
                                                    :telemetry-tags-var-name "TEST_TAGS"
