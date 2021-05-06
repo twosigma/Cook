@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.53.0] - 2021-05-06
+### Added
+- Environment variables for telemetry, from @dposada
+### Changed
+- Improved performance for `VirtualMachineLeaseAdaptor`, `TaskRequestAdapter`, and `update-host-reservation`, from @scrosby
+### Fixed
+- Hard delete pods that have been in the terminating state for too long, from @dposada
+- Skip inactive pools when ranking, from @dposada
+
 ## [1.52.0] - 2021-04-28
 ### Added
 - Instance field with how long the job queued before that instance, from @dposada
