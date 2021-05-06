@@ -953,6 +953,7 @@
         {:keys [volumes volume-mounts sandbox-volume-mount-fn]} (make-volumes volumes sandbox-dir)
         {:keys [custom-shell init-container sidecar telemetry-agent-host-var-name telemetry-env-var-name
                 telemetry-env-value telemetry-service-var-name telemetry-tags-entry-separator
+                telemetry-tags-key-invalid-char-pattern telemetry-tags-key-invalid-char-replacement
                 telemetry-tags-key-value-separator telemetry-tags-var-name telemetry-version-var-name]}
         (config/kubernetes)
         checkpoint (calculate-effective-checkpointing-config job task-id)
@@ -1021,7 +1022,15 @@
                          (assoc telemetry-tags-var-name
                                 (->> pod-labels
                                      (map (fn [[k v]]
-                                            (str k telemetry-tags-key-value-separator v)))
+                                            (str (if (and telemetry-tags-key-invalid-char-pattern
+                                                          telemetry-tags-key-invalid-char-replacement)
+                                                   (str/replace
+                                                     k
+                                                     telemetry-tags-key-invalid-char-pattern
+                                                     telemetry-tags-key-invalid-char-replacement)
+                                                   k)
+                                                 telemetry-tags-key-value-separator
+                                                 v)))
                                      (str/join telemetry-tags-entry-separator)))
 
                          telemetry-version-var-name
