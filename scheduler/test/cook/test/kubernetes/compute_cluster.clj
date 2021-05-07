@@ -346,6 +346,7 @@
                    .getMetadata
                    .getAnnotations
                    (get api/k8s-safe-to-evict-annotation))))))
+
     (testing "synthetic pods with gpus"
       (let [job-uuid-1 (str (UUID/randomUUID))
             pool-name "test-pool"
@@ -372,7 +373,24 @@
                                       first
                                       .getResources)]
         (is (= 1 (-> container-resources .getRequests (get "nvidia.com/gpu") (api/to-int))))
-        (is (= 1 (-> container-resources .getLimits (get "nvidia.com/gpu") (api/to-int)))))))))
+        (is (= 1 (-> container-resources .getLimits (get "nvidia.com/gpu") (api/to-int)))))))
+
+    (testing "synthetic pod attribution labels"
+      (let [job-uuid (str (UUID/randomUUID))
+            pool-name "test-pool"
+            compute-cluster (tu/make-kubernetes-compute-cluster {} #{pool-name} nil {})
+            pending-jobs [(make-job-fn job-uuid "user-1")]
+            launched-pods-atom (atom [])]
+        (with-redefs [api/launch-pod
+                      (fn [_ _ cook-expected-state-dict _]
+                        (swap! launched-pods-atom conj cook-expected-state-dict))
+                      config/kubernetes
+                      (constantly {:add-job-label-to-pod-prefix "platform/"})]
+          (cc/autoscale! compute-cluster pool-name pending-jobs sched/adjust-job-resources-for-pool-fn))
+        (is (= 1 (count @launched-pods-atom)))
+        (let [pod-labels (-> @launched-pods-atom (nth 0) :launch-pod :pod .getMetadata .getLabels)]
+          (is (= "infrastructure" (get pod-labels "platform/application.workload-class")))
+          (is (= "synthetic-pod" (get pod-labels "platform/application.workload-id"))))))))
 
 (deftest test-factory-fn
   (testing "guards against inappropriate number of threads"
