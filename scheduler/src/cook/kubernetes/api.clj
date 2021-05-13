@@ -36,8 +36,6 @@
 
 (def cook-pod-label "twosigma.com/cook-scheduler-job")
 (def cook-synthetic-pod-job-uuid-label "twosigma.com/cook-scheduler-synthetic-pod-job-uuid")
-(def workload-class-label "workload-class")
-(def workload-id-label "workload-id")
 (def resource-owner-label "resource-owner")
 (def cook-sandbox-volume-name "cook-sandbox-volume")
 (def cook-job-pod-priority-class "cook-workload")
@@ -88,10 +86,25 @@
 ; and MiB back to bytes when submitting to k8s.
 (def memory-multiplier (* 1024 1024))
 
+(defn pod-label-prefix
+  "Returns the prefix to use for application-related pod labels"
+  []
+  (:add-job-label-to-pod-prefix (config/kubernetes)))
+
+(defn workload-class-label
+  "Returns the full pod label for workload-class"
+  []
+  (str (pod-label-prefix) "application.workload-class"))
+
+(defn workload-id-label
+  "Returns the full pod label for workload-id"
+  []
+  (str (pod-label-prefix) "application.workload-id"))
+
 (defn pod-labels-defaults
   "Returns a map with default pod labels"
   []
-  (let [prefix (:add-job-label-to-pod-prefix (config/kubernetes))]
+  (let [prefix (pod-label-prefix)]
     {(str prefix "application.name") "undefined"
      (str prefix "application.version") "undefined"
      (str prefix "application.workload-class") "undefined"

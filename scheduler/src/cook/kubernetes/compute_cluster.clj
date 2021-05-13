@@ -512,8 +512,8 @@
                                    ; also want to label the workload as infrastructure
                                    ; and associate the user as the resource owner.
                                    :pod-labels {api/cook-synthetic-pod-job-uuid-label (str uuid)
-                                                api/workload-class-label "infrastructure"
-                                                api/workload-id-label "synthetic-pod"
+                                                (api/workload-class-label) "infrastructure"
+                                                (api/workload-id-label) "synthetic-pod"
                                                 api/resource-owner-label user}
                                    ; We need to give synthetic pods a lower priority than
                                    ; actual job pods so that the job pods can preempt them
