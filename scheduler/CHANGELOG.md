@@ -4,11 +4,15 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.53.1] - 2021-05-13
+### Fixed
+- Fix the names for synthetic pod workload labels, from @dposada
+
 ## [1.53.0] - 2021-05-06
 ### Added
 - Environment variables for telemetry, from @dposada
 ### Changed
-- Improved performance for `VirtualMachineLeaseAdaptor`, `TaskRequestAdapter`, and `update-host-reservation`, from @scrosby
+- Improved performance for `VirtualMachineLeaseAdapter`, `TaskRequestAdapter`, and `update-host-reservation`, from @scrosby
 ### Fixed
 - Hard delete pods that have been in the terminating state for too long, from @dposada
 - Skip inactive pools when ranking, from @dposada
