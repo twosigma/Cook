@@ -408,7 +408,7 @@ class JobClient:
             jobspec['application'] = jobspec['application'].to_dict()
         if util.is_field_set(jobspec, 'container'):
             jobspec['container'] = jobspec['container'].to_dict()
-        if util.is_field_set(jobspec, 'disk'):
+        if util.is_field_set(jobspec, 'disk') and isinstance(jobspec['disk'], Disk):
             jobspec['disk'] = jobspec['disk'].to_dict()
         return util.prune_nones(jobspec)
 
