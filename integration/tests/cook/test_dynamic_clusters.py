@@ -170,9 +170,10 @@ class TestDynamicClusters(util.CookTest):
                             # Set state = draining
                             cluster_update['state'] = 'draining'
                             cluster_update['state-locked?'] = True
-                            # The location and cluster-definition fields cannot be sent in the update
+                            # The location, cluster-definition, and features fields cannot be sent in the update
                             cluster_update.pop('location', None)
                             cluster_update.pop('cluster-definition', None)
+                            cluster_update.pop('features', None)
                             self.logger.info(f'Trying to update cluster to draining: {cluster_update}')
                             util.wait_until(
                                 lambda: util.update_compute_cluster(self.cook_url, cluster_update)[1],
@@ -207,9 +208,10 @@ class TestDynamicClusters(util.CookTest):
                             # Set state = running
                             cluster_update['state'] = 'running'
                             cluster_update['state-locked?'] = False
-                            # The location and cluster-definition fields cannot be sent in the update
+                            # The location, cluster-definition, and features fields cannot be sent in the update
                             cluster_update.pop('location', None)
                             cluster_update.pop('cluster-definition', None)
+                            cluster_update.pop('features', None)
                             self.logger.info(f'Trying to update cluster to running: {cluster_update}')
                             util.wait_until(
                                 lambda: util.update_compute_cluster(self.cook_url, cluster_update)[1],
