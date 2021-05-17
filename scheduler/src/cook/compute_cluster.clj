@@ -364,7 +364,7 @@
           (log/warn "ZZZZZ location" current-location new-location)
           false)
 
-        (and (some? current-features)
+        (and (seq current-features)
              (not= current-features new-features))
         (do
           (log/warn "ZZZZZ features" current-features new-features)
