@@ -360,11 +360,15 @@
    {new-location :location new-features :features :as new-config}]
   (cond (and (some? current-location)
              (not= current-location new-location))
-        false
+        (do
+          (log/warn "ZZZZZ location" current-location new-location)
+          false)
 
         (and (some? current-features)
              (not= current-features new-features))
-        false
+        (do
+          (log/warn "ZZZZZ features" current-features new-features)
+          false)
 
         :else
         (let [dissoc-non-comparable-fields
@@ -372,8 +376,13 @@
                    (dissoc :state)
                    (dissoc :location)
                    (dissoc :features))]
-          (= (dissoc-non-comparable-fields current-config)
-             (dissoc-non-comparable-fields new-config)))))
+          (do
+            (log/warn "ZZZZZ else current"
+                      (dissoc-non-comparable-fields current-config)
+                      "ZZZZZ new"
+                      (dissoc-non-comparable-fields new-config))
+            (= (dissoc-non-comparable-fields current-config)
+               (dissoc-non-comparable-fields new-config))))))
 
 (defn compute-config-update
   "Add validation info to a dynamic cluster configuration update."
