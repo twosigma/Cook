@@ -1055,3 +1055,7 @@
                       :features [{:key "NVIDIA_DRIVER_VERSION"
                                   :value "450-80-02"}]}}
              (get-in-mem-configs))))))
+
+(deftest test-config=?
+  (testing "features can be in different orders"
+    (is (true? (config=? {:features [:a :b]} {:features [:b :a]})))))

@@ -303,8 +303,8 @@
              (get current-in-mem-configs key)
              keys-to-keep-synced
              (cond-> [:base-path :ca-cert :state]
-                     ; The location field is treated specially when comparing db and in-mem configs --
-                     ; since this is a new field, it can be nil in-memory and non-nil in the db for a
+                     ; The location and features fields are treated specially when comparing db and in-mem configs --
+                     ; since these are new fields, they can be nil in-memory and non-nil in the db for a
                      ; limited time after the db has been populated and before the leader is restarted.
                      current-in-mem-location (conj :location)
                      current-in-mem-features (conj :features))]
@@ -363,7 +363,7 @@
         false
 
         (and (seq current-features)
-             (not= current-features new-features))
+             (not= (set current-features) (set new-features)))
         false
 
         :else
