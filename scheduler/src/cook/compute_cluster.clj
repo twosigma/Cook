@@ -186,7 +186,8 @@
            compute-cluster-config/ca-cert
            compute-cluster-config/state
            compute-cluster-config/state-locked?
-           compute-cluster-config/location]}]
+           compute-cluster-config/location
+           compute-cluster-config/features]}]
   {:name name
    :template template
    :base-path base-path
@@ -196,11 +197,15 @@
             :compute-cluster-config.state/draining :draining
             :compute-cluster-config.state/deleted :deleted)
    :state-locked? state-locked?
-   :location location})
+   :location location
+   :features (map (fn [{:keys [compute-cluster-config.feature/key
+                               compute-cluster-config.feature/value]}]
+                    {:key key :value value})
+                  features)})
 
 (defn compute-cluster-config->compute-cluster-config-ent
   "Convert dynamic cluster configuration to a Datomic entity"
-  [{:keys [name template base-path ca-cert state state-locked? location]}]
+  [{:keys [name template base-path ca-cert state state-locked? location features]}]
   (cond->
     {:compute-cluster-config/name name
      :compute-cluster-config/template template
@@ -211,7 +216,13 @@
                                      :draining :compute-cluster-config.state/draining
                                      :deleted :compute-cluster-config.state/deleted)
      :compute-cluster-config/state-locked? state-locked?}
-    location (assoc :compute-cluster-config/location location)))
+    location (assoc :compute-cluster-config/location location)
+    features (assoc :compute-cluster-config/features
+                    (map (fn [{:keys [key value]}]
+                           {:compute-cluster-config.feature/key key
+                            :compute-cluster-config.feature/value value
+                            :db/id (d/tempid :db.part/user)})
+                         features))))
 
 (defn get-db-config-ents
   "Get the current dynamic cluster configuration entities from the database"
@@ -243,14 +254,15 @@
 (defn compute-cluster->compute-cluster-config
   "Calculate dynamic cluster configuration from a compute cluster"
   [{:keys [state-atom state-locked?-atom name]
-    {{:keys [template base-path ca-cert location]} :config} :cluster-definition}]
+    {{:keys [template base-path ca-cert location features]} :config} :cluster-definition}]
   {:name name
    :template template
    :base-path base-path
    :ca-cert ca-cert
    :state @state-atom
    :state-locked? @state-locked?-atom
-   :location location})
+   :location location
+   :features features})
 
 ;TODO: in the future all clusters will be dynamic and we shouldn't need this
 (defn get-dynamic-clusters
@@ -287,14 +299,15 @@
      (doseq [key both-keys]
        (let [current-db-config
              (get current-db-configs key)
-             {current-in-mem-location :location :as current-in-mem-config}
+             {current-in-mem-location :location current-in-mem-features :features :as current-in-mem-config}
              (get current-in-mem-configs key)
              keys-to-keep-synced
              (cond-> [:base-path :ca-cert :state]
-                     ; The location field is treated specially when comparing db and in-mem configs --
-                     ; since this is a new field, it can be nil in-memory and non-nil in the db for a
+                     ; The location and features fields are treated specially when comparing db and in-mem configs --
+                     ; since these are new fields, they can be nil in-memory and non-nil in the db for a
                      ; limited time after the db has been populated and before the leader is restarted.
-                     current-in-mem-location (conj :location))]
+                     current-in-mem-location (conj :location)
+                     current-in-mem-features (conj :features))]
          (when (not= (select-keys current-db-config keys-to-keep-synced)
                      (select-keys current-in-mem-config keys-to-keep-synced))
            (log/error keys-to-keep-synced "differ between in-memory and database cluster configurations."
@@ -343,17 +356,24 @@
    The location and state fields are special in this regard -- location can
    only transition from nil to non-nil, and state is validated in
    cluster-state-change-valid?."
-  [{current-location :location :as current-config}
-   {new-location :location :as new-config}]
-  (if (and (some? current-location)
-           (not= current-location new-location))
-    false
-    (let [dissoc-non-comparable-fields
-          #(-> %
-               (dissoc :state)
-               (dissoc :location))]
-      (= (dissoc-non-comparable-fields current-config)
-         (dissoc-non-comparable-fields new-config)))))
+  [{current-location :location current-features :features :as current-config}
+   {new-location :location new-features :features :as new-config}]
+  (cond (and (some? current-location)
+             (not= current-location new-location))
+        false
+
+        (and (seq current-features)
+             (not= (set current-features) (set new-features)))
+        false
+
+        :else
+        (let [dissoc-non-comparable-fields
+              #(-> %
+                   (dissoc :state)
+                   (dissoc :location)
+                   (dissoc :features))]
+          (= (dissoc-non-comparable-fields current-config)
+             (dissoc-non-comparable-fields new-config)))))
 
 (defn compute-config-update
   "Add validation info to a dynamic cluster configuration update."

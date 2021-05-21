@@ -406,6 +406,23 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db
     :db/doc "Location of compute cluster."}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :compute-cluster-config/features
+    :db/valueType :db.type/ref
+    :db/cardinality :db.cardinality/many
+    :db.install/_attribute :db.part/db
+    :db/doc "Features of compute cluster."}
+   ;; Compute Cluster features
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :compute-cluster-config.feature/key
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :compute-cluster-config.feature/value
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
    ;; Container Attributes
    {:db/id (d/tempid :db.part/db)
     :db/doc "variant records based on container/type"

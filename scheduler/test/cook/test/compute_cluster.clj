@@ -32,7 +32,9 @@
                 :ca-cert "ca-cert"
                 :state :running
                 :state-locked? true
-                :location "us-east1"}
+                :location "us-east1"
+                :features [{:key "NVIDIA_DRIVER_VERSION"
+                            :value "450-80-02"}]}
         config-ent (compute-cluster-config->compute-cluster-config-ent config)
         _ (is (= {:compute-cluster-config/name "name"
                   :compute-cluster-config/base-path "base-path"
@@ -40,7 +42,12 @@
                   :compute-cluster-config/state :compute-cluster-config.state/running
                   :compute-cluster-config/state-locked? true
                   :compute-cluster-config/template "template"
-                  :compute-cluster-config/location "us-east1"} config-ent))]
+                  :compute-cluster-config/location "us-east1"
+                  :compute-cluster-config/features [{:compute-cluster-config.feature/key "NVIDIA_DRIVER_VERSION"
+                                                     :compute-cluster-config.feature/value "450-80-02"}]}
+                 (update config-ent
+                         :compute-cluster-config/features
+                         #(map (fn [feature] (dissoc feature :db/id)) %))))]
     (is (= config (compute-cluster-config-ent->compute-cluster-config config-ent)))))
 
 (deftest test-db-config-ents
@@ -83,7 +90,9 @@
                                                :ca-cert "ca-cert"
                                                :state :running
                                                :state-locked? false
-                                               :location "us-east1"}}
+                                               :location "us-east1"
+                                               :features [{:key "NVIDIA_DRIVER_VERSION"
+                                                           :value "450-80-02"}]}}
                  :state-atom (atom :deleted)
                  :state-locked?-atom (atom true)}]
     (is (= {:base-path "base-path"
@@ -92,7 +101,9 @@
             :state :deleted
             :state-locked? true
             :template "template"
-            :location "us-east1"}
+            :location "us-east1"
+            :features [{:key "NVIDIA_DRIVER_VERSION"
+                        :value "450-80-02"}]}
            (compute-cluster->compute-cluster-config cluster)))))
 
 (def sample-in-mem-config
@@ -102,7 +113,9 @@
            :state :deleted
            :state-locked? true
            :template "template"
-           :location "us-east1"}})
+           :location "us-east1"
+           :features [{:key "NVIDIA_DRIVER_VERSION"
+                       :value "450-80-02"}]}})
 
 (def sample-clusters
   {"name" {:name "name"
@@ -113,7 +126,9 @@
                                          :ca-cert "ca-cert"
                                          :state :running
                                          :state-locked? false
-                                         :location "us-east1"}}
+                                         :location "us-east1"
+                                         :features [{:key "NVIDIA_DRIVER_VERSION"
+                                                     :value "450-80-02"}]}}
            :state-atom (atom :deleted)
            :state-locked?-atom (atom true)
            :dynamic-cluster-config? true}
@@ -125,7 +140,9 @@
                                                   :ca-cert "ca-cert"
                                                   :state :running
                                                   :state-locked? false
-                                                  :location "us-east1"}}}})
+                                                  :location "us-east1"
+                                                  :features [{:key "NVIDIA_DRIVER_VERSION"
+                                                              :value "450-80-02"}]}}}})
 
 (deftest test-in-mem-configs
   (reset! cluster-name->compute-cluster-atom {})
@@ -165,7 +182,10 @@
                   :state :deleted
                   :state-locked? true
                   :template "template"
-                  :location "us-east1"}} (compute-current-configs {} sample-in-mem-config)))
+                  :location "us-east1"
+                  :features [{:key "NVIDIA_DRIVER_VERSION"
+                              :value "450-80-02"}]}}
+         (compute-current-configs {} sample-in-mem-config)))
   (is (= {:a {:location "us-east1"}}
          (compute-current-configs
            {:a {:location "us-east1"}}
@@ -560,7 +580,9 @@
                 :ca-cert "ca-cert"
                 :state :running
                 :state-locked? true
-                :location "us-east1"})))
+                :location "us-east1"
+                :features [{:key "NVIDIA_DRIVER_VERSION"
+                            :value "450-80-02"}]})))
       (is (= ["name"] @initialize-cluster-fn-invocations-atom))
       (is (= {"name" {:base-path "base-path"
                       :ca-cert "ca-cert"
@@ -568,7 +590,9 @@
                       :state :running
                       :state-locked? true
                       :template "template1"
-                      :location "us-east1"}}
+                      :location "us-east1"
+                      :features [{:key "NVIDIA_DRIVER_VERSION"
+                                  :value "450-80-02"}]}}
              (get-in-mem-configs))))
 
     (testing "exception"
@@ -602,7 +626,9 @@
                                     :ca-cert "ca-cert"
                                     :state :running
                                     :state-locked? true
-                                    :location "us-east1"}
+                                    :location "us-east1"
+                                    :features [{:key "NVIDIA_DRIVER_VERSION"
+                                                :value "450-80-02"}]}
                                    :valid? true
                                    :differs? true
                                    :active? true})))
@@ -613,7 +639,9 @@
                   :state :running
                   :state-locked? true
                   :template "template1"
-                  :location "us-east1"}
+                  :location "us-east1"
+                  :features [{:key "NVIDIA_DRIVER_VERSION"
+                              :value "450-80-02"}]}
                  (-> (get-db-config-ents (d/db conn)) (get "name") compute-cluster-config-ent->compute-cluster-config)))
           (is (= {"name" {:base-path "base-path"
                           :ca-cert "ca-cert"
@@ -621,7 +649,10 @@
                           :state :running
                           :state-locked? true
                           :template "template1"
-                          :location "us-east1"}} (get-in-mem-configs))))
+                          :location "us-east1"
+                          :features [{:key "NVIDIA_DRIVER_VERSION"
+                                      :value "450-80-02"}]}}
+                 (get-in-mem-configs))))
 
         (testing "normal update - differs? is false but cluster not in memory; cluster is created"
           ; no change update with missing cluster
@@ -637,7 +668,9 @@
                                     :ca-cert "ca-cert"
                                     :state :running
                                     :state-locked? true
-                                    :location "us-east1"}
+                                    :location "us-east1"
+                                    :features [{:key "NVIDIA_DRIVER_VERSION"
+                                                :value "450-80-02"}]}
                                    :valid? true
                                    :differs? false
                                    :active? true})))
@@ -648,7 +681,9 @@
                   :state :running
                   :state-locked? true
                   :template "template1"
-                  :location "us-east1"}
+                  :location "us-east1"
+                  :features [{:key "NVIDIA_DRIVER_VERSION"
+                              :value "450-80-02"}]}
                  (-> (get-db-config-ents (d/db conn)) (get "name") compute-cluster-config-ent->compute-cluster-config)))
           (is (= {"name" {:base-path "base-path"
                           :ca-cert "ca-cert"
@@ -656,7 +691,10 @@
                           :state :running
                           :state-locked? true
                           :template "template1"
-                          :location "us-east1"}} (get-in-mem-configs)))))
+                          :location "us-east1"
+                          :features [{:key "NVIDIA_DRIVER_VERSION"
+                                      :value "450-80-02"}]}}
+                 (get-in-mem-configs)))))
       (let [conn (restore-fresh-database! uri)]
         (testing "normal update - insert then update"
           (testing "insert"
@@ -672,7 +710,9 @@
                                                    :ca-cert "ca-cert"
                                                    :state :running
                                                    :state-locked? true
-                                                   :location "us-east1"}
+                                                   :location "us-east1"
+                                                   :features [{:key "NVIDIA_DRIVER_VERSION"
+                                                               :value "450-80-02"}]}
                                      :valid? true
                                      :differs? true
                                      :active? true})))
@@ -683,7 +723,9 @@
                     :state :running
                     :state-locked? true
                     :template "template1"
-                    :location "us-east1"}
+                    :location "us-east1"
+                    :features [{:key "NVIDIA_DRIVER_VERSION"
+                                :value "450-80-02"}]}
                    (-> (get-db-config-ents (d/db conn)) (get "name") compute-cluster-config-ent->compute-cluster-config)))
             (is (= {"name" {:base-path "base-path"
                             :ca-cert "ca-cert"
@@ -691,7 +733,10 @@
                             :state :running
                             :state-locked? true
                             :template "template1"
-                            :location "us-east1"}} (get-in-mem-configs))))
+                            :location "us-east1"
+                            :features [{:key "NVIDIA_DRIVER_VERSION"
+                                        :value "450-80-02"}]}}
+                   (get-in-mem-configs))))
 
           (testing "update - state updates in db and in mem. base-path only updates in db"
             (is (= {:update-succeeded true}
@@ -713,7 +758,9 @@
                     :state :draining
                     :state-locked? true
                     :template "template1"
-                    :location "us-east1"}
+                    :location "us-east1"
+                    :features [{:key "NVIDIA_DRIVER_VERSION"
+                                :value "450-80-02"}]}
                    (-> (get-db-config-ents (d/db conn)) (get "name") compute-cluster-config-ent->compute-cluster-config)))
             (is (= {"name" {:base-path "base-path"
                             :ca-cert "ca-cert"
@@ -721,7 +768,10 @@
                             :state :draining
                             :state-locked? true
                             :template "template1"
-                            :location "us-east1"}} (get-in-mem-configs))))))
+                            :location "us-east1"
+                            :features [{:key "NVIDIA_DRIVER_VERSION"
+                                        :value "450-80-02"}]}}
+                   (get-in-mem-configs))))))
       (let [conn (restore-fresh-database! uri)]
         (testing "exceptions"
           (reset! cluster-name->compute-cluster-atom {})
@@ -862,7 +912,10 @@
                                                     :compute-cluster-config/state :compute-cluster-config.state/running
                                                     :compute-cluster-config/state-locked? true
                                                     :compute-cluster-config/template "template"
-                                                    :compute-cluster-config/location "us-east1"}})
+                                                    :compute-cluster-config/location "us-east1"
+                                                    :compute-cluster-config/features
+                                                    [{:compute-cluster-config.feature/key "NVIDIA_DRIVER_VERSION"
+                                                      :compute-cluster-config.feature/value "450-80-02"}]}})
                 get-dynamic-clusters (constantly (->> [(sample-clusters "name")] (map-from-vals #(-> % :name))))]
     (is (= {:db-configs '({:base-path "base-path"
                            :ca-cert "ca-cert"
@@ -870,7 +923,9 @@
                            :state :running
                            :state-locked? true
                            :template "template"
-                           :location "us-east1"})
+                           :location "us-east1"
+                           :features [{:key "NVIDIA_DRIVER_VERSION"
+                                       :value "450-80-02"}]})
             :in-mem-configs '({:base-path "base-path"
                                :ca-cert "ca-cert"
                                :name "name"
@@ -878,6 +933,8 @@
                                :state-locked? true
                                :template "template"
                                :location "us-east1"
+                               :features [{:key "NVIDIA_DRIVER_VERSION"
+                                           :value "450-80-02"}]
                                :cluster-definition {:factory-fn cook.kubernetes.compute-cluster/factory-fn
                                                     :config {:base-path "base-path"
                                                              :ca-cert "ca-cert"
@@ -885,7 +942,9 @@
                                                              :state :running
                                                              :state-locked? false
                                                              :template "template"
-                                                             :location "us-east1"}}})}
+                                                             :location "us-east1"
+                                                             :features [{:key "NVIDIA_DRIVER_VERSION"
+                                                                         :value "450-80-02"}]}}})}
            (get-compute-clusters nil)))))
 
 (deftest test-delete-compute-cluster
@@ -931,7 +990,9 @@
                      :ca-cert "ca-cert"
                      :state :running
                      :state-locked? true
-                     :location "us-east1"}
+                     :location "us-east1"
+                     :features [{:key "NVIDIA_DRIVER_VERSION"
+                                 :value "450-80-02"}]}
         ent (compute-cluster-config->compute-cluster-config-ent new-cluster)
         new-cluster-2 {:name "name-2"
                        :template "template1"
@@ -939,7 +1000,9 @@
                        :ca-cert "ca-cert"
                        :state :deleted
                        :state-locked? true
-                       :location "us-east1"}
+                       :location "us-east1"
+                       :features [{:key "NVIDIA_DRIVER_VERSION"
+                                   :value "450-80-02"}]}
         ent-2 (compute-cluster-config->compute-cluster-config-ent new-cluster-2)]
     (is (= {} (get-in-mem-configs)))
     (is (= {} (get-db-config-ents (d/db conn))))
@@ -961,7 +1024,9 @@
                                 :state :running
                                 :state-locked? true
                                 :template "template1"
-                                :location "us-east1"}
+                                :location "us-east1"
+                                :features [{:key "NVIDIA_DRIVER_VERSION"
+                                            :value "450-80-02"}]}
                   :update-result {:update-succeeded true}
                   :valid? true}
                  {:active? false
@@ -973,7 +1038,9 @@
                                 :state :deleted
                                 :state-locked? true
                                 :template "template1"
-                                :location "us-east1"}
+                                :location "us-east1"
+                                :features [{:key "NVIDIA_DRIVER_VERSION"
+                                            :value "450-80-02"}]}
                   :update-result {:update-succeeded true}
                   :valid? true}))
              (set (update-compute-clusters conn (get-db-configs (d/db conn)) false))))
@@ -984,5 +1051,11 @@
                       :state :running
                       :state-locked? true
                       :template "template1"
-                      :location "us-east1"}}
+                      :location "us-east1"
+                      :features [{:key "NVIDIA_DRIVER_VERSION"
+                                  :value "450-80-02"}]}}
              (get-in-mem-configs))))))
+
+(deftest test-config=?
+  (testing "features can be in different orders"
+    (is (true? (config=? {:features [:a :b]} {:features [:b :a]})))))
