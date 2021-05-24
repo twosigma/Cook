@@ -1,5 +1,6 @@
 (ns cook.kubernetes.api
-  (:require [clj-time.core :as t]
+  (:require [better-cond.core :as b]
+            [clj-time.core :as t]
             [clojure.set :as set]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
@@ -475,34 +476,41 @@
   node-blocklist-labels list.
   TODO: Incorporate other node-health measures here."
   [{:keys [node-blocklist-labels cook-pool-taint-name]} ^V1Node node pod-count-capacity node-name->pods]
-  (if (nil? node)
+  (b/cond
+    (nil? node)
     false
-    (let [taints-on-node (or (some-> node .getSpec .getTaints) [])
-          other-taints (remove #(contains?
-                                  #{cook-pool-taint-name k8s-deletion-candidate-taint gpu-node-taint tenured-node-taint}
-                                  (.getKey %))
-                               taints-on-node)
-          node-name (some-> node .getMetadata .getName)
-          node-unschedulable (some-> node .getSpec .getUnschedulable)
-          num-pods-on-node (-> node-name->pods (get node-name []) count)
-          labels-on-node (or (some-> node .getMetadata .getLabels) {})
+
+    :let [node-name (some-> node .getMetadata .getName)]
+
+    ;; Note that node-unschedulable may be nil or false or true.
+    :let [node-unschedulable (some-> node .getSpec .getUnschedulable)]
+    node-unschedulable (do
+                         (log/info "Filtering out" node-name "because it is unschedulable" node-unschedulable)
+                         false)
+
+    :let [taints-on-node (or (some-> node .getSpec .getTaints) [])
+          other-taints
+          (remove #(contains?
+                     #{cook-pool-taint-name k8s-deletion-candidate-taint gpu-node-taint tenured-node-taint}
+                     (.getKey %))
+                  taints-on-node)]
+    (seq other-taints) (do
+                         (log/info "Filtering out" node-name "because it has taints" other-taints)
+                         false)
+
+    :let [num-pods-on-node (-> node-name->pods (get node-name []) count)]
+    (>= num-pods-on-node pod-count-capacity) (do
+                                               (log/info "Filtering out" node-name "because it is at or above its pod count capacity of"
+                                                         pod-count-capacity "(" num-pods-on-node ")")
+                                               false)
+
+    :let [labels-on-node (or (some-> node .getMetadata .getLabels) {})
           matching-node-blocklist-keyvals (select-keys labels-on-node node-blocklist-labels)]
-      (cond
-        ;; Note that node-unschedulable may be nil or false or true.
-        node-unschedulable (do
-                             (log/info "Filtering out" node-name "because it is unschedulable" node-unschedulable)
-                             false)
-        (seq other-taints) (do
-                             (log/info "Filtering out" node-name "because it has taints" other-taints)
-                             false)
-        (>= num-pods-on-node pod-count-capacity) (do
-                                                   (log/info "Filtering out" node-name "because it is at or above its pod count capacity of"
-                                                             pod-count-capacity "(" num-pods-on-node ")")
-                                                   false)
-        (seq matching-node-blocklist-keyvals) (do
-                                                (log/info "Filtering out" node-name "because it has node blocklist labels" matching-node-blocklist-keyvals)
-                                                false)
-        :else true))))
+    (seq matching-node-blocklist-keyvals) (do
+                                            (log/info "Filtering out" node-name "because it has node blocklist labels" matching-node-blocklist-keyvals)
+                                            false)
+
+    :else true))
 
 (defn force-gpu-model-in-resource-map
   "Given a map from node-name->resource-type->capacity, set the gpus capacity to model->amount
