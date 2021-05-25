@@ -356,14 +356,10 @@
    The location and state fields are special in this regard -- location can
    only transition from nil to non-nil, and state is validated in
    cluster-state-change-valid?."
-  [{current-location :location current-features :features :as current-config}
-   {new-location :location new-features :features :as new-config}]
+  [{current-location :location :as current-config}
+   {new-location :location :as new-config}]
   (cond (and (some? current-location)
              (not= current-location new-location))
-        false
-
-        (and (seq current-features)
-             (not= (set current-features) (set new-features)))
         false
 
         :else

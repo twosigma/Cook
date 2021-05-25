@@ -1058,4 +1058,16 @@
 
 (deftest test-config=?
   (testing "features can be in different orders"
-    (is (true? (config=? {:features [:a :b]} {:features [:b :a]})))))
+    (is (true? (config=? {:features [:a :b]} {:features [:b :a]}))))
+
+  (testing "features can be completely dynamic"
+    (is (true? (config=? {:features [:a :b]} {})))
+    (is (true? (config=? {:features [:a :b]} {:features nil})))
+    (is (true? (config=? {:features [:a :b]} {:features []})))
+    (is (true? (config=? {:features [:a :b]} {:features [:a]})))
+    (is (true? (config=? {:features [:a :b]} {:features [:c]})))
+    (is (true? (config=? {} {:features [:a :b]})))
+    (is (true? (config=? {:features nil} {:features [:a :b]})))
+    (is (true? (config=? {:features []} {:features [:a :b]})))
+    (is (true? (config=? {:features [:a]} {:features [:a :b]})))
+    (is (true? (config=? {:features [:c]} {:features [:a :b]})))))
