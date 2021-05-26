@@ -39,6 +39,7 @@
             [cook.quota :as quota]
             [cook.rate-limit :as rate-limit]
             [cook.scheduler.data-locality :as dl]
+            [cook.scheduler.offer :as offer]
             [cook.scheduler.scheduler :as sched]
             [cook.scheduler.share :as share]
             [cook.test.testutil :as testutil
@@ -159,7 +160,7 @@
 
 (defn make-mesos-vm-offer
   [framework-id host offer-id & {:keys [attrs cpus mem disk] :or {attrs {} cpus 100.0 mem 100000.0 disk 100000.0}}]
-  (sched/offer->lease
+  (offer/offer->lease
     (make-mesos-offer offer-id framework-id "test-slave" host
                       :cpus cpus :mem mem :disk disk :attrs attrs) 0))
 
@@ -176,7 +177,7 @@
 
 (defn make-k8s-vm-offer
   [framework-id host offer-id & {:keys [attrs cpus mem gpus disk] :or {attrs {} cpus 100.0 mem 100000.0 gpus {} disk 100000.0}}]
-  (sched/offer->lease
+  (offer/offer->lease
     (make-k8s-offer offer-id framework-id "test-slave" host
                     :cpus cpus :mem mem :gpus gpus :disk disk :attrs attrs) 0))
 
@@ -791,7 +792,7 @@
                                                  #mesomatic.types.Resource{:name "gpus", :type :value-scalar :scalar 2.0 :role "*"}],
                                      :attributes [],
                                      :executor-ids []}
-        adapter (sched/offer->lease offer now)]
+        adapter (offer/offer->lease offer now)]
 
     (is (= (.getId adapter) "my-offer-id"))
     (is (= (.cpuCores adapter) 40.0))
@@ -818,7 +819,7 @@
                            {:name "gpus", :type :value-text->scalar :text->scalar {"nvidia-tesla-p100" 2} :role "*"}],
                :attributes [],
                :executor-ids []}
-        adapter (sched/offer->lease offer now)]
+        adapter (offer/offer->lease offer now)]
 
     (is (= (.getId adapter) "my-offer-id"))
     (is (= (.cpuCores adapter) 40.0))

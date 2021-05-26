@@ -5,7 +5,7 @@
             [clojure.test :refer :all]
             [cook.compute-cluster :as cc]
             [cook.mesos.task :as task]
-            [cook.scheduler.scheduler :as sched]
+            [cook.scheduler.offer :as offer]
             [cook.test.testutil :as tu]
             [datomic.api :as d]
             [mesomatic.types :as mtypes])
@@ -159,11 +159,11 @@
 
         (testing "resources"
           ;; offers have the same resources structure as tasks so we can reuse (offer-resource-values)
-          (is (= (sched/offer-resource-scalar msg "mem") (-> task :resources :mem)))
-          (is (= (sched/offer-resource-scalar msg "cpus") (-> task :resources :cpus)))
-          (is (= (->> (sched/offer-resource-ranges msg "ports") first :begin)
+          (is (= (offer/offer-resource-scalar msg "mem") (-> task :resources :mem)))
+          (is (= (offer/offer-resource-scalar msg "cpus") (-> task :resources :cpus)))
+          (is (= (->> (offer/offer-resource-ranges msg "ports") first :begin)
                  (-> task :resources :ports first :begin)))
-          (is (= (->> (sched/offer-resource-ranges msg "ports") first :end)
+          (is (= (->> (offer/offer-resource-ranges msg "ports") first :end)
                  (-> task :resources :ports first :end)))
           (is (= (->> msg :resources (map :role))
                  (map :role (into (:scalar-resource-messages task)
@@ -334,6 +334,7 @@
               (is (= expected-container (->> container-executor-task task-info->mesos-message-wrap :executor :container))))))))))
 
 (deftest test-job->task-metadata
+  (tu/setup)
   (let [uri "datomic:mem://test-job-task-metadata"
         conn (tu/restore-fresh-database! uri)
         executor {:command "./cook-executor"
