@@ -43,6 +43,7 @@
             [cook.scheduler.data-locality :as dl]
             [cook.scheduler.dru :as dru]
             [cook.scheduler.fenzo-utils :as fenzo]
+            [cook.scheduler.offer :as offer]
             [cook.scheduler.share :as share]
             [cook.task]
             [cook.task-stats :as task-stats]
@@ -67,44 +68,6 @@
   []
   (tc/to-date (time/now)))
 
-(defn offer-resource-values
-  [offer resource-name value-type]
-  (->> offer :resources (filter #(= (:name %) resource-name)) (map value-type)))
-
-(defn offer-resource-scalar
-  [offer resource-name]
-  (reduce + 0.0 (offer-resource-values offer resource-name :scalar)))
-
-(defn offer-resource-ranges
-  [offer resource-name]
-  (reduce into [] (offer-resource-values offer resource-name :ranges)))
-
-(defn offer-value-list-map
-  [value-list]
-  (->> value-list
-       (map #(vector (:name %) (case (:type %)
-                                 :value-scalar (:scalar %)
-                                 :value-ranges (:ranges %)
-                                 :value-set (:set %)
-                                 :value-text (:text %)
-                                 :value-text->scalar (:text->scalar %)
-                                 ; Default
-                                 (:value %))))
-       (into {})))
-
-(defn get-offer-attr-map
-  "Gets all the attributes from an offer and puts them in a simple, less structured map of the form
-   name->value"
-  [{:keys [attributes compute-cluster hostname resources] :as offer}]
-  (let [offer-attributes (offer-value-list-map attributes)
-        offer-resources (offer-value-list-map resources)
-        cook-attributes (cond->
-                          {"HOSTNAME" hostname}
-                          compute-cluster
-                          (assoc "COOK_MAX_TASKS_PER_HOST" (cc/max-tasks-per-host compute-cluster)
-                                 "COOK_NUM_TASKS_ON_HOST" (cc/num-tasks-on-host compute-cluster hostname)
-                                 "COOK_COMPUTE_CLUSTER_LOCATION" (cc/compute-cluster->location compute-cluster)))]
-    (merge offer-resources offer-attributes cook-attributes)))
 
 (timers/deftimer [cook-mesos scheduler handle-status-update-duration])
 (timers/deftimer [cook-mesos scheduler handle-framework-message-duration])
@@ -454,36 +417,6 @@
 ;;; API for matcher
 ;;; ===========================================================================
 
-(defrecord VirtualMachineLeaseAdapter [offer time attr-map]
-  VirtualMachineLease
-  (cpuCores [_] (or (offer-resource-scalar offer "cpus") 0.0))
-  ; We support disk but support different types of disk, so we set this metric to 0.0 and take care of binpacking disk in the disk-host-constraint
-  (diskMB [_] 0.0)
-  (getScalarValue [_ name] (or (double (offer-resource-scalar offer name)) 0.0))
-  (getScalarValues [_]
-    (reduce (fn [result resource]
-              (if-let [value (:scalar resource)]
-                ;; Do not remove the following fnil--either arg to + can be nil!
-                (update-in result [(:name resource)] (fnil + 0.0 0.0) value)
-                result))
-            {}
-            (:resources offer)))
-  (getAttributeMap [_] attr-map)
-  (getId [_] (-> offer :id :value))
-  (getOffer [_] (throw (UnsupportedOperationException.)))
-  (getOfferedTime [_] time)
-  (getVMID [_] (-> offer :slave-id :value))
-  (hostname [_] (:hostname offer))
-  (memoryMB [_] (or (offer-resource-scalar offer "mem") 0.0))
-  (networkMbps [_] 0.0)
-  (portRanges [_] (mapv (fn [{:keys [begin end]}]
-                          (VirtualMachineLease$Range. begin end))
-                        (offer-resource-ranges offer "ports"))))
-
-(defn offer->lease
-  [offer time]
-  (->VirtualMachineLeaseAdapter offer time (get-offer-attr-map offer)))
-
 
 ; job and resources appear to be unused, but they are used. Other code paths destructure job and resource out.
 (defrecord TaskRequestAdapter [job resources cpus mem ports uuid task-id assigned-resources guuid->considerable-cotask-ids constraints scalar-requests]
@@ -672,7 +605,7 @@
       (log/debug "In" pool-name "pool, tasks to scheduleOnce" considerable)
       (dl/update-cost-staleness-metric considerable)
       (let [t (System/currentTimeMillis)
-            leases (mapv #(offer->lease % t) offers)
+            leases (mapv #(offer/offer->lease % t) offers)
             considerable->task-id (plumbing.core/map-from-keys (fn [_] (str (d/squuid))) considerable)
             guuid->considerable-cotask-ids (tools/make-guuid->considerable-cotask-ids considerable->task-id)
             running-cotask-cache (atom (cache/fifo-cache-factory {} :threshold (max 1 (count considerable))))
@@ -1392,7 +1325,7 @@
                             (swap! agent-attributes-cache (fn [c]
                                                             (if (cache/has? c slave-id)
                                                               (cache/hit c slave-id)
-                                                              (cache/miss c slave-id (get-offer-attr-map offer))))))
+                                                              (cache/miss c slave-id (offer/get-offer-attr-map offer))))))
                         using-pools? (not (nil? (config/default-pool)))
                         user->quota (quota/create-user->quota-fn (d/db conn) (if using-pools? pool-name nil))
                         matched-head? (handle-resource-offers! conn fenzo-state pool-name->pending-jobs-atom
