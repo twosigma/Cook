@@ -106,7 +106,8 @@
   "Returns a map with default pod labels"
   []
   (let [prefix (pod-label-prefix)]
-    {(str prefix "application.name") "undefined"
+    {"ts/use-credulity" "true"
+     (str prefix "application.name") "undefined"
      (str prefix "application.version") "undefined"
      (str prefix "application.workload-class") "undefined"
      (str prefix "application.workload-id") "undefined"
