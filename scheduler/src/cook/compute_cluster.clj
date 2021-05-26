@@ -500,8 +500,16 @@
   (try
     (when differs?
       ; :db.unique/identity gives upsert behavior (update on insert), so we don't need to specify an entity ID when updating
-      @(d/transact conn [(assoc (compute-cluster-config->compute-cluster-config-ent goal-config)
-                           :db/id (d/tempid :db.part/user))]))
+      @(d/transact
+         conn
+         [; We need to retract existing features; otherwise,
+          ; features simply get added to the existing list
+          [:db.fn/resetAttribute
+           [:compute-cluster-config/name name]
+           :compute-cluster-config/features
+           nil]
+          (assoc (compute-cluster-config->compute-cluster-config-ent goal-config)
+            :db/id (d/tempid :db.part/user))]))
     (let [{:keys [state-atom state-locked?-atom] :as cluster} (@cluster-name->compute-cluster-atom name)]
       (if cluster
         (do

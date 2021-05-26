@@ -604,6 +604,7 @@
       (is (= {} (get-in-mem-configs))))))
 
 (deftest test-execute-update!
+  (setup)
   (with-redefs [config/compute-cluster-templates
                 (constantly {"template1" {:config {:a :bb :c :dd
                                                    :dynamic-cluster-config? true}
@@ -694,7 +695,66 @@
                           :location "us-east1"
                           :features [{:key "NVIDIA_DRIVER_VERSION"
                                       :value "450-80-02"}]}}
-                 (get-in-mem-configs)))))
+                 (get-in-mem-configs))))
+
+        (testing "features are appropriately updated"
+          (is (= {:update-succeeded true}
+                 (execute-update! conn
+                                  {:goal-config
+                                   {:a :a
+                                    :name "name"
+                                    :template "template1"
+                                    :base-path "base-path"
+                                    :ca-cert "ca-cert"
+                                    :state :running
+                                    :state-locked? true
+                                    :location "us-east1"
+                                    :features [{:key "foo" :value "bar"}
+                                               {:key "baz" :value "qux"}]}
+                                   :valid? true
+                                   :differs? true
+                                   :active? true})))
+          (is (= {:base-path "base-path"
+                  :ca-cert "ca-cert"
+                  :name "name"
+                  :state :running
+                  :state-locked? true
+                  :template "template1"
+                  :location "us-east1"
+                  :features [{:key "foo" :value "bar"}
+                             {:key "baz" :value "qux"}]}
+                 (-> (get-db-config-ents (d/db conn))
+                     (get "name")
+                     compute-cluster-config-ent->compute-cluster-config)))
+          (is (= {:update-succeeded true}
+                 (execute-update! conn
+                                  {:goal-config
+                                   {:a :a
+                                    :name "name"
+                                    :template "template1"
+                                    :base-path "base-path"
+                                    :ca-cert "ca-cert"
+                                    :state :running
+                                    :state-locked? true
+                                    :location "us-east1"
+                                    :features [{:key "one" :value "two"}
+                                               {:key "three" :value "four"}]}
+                                   :valid? true
+                                   :differs? true
+                                   :active? true})))
+          (is (= {:base-path "base-path"
+                  :ca-cert "ca-cert"
+                  :name "name"
+                  :state :running
+                  :state-locked? true
+                  :template "template1"
+                  :location "us-east1"
+                  :features [{:key "three" :value "four"}
+                             {:key "one" :value "two"}]}
+                 (-> (get-db-config-ents (d/db conn))
+                     (get "name")
+                     compute-cluster-config-ent->compute-cluster-config)))))
+
       (let [conn (restore-fresh-database! uri)]
         (testing "normal update - insert then update"
           (testing "insert"
@@ -759,8 +819,7 @@
                     :state-locked? true
                     :template "template1"
                     :location "us-east1"
-                    :features [{:key "NVIDIA_DRIVER_VERSION"
-                                :value "450-80-02"}]}
+                    :features []}
                    (-> (get-db-config-ents (d/db conn)) (get "name") compute-cluster-config-ent->compute-cluster-config)))
             (is (= {"name" {:base-path "base-path"
                             :ca-cert "ca-cert"
@@ -772,6 +831,7 @@
                             :features [{:key "NVIDIA_DRIVER_VERSION"
                                         :value "450-80-02"}]}}
                    (get-in-mem-configs))))))
+
       (let [conn (restore-fresh-database! uri)]
         (testing "exceptions"
           (reset! cluster-name->compute-cluster-atom {})
