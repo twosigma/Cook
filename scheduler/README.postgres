@@ -7,3 +7,4 @@ createdb -O $user cook_dev
 
 # Now as that role user, can get interactive access:
 psql -d cook_dev
+alter user with password = "Some Passowrd"
