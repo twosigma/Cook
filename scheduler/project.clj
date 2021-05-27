@@ -111,6 +111,10 @@
                                log4j]]
                  [org.apache.curator/curator-test "2.7.1"]
 
+                 [org.clojure/java.jdbc "0.7.12"]
+                 ;[com.layerware/hugsql "0.5.1"]
+                 [org.postgresql/postgresql "42.2.2"] ; Use PG 13.2 features.
+
                  ;; Dependency management
                  [mount "0.1.12"]
 

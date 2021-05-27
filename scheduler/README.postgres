@@ -1,0 +1,9 @@
+# As postgresql superuser.
+# user is the user/role account that you do cook dev as (in my case, I do opensource dev as user=twosigma
+
+user=twosigma
+createuser $user
+createdb -O $user cook_dev
+
+# Now as that role user, can get interactive access:
+psql -d cook_dev
