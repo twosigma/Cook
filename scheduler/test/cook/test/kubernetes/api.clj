@@ -987,7 +987,15 @@
                  :job/instance [{:instance/reason {:reason/name :mesos-unknown}}
                                 {:instance/reason {:reason/name :mesos-unknown}}
                                 {:instance/reason {:reason/name :mesos-unknown}}]}]
-        (is (= nil (api/calculate-effective-checkpointing-config job 1)))))))
+        (is (= nil (api/calculate-effective-checkpointing-config job 1))))))
+  (testing "Don't checkpoint on unsupported pool"
+    (with-redefs [config/kubernetes (fn [] {:default-checkpoint-config {:supported-pools #{"good-pool"}}})]
+      (let [job {:job/checkpoint {:checkpoint/mode "auto"}}]
+        (is (= nil (api/calculate-effective-checkpointing-config job 1))))))
+  (testing "Checkpoint on supported pool"
+    (with-redefs [config/kubernetes (fn [] {:default-checkpoint-config {:supported-pools #{"good-pool"}}})]
+      (let [job {:job/checkpoint {:checkpoint/mode "auto"} :job/pool {:pool/name "good-pool"}}]
+        (is (= {:mode "auto" :supported-pools #{"good-pool"}} (api/calculate-effective-checkpointing-config job 1)))))))
 
 (deftest test-pod->sandbox-file-server-container-state
   (testing "file server not running"

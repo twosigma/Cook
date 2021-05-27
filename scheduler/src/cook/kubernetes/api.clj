@@ -829,22 +829,32 @@
   [{:keys [job/checkpoint job/instance job/uuid] :as job} task-id]
   (when checkpoint
     (let [{:keys [default-checkpoint-config]} (config/kubernetes)
-          {:keys [max-checkpoint-attempts checkpoint-failure-reasons disable-checkpointing] :as checkpoint}
+          {:keys [max-checkpoint-attempts checkpoint-failure-reasons disable-checkpointing supported-pools] :as checkpoint}
           (merge default-checkpoint-config (tools/job-ent->checkpoint job))]
       (when-not disable-checkpointing
-        (if max-checkpoint-attempts
-          (let [checkpoint-failure-reasons (or checkpoint-failure-reasons default-checkpoint-failure-reasons)
-                checkpoint-failures (filter (fn [{:keys [instance/reason]}]
-                                              (contains? checkpoint-failure-reasons (:reason/name reason)))
-                                            instance)]
-            (if (-> checkpoint-failures count (>= max-checkpoint-attempts))
-              (log/info "Will not checkpoint, there are at least" max-checkpoint-attempts "checkpoint failures"
-                        {:job-uuid uuid
-                         :max-checkpoint-attempts max-checkpoint-attempts
-                         :number-checkpoint-failures (count checkpoint-failures)
-                         :task-id task-id})
-              checkpoint))
-          checkpoint)))))
+        (and
+          (if max-checkpoint-attempts
+            (let [checkpoint-failure-reasons (or checkpoint-failure-reasons default-checkpoint-failure-reasons)
+                  checkpoint-failures (filter (fn [{:keys [instance/reason]}]
+                                                (contains? checkpoint-failure-reasons (:reason/name reason)))
+                                              instance)]
+              (if (-> checkpoint-failures count (>= max-checkpoint-attempts))
+                (log/info "Will not checkpoint, there are at least" max-checkpoint-attempts "checkpoint failures"
+                          {:job-uuid uuid
+                           :max-checkpoint-attempts max-checkpoint-attempts
+                           :number-checkpoint-failures (count checkpoint-failures)
+                           :task-id task-id})
+                checkpoint))
+            checkpoint)
+          (if supported-pools
+            (let [pool-name (cached-queries/job->pool-name job)]
+              (if (contains? supported-pools pool-name)
+                checkpoint
+                (log/info "Will not checkpoint, pool" pool-name "is not supported"
+                          {:job-uuid uuid
+                           :pool-name pool-name
+                           :task-id task-id})))
+            checkpoint))))))
 
 (defn calculate-effective-image
   "Transform the supplied job's image as necessary. e.g. do special transformation if checkpointing is enabled
