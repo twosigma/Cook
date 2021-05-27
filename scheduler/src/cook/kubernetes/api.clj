@@ -106,8 +106,7 @@
   "Returns a map with default pod labels"
   []
   (let [prefix (pod-label-prefix)]
-    {"ts/use-credulity" "true"
-     (str prefix "application.name") "undefined"
+    {(str prefix "application.name") "undefined"
      (str prefix "application.version") "undefined"
      (str prefix "application.workload-class") "undefined"
      (str prefix "application.workload-id") "undefined"
@@ -1069,8 +1068,7 @@
     (.setName metadata pod-name)
     (.setNamespace metadata namespace)
     (.setLabels metadata labels)
-    (when pod-annotations
-      (.setAnnotations metadata pod-annotations))
+    (.setAnnotations metadata {"ts/use-credulity" "true"})
 
     (.setHostnameAsFQDN pod-spec false)
     ; container
