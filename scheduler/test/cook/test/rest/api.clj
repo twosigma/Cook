@@ -2257,7 +2257,12 @@
                             :jobs 2}}
              (api/get-user-usage (d/db conn) (assoc-in request-context [:request :query-params :pool] "baz")))))))
 
+(defn by-size-job-router
+  [{:keys [cpus]}]
+  (if (< cpus 1.0) "small-job-pool" "large-job-pool"))
+
 (deftest test-create-jobs-handler
+  (testutil/setup)
   (let [conn (restore-fresh-database! "datomic:mem://test-create-jobs-handler")
         task-constraints {:cpus 12 :memory-gb 100 :retry-limit 200}
         gpu-enabled? false
@@ -2269,7 +2274,6 @@
                        :authorization/user "user"
                        :headers {"Content-Type" "application/json"}
                        :body-params {:jobs [(minimal-job)]}})]
-    (testutil/setup)
     (with-redefs [api/no-job-exceeds-quota? (constantly true)
                   rate-limit/job-submission-rate-limiter rate-limit/AllowAllRateLimiter]
       (testing "successful-job-creation-response"
@@ -2420,7 +2424,29 @@
               job-uuid (-> request :body-params :jobs first :uuid)
               {:keys [status]} (handler request)]
           (is (= 201 status))
-          (is (= {"foo.bar/baz" "qux"} (-> conn d/db (d/entity [:job/uuid job-uuid]) util/job-ent->label))))))))
+          (is (= {"foo.bar/baz" "qux"} (-> conn d/db (d/entity [:job/uuid job-uuid]) util/job-ent->label)))))
+
+      (testing "job routing plugin"
+        (create-pool conn "small-job-pool")
+        (create-pool conn "large-job-pool")
+        (testutil/setup :config
+                        {:plugins {:job-routing {"@by-size" {:choose-pool-for-job-fn
+                                                             'cook.test.rest.api/by-size-job-router}}}})
+        (let [handler (api/create-jobs-handler conn task-constraints gpu-enabled? is-authorized-fn)]
+          (let [request (-> (new-request)
+                            (assoc-in [:body-params :pool] "@by-size")
+                            (assoc-in [:body-params :jobs] [(assoc (minimal-job) :cpus 0.9)]))
+                job-uuid (-> request :body-params :jobs first :uuid)
+                {:keys [status] :as response} (handler request)]
+            (is (= 201 status) (str response))
+            (is (= "small-job-pool" (-> conn d/db (d/entity [:job/uuid job-uuid]) cached-queries/job->pool-name))))
+          (let [request (-> (new-request)
+                            (assoc-in [:body-params :pool] "@by-size")
+                            (assoc-in [:body-params :jobs] [(assoc (minimal-job) :cpus 1.1)]))
+                job-uuid (-> request :body-params :jobs first :uuid)
+                {:keys [status] :as response} (handler request)]
+            (is (= 201 status) (str response))
+            (is (= "large-job-pool" (-> conn d/db (d/entity [:job/uuid job-uuid]) cached-queries/job->pool-name)))))))))
 
 (deftest test-validate-partitions
   (is (api/validate-partitions {:dataset {"foo" "bar"}}))

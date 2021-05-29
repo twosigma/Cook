@@ -104,20 +104,21 @@
              (.build)))
 
 (defn plugin-jobs-submission
-  [jobs pool-name]
+  [job-pool-name-pairs]
   "Run the plugins for a set of jobs at submission time."
   (let [deadline (->> (config/batch-timeout-seconds-config)
                       ; One submission can include multiple jobs that must all be checked.
                       ; Self-imposed deadline to get them all checked.
                       (t/plus- (t/now)))
-        do-one-job (fn do-one-job [job-map]
+        do-one-job (fn do-one-job
+                     [{:keys [job pool-name]}]
                      (let [now (t/now)
                            status (if (t/before? now deadline)
-                                    (check-job-submission plugin-object job-map pool-name)
+                                    (check-job-submission plugin-object job pool-name)
                                     ; Running out of time, do the default.
                                     (check-job-submission-default plugin-object))]
                        (or status default-accept)))
-        results (map do-one-job jobs)
+        results (map do-one-job job-pool-name-pairs)
         errors (filter #(= :rejected (:status %)) results)
         error-count (count errors)
         ; Collect a few errors to show in the response. (not every error)

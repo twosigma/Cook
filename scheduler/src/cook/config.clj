@@ -21,10 +21,11 @@
             [clojure.string :as str]
             [clojure.tools.logging :as log]
             [congestion.limits :refer [RateLimit]]
+            [cook.plugins.util :as putil]
             [cook.rest.impersonation :refer [impersonation-authorized-wrapper]]
             [cook.util :as util]
             [mount.core :as mount]
-            [plumbing.core :refer [fnk]]
+            [plumbing.core :refer [fnk] :as pc]
             [plumbing.graph :as graph])
   (:import (com.google.common.io Files)
            (com.netflix.fenzo VMTaskFitnessCalculator)
@@ -473,8 +474,7 @@
                                          :launch-wait-seconds (get fitness-calculator :launch-wait-seconds 60)
                                          :update-interval-ms (get fitness-calculator :update-interval-ms nil)}))
      :plugins (fnk [[:config {plugins {}}]]
-                (let [{:keys [job-launch-filter job-submission-validator
-                              pool-selection]} plugins]
+                (let [{:keys [job-launch-filter job-routing job-submission-validator pool-selection]} plugins]
                   (merge plugins
                          {:job-launch-filter
                           (merge
@@ -482,6 +482,17 @@
                              :age-out-first-seen-deadline-minutes 600
                              :age-out-seen-count 10}
                             job-launch-filter)
+                          :job-routing
+                          (pc/map-vals
+                            (fn [routing-config]
+                              (update
+                                routing-config
+                                :choose-pool-for-job-fn
+                                (fn [f]
+                                  (if-let [resolved-fn (putil/resolve-symbol (symbol f))]
+                                    resolved-fn
+                                    (throw (ex-info (str "Unable to resolve fn " f) {}))))))
+                            job-routing)
                           :job-submission-validator
                           (merge {:batch-timeout-seconds 40}
                                  job-submission-validator)
@@ -700,3 +711,7 @@
 (defn job-resource-limits
   []
   (-> config :settings :plugins :job-shape-validation))
+
+(defn job-routing
+  []
+  (-> config :settings :plugins :job-routing))
