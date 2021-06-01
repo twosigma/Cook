@@ -2031,9 +2031,10 @@
                      resource resource-keys
                      :let [job-usage (-> job (get resource 0) double)
                            user-quota (quota/get-quota db user (:pool/name pool))
-                           quota-val (-> user-quota (get resource) double)]
-                     :when (> job-usage quota-val)]
-                 (if (zero? (:count user-quota))
+                           quota-val (-> user-quota (get resource) double)
+                           zero-jobs? (-> user-quota :count zero?)]
+                     :when (or (> job-usage quota-val) zero-jobs?)]
+                 (if zero-jobs?
                    "User quota is set to zero jobs."
                    (format "Job %s exceeds quota for %s: %f > %f"
                            (:uuid job) (name resource) job-usage quota-val)))]
