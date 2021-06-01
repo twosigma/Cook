@@ -303,11 +303,10 @@
              (get current-in-mem-configs key)
              keys-to-keep-synced
              (cond-> [:base-path :ca-cert :state]
-                     ; The location and features fields are treated specially when comparing db and in-mem configs --
-                     ; since these are new fields, they can be nil in-memory and non-nil in the db for a
+                     ; The location field is treated specially when comparing db and in-mem configs --
+                     ; since this is a new field, it can be nil in-memory and non-nil in the db for a
                      ; limited time after the db has been populated and before the leader is restarted.
-                     current-in-mem-location (conj :location)
-                     current-in-mem-features (conj :features))]
+                     current-in-mem-location (conj :location))]
          (when (not= (select-keys current-db-config keys-to-keep-synced)
                      (select-keys current-in-mem-config keys-to-keep-synced))
            (log/error keys-to-keep-synced "differ between in-memory and database cluster configurations."
@@ -356,14 +355,10 @@
    The location and state fields are special in this regard -- location can
    only transition from nil to non-nil, and state is validated in
    cluster-state-change-valid?."
-  [{current-location :location current-features :features :as current-config}
-   {new-location :location new-features :features :as new-config}]
+  [{current-location :location :as current-config}
+   {new-location :location :as new-config}]
   (cond (and (some? current-location)
              (not= current-location new-location))
-        false
-
-        (and (seq current-features)
-             (not= (set current-features) (set new-features)))
         false
 
         :else
@@ -504,8 +499,16 @@
   (try
     (when differs?
       ; :db.unique/identity gives upsert behavior (update on insert), so we don't need to specify an entity ID when updating
-      @(d/transact conn [(assoc (compute-cluster-config->compute-cluster-config-ent goal-config)
-                           :db/id (d/tempid :db.part/user))]))
+      @(d/transact
+         conn
+         [; We need to retract existing features; otherwise,
+          ; features simply get added to the existing list
+          [:db.fn/resetAttribute
+           [:compute-cluster-config/name name]
+           :compute-cluster-config/features
+           nil]
+          (assoc (compute-cluster-config->compute-cluster-config-ent goal-config)
+            :db/id (d/tempid :db.part/user))]))
     (let [{:keys [state-atom state-locked?-atom] :as cluster} (@cluster-name->compute-cluster-atom name)]
       (if cluster
         (do

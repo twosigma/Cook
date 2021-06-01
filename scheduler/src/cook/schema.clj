@@ -1358,7 +1358,40 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
                               (< attempts-consumed retries))
                        [[:db/add job-entity-id :job/state :job.state/waiting]
                         [:db/add job-entity-id :job/last-waiting-start-time (Date.)]]
-                       []))}}])
+                       []))}}
+   ; https://stackoverflow.com/a/42119449
+   {:db/id (d/tempid :db.part/user)
+    :db/ident :db.fn/resetAttribute
+    :db/doc
+    "Unconditionally set an entity's attribute's values to those provided,
+    retracting all other existing values.
+
+    Values must be a collection (list, seq, vector), even for cardinality-one
+    attributes. An empty collection (or nil) will retract all values. The values
+    themselves must be primitive, i.e. no map forms are permitted for refs, use
+    tempids directly. If the attribute is-component, removed values will be
+    :db.fn/retractEntity-ed."
+    :db/fn
+    #db/fn {:lang "clojure"
+            :params [db ent attr values]
+            :code (let [eid (datomic.api/entid db ent)
+                        aid (datomic.api/entid db attr)
+                        {:keys [value-type is-component]} (datomic.api/attribute db aid)
+                        newvalues (if (= value-type :db.type/ref)
+                                    (into #{} (map #(if (string? %) % (d/entid db %))) values)
+                                    (into #{} values))
+                        oldvalues (into #{} (map :v) (datomic.api/datoms db :eavt eid aid))]
+                    (-> []
+                        (into (comp
+                                (remove newvalues)
+                                (map (if is-component
+                                       #(do [:db.fn/retractEntity %])
+                                       #(do [:db/retract eid aid %]))))
+                              oldvalues)
+                        (into (comp
+                                (remove oldvalues)
+                                (map #(do [:db/add eid aid %])))
+                              newvalues)))}}])
 
 (def reason-entities
   [{:db/id (d/tempid :db.part/user)
