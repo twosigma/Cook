@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.53.2] - 2021-06-01
+### Added
+- Features to compute clusters, from @dposada
+### Changed
+- Constrained checkpointing to supported pools, from @nsinkov
+
 ## [1.53.1] - 2021-05-13
 ### Fixed
 - Fix the names for synthetic pod workload labels, from @dposada
