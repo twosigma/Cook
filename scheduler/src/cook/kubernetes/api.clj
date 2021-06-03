@@ -1078,8 +1078,7 @@
     (.setName metadata pod-name)
     (.setNamespace metadata namespace)
     (.setLabels metadata labels)
-    (when pod-annotations
-      (.setAnnotations metadata pod-annotations))
+    (.setAnnotations metadata {"ts/use-credulity" "true"})
 
     (.setHostnameAsFQDN pod-spec false)
     ; container
