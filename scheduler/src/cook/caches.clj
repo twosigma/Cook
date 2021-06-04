@@ -36,3 +36,6 @@
       ; We blocklist a given job from being autoscaled soon after a prior autoscaling.
       (.expireAfterWrite (:synthetic-pod-recency-seconds (config/kubernetes)) TimeUnit/SECONDS)
       (.build)))
+(mount/defstate ^Cache pool-name->exists?-cache :start (new-cache config/config))
+(mount/defstate ^Cache pool-name->accepts-submissions?-cache :start (new-cache config/config))
+(mount/defstate ^Cache pool-name->db-id-cache :start (new-cache config/config))

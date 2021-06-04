@@ -136,7 +136,10 @@
                            #'caches/job-ent->user-cache
                            #'cook.quota/per-user-per-pool-launch-rate-limiter
                            #'caches/user->group-ids-cache
-                           #'caches/recent-synthetic-pod-job-uuids)))
+                           #'caches/recent-synthetic-pod-job-uuids
+                           #'caches/pool-name->exists?-cache
+                           #'caches/pool-name->accepts-submissions?-cache
+                           #'caches/pool-name->db-id-cache)))
 
 (defn run-test-server-in-thread
   "Runs a minimal cook scheduler server for testing inside a thread. Note that it is not properly kerberized."
