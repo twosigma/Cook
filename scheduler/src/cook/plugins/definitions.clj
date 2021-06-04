@@ -57,3 +57,7 @@
 (defprotocol JobAdjuster
   (adjust-job [this job-map db]
     "Given a job-map, returns an adjusted job-map for downstream use"))
+
+(defprotocol JobRouter
+  (choose-pool-for-job [this job]
+    "Given a job submission, returns the initial pool selection for the job"))

@@ -2119,9 +2119,8 @@
 (defn pool-name->effective-pool-name
   "Given a pool name and job from a submission returns the effective pool name"
   [pool-name-from-submission job]
-  (if-let [{:keys [choose-pool-for-job-fn]}
-           (job-routing-pool-name? pool-name-from-submission)]
-    (choose-pool-for-job-fn job)
+  (if-let [job-router (job-routing-pool-name? pool-name-from-submission)]
+    (plugins/choose-pool-for-job job-router job)
     (or pool-name-from-submission (config/default-pool))))
 
 ;;; On POST; JSON blob that looks like:

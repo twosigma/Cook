@@ -21,6 +21,7 @@
             [clojure.string :as str]
             [clojure.tools.logging :as log]
             [congestion.limits :refer [RateLimit]]
+            [cook.plugins.definitions :refer [JobRouter]]
             [cook.plugins.util :as putil]
             [cook.rest.impersonation :refer [impersonation-authorized-wrapper]]
             [cook.util :as util]
@@ -31,7 +32,6 @@
            (com.netflix.fenzo VMTaskFitnessCalculator)
            (java.io File)
            (java.net InetAddress)
-           (java.util.concurrent.locks ReentrantLock)
            (org.apache.curator.test TestingServer)
            (org.apache.log4j DailyRollingFileAppender Logger PatternLayout)))
 
@@ -484,14 +484,13 @@
                             job-launch-filter)
                           :job-routing
                           (pc/map-vals
-                            (fn [routing-config]
-                              (update
-                                routing-config
-                                :choose-pool-for-job-fn
-                                (fn [f]
-                                  (if-let [resolved-fn (putil/resolve-symbol (symbol f))]
-                                    resolved-fn
-                                    (throw (ex-info (str "Unable to resolve fn " f) {}))))))
+                            (fn [f]
+                              (if-let [resolved-fn (putil/resolve-symbol (symbol f))]
+                                (let [job-router (resolved-fn)]
+                                  (if (and job-router (satisfies? JobRouter job-router))
+                                    job-router
+                                    (throw (ex-info (str "Calling fn " f " did not return a JobRouter") {}))))
+                                (throw (ex-info (str "Unable to resolve fn " f) {}))))
                             job-routing)
                           :job-submission-validator
                           (merge {:batch-timeout-seconds 40}

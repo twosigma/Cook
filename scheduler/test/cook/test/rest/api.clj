@@ -26,7 +26,7 @@
             [cook.compute-cluster :as cc]
             [cook.config :as config]
             [cook.mesos.reason :as reason]
-            [cook.plugins.definitions :refer [FileUrlGenerator]]
+            [cook.plugins.definitions :refer [FileUrlGenerator JobRouter]]
             [cook.plugins.file :as file-plugin]
             [cook.plugins.submission :as submission-plugin]
             [cook.quota :as quota]
@@ -2257,9 +2257,13 @@
                             :jobs 2}}
              (api/get-user-usage (d/db conn) (assoc-in request-context [:request :query-params :pool] "baz")))))))
 
-(defn by-size-job-router
-  [{:keys [cpus]}]
-  (if (< cpus 1.0) "small-job-pool" "large-job-pool"))
+(defn make-by-size-job-router
+  []
+  (reify JobRouter
+    (choose-pool-for-job [_ {:keys [cpus]}]
+      (if (< cpus 1.0)
+        "small-job-pool"
+        "large-job-pool"))))
 
 (deftest test-create-jobs-handler
   (testutil/setup)
@@ -2430,8 +2434,7 @@
         (create-pool conn "small-job-pool")
         (create-pool conn "large-job-pool")
         (testutil/setup :config
-                        {:plugins {:job-routing {"@by-size" {:choose-pool-for-job-fn
-                                                             'cook.test.rest.api/by-size-job-router}}}})
+                        {:plugins {:job-routing {"@by-size" 'cook.test.rest.api/make-by-size-job-router}}})
         (let [handler (api/create-jobs-handler conn task-constraints gpu-enabled? is-authorized-fn)]
           (let [request (-> (new-request)
                             (assoc-in [:body-params :pool] "@by-size")
