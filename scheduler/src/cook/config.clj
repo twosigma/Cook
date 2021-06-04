@@ -482,6 +482,12 @@
                              :age-out-first-seen-deadline-minutes 600
                              :age-out-seen-count 10}
                             job-launch-filter)
+                          ; The job-routing config has the following shape:
+                          ;
+                          ;   pool-name -> job-router-factory-fn
+                          ;
+                          ; where job-router-factory-fn must return
+                          ; something that satisfies the JobRouter protocol
                           :job-routing
                           (pc/map-vals
                             (fn [f]
