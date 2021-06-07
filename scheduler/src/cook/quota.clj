@@ -16,6 +16,7 @@
 (ns cook.quota
   (:require [clojure.set :as set]
             [clojure.tools.logging :as log]
+            [clojure.java.jdbc :as sql]
             [cook.config :as config]
             [cook.datomic]
             [cook.pool :as pool]
@@ -35,6 +36,19 @@
 ;; quote or share and making username non-unique.) Since users can have different count
 ;; quotas in different pools, we moved count to a resource. There was some precedent for
 ;; non-mesos resource types (uri) already so it seemed like a reasonable compromise.
+
+
+(def pg-db {:dbtype "postgresql"
+            :dbname "mypgdatabase"
+            :host "mydb.server.com"
+            :user "myuser"
+            :password "secret"
+            :ssl true
+            :sslfactory "org.postgresql.ssl.NonValidatingFactory"})
+
+(sql/query pg-db ["SELECT * from resource_quotas;"])
+
+
 
 (def default-user "default")
 
@@ -176,6 +190,8 @@
                         ; If the user has a count field, remove that as well.
                         count-field (conj [:db/retract [:quota/user user] :quota/count count-field])))))
 
+
+; FIX THIS TO USE POSTGRESQL.
 (defn set-quota!
   "Set the quota for a user. Note that the type of resource must be in the
    list of (get-all-resource-types)
@@ -294,6 +310,8 @@
       (or (get user->quota-cache user)
           (get user->quota-cache default-user)))))
 
+
+; --- FIX TO USE POSTGRESQL
 (defn create-pool->user->quota-fn
   "Creates a function that takes a pool name, and returns an equivalent of user->quota-fn for each pool"
   [db]
