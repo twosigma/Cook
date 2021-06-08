@@ -25,6 +25,8 @@
   (tu/setup)
   (let [uri "datomic:mem://test"
         conn (restore-fresh-database! uri)]
+    (doseq [pool '["pool-1" "pool-2" "pool-3" "default-pool"] user '["u1" "u2" "u3" "u4" "default"]]
+      (quota/retract-quota! nil user pool "no reason"))
     (quota/set-quota! conn "u1" nil "needs some CPUs" :cpus 20.0 :mem 2.0)
     (quota/set-quota! conn "u1" nil "not enough mem" :cpus 20.0 :mem 10.0)
     (quota/set-quota! conn "u1" nil "too many CPUs" :cpus 5.0)
