@@ -161,7 +161,6 @@
   [db pool-name]
   ; TODO: Cache should be a global cache we refresh every minute and use. See text in cook.quotsshare.
   (let [cache (quotashare/sql-result->quotamap (quotashare/query-quotashares-all))]
-    (println "CACHE: "cache)
     (fn [user] (quotashare/get-quota-pool-user-from-cache cache (defaultify-pool pool-name) user))))
 
 (defn create-pool->user->quota-fn
