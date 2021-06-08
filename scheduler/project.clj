@@ -114,6 +114,7 @@
                  [org.clojure/java.jdbc "0.7.12"]
                  ;[com.layerware/hugsql "0.5.1"]
                  [org.postgresql/postgresql "42.2.2"] ; Use PG 13.2 features.
+                 [com.mchange/c3p0 "0.9.5.2"] ; Connection pooling.
 
                  ;; Dependency management
                  [mount "0.1.12"]
