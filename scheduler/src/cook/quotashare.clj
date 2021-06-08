@@ -58,8 +58,8 @@
 (def default-launch-rate-saved 10000097.)
 (def default-launch-rate-per-minute 600013.)
 
-(def all-mesos-resource-types {:cpus 1000000000 :gpus 1000000 :mem 1000000000000000})
-(def all-quota-resource-types (merge {:count 1000000000 :launch-rate-saved default-launch-rate-saved :launch-rate-per-minute default-launch-rate-per-minute} all-mesos-resource-types))
+(def all-mesos-resource-types {:cpus Double/MAX_VALUE :gpus Double/MAX_VALUE :mem Double/MAX_VALUE})
+(def all-quota-resource-types (merge {:count Integer/MAX_VALUE :launch-rate-saved default-launch-rate-saved :launch-rate-per-minute default-launch-rate-per-minute} all-mesos-resource-types))
 
 (defn make-quotadict-from-val
   [result {:keys [resource_name amount]}]
@@ -71,43 +71,45 @@
       "gpus" :gpus
       "launch-rate-saved" :launch-rate-saved
       "launch-rate-per-minute" :launch-rate-per-minute)
-    amount))
+    (if (= resource_name "count")
+      (int amount)
+      amount)))
 
 ;; A hint to show it all. Dead today. Should be dead tomorrow too.
 (defn split-one-resource-type
   [quota-subset-sql-result]
   "Returns a map from 'pool -> user -> quota-map"
-  (let [split-by-resource-name (fn [key] (reduce make-quotadict-from-val all-quota-resource-types key))
+  (let [split-by-resource-name (fn [key] (reduce make-quotadict-from-val {} key))
         split-by-user-name (fn [key] (net-map key :user_name split-by-resource-name))
         split-by-pool-name (fn [key] (net-map key :pool_name split-by-user-name))]
     (split-by-pool-name quota-subset-sql-result)))
 
 (defn sql-result->quotamap
   [sql-result]
-  (let [split-by-type (group-by "resource_limit_type" sql-result)
-        sqlresult-quota (get "quota" split-by-type)]
+  (let [split-by-type (group-by :resource_limit_type sql-result)
+        sqlresult-quota (get split-by-type "quota")]
     ; TODO: This just cache all of the quota maps and refresh every 30 seconds into a global var for quota and share.
     (split-one-resource-type sqlresult-quota)))
 
 ; TODO: This shouldn't exist. We should just cache all of the quota maps and refresh every 30 seconds.
 (defn load-quota-pool-user
   [pool user]
-  (println "Bar:" (query-quota-pool-user pool user))
   (sql-result->quotamap (query-quota-pool-user pool user)))
 
 ; TODO: This shouldn't exist. We should just cache all of the quota maps and refresh every 30 seconds. This then just delecates to the cache case with the global cache.
 (defn get-quota-dict-pool-user
   [pool-name user]
-  (println "FOO:" (load-quota-pool-user pool-name user))
-  (get-in (sql-result->quotamap (load-quota-pool-user pool-name user)) [pool-name user]))
+  (get-in (load-quota-pool-user pool-name user) [pool-name user]))
 
 ; TODO: This shouldn't exist. We should just cache all of the quota maps and refresh every 30 seconds. This then just delecates to the cache case with the global cache.
 (defn get-quota-pool-user
   [pool-name user]
   (assert pool-name)
-  (if-let [dict (get-quota-dict-pool-user pool-name user)]
-    (merge all-quota-resource-types dict)
-    (merge all-quota-resource-types (get-quota-dict-pool-user pool-name default-user))))
+  ;(println " 1 " all-quota-resource-types " 2 " (get-quota-dict-pool-user pool-name default-user) " 3 " (get-quota-dict-pool-user pool-name user))
+  (merge
+    all-quota-resource-types
+    (or (get-quota-dict-pool-user pool-name default-user) {})
+    (or (get-quota-dict-pool-user pool-name user) {})))
 
 (defn get-quota-dict-pool-user-from-cache
   [cache pool-name user]
@@ -116,13 +118,14 @@
 (defn get-quota-pool-user-from-cache
   [cache pool-name user]
   (assert pool-name)
-  (if-let [dict (get-quota-dict-pool-user-from-cache cache pool-name user)]
-    (merge all-quota-resource-types dict)
-    (merge all-quota-resource-types (get-quota-dict-pool-user-from-cache cache pool-name default-user))))
+  (merge
+    all-quota-resource-types
+    (or (get-quota-dict-pool-user-from-cache cache pool-name default-user) {})
+    (or (get-quota-dict-pool-user-from-cache cache pool-name user) {})))
 
 (defn retract-quota!
   [pool user]
-  (sql/execute! pg-db ["DELETE FROM person WHERE resource_limit_type = 'quota' AND pool_name = ? and user_name = ?; COMMIT" pool user]))
+  (sql/execute! pg-db ["DELETE FROM resource_limits WHERE resource_limit_type = 'quota' AND pool_name = ? and user_name = ?;" pool user]))
 
 (defn quota-key-to-sql-key
   [keyword]
@@ -136,8 +139,7 @@
 
 (defn set-quota!
   [pool user kvs reason]
-  (let [tostore (merge all-quota-resource-types kvs)]
-    (doseq [[key val] tostore]
-      (sql/execute! pg-db ["insert into resource_limits as r (resource_limit_type,pool_name,user_name,resource_name,amount,reason) VALUES (?,?,?,?,?,?) ON CONFLICT (resource_limit_type,pool_name,user_name,resource_name) DO UPDATE set amount=excluded.amount, reason=excluded.reason where r.resource_limit_type = excluded.resource_limit_type AND r.pool_name = excluded.pool_name and r.user_name=excluded.pool_name and r.resource_name = excluded.resource_name;" "quota" pool user (quota-key-to-sql-key key) val reason]))
-    (sql/execute! pg-db ["COMMIT;"])))
+  (doseq [[key val] kvs]
+    (sql/execute! pg-db ["insert into resource_limits as r (resource_limit_type,pool_name,user_name,resource_name,amount,reason) VALUES (?,?,?,?,?,?) ON CONFLICT (resource_limit_type,pool_name,user_name,resource_name) DO UPDATE set amount=excluded.amount, reason=excluded.reason where r.resource_limit_type = excluded.resource_limit_type AND r.pool_name = excluded.pool_name and r.user_name=excluded.pool_name and r.resource_name = excluded.resource_name;" "quota" pool user (quota-key-to-sql-key key) val reason]))
+  (sql/execute! pg-db ["COMMIT;"]))
 

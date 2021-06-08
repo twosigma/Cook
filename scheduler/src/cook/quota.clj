@@ -81,6 +81,10 @@
 (def default-launch-rate-saved 10000097.)
 (def default-launch-rate-per-minute 600013.)
 
+(defn defaultify-pool
+  [pool-name]
+  (or pool-name (config/default-pool) "default-pool"))
+
 (defn get-quota
   "Query a user's pre-defined quota.
 
@@ -88,7 +92,7 @@
    `default-user`. If there is NO `default-user` value for a specific type,
    return Double.MAX_VALUE."
   [db user pool-name]
-  (quotashare/get-quota-pool-user pool-name user))
+  (quotashare/get-quota-pool-user (defaultify-pool pool-name) user))
 
 (defn pool+user->token-key
   "Given a pool name and a user, create a key suitable for the per-user-per-pool ratelimit code"
@@ -135,9 +139,8 @@
 
 (defn retract-quota!
   [conn user pool-name reason]
-  (quotashare/retract-quota! pool-name user))
+  (quotashare/retract-quota! (defaultify-pool pool-name) user))
 
-; FIX THIS TO USE POSTGRESQL.
 (defn set-quota!
   "Set the quota for a user. Note that the type of resource must be in the
    list of (get-all-resource-types)
@@ -148,7 +151,7 @@
    (set-quota! conn \"u1\" \"pool-a\" \"updating quota\" :cpus 20.0)
    etc."
   [conn user pool-name reason & {:as args}]
-  (quotashare/set-quota! pool-name user args reason))
+  (quotashare/set-quota! (defaultify-pool pool-name) user args reason))
 
 (defn create-user->quota-fn
   "Returns a function which will return the quota same as `(get-quota db user)`
@@ -156,12 +159,15 @@
    and returns the `default-user` value if a user is not returned.
    This is usefully if the application will go over ALL users during processing"
   [db pool-name]
+  ; TODO: Cache should be a global cache we refresh every minute and use. See text in cook.quotsshare.
   (let [cache (quotashare/sql-result->quotamap (quotashare/query-quotashares-all))]
-    (fn [user] (quotashare/get-quota-pool-user-from-cache cache pool-name user))))
+    (println "CACHE: "cache)
+    (fn [user] (quotashare/get-quota-pool-user-from-cache cache (defaultify-pool pool-name) user))))
 
 (defn create-pool->user->quota-fn
   "Creates a function that takes a pool name, and returns an equivalent of user->quota-fn for each pool"
   [db]
+  ; TODO: Cache should be a global cache we refresh every minute and use. See text in cook.quotsshare.
   (let [cache (quotashare/sql-result->quotamap (quotashare/query-quotashares-all))]
     (fn [pool-name]
-      (fn [user] (quotashare/get-quota-pool-user-from-cache cache pool-name user)))))
+      (fn [user] (quotashare/get-quota-pool-user-from-cache cache (defaultify-pool pool-name) user)))))
