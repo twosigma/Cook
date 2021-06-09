@@ -15,13 +15,18 @@
 (def default-user "default")
 
 ; Yes, this is a password for the PoC in a one-off test database.
-(def pg-db {:dbtype "postgresql"
-            :dbname "cook_dev"
-            :host "192.168.48.95"
-            :user "twosigma"
-            :password "fsadms8x7dsnmd7"
-            :ssl true
-            :sslfactory "org.postgresql.ssl.NonValidatingFactory"})
+(defn pg-db
+  []
+  (or (:pg-config (config/config))
+      ; TODO: Yes, this is hardcoded, BAD for testing.
+      ; Should be connection pooling and an an in-memory sqlite.
+      {:dbtype "postgresql"
+       :dbname "cook_dev"
+       :host "192.168.48.95"
+       :user "twosigma"
+       :password "fsadms8x7dsnmd7"
+       :ssl true
+       :sslfactory "org.postgresql.ssl.NonValidatingFactory"}))
 
 (defn- net-map
   "A helper function for turning a list of tuples into a set of layered maps.
@@ -46,12 +51,12 @@
 (defn query-quotashares-all
   "Do a query for everything in resource_limits"
   []
-  (sql/query pg-db ["SELECT resource_limit_type, pool_name, user_name, resource_name, amount from resource_limits"]))
+  (sql/query (pg-db) ["SELECT resource_limit_type, pool_name, user_name, resource_name, amount from resource_limits"]))
 
 (defn query-quota-pool-user
   "Do a query for the quota for a specific user and pool in resource_limits"
   [pool user]
-  (sql/query pg-db ["SELECT resource_limit_type, pool_name, user_name, resource_name, amount from resource_limits WHERE resource_limit_type = 'quota' AND pool_name = ? and user_name = ?" pool user]))
+  (sql/query (pg-db) ["SELECT resource_limit_type, pool_name, user_name, resource_name, amount from resource_limits WHERE resource_limit_type = 'quota' AND pool_name = ? and user_name = ?" pool user]))
 
 
 ; Some defaults to be effectively infinity if you don't configure quotas explicitly.
@@ -133,7 +138,7 @@
 (defn retract-quota!
   "Retract quota."
   [pool user]
-  (sql/execute! pg-db ["DELETE FROM resource_limits WHERE resource_limit_type = 'quota' AND pool_name = ? and user_name = ?;" pool user]))
+  (sql/execute! (pg-db) ["DELETE FROM resource_limits WHERE resource_limit_type = 'quota' AND pool_name = ? and user_name = ?;" pool user]))
 
 (defn quota-key-to-sql-key
   "Convert from quota keyword notation to sql resource_type"
@@ -150,10 +155,10 @@
   [pool user kvs reason]
   (doseq [[key val] kvs]
     ; This is a bit overcomplicated to handle upsert logic, Insert or upate.
-    (sql/execute! pg-db ["insert into resource_limits as r (resource_limit_type,pool_name,user_name,resource_name,amount,reason) VALUES (?,?,?,?,?,?) ON CONFLICT (resource_limit_type,pool_name,user_name,resource_name) DO UPDATE set amount=excluded.amount, reason=excluded.reason where r.resource_limit_type = excluded.resource_limit_type AND r.pool_name = excluded.pool_name and r.user_name=excluded.user_name and r.resource_name = excluded.resource_name;" "quota" pool user (quota-key-to-sql-key key) val reason]))
-  (sql/execute! pg-db ["COMMIT;"]))
+    (sql/execute! (pg-db) ["insert into resource_limits as r (resource_limit_type,pool_name,user_name,resource_name,amount,reason) VALUES (?,?,?,?,?,?) ON CONFLICT (resource_limit_type,pool_name,user_name,resource_name) DO UPDATE set amount=excluded.amount, reason=excluded.reason where r.resource_limit_type = excluded.resource_limit_type AND r.pool_name = excluded.pool_name and r.user_name=excluded.user_name and r.resource_name = excluded.resource_name;" "quota" pool user (quota-key-to-sql-key key) val reason]))
+  (sql/execute! (pg-db) ["COMMIT;"]))
 
 (defn truncate!
   "Reset the quota table between unit tests"
   []
-  (sql/execute! pg-db ["delete from resource_limits where true;"]))
+  (sql/execute! (pg-db) ["delete from resource_limits where true;"]))

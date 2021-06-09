@@ -489,6 +489,8 @@
                           (merge {:attribute-name "cook-pool"
                                   :default-pool "no-pool"}
                                  pool-selection)})))
+     :pg-config (fnk [[:config {pg-config nil}]]
+                  pg-config)
      :kubernetes (fnk [[:config {kubernetes {}}]]
                    (let [{:keys [controller-lock-num-shards
                                  telemetry-tags-key-invalid-char-pattern]
