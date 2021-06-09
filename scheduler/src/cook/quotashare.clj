@@ -14,10 +14,10 @@
 
 (def default-user "default")
 
-; Yes, this is a password for the PoC in a one-off test database. 
+; Yes, this is a password for the PoC in a one-off test database.
 (def pg-db {:dbtype "postgresql"
             :dbname "cook_dev"
-            :host "localhost"
+            :host "192.168.48.95"
             :user "twosigma"
             :password "fsadms8x7dsnmd7"
             :ssl true
@@ -156,4 +156,4 @@
 (defn truncate!
   "Reset the quota table between unit tests"
   []
-  (sql/execute! pg-db ["truncate resource_limits"]))
+  (sql/execute! pg-db ["delete from resource_limits where true;"]))
