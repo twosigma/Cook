@@ -63,19 +63,6 @@ if [ "$(docker ps -aq -f name=${NAME})" ]; then
     docker stop ${NAME}
 fi
 
-echo "About to: Check minimesos information"
-$(${DIR}/../../travis/minimesos info | grep MINIMESOS)
-EXIT_CODE=$?
-if [ ${EXIT_CODE} -eq 0 ]
-then
-    ZK=${MINIMESOS_ZOOKEEPER%;}
-    echo "ZK = ${ZK}"
-    echo "MINIMESOS_MASTER_IP = ${MINIMESOS_MASTER_IP}"
-else
-    echo "Could not get ZK URI from minimesos; you may need to restart minimesos"
-    exit ${EXIT_CODE}
-fi
-
 SCHEDULER_DIR="$( dirname ${DIR} )"
 SCHEDULER_EXECUTOR_DIR=${SCHEDULER_DIR}/resources/public
 EXECUTOR_NAME=cook-executor
