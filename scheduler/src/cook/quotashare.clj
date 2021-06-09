@@ -14,6 +14,7 @@
 
 (def default-user "default")
 
+; Yes, this is a password for the PoC in a one-off test database. 
 (def pg-db {:dbtype "postgresql"
             :dbname "cook_dev"
             :host "localhost"
