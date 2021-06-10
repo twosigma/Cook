@@ -162,11 +162,11 @@
                                  com.amazonaws/aws-java-sdk]]
                    ; Similarly, one could use an older version of the
                    ; mesomatic library in environments that require it
-                   [twosigma/mesomatic "1.5.0-r4"]]
+                   [twosigma/mesomatic "1.5.0-r4"]
                    ; Opensource JDBC
                    [org.postgresql/postgresql "42.2.2"] ; Use PG 13.2 features.
                    [com.mchange/c3p0 "0.9.5.2"] ; Connection pooling.
-}
+]}
 
    :uberjar
    {:aot [cook.components]
