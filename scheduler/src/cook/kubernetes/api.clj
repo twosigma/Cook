@@ -943,155 +943,163 @@
       ; QoS, which requires limits for both memory and cpu
       (.putLimitsItem resources "cpu" (double->quantity cpu-limit)))))
 
-;[main-container-attributes {
-;               :computed-mem computed-mem
-;                            :cpus cpus
-;                            :disk-limit disk-limit
-;                            :disk-request disk-request
-;                            :disk-type disk-type
-;                            :gpus gpus
-;                            :gpu-model-requested gpu-model-requested
-;                            :image image
-;                            :port-mapping port-mapping
-;                            :resources resources
-;                            :workdir workdir}
-; volume-mount-attributes {:init-container-workdir-volume-mount-fn init-container-workdir-volume-mount-fn
-;                          :main-container-checkpoint-volume-mounts main-container-checkpoint-volume-mounts
-;                          :scratch-space-volume-mount-fn scratch-space-volume-mount-fn
-;                          :sidecar-workdir-volume-mount-fn sidecar-workdir-volume-mount-fn
-;                          :volume-mounts volume-mounts}
-; environment-attributes {:custom-shell custom-shell
-;                         :main-env-vars main-env-vars
-;                         :pod-name pod-name
-;                         :pod-spec pod-spec
-;                         :pool-name pool-name
-;                         :use-cook-init? use-cook-init?}]
-
-  (defn create-cook-main-container
-    [{:keys [command computed-mem cpus disk-limit disk-request disk-type
-             gpus gpu-model-requested image job port-mapping resources workdir]}
+  (defn add-cook-main-container-to-pod
+    "Create main cook container and add it to the pod"
+    [{:keys [task-id command container task-request pod-supports-cook-init? pod-supports-cook-sidecar?]
+      :or {pod-supports-cook-init? true
+           pod-supports-cook-sidecar? true}} ;destructure pod metadata
+     {:keys [computed-mem workdir]}
      {:keys [init-container-workdir-volume-mount-fn main-container-checkpoint-volume-mounts
              scratch-space-volume-mount-fn sidecar-workdir-volume-mount-fn volume-mounts]}
-     {:keys [custom-shell main-env-vars pod-name pod-spec pool-name use-cook-init?]}
-     container]
+     {:keys [custom-shell main-env-vars pod-spec use-cook-init?]}]
+    (let [{:keys [scalar-requests job resources]} task-request
+          ;; NOTE: The scheduler's adjust-job-resources-for-pool-fn may modify :resources,
+          ;; whereas :scalar-requests always contains the unmodified job resource values.
+          {:strs [cpus]} scalar-requests
+          {:keys [docker]} container
+          {:keys [image port-mapping]} docker
+          pool-name (cached-queries/job->pool-name job)
+          ; gpu count is not stored in scalar-requests because Fenzo does not handle gpus in binpacking
+          gpus (or (:gpus resources) 0)
+          gpu-model-requested (constraints/job->gpu-model-requested gpus job pool-name)
+          ;; if disk config for pool has enable-constraint? set to true, add disk info to the job
+          enable-disk-constraint? (regexp-tools/match-based-on-pool-name (config/disk) pool-name :enable-constraint? :default-value false)
+          ;; if user did not specify disk request, use default on pool
+          disk-request (when enable-disk-constraint?
+                         (constraints/job-resources->disk-request resources pool-name))
+          disk-limit (when enable-disk-constraint? (-> resources :disk :limit))
+          ;; if user did not specify disk type, use default on pool
+          disk-type (when enable-disk-constraint? (constraints/job-resources->disk-type resources pool-name))
 
-    (.setName container cook-container-name-for-job)
-    (.setCommand container
-                 (conj (or (when use-cook-init? custom-shell) default-shell)
-                       (:value command)))
-    (.setEnv container main-env-vars)
-    (.setImage container image)
-    (doseq [{:keys [container-port host-port protocol]} port-mapping]
-      (when container-port
-        (let [port (V1ContainerPort.)]
-          (.containerPort port (int container-port))
-          (when host-port
-            (.hostPort port (int host-port)))
-          (when protocol
-            (.protocol port protocol))
-          (.addPortsItem container port))))
+          checkpoint (calculate-effective-checkpointing-config job task-id)
+          job-submit-time (tools/job->submit-time job)
+          pod-name (str task-id)
+          image (if (synthetic-pod? pod-name)
+                  image
+                  (calculate-effective-image (config/kubernetes) job-submit-time image checkpoint task-id))
 
-    ; allocate a TTY to support tools that need to read from stdin
-    (.setTty container true)
-    (.setStdin container true)
-
-    ; Don't add memory limit if user sets job label to allow memory usage above request to "true"
-    (let [allow-memory-usage-above-request (some->> (:memory-limit-job-label-name (config/kubernetes))
-                                             (get (tools/job-ent->label job))
-                                             clojure.string/lower-case
-                                             (= "true"))]
-      (set-mem-cpu-resources resources computed-mem (when-not allow-memory-usage-above-request computed-mem) cpus cpus))
-
-    (when (pos? gpus)
-      (.putLimitsItem resources "nvidia.com/gpu" (double->quantity gpus))
-      (.putRequestsItem resources "nvidia.com/gpu" (double->quantity gpus))
-      (add-node-selector pod-spec "cloud.google.com/gke-accelerator" gpu-model-requested)
-      ; GKE nodes with GPUs have gpu-count label, so synthetic pods need a matching node selector
-      (add-node-selector pod-spec "gpu-count" (-> gpus int str)))
-    (when disk-request
-      ; do not add disk request/limit to synthetic pod yaml because GKE CA will not scale up from 0 if unschedulable pods
-      ; require ephemeral-storage: https://github.com/kubernetes/autoscaler/issues/1869
-      (when-not (synthetic-pod? pod-name)
-        (.putRequestsItem resources "ephemeral-storage" (double->quantity (* constraints/disk-multiplier disk-request)))
-        ; by default, do not set disk-limit
-        (when disk-limit
-          (.putLimitsItem resources "ephemeral-storage" (double->quantity (* constraints/disk-multiplier disk-limit)))))
-      (add-node-selector pod-spec (pool->disk-type-label-name pool-name) disk-type))
-    (.setResources container resources)
-    (.setVolumeMounts container (filterv some? (conj (concat volume-mounts main-container-checkpoint-volume-mounts)
-                                                     (init-container-workdir-volume-mount-fn true)
-                                                     (scratch-space-volume-mount-fn false)
-                                                     (sidecar-workdir-volume-mount-fn true))))
-    (.setWorkingDir container workdir)
-    container)
-
-  (defn create-cook-init
-    "Create Cook init container and add it to the pod"
-    [{:keys [computed-mem cpus init-container init-container-checkpoint-volume-mounts init-container-workdir init-container-workdir-volume-mount-fn]}
-     {:keys [sidecar use-cook-sidecar?]}
-     {:keys [main-env-vars scratch-space-volume-mount-fn]}
-     container]
-    (let [
-          {:keys [command image]} init-container
-          get-resource-requirements-fn (fn [fieldname] (if use-cook-sidecar?
-                                                         (get-in sidecar [:resource-requirements fieldname])
-                                                         0))
-          total-memory-request (add-as-decimals computed-mem (get-resource-requirements-fn :memory-request))
-          total-memory-limit (add-as-decimals computed-mem (get-resource-requirements-fn :memory-limit))
-          total-cpu-request (add-as-decimals cpus (get-resource-requirements-fn :cpu-request))
-          total-cpu-limit (add-as-decimals cpus (get-resource-requirements-fn :cpu-limit))
+          container (V1Container.)
           resources (V1ResourceRequirements.)]
-      ; container
-      (.setName container cook-init-container-name)
-      (.setImage container image)
-      (.setCommand container command)
-      (.setWorkingDir container init-container-workdir)
+      (.setName container cook-container-name-for-job)
+      (.setCommand container
+                   (conj (or (when use-cook-init? custom-shell) default-shell)
+                         (:value command)))
       (.setEnv container main-env-vars)
-      (.setVolumeMounts container (filterv some? (concat [(init-container-workdir-volume-mount-fn false)
-                                                          (scratch-space-volume-mount-fn false)]
-                                                         init-container-checkpoint-volume-mounts)))
-      (set-mem-cpu-resources resources total-memory-request total-memory-limit total-cpu-request total-cpu-limit)
-      (.setResources container resources)
-      container))
-
-  (defn create-cook-sidecar
-    "Create Cook Sidecar container and add it to the pod"
-    [{:keys [sidecar sidecar-workdir sidecar-workdir-volume-mount-fn]}
-     {:keys [main-env-vars sandbox-dir sandbox-volume-mount-fn]}
-     container]
-
-    (let [{:keys [command health-check-endpoint image port resource-requirements]} sidecar
-          {:keys [cpu-request cpu-limit memory-request memory-limit]} resource-requirements
-          resources (V1ResourceRequirements.)]
-      ; container
-      (.setName container cook-container-name-for-file-server)
       (.setImage container image)
-      (.setCommand container (conj command (str port)))
-      (.setWorkingDir container sidecar-workdir)
-      (.setPorts container [(.containerPort (V1ContainerPort.) (int port))])
+      (doseq [{:keys [container-port host-port protocol]} port-mapping]
+        (when container-port
+          (let [port (V1ContainerPort.)]
+            (.containerPort port (int container-port))
+            (when host-port
+              (.hostPort port (int host-port)))
+            (when protocol
+              (.protocol port protocol))
+            (.addPortsItem container port))))
 
-      (.setEnv container (conj main-env-vars
-                               ;; DEPRECATED - sidecar should use COOK_SANDBOX instead.
-                               ;; Will remove this environment variable in a future release.
-                               (make-env "COOK_WORKDIR" sandbox-dir)))
+      ; allocate a TTY to support tools that need to read from stdin
+      (.setTty container true)
+      (.setStdin container true)
 
-      ; optionally enable http-based readiness probe
-      (when health-check-endpoint
-        (let [http-get-action (doto (V1HTTPGetAction.)
-                                (.setPort (-> port int IntOrString.))
-                                (.setPath health-check-endpoint))
-              readiness-probe (doto (V1Probe.)
-                                (.setHttpGet http-get-action))]
-          (.setReadinessProbe container readiness-probe)))
+      ; Don't add memory limit if user sets job label to allow memory usage above request to "true"
+      (let [allow-memory-usage-above-request (some->> (:memory-limit-job-label-name (config/kubernetes))
+                                               (get (tools/job-ent->label job))
+                                               clojure.string/lower-case
+                                               (= "true"))]
+        (set-mem-cpu-resources resources computed-mem (when-not allow-memory-usage-above-request computed-mem) cpus cpus))
 
-      ; resources
-      (set-mem-cpu-resources resources memory-request memory-limit cpu-request cpu-limit)
+      (when (pos? gpus)
+        (.putLimitsItem resources "nvidia.com/gpu" (double->quantity gpus))
+        (.putRequestsItem resources "nvidia.com/gpu" (double->quantity gpus))
+        (add-node-selector pod-spec "cloud.google.com/gke-accelerator" gpu-model-requested)
+        ; GKE nodes with GPUs have gpu-count label, so synthetic pods need a matching node selector
+        (add-node-selector pod-spec "gpu-count" (-> gpus int str)))
+      (when disk-request
+        ; do not add disk request/limit to synthetic pod yaml because GKE CA will not scale up from 0 if unschedulable pods
+        ; require ephemeral-storage: https://github.com/kubernetes/autoscaler/issues/1869
+        (when-not (synthetic-pod? pod-name)
+          (.putRequestsItem resources "ephemeral-storage" (double->quantity (* constraints/disk-multiplier disk-request)))
+          ; by default, do not set disk-limit
+          (when disk-limit
+            (.putLimitsItem resources "ephemeral-storage" (double->quantity (* constraints/disk-multiplier disk-limit)))))
+        (add-node-selector pod-spec (pool->disk-type-label-name pool-name) disk-type))
       (.setResources container resources)
+      (.setVolumeMounts container (filterv some? (conj (concat volume-mounts main-container-checkpoint-volume-mounts)
+                                                       (init-container-workdir-volume-mount-fn true)
+                                                       (scratch-space-volume-mount-fn false)
+                                                       (sidecar-workdir-volume-mount-fn true))))
+      (.setWorkingDir container workdir)
 
-      (.setVolumeMounts container [(sandbox-volume-mount-fn true) (sidecar-workdir-volume-mount-fn false)])
-      container)) ;is there a concept of like, returning container from this function then adding it to the pod-spec and setting the volume mounts after?
+      (.addContainersItem pod-spec container)))
+
+  (defn add-cook-init-to-pod
+    "Create Cook init container and add it to the pod"
+    [{:keys [computed-mem cpus init-container init-container-workdir]}
+     {:keys [sidecar use-cook-sidecar?]}
+     {:keys [init-container-checkpoint-volume-mounts init-container-workdir-volume-mount-fn scratch-space-volume-mount-fn]}
+     main-env-vars pod-spec]
+
+    (when-let [{:keys [command image]} init-container]
+      (let [container (V1Container.)
+            get-resource-requirements-fn (fn [fieldname] (if use-cook-sidecar?
+                                                           (get-in sidecar [:resource-requirements fieldname])
+                                                           0))
+            total-memory-request (add-as-decimals computed-mem (get-resource-requirements-fn :memory-request))
+            total-memory-limit (add-as-decimals computed-mem (get-resource-requirements-fn :memory-limit))
+            total-cpu-request (add-as-decimals cpus (get-resource-requirements-fn :cpu-request))
+            total-cpu-limit (add-as-decimals cpus (get-resource-requirements-fn :cpu-limit))
+            resources (V1ResourceRequirements.)]
+        ; container
+        (.setName container cook-init-container-name)
+        (.setImage container image)
+        (.setCommand container command)
+        (.setWorkingDir container init-container-workdir)
+        (.setEnv container main-env-vars)
+        (.setVolumeMounts container (filterv some? (concat [(init-container-workdir-volume-mount-fn false)
+                                                            (scratch-space-volume-mount-fn false)]
+                                                           init-container-checkpoint-volume-mounts)))
+        (set-mem-cpu-resources resources total-memory-request total-memory-limit total-cpu-request total-cpu-limit)
+        (.setResources container resources)
+        (.addInitContainersItem pod-spec container))))
+
+  (defn add-cook-sidecar-to-pod
+    "Create Cook Sidecar container and add it to the pod"
+    [{:keys [sidecar sidecar-workdir]}
+     {:keys [sandbox-volume-mount-fn sidecar-workdir-volume-mount-fn]}
+     main-env-vars sandbox-dir pod-spec]
+
+    (when-let [{:keys [command health-check-endpoint image port resource-requirements]} sidecar]
+      (let [{:keys [cpu-request cpu-limit memory-request memory-limit]} resource-requirements
+            container (V1Container.)
+            resources (V1ResourceRequirements.)]
+        ; container
+        (.setName container cook-container-name-for-file-server)
+        (.setImage container image)
+        (.setCommand container (conj command (str port)))
+        (.setWorkingDir container sidecar-workdir)
+        (.setPorts container [(.containerPort (V1ContainerPort.) (int port))])
+
+        (.setEnv container (conj main-env-vars
+                                 ;; DEPRECATED - sidecar should use COOK_SANDBOX instead.
+                                 ;; Will remove this environment variable in a future release.
+                                 (make-env "COOK_WORKDIR" sandbox-dir)))
+
+        ; optionally enable http-based readiness probe
+        (when health-check-endpoint
+          (let [http-get-action (doto (V1HTTPGetAction.)
+                                  (.setPort (-> port int IntOrString.))
+                                  (.setPath health-check-endpoint))
+                readiness-probe (doto (V1Probe.)
+                                  (.setHttpGet http-get-action))]
+            (.setReadinessProbe container readiness-probe)))
+
+        ; resources
+        (set-mem-cpu-resources resources memory-request memory-limit cpu-request cpu-limit)
+        (.setResources container resources)
+
+        (.setVolumeMounts container [(sandbox-volume-mount-fn true) (sidecar-workdir-volume-mount-fn false)])
+        (.addContainersItem pod-spec container))))
+
 ;
-
   (defn ^V1Pod task-metadata->pod
     "Given a task-request and other data generate the kubernetes V1Pod to launch that task."
     [namespace {:keys [cook-pool-taint-name cook-pool-taint-prefix cook-pool-label-name] compute-cluster-name :name}
@@ -1099,32 +1107,20 @@
              pod-labels pod-priority-class pod-supports-cook-init? pod-supports-cook-sidecar?]
       :or {pod-priority-class cook-job-pod-priority-class
            pod-supports-cook-init? true
-           pod-supports-cook-sidecar? true}}]
-    (let [{:keys [scalar-requests job resources]} task-request
+           pod-supports-cook-sidecar? true}
+      :as task-metadata}]
+    (let [{:keys [scalar-requests job]} task-request
           ;; NOTE: The scheduler's adjust-job-resources-for-pool-fn may modify :resources,
           ;; whereas :scalar-requests always contains the unmodified job resource values.
           {:strs [mem cpus]} scalar-requests
           {:keys [docker volumes]} container
-          {:keys [image parameters port-mapping]} docker
+          {:keys [parameters]} docker
           {:keys [environment]} command
           pool-name (cached-queries/job->pool-name job)
-          ; gpu count is not stored in scalar-requests because Fenzo does not handle gpus in binpacking
-          gpus (or (:gpus resources) 0)
-          gpu-model-requested (constraints/job->gpu-model-requested gpus job pool-name)
-          ; if disk config for pool has enable-constraint? set to true, add disk info to the job
-          enable-disk-constraint? (regexp-tools/match-based-on-pool-name (config/disk) pool-name :enable-constraint? :default-value false)
-          ; if user did not specify disk request, use default on pool
-          disk-request (when enable-disk-constraint?
-                         (constraints/job-resources->disk-request resources pool-name))
-          disk-limit (when enable-disk-constraint? (-> resources :disk :limit))
-          ; if user did not specify disk type, use default on pool
-          disk-type (when enable-disk-constraint? (constraints/job-resources->disk-type resources pool-name))
 
           pod (V1Pod.)
           pod-spec (V1PodSpec.)
           metadata (V1ObjectMeta.)
-          container (V1Container.)
-          resources (V1ResourceRequirements.)
           pod-labels (merge (job->pod-labels job) pod-labels)
           labels (assoc pod-labels cook-pod-label compute-cluster-name)
           security-context (make-security-context parameters (:user command))
@@ -1137,11 +1133,7 @@
                   telemetry-tags-key-value-separator telemetry-tags-var-name telemetry-version-var-name]}
           (config/kubernetes)
           checkpoint (calculate-effective-checkpointing-config job task-id)
-          job-submit-time (tools/job->submit-time job)
           pod-name (str task-id)
-          image (if (synthetic-pod? pod-name)
-                  image
-                  (calculate-effective-image (config/kubernetes) job-submit-time image checkpoint task-id))
           checkpoint-memory-overhead (:memory-overhead checkpoint)
           use-cook-init? (and init-container pod-supports-cook-init?)
           use-cook-sidecar? (and sidecar pod-supports-cook-sidecar?)
@@ -1151,7 +1143,7 @@
           init-container-workdir-volume-mount-fn (partial make-volume-mount
                                                           init-container-workdir-volume
                                                           init-container-workdir)
-          ;{:keys [sidecar-workdir sidecar-workdir-volume sidecar-workdir-volume-mount-fn]} (create-sidecar use-cook-sidecar?)
+
           sidecar-workdir "/mnt/sidecar"
           sidecar-workdir-volume (when use-cook-sidecar? (make-empty-volume "cook-sidecar-workdir-volume"))
           sidecar-workdir-volume-mount-fn (partial make-volume-mount sidecar-workdir-volume sidecar-workdir)
@@ -1222,7 +1214,17 @@
                           (cons (doto
                                   (V1EnvVar.)
                                   (.setName telemetry-agent-host-var-name)
-                                  (.valueFrom hostIpEnvVarSource))))]
+                                  (.valueFrom hostIpEnvVarSource))))
+          sidecar-attributes {:sidecar sidecar
+                              :use-cook-sidecar? use-cook-sidecar?
+                              :sidecar-workdir sidecar-workdir}
+          volume-mount-map {:main-container-checkpoint-volume-mounts main-container-checkpoint-volume-mounts
+                            :init-container-checkpoint-volume-mounts init-container-checkpoint-volume-mounts
+                            :init-container-workdir-volume-mount-fn init-container-workdir-volume-mount-fn
+                            :sidecar-workdir-volume-mount-fn sidecar-workdir-volume-mount-fn
+                            :scratch-space-volume-mount-fn scratch-space-volume-mount-fn
+                            :sandbox-volume-mount-fn sandbox-volume-mount-fn
+                            :volume-mounts volume-mounts}]
 
       ; metadata
       (.setName metadata pod-name)
@@ -1233,62 +1235,29 @@
 
       (.setHostnameAsFQDN pod-spec false)
 
-      (let [main-container-attributes {:command command
-                                       :computed-mem computed-mem
-                                       :cpus cpus
-                                       :disk-limit disk-limit
-                                       :disk-request disk-request
-                                       :disk-type disk-type
-                                       :gpus gpus
-                                       :gpu-model-requested gpu-model-requested
-                                       :image image
-                                       :job job
-                                       :port-mapping port-mapping
-                                       :resources resources
+      (let [main-container-attributes {:computed-mem computed-mem
                                        :workdir workdir}
-            volume-mount-attributes {:init-container-workdir-volume-mount-fn init-container-workdir-volume-mount-fn
-                                     :main-container-checkpoint-volume-mounts main-container-checkpoint-volume-mounts
-                                     :scratch-space-volume-mount-fn scratch-space-volume-mount-fn
-                                     :sidecar-workdir-volume-mount-fn sidecar-workdir-volume-mount-fn
-                                     :volume-mounts volume-mounts}
-            environment-attributes {:custom-shell custom-shell
+            main-container-environment-attributes {:custom-shell custom-shell
                                     :main-env-vars main-env-vars
                                     :pod-name pod-name
                                     :pod-spec pod-spec
                                     :pool-name pool-name
                                     :use-cook-init? use-cook-init?}]
 
-        (.addContainersItem pod-spec (create-cook-main-container main-container-attributes volume-mount-attributes environment-attributes container)))
+        (add-cook-main-container-to-pod task-metadata main-container-attributes volume-mount-map main-container-environment-attributes))
 
        ;init container
       (when use-cook-init?
-        (when-let [{:keys [command image]} init-container]
-          (let [container (V1Container.)
-                init-container-attributes {:computed-mem computed-mem
-                                           :cpus cpus
-                                           :init-container init-container
-                                           :init-container-checkpoint-volume-mounts init-container-checkpoint-volume-mounts
-                                           :init-container-workdir init-container-workdir
-                                           :init-container-workdir-volume-mount-fn init-container-workdir-volume-mount-fn
-                                           }
-                sidecar-attributes {:sidecar sidecar
-                                    :use-cook-sidecar? use-cook-sidecar?}
-                environment-attributes {:main-env-vars main-env-vars
-                                        :scratch-space-volume-mount-fn scratch-space-volume-mount-fn}]
-
-            (.addInitContainersItem pod-spec (create-cook-init init-container-attributes sidecar-attributes environment-attributes container)))))
+        (let [init-container-attributes {:computed-mem computed-mem
+                                         :cpus cpus ; could pass in task-request just to recalculate cpus but it feels unneccessary
+                                         :init-container init-container
+                                         :init-container-workdir init-container-workdir
+                                         }]
+          (add-cook-init-to-pod init-container-attributes sidecar-attributes volume-mount-map main-env-vars pod-spec)))
 
       ; sandbox file server container
       (when use-cook-sidecar?
-        (when-let [{:keys [command health-check-endpoint image port resource-requirements]} sidecar]
-          (let [container (V1Container.)
-                sidecar-attributes {:sidecar sidecar
-                                    :sidecar-workdir sidecar-workdir
-                                    :sidecar-workdir-volume-mount-fn sidecar-workdir-volume-mount-fn}
-                environment-attributes {:main-env-vars main-env-vars
-                                        :sandbox-dir sandbox-dir
-                                        :sandbox-volume-mount-fn sandbox-volume-mount-fn}]
-            (.addContainersItem pod-spec (create-cook-sidecar sidecar-attributes environment-attributes container)))))
+          (add-cook-sidecar-to-pod sidecar-attributes volume-mount-map main-env-vars sandbox-dir pod-spec))
 
       ; We're either using the hostname (in the case of users' job pods)
       ; or pod-hostnames-to-avoid (in the case of synthetic pods), but not both.
