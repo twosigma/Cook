@@ -152,6 +152,13 @@
                                      @(:pool-name->fenzo-state-atom compute-cluster)
                                      mesos-status))
 
+(defn write-status-to-cook-passport
+  "Helper function for writing job status to cook passport"
+  [compute-cluster
+   {:keys [task-id state reason]}]
+  (let [job-id (task-id :value)]
+    (log/info "[passport] In" compute-cluster ", Job" job-id "has state" state "for reason" reason)))
+
 (defn handle-pod-submission-failed
   "Marks the corresponding job instance as failed in the database and
   returns the `completed` cook expected state"
