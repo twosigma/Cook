@@ -2775,3 +2775,20 @@
           (let [{:keys [status] :as response} (handler request)]
             (is (= 422 status) (-> response response->body-data str))
             (is (= (str "Compute cluster with name " name " does not exist") (-> response response->body-data (get-in ["error" "message"]))))))))))
+
+(deftest test-make-job-txn
+  (setup)
+  (testing "job schema type hint"
+    (is (api/make-job-txn {:job {}} nil nil))
+    (is (thrown? ExceptionInfo (s/with-fn-validation (api/make-job-txn {:job {}} nil nil))))
+    (let [valid-job
+          {:command "true"
+           :cpus 0.1
+           :max-retries 2
+           :max-runtime 1
+           :mem 128.
+           :name "test-job"
+           :priority 100
+           :user "test-user"
+           :uuid (UUID/randomUUID)}]
+      (is (s/with-fn-validation (api/make-job-txn {:job valid-job} nil nil))))))

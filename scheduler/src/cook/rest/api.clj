@@ -741,7 +741,7 @@
 
 (s/defn make-job-txn
   "Creates the necessary txn data to insert a job into the database"
-  [{:keys [pool-name pool-name-from-submission]} commit-latch-id db job :- Job]
+  [{:keys [job pool-name pool-name-from-submission]} :- {:job Job} commit-latch-id db]
   (let [{:keys [uuid command max-retries max-runtime expected-runtime priority cpus mem disk gpus
                 user name ports uris env labels container group application disable-mea-culpa-retries
                 constraints executor progress-output-file progress-regex-string datasets checkpoint]
@@ -879,6 +879,11 @@
                     executor (assoc :job/executor executor)
                     progress-output-file (assoc :job/progress-output-file progress-output-file)
                     progress-regex-string (assoc :job/progress-regex-string progress-regex-string)
+                    ; We only want to associate the pool with the job if the job submission
+                    ; explicity specified a pool name. In other words, if the user did not specify
+                    ; a pool in the submission, we want the job's pool to be nil. The reason we
+                    ; lookup the pool db id using pool-name (and not pool-name-from-submission) is
+                    ; that a JobRouting plugin can translate a routing pool name to a real pool name.
                     pool-name-from-submission
                     (assoc :job/pool
                            (lookup-cache-pool-name!
@@ -1980,8 +1985,8 @@
           [commit-latch-id commit-latch] (make-commit-latch)
           db (d/db conn)
           job-txns (mapcat
-                     (fn [{:keys [job] :as job-pool-name-map}]
-                       (make-job-txn job-pool-name-map commit-latch-id db job))
+                     (fn [job-pool-name-map]
+                       (make-job-txn job-pool-name-map commit-latch-id db))
                      job-pool-name-maps)
           job-uuids->dbids (->> job-txns
                                 ;; Not all txns are for the top level job
@@ -2158,12 +2163,20 @@
                          [true {::error (str "Must supply at least one job or group to start."
                                              "Are you specifying that this is application/json?")}]
 
+                         ; We reject jobs unless one of the following is true:
+                         ; - the submission did not explicitly specify a pool name
+                         ; - the submission specified a job-routing pool name
+                         ; - the submission specified a pool name that exists and
+                         ;   that is accepting submissions
+
                          :let [db (db conn)
                                skip-pool-name-checks?
                                (or (not pool-name)
                                    (job-routing-pool-name? pool-name))
                                pool-exists?
                                (or skip-pool-name-checks?
+                                   ; Values cached in pool-name->exists?-cache
+                                   ; are always either true or false
                                    (lookup-cache-pool-name!
                                      caches/pool-name->exists?-cache
                                      db
@@ -2174,6 +2187,8 @@
 
                          :let [pool-accepts-submissions?
                                (or skip-pool-name-checks?
+                                   ; Values cached in pool-name->accepts-submissions?-cache
+                                   ; are always either true or false
                                    (lookup-cache-pool-name!
                                      caches/pool-name->accepts-submissions?-cache
                                      db
