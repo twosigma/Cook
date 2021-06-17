@@ -1945,6 +1945,8 @@
   [conn {:keys [::groups ::jobs ::pool] :as ctx}]
   (try
     (log/info "Submitting jobs through raw api:" (map #(dissoc % :command) jobs))
+    (doseq [job jobs]
+      (log/info "[passport] Submitting job from raw api:" (dissoc job :command)))
     (let [group-uuids (set (map :uuid groups))
           group-asserts (map (fn [guuid] [:entity/ensure-not-exists [:group/uuid guuid]])
                              group-uuids)
