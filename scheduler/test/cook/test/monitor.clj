@@ -56,7 +56,7 @@
     (is (= 0 (counter ["hungry" "users"])))
     (is (= 0 (counter ["satisfied" "users"])))
 
-    (testutil/create-jobs! conn {::api/jobs [job1 job2]})
+    (testutil/create-jobs! conn {::api/job-pool-name-maps [{:job job1} {:job job2}]})
 
     (monitor/set-stats-counters! (db conn) stats-atom
                                  (queries/get-pending-job-ents (db conn))
@@ -218,7 +218,7 @@
     (is (= 0 (counter ["hungry" "users"])))
     (is (= 0 (counter ["satisfied" "users"])))
 
-    (testutil/create-jobs! conn {::api/jobs [job3]})
+    (testutil/create-jobs! conn {::api/job-pool-name-maps [{:job job3}]})
     (with-redefs [share/get-share (constantly {:cpus 0 :mem 0})]
 
       (monitor/set-stats-counters! (db conn) stats-atom

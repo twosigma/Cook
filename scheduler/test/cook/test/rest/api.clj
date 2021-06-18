@@ -1475,7 +1475,7 @@
           (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
                 {:keys [uuid] :as job} (minimal-job)]
             (is (= {::api/results (str "submitted jobs " uuid)}
-                   (testutil/create-jobs! conn {::api/jobs [job]})))
+                   (testutil/create-jobs! conn {::api/job-pool-name-maps [{:job job}]})))
             (is (= (expected-job-map job)
                    (dissoc (api/fetch-job-map (db conn) uuid) :submit_time)))))
 
@@ -1483,10 +1483,10 @@
           (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
                 {:keys [uuid] :as job} (minimal-job)]
             (is (= {::api/results (str "submitted jobs " uuid)}
-                   (testutil/create-jobs! conn {::api/jobs [job]})))
+                   (testutil/create-jobs! conn {::api/job-pool-name-maps [{:job job}]})))
             (is (thrown-with-msg? ExecutionException
                                   (re-pattern (str ".*:job/uuid.*" uuid ".*already exists"))
-                                  (testutil/create-jobs! conn {::api/jobs [job]})))))
+                                  (testutil/create-jobs! conn {::api/job-pool-name-maps [{:job job}]})))))
 
         (testing "should work with datasets"
           (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
@@ -1498,7 +1498,7 @@
                                                                                        {"begin" "20180301"
                                                                                         "end" "20180401"}}}})]
             (is (= {::api/results (str "submitted jobs " uuid)}
-                   (testutil/create-jobs! conn {::api/jobs [job]})))
+                   (testutil/create-jobs! conn {::api/job-pool-name-maps [{:job job}]})))
             (is (= (expected-job-map job)
                    (dissoc (api/fetch-job-map (db conn) uuid) :submit_time)))))
 
@@ -1507,7 +1507,7 @@
                 application {:name "foo-app", :version "0.1.0"}
                 {:keys [uuid] :as job} (assoc (minimal-job) :application application)]
             (is (= {::api/results (str "submitted jobs " uuid)}
-                   (testutil/create-jobs! conn {::api/jobs [job]})))
+                   (testutil/create-jobs! conn {::api/job-pool-name-maps [{:job job}]})))
             (is (= (expected-job-map job)
                    (dissoc (api/fetch-job-map (db conn) uuid) :submit_time)))))
 
@@ -1516,7 +1516,7 @@
                 checkpoint {:mode "auto"}
                 {:keys [uuid] :as job} (assoc (minimal-job) :checkpoint checkpoint)]
             (is (= {::api/results (str "submitted jobs " uuid)}
-                   (testutil/create-jobs! conn {::api/jobs [job]})))
+                   (testutil/create-jobs! conn {::api/job-pool-name-maps [{:job job}]})))
             (is (= (expected-job-map job)
                    (dissoc (api/fetch-job-map (db conn) uuid) :submit_time)))))
 
@@ -1527,7 +1527,7 @@
                             :periodic-options {:period-sec 777}}
                 {:keys [uuid] :as job} (assoc (minimal-job) :checkpoint checkpoint)]
             (is (= {::api/results (str "submitted jobs " uuid)}
-                   (testutil/create-jobs! conn {::api/jobs [job]})))
+                   (testutil/create-jobs! conn {::api/job-pool-name-maps [{:job job}]})))
             (is (= (expected-job-map job)
                    (dissoc (api/fetch-job-map (db conn) uuid) :submit_time)))))
 
@@ -1535,7 +1535,7 @@
           (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
                 {:keys [uuid] :as job} (assoc (minimal-job) :expected-runtime 1)]
             (is (= {::api/results (str "submitted jobs " uuid)}
-                   (testutil/create-jobs! conn {::api/jobs [job]})))
+                   (testutil/create-jobs! conn {::api/job-pool-name-maps [{:job job}]})))
             (is (= (expected-job-map job)
                    (-> (api/fetch-job-map (db conn) uuid)
                        (dissoc :submit_time))))))
@@ -1544,7 +1544,7 @@
           (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
                 {:keys [uuid] :as job} (assoc (minimal-job) :disable-mea-culpa-retries true)]
             (is (= {::api/results (str "submitted jobs " uuid)}
-                   (testutil/create-jobs! conn {::api/jobs [job]})))
+                   (testutil/create-jobs! conn {::api/job-pool-name-maps [{:job job}]})))
             (is (= (expected-job-map job)
                    (-> (api/fetch-job-map (db conn) uuid)
                        (dissoc :submit_time))))))
@@ -1553,7 +1553,7 @@
           (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
                 {:keys [uuid] :as job} (assoc (minimal-job) :executor "cook")]
             (is (= {::api/results (str "submitted jobs " uuid)}
-                   (testutil/create-jobs! conn {::api/jobs [job]})))
+                   (testutil/create-jobs! conn {::api/job-pool-name-maps [{:job job}]})))
             (is (= (expected-job-map job)
                    (-> (api/fetch-job-map (db conn) uuid)
                        (dissoc :submit_time)
@@ -1563,7 +1563,7 @@
           (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
                 {:keys [uuid] :as job} (assoc (minimal-job) :executor "mesos")]
             (is (= {::api/results (str "submitted jobs " uuid)}
-                   (testutil/create-jobs! conn {::api/jobs [job]})))
+                   (testutil/create-jobs! conn {::api/job-pool-name-maps [{:job job}]})))
             (is (= (expected-job-map job)
                    (-> (api/fetch-job-map (db conn) uuid)
                        (dissoc :submit_time)
@@ -1573,7 +1573,7 @@
           (let [conn (restore-fresh-database! "datomic:mem://data-locality-submit")
                 {:keys [uuid] :as job} (assoc (minimal-job) :supports_data_locality true)]
             (is (= {::api/results (str "submitted jobs " uuid)}
-                   (testutil/create-jobs! conn {::api/jobs [job]})))
+                   (testutil/create-jobs! conn {::api/job-pool-name-maps [{:job job}]})))
             (is (= (expected-job-map job)
                    (-> (api/fetch-job-map (db conn) uuid)
                        (dissoc :submit_time))))))
@@ -1591,7 +1591,7 @@
                       parameters []
                       {:keys [uuid] :as job} (assoc-in basic-docker-job [:container :docker :parameters] parameters)]
                   (is (= {::api/results (str "submitted jobs " uuid)}
-                         (testutil/create-jobs! conn {::api/jobs [job]})))
+                         (testutil/create-jobs! conn {::api/job-pool-name-maps [{:job job}]})))
                   (is (= (assoc (expected-job-map job)
                            :container (assoc-in docker-container
                                                 [:docker :parameters]
@@ -1606,7 +1606,7 @@
                   (with-redefs [util/retrieve-system-id (fn [& args] (str/join "" (reverse args)))]
                     (is (thrown-with-msg? ExceptionInfo
                                           #"user parameter must match uid and gid of user submitting"
-                                          (testutil/create-jobs! conn {::api/jobs [job]}))))))
+                                          (testutil/create-jobs! conn {::api/job-pool-name-maps [{:job job}]}))))))
 
               (testing "user parameter provided"
                 (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
@@ -1615,7 +1615,7 @@
                                   {:key "user" :value "1234:2345"}]
                       {:keys [uuid] :as job} (assoc-in basic-docker-job [:container :docker :parameters] parameters)]
                   (is (= {::api/results (str "submitted jobs " uuid)}
-                         (testutil/create-jobs! conn {::api/jobs [job]})))
+                         (testutil/create-jobs! conn {::api/job-pool-name-maps [{:job job}]})))
                   (is (= (assoc (expected-job-map job)
                            :container (assoc-in docker-container
                                                 [:docker :parameters]
@@ -1632,7 +1632,7 @@
                                   {:key "tee" :value "tie"}]
                       {:keys [uuid] :as job} (assoc-in basic-docker-job [:container :docker :parameters] parameters)]
                   (is (= {::api/results (str "submitted jobs " uuid)}
-                         (testutil/create-jobs! conn {::api/jobs [job]})))
+                         (testutil/create-jobs! conn {::api/job-pool-name-maps [{:job job}]})))
                   (is (= (assoc (expected-job-map job)
                            :container (assoc-in docker-container
                                                 [:docker :parameters]
@@ -1651,7 +1651,7 @@
         (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
               {:keys [uuid] :as job} (minimal-job)]
           (is (= {::api/results (str "submitted jobs " uuid)}
-                 (testutil/create-jobs! conn {::api/jobs [job]})))
+                 (testutil/create-jobs! conn {::api/job-pool-name-maps [{:job job}]})))
           (is (= (assoc (expected-job-map job) :framework_id "unsupported")
                  (dissoc (api/fetch-job-map (db conn) uuid) :submit_time))))))))
 
@@ -1701,7 +1701,7 @@
         handler (api/destroy-jobs-handler conn is-authorized-fn)]
     (testing "should be able to destroy own jobs"
       (let [{:keys [uuid user] :as job} (minimal-job)
-            _ (testutil/create-jobs! conn {::api/jobs [job]})
+            _ (testutil/create-jobs! conn {::api/job-pool-name-maps [{:job job}]})
             resp (handler {:request-method :delete
                            :authorization/user user
                            :query-params {:job uuid}})]
@@ -1709,7 +1709,7 @@
 
     (testing "should not be able to destroy another user's job"
       (let [{:keys [uuid] :as job} (assoc (minimal-job) :user "creator")
-            _ (testutil/create-jobs! conn {::api/jobs [job]})
+            _ (testutil/create-jobs! conn {::api/job-pool-name-maps [{:job job}]})
             resp (handler {:request-method :delete
                            :authorization/user "destroyer"
                            :query-params {:job uuid}})]

@@ -1966,10 +1966,13 @@
   to Datomic.
   Preconditions:  The context must already have been populated with both
   ::jobs and ::groups, which specify the jobs and job groups."
-  [conn {:keys [::groups ::jobs ::job-pool-name-maps] :as ctx}]
+  [conn {:keys [::groups ::job-pool-name-maps] :as ctx}]
   (try
-    (log/info "Submitting jobs through raw api:" (map #(dissoc % :command) jobs))
-    (let [job-pool-name-maps (or job-pool-name-maps (map (fn [job] {:job job}) jobs))
+    (log/info "Submitting jobs through raw api:"
+              (map (fn [job-pool-name-map]
+                     (update job-pool-name-map :job #(dissoc % :command)))
+                   job-pool-name-maps))
+    (let [jobs (map :job job-pool-name-maps)
           group-uuids (set (map :uuid groups))
           group-asserts (map (fn [guuid] [:entity/ensure-not-exists [:group/uuid guuid]])
                              group-uuids)
@@ -2047,7 +2050,7 @@
      [false {::error \"...\"}]
 
   where \"...\" is a detailed error string describing the quota bounds exceeded."
-  [conn {:keys [::jobs ::job-pool-name-maps] :as ctx}]
+  [conn {:keys [::job-pool-name-maps] :as ctx}]
   (let [db (db conn)
         resource-keys [:cpus :mem :gpus]
         user (get-in ctx [:request :authorization/user])
