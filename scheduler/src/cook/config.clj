@@ -16,6 +16,7 @@
 (ns cook.config
   (:require [clj-logging-config.log4j :as log4j-conf]
             [clj-time.core :as t]
+            [clojure.data.json :as json]
             [clojure.edn :as edn]
             [clojure.stacktrace :as stacktrace]
             [clojure.string :as str]
@@ -53,6 +54,12 @@
       'config/env-bool #(Boolean/valueOf (env %))}}
     config))
 
+(def passport-logger-ns "passport-logger")
+
+(defn log-passport-event
+  [log-data]
+  (log/log passport-logger-ns :info nil (json/write-str log-data)))
+
 (defn init-logger
   ([] (init-logger {:levels {"datomic.db" :warn
                              "datomic.peer" :warn
@@ -75,7 +82,15 @@
                       file
                       "'.'yyyy-MM-dd")
                :level default}
-              overrides))
+              overrides)
+       (log4j-conf/set-loggers!
+         (Logger/getLogger ^String passport-logger-ns)
+         {:out (DailyRollingFileAppender.
+                 (PatternLayout.
+                   "%d{ISO8601} %-5p %c [%t] - %m%n")
+                 "log/passport.log"
+                 "'.'yyyy-MM-dd")
+          :level default}))
      (catch Throwable t
        (.println System/err (str "Failed to initialize logging! Error: " (.toString t)))
        (stacktrace/print-cause-trace t)

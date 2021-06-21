@@ -1978,6 +1978,10 @@
               (map (fn [job-pool-name-map]
                      (update job-pool-name-map :job #(dissoc % :command)))
                    job-pool-name-maps))
+    (doseq [job jobs]
+      (cook.config/log-passport-event {"job-uuid" (str (:uuid job))
+                                       "user" (:user job)
+                                       "event-type" "Submitting job from raw api"}))
     (let [jobs (map :job job-pool-name-maps)
           group-uuids (set (map :uuid groups))
           group-asserts (map (fn [guuid] [:entity/ensure-not-exists [:group/uuid guuid]])
