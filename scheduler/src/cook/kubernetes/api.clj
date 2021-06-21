@@ -967,7 +967,6 @@
           disk-limit (when enable-disk-constraint? (-> resources :disk :limit))
           ;; if user did not specify disk type, use default on pool
           disk-type (when enable-disk-constraint? (constraints/job-resources->disk-type resources pool-name))
-
           checkpoint (calculate-effective-checkpointing-config job task-id)
           job-submit-time (tools/job->submit-time job)
           image (if (synthetic-pod? pod-name)
@@ -1106,7 +1105,6 @@
           {:keys [parameters]} docker
           {:keys [environment]} command
           pool-name (cached-queries/job->pool-name job)
-
           pod (V1Pod.)
           pod-spec (V1PodSpec.)
           metadata (V1ObjectMeta.)
@@ -1132,7 +1130,6 @@
           init-container-workdir-volume-mount-fn (partial make-volume-mount
                                                           init-container-workdir-volume
                                                           init-container-workdir)
-
           sidecar-workdir "/mnt/sidecar"
           sidecar-workdir-volume (when use-cook-sidecar? (make-empty-volume "cook-sidecar-workdir-volume"))
           sidecar-workdir-volume-mount-fn (partial make-volume-mount sidecar-workdir-volume sidecar-workdir)
@@ -1225,8 +1222,7 @@
                                 :use-cook-init? use-cook-init?
                                 :use-cook-sidecar? use-cook-sidecar?
                                 :volume-mounts volume-mounts
-                                :workdir workdir
-                                }]
+                                :workdir workdir}]
 
       ; metadata
       (.setName metadata pod-name)
@@ -1305,7 +1301,7 @@
                             {:operator operator
                              :task-id task-id})))))
 
-      (.setVolumes pod-spec (filterv some? (conj volumes ; potential refactor
+      (.setVolumes pod-spec (filterv some? (conj volumes
                                                  init-container-workdir-volume
                                                  scratch-space-volume
                                                  sidecar-workdir-volume
