@@ -945,20 +945,17 @@
 
   (defn add-cook-main-container-to-pod
     "Create main cook container and add it to the pod"
-    [{:keys [task-id command container task-request pod-supports-cook-init? pod-supports-cook-sidecar?]
+    [{:keys [command container pod-supports-cook-init? pod-supports-cook-sidecar? task-id task-request]
       :or {pod-supports-cook-init? true
-           pod-supports-cook-sidecar? true}} ;destructure pod metadata
-     {:keys [computed-mem workdir]}
-     {:keys [init-container-workdir-volume-mount-fn main-container-checkpoint-volume-mounts
-             scratch-space-volume-mount-fn sidecar-workdir-volume-mount-fn volume-mounts]}
-     {:keys [custom-shell main-env-vars pod-spec use-cook-init?]}]
+           pod-supports-cook-sidecar? true}}
+     {:keys [computed-mem workdir custom-shell init-container-workdir-volume-mount-fn main-container-checkpoint-volume-mounts main-env-vars
+             pod-name pod-spec pool-name scratch-space-volume-mount-fn sidecar-workdir-volume-mount-fn use-cook-init? volume-mounts]}]
     (let [{:keys [scalar-requests job resources]} task-request
           ;; NOTE: The scheduler's adjust-job-resources-for-pool-fn may modify :resources,
           ;; whereas :scalar-requests always contains the unmodified job resource values.
           {:strs [cpus]} scalar-requests
           {:keys [docker]} container
           {:keys [image port-mapping]} docker
-          pool-name (cached-queries/job->pool-name job)
           ; gpu count is not stored in scalar-requests because Fenzo does not handle gpus in binpacking
           gpus (or (:gpus resources) 0)
           gpu-model-requested (constraints/job->gpu-model-requested gpus job pool-name)
@@ -973,7 +970,6 @@
 
           checkpoint (calculate-effective-checkpointing-config job task-id)
           job-submit-time (tools/job->submit-time job)
-          pod-name (str task-id)
           image (if (synthetic-pod? pod-name)
                   image
                   (calculate-effective-image (config/kubernetes) job-submit-time image checkpoint task-id))
@@ -1033,11 +1029,8 @@
 
   (defn add-cook-init-to-pod
     "Create Cook init container and add it to the pod"
-    [{:keys [computed-mem cpus init-container init-container-workdir]}
-     {:keys [sidecar use-cook-sidecar?]}
-     {:keys [init-container-checkpoint-volume-mounts init-container-workdir-volume-mount-fn scratch-space-volume-mount-fn]}
-     main-env-vars pod-spec]
-
+    [{:keys [computed-mem cpus init-container init-container-checkpoint-volume-mounts init-container-workdir
+             init-container-workdir-volume-mount-fn main-env-vars pod-spec scratch-space-volume-mount-fn sidecar use-cook-sidecar?]}]
     (when-let [{:keys [command image]} init-container]
       (let [container (V1Container.)
             get-resource-requirements-fn (fn [fieldname] (if use-cook-sidecar?
@@ -1063,10 +1056,7 @@
 
   (defn add-cook-sidecar-to-pod
     "Create Cook Sidecar container and add it to the pod"
-    [{:keys [sidecar sidecar-workdir]}
-     {:keys [sandbox-volume-mount-fn sidecar-workdir-volume-mount-fn]}
-     main-env-vars sandbox-dir pod-spec]
-
+    [{:keys [main-env-vars pod-spec sidecar sandbox-dir sandbox-volume-mount-fn sidecar-workdir sidecar-workdir-volume-mount-fn]}]
     (when-let [{:keys [command health-check-endpoint image port resource-requirements]} sidecar]
       (let [{:keys [cpu-request cpu-limit memory-request memory-limit]} resource-requirements
             container (V1Container.)
@@ -1099,7 +1089,6 @@
         (.setVolumeMounts container [(sandbox-volume-mount-fn true) (sidecar-workdir-volume-mount-fn false)])
         (.addContainersItem pod-spec container))))
 
-;
   (defn ^V1Pod task-metadata->pod
     "Given a task-request and other data generate the kubernetes V1Pod to launch that task."
     [namespace {:keys [cook-pool-taint-name cook-pool-taint-prefix cook-pool-label-name] compute-cluster-name :name}
@@ -1215,16 +1204,29 @@
                                   (V1EnvVar.)
                                   (.setName telemetry-agent-host-var-name)
                                   (.valueFrom hostIpEnvVarSource))))
-          sidecar-attributes {:sidecar sidecar
-                              :use-cook-sidecar? use-cook-sidecar?
-                              :sidecar-workdir sidecar-workdir}
-          volume-mount-map {:main-container-checkpoint-volume-mounts main-container-checkpoint-volume-mounts
-                            :init-container-checkpoint-volume-mounts init-container-checkpoint-volume-mounts
-                            :init-container-workdir-volume-mount-fn init-container-workdir-volume-mount-fn
-                            :sidecar-workdir-volume-mount-fn sidecar-workdir-volume-mount-fn
-                            :scratch-space-volume-mount-fn scratch-space-volume-mount-fn
-                            :sandbox-volume-mount-fn sandbox-volume-mount-fn
-                            :volume-mounts volume-mounts}]
+          container-attributes {:computed-mem computed-mem
+                                :cpus cpus
+                                :custom-shell custom-shell
+                                :init-container init-container
+                                :init-container-checkpoint-volume-mounts init-container-checkpoint-volume-mounts
+                                :init-container-workdir init-container-workdir
+                                :init-container-workdir-volume-mount-fn init-container-workdir-volume-mount-fn
+                                :main-container-checkpoint-volume-mounts main-container-checkpoint-volume-mounts
+                                :main-env-vars main-env-vars
+                                :pod-name pod-name
+                                :pod-spec pod-spec
+                                :pool-name pool-name
+                                :sandbox-dir sandbox-dir
+                                :sandbox-volume-mount-fn sandbox-volume-mount-fn
+                                :scratch-space-volume-mount-fn scratch-space-volume-mount-fn
+                                :sidecar sidecar
+                                :sidecar-workdir sidecar-workdir
+                                :sidecar-workdir-volume-mount-fn sidecar-workdir-volume-mount-fn
+                                :use-cook-init? use-cook-init?
+                                :use-cook-sidecar? use-cook-sidecar?
+                                :volume-mounts volume-mounts
+                                :workdir workdir
+                                }]
 
       ; metadata
       (.setName metadata pod-name)
@@ -1235,29 +1237,15 @@
 
       (.setHostnameAsFQDN pod-spec false)
 
-      (let [main-container-attributes {:computed-mem computed-mem
-                                       :workdir workdir}
-            main-container-environment-attributes {:custom-shell custom-shell
-                                    :main-env-vars main-env-vars
-                                    :pod-name pod-name
-                                    :pod-spec pod-spec
-                                    :pool-name pool-name
-                                    :use-cook-init? use-cook-init?}]
-
-        (add-cook-main-container-to-pod task-metadata main-container-attributes volume-mount-map main-container-environment-attributes))
+      (add-cook-main-container-to-pod task-metadata container-attributes)
 
        ;init container
       (when use-cook-init?
-        (let [init-container-attributes {:computed-mem computed-mem
-                                         :cpus cpus ; could pass in task-request just to recalculate cpus but it feels unneccessary
-                                         :init-container init-container
-                                         :init-container-workdir init-container-workdir
-                                         }]
-          (add-cook-init-to-pod init-container-attributes sidecar-attributes volume-mount-map main-env-vars pod-spec)))
+        (add-cook-init-to-pod container-attributes))
 
       ; sandbox file server container
       (when use-cook-sidecar?
-          (add-cook-sidecar-to-pod sidecar-attributes volume-mount-map main-env-vars sandbox-dir pod-spec))
+          (add-cook-sidecar-to-pod container-attributes))
 
       ; We're either using the hostname (in the case of users' job pods)
       ; or pod-hostnames-to-avoid (in the case of synthetic pods), but not both.
