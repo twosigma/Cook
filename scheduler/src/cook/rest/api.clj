@@ -2228,13 +2228,11 @@
                                       :pool-name effective-pool-name
                                       :pool-name-from-submission pool-name}))
                                  jobs)
-                               jobs (map :job job-pool-name-maps)
                                {:keys [status message]}
                                (submission-plugin/plugin-jobs-submission job-pool-name-maps)]
                            ; Does the plugin accept the submission?
                            (if (= :accepted status)
                              [false {::groups groups
-                                     ::jobs jobs
                                      ::job-pool-name-maps job-pool-name-maps}]
                              [true {::error message}])))
                        (catch Exception e
@@ -2243,7 +2241,7 @@
      :allowed? (partial job-create-allowed? is-authorized-fn)
      :exists? (fn [ctx]
                 (let [db (d/db conn)
-                      existing (filter (partial job-exists? db) (map :uuid (::jobs ctx)))]
+                      existing (filter (partial job-exists? db) (->> ctx ::job-pool-name-maps (map :job) (map :uuid)))]
                   [(seq existing) {::existing existing}]))
      :processable? (partial job-create-processable? conn)
      ;; To ensure compatibility with existing clients,

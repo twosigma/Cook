@@ -197,7 +197,10 @@
   (.invalidateAll caches/job-ent->pool-cache)
   (.invalidateAll caches/task-ent->user-cache)
   (.invalidateAll caches/task->feature-vector-cache)
-  (.invalidateAll caches/job-ent->user-cache))
+  (.invalidateAll caches/job-ent->user-cache)
+  (.invalidateAll caches/pool-name->exists?-cache)
+  (.invalidateAll caches/pool-name->accepts-submissions?-cache)
+  (.invalidateAll caches/pool-name->db-id-cache))
 
 (defn restore-fresh-database!
   "Completely delete all data, start a fresh database and apply transactions if
