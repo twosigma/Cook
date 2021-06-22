@@ -2058,7 +2058,7 @@
                 (fn [{:keys [pool-name user]}]
                   (let [quota (quota/get-quota db user pool-name)]
                     (log/info "In" pool-name "pool, queried user quota" user ":" quota)
-                    {:cache-expires-at (-> 5 t/minutes t/from-now)
+                    {:cache-expires-at (-> 1 t/minutes t/from-now)
                      :quota quota}))]
             (:quota
               (ccache/lookup-cache-with-expiration!
