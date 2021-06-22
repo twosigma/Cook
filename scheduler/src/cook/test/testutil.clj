@@ -139,7 +139,8 @@
                            #'caches/recent-synthetic-pod-job-uuids
                            #'caches/pool-name->exists?-cache
                            #'caches/pool-name->accepts-submissions?-cache
-                           #'caches/pool-name->db-id-cache)))
+                           #'caches/pool-name->db-id-cache
+                           #'caches/user-and-pool-name->quota)))
 
 (defn run-test-server-in-thread
   "Runs a minimal cook scheduler server for testing inside a thread. Note that it is not properly kerberized."
@@ -200,7 +201,8 @@
   (.invalidateAll caches/job-ent->user-cache)
   (.invalidateAll caches/pool-name->exists?-cache)
   (.invalidateAll caches/pool-name->accepts-submissions?-cache)
-  (.invalidateAll caches/pool-name->db-id-cache))
+  (.invalidateAll caches/pool-name->db-id-cache)
+  (.invalidateAll caches/user-and-pool-name->quota))
 
 (defn restore-fresh-database!
   "Completely delete all data, start a fresh database and apply transactions if

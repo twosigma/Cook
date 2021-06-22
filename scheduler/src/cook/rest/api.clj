@@ -2052,12 +2052,26 @@
   where \"...\" is a detailed error string describing the quota bounds exceeded."
   [conn {:keys [::job-pool-name-maps] :as ctx}]
   (let [db (db conn)
+        get-quota
+        (fn [db user pool-name]
+          (let [miss-fn
+                (fn [{:keys [pool-name user]}]
+                  (let [quota (quota/get-quota db user pool-name)]
+                    (log/info "In" pool-name "pool, queried user quota" user ":" quota)
+                    {:cache-expires-at (-> 5 t/minutes t/from-now)
+                     :quota quota}))]
+            (:quota
+              (ccache/lookup-cache-with-expiration!
+                caches/user-and-pool-name->quota
+                identity
+                miss-fn
+                {:pool-name pool-name :user user}))))
         resource-keys [:cpus :mem :gpus]
         user (get-in ctx [:request :authorization/user])
         errors (for [{:keys [job pool-name]} job-pool-name-maps
                      resource resource-keys
                      :let [job-usage (-> job (get resource 0) double)
-                           user-quota (quota/get-quota db user pool-name)
+                           user-quota (get-quota db user pool-name)
                            quota-val (-> user-quota (get resource) double)
                            zero-jobs? (-> user-quota :count zero?)]
                      :when (or (> job-usage quota-val) zero-jobs?)]

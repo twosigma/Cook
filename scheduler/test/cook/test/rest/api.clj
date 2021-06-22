@@ -2792,3 +2792,31 @@
            :user "test-user"
            :uuid (UUID/randomUUID)}]
       (is (s/with-fn-validation (api/make-job-txn {:job valid-job} nil nil))))))
+
+(deftest ^:benchmark bench-create-jobs-handler
+  (testutil/setup)
+  (with-redefs [rate-limit/job-submission-rate-limiter rate-limit/AllowAllRateLimiter]
+    (let [conn (testutil/restore-fresh-database! "datomic:mem://bench-create-jobs-handler")
+          jobs (doall (repeatedly 100 #(minimal-job)))
+          task-constraints {:cpus 12 :memory-gb 100 :retry-limit 200}
+          gpu-enabled? false
+          is-authorized-fn (constantly true)
+          handler
+          (api/create-jobs-handler
+            conn
+            task-constraints
+            gpu-enabled?
+            is-authorized-fn)
+          request
+          {:request-method :post
+           :scheme :http
+           :uri "/jobs"
+           :authorization/user "user"
+           :headers {"Content-Type" "application/json"}
+           :body-params {:jobs jobs}}
+          before-nanos (System/nanoTime)
+          {:keys [status] :as response} (time (handler request))
+          after-nanos (System/nanoTime)
+          elapsed-millis (-> after-nanos (- before-nanos) (/ 1e6))]
+      (is (= 201 status) (-> response :body str))
+      (is (> 2000 elapsed-millis)))))

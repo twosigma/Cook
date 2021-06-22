@@ -39,3 +39,4 @@
 (mount/defstate ^Cache pool-name->exists?-cache :start (new-cache config/config))
 (mount/defstate ^Cache pool-name->accepts-submissions?-cache :start (new-cache config/config))
 (mount/defstate ^Cache pool-name->db-id-cache :start (new-cache config/config))
+(mount/defstate ^Cache user-and-pool-name->quota :start (new-cache config/config))
