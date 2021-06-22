@@ -193,6 +193,7 @@ class MultiUserCookTest(util.CookTest):
     def test_job_cpu_quota(self):
         admin = self.user_factory.admin()
         user = self.user_factory.new_user()
+        name = self.current_name()
         try:
             # User with no quota can't submit jobs
             with admin:
@@ -200,7 +201,7 @@ class MultiUserCookTest(util.CookTest):
                 self.assertEqual(resp.status_code, 201, resp.text)
             with user:
                 util.wait_until(
-                    lambda: util.submit_job(self.cook_url)[1],
+                    lambda: util.submit_job(self.cook_url, name=name)[1],
                     lambda r: r.status_code == 422)
             # User with tiny quota can't submit bigger jobs, but can submit tiny jobs
             with admin:
@@ -208,18 +209,18 @@ class MultiUserCookTest(util.CookTest):
                 self.assertEqual(resp.status_code, 201, resp.text)
             with user:
                 util.wait_until(
-                    lambda: util.submit_job(self.cook_url, cpus=0.5)[1],
-                    lambda r: r.status_code == 422)
-                util.wait_until(
-                    lambda: util.submit_job(self.cook_url, cpus=0.25)[1],
+                    lambda: util.submit_job(self.cook_url, cpus=0.25, name=name)[1],
                     lambda r: r.status_code == 201)
+                util.wait_until(
+                    lambda: util.submit_job(self.cook_url, cpus=0.5, name=name)[1],
+                    lambda r: r.status_code == 422)
             # Reset user's quota back to default, then user can submit jobs again
             with admin:
                 resp = util.reset_limit(self.cook_url, 'quota', user.name, reason=self.current_name())
                 self.assertEqual(resp.status_code, 204, resp.text)
             with user:
                 util.wait_until(
-                    lambda: util.submit_job(self.cook_url)[1],
+                    lambda: util.submit_job(self.cook_url, name=name)[1],
                     lambda r: r.status_code == 201)
             # Can't set negative quota
             with admin:
