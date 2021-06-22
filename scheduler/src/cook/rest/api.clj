@@ -2052,6 +2052,9 @@
   where \"...\" is a detailed error string describing the quota bounds exceeded."
   [conn {:keys [::job-pool-name-maps] :as ctx}]
   (let [db (db conn)
+        ; We cache quota by (user, pool) here because JobRouting plugins can result in
+        ; different jobs in a single batch submission getting routed to different pools,
+        ; and we don't want to query the database for quota for every single job.
         get-quota
         (fn [db user pool-name]
           (let [miss-fn
