@@ -14,7 +14,8 @@
 ;; limitations under the License.
 ;;
 (ns cook.rest.api
-  (:require [camel-snake-kebab.core :refer [->kebab-case ->snake_case]]
+  (:require [better-cond.core :as b]
+            [camel-snake-kebab.core :refer [->kebab-case ->snake_case]]
             [cheshire.core :as cheshire]
             [clj-time.coerce :as tc]
             [clj-time.core :as t]
@@ -27,6 +28,8 @@
             [compojure.api.middleware :as c-mw]
             [compojure.api.sweet :as c-api]
             [compojure.core :refer [ANY GET POST routes]]
+            [cook.cache :as ccache]
+            [cook.caches :as caches]
             [cook.cached-queries :as cached-queries]
             [cook.compute-cluster :as cc]
             [cook.config :as config]
@@ -725,9 +728,20 @@
   [disk effective-pool-name]
   (regexp-tools/match-based-on-pool-name disk effective-pool-name :max-size))
 
+(defn lookup-cache-pool-name!
+  "Looks up the given pool name in the given pool-name->result cache"
+  [cache db pool->value-fn pool-name]
+  (let [pool-name->pool
+        (fn [pool-name]
+          (when pool-name (d/entity db [:pool/name pool-name])))
+        miss-fn
+        (fn [pool-name]
+          (-> pool-name pool-name->pool pool->value-fn))]
+    (ccache/lookup-cache! cache identity miss-fn pool-name)))
+
 (s/defn make-job-txn
   "Creates the necessary txn data to insert a job into the database"
-  [pool commit-latch-id db job :- Job]
+  [{:keys [job pool-name pool-name-from-submission]} :- {:job Job} commit-latch-id db]
   (let [{:keys [uuid command max-retries max-runtime expected-runtime priority cpus mem disk gpus
                 user name ports uris env labels container group application disable-mea-culpa-retries
                 constraints executor progress-output-file progress-regex-string datasets checkpoint]
@@ -776,7 +790,6 @@
                                                                 (str/lower-case operator))
                                   :constraint/pattern pattern}]))
                             constraints)
-        pool-name (or (:pool/name pool) (config/default-pool))
         default-containers (get-in config/config [:settings :pools :default-containers])
         container (if (nil? container)
                     (if pool-name
@@ -866,7 +879,18 @@
                     executor (assoc :job/executor executor)
                     progress-output-file (assoc :job/progress-output-file progress-output-file)
                     progress-regex-string (assoc :job/progress-regex-string progress-regex-string)
-                    pool (assoc :job/pool (:db/id pool))
+                    ; We only want to associate the pool with the job if the job submission
+                    ; explicity specified a pool name. In other words, if the user did not specify
+                    ; a pool in the submission, we want the job's pool to be nil. The reason we
+                    ; lookup the pool db id using pool-name (and not pool-name-from-submission) is
+                    ; that a JobRouting plugin can translate a routing pool name to a real pool name.
+                    pool-name-from-submission
+                    (assoc :job/pool
+                           (lookup-cache-pool-name!
+                             caches/pool-name->db-id-cache
+                             db
+                             :db/id
+                             pool-name))
                     checkpoint (assoc :job/checkpoint (build-checkpoint checkpoint))
                     (seq datasets) (assoc :job/datasets datasets))
         txn (plugins/adjust-job adjustment/plugin txn db)]
@@ -1942,10 +1966,14 @@
   to Datomic.
   Preconditions:  The context must already have been populated with both
   ::jobs and ::groups, which specify the jobs and job groups."
-  [conn {:keys [::groups ::jobs ::pool] :as ctx}]
+  [conn {:keys [::groups ::job-pool-name-maps] :as ctx}]
   (try
-    (log/info "Submitting jobs through raw api:" (map #(dissoc % :command) jobs))
-    (let [group-uuids (set (map :uuid groups))
+    (log/info "Submitting jobs through raw api:"
+              (map (fn [job-pool-name-map]
+                     (update job-pool-name-map :job #(dissoc % :command)))
+                   job-pool-name-maps))
+    (let [jobs (map :job job-pool-name-maps)
+          group-uuids (set (map :uuid groups))
           group-asserts (map (fn [guuid] [:entity/ensure-not-exists [:group/uuid guuid]])
                              group-uuids)
           ;; Create new implicit groups (with all default settings)
@@ -1959,7 +1987,10 @@
           job-asserts (map (fn [j] [:entity/ensure-not-exists [:job/uuid (:uuid j)]]) jobs)
           [commit-latch-id commit-latch] (make-commit-latch)
           db (d/db conn)
-          job-txns (mapcat (partial make-job-txn pool commit-latch-id db) jobs)
+          job-txns (mapcat
+                     (fn [job-pool-name-map]
+                       (make-job-txn job-pool-name-map commit-latch-id db))
+                     job-pool-name-maps)
           job-uuids->dbids (->> job-txns
                                 ;; Not all txns are for the top level job
                                 (filter :job/uuid)
@@ -1973,22 +2004,23 @@
           group-txns (map #(make-group-txn % (get group-uuid->job-dbids
                                                   (:uuid %)
                                                   []))
-                          groups)
-          pool-name (pool/pool-name-or-default (:pool/name pool))]
+                          groups)]
 
       (let [user (get-in ctx [:request :authorization/user])]
         (rate-limit/spend! rate-limit/job-submission-rate-limiter user (count jobs))
-        (queue-limit/inc-queue-length! pool-name user (count jobs)))
-      @(d/transact
-         conn
-         (-> (vec group-asserts)
-             (into job-asserts)
-             (conj commit-latch)
-             (into job-txns)
-             (into group-txns)))
-      (meters/mark! (meters/meter ["cook-mesos" "scheduler" "jobs-created"
-                                   (str "pool-" pool-name)])
-                    (count jobs))
+        @(d/transact
+           conn
+           (-> (vec group-asserts)
+               (into job-asserts)
+               (conj commit-latch)
+               (into job-txns)
+               (into group-txns)))
+        (doseq [[pool-name num-jobs-in-pool] (->> job-pool-name-maps (map :pool-name) frequencies)]
+          (let [pool-name (pool/pool-name-or-default pool-name)]
+            (queue-limit/inc-queue-length! pool-name user num-jobs-in-pool)
+            (meters/mark! (meters/meter ["cook-mesos" "scheduler" "jobs-created"
+                                         (str "pool-" pool-name)])
+                          num-jobs-in-pool))))
       {::results (str/join
                    \space (concat ["submitted jobs"]
                                   (map (comp str :uuid) jobs)
@@ -2018,22 +2050,41 @@
      [false {::error \"...\"}]
 
   where \"...\" is a detailed error string describing the quota bounds exceeded."
-  [conn {:keys [::jobs ::pool] :as ctx}]
+  [conn {:keys [::job-pool-name-maps] :as ctx}]
   (let [db (db conn)
+        ; We cache quota by (user, pool) here because JobRouting plugins can result in
+        ; different jobs in a single batch submission getting routed to different pools,
+        ; and we don't want to query the database for quota for every single job.
+        get-quota
+        (fn [db user pool-name]
+          (let [miss-fn
+                (fn [{:keys [pool-name user]}]
+                  (let [quota (quota/get-quota db user pool-name)]
+                    (log/debug "In" pool-name "pool, queried user quota" user ":" quota)
+                    {:cache-expires-at (-> 30 t/seconds t/from-now)
+                     :quota quota}))]
+            (:quota
+              (ccache/lookup-cache-with-expiration!
+                caches/user-and-pool-name->quota
+                identity
+                miss-fn
+                {:pool-name pool-name :user user}))))
         resource-keys [:cpus :mem :gpus]
         user (get-in ctx [:request :authorization/user])
-        user-quota (quota/get-quota db user (:pool/name pool))
-        errors (for [job jobs
+        errors (for [{:keys [job pool-name]} job-pool-name-maps
                      resource resource-keys
                      :let [job-usage (-> job (get resource 0) double)
-                           quota-val (-> user-quota (get resource) double)]
-                     :when (> job-usage quota-val)]
-                 (format "Job %s exceeds quota for %s: %f > %f"
-                         (:uuid job) (name resource) job-usage quota-val))]
-    (cond
-      (zero? (:count user-quota)) [false {::error "User quota is set to zero jobs."}]
-      (seq errors) [false {::error (str/join "\n" errors)}]
-      :else true)))
+                           user-quota (get-quota db user pool-name)
+                           quota-val (-> user-quota (get resource) double)
+                           zero-jobs? (-> user-quota :count zero?)]
+                     :when (or (> job-usage quota-val) zero-jobs?)]
+                 (if zero-jobs?
+                   "User quota is set to zero jobs."
+                   (format "Job %s exceeds quota for %s: %f > %f"
+                           (:uuid job) (name resource) job-usage quota-val)))]
+    (if (seq errors)
+      [false {::error (str/join "\n" errors)}]
+      true)))
 
 (defn user-queue-length-within-limit?
   "Check if the job submission would cause the user to have more jobs queued than they're
@@ -2085,6 +2136,18 @@
       (user-queue-length-within-limit? ctx)
       no-job-exceeds-quota-result)))
 
+(defn job-routing-pool-name?
+  "Returns truthy if the given pool name is a job-routing pool name"
+  [pool-name-from-submission]
+  (get (config/job-routing) pool-name-from-submission))
+
+(defn pool-name->effective-pool-name
+  "Given a pool name and job from a submission returns the effective pool name"
+  [pool-name-from-submission job]
+  (if-let [job-router (job-routing-pool-name? pool-name-from-submission)]
+    (plugins/choose-pool-for-job job-router job)
+    (or pool-name-from-submission (config/default-pool))))
+
 ;;; On POST; JSON blob that looks like:
 ;;; {"jobs": [{"command": "echo hello world",
 ;;;            "uuid": "123898485298459823985",
@@ -2104,7 +2167,6 @@
                          user (get-in ctx [:request :authorization/user])
                          override-group-immutability? (boolean (get params :override-group-immutability))
                          pool-name (or (get params :pool) (get headers "x-cook-pool"))
-                         pool (when pool-name (d/entity (d/db conn) [:pool/name pool-name]))
                          uuid->count (pc/map-vals count (group-by :uuid jobs))
                          time-until-out-of-debt (rate-limit/time-until-out-of-debt-millis! rate-limit/job-submission-rate-limiter user)
                          in-debt? (not (zero? time-until-out-of-debt))]
@@ -2112,7 +2174,7 @@
                        (when in-debt?
                          (log/info (str "User " user " is inserting too quickly (will be out of debt in "
                                         (/ time-until-out-of-debt 1000.0) " seconds).")))
-                       (cond
+                       (b/cond
                          (and in-debt? (rate-limit/enforce? rate-limit/job-submission-rate-limiter))
                          [true {::error (str "User " user " is inserting too quickly. Not allowed to insert for "
                                              (/ time-until-out-of-debt 1000.0) " seconds.")}]
@@ -2121,10 +2183,38 @@
                          [true {::error (str "Must supply at least one job or group to start."
                                              "Are you specifying that this is application/json?")}]
 
-                         (and pool-name (not pool))
+                         ; We reject jobs unless one of the following is true:
+                         ; - the submission did not explicitly specify a pool name
+                         ; - the submission specified a job-routing pool name
+                         ; - the submission specified a pool name that exists and
+                         ;   that is accepting submissions
+
+                         :let [db (db conn)
+                               skip-pool-name-checks?
+                               (or (not pool-name)
+                                   (job-routing-pool-name? pool-name))
+                               pool-exists?
+                               (or skip-pool-name-checks?
+                                   ; Values cached in pool-name->exists?-cache
+                                   ; are always either true or false
+                                   (lookup-cache-pool-name!
+                                     caches/pool-name->exists?-cache
+                                     db
+                                     some?
+                                     pool-name))]
+                         (not pool-exists?)
                          [true {::error (str pool-name " is not a valid pool name.")}]
 
-                         (and pool (not (pool/accepts-submissions? pool)))
+                         :let [pool-accepts-submissions?
+                               (or skip-pool-name-checks?
+                                   ; Values cached in pool-name->accepts-submissions?-cache
+                                   ; are always either true or false
+                                   (lookup-cache-pool-name!
+                                     caches/pool-name->accepts-submissions?-cache
+                                     db
+                                     pool/accepts-submissions?
+                                     pool-name))]
+                         (not pool-accepts-submissions?)
                          [true {::error (str pool-name " is not accepting job submissions.")}]
 
                          (some true? (map (fn [[uuid count]] (< 1 count)) uuid->count))
@@ -2134,26 +2224,33 @@
                                                                           (map str)
                                                                           (into [])))}]
                          :else
-                         (let [groups (mapv #(validate-and-munge-group (db conn) %) groups)
-                               effective-pool-name (or (:pool/name pool) (config/default-pool))
-                               jobs (mapv #(validate-and-munge-job
-                                             (db conn)
-                                             effective-pool-name
-                                             user
-                                             task-constraints
-                                             gpu-enabled?
-                                             (set (map :uuid groups))
-                                             %
-                                             :override-group-immutability?
-                                             override-group-immutability?) jobs)
-                               {:keys [status message]} (submission-plugin/plugin-jobs-submission
-                                                          jobs
-                                                          effective-pool-name)]
+                         (let [groups (mapv #(validate-and-munge-group db %) groups)
+                               job-pool-name-maps
+                               (mapv
+                                 (fn [job]
+                                   (let [effective-pool-name
+                                         (pool-name->effective-pool-name pool-name job)
+                                         validated-and-munged-job
+                                         (validate-and-munge-job
+                                           db
+                                           effective-pool-name
+                                           user
+                                           task-constraints
+                                           gpu-enabled?
+                                           (set (map :uuid groups))
+                                           job
+                                           :override-group-immutability?
+                                           override-group-immutability?)]
+                                     {:job validated-and-munged-job
+                                      :pool-name effective-pool-name
+                                      :pool-name-from-submission pool-name}))
+                                 jobs)
+                               {:keys [status message]}
+                               (submission-plugin/plugin-jobs-submission job-pool-name-maps)]
                            ; Does the plugin accept the submission?
                            (if (= :accepted status)
                              [false {::groups groups
-                                     ::jobs jobs
-                                     ::pool pool}]
+                                     ::job-pool-name-maps job-pool-name-maps}]
                              [true {::error message}])))
                        (catch Exception e
                          (log/warn e "Malformed raw api request")
@@ -2161,7 +2258,7 @@
      :allowed? (partial job-create-allowed? is-authorized-fn)
      :exists? (fn [ctx]
                 (let [db (d/db conn)
-                      existing (filter (partial job-exists? db) (map :uuid (::jobs ctx)))]
+                      existing (filter (partial job-exists? db) (->> ctx ::job-pool-name-maps (map :job) (map :uuid)))]
                   [(seq existing) {::existing existing}]))
      :processable? (partial job-create-processable? conn)
      ;; To ensure compatibility with existing clients,

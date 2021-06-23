@@ -3113,3 +3113,17 @@ class CookTest(util.CookTest):
         self.assertEqual('success', job['state'], job)
         self.assertLessEqual(1, len(job['instances']))
         self.assertIn('success', [i['status'] for i in job['instances']], job)
+
+    def test_benchmark_submit(self):
+        num_jobs = 500
+        self.logger.info(f'Submitting batch of {num_jobs} jobs')
+        jobspec = {'command': 'true', 'cpus': 0.01, 'mem': 32}
+        start_time = time.time()
+        job_uuids, response = util.submit_jobs(self.cook_url, jobspec, num_jobs)
+        elapsed_time = time.time() - start_time
+        try:
+            self.logger.info(f'Elapsed time: {elapsed_time}')
+            self.assertEqual(201, response.status_code, msg=response.content)
+            self.assertLess(elapsed_time, 10)
+        finally:
+            util.kill_jobs(self.cook_url, job_uuids, assert_response=False)

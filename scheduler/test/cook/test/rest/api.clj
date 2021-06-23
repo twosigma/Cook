@@ -26,7 +26,7 @@
             [cook.compute-cluster :as cc]
             [cook.config :as config]
             [cook.mesos.reason :as reason]
-            [cook.plugins.definitions :refer [FileUrlGenerator]]
+            [cook.plugins.definitions :refer [FileUrlGenerator JobRouter]]
             [cook.plugins.file :as file-plugin]
             [cook.plugins.submission :as submission-plugin]
             [cook.quota :as quota]
@@ -1475,7 +1475,7 @@
           (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
                 {:keys [uuid] :as job} (minimal-job)]
             (is (= {::api/results (str "submitted jobs " uuid)}
-                   (testutil/create-jobs! conn {::api/jobs [job]})))
+                   (testutil/create-jobs! conn {::api/job-pool-name-maps [{:job job}]})))
             (is (= (expected-job-map job)
                    (dissoc (api/fetch-job-map (db conn) uuid) :submit_time)))))
 
@@ -1483,10 +1483,10 @@
           (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
                 {:keys [uuid] :as job} (minimal-job)]
             (is (= {::api/results (str "submitted jobs " uuid)}
-                   (testutil/create-jobs! conn {::api/jobs [job]})))
+                   (testutil/create-jobs! conn {::api/job-pool-name-maps [{:job job}]})))
             (is (thrown-with-msg? ExecutionException
                                   (re-pattern (str ".*:job/uuid.*" uuid ".*already exists"))
-                                  (testutil/create-jobs! conn {::api/jobs [job]})))))
+                                  (testutil/create-jobs! conn {::api/job-pool-name-maps [{:job job}]})))))
 
         (testing "should work with datasets"
           (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
@@ -1498,7 +1498,7 @@
                                                                                        {"begin" "20180301"
                                                                                         "end" "20180401"}}}})]
             (is (= {::api/results (str "submitted jobs " uuid)}
-                   (testutil/create-jobs! conn {::api/jobs [job]})))
+                   (testutil/create-jobs! conn {::api/job-pool-name-maps [{:job job}]})))
             (is (= (expected-job-map job)
                    (dissoc (api/fetch-job-map (db conn) uuid) :submit_time)))))
 
@@ -1507,7 +1507,7 @@
                 application {:name "foo-app", :version "0.1.0"}
                 {:keys [uuid] :as job} (assoc (minimal-job) :application application)]
             (is (= {::api/results (str "submitted jobs " uuid)}
-                   (testutil/create-jobs! conn {::api/jobs [job]})))
+                   (testutil/create-jobs! conn {::api/job-pool-name-maps [{:job job}]})))
             (is (= (expected-job-map job)
                    (dissoc (api/fetch-job-map (db conn) uuid) :submit_time)))))
 
@@ -1516,7 +1516,7 @@
                 checkpoint {:mode "auto"}
                 {:keys [uuid] :as job} (assoc (minimal-job) :checkpoint checkpoint)]
             (is (= {::api/results (str "submitted jobs " uuid)}
-                   (testutil/create-jobs! conn {::api/jobs [job]})))
+                   (testutil/create-jobs! conn {::api/job-pool-name-maps [{:job job}]})))
             (is (= (expected-job-map job)
                    (dissoc (api/fetch-job-map (db conn) uuid) :submit_time)))))
 
@@ -1527,7 +1527,7 @@
                             :periodic-options {:period-sec 777}}
                 {:keys [uuid] :as job} (assoc (minimal-job) :checkpoint checkpoint)]
             (is (= {::api/results (str "submitted jobs " uuid)}
-                   (testutil/create-jobs! conn {::api/jobs [job]})))
+                   (testutil/create-jobs! conn {::api/job-pool-name-maps [{:job job}]})))
             (is (= (expected-job-map job)
                    (dissoc (api/fetch-job-map (db conn) uuid) :submit_time)))))
 
@@ -1535,7 +1535,7 @@
           (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
                 {:keys [uuid] :as job} (assoc (minimal-job) :expected-runtime 1)]
             (is (= {::api/results (str "submitted jobs " uuid)}
-                   (testutil/create-jobs! conn {::api/jobs [job]})))
+                   (testutil/create-jobs! conn {::api/job-pool-name-maps [{:job job}]})))
             (is (= (expected-job-map job)
                    (-> (api/fetch-job-map (db conn) uuid)
                        (dissoc :submit_time))))))
@@ -1544,7 +1544,7 @@
           (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
                 {:keys [uuid] :as job} (assoc (minimal-job) :disable-mea-culpa-retries true)]
             (is (= {::api/results (str "submitted jobs " uuid)}
-                   (testutil/create-jobs! conn {::api/jobs [job]})))
+                   (testutil/create-jobs! conn {::api/job-pool-name-maps [{:job job}]})))
             (is (= (expected-job-map job)
                    (-> (api/fetch-job-map (db conn) uuid)
                        (dissoc :submit_time))))))
@@ -1553,7 +1553,7 @@
           (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
                 {:keys [uuid] :as job} (assoc (minimal-job) :executor "cook")]
             (is (= {::api/results (str "submitted jobs " uuid)}
-                   (testutil/create-jobs! conn {::api/jobs [job]})))
+                   (testutil/create-jobs! conn {::api/job-pool-name-maps [{:job job}]})))
             (is (= (expected-job-map job)
                    (-> (api/fetch-job-map (db conn) uuid)
                        (dissoc :submit_time)
@@ -1563,7 +1563,7 @@
           (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
                 {:keys [uuid] :as job} (assoc (minimal-job) :executor "mesos")]
             (is (= {::api/results (str "submitted jobs " uuid)}
-                   (testutil/create-jobs! conn {::api/jobs [job]})))
+                   (testutil/create-jobs! conn {::api/job-pool-name-maps [{:job job}]})))
             (is (= (expected-job-map job)
                    (-> (api/fetch-job-map (db conn) uuid)
                        (dissoc :submit_time)
@@ -1573,7 +1573,7 @@
           (let [conn (restore-fresh-database! "datomic:mem://data-locality-submit")
                 {:keys [uuid] :as job} (assoc (minimal-job) :supports_data_locality true)]
             (is (= {::api/results (str "submitted jobs " uuid)}
-                   (testutil/create-jobs! conn {::api/jobs [job]})))
+                   (testutil/create-jobs! conn {::api/job-pool-name-maps [{:job job}]})))
             (is (= (expected-job-map job)
                    (-> (api/fetch-job-map (db conn) uuid)
                        (dissoc :submit_time))))))
@@ -1591,7 +1591,7 @@
                       parameters []
                       {:keys [uuid] :as job} (assoc-in basic-docker-job [:container :docker :parameters] parameters)]
                   (is (= {::api/results (str "submitted jobs " uuid)}
-                         (testutil/create-jobs! conn {::api/jobs [job]})))
+                         (testutil/create-jobs! conn {::api/job-pool-name-maps [{:job job}]})))
                   (is (= (assoc (expected-job-map job)
                            :container (assoc-in docker-container
                                                 [:docker :parameters]
@@ -1606,7 +1606,7 @@
                   (with-redefs [util/retrieve-system-id (fn [& args] (str/join "" (reverse args)))]
                     (is (thrown-with-msg? ExceptionInfo
                                           #"user parameter must match uid and gid of user submitting"
-                                          (testutil/create-jobs! conn {::api/jobs [job]}))))))
+                                          (testutil/create-jobs! conn {::api/job-pool-name-maps [{:job job}]}))))))
 
               (testing "user parameter provided"
                 (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
@@ -1615,7 +1615,7 @@
                                   {:key "user" :value "1234:2345"}]
                       {:keys [uuid] :as job} (assoc-in basic-docker-job [:container :docker :parameters] parameters)]
                   (is (= {::api/results (str "submitted jobs " uuid)}
-                         (testutil/create-jobs! conn {::api/jobs [job]})))
+                         (testutil/create-jobs! conn {::api/job-pool-name-maps [{:job job}]})))
                   (is (= (assoc (expected-job-map job)
                            :container (assoc-in docker-container
                                                 [:docker :parameters]
@@ -1632,7 +1632,7 @@
                                   {:key "tee" :value "tie"}]
                       {:keys [uuid] :as job} (assoc-in basic-docker-job [:container :docker :parameters] parameters)]
                   (is (= {::api/results (str "submitted jobs " uuid)}
-                         (testutil/create-jobs! conn {::api/jobs [job]})))
+                         (testutil/create-jobs! conn {::api/job-pool-name-maps [{:job job}]})))
                   (is (= (assoc (expected-job-map job)
                            :container (assoc-in docker-container
                                                 [:docker :parameters]
@@ -1651,7 +1651,7 @@
         (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
               {:keys [uuid] :as job} (minimal-job)]
           (is (= {::api/results (str "submitted jobs " uuid)}
-                 (testutil/create-jobs! conn {::api/jobs [job]})))
+                 (testutil/create-jobs! conn {::api/job-pool-name-maps [{:job job}]})))
           (is (= (assoc (expected-job-map job) :framework_id "unsupported")
                  (dissoc (api/fetch-job-map (db conn) uuid) :submit_time))))))))
 
@@ -1701,7 +1701,7 @@
         handler (api/destroy-jobs-handler conn is-authorized-fn)]
     (testing "should be able to destroy own jobs"
       (let [{:keys [uuid user] :as job} (minimal-job)
-            _ (testutil/create-jobs! conn {::api/jobs [job]})
+            _ (testutil/create-jobs! conn {::api/job-pool-name-maps [{:job job}]})
             resp (handler {:request-method :delete
                            :authorization/user user
                            :query-params {:job uuid}})]
@@ -1709,7 +1709,7 @@
 
     (testing "should not be able to destroy another user's job"
       (let [{:keys [uuid] :as job} (assoc (minimal-job) :user "creator")
-            _ (testutil/create-jobs! conn {::api/jobs [job]})
+            _ (testutil/create-jobs! conn {::api/job-pool-name-maps [{:job job}]})
             resp (handler {:request-method :delete
                            :authorization/user "destroyer"
                            :query-params {:job uuid}})]
@@ -2257,7 +2257,16 @@
                             :jobs 2}}
              (api/get-user-usage (d/db conn) (assoc-in request-context [:request :query-params :pool] "baz")))))))
 
+(defn make-by-size-job-router
+  []
+  (reify JobRouter
+    (choose-pool-for-job [_ {:keys [cpus]}]
+      (if (< cpus 1.0)
+        "small-job-pool"
+        "large-job-pool"))))
+
 (deftest test-create-jobs-handler
+  (testutil/setup)
   (let [conn (restore-fresh-database! "datomic:mem://test-create-jobs-handler")
         task-constraints {:cpus 12 :memory-gb 100 :retry-limit 200}
         gpu-enabled? false
@@ -2269,7 +2278,6 @@
                        :authorization/user "user"
                        :headers {"Content-Type" "application/json"}
                        :body-params {:jobs [(minimal-job)]}})]
-    (testutil/setup)
     (with-redefs [api/no-job-exceeds-quota? (constantly true)
                   rate-limit/job-submission-rate-limiter rate-limit/AllowAllRateLimiter]
       (testing "successful-job-creation-response"
@@ -2420,7 +2428,28 @@
               job-uuid (-> request :body-params :jobs first :uuid)
               {:keys [status]} (handler request)]
           (is (= 201 status))
-          (is (= {"foo.bar/baz" "qux"} (-> conn d/db (d/entity [:job/uuid job-uuid]) util/job-ent->label))))))))
+          (is (= {"foo.bar/baz" "qux"} (-> conn d/db (d/entity [:job/uuid job-uuid]) util/job-ent->label)))))
+
+      (testing "job routing plugin"
+        (create-pool conn "small-job-pool")
+        (create-pool conn "large-job-pool")
+        (testutil/setup :config
+                        {:plugins {:job-routing {"@by-size" 'cook.test.rest.api/make-by-size-job-router}}})
+        (let [handler (api/create-jobs-handler conn task-constraints gpu-enabled? is-authorized-fn)]
+          (let [request (-> (new-request)
+                            (assoc-in [:body-params :pool] "@by-size")
+                            (assoc-in [:body-params :jobs] [(assoc (minimal-job) :cpus 0.9)]))
+                job-uuid (-> request :body-params :jobs first :uuid)
+                {:keys [status] :as response} (handler request)]
+            (is (= 201 status) (str response))
+            (is (= "small-job-pool" (-> conn d/db (d/entity [:job/uuid job-uuid]) cached-queries/job->pool-name))))
+          (let [request (-> (new-request)
+                            (assoc-in [:body-params :pool] "@by-size")
+                            (assoc-in [:body-params :jobs] [(assoc (minimal-job) :cpus 1.1)]))
+                job-uuid (-> request :body-params :jobs first :uuid)
+                {:keys [status] :as response} (handler request)]
+            (is (= 201 status) (str response))
+            (is (= "large-job-pool" (-> conn d/db (d/entity [:job/uuid job-uuid]) cached-queries/job->pool-name)))))))))
 
 (deftest test-validate-partitions
   (is (api/validate-partitions {:dataset {"foo" "bar"}}))
@@ -2746,3 +2775,48 @@
           (let [{:keys [status] :as response} (handler request)]
             (is (= 422 status) (-> response response->body-data str))
             (is (= (str "Compute cluster with name " name " does not exist") (-> response response->body-data (get-in ["error" "message"]))))))))))
+
+(deftest test-make-job-txn
+  (setup)
+  (testing "job schema type hint"
+    (is (api/make-job-txn {:job {}} nil nil))
+    (is (thrown? ExceptionInfo (s/with-fn-validation (api/make-job-txn {:job {}} nil nil))))
+    (let [valid-job
+          {:command "true"
+           :cpus 0.1
+           :max-retries 2
+           :max-runtime 1
+           :mem 128.
+           :name "test-job"
+           :priority 100
+           :user "test-user"
+           :uuid (UUID/randomUUID)}]
+      (is (s/with-fn-validation (api/make-job-txn {:job valid-job} nil nil))))))
+
+(deftest ^:benchmark bench-create-jobs-handler
+  (testutil/setup)
+  (with-redefs [rate-limit/job-submission-rate-limiter rate-limit/AllowAllRateLimiter]
+    (let [conn (testutil/restore-fresh-database! "datomic:mem://bench-create-jobs-handler")
+          jobs (doall (repeatedly 100 #(minimal-job)))
+          task-constraints {:cpus 12 :memory-gb 100 :retry-limit 200}
+          gpu-enabled? false
+          is-authorized-fn (constantly true)
+          handler
+          (api/create-jobs-handler
+            conn
+            task-constraints
+            gpu-enabled?
+            is-authorized-fn)
+          request
+          {:request-method :post
+           :scheme :http
+           :uri "/jobs"
+           :authorization/user "user"
+           :headers {"Content-Type" "application/json"}
+           :body-params {:jobs jobs}}
+          before-nanos (System/nanoTime)
+          {:keys [status] :as response} (time (handler request))
+          after-nanos (System/nanoTime)
+          elapsed-millis (-> after-nanos (- before-nanos) (/ 1e6))]
+      (is (= 201 status) (-> response :body str))
+      (is (> 2000 elapsed-millis)))))
