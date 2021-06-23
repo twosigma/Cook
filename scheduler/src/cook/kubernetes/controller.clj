@@ -7,6 +7,7 @@
             [cook.kubernetes.api :as api]
             [cook.kubernetes.metrics :as metrics]
             [cook.mesos.sandbox :as sandbox]
+            [cook.passport :as passport]
             [cook.scheduler.scheduler :as scheduler]
             [metrics.timers :as timers])
   (:import (clojure.lang IAtom)
@@ -156,12 +157,13 @@
   "Helper function for logging completed job status to cook passport"
   [{:keys [name]}
    {:keys [task-id state reason]}]
-  (let [job-uuid (task-id :value)]
-    (cook.config/log-passport-event {"pod-name" job-uuid
-                                     "cluster-name" name
-                                     "state" state
-                                     "reason" reason
-                                     "event-type" "Pod Completed"})))
+  (let [instance-uuid (task-id :value)]
+    (passport/log-passport-event {"pod-name" instance-uuid
+                                  "instance-uuid" instance-uuid
+                                  "cluster-name" name
+                                  "state" state
+                                  "reason" reason
+                                  "event-type" passport/pod-completed})))
 
 (defn handle-pod-submission-failed
   "Marks the corresponding job instance as failed in the database and

@@ -8,6 +8,7 @@
             [cook.cached-queries :as cached-queries]
             [cook.config :as config]
             [cook.kubernetes.metrics :as metrics]
+            [cook.passport :as passport]
             [cook.regexp-tools :as regexp-tools]
             [cook.rest.api :as api]
             [cook.scheduler.constraints :as constraints]
@@ -1641,10 +1642,11 @@
                 (str "Pod name from pod (" pod-name-from-pod ") "
                      "does not match pod name argument (" pod-name ")"))
         (log/info "In" compute-cluster-name "compute cluster, launching pod with name" pod-name "in namespace" namespace ":" (.serialize json pod))
-        (cook.config/log-passport-event {"pod-name" pod-name
-                                         "namespace" namespace
-                                         "cluster-name" compute-cluster-name
-                                         "event-type" "Launching Pod"})
+        (passport/log-passport-event {"pod-name" pod-name
+                                      "instance-uuid" pod-name
+                                      "namespace" namespace
+                                      "cluster-name" compute-cluster-name
+                                      "event-type" passport/pod-launching})
         (try
           (timers/time! (metrics/timer "launch-pod" compute-cluster-name)
                         (create-namespaced-pod api namespace pod))

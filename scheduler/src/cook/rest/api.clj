@@ -36,6 +36,7 @@
             [cook.datomic :as datomic]
             [cook.mesos]
             [cook.mesos.reason :as reason]
+            [cook.passport :as passport]
             [cook.plugins.adjustment :as adjustment]
             [cook.plugins.definitions :as plugins]
             [cook.plugins.file :as file-plugin]
@@ -1979,9 +1980,9 @@
                      (update job-pool-name-map :job #(dissoc % :command)))
                    job-pool-name-maps))
     (doseq [job jobs]
-      (cook.config/log-passport-event {"job-uuid" (str (:uuid job))
-                                       "user" (:user job)
-                                       "event-type" "Submitting job from raw api"}))
+      (passport/log-passport-event {"job-uuid" (str (:uuid job))
+                                    "user" (:user job)
+                                    "event-type" passport/api-job-submission}))
     (let [jobs (map :job job-pool-name-maps)
           group-uuids (set (map :uuid groups))
           group-asserts (map (fn [guuid] [:entity/ensure-not-exists [:group/uuid guuid]])
