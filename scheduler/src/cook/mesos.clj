@@ -176,7 +176,7 @@
    fenzo-config                  -- map, config for fenzo, See scheduler/docs/configuration.adoc for more details
    sandbox-syncer-state          -- map, representing the sandbox syncer object"
   [{:keys [curator-framework fenzo-config mea-culpa-failure-limit mesos-datomic-conn mesos-datomic-mult
-           mesos-heartbeat-chan leadership-atom pool-name->pending-jobs-atom mesos-run-as-user agent-attributes-cache
+           mesos-heartbeat-chan leadership-atom pool-name->pending-jobs-atom mesos-run-as-user
            offer-incubate-time-ms optimizer-config rebalancer-config server-config task-constraints trigger-chans
            zk-prefix]}]
   (let [{:keys [fenzo-fitness-calculator fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-warn
@@ -195,7 +195,10 @@
                           ;clojure.lang.Agent/pooledExecutor
                           (reify LeaderSelectorListener
                             (takeLeadership [_ client]
-                              (let [{:keys [pool-name->fenzo-state view-incubating-offers] :as scheduler}
+                              (let [agent-attributes-cache (-> {}
+                                                               (cache/fifo-cache-factory :threshold 100000)
+                                                               atom)
+                                    {:keys [pool-name->fenzo-state view-incubating-offers] :as scheduler}
                                     (sched/create-datomic-scheduler
                                       {:conn mesos-datomic-conn
                                        :cluster-name->compute-cluster-atom cook.compute-cluster/cluster-name->compute-cluster-atom
