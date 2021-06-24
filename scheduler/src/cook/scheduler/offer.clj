@@ -38,6 +38,9 @@
                           {"HOSTNAME" hostname}
                           compute-cluster
                           (assoc "COOK_MAX_TASKS_PER_HOST" (cc/max-tasks-per-host compute-cluster)
+                                 ; Note that this is dynamic and can change from moment to moment.
+                                 ; This could be a problem in the agent-attributes-cache..... However,
+                                 ; the rebalancer ignores this constraint, so its safe to cache this.
                                  "COOK_NUM_TASKS_ON_HOST" (cc/num-tasks-on-host compute-cluster hostname)
                                  "COOK_COMPUTE_CLUSTER_LOCATION" (cc/compute-cluster->location compute-cluster)))]
     (merge offer-resources offer-attributes cook-attributes)))

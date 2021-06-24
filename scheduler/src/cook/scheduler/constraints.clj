@@ -432,6 +432,7 @@
             true
             ""))))))
 
+; Note that these constraints are used by the rebalancer.
 (def job-constraint-constructors [build-novel-host-constraint
                                   build-gpu-host-constraint
                                   build-disk-host-constraint
@@ -462,12 +463,13 @@
         (ConstraintEvaluator$Result. passes? reason)))))
 
 (defn make-fenzo-job-constraints
-  "Returns a sequence of all the constraints for 'job', in Fenzo-compatible format."
+  "Returns a sequence of all the constraints for 'job', in Fenzo-compatible format for use by Fenzo."
   [job]
   (conj (->> job-constraint-constructors
              (map (fn [constructor] (constructor job)))
              (remove nil?)
              (map fenzoize-job-constraint))
+        ; This constraint, which accesses the number of pods on a machine, is not visible to rebalancer.
         (build-max-tasks-per-host-constraint)))
 
 (defn build-rebalancer-reservation-constraint
