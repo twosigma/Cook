@@ -1975,14 +1975,14 @@
   ::jobs and ::groups, which specify the jobs and job groups."
   [conn {:keys [::groups ::job-pool-name-maps] :as ctx}]
   (try
-    (log/info "Submitting jobs through raw api:"
-              (map (fn [job-pool-name-map]
-                     (update job-pool-name-map :job #(dissoc % :command)))
-                   job-pool-name-maps))
-    (doseq [job jobs]
-      (passport/log-passport-event {"job-uuid" (str (:uuid job))
-                                    "user" (:user job)
-                                    "event-type" passport/api-job-submission}))
+    (let [jobs (map (fn [job-pool-name-map]
+                      (update job-pool-name-map :job #(dissoc % :command)))
+                    job-pool-name-maps)]
+      (log/info "Submitting jobs through raw api:" jobs)
+      (doseq [job jobs]
+        (passport/log-passport-event {"job-uuid" (str (:uuid job))
+                                      "user" (:user job)
+                                      "event-type" passport/api-job-submission})))
     (let [jobs (map :job job-pool-name-maps)
           group-uuids (set (map :uuid groups))
           group-asserts (map (fn [guuid] [:entity/ensure-not-exists [:group/uuid guuid]])
