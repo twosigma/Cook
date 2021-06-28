@@ -25,6 +25,7 @@
             [clojure.tools.logging :as log]
             [clojure.walk :as walk]
             [cook.cached-queries :as cached-queries]
+            [cook.cache :as ccache]
             [cook.caches :as caches]
             [cook.compute-cluster :as cc]
             [cook.config :as config]
@@ -1321,11 +1322,13 @@
                                                   compute-clusters))
                         _ (doseq [offer offers
                                   :let [slave-id (-> offer :slave-id :value)]]
-                            ; Cache all used offers (offer-cache is a map of hostnames to most recent offer)
-                            (swap! agent-attributes-cache (fn [c]
-                                                            (if (cache/has? c slave-id)
-                                                              (cache/hit c slave-id)
-                                                              (cache/miss c slave-id (offer/get-offer-attr-map offer))))))
+                            ; Cache offers for rebalancer so it can use job constraints when doing preemption decisions.
+                            ; Computing get-offer-attr-map is pretty expensive because it includes calculating
+                            ; currently running pods, so we have to union the set of pods k8s says are there and
+                            ; the set of pods we're trying to put on the node. Even though its not used by
+                            ; rebalancer (and not needed). So only do it if this is a new node.
+                            (when-not (ccache/get-if-present agent-attributes-cache identity slave-id)
+                              (ccache/put-cache! agent-attributes-cache identity slave-id (offer/get-offer-attr-map offer))))
                         using-pools? (not (nil? (config/default-pool)))
                         user->quota (quota/create-user->quota-fn (d/db conn) (if using-pools? pool-name nil))
                         matched-head? (handle-resource-offers! conn fenzo-state pool-name->pending-jobs-atom

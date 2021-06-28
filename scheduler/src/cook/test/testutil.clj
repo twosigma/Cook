@@ -421,10 +421,17 @@
 
 (defn init-agent-attributes-cache
   [& init]
-  (-> init
-      (or {})
-      (cache/fifo-cache-factory :threshold 10000)
-      atom))
+  (-> (CacheBuilder/newBuilder)
+      ;; When we store in this cache, we only visit nodes with offers.
+      ;; When we check it in the rebalancer, we only visit nodes that have
+      ;; running jobs on them.
+      ;; So, set a 2 hour timeout; if we've not seen a node in 2 hours, or our
+      ;; offer processing is *that* slow, its OK to be broken.
+      (.expireAfterAccess 2 TimeUnit/HOURS)
+      (.expireAfterWrite 2 TimeUnit/HOURS)
+      ; *ALWAYS* prevent runaway.
+      (.maximumSize 1000000)
+      (.build)))
 
 (defn poll-until
   "Polls `pred` every `interval-ms` and checks if it is true.
