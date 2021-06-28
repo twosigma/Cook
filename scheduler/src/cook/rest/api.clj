@@ -1979,10 +1979,10 @@
                       (update job-pool-name-map :job #(dissoc % :command)))
                     job-pool-name-maps)]
       (log/info "Submitting jobs through raw api:" jobs)
-      (doseq [job jobs]
-        (passport/log-passport-event {"job-uuid" (str (:uuid job))
-                                      "user" (:user job)
-                                      "event-type" passport/api-job-submission})))
+      (doseq [{{:keys [uuid, user]} :job} jobs]
+        (passport/log-passport-event {:job-uuid (str uuid)
+                                      :user user
+                                      :event-type passport/api-job-submission})))
     (let [jobs (map :job job-pool-name-maps)
           group-uuids (set (map :uuid groups))
           group-asserts (map (fn [guuid] [:entity/ensure-not-exists [:group/uuid guuid]])

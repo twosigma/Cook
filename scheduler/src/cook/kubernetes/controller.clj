@@ -153,17 +153,16 @@
                                      @(:pool-name->fenzo-state-atom compute-cluster)
                                      mesos-status))
 
-(defn write-status-to-cook-passport
+(defn write-status-to-passport
   "Helper function for logging completed job status to cook passport"
   [{:keys [name]}
    {:keys [task-id state reason]}]
-  (let [instance-uuid (task-id :value)]
-    (passport/log-passport-event {"pod-name" instance-uuid
-                                  "instance-uuid" instance-uuid
-                                  "cluster-name" name
-                                  "state" state
-                                  "reason" reason
-                                  "event-type" passport/pod-completed})))
+  (let [pod-name (task-id :value)]
+    (passport/log-passport-event {:pod-name pod-name
+                                  :cluster-name name
+                                  :state state
+                                  :reason reason
+                                  :event-type passport/pod-completed})))
 
 (defn handle-pod-submission-failed
   "Marks the corresponding job instance as failed in the database and
@@ -331,7 +330,7 @@
   (when-not (api/synthetic-pod? pod-name)
     (let [{:keys [status exit-code]} (calculate-pod-status compute-cluster pod-name k8s-actual-state :reason reason)]
       (write-status-to-datomic compute-cluster status)
-      (write-status-to-cook-passport compute-cluster status)
+      (write-status-to-passport compute-cluster status)
       (when exit-code
         (sandbox/aggregate-exit-code (:exit-code-syncer-state compute-cluster) pod-name exit-code))))
   ; Must never return nil, we want it to return non-nil so that we will retry with writing the state to datomic in case we lose a race.

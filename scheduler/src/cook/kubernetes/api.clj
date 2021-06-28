@@ -1642,11 +1642,10 @@
                 (str "Pod name from pod (" pod-name-from-pod ") "
                      "does not match pod name argument (" pod-name ")"))
         (log/info "In" compute-cluster-name "compute cluster, launching pod with name" pod-name "in namespace" namespace ":" (.serialize json pod))
-        (passport/log-passport-event {"pod-name" pod-name
-                                      "instance-uuid" pod-name
-                                      "namespace" namespace
-                                      "cluster-name" compute-cluster-name
-                                      "event-type" passport/pod-launching})
+        (passport/log-passport-event {:pod-name pod-name
+                                      :namespace namespace
+                                      :cluster-name compute-cluster-name
+                                      :event-type passport/pod-launching})
         (try
           (timers/time! (metrics/timer "launch-pod" compute-cluster-name)
                         (create-namespaced-pod api namespace pod))
