@@ -420,7 +420,8 @@
                    (when (:min-utilization-threshold rebalancer)
                      (log/warn "The :min-utilization-threshold configuration field is no longer used"))
                    (merge {:interval-seconds 300
-                           :dru-scale 1.0}
+                           :dru-scale 1.0
+                           :rebalancer-pools ".*"}
                           rebalancer))
 
      :optimizer (fnk [[:config {optimizer nil}]]
