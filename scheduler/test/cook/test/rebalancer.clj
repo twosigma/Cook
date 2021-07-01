@@ -17,13 +17,14 @@
   (:require [clojure.core.cache :as cache]
             [clojure.test :refer :all]
             [clojure.test.check.generators :as gen]
+            [cook.cache :as ccache]
             [cook.queries :as queries]
             [cook.quota :as quota]
             [cook.rebalancer :as rebalancer :refer [->State]]
             [cook.scheduler.dru :as dru]
             [cook.scheduler.scheduler :as sched]
             [cook.scheduler.share :as share]
-            [cook.test.testutil :refer [create-dummy-group create-dummy-instance create-dummy-job init-agent-attributes-cache restore-fresh-database!]]
+            [cook.test.testutil :refer [create-dummy-group create-dummy-instance create-dummy-job init-agent-attributes-cache restore-fresh-database! setup]]
             [cook.tools :as util]
             [datomic.api :as d :refer [q]]))
 
@@ -34,11 +35,9 @@
   [job inst]))
 
 (defn- update-agent-attributes-cache!
-  [agent-attributes-cache-atom slave-id props]
-  (swap! agent-attributes-cache-atom (fn [c]
-                                       (if (cache/has? c slave-id)
-                                         (cache/hit c slave-id)
-                                         (cache/miss c slave-id props)))))
+  [agent-attributes-cache slave-id props]
+  (when-not (ccache/get-if-present agent-attributes-cache identity slave-id)
+    (ccache/put-cache! agent-attributes-cache identity slave-id props)))
 
 (defn create-and-cache-running-job
   [conn hostname agent-attributes-cache hostname->props & args]
@@ -49,6 +48,7 @@
   [job inst]))
 
 (deftest test-init-state
+  (setup)
   (testing "test1"
     (let [datomic-uri "datomic:mem://test-init-state"
           conn (restore-fresh-database! datomic-uri)
@@ -108,6 +108,7 @@
                (seq (get user->sorted-running-task-ents "wzhao"))))))))
 
 (deftest test-compute-pending-default-job-dru
+  (setup)
   (testing "test1"
     (let [datomic-uri "datomic:mem://test-compute-pending-default-job-dru"
           conn (restore-fresh-database! datomic-uri)
@@ -148,6 +149,7 @@
       (is (= 2.6 (rebalancer/compute-pending-default-job-dru state "no-pool" (d/entity db job11)))))))
 
 (deftest test-pending-gpu-job-dru
+  (setup)
   (let [datomic-uri "datomic:mem://test-rebalancer/compute-pending-normal-job-dru"
         conn (restore-fresh-database! datomic-uri)
         job1 (create-dummy-job conn :name "job1" :user "ljin" :memory 10.0 :ncpus 10.0 :gpus 1.0)
@@ -199,6 +201,7 @@
     [task->scored-task user->sorted-running-task-ents user->dru-divisors]))
 
 (deftest test-compute-preemption-decision
+  (setup)
   (testing "test without group constraints"
     (let [datomic-uri "datomic:mem://test-compute-preemption-decision"
           conn (restore-fresh-database! datomic-uri)
@@ -992,6 +995,7 @@
                           params init-state jobs-to-make-room-for (:pool/name pool-ent))))
 
 (deftest test-rebalance
+  (setup)
   (let [datomic-uri "datomic:mem://test-rebalance"
         conn (restore-fresh-database! datomic-uri)
         job1 (create-dummy-job conn :user "ljin" :memory 10.0 :ncpus 10.0)
@@ -1115,6 +1119,7 @@
          task-ent8 1.52})
 
 (deftest ^:integration test-rebalance2
+  (setup)
   (testing "rebalance prop test"
     (let [datomic-uri "datomic:mem://test-rebalance2"
           running-user-gen (gen/elements ["ljin", "sunil", "wzhao", "abolin", "dgrnbrg", "palaitis", "sdelger", "wyegelwe"])
@@ -1152,6 +1157,7 @@
 
 
 (deftest test-update-datomic-params-via-config!
+  (setup)
   (let [datomic-uri "datomic:mem://test-init-state"
         conn (restore-fresh-database! datomic-uri)
         all-params {:safe-dru-threshold 1.0
@@ -1177,6 +1183,7 @@
       (is (= (rebalancer/read-datomic-params conn) merged-params))))))
 
 (deftest test-rebalance-host-reservation
+  (setup)
   (testing "reserves host for multiple preemptions"
     (let [datomic-uri "datomic:mem://test-rebalance-host-reservation"
           conn (restore-fresh-database! datomic-uri)
@@ -1279,6 +1286,7 @@
         (is (= #{} (:launched-job-uuids @reservations)))))))
 
 (deftest test-reserve-hosts
+  (setup)
   (testing "only reserves hosts with multiple preemptions"
     (let [decisions [{:task ["a" "b"]
                       :hostname "hostA"
@@ -1301,6 +1309,7 @@
       (is (= {} (:job-uuid->reserved-host @rebalancer-reservation-atom))))))
 
 (deftest test-reserve-hosts-integration
+  (setup)
   (testing "does not reserve another host after launching job"
     (let [datomic-uri "datomic:mem://test-reserve-hosts-integration"
           conn (restore-fresh-database! datomic-uri)
@@ -1326,6 +1335,7 @@
       (is (= #{}) (:launched-job-uuids @rebalancer-reservation-atom)))))
 
 (deftest job-below-quota
+  (setup)
   (let [conn (restore-fresh-database! "datomic:mem://test-job-below-quota")
         _ (cook.quota/set-quota! conn "testA" nil  "test quota" :count 1)
         job-id-1 (create-dummy-job conn :user "testA")

@@ -681,7 +681,7 @@
 (defn get-slave-attrs-from-cache
   "Looks up a slave property (properties are a union of the slave's attributes and its hostname) in the provided cache"
   [agent-attributes-cache-atom slave-id]
-  (cache/lookup @agent-attributes-cache-atom slave-id))
+  (ccache/get-if-present agent-attributes-cache-atom identity slave-id))
 
 (defn clear-uncommitted-jobs
   "Retracts entities that have not been committed as of now and were submitted before

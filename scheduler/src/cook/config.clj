@@ -346,11 +346,6 @@
      :offer-incubate-time-ms (fnk [[:config {scheduler nil}]]
                                (when scheduler
                                  (or (:offer-incubate-ms scheduler) 15000)))
-     :agent-attributes-cache (fnk [[:config {scheduler nil}]]
-                               (when scheduler
-                                 (merge
-                                   {:max-size 2000}
-                                   (:offer-cache scheduler))))
      :mea-culpa-failure-limit (fnk [[:config {scheduler nil}]]
                                 (:mea-culpa-failure-limit scheduler))
      :max-over-quota-jobs (fnk [[:config {scheduler nil}]]
@@ -425,7 +420,8 @@
                    (when (:min-utilization-threshold rebalancer)
                      (log/warn "The :min-utilization-threshold configuration field is no longer used"))
                    (merge {:interval-seconds 300
-                           :dru-scale 1.0}
+                           :dru-scale 1.0
+                           :pool-regex ".*"}
                           rebalancer))
 
      :optimizer (fnk [[:config {optimizer nil}]]

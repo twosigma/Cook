@@ -39,7 +39,9 @@
             [metrics.counters :as counters]
             [plumbing.core :refer [map-from-keys]]
             [swiss.arrows :refer :all])
-  (:import (org.apache.curator.framework.recipes.leader LeaderSelector LeaderSelectorListener)
+  (:import (com.google.common.cache CacheBuilder)
+           (java.util.concurrent TimeUnit)
+           (org.apache.curator.framework.recipes.leader LeaderSelector LeaderSelectorListener)
            (org.apache.curator.framework.state ConnectionState)))
 
 ;; ============================================================================
@@ -168,7 +170,6 @@
                                     see scheduler/docs/configuration.adoc for more details
    task-constraints              -- map, constraints on task. See scheduler/docs/configuration.adoc for more details
    pool-name->pending-jobs-atom  -- atom, Populate (and update) map from pool name to list of pending jobs into atom
-   agent-attributes-cache        -- atom, map from agent id to most recent agent attributes
    gpu-enabled?                  -- boolean, whether cook will schedule gpus
    rebalancer-config             -- map, config for rebalancer. See scheduler/docs/rebalancer-config.adoc for details
    progress-config               -- map, config for progress publishing. See scheduler/docs/configuration.adoc
@@ -176,7 +177,7 @@
    fenzo-config                  -- map, config for fenzo, See scheduler/docs/configuration.adoc for more details
    sandbox-syncer-state          -- map, representing the sandbox syncer object"
   [{:keys [curator-framework fenzo-config mea-culpa-failure-limit mesos-datomic-conn mesos-datomic-mult
-           mesos-heartbeat-chan leadership-atom pool-name->pending-jobs-atom mesos-run-as-user agent-attributes-cache
+           mesos-heartbeat-chan leadership-atom pool-name->pending-jobs-atom mesos-run-as-user
            offer-incubate-time-ms optimizer-config rebalancer-config server-config task-constraints trigger-chans
            zk-prefix]}]
   (let [{:keys [fenzo-fitness-calculator fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-warn
@@ -195,7 +196,19 @@
                           ;clojure.lang.Agent/pooledExecutor
                           (reify LeaderSelectorListener
                             (takeLeadership [_ client]
-                              (let [{:keys [pool-name->fenzo-state view-incubating-offers] :as scheduler}
+                              (let [agent-attributes-cache
+                                    (-> (CacheBuilder/newBuilder)
+                                        ;; When we store in this cache, we only visit nodes with offers.
+                                        ;; When we check it in the rebalancer, we only visit nodes that have
+                                        ;; running jobs on them.
+                                        ;; So, set a 2 hour timeout; if we've not seen a node in 2 hours, or our
+                                        ;; offer processing is *that* slow, losing the state won't make things any worse.
+                                        (.expireAfterAccess 2 TimeUnit/HOURS)
+                                        (.expireAfterWrite 2 TimeUnit/HOURS)
+                                        ; *ALWAYS* prevent runaway.
+                                        (.maximumSize 1000000)
+                                        (.build))
+                                    {:keys [pool-name->fenzo-state view-incubating-offers] :as scheduler}
                                     (sched/create-datomic-scheduler
                                       {:conn mesos-datomic-conn
                                        :cluster-name->compute-cluster-atom cook.compute-cluster/cluster-name->compute-cluster-atom

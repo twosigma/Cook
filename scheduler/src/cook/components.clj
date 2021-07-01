@@ -102,7 +102,7 @@
                            good-enough-fitness hostname mea-culpa-failure-limit mesos-leader-path mesos-run-as-user
                            offer-incubate-time-ms optimizer rebalancer server-port task-constraints]
                           compute-clusters curator-framework mesos-datomic-mult leadership-atom
-                          mesos-agent-attributes-cache pool-name->pending-jobs-atom mesos-heartbeat-chan
+                          pool-name->pending-jobs-atom mesos-heartbeat-chan
                           trigger-chans]
 
                       ; We track queue limits on all nodes, not just the leader, because
@@ -134,7 +134,6 @@
                                  :leadership-atom leadership-atom
                                  :pool-name->pending-jobs-atom pool-name->pending-jobs-atom
                                  :mesos-run-as-user mesos-run-as-user
-                                 :agent-attributes-cache mesos-agent-attributes-cache
                                  :offer-incubate-time-ms offer-incubate-time-ms
                                  :optimizer-config optimizer
                                  :rebalancer-config rebalancer
@@ -332,12 +331,6 @@
                                      datomic/conn leadership-atom))
      :leadership-atom (fnk [] (atom false))
      :pool-name->pending-jobs-atom (fnk [] (atom {}))
-     :mesos-agent-attributes-cache (fnk [[:settings {agent-attributes-cache nil}]]
-                                     (when agent-attributes-cache
-                                       (log/info "Agent attributes cache max size =" (:max-size agent-attributes-cache))
-                                       (-> {}
-                                           (cache/lru-cache-factory :threshold (:max-size agent-attributes-cache))
-                                           atom)))
      :curator-framework curator-framework}))
 
 (defn -main

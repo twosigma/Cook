@@ -551,32 +551,37 @@
       trigger-chan
       (fn trigger-rebalance-iteration []
         (log/info "Rebalance cycle starting")
-        (let [{:keys [max-preemption] :as params} (read-datomic-params conn)]
+        (let [{:keys [max-preemption] :as params} (read-datomic-params conn)
+              rebalancer-pools-pattern (-> config
+                                           :pool-regex
+                                           re-pattern)]
           (if (seq params)
             (do
               (run!
                 (fn [[pool pending-jobs]]
-                  (let [host->spare-resources (->> (view-incubating-offers pool)
-                                                   (map (fn [v]
-                                                          [(:hostname v)
-                                                           (select-keys (keywordize-keys (:resources v))
-                                                                        [:cpus :mem :gpus])]))
-                                                   (into {}))
-                        pool-ent (if (= "no-pool" pool)
-                                   {:pool/name pool
-                                    :pool/dru-mode :pool.dru-mode/default}
-                                   (d/entity (d/db conn) [:pool/name pool]))
-                        db (mt/db conn)
-                        jobs-to-make-room-for (->> pending-jobs
-                                                   (filter (partial util/job-allowed-to-start? db))
-                                                   (take max-preemption))
-                        init-state (init-state db (util/get-running-task-ents db) jobs-to-make-room-for
-                                               host->spare-resources pool-ent)]
-                    (log/info "Rebalancing for pool" pool)
-                    (rebalance! db conn agent-attributes-cache rebalancer-reservation-atom
-                                params init-state jobs-to-make-room-for (:pool/name pool-ent))))
-                @pool-name->pending-jobs-atom)
-              (log/info "Rebalance cycle ended"))
-            (log/info "Skipping rebalancing because it's not cofigured"))))
+                  (if (re-find rebalancer-pools-pattern pool)
+                    (let [host->spare-resources (->> (view-incubating-offers pool)
+                                                     (map (fn [v]
+                                                            [(:hostname v)
+                                                             (select-keys (keywordize-keys (:resources v))
+                                                                          [:cpus :mem :gpus])]))
+                                                     (into {}))
+                          pool-ent (if (= "no-pool" pool)
+                                     {:pool/name pool
+                                      :pool/dru-mode :pool.dru-mode/default}
+                                     (d/entity (d/db conn) [:pool/name pool]))
+                          db (mt/db conn)
+                          jobs-to-make-room-for (->> pending-jobs
+                                                     (filter (partial util/job-allowed-to-start? db))
+                                                     (take max-preemption))
+                          init-state (init-state db (util/get-running-task-ents db) jobs-to-make-room-for
+                                                 host->spare-resources pool-ent)]
+                      (log/info "Rebalancing for pool" pool)
+                      (rebalance! db conn agent-attributes-cache rebalancer-reservation-atom
+                                  params init-state jobs-to-make-room-for (:pool/name pool-ent)))
+                    (log/info "Skip rebalancing for pool" pool)))
+                  @pool-name->pending-jobs-atom)
+                (log/info "Rebalance cycle ended"))
+              (log/info "Skipping rebalancing because it's not cofigured"))))
       {:error-handler (fn [ex] (log/error ex "Rebalance failed"))})
     #(async/close! trigger-chan)))

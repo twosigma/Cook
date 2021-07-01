@@ -73,7 +73,8 @@
                                 :dru-scale 1.0
                                 :safe-dru-threshold 1.0
                                 :min-dru-diff 0.5
-                                :max-preemption 100.0})
+                                :max-preemption 100.0
+                                :pool-regex ".*"})
 
 (def default-fenzo-config {:fenzo-max-jobs-considered 2000
                            :fenzo-scaleback 0.95
@@ -95,10 +96,6 @@
                          (async/mult (async/chan)))
          pool-name->pending-jobs-atom# (or (:pool-name->pending-jobs-atom ~scheduler-config)
                                            (atom {}))
-         agent-attributes-cache# (or (:mesos-agent-attributes-cache ~scheduler-config)
-                                     (-> {}
-                                         (cache/fifo-cache-factory :threshold 100)
-                                         atom))
          zk-prefix# (or (:zk-prefix ~scheduler-config)
                         "/cook")
          offer-incubate-time-ms# (or (:offer-incubate-time-ms ~scheduler-config)
@@ -177,7 +174,6 @@
             :leadership-atom leadership-atom#
             :pool-name->pending-jobs-atom pool-name->pending-jobs-atom#
             :mesos-run-as-user nil
-            :agent-attributes-cache agent-attributes-cache#
             :offer-incubate-time-ms offer-incubate-time-ms#
             :optimizer-config optimizer-config#
             :rebalancer-config rebalancer-config#
