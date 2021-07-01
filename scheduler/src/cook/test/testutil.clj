@@ -426,7 +426,7 @@
       ;; When we check it in the rebalancer, we only visit nodes that have
       ;; running jobs on them.
       ;; So, set a 2 hour timeout; if we've not seen a node in 2 hours, or our
-      ;; offer processing is *that* slow, its OK to be broken.
+      ;; offer processing is *that* slow, losing the state won't make things any worse.
       (.expireAfterAccess 2 TimeUnit/HOURS)
       (.expireAfterWrite 2 TimeUnit/HOURS)
       ; *ALWAYS* prevent runaway.

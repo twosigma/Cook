@@ -553,7 +553,7 @@
         (log/info "Rebalance cycle starting")
         (let [{:keys [max-preemption] :as params} (read-datomic-params conn)
               rebalancer-pools-pattern (-> config
-                                           :rebalancer-pools
+                                           :pool-regex
                                            re-pattern)]
           (if (seq params)
             (do

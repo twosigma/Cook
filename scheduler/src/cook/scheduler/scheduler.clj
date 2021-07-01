@@ -1325,8 +1325,9 @@
                             ; Cache offers for rebalancer so it can use job constraints when doing preemption decisions.
                             ; Computing get-offer-attr-map is pretty expensive because it includes calculating
                             ; currently running pods, so we have to union the set of pods k8s says are there and
-                            ; the set of pods we're trying to put on the node. Even though its not used by
-                            ; rebalancer (and not needed). So only do it if this is a new node.
+                            ; the set of pods we're trying to put on the node. Even though it's not used by
+                            ; rebalancer (and not needed). So it's OK if it's stale, so we do not need to refresh
+                            ; and only store if it is a new node.
                             (when-not (ccache/get-if-present agent-attributes-cache identity slave-id)
                               (ccache/put-cache! agent-attributes-cache identity slave-id (offer/get-offer-attr-map offer))))
                         using-pools? (not (nil? (config/default-pool)))

@@ -74,7 +74,7 @@
                                 :safe-dru-threshold 1.0
                                 :min-dru-diff 0.5
                                 :max-preemption 100.0
-                                :rebalancer-pools ".*"})
+                                :pool-regex ".*"})
 
 (def default-fenzo-config {:fenzo-max-jobs-considered 2000
                            :fenzo-scaleback 0.95
