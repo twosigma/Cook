@@ -170,7 +170,7 @@
               :max-preemption 500.0
               :min-dru-diff 1.0
               :safe-dru-threshold 1.0
-              :rebalancer-pools "^.*alpha.*$"}
+              :pool-regex "^.*alpha.*$"}
  :sandbox-syncer {:sync-interval-ms 1000}
  :scheduler {:offer-incubate-ms 15000
              :task-constraints {:command-length-limit 5000
