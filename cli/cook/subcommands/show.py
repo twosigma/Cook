@@ -58,8 +58,6 @@ def tabulate_job(cluster_name, job):
         job_definition.append(['Ports Requested', job['ports']])
     if len(job['constraints']) > 0:
         job_definition.append(['Constraints', format_list(job['constraints'])])
-    if len(job['labels']) > 0:
-        job_definition.append(['Labels', format_dict(job['labels'])])
     if job['uris'] and len(job['uris']) > 0:
         job_definition.append(['URI(s)', format_list(job['uris'])])
     if 'groups' in job:
@@ -75,6 +73,12 @@ def tabulate_job(cluster_name, job):
     if 'checkpoint' in job and 'mode' in job['checkpoint']:
         job_state.append(['Checkpoint mode', job['checkpoint']['mode']])
 
+    if len(job['labels']) > 0:
+        job_labels_table = tabulate([[k, v.replace(',', '\n')] for k, v in job['labels'].items()], tablefmt='plain')
+        job_labels = f'\n\nLabels:\n{job_labels_table}'
+    else:
+        job_labels = ''
+
     job_command = 'Command:\n%s' % job['command']
 
     if len(job['env']) > 0:
@@ -88,8 +92,9 @@ def tabulate_job(cluster_name, job):
     job_state_table = tabulate(job_state, tablefmt='plain')
     job_tables = juxtapose_text(job_definition_table, job_state_table)
     instance_table = tabulate_job_instances(instances)
-    return '\n=== Job: %s (%s) ===\n\n%s\n\n%s%s%s' % \
-           (job['uuid'], job['name'], job_tables, job_command, environment, instance_table)
+    return f'\n' \
+           f'=== Job: {job["uuid"]} ({job["name"]}) ===\n\n' \
+           f'{job_tables}{job_labels}\n\n{job_command}{environment}{instance_table}'
 
 
 def tabulate_instance(cluster_name, instance_job_pair):
