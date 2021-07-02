@@ -206,6 +206,12 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :db/valueType :db.type/instant
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/doc "The pool name that was specified on the job submission"
+    :db/ident :job/submit-pool-name
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
    ;; Group attributes
    {:db/id (d/tempid :db.part/db)
     :db/ident :group/uuid
