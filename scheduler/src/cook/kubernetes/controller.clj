@@ -158,13 +158,13 @@
   [{:keys [name]}
    {:keys [task-id state reason]}]
   (let [pod-name (task-id :value)
-        event-map (merge
+        event-map (api/assoc-uuid
                     {:cluster-name name
                      :event-type passport/pod-completed
                      :pod-name pod-name
                      :reason reason
                      :state state}
-                    (api/create-uuid-map pod-name))]
+                    pod-name)]
     (passport/log-event event-map)))
 
 (defn handle-pod-submission-failed

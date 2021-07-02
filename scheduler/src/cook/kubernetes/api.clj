@@ -82,13 +82,13 @@
   (when-not (synthetic-pod? pod-name)
     pod-name))
 
-(defn create-uuid-map
-  "Return a map with :job-uuid and/or :instance-uuid based on pod-name"
-  [pod-name]
+(defn assoc-uuid
+  "Return a map with :job-uuid or :instance-uuid based on pod-name"
+  [event-map pod-name]
   (let [instance-uuid (pod-name->instance-uuid pod-name)
         job-uuid (pod-name->job-uuid pod-name)]
     (cond->
-      {}
+      event-map
       instance-uuid (assoc :instance-uuid instance-uuid)
       job-uuid (assoc :job-uuid job-uuid))))
 
@@ -1664,12 +1664,12 @@
                 (str "Pod name from pod (" pod-name-from-pod ") "
                      "does not match pod name argument (" pod-name ")"))
         (log/info "In" compute-cluster-name "compute cluster, launching pod with name" pod-name "in namespace" namespace ":" (.serialize json pod))
-        (let [event-map (merge
+        (let [event-map (assoc-uuid
                           {:cluster-name compute-cluster-name
                            :event-type passport/pod-launching
                            :namespace namespace
                            :pod-name pod-name}
-                          (create-uuid-map pod-name))]
+                          pod-name)]
           (passport/log-event event-map))
         (try
           (timers/time! (metrics/timer "launch-pod" compute-cluster-name)
