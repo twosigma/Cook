@@ -1,6 +1,7 @@
 import collections
 import itertools
 import json
+from operator import itemgetter
 
 from tabulate import tabulate
 
@@ -19,7 +20,7 @@ def tabulate_job_instances(instances):
                                          ('Run Time', format_instance_run_time(i)),
                                          ('Host', i['hostname']),
                                          ('Instance Status', format_instance_status(i))])
-                for i in instances]
+                for i in sorted(instances, key=itemgetter('start_time'))]
         instance_table = tabulate(rows, headers='keys', tablefmt='plain')
         return '\n\n%s' % instance_table
     else:
@@ -74,8 +75,7 @@ def tabulate_job(cluster_name, job):
         job_state.append(['Checkpoint mode', job['checkpoint']['mode']])
 
     if len(job['labels']) > 0:
-        job_labels_list = sorted([[k, v.replace(',', '\n')] for k, v in job['labels'].items()],
-                                 key=lambda pair: pair[0])
+        job_labels_list = sorted([[k, v.replace(',', ',\n')] for k, v in job['labels'].items()], key=itemgetter(0))
         job_labels_table = tabulate(job_labels_list, tablefmt='plain')
         job_labels = f'\n\nLabels:\n{job_labels_table}'
     else:
