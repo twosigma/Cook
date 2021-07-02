@@ -70,6 +70,20 @@
   [pod-name]
   (str/starts-with? pod-name cook-synthetic-pod-name-prefix))
 
+(defn pod-name->job-uuid
+  "If a pod is synthetic, return the uuid of the job it was created for"
+  [pod-name]
+  (when (synthetic-pod? pod-name)
+    (re-find #"[0-9a-fA-F]{8}\-[0-9a-fA-F]{4}\-[0-9a-fA-F]{4}\-[0-9a-fA-F]{4}\-[0-9a-fA-F]{12}" pod-name))
+  )
+
+(defn pod-name->instance-uuid
+  "If a pod is not synthetic, return the instance id associated with its pod-name"
+  [pod-name]
+  (when-not (synthetic-pod? pod-name)
+    pod-name)
+  )
+
 ; DeletionCandidateTaint is a soft taint that k8s uses to mark unneeded
 ; nodes as preferably unschedulable. This taint is added as soon as the
 ; autoscaler detects that nodes are under-utilized and all pods could be
@@ -1642,10 +1656,16 @@
                 (str "Pod name from pod (" pod-name-from-pod ") "
                      "does not match pod name argument (" pod-name ")"))
         (log/info "In" compute-cluster-name "compute cluster, launching pod with name" pod-name "in namespace" namespace ":" (.serialize json pod))
-        (passport/log-passport-event {:pod-name pod-name
-                                      :namespace namespace
-                                      :cluster-name compute-cluster-name
-                                      :event-type passport/pod-launching})
+        (let [event-map {:pod-name pod-name
+                         :namespace namespace
+                         :cluster-name compute-cluster-name
+                         :event-type passport/pod-launching}
+              instance-uuid (pod-name->instance-uuid pod-name)
+              job-uuid (pod-name->job-uuid pod-name)
+              event-map (cond
+                          instance-uuid (assoc event-map :instance-uuid instance-uuid)
+                          job-uuid (assoc event-map :job-uuid job-uuid))]
+          (passport/log-passport-event event-map))
         (try
           (timers/time! (metrics/timer "launch-pod" compute-cluster-name)
                         (create-namespaced-pod api namespace pod))

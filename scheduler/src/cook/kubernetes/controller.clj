@@ -157,12 +157,18 @@
   "Helper function for logging completed job status to cook passport"
   [{:keys [name]}
    {:keys [task-id state reason]}]
-  (let [pod-name (task-id :value)]
-    (passport/log-passport-event {:pod-name pod-name
-                                  :cluster-name name
-                                  :state state
-                                  :reason reason
-                                  :event-type passport/pod-completed})))
+  (let [pod-name (task-id :value)
+        event-map {:pod-name pod-name
+                   :cluster-name name
+                   :state state
+                   :reason reason
+                   :event-type passport/pod-completed}
+        instance-uuid (api/pod-name->instance-uuid pod-name)
+        job-uuid (api/pod-name->job-uuid pod-name)
+        event-map (cond
+                    instance-uuid (assoc event-map :instance-uuid instance-uuid)
+                    job-uuid (assoc event-map :job-uuid job-uuid))]
+    (passport/log-passport-event event-map)))
 
 (defn handle-pod-submission-failed
   "Marks the corresponding job instance as failed in the database and
