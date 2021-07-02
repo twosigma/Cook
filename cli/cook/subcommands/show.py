@@ -74,7 +74,9 @@ def tabulate_job(cluster_name, job):
         job_state.append(['Checkpoint mode', job['checkpoint']['mode']])
 
     if len(job['labels']) > 0:
-        job_labels_table = tabulate([[k, v.replace(',', '\n')] for k, v in job['labels'].items()], tablefmt='plain')
+        job_labels_list = sorted([[k, v.replace(',', '\n')] for k, v in job['labels'].items()],
+                                 key=lambda pair: pair[0])
+        job_labels_table = tabulate(job_labels_list, tablefmt='plain')
         job_labels = f'\n\nLabels:\n{job_labels_table}'
     else:
         job_labels = ''
