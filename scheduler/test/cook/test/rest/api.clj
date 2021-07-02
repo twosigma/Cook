@@ -1479,6 +1479,23 @@
             (is (= (expected-job-map job)
                    (dissoc (api/fetch-job-map (db conn) uuid) :submit_time)))))
 
+        (testing "submission pool"
+          (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
+                {:keys [uuid] :as job} (minimal-job)]
+            (create-pool conn "test-pool")
+            (is (= {::api/results (str "submitted jobs " uuid)}
+                   (testutil/create-jobs! conn {::api/job-pool-name-maps
+                                                [{:job job
+                                                  :pool-name "test-pool"
+                                                  :pool-name-from-submission "@crazy"}]})))
+            (is (= (-> job
+                       expected-job-map
+                       (assoc :pool "test-pool")
+                       (assoc :submit-pool "@crazy"))
+                   (-> (db conn)
+                       (api/fetch-job-map uuid)
+                       (dissoc :submit_time))))))
+
         (testing "should fail on a duplicate uuid"
           (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
                 {:keys [uuid] :as job} (minimal-job)]

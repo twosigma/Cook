@@ -419,7 +419,8 @@
               (s/optional-key :instances) [Instance]
               (s/optional-key :pool) s/Str
               (s/optional-key :datasets) #{{:dataset {s/Str s/Str}
-                                            (s/optional-key :partitions) #{{s/Str s/Str}}}}})
+                                            (s/optional-key :partitions) #{{s/Str s/Str}}}}
+              (s/optional-key :submit-pool) s/Str})
       prepare-schema-response))
 
 (def JobResponseDeprecated
@@ -885,12 +886,15 @@
                     ; lookup the pool db id using pool-name (and not pool-name-from-submission) is
                     ; that a JobRouting plugin can translate a routing pool name to a real pool name.
                     pool-name-from-submission
-                    (assoc :job/pool
-                           (lookup-cache-pool-name!
-                             caches/pool-name->db-id-cache
-                             db
-                             :db/id
-                             pool-name))
+                    (->
+                      (assoc :job/pool
+                             (lookup-cache-pool-name!
+                               caches/pool-name->db-id-cache
+                               db
+                               :db/id
+                               pool-name))
+                      (assoc :job/submit-pool-name
+                             pool-name-from-submission))
                     checkpoint (assoc :job/checkpoint (build-checkpoint checkpoint))
                     (seq datasets) (assoc :job/datasets datasets))
         txn (plugins/adjust-job adjustment/plugin txn db)]
@@ -1312,6 +1316,7 @@
           attempts-consumed (util/job-ent->attempts-consumed db job)
           retries-remaining (- (:job/max-retries job) attempts-consumed)
           disable-mea-culpa-retries (:job/disable-mea-culpa-retries job false)
+          submit-pool-name (:job/submit-pool-name job)
           job-map {:command (:job/command job)
                    :constraints constraints
                    :cpus (:cpus resources)
@@ -1355,7 +1360,8 @@
               pool (assoc :pool (:pool/name pool))
               container (assoc :container (container->response-map container))
               checkpoint (assoc :checkpoint (util/job-ent->checkpoint job))
-              datasets (assoc :datasets datasets)))))
+              datasets (assoc :datasets datasets)
+              submit-pool-name (assoc :submit-pool submit-pool-name)))))
 
 (defn fetch-job-map
   [db job-uuid]
