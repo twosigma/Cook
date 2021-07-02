@@ -1980,7 +1980,7 @@
                     job-pool-name-maps)]
       (log/info "Submitting jobs through raw api:" jobs)
       (doseq [{{:keys [uuid, user]} :job} jobs]
-        (passport/log-passport-event {:job-uuid (str uuid)
+        (passport/log-event {:job-uuid (str uuid)
                                       :user user
                                       :event-type passport/api-job-submission})))
     (let [jobs (map :job job-pool-name-maps)
