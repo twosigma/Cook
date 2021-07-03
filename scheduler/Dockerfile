@@ -54,6 +54,7 @@ EXPOSE \
     4334 \
     4335 \
     4336 \
+    5432 \
     12321 \
     12322
 ENTRYPOINT ["/opt/cook/docker/run-cook.sh"]
