@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.53.6] - 2021-07-06
+### Added
+- Save the submitted job's pool, from @dposada
+- Ability to turn rebalancer on or off by pool, from @scrosby
+### Changed
+- Optimized a cache used by rebalancer, from @scrosby
+
 ## [1.53.5] - 2021-06-28
 (internal-only release)
 
