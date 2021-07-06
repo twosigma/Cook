@@ -7,6 +7,7 @@
             [cook.kubernetes.api :as api]
             [cook.kubernetes.metrics :as metrics]
             [cook.mesos.sandbox :as sandbox]
+            [cook.passport :as passport]
             [cook.scheduler.scheduler :as scheduler]
             [metrics.timers :as timers])
   (:import (clojure.lang IAtom)
@@ -151,6 +152,20 @@
   (scheduler/write-status-to-datomic datomic/conn
                                      @(:pool-name->fenzo-state-atom compute-cluster)
                                      mesos-status))
+
+(defn write-status-to-passport
+  "Helper function for logging completed job status to cook passport"
+  [{:keys [name]}
+   {:keys [task-id state reason]}]
+  (let [pod-name (task-id :value)
+        event-map (api/assoc-uuid
+                    {:cluster-name name
+                     :event-type passport/pod-completed
+                     :pod-name pod-name
+                     :reason reason
+                     :state state}
+                    pod-name)]
+    (passport/log-event event-map)))
 
 (defn handle-pod-submission-failed
   "Marks the corresponding job instance as failed in the database and
@@ -318,6 +333,7 @@
   (when-not (api/synthetic-pod? pod-name)
     (let [{:keys [status exit-code]} (calculate-pod-status compute-cluster pod-name k8s-actual-state :reason reason)]
       (write-status-to-datomic compute-cluster status)
+      (write-status-to-passport compute-cluster status)
       (when exit-code
         (sandbox/aggregate-exit-code (:exit-code-syncer-state compute-cluster) pod-name exit-code))))
   ; Must never return nil, we want it to return non-nil so that we will retry with writing the state to datomic in case we lose a race.

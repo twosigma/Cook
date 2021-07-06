@@ -8,6 +8,7 @@
             [cook.cached-queries :as cached-queries]
             [cook.config :as config]
             [cook.kubernetes.metrics :as metrics]
+            [cook.passport :as passport]
             [cook.regexp-tools :as regexp-tools]
             [cook.rest.api :as api]
             [cook.scheduler.constraints :as constraints]
@@ -68,6 +69,28 @@
   "Given a pod name, returns true if it has the synthetic pod prefix"
   [pod-name]
   (str/starts-with? pod-name cook-synthetic-pod-name-prefix))
+
+(defn pod-name->job-uuid
+  "If a pod is synthetic, return the uuid of the job it was created for"
+  [pod-name]
+  (when (synthetic-pod? pod-name)
+    (re-find #"[0-9a-fA-F]{8}\-[0-9a-fA-F]{4}\-[0-9a-fA-F]{4}\-[0-9a-fA-F]{4}\-[0-9a-fA-F]{12}" pod-name)))
+
+(defn pod-name->instance-uuid
+  "If a pod is not synthetic, return the instance id associated with its pod-name"
+  [pod-name]
+  (when-not (synthetic-pod? pod-name)
+    pod-name))
+
+(defn assoc-uuid
+  "Return a map with :job-uuid or :instance-uuid based on pod-name"
+  [event-map pod-name]
+  (let [instance-uuid (pod-name->instance-uuid pod-name)
+        job-uuid (pod-name->job-uuid pod-name)]
+    (cond->
+      event-map
+      instance-uuid (assoc :instance-uuid instance-uuid)
+      job-uuid (assoc :job-uuid job-uuid))))
 
 ; DeletionCandidateTaint is a soft taint that k8s uses to mark unneeded
 ; nodes as preferably unschedulable. This taint is added as soon as the
@@ -1641,6 +1664,13 @@
                 (str "Pod name from pod (" pod-name-from-pod ") "
                      "does not match pod name argument (" pod-name ")"))
         (log/info "In" compute-cluster-name "compute cluster, launching pod with name" pod-name "in namespace" namespace ":" (.serialize json pod))
+        (let [event-map (assoc-uuid
+                          {:cluster-name compute-cluster-name
+                           :event-type passport/pod-launching
+                           :namespace namespace
+                           :pod-name pod-name}
+                          pod-name)]
+          (passport/log-event event-map))
         (try
           (timers/time! (metrics/timer "launch-pod" compute-cluster-name)
                         (create-namespaced-pod api namespace pod))

@@ -53,6 +53,8 @@
       'config/env-bool #(Boolean/valueOf (env %))}}
     config))
 
+(def passport-logger-ns "passport-logger")
+
 (defn init-logger
   ([] (init-logger {:levels {"datomic.db" :warn
                              "datomic.peer" :warn
@@ -75,7 +77,15 @@
                       file
                       "'.'yyyy-MM-dd")
                :level default}
-              overrides))
+              overrides)
+       (log4j-conf/set-loggers!
+         (Logger/getLogger ^String passport-logger-ns)
+         {:out (DailyRollingFileAppender.
+                 (PatternLayout.
+                   "%d{ISO8601} %-5p %c [%t] - %m%n")
+                 "log/cook-passport.log"
+                 "'.'yyyy-MM-dd")
+          :level default}))
      (catch Throwable t
        (.println System/err (str "Failed to initialize logging! Error: " (.toString t)))
        (stacktrace/print-cause-trace t)
@@ -501,6 +511,8 @@
                           (merge {:attribute-name "cook-pool"
                                   :default-pool "no-pool"}
                                  pool-selection)})))
+     :passport (fnk [[:config {passport {}}]]
+                 passport)
      :kubernetes (fnk [[:config {kubernetes {}}]]
                    (let [{:keys [controller-lock-num-shards
                                  telemetry-tags-key-invalid-char-pattern]
@@ -682,6 +694,10 @@
 (defn compute-cluster-templates
   []
   (:compute-cluster-templates (compute-cluster-options)))
+
+(defn passport
+  []
+  (get-in config [:settings :passport]))
 
 (defn kubernetes
   []
