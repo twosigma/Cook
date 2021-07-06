@@ -6,7 +6,8 @@
 (defn log-event
   "Log event to cook-passport log file"
   [log-data]
-  (log/log config/passport-logger-ns :info nil (json/write-str log-data)))
+  (when (:enabled? (config/passport))
+    (log/log config/passport-logger-ns :info nil (json/write-str log-data))))
 
 (def api-job-submission :api-job-submission)
 (def pod-launching :pod-launching)

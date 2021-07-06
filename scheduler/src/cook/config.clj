@@ -511,6 +511,8 @@
                           (merge {:attribute-name "cook-pool"
                                   :default-pool "no-pool"}
                                  pool-selection)})))
+     :passport (fnk [[:config {passport {}}]]
+                 passport)
      :kubernetes (fnk [[:config {kubernetes {}}]]
                    (let [{:keys [controller-lock-num-shards
                                  telemetry-tags-key-invalid-char-pattern]
@@ -692,6 +694,10 @@
 (defn compute-cluster-templates
   []
   (:compute-cluster-templates (compute-cluster-options)))
+
+(defn passport
+  []
+  (get-in config [:settings :passport]))
 
 (defn kubernetes
   []
