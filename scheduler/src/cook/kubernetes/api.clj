@@ -70,7 +70,7 @@
   [pod-name]
   (str/starts-with? pod-name cook-synthetic-pod-name-prefix))
 
-(defn pod-name->job-uuid
+(defn synthetic-pod-name->job-uuid
   "If a pod is synthetic, return the uuid of the job it was created for"
   [pod-name]
   (when (synthetic-pod? pod-name)
@@ -82,11 +82,14 @@
   (when-not (synthetic-pod? pod-name)
     pod-name))
 
-(defn assoc-uuid
-  "Return a map with :job-uuid or :instance-uuid based on pod-name"
+(defn assoc-uuids
+  "Returns event-map with added fields :job-uuid (based on pod-name) and :instance-uuid (if pod is not synthetic)"
   [event-map pod-name]
   (let [instance-uuid (pod-name->instance-uuid pod-name)
-        job-uuid (pod-name->job-uuid pod-name)]
+        synthetic-pod-job-uuid (synthetic-pod-name->job-uuid pod-name)
+        job-uuid (if synthetic-pod-job-uuid
+                   synthetic-pod-job-uuid
+                   (tools/instance-uuid->job-uuid-cache-lookup instance-uuid))]
     (cond->
       event-map
       instance-uuid (assoc :instance-uuid instance-uuid)
@@ -1664,7 +1667,7 @@
                 (str "Pod name from pod (" pod-name-from-pod ") "
                      "does not match pod name argument (" pod-name ")"))
         (log/info "In" compute-cluster-name "compute cluster, launching pod with name" pod-name "in namespace" namespace ":" (.serialize json pod))
-        (let [event-map (assoc-uuid
+        (let [event-map (assoc-uuids
                           {:cluster-name compute-cluster-name
                            :event-type passport/pod-launching
                            :namespace namespace

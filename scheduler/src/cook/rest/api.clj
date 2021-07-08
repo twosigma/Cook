@@ -1397,15 +1397,6 @@
         (update-in [:host-placement :type] util/without-ns)
         (update-in [:straggler-handling :type] util/without-ns))))
 
-(defn instance-uuid->job-uuid
-  "Queries for the job uuid from an instance uuid.
-   Returns nil if the instance uuid doesn't correspond
-   a job"
-  [db instance-uuid]
-  (->> (d/entity db [:instance/task-id (str instance-uuid)])
-       :job/_instance
-       :job/uuid))
-
 (defn- wrap-seq
   "Returns:
    - [v] if v is not nil and not sequential
@@ -1438,7 +1429,7 @@
   (let [jobs (wrap-seq (get-in ctx [:request :query-params :job]))
         instances (wrap-seq (get-in ctx [:request :query-params :instance]))
         allow-partial-results (get-in ctx [:request :query-params :partial])
-        instance-uuid->job-uuid #(instance-uuid->job-uuid (d/db conn) %)
+        instance-uuid->job-uuid #(util/instance-uuid->job-uuid (d/db conn) %)
         instance-jobs (mapv instance-uuid->job-uuid instances)
         exists? #(job-exists? (db conn) %)
         existing-jobs (filter exists? jobs)]
@@ -1490,7 +1481,7 @@
   cluster, and get back the data for those that do match."
   (let [uuids (wrap-seq (::instances ctx))
         allow-partial-results? (::allow-partial-results? ctx)
-        instance-uuid->job-uuid #(instance-uuid->job-uuid (d/db conn) %)
+        instance-uuid->job-uuid #(util/instance-uuid->job-uuid (d/db conn) %)
         job-uuids (mapv instance-uuid->job-uuid uuids)]
     (cond
       (every? some? job-uuids)

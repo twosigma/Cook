@@ -5,6 +5,7 @@
             [cook.config :as config]
             [cook.kubernetes.api :as api]
             [cook.kubernetes.controller :as controller]
+            [cook.tools :as tools]
             [cook.test.testutil :as tu]
             [metrics.timers :as timers])
   (:import (io.kubernetes.client.openapi ApiException)
@@ -28,169 +29,170 @@
              (controller/container-status->failure-reason {:name "test-cluster"} "12345"
                                                           pod-status container-status))))))
 (deftest test-process
-  (let [name "TestPodName"
-        reason (atom nil)
-        do-process-full-state (fn [cook-expected-state k8s-actual-state & {:keys [create-namespaced-pod-fn
-                                                                                  ^V1PodCondition pod-condition
-                                                                                  custom-test-state
-                                                                                  force-nil-pod?
-                                                                                  ^V1ObjectMeta pod-metadata]
-                                                                           :or {create-namespaced-pod-fn (constantly true)
-                                                                                custom-test-state nil
-                                                                                force-nil-pod? false
-                                                                                pod-metadata nil}}]
-                                (reset! reason nil)
-                                (with-redefs [controller/delete-pod (fn [_ _ cook-expected-state-dict _]
+  (with-redefs [tools/instance-uuid->job-uuid-cache-lookup (constantly "placeholder-job-uuid")]
+    (let [name "TestPodName"
+          reason (atom nil)
+          do-process-full-state (fn [cook-expected-state k8s-actual-state & {:keys [create-namespaced-pod-fn
+                                                                                    ^V1PodCondition pod-condition
+                                                                                    custom-test-state
+                                                                                    force-nil-pod?
+                                                                                    ^V1ObjectMeta pod-metadata]
+                                                                             :or {create-namespaced-pod-fn (constantly true)
+                                                                                  custom-test-state nil
+                                                                                  force-nil-pod? false
+                                                                                  pod-metadata nil}}]
+                                  (reset! reason nil)
+                                  (with-redefs [controller/delete-pod (fn [_ _ cook-expected-state-dict _]
+                                                                        cook-expected-state-dict)
+                                                controller/kill-pod (fn [_ _ cook-expected-state-dict _]
                                                                       cook-expected-state-dict)
-                                              controller/kill-pod (fn [_ _ cook-expected-state-dict _]
-                                                                    cook-expected-state-dict)
-                                              controller/handle-pod-killed (fn [_ _]
-                                                                             {:cook-expected-state :cook-expected-state/completed})
-                                              controller/write-status-to-datomic (fn [_ status]
-                                                                                   (reset! reason (:reason status)))
-                                              api/create-namespaced-pod create-namespaced-pod-fn
-                                              cc/compute-cluster-name (constantly "compute-cluster-name")]
-                                  (let [^V1Pod pod (tu/pod-helper name "hostA" {:cpus 1.0 :mem 100.0})
-                                        pod-status (V1PodStatus.)
-                                        _ (when pod-condition (.addConditionsItem pod-status pod-condition))
-                                        _ (.setStatus pod pod-status)
-                                        _ (when pod-metadata (.setMetadata pod pod-metadata))
-                                        cook-expected-state-map
-                                        (atom {name {:cook-expected-state cook-expected-state
-                                                     :launch-pod {:pod pod}
-                                                     :waiting-metric-timer (timers/start (timers/timer "fake-timer-name"))}})]
-                                    (controller/process
-                                      {:api-client nil
-                                       :cook-expected-state-map cook-expected-state-map
-                                       :k8s-actual-state-map (atom {name {:synthesized-state (or custom-test-state {:state k8s-actual-state})
-                                                                          :pod (if force-nil-pod? nil pod)}})
-                                       :cook-starting-pods (atom {})}
-                                      name)
-                                    (get @cook-expected-state-map name {}))))
-        do-process (fn [cook-expected-state k8s-actual-state & {:keys [create-namespaced-pod-fn
-                                                                       ^V1PodCondition pod-condition
-                                                                       custom-test-state
-                                                                       force-nil-pod?
-                                                                       ^V1ObjectMeta pod-metadata]
-                                                                :or {create-namespaced-pod-fn (constantly true)
-                                                                     custom-test-state nil
-                                                                     force-nil-pod? false
-                                                                     pod-metadata nil}}]
-                     (:cook-expected-state (do-process-full-state cook-expected-state k8s-actual-state
-                                                                  :create-namespaced-pod-fn create-namespaced-pod-fn
-                                                                  :pod-condition pod-condition
-                                                                  :custom-test-state custom-test-state
-                                                                  :force-nil-pod? force-nil-pod?
-                                                                  :pod-metadata pod-metadata)))]
+                                                controller/handle-pod-killed (fn [_ _]
+                                                                               {:cook-expected-state :cook-expected-state/completed})
+                                                controller/write-status-to-datomic (fn [_ status]
+                                                                                     (reset! reason (:reason status)))
+                                                api/create-namespaced-pod create-namespaced-pod-fn
+                                                cc/compute-cluster-name (constantly "compute-cluster-name")]
+                                    (let [^V1Pod pod (tu/pod-helper name "hostA" {:cpus 1.0 :mem 100.0})
+                                          pod-status (V1PodStatus.)
+                                          _ (when pod-condition (.addConditionsItem pod-status pod-condition))
+                                          _ (.setStatus pod pod-status)
+                                          _ (when pod-metadata (.setMetadata pod pod-metadata))
+                                          cook-expected-state-map
+                                          (atom {name {:cook-expected-state cook-expected-state
+                                                       :launch-pod {:pod pod}
+                                                       :waiting-metric-timer (timers/start (timers/timer "fake-timer-name"))}})]
+                                      (controller/process
+                                        {:api-client nil
+                                         :cook-expected-state-map cook-expected-state-map
+                                         :k8s-actual-state-map (atom {name {:synthesized-state (or custom-test-state {:state k8s-actual-state})
+                                                                            :pod (if force-nil-pod? nil pod)}})
+                                         :cook-starting-pods (atom {})}
+                                        name)
+                                      (get @cook-expected-state-map name {}))))
+          do-process (fn [cook-expected-state k8s-actual-state & {:keys [create-namespaced-pod-fn
+                                                                         ^V1PodCondition pod-condition
+                                                                         custom-test-state
+                                                                         force-nil-pod?
+                                                                         ^V1ObjectMeta pod-metadata]
+                                                                  :or {create-namespaced-pod-fn (constantly true)
+                                                                       custom-test-state nil
+                                                                       force-nil-pod? false
+                                                                       pod-metadata nil}}]
+                       (:cook-expected-state (do-process-full-state cook-expected-state k8s-actual-state
+                                                                    :create-namespaced-pod-fn create-namespaced-pod-fn
+                                                                    :pod-condition pod-condition
+                                                                    :custom-test-state custom-test-state
+                                                                    :force-nil-pod? force-nil-pod?
+                                                                    :pod-metadata pod-metadata)))]
 
-    (is (nil? (do-process :cook-expected-state/completed :missing)))
-    (is (nil? (do-process :cook-expected-state/completed :pod/deleting)))
-    (is (= :cook-expected-state/completed  (do-process :cook-expected-state/completed :pod/succeeded)))
-    (is (= :cook-expected-state/completed  (do-process :cook-expected-state/completed :pod/failed)))
-    (is (= :cook-expected-state/completed (do-process :cook-expected-state/completed :pod/running)))
-    (is (= :cook-expected-state/completed (do-process :cook-expected-state/completed :pod/unknown)))
-    (is (= :cook-expected-state/completed (do-process :cook-expected-state/completed :pod/waiting)))
+      (is (nil? (do-process :cook-expected-state/completed :missing)))
+      (is (nil? (do-process :cook-expected-state/completed :pod/deleting)))
+      (is (= :cook-expected-state/completed (do-process :cook-expected-state/completed :pod/succeeded)))
+      (is (= :cook-expected-state/completed (do-process :cook-expected-state/completed :pod/failed)))
+      (is (= :cook-expected-state/completed (do-process :cook-expected-state/completed :pod/running)))
+      (is (= :cook-expected-state/completed (do-process :cook-expected-state/completed :pod/unknown)))
+      (is (= :cook-expected-state/completed (do-process :cook-expected-state/completed :pod/waiting)))
 
-    (is (nil? (do-process :cook-expected-state/killed :missing)))
-    (is (nil? (do-process :cook-expected-state/killed :pod/deleting)))
-    (is (= :cook-expected-state/completed (do-process :cook-expected-state/killed :pod/succeeded)))
-    (is (= :cook-expected-state/completed (do-process :cook-expected-state/killed :pod/failed)))
-    (is (= :cook-expected-state/killed (do-process :cook-expected-state/killed :pod/running)))
-    (is (= :cook-expected-state/completed (do-process :cook-expected-state/killed :pod/unknown)))
-    (is (= :cook-expected-state/killed (do-process :cook-expected-state/killed :pod/waiting)))
+      (is (nil? (do-process :cook-expected-state/killed :missing)))
+      (is (nil? (do-process :cook-expected-state/killed :pod/deleting)))
+      (is (= :cook-expected-state/completed (do-process :cook-expected-state/killed :pod/succeeded)))
+      (is (= :cook-expected-state/completed (do-process :cook-expected-state/killed :pod/failed)))
+      (is (= :cook-expected-state/killed (do-process :cook-expected-state/killed :pod/running)))
+      (is (= :cook-expected-state/completed (do-process :cook-expected-state/killed :pod/unknown)))
+      (is (= :cook-expected-state/killed (do-process :cook-expected-state/killed :pod/waiting)))
 
-    (is (nil? (do-process :cook-expected-state/running :missing)))
-    (is (= :reason-killed-externally @reason))
-    (is (nil? (do-process :cook-expected-state/running :missing :custom-test-state {:state :missing
-                                                                                    :reason "Pod was explicitly deleted"
-                                                                                    :pod-deleted? true
-                                                                                    :pod-preempted-timestamp 1589084484537})))
-    (is (= :reason-slave-removed @reason))
-    (is (nil? (do-process :cook-expected-state/running :missing :custom-test-state {:state :missing
-                                                                                    :reason "Pod was explicitly deleted"
-                                                                                    :pod-deleted? true}
-                          :force-nil-pod? true)))
-    (is (= :reason-killed-externally @reason))
-    (is (nil? (do-process :cook-expected-state/running :missing :custom-test-state {:state :missing
-                                                                                    :reason "Pod was explicitly deleted"
-                                                                                    :pod-deleted? true})))
-    (is (= :reason-killed-externally @reason))
-    (is (nil? (do-process :cook-expected-state/running :pod/deleting)))
-    (is (= :reason-killed-externally @reason))
-    (is (= :cook-expected-state/completed (do-process :cook-expected-state/running :pod/succeeded)))
-    (is (= :reason-normal-exit @reason))
-    (is (= :cook-expected-state/completed (do-process :cook-expected-state/running :pod/failed)))
-    (is (= :unknown @reason))
-    (is (= :cook-expected-state/completed
-           (do-process :cook-expected-state/running
-                       nil
-                       :custom-test-state {:pod-preempted-timestamp 1 :state :pod/failed})))
-    (is (= :reason-slave-removed @reason))
-    (is (= :cook-expected-state/running (do-process :cook-expected-state/running :pod/running)))
-    (is (= :cook-expected-state/completed (do-process :cook-expected-state/running :pod/unknown)))
-    (is (= :cook-expected-state/completed (do-process :cook-expected-state/running :pod/waiting)))
-    (is (= :reason-slave-removed @reason))
+      (is (nil? (do-process :cook-expected-state/running :missing)))
+      (is (= :reason-killed-externally @reason))
+      (is (nil? (do-process :cook-expected-state/running :missing :custom-test-state {:state :missing
+                                                                                      :reason "Pod was explicitly deleted"
+                                                                                      :pod-deleted? true
+                                                                                      :pod-preempted-timestamp 1589084484537})))
+      (is (= :reason-slave-removed @reason))
+      (is (nil? (do-process :cook-expected-state/running :missing :custom-test-state {:state :missing
+                                                                                      :reason "Pod was explicitly deleted"
+                                                                                      :pod-deleted? true}
+                            :force-nil-pod? true)))
+      (is (= :reason-killed-externally @reason))
+      (is (nil? (do-process :cook-expected-state/running :missing :custom-test-state {:state :missing
+                                                                                      :reason "Pod was explicitly deleted"
+                                                                                      :pod-deleted? true})))
+      (is (= :reason-killed-externally @reason))
+      (is (nil? (do-process :cook-expected-state/running :pod/deleting)))
+      (is (= :reason-killed-externally @reason))
+      (is (= :cook-expected-state/completed (do-process :cook-expected-state/running :pod/succeeded)))
+      (is (= :reason-normal-exit @reason))
+      (is (= :cook-expected-state/completed (do-process :cook-expected-state/running :pod/failed)))
+      (is (= :unknown @reason))
+      (is (= :cook-expected-state/completed
+             (do-process :cook-expected-state/running
+                         nil
+                         :custom-test-state {:pod-preempted-timestamp 1 :state :pod/failed})))
+      (is (= :reason-slave-removed @reason))
+      (is (= :cook-expected-state/running (do-process :cook-expected-state/running :pod/running)))
+      (is (= :cook-expected-state/completed (do-process :cook-expected-state/running :pod/unknown)))
+      (is (= :cook-expected-state/completed (do-process :cook-expected-state/running :pod/waiting)))
+      (is (= :reason-slave-removed @reason))
 
-    (is (= :cook-expected-state/starting (do-process :cook-expected-state/starting :missing)))
-    (is (nil? (do-process
-                :cook-expected-state/starting
-                nil
-                :custom-test-state
-                {:state :pod/deleting
-                 :reason "Pod was explicitly deleted"
-                 :pod-preempted-timestamp 1589084484537})))
-    (is (= :reason-slave-removed @reason))
-    (is (nil? (do-process
-                :cook-expected-state/starting
-                nil
-                :custom-test-state
-                {:state :pod/deleting
-                 :reason "Pod was explicitly deleted"}
-                :force-nil-pod? true)))
-    (is (= :reason-killed-externally @reason))
-    (is (nil? (do-process :cook-expected-state/starting :missing :create-namespaced-pod-fn
-                          (fn [_ _ _] (throw (ApiException. nil nil 422 nil nil))))))
-    (is (= :cook-expected-state/completed (do-process :cook-expected-state/starting :pod/succeeded)))
-    (with-redefs [config/kubernetes (constantly {:pod-condition-unschedulable-seconds 60})]
-      (is (= :cook-expected-state/completed (do-process :cook-expected-state/starting :pod/failed
-                                                        :pod-condition (doto (V1PodCondition.)
-                                                                         (.setType "PodScheduled")
-                                                                         (.setStatus "False")
-                                                                         (.setReason "Unschedulable")
-                                                                         (.setLastTransitionTime (t/epoch)))))))
-    (is (= :reason-scheduling-failed-on-host @reason))
-    (is (= :cook-expected-state/running (do-process :cook-expected-state/starting :pod/running)))
-    (is (= :reason-running @reason))
-    (is (= :cook-expected-state/completed (do-process :cook-expected-state/starting :pod/unknown)))
-    (is (= :cook-expected-state/starting (do-process :cook-expected-state/starting :pod/waiting)))
+      (is (= :cook-expected-state/starting (do-process :cook-expected-state/starting :missing)))
+      (is (nil? (do-process
+                  :cook-expected-state/starting
+                  nil
+                  :custom-test-state
+                  {:state :pod/deleting
+                   :reason "Pod was explicitly deleted"
+                   :pod-preempted-timestamp 1589084484537})))
+      (is (= :reason-slave-removed @reason))
+      (is (nil? (do-process
+                  :cook-expected-state/starting
+                  nil
+                  :custom-test-state
+                  {:state :pod/deleting
+                   :reason "Pod was explicitly deleted"}
+                  :force-nil-pod? true)))
+      (is (= :reason-killed-externally @reason))
+      (is (nil? (do-process :cook-expected-state/starting :missing :create-namespaced-pod-fn
+                            (fn [_ _ _] (throw (ApiException. nil nil 422 nil nil))))))
+      (is (= :cook-expected-state/completed (do-process :cook-expected-state/starting :pod/succeeded)))
+      (with-redefs [config/kubernetes (constantly {:pod-condition-unschedulable-seconds 60})]
+        (is (= :cook-expected-state/completed (do-process :cook-expected-state/starting :pod/failed
+                                                          :pod-condition (doto (V1PodCondition.)
+                                                                           (.setType "PodScheduled")
+                                                                           (.setStatus "False")
+                                                                           (.setReason "Unschedulable")
+                                                                           (.setLastTransitionTime (t/epoch)))))))
+      (is (= :reason-scheduling-failed-on-host @reason))
+      (is (= :cook-expected-state/running (do-process :cook-expected-state/starting :pod/running)))
+      (is (= :reason-running @reason))
+      (is (= :cook-expected-state/completed (do-process :cook-expected-state/starting :pod/unknown)))
+      (is (= :cook-expected-state/starting (do-process :cook-expected-state/starting :pod/waiting)))
 
-    (testing "Make sure we remove the waiting metric at the right time"
-      (is (nil? (:waiting-metric-timer (do-process-full-state :cook-expected-state/starting :pod/waiting))))
-      (is (not (nil? (:waiting-metric-timer (do-process-full-state :cook-expected-state/starting :missing))))))
+      (testing "Make sure we remove the waiting metric at the right time"
+        (is (nil? (:waiting-metric-timer (do-process-full-state :cook-expected-state/starting :pod/waiting))))
+        (is (not (nil? (:waiting-metric-timer (do-process-full-state :cook-expected-state/starting :missing))))))
 
-    (is (nil? (do-process :missing :missing)))
-    (testing "(:missing, :pod/deleting)"
-      (let [hard-kill-atom (atom false)
-            pod-metadata (V1ObjectMeta.)]
-        (with-redefs [controller/kill-pod-hard
-                      (fn [_ _ _]
-                        (reset! hard-kill-atom true)
-                        nil)
-                      config/kubernetes
-                      (constantly {:pod-deletion-timeout-seconds (* 60 15)})]
-          (testing "No hard kill on pods with a recent deletion timestamp"
-            (.setDeletionTimestamp pod-metadata (t/now))
-            (is (nil? (do-process :missing :pod/deleting :pod-metadata pod-metadata)))
-            (is (false? @hard-kill-atom)))
-          (testing "Hard kill on pods with an old deletion timestamp"
-            (.setDeletionTimestamp pod-metadata (t/epoch))
-            (is (nil? (do-process :missing :pod/deleting :pod-metadata pod-metadata)))
-            (is (true? @hard-kill-atom))))))
-    (is (nil? (do-process :missing :pod/succeeded)))
-    (is (nil? (do-process :missing :pod/failed)))
-    (is (= :missing (do-process :missing :pod/running)))
-    (is (nil? (do-process :missing :pod/unknown)))
-    (is (= :missing (do-process :missing :pod/waiting)))))
+      (is (nil? (do-process :missing :missing)))
+      (testing "(:missing, :pod/deleting)"
+        (let [hard-kill-atom (atom false)
+              pod-metadata (V1ObjectMeta.)]
+          (with-redefs [controller/kill-pod-hard
+                        (fn [_ _ _]
+                          (reset! hard-kill-atom true)
+                          nil)
+                        config/kubernetes
+                        (constantly {:pod-deletion-timeout-seconds (* 60 15)})]
+            (testing "No hard kill on pods with a recent deletion timestamp"
+              (.setDeletionTimestamp pod-metadata (t/now))
+              (is (nil? (do-process :missing :pod/deleting :pod-metadata pod-metadata)))
+              (is (false? @hard-kill-atom)))
+            (testing "Hard kill on pods with an old deletion timestamp"
+              (.setDeletionTimestamp pod-metadata (t/epoch))
+              (is (nil? (do-process :missing :pod/deleting :pod-metadata pod-metadata)))
+              (is (true? @hard-kill-atom))))))
+      (is (nil? (do-process :missing :pod/succeeded)))
+      (is (nil? (do-process :missing :pod/failed)))
+      (is (= :missing (do-process :missing :pod/running)))
+      (is (nil? (do-process :missing :pod/unknown)))
+      (is (= :missing (do-process :missing :pod/waiting))))))
 
 (deftest test-launch-kill-process
   (let [pod-name "TestPodName-LKP"
@@ -259,54 +261,55 @@
       (is (= 1 @count-delete-pod)))))
 
 (deftest test-handle-pod-completed
-  (testing "graceful handling of lack of exit code"
-    (let [pod (tu/pod-helper "podA" "hostA" {})
-          pod-status (V1PodStatus.)]
-      (.setReason pod-status "OutOfcpu")
-      (.setStatus pod pod-status)
-      (with-redefs [controller/write-status-to-datomic (constantly nil)]
-        (is (= {:cook-expected-state :cook-expected-state/completed}
-               (controller/handle-pod-completed nil "podA" {:pod pod :synthesized-state {:state :pod/failed}}))))))
+  (with-redefs [tools/instance-uuid->job-uuid-cache-lookup (constantly "placeholder-job-uuid")]
+    (testing "graceful handling of lack of exit code"
+      (let [pod (tu/pod-helper "podA" "hostA" {})
+            pod-status (V1PodStatus.)]
+        (.setReason pod-status "OutOfcpu")
+        (.setStatus pod pod-status)
+        (with-redefs [controller/write-status-to-datomic (constantly nil)]
+          (is (= {:cook-expected-state :cook-expected-state/completed}
+                 (controller/handle-pod-completed nil "podA" {:pod pod :synthesized-state {:state :pod/failed}}))))))
 
-  (testing "optional reason argument"
-    (let [pod (tu/pod-helper "podA" "hostA" {})
-          reason (atom nil)]
-      (.setStatus pod (V1PodStatus.))
-      (with-redefs [controller/write-status-to-datomic (fn [_ status] (reset! reason (:reason status)))
-                    controller/container-status->failure-reason (fn [_ _ _ _]
-                                                                  (throw (ex-info "Shouldn't get called" {})))]
-        (controller/handle-pod-completed nil "podA" {:pod pod :synthesized-state {:state :pod/failed}}
-                                         :reason :reason-task-invalid))
-      (is (= :reason-task-invalid @reason))))
+    (testing "optional reason argument"
+      (let [pod (tu/pod-helper "podA" "hostA" {})
+            reason (atom nil)]
+        (.setStatus pod (V1PodStatus.))
+        (with-redefs [controller/write-status-to-datomic (fn [_ status] (reset! reason (:reason status)))
+                      controller/container-status->failure-reason (fn [_ _ _ _]
+                                                                    (throw (ex-info "Shouldn't get called" {})))]
+          (controller/handle-pod-completed nil "podA" {:pod pod :synthesized-state {:state :pod/failed}}
+                                           :reason :reason-task-invalid))
+        (is (= :reason-task-invalid @reason))))
 
-  (testing "throws exception"
-    (let [pod (tu/pod-helper "podA" "hostA" {})
-          reason (atom nil)]
-      (.setStatus pod (V1PodStatus.))
-      (with-redefs [cc/compute-cluster-name (constantly "compute-cluster-name")
-                    controller/write-status-to-datomic (fn [_ status] (reset! reason (:reason status)))
-                    controller/container-status->failure-reason (fn [_ _ _ _]
-                                                                  (throw (ex-info "Got Exception" {})))]
-        (controller/handle-pod-completed nil "podA" {:pod pod :synthesized-state {:state :pod/failed}})
-        (is (= :reason-task-unknown @reason)))))
+    (testing "throws exception"
+      (let [pod (tu/pod-helper "podA" "hostA" {})
+            reason (atom nil)]
+        (.setStatus pod (V1PodStatus.))
+        (with-redefs [cc/compute-cluster-name (constantly "compute-cluster-name")
+                      controller/write-status-to-datomic (fn [_ status] (reset! reason (:reason status)))
+                      controller/container-status->failure-reason (fn [_ _ _ _]
+                                                                    (throw (ex-info "Got Exception" {})))]
+          (controller/handle-pod-completed nil "podA" {:pod pod :synthesized-state {:state :pod/failed}})
+          (is (= :reason-task-unknown @reason)))))
 
-  (testing "pod mismatch"
-    (let [pod (tu/pod-helper "podA" "hostA" {})
-          reason (atom nil)]
-      (.setStatus pod (V1PodStatus.))
-      (with-redefs [cc/compute-cluster-name (constantly "compute-cluster-name")
-                    controller/write-status-to-datomic (fn [_ status] (reset! reason (:reason status)))]
-        ; We expect an AssertionError because of the name mismatch.
-        (is (thrown? AssertionError
-                     (controller/handle-pod-completed nil "podB" {:pod pod :synthesized-state {:state :pod/failed}}))))))
+    (testing "pod mismatch"
+      (let [pod (tu/pod-helper "podA" "hostA" {})
+            reason (atom nil)]
+        (.setStatus pod (V1PodStatus.))
+        (with-redefs [cc/compute-cluster-name (constantly "compute-cluster-name")
+                      controller/write-status-to-datomic (fn [_ status] (reset! reason (:reason status)))]
+          ; We expect an AssertionError because of the name mismatch.
+          (is (thrown? AssertionError
+                       (controller/handle-pod-completed nil "podB" {:pod pod :synthesized-state {:state :pod/failed}}))))))
 
-  (testing "pod is nil"
-    (let [pod nil
-          reason (atom nil)]
-      (with-redefs [cc/compute-cluster-name (constantly "compute-cluster-name")
-                    controller/write-status-to-datomic (fn [_ status] (reset! reason (:reason status)))]
-        (controller/handle-pod-completed nil "podB" {:pod pod :synthesized-state {:state :pod/failed}})
-        (is (= :reason-task-unknown @reason))))))
+    (testing "pod is nil"
+      (let [pod nil
+            reason (atom nil)]
+        (with-redefs [cc/compute-cluster-name (constantly "compute-cluster-name")
+                      controller/write-status-to-datomic (fn [_ status] (reset! reason (:reason status)))]
+          (controller/handle-pod-completed nil "podB" {:pod pod :synthesized-state {:state :pod/failed}})
+          (is (= :reason-task-unknown @reason)))))))
 
 (deftest test-synthesize-state-and-process-pod-if-changed
   (testing "gracefully handles nil pod"
