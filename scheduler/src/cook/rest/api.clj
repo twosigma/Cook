@@ -1994,10 +1994,10 @@
                                distinct
                                (remove #(contains? group-uuids %))
                                (map make-default-group))
-          groups (into (vec implicit-groups) groups)
+          db (d/db conn)
+          groups (filter (fn [group] (not (group-exists? db (:uuid group)))) (into (vec implicit-groups) groups))
           job-asserts (map (fn [j] [:entity/ensure-not-exists [:job/uuid (:uuid j)]]) jobs)
           [commit-latch-id commit-latch] (make-commit-latch)
-          db (d/db conn)
           job-txns (mapcat
                      (fn [job-pool-name-map]
                        (make-job-txn job-pool-name-map commit-latch-id db))

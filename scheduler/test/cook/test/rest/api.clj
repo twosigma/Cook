@@ -913,6 +913,7 @@
         (is (= get-body initial-get-body))))))
 
 (deftest group-validator
+  (setup)
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
         make-job (fn [& {:keys [uuid name group]
                          :or {uuid (str (UUID/randomUUID))
@@ -1022,8 +1023,7 @@
         (is (contains? (-> group-resp2 first (get "jobs") set) juuid2))
 
         (is (= (-> group-resp1 first) {"uuid" guuid1 "name" "defaultgroup" "host_placement" {"type" "all"} "jobs" [juuid1] "straggler_handling" {"type" "none"}}))
-        (is (= (-> group-resp2 first) {"uuid" guuid2 "name" "defaultgroup" "host_placement" {"type" "all"} "jobs" [juuid2] "straggler_handling" {"type" "none"}}))
-        ))
+        (is (= (-> group-resp2 first) {"uuid" guuid2 "name" "defaultgroup" "host_placement" {"type" "all"} "jobs" [juuid2] "straggler_handling" {"type" "none"}}))))
 
     (testing "Multiple groups in one request"
       (let [guuid1 (str (UUID/randomUUID))
@@ -1071,6 +1071,19 @@
         (is (<= 200 (:status initial-resp) 299))
         (is (<= 400 (:status no-override-resp) 499))
         (is (<= 200 (:status override-resp) 299))))
+
+    (testing "Add job to existing group - group should not change"
+      (let [guuid (str (java.util.UUID/randomUUID))
+            juuid (str (java.util.UUID/randomUUID))
+            post-resp (post {"groups" [(make-group :uuid guuid :placement-type "unique")]
+                             "jobs" []})
+            group-resp (get-group guuid)
+            _ (is (= "unique" (-> group-resp first (get "host_placement") (get "type"))))
+            post-resp (post {"override-group-immutability" true
+                             "groups" []
+                             "jobs" [(make-job :uuid juuid :group guuid)]})
+            group-resp (get-group guuid)
+            _ (is (= "unique" (-> group-resp first (get "host_placement") (get "type"))))]))
 
     (testing "Group with defaulted host placement"
       (let [guuid (str (UUID/randomUUID))
@@ -1131,8 +1144,7 @@
             post-resp1 (post {"jobs" [(make-job :group guuid) (make-job :group guuid)]})
             post-resp2 (post {"jobs" [(make-job :group guuid)]})]
         (is (<= 201 (:status post-resp1) 299))
-        (is (<= 400 (:status post-resp2) 499))))
-    ))
+        (is (<= 400 (:status post-resp2) 499))))))
 
 
 (deftest reasons-api
