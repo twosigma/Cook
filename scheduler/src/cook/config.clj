@@ -512,8 +512,8 @@
                                   :default-pool "no-pool"}
                                  pool-selection)})))
      :passport (fnk [[:config {passport {}}]]
-                 (merge passport
-                        {:instance-uuid->job-uuid-cache-expiry-time-hours 24}))
+                 (merge {:instance-uuid->job-uuid-cache-expiry-time-hours 24}
+                        passport))
      :kubernetes (fnk [[:config {kubernetes {}}]]
                    (let [{:keys [controller-lock-num-shards
                                  telemetry-tags-key-invalid-char-pattern]

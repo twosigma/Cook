@@ -293,6 +293,7 @@
         ^V1Pod pod (api/task-metadata->pod pod-namespace compute-cluster task-metadata)
         new-cook-expected-state-dict {:cook-expected-state :cook-expected-state/starting
                                       :launch-pod {:pod pod}}]
+    ; If a pod is not synthetic, cache a mapping of its instance-uuid to job-uuid in order to give all state machine passport events access to job-uuid
     (when (api/synthetic-pod? pod-name)
       (cache/put-cache! caches/instance-uuid->job-uuid identity pod-name (get-in task-metadata [:task-request :job :job/uuid])))
     (try

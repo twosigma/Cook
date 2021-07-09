@@ -5,8 +5,8 @@
             [cook.config :as config]
             [cook.kubernetes.api :as api]
             [cook.kubernetes.controller :as controller]
-            [cook.tools :as tools]
             [cook.test.testutil :as tu]
+            [cook.tools :as tools]
             [metrics.timers :as timers])
   (:import (io.kubernetes.client.openapi ApiException)
            (io.kubernetes.client.openapi.models V1ObjectMeta V1Pod V1PodCondition V1PodStatus)

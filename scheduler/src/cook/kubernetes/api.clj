@@ -70,7 +70,7 @@
   [pod-name]
   (str/starts-with? pod-name cook-synthetic-pod-name-prefix))
 
-(defn synthetic-pod-name->job-uuid
+(defn pod-name->job-uuid
   "If a pod is synthetic, return the uuid of the job it was created for"
   [pod-name]
   (when (synthetic-pod? pod-name)
@@ -86,10 +86,8 @@
   "Returns event-map with added fields :job-uuid (based on pod-name) and :instance-uuid (if pod is not synthetic)"
   [event-map pod-name]
   (let [instance-uuid (pod-name->instance-uuid pod-name)
-        synthetic-pod-job-uuid (synthetic-pod-name->job-uuid pod-name)
-        job-uuid (if synthetic-pod-job-uuid
-                   synthetic-pod-job-uuid
-                   (tools/instance-uuid->job-uuid-cache-lookup instance-uuid))]
+        job-uuid (or (pod-name->job-uuid pod-name)
+                     (tools/instance-uuid->job-uuid-cache-lookup instance-uuid))]
     (cond->
       event-map
       instance-uuid (assoc :instance-uuid instance-uuid)
