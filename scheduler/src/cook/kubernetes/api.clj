@@ -1078,7 +1078,7 @@
 
   (defn add-cook-sidecar-to-pod
     "Create Cook Sidecar container and add it to the pod"
-    [{:keys [main-env-vars pod-spec sidecar sandbox-dir sandbox-volume-mount-fn sidecar-workdir sidecar-workdir-volume-mount-fn]}]
+    [{:keys [main-env-vars pod-spec sidecar sandbox-dir sandbox-volume-mount-fn scratch-space-volume-mount-fn sidecar-workdir sidecar-workdir-volume-mount-fn]}]
     (when-let [{:keys [command health-check-endpoint image port resource-requirements]} sidecar]
       (let [{:keys [cpu-request cpu-limit memory-request memory-limit]} resource-requirements
             container (V1Container.)
@@ -1108,7 +1108,7 @@
         (set-mem-cpu-resources resources memory-request memory-limit cpu-request cpu-limit)
         (.setResources container resources)
 
-        (.setVolumeMounts container [(sandbox-volume-mount-fn true) (sidecar-workdir-volume-mount-fn false)])
+        (.setVolumeMounts container [(sandbox-volume-mount-fn true) (sidecar-workdir-volume-mount-fn false) (scratch-space-volume-mount-fn false)])
         (.addContainersItem pod-spec container))))
 
   (defn ^V1Pod task-metadata->pod
