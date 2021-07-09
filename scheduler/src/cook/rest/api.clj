@@ -1995,6 +1995,7 @@
                                (remove #(contains? group-uuids %))
                                (map make-default-group))
           db (d/db conn)
+          ; don't replace an existing group with an implicit group
           groups (filter (fn [group] (not (group-exists? db (:uuid group)))) (into (vec implicit-groups) groups))
           job-asserts (map (fn [j] [:entity/ensure-not-exists [:job/uuid (:uuid j)]]) jobs)
           [commit-latch-id commit-latch] (make-commit-latch)
