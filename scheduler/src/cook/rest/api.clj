@@ -1987,16 +1987,17 @@
           group-uuids (set (map :uuid groups))
           group-asserts (map (fn [guuid] [:entity/ensure-not-exists [:group/uuid guuid]])
                              group-uuids)
+          db (d/db conn)
           ;; Create new implicit groups (with all default settings)
           implicit-groups (->> jobs
                                (map :group)
                                (remove nil?)
                                distinct
                                (remove #(contains? group-uuids %))
-                               (map make-default-group))
-          db (d/db conn)
-          ; don't replace an existing group with an implicit group
-          groups (filter (fn [group] (not (group-exists? db (:uuid group)))) (into (vec implicit-groups) groups))
+                               (map (fn [guuid] (if (group-exists? db guuid)
+                                                  (dissoc (fetch-group-map db guuid) :jobs)
+                                                  (make-default-group guuid)))))
+          groups (into (vec implicit-groups) groups)
           job-asserts (map (fn [j] [:entity/ensure-not-exists [:job/uuid (:uuid j)]]) jobs)
           [commit-latch-id commit-latch] (make-commit-latch)
           job-txns (mapcat
