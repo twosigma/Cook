@@ -5,7 +5,7 @@ watchdog==0.8.3
 flake8==2.6.0
 coverage==4.1
 Sphinx==1.4.8
-cryptography==1.7
+cryptography==3.2
 PyYAML==5.1
 pandas>=0.19.2
 matplotlib==2.0.0
