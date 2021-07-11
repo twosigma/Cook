@@ -1038,22 +1038,3 @@
   "Get submit-time for a job. due to a bug, submit time may not exist for some jobs"
   [job]
   (when (:job/submit-time job) (.getTime (:job/submit-time job))))
-
-(defn instance-uuid->job-uuid
-  "Queries for the job uuid from an instance uuid.
-   Returns nil if the instance uuid doesn't correspond
-   a job"
-  [db instance-uuid]
-  (->> (d/entity db [:instance/task-id (str instance-uuid)])
-       :job/_instance
-       :job/uuid))
-
-(defn instance-uuid->job-uuid-cache-miss
-  "Wrapper function that passes in a DB to the instance-uuid->job-uuid function. Used for cache misses by the instance-uuid->job-uuid cache"
-  [instance-uuid]
-  (instance-uuid->job-uuid (d/db datomic/conn) instance-uuid))
-
-(defn instance-uuid->job-uuid-cache-lookup
-  "Gets value from cache if it is present, else search datomic for it"
-  [instance-uuid]
-  (ccache/lookup-cache! caches/instance-uuid->job-uuid identity instance-uuid->job-uuid-cache-miss instance-uuid))

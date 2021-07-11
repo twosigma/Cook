@@ -87,7 +87,7 @@
   [event-map pod-name]
   (let [instance-uuid (pod-name->instance-uuid pod-name)
         job-uuid (or (pod-name->job-uuid pod-name)
-                     (tools/instance-uuid->job-uuid-cache-lookup instance-uuid))]
+                     (cached-queries/instance-uuid->job-uuid-cache-lookup instance-uuid))]
     (cond->
       event-map
       instance-uuid (assoc :instance-uuid instance-uuid)

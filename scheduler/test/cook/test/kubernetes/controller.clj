@@ -1,6 +1,7 @@
 (ns cook.test.kubernetes.controller
   (:require [clj-time.core :as t]
             [clojure.test :refer :all]
+            [cook.cached-queries :as cached-queries]
             [cook.compute-cluster :as cc]
             [cook.config :as config]
             [cook.kubernetes.api :as api]
@@ -29,7 +30,7 @@
              (controller/container-status->failure-reason {:name "test-cluster"} "12345"
                                                           pod-status container-status))))))
 (deftest test-process
-  (with-redefs [tools/instance-uuid->job-uuid-cache-lookup (constantly "placeholder-job-uuid")]
+  (with-redefs [cached-queries/instance-uuid->job-uuid-cache-lookup (constantly nil)]
     (let [name "TestPodName"
           reason (atom nil)
           do-process-full-state (fn [cook-expected-state k8s-actual-state & {:keys [create-namespaced-pod-fn
@@ -261,7 +262,7 @@
       (is (= 1 @count-delete-pod)))))
 
 (deftest test-handle-pod-completed
-  (with-redefs [tools/instance-uuid->job-uuid-cache-lookup (constantly "placeholder-job-uuid")]
+  (with-redefs [cached-queries/instance-uuid->job-uuid-cache-lookup (constantly nil)]
     (testing "graceful handling of lack of exit code"
       (let [pod (tu/pod-helper "podA" "hostA" {})
             pod-status (V1PodStatus.)]
