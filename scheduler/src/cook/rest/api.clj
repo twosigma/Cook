@@ -1980,7 +1980,7 @@
                      (update job-pool-name-map :job #(dissoc % :command)))
                    job-pool-name-maps))
     (doseq [{{:keys [uuid, user]} :job} job-pool-name-maps]
-      (passport/log-event {:event-type passport/api-job-submission
+      (passport/log-event {:event-type passport/api-job-creation
                            :job-uuid (str uuid)
                            :user user}))
     (let [jobs (map :job job-pool-name-maps)
@@ -2179,11 +2179,26 @@
                          groups (get params :groups)
                          user (get-in ctx [:request :authorization/user])
                          override-group-immutability? (boolean (get params :override-group-immutability))
-                         pool-name (or (get params :pool) (get headers "x-cook-pool"))
+                         pool-param (get params :pool)
+                         pool-header (get headers "x-cook-pool")
+                         pool-name (or pool-param pool-header)
                          uuid->count (pc/map-vals count (group-by :uuid jobs))
                          time-until-out-of-debt (rate-limit/time-until-out-of-debt-millis! rate-limit/job-submission-rate-limiter user)
                          in-debt? (not (zero? time-until-out-of-debt))]
                      (try
+                       (doseq [{:keys [uuid]} jobs]
+                         (passport/log-event
+                           {:event-type passport/api-job-submission
+                            :job-uuid (str uuid)
+                            :pool pool-name
+                            :pool-header pool-header
+                            :pool-param pool-param
+                            :pool-source
+                            (cond
+                              pool-param :request-parameter
+                              pool-header :x-cook-pool-header
+                              :else :unspecified)
+                            :user user}))
                        (when in-debt?
                          (log/info (str "User " user " is inserting too quickly (will be out of debt in "
                                         (/ time-until-out-of-debt 1000.0) " seconds).")))
