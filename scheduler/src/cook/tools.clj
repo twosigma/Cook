@@ -28,7 +28,6 @@
             [cook.cached-queries :as cached-queries]
             [cook.caches :as caches]
             [cook.config :as config]
-            [cook.datomic :as datomic]
             [cook.pool :as pool]
             [cook.queries :as queries]
             [cook.quota :as quota]
