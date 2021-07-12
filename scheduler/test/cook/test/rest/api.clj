@@ -1082,8 +1082,20 @@
             post-resp (post {"override-group-immutability" true
                              "groups" []
                              "jobs" [(make-job :uuid juuid :group guuid)]})
+            job-resp (get-job juuid)
+            _ (is (= guuid (-> job-resp first (get "groups") first)))
             group-resp (get-group guuid)
-            _ (is (= "unique" (-> group-resp first (get "host_placement") (get "type"))))]))
+            _ (is (= "unique" (-> group-resp first (get "host_placement") (get "type"))))
+            _ (is (= (set [juuid]) (set (-> group-resp first (get "jobs")))))
+            juuid2 (str (java.util.UUID/randomUUID))
+            post-resp (post {"override-group-immutability" true
+                             "groups" []
+                             "jobs" [(make-job :uuid juuid2 :group guuid)]})
+            job-resp (get-job juuid2)
+            _ (is (= guuid (-> job-resp first (get "groups") first)))
+            group-resp (get-group guuid)
+            _ (is (= "unique" (-> group-resp first (get "host_placement") (get "type"))))
+            _ (is (= (set [juuid juuid2]) (set (-> group-resp first (get "jobs")))))]))
 
     (testing "Group with defaulted host placement"
       (let [guuid (str (UUID/randomUUID))
