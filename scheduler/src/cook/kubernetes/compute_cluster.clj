@@ -6,6 +6,8 @@
             [clojure.set :as set]
             [clojure.tools.logging :as log]
             [clojure.walk :as walk]
+            [cook.cache :as cache]
+            [cook.caches :as caches]
             [cook.compute-cluster :as cc]
             [cook.compute-cluster.metrics :as ccmetrics]
             [cook.config :as config]
@@ -13,6 +15,7 @@
             [cook.kubernetes.controller :as controller]
             [cook.kubernetes.metrics :as metrics]
             [cook.monitor :as monitor]
+            [cook.passport :as passport]
             [cook.pool]
             [cook.scheduler.constraints :as constraints]
             [cook.tools :as tools]
@@ -290,6 +293,9 @@
         ^V1Pod pod (api/task-metadata->pod pod-namespace compute-cluster task-metadata)
         new-cook-expected-state-dict {:cook-expected-state :cook-expected-state/starting
                                       :launch-pod {:pod pod}}]
+    ; If a pod is not synthetic, cache a mapping of its instance-uuid to job-uuid in order to give all state machine passport events access to job-uuid
+    (when (api/synthetic-pod? pod-name)
+      (cache/put-cache! caches/instance-uuid->job-uuid identity pod-name (str (get-in task-metadata [:task-request :job :job/uuid]))))
     (try
       (controller/update-cook-expected-state compute-cluster pod-name new-cook-expected-state-dict)
       (.stop timer-context)
