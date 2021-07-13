@@ -7,7 +7,7 @@
             [cook.kubernetes.api :as api]
             [cook.kubernetes.controller :as controller]
             [cook.test.testutil :as tu]
-            [cook.tools :as tools]
+            [datomic.api :as d :refer [q]]
             [metrics.timers :as timers])
   (:import (io.kubernetes.client.openapi ApiException)
            (io.kubernetes.client.openapi.models V1ObjectMeta V1Pod V1PodCondition V1PodStatus)
@@ -30,7 +30,8 @@
              (controller/container-status->failure-reason {:name "test-cluster"} "12345"
                                                           pod-status container-status))))))
 (deftest test-process
-  (with-redefs [cached-queries/instance-uuid->job-uuid-cache-lookup (constantly nil)]
+  (with-redefs [cached-queries/instance-uuid->job-uuid-datomic-query (constantly (java.util.UUID/randomUUID))
+    d/db (constantly nil)]
     (let [name "TestPodName"
           reason (atom nil)
           do-process-full-state (fn [cook-expected-state k8s-actual-state & {:keys [create-namespaced-pod-fn
@@ -262,7 +263,8 @@
       (is (= 1 @count-delete-pod)))))
 
 (deftest test-handle-pod-completed
-  (with-redefs [cached-queries/instance-uuid->job-uuid-cache-lookup (constantly nil)]
+  (with-redefs [cached-queries/instance-uuid->job-uuid-datomic-query (constantly (java.util.UUID/randomUUID))
+                d/db (constantly nil)]
     (testing "graceful handling of lack of exit code"
       (let [pod (tu/pod-helper "podA" "hostA" {})
             pod-status (V1PodStatus.)]

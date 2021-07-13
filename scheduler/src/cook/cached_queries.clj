@@ -31,7 +31,7 @@
 
 (let [miss-fn
       (fn [instance-uuid]
-        (instance-uuid->job-uuid-datomic-query (d/db datomic/conn) instance-uuid))]
+        (str (instance-uuid->job-uuid-datomic-query (d/db datomic/conn) instance-uuid)))]
   (defn instance-uuid->job-uuid-cache-lookup
     "Get value from cache if it is present, else search datomic for it"
     [instance-uuid]
