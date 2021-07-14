@@ -40,3 +40,8 @@
 (mount/defstate ^Cache pool-name->accepts-submissions?-cache :start (new-cache config/config))
 (mount/defstate ^Cache pool-name->db-id-cache :start (new-cache config/config))
 (mount/defstate ^Cache user-and-pool-name->quota :start (new-cache config/config))
+(mount/defstate ^Cache instance-uuid->job-uuid :start
+  (-> (CacheBuilder/newBuilder)
+    (.maximumSize (get-in config/config [:settings :passport :job-uuid-cache-set-size]))
+    (.expireAfterAccess (get-in config/config [:settings :passport :job-uuid-cache-expiry-time-hours]) TimeUnit/HOURS)
+    (.build)))
