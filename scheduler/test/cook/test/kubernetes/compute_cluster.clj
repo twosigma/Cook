@@ -1,5 +1,6 @@
 (ns cook.test.kubernetes.compute-cluster
   (:require [clojure.test :refer :all]
+            [cook.cached-queries :as cached-queries]
             [cook.compute-cluster :as cc]
             [cook.config :as config]
             [cook.kubernetes.api :as api]
@@ -79,6 +80,9 @@
                                                                       (task-assignment-result-helper "testuser"))]
 
           (cc/launch-tasks compute-cluster "test-pool" [{:task-metadata-seq [task-metadata]}] (fn [_]))
+          (with-redefs [d/db (constantly nil)
+                        cached-queries/instance-uuid->job-uuid-datomic-query (constantly nil)]
+            (is (= (str (get-in task-metadata [:task-request :job :job/uuid])) (cached-queries/instance-uuid->job-uuid-cache-lookup (:task-id task-metadata)))))
           (is (= "cook" (-> @launched-pod-atom
                             :pod
                             .getMetadata
