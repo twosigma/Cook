@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.53.7] - 2021-07-15
+### Fixed
+- When adding a job to an existing job group, don't override the group, from @nsinkov
+### Added
+- Add pool source to job submission passport stamp, from @dposada
+- Add instance uuid to job uuid cache, from @calebhar12
+
 ## [1.53.6] - 2021-07-06
 ### Added
 - Save the submitted job's pool, from @dposada
