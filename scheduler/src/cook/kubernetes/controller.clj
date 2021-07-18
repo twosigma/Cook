@@ -159,7 +159,7 @@
    {:keys [task-id state reason]}]
   (let [pod-name (task-id :value)
         event-map (api/assoc-uuids
-                    {:cluster-name name
+                    {:compute-cluster name
                      :event-type passport/pod-completed
                      :pod-name pod-name
                      :reason reason
