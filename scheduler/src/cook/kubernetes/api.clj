@@ -1666,7 +1666,7 @@
                      "does not match pod name argument (" pod-name ")"))
         (log/info "In" compute-cluster-name "compute cluster, launching pod with name" pod-name "in namespace" namespace ":" (.serialize json pod))
         (let [event-map (assoc-uuids
-                          {:cluster-name compute-cluster-name
+                          {:compute-cluster compute-cluster-name
                            :event-type passport/pod-launching
                            :namespace namespace
                            :pod-name pod-name}
