@@ -1667,7 +1667,7 @@
         (log/info "In" compute-cluster-name "compute cluster, launching pod with name" pod-name "in namespace" namespace ":" (.serialize json pod))
         (let [event-map (assoc-uuids
                           {:compute-cluster compute-cluster-name
-                           :event-type passport/pod-launching
+                           :event-type passport/pod-launched
                            :namespace namespace
                            :pod-name pod-name}
                           pod-name)]

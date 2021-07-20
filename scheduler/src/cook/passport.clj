@@ -7,9 +7,13 @@
   "Log event to cook-passport log file"
   [log-data]
   (when (:enabled? (config/passport))
-    (log/log config/passport-logger-ns :info nil (json/write-str log-data))))
+    (log/log config/passport-logger-ns :info nil (json/write-str
+                                                   (assoc
+                                                     log-data
+                                                     :source :cook-scheduler
+                                                     :event-type (str "cook-scheduler/" (name (log-data :event-type))))))))
 
-(def api-job-creation :api-job-creation)
-(def api-job-submission :api-job-submission)
-(def pod-launching :pod-launching)
+(def job-created :job-created)
+(def job-submitted :job-submitted)
+(def pod-launched :pod-launched)
 (def pod-completed :pod-completed)
