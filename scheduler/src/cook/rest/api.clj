@@ -1897,9 +1897,9 @@
      ;; the client is expected to cache the redirect location
      (if-let [leader-url (::leader-url ctx)]
        (let [request-path (get-in ctx [:request :uri])
-             request-param (get-in ctx [:request :query-string])]
+             query-string (get-in ctx [:request :query-string])]
          ; Include the request parameters in the location header response, if needed.
-         [true {:location (str leader-url request-path (when request-param (str "?" request-param)))}])
+         [true {:location (str leader-url request-path (when query-string (str "?" query-string)))}])
        [false {}]))
 
    :service-available?
