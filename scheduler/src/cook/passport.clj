@@ -5,13 +5,13 @@
 
 (defn log-event
   "Log event to cook-passport log file"
-  [log-data]
+  [{:keys [event-type] :as log-data}]
   (when (:enabled? (config/passport))
     (log/log config/passport-logger-ns :info nil (json/write-str
                                                    (assoc
                                                      log-data
                                                      :source :cook-scheduler
-                                                     :event-type (str "cook-scheduler/" (name (log-data :event-type))))))))
+                                                     :event-type (str "cook-scheduler/" (name event-type)))))))
 
 (def job-created :job-created)
 (def job-submitted :job-submitted)
