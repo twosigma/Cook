@@ -1080,7 +1080,7 @@ def unscheduled_jobs(cook_url, *job_uuids, partial=None):
     query_params = [('job', u) for u in job_uuids]
     if partial is not None:
         query_params.append(('partial', partial))
-    resp = session.get(f'{cook_url}/unscheduled_jobs?{urlencode(query_params)}')
+    resp = get_with_redirects(f'{cook_url}/unscheduled_jobs', params=query_params)
     job_reasons = resp.json() if resp.status_code == 200 else []
     return job_reasons, resp
 
@@ -1255,6 +1255,10 @@ def request_with_redirects(method, url, allow_redirects=True, **kwargs):
     # (when redirecting to primary node), and requests strips and does not re-apply
     # auth when redirects cross domains.
     response = session.request(method, url, allow_redirects=False, **kwargs)
+    # Should not re-include the params in subsequent redirects. Cook's Location response
+    # header should include them if they're needed (it does)
+    if 'params' in kwargs:
+        del kwargs['params']
     if allow_redirects and response.is_redirect:
         for _ in range(10):
             response = session.request(method, response.headers['Location'], allow_redirects=False, **kwargs)
