@@ -114,8 +114,6 @@ class MultiUserCookTest(util.CookTest):
                 with self.user_factory.admin():
                     util.kill_jobs(self.cook_url, all_job_uuids, assert_response=False)
 
-    # Serial so that we don't conflict with another running test that may use the same user ID.
-    @pytest.mark.serial
     def test_user_pool_rate_limit(self):
         settings_dict = util.settings(self.cook_url)
         if settings_dict.get('rate-limit', {}).get('per-user-per-pool-job-launch', {}) is None:
