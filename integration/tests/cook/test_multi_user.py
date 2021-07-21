@@ -149,34 +149,43 @@ class MultiUserCookTest(util.CookTest):
                 self.assertEqual(201, subsequent_response.status_code, msg=subsequent_response.content)
 
                 def is_rate_limit_triggered(_):
-                    jobs1 = util.query_jobs(self.cook_url, True, uuid=job_uuids).json()
+                    """Only check jobs in the subsequent batch. Make sure that at least one is running
+                    so that we know this second batch of jobs went through the rank and match cycles.
+                    (that helps to ensure that our check for reason has been updated"""
+                    jobs1 = util.query_jobs(self.cook_url, True, uuid=subsequent_uuids).json()
                     running_jobs = [j for j in jobs1 if j['status'] == 'running']
                     waiting_jobs = [j for j in jobs1 if j['status'] == 'waiting']
                     self.logger.debug(f'There are {len(waiting_jobs)} waiting jobs')
-                    return len(waiting_jobs) > 0 and len(running_jobs) >= bucket_size
+                    return len(running_jobs) > 0
 
                 util.wait_until(lambda: None, is_rate_limit_triggered, 180000, 5000)
                 jobs2 = util.query_jobs(self.cook_url, True, uuid=job_uuids).json()
                 running_jobs = [j for j in jobs2 if j['status'] == 'running']
                 waiting_jobs = [j['uuid'] for j in jobs2 if j['status'] == 'waiting']
-                # At least bucketsize jobs have launched.
-                self.assertGreaterEqual(len(running_jobs), bucket_size)
+                # At least 1 job has launched.
+                self.assertGreater(len(running_jobs), 0)
                 # But not every job should have launched.
-                self.assertLess(len(running_jobs), 2 * bucket_size)
-
-                self.logger.info(f'Waiting jobs {waiting_jobs}')
-                # Now pull out two jobs, at least one should be rate-limited, even under race conditions.
-                job_uuid_1 = waiting_jobs[0]
-                job_uuid_2 = waiting_jobs[1]
-
-                jobs, _ = util.unscheduled_jobs(self.cook_url, job_uuid_1,job_uuid_2)
-                self.logger.info(f'Unscheduled job reasons: {jobs}')
+                self.assertGreaterEqual(len(waiting_jobs), 2)
 
                 pattern = re.compile('^You are currently rate limited on how many jobs you launch per minute.$')
-                # At least one job should have have rate limiting as one of its reasons.
-                self.assertTrue(any([any([pattern.match(reason['reason']) for reason in job['reasons']]) for job in jobs]))
-                self.assertEqual(job_uuid_1, jobs[0]['uuid'])
-                self.assertEqual(job_uuid_2, jobs[1]['uuid'])
+
+                def is_reason_rate_limit(_):
+                    jobs2 = util.query_jobs(self.cook_url, True, uuid=job_uuids).json()
+                    waiting_jobs = [j['uuid'] for j in jobs2 if j['status'] == 'waiting']
+                    self.logger.info(f'Waiting jobs {waiting_jobs}')
+                    # If we have less than 2 waiting jobs, then they're launching and not rate limiting. Abort the test.
+                    self.assertGreaterEqual(len(waiting_jobs), 2)
+                    # Pull out two waiting jobs.
+                    job_uuid_1 = waiting_jobs[0]
+                    job_uuid_2 = waiting_jobs[1]
+                    reasons, _ = util.unscheduled_jobs(self.cook_url, job_uuid_1, job_uuid_2)
+                    self.logger.info(f'Unscheduled job reasons: {reasons}')
+                    self.assertEqual(job_uuid_1, reasons[0]['uuid'])
+                    self.assertEqual(job_uuid_2, reasons[1]['uuid'])
+                    # At least one job should have have rate limiting as one of its reasons.
+                    return any([any([pattern.match(reason['reason']) for reason in job['reasons']]) for job in reasons])
+
+                util.wait_until(lambda: None, is_reason_rate_limit, 60000, 5000)
 
                 # Reset rate limit and make sure everything launches.
                 with admin:
