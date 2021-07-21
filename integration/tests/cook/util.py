@@ -1255,6 +1255,10 @@ def request_with_redirects(method, url, allow_redirects=True, **kwargs):
     # (when redirecting to primary node), and requests strips and does not re-apply
     # auth when redirects cross domains.
     response = session.request(method, url, allow_redirects=False, **kwargs)
+    # Should not re-include the params in subsequent redirects. Cook's Location response
+    # header should include them if they're needed (it does)
+    if 'params' in kwargs:
+        del kwargs['params']
     if allow_redirects and response.is_redirect:
         for _ in range(10):
             response = session.request(method, response.headers['Location'], allow_redirects=False, **kwargs)
