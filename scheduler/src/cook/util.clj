@@ -156,6 +156,8 @@
   (let [ns (namespace var-sym)]
     (when-not ns
       (throw (ex-info "Can only load vars that are ns-qualified!" {})))
+    ; BUG: Require is not thread safe. Suspect this leads to some problems when laxy-load-var is used
+    ; from multiple threads. See https://ask.clojure.org/index.php/9893/require-is-not-thread-safe
     (require (symbol ns))
     (let [resolved (resolve var-sym)]
       (if resolved
