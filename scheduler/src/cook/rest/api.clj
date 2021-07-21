@@ -1874,10 +1874,13 @@
   {:can-post-to-gone?
    (constantly true)
 
+   ; Needs to be false when we're the leader or else the response code for when :exists?
+   ; is false is 410 GONE instead of 404 not-found.
+   ; Needs to be true when we're not the leader to trigger the redirection path.
    :existed?
-   (constantly true)
+   (fn [_] (not @leadership-atom))
 
-   ;; triggers path for moved-temporarily?
+   ;; Being false when not the leader triggers path for moved-temporarily?
    :exists? (fn [_] @leadership-atom)
 
    :handle-moved-temporarily
@@ -3140,15 +3143,20 @@
     representation))
 
 (defn read-unscheduled-handler
-  [conn is-authorized-fn]
+  [conn is-authorized-fn leadership-atom leader-selector]
   (base-cook-handler
-    {:allowed-methods [:get]
-     :exists? (partial retrieve-jobs conn)
-     :allowed? (partial job-request-allowed? conn is-authorized-fn)
-     :handle-ok (fn [ctx]
-                  (map (fn [job] {:uuid job
-                                  :reasons (job-reasons conn job)})
-                       (::jobs ctx)))}))
+    (merge
+      ;; only the leader handles unscheduled reasons
+      (redirect-to-leader leadership-atom leader-selector)
+      {:allowed-methods [:get]
+       ; liberator will not route requests to moved temporarily if exists is true, so make sure its
+       ; false if not leader.
+       :exists? (fn [ctx] (and @leadership-atom (retrieve-jobs conn ctx)))
+       :allowed? (partial job-request-allowed? conn is-authorized-fn)
+       :handle-ok (fn [ctx]
+                    (map (fn [job] {:uuid job
+                                    :reasons (job-reasons conn job)})
+                         (::jobs ctx)))})))
 
 ;;
 ;; /stats/instances
@@ -3841,7 +3849,7 @@
             {:produces ["application/json"],
              :get {:summary "Read reasons why a job isn't being scheduled."
                    :parameters {:query-params UnscheduledJobParams}
-                   :handler (read-unscheduled-handler conn is-authorized-fn)
+                   :handler (read-unscheduled-handler conn is-authorized-fn leadership-atom leader-selector)
                    :responses {200 {:schema UnscheduledJobResponse
                                     :description "Reasons the job isn't being scheduled."}
                                400 {:description "Invalid request format."}

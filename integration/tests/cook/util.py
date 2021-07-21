@@ -1080,7 +1080,7 @@ def unscheduled_jobs(cook_url, *job_uuids, partial=None):
     query_params = [('job', u) for u in job_uuids]
     if partial is not None:
         query_params.append(('partial', partial))
-    resp = session.get(f'{cook_url}/unscheduled_jobs?{urlencode(query_params)}')
+    resp = get_with_redirects(f'{cook_url}/unscheduled_jobs', params=query_params)
     job_reasons = resp.json() if resp.status_code == 200 else []
     return job_reasons, resp
 
