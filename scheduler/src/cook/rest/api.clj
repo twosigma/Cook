@@ -1976,7 +1976,7 @@
                      (update job-pool-name-map :job #(dissoc % :command)))
                    job-pool-name-maps))
     (doseq [{{:keys [uuid, user]} :job} job-pool-name-maps]
-      (passport/log-event {:event-type passport/api-job-creation
+      (passport/log-event {:event-type passport/job-created
                            :job-uuid (str uuid)
                            :user user}))
     (let [jobs (map :job job-pool-name-maps)
@@ -2184,7 +2184,7 @@
                      (try
                        (doseq [{:keys [uuid]} jobs]
                          (passport/log-event
-                           {:event-type passport/api-job-submission
+                           {:event-type passport/job-submitted
                             :job-uuid (str uuid)
                             :pool pool-name
                             :pool-header pool-header
