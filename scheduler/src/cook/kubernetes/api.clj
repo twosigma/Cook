@@ -381,7 +381,12 @@
           (handle-watch-updates current-nodes-atom watch node->node-name
                                 callbacks) ; Update the set of all nodes.
           (catch Exception e
-            (log/warn e "Error during node watch for compute cluster" compute-cluster-name))
+            (let [cause (-> e Throwable->map :cause)]
+              (if (= cause "IO Exception during hasNext method.")
+                ; We expect timeouts to happen on the node watch when there is
+                ; no node-related activity, so we log with INFO instead of WARN
+                (log/info e "Timeout during node watch for compute cluster" compute-cluster-name)
+                (log/warn e "Error during node watch for compute cluster" compute-cluster-name {:cause cause}))))
           (finally
             (.close watch)
             (initialize-node-watch compute-cluster)))))))
