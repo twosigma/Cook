@@ -382,7 +382,7 @@
                                 callbacks) ; Update the set of all nodes.
           (catch Exception e
             (let [cause (-> e Throwable->map :cause)]
-              (if (= cause "IO Exception during hasNext method.")
+              (if (= cause "Socket closed")
                 ; We expect timeouts to happen on the node watch when there is
                 ; no node-related activity, so we log with INFO instead of WARN
                 (log/info e "Timeout during node watch for compute cluster" compute-cluster-name)
