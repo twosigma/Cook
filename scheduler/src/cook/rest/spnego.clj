@@ -18,7 +18,7 @@
             [clojure.string :as str]
             [cook.util]
             [ring.util.response :refer [header response status]])
-  (:import (org.ietf.jgss GSSCredential GSSManager Oid)))
+  (:import (org.ietf.jgss GSSCredential GSSManager Oid GSSContext)))
 
 (def krb5Mech (Oid. "1.2.840.113554.1.2.2"))
 (def krb5PrincNameType (Oid. "1.2.840.113554.1.2.2.1"))
@@ -32,15 +32,15 @@
   (let [enc_tok (get-in req [:headers "authorization"])
         tfields (str/split  enc_tok #" ")]
     (if (= "negotiate" (str/lower-case (first tfields)))
-      (b64/decode (.getBytes (last tfields)))
+      (b64/decode (.getBytes ^String (last tfields)))
       nil)))
 
 (defn encode-output-token
   "Take a token from a gss accept context call and encode it for use in a -authenticate header"
   [token]
-  (str "Negotiate " (String. (b64/encode token))))
+  (str "Negotiate " (String. ^bytes (b64/encode token))))
 
-(defn do-gss-auth-check [gss_context req]
+(defn do-gss-auth-check [^GSSContext gss_context req]
   (if-let [intok (decode-input-token req)]
     (if-let [ntok (.acceptSecContext gss_context intok 0 (alength intok))]
       (encode-output-token ntok)
@@ -63,7 +63,7 @@
         gss (.createContext manager creds)]
     gss))
 
-(defn gss-get-princ [gss]
+(defn gss-get-princ [^GSSContext gss]
   (.toString (.getSrcName gss)))
 
 ;; Add a cookie check to avoid doing gss
@@ -78,7 +78,7 @@
   [rh]
   (fn [req]
     (if (get-in req [:headers "authorization"])
-      (let [gss_context (gss-context-init)
+      (let [^GSSContext gss_context (gss-context-init)
             token (do-gss-auth-check gss_context req)]
         ; Use isEstablished to confirm that the client authenticated correctly.
         ; If token is non-nil, add a WWW-Authenticate header to the response.

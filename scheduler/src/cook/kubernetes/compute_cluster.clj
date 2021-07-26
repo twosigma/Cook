@@ -593,7 +593,7 @@
 (defn get-bearer-token
   "Takes a GoogleCredentials object and refreshes the credentials, and returns a bearer token suitable for use
    in an Authorization header."
-  [scoped-credentials]
+  [^GoogleCredentials scoped-credentials]
   (.refresh scoped-credentials)
   (str "Bearer " (.getTokenValue (.getAccessToken scoped-credentials))))
 

@@ -53,7 +53,7 @@
 
 (defn- expire-key-helper
   "Helper function for expiring a key explicitly."
-  [cache key]
+  [^Cache cache key]
   (when-let [result (.getIfPresent cache key)]
     (let [{:keys [cache-expires-at]} result]
       (when (and cache-expires-at (t/after? (t/now) cache-expires-at))  (.invalidate cache key)))))

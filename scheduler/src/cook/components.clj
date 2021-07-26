@@ -68,7 +68,7 @@
            (org.apache.curator.retry BoundedExponentialBackoffRetry)
            (org.eclipse.jetty.security DefaultUserIdentity UserAuthentication)
            (org.eclipse.jetty.server.handler HandlerCollection RequestLogHandler)
-           (org.eclipse.jetty.server NCSARequestLog)))
+           (org.eclipse.jetty.server NCSARequestLog Request)))
 
 (defn wrap-no-cache
   [handler]
@@ -180,7 +180,7 @@
   does so to make sure it's available for Jetty to log"
   (fn [req]
     (do
-      (.setAuthentication (:servlet-request req)
+      (.setAuthentication ^Request (:servlet-request req)
                           (UserAuthentication.
                             "kerberos"
                             (DefaultUserIdentity.

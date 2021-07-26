@@ -108,8 +108,8 @@
         (dissoc :pod)
         (assoc 
           :node-name (api/pod->node-name pod)
-          :pod-metadata (some-> pod .getMetadata)
-          :pod-status (some-> pod .getStatus)))
+          :pod-metadata (some-> ^V1Pod pod .getMetadata)
+          :pod-status (some-> ^V1Pod pod .getStatus)))
     (catch Throwable t
       (log/error t "Error preparing k8s actual state for logging:" k8s-actual-state-dict)
       k8s-actual-state-dict)))
@@ -277,8 +277,8 @@
   [^V1PodStatus pod-status]
   (->> pod-status
        .getContainerStatuses
-       (filter (fn [container-status] (= api/cook-container-name-for-job
-                                         (.getName container-status))))
+       (filter (fn [^V1ContainerStatus container-status] (= api/cook-container-name-for-job
+                                                            (.getName container-status))))
        first))
 
 (defn make-failed-task-result
@@ -290,7 +290,7 @@
 
 (defn calculate-pod-status
   "Calculate the pod status of a completed pod. Factored out so that we can wrap it in an exception handler."
-  [compute-cluster pod-name {:keys [synthesized-state pod]} & {:keys [reason]}]
+  [compute-cluster pod-name {:keys [synthesized-state ^V1Pod pod]} & {:keys [reason]}]
   (let [instance-id (some-> pod .getMetadata .getName)]
     ; If we have an actual pod here, make sure it has the same name as pod-name.
     (when instance-id
@@ -368,7 +368,7 @@
 
 (defn record-sandbox-url
   "Record the sandbox file server URL in datomic."
-  [pod-name {:keys [pod]}]
+  [pod-name {:keys [^V1Pod pod]}]
   (when-not (api/synthetic-pod? pod-name)
     (let [task-id (-> pod .getMetadata .getName)
           pod-ip (-> pod .getStatus .getPodIP)

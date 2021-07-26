@@ -15,7 +15,8 @@
 ;;
 (ns cook.scheduler.fenzo-utils
   (:require [clojure.tools.logging :as log]
-            [datomic.api :as d]))
+            [datomic.api :as d])
+  (:import (com.netflix.fenzo TaskAssignmentResult)))
 
 (defn extract-message
   "For some reason, Fenzo's AssignmentFailure doesn't have a getter for the
@@ -59,7 +60,7 @@
   all the messages].  Along the way, logs each result message if debug-level
   logging is enabled."
   [failures]
-  (let [job (:job  (.. (first failures) (getRequest)))
+  (let [job (:job (.getRequest ^TaskAssignmentResult (first failures)))
         under-investigation? (:job/under-investigation job)
         summary (when (or under-investigation? (log/enabled? :debug))
                   (reduce summarize-placement-failure {} failures))]

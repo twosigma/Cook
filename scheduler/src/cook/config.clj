@@ -106,7 +106,7 @@
   RateLimit
 
   (get-key [self {:keys [authorization/user]}]
-    (str (.getName (type self)) id "-" user))
+    (str (.getName ^Class (type self)) id "-" user))
 
   (get-quota [_ {:keys [authorization/user]}]
     (if user

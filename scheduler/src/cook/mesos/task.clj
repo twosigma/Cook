@@ -140,11 +140,10 @@
                                (conj (:uri (config/executor-config))))
                  :user (or mesos-run-as-user (:job/user job-ent))
                  :value (if cook-executor? (:command (config/executor-config)) (:job/command job-ent))}
-        data (.getBytes
-               (if cook-executor?
-                 (json/write-str {"command" (:job/command job-ent)})
-                 (pr-str {:instance instance-num}))
-               "UTF-8")]
+        ^String data-as-string (if cook-executor?
+                                 (json/write-str {"command" (:job/command job-ent)})
+                                 (pr-str {:instance instance-num}))
+        data (.getBytes data-as-string "UTF-8")]
     (when (and (= :executor/cook (:job/executor job-ent))
                (not= executor-key :cook-executor))
       (log/warn "Task" task-id "requested to use cook executor, but will be executed using" (name executor-key)))
