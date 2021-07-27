@@ -28,8 +28,9 @@
             [cook.scheduler.data-locality :as dl]
             [cook.tools :as util]
             [swiss.arrows :refer :all])
-  (:import (com.netflix.fenzo ConstraintEvaluator ConstraintEvaluator$Result TaskRequest TaskTrackerState VirtualMachineCurrentState VirtualMachineLease)
-           (java.util Date)))
+  (:import (com.netflix.fenzo ConstraintEvaluator ConstraintEvaluator$Result TaskRequest TaskTrackerState VirtualMachineCurrentState VirtualMachineLease TaskTracker$ActiveTask)
+           (java.util Date)
+           (org.joda.time DateTime)))
 
 ;; Wisdom:
 ;; * This code expects that attributes COOK_GPU? and HOSTNAME are set for all
@@ -62,7 +63,8 @@
 (defn get-class-name
   "Returns the name of a class without package information."
   [object]
-  (.getSimpleName (type object)))
+  (let [^Class obj-type (type object)]
+    (.getSimpleName obj-type)))
 
 (defrecord novel-host-constraint [job previous-hosts]
   JobConstraint
@@ -403,7 +405,7 @@
                                            (- agent-start-grace-period-mins)
                                            (* 1000 60))
             capped-expected-runtime (min max-expected-runtime longest-reasonable-runtime)
-            expected-end-time (+ (.getMillis (t/now)) capped-expected-runtime)]
+            expected-end-time (+ (.getMillis ^DateTime (t/now)) capped-expected-runtime)]
         (when (< 0 max-expected-runtime)
           (->estimated-completion-constraint expected-end-time host-lifetime-mins))))))
 

@@ -61,12 +61,12 @@
             [plumbing.core :as pc])
   (:import (com.netflix.fenzo
              TaskAssignmentResult TaskRequest TaskScheduler TaskScheduler$Builder VirtualMachineCurrentState
-             VirtualMachineLease VirtualMachineLease$Range)
+             VirtualMachineLease VirtualMachineLease$Range SchedulingResult VMAssignmentResult)
            (com.netflix.fenzo.functions Action1 Action2 Func1)
-           (java.util LinkedList)))
+           (java.util LinkedList Date)))
 
 (defn now
-  []
+  ^Date []
   (tc/to-date (time/now)))
 
 
@@ -234,9 +234,10 @@
                                    :task-lost
                                    :task-error} :instance.status/failed)
                prior-job-state (:job/state (d/entity db job))
-               current-time (now)
+               ^Date current-time (now)
+               ^Date start-time (or (:instance/start-time instance-ent) current-time)
                instance-runtime (- (.getTime current-time) ; Used for reporting
-                                   (.getTime (or (:instance/start-time instance-ent) current-time)))
+                                   (.getTime start-time))
                job-resources (tools/job-ent->resources job-ent)
                pool-name (cached-queries/job->pool-name job-ent)
                unassign-task-set (some-> pool-name pool-name->fenzo-state :unassign-task-set)]
@@ -570,7 +571,7 @@
 
 (defn unassign-all
   "Unassigns all items in the to-unassign set with the given unassigner. Must be run with the fenzo lock held."
-  [pool-name unassigner to-unassign]
+  [pool-name ^Action2 unassigner to-unassign]
   (doseq [{:keys [task-id hostname]} to-unassign]
     (try
       ; Fenzo tracks which tasks are on which nodes with assignment. To, e.g., make
@@ -625,13 +626,13 @@
             ;; task assigner may be called when reconciling
             to-unassign (util/set-atom! unassign-task-set #{})
             ^Action2 unassigner (.getTaskUnAssigner fenzo)
-            result (locking fenzo
-                     (unassign-all pool-name unassigner to-unassign)
-                     (timers/time!
-                       (timers/timer (metric-title "fenzo-schedule-once-duration" pool-name))
-                       (.scheduleOnce fenzo requests leases)))
-            failure-results (.. result getFailures values)
-            assignments (.. result getResultMap values)]
+            ^SchedulingResult result (locking fenzo
+                                       (unassign-all pool-name unassigner to-unassign)
+                                       (timers/time!
+                                         (timers/timer (metric-title "fenzo-schedule-once-duration" pool-name))
+                                         (.scheduleOnce fenzo requests leases)))
+            failure-results (-> result .getFailures .values)
+            assignments (-> result .getResultMap .values)]
         (doall (map (fn [^VirtualMachineLease lease]
                       (when (-> lease :offer :reject-after-match-attempt)
                         (log/info "In" pool-name "pool, retracting lease" (-> lease :offer :id))
@@ -641,7 +642,7 @@
 
         (log/debug "In" pool-name "pool, found this assignment:" result)
 
-        {:matches (mapv (fn [assignment]
+        {:matches (mapv (fn [^VMAssignmentResult assignment]
                           {:leases (.getLeasesUsed assignment)
                            :tasks (.getTasksAssigned assignment)
                            :hostname (.getHostname assignment)})
@@ -716,7 +717,7 @@
   [matches]
   (->> matches
        (mapcat :tasks)
-       (map #(-> % .getRequest :job))))
+       (map #(-> ^TaskAssignmentResult % .getRequest :job))))
 
 
 (defn matches->job-uuids
@@ -789,7 +790,7 @@
        last-waiting-start-time
        (assoc :instance/queue-time
               (- (.getTime instance-start-time)
-                 (.getTime last-waiting-start-time))))]))
+                 (.getTime ^Date last-waiting-start-time))))]))
 
 (defn- match->compute-cluster
   "Given a match object, returns the
@@ -800,7 +801,7 @@
 
 (defn launch-matches!
   "Launches tasks for the given matches in the given compute cluster"
-  [compute-cluster pool-name matches fenzo]
+  [compute-cluster pool-name matches ^TaskScheduler fenzo]
   (try
     (cc/launch-tasks
       compute-cluster
@@ -814,9 +815,9 @@
           (ratelimit/spend! quota/per-user-per-pool-launch-rate-limiter token-key 1)
           (ratelimit/spend! compute-cluster-launch-rate-limiter ratelimit/compute-cluster-launch-rate-limiter-key 1))
         (locking fenzo
-          (.. fenzo
-              (getTaskAssigner)
-              (call task-request hostname)))))
+          (-> fenzo
+              (.getTaskAssigner)
+              (.call task-request hostname)))))
     (catch Throwable t
       (log/error t "In" pool-name "pool, error launching tasks for"
                  (cc/compute-cluster-name compute-cluster) "compute cluster"))))

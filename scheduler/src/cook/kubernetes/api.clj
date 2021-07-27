@@ -30,7 +30,7 @@
              V1HTTPGetAction V1LabelSelector V1ObjectFieldSelector V1Node V1NodeList V1NodeAffinity V1NodeSelector
              V1NodeSelectorRequirement V1NodeSelectorTerm V1ObjectMeta V1ObjectReference V1Pod V1PodAffinityTerm
              V1PodAntiAffinity V1PodCondition V1PodSecurityContext V1PodSpec V1PodStatus V1Probe V1ResourceRequirements
-             V1Toleration V1Volume V1VolumeBuilder V1VolumeMount V1WeightedPodAffinityTerm)
+             V1Toleration V1Volume V1VolumeBuilder V1VolumeMount V1WeightedPodAffinityTerm V1Taint V1PodList V1VolumeFluent)
            (io.kubernetes.client.util Watch)
            (java.net SocketTimeoutException)
            (java.util.concurrent Executors ExecutorService)))
@@ -243,9 +243,9 @@
 (declare initialize-pod-watch)
 (defn ^Callable initialize-pod-watch-helper
   "Help creating pod watch. Returns a new watch Callable"
-  [{:keys [^ApiClient api-client all-pods-atom controller-executor-service node-name->pod-name->pod]
+  [{:keys [^ApiClient api-client all-pods-atom ^ExecutorService controller-executor-service node-name->pod-name->pod]
     compute-cluster-name :name :as compute-cluster} cook-pod-callback]
-  (let [[current-pods namespaced-pod-name->pod] (get-all-pods-in-kubernetes api-client compute-cluster-name)
+  (let [[^V1PodList current-pods namespaced-pod-name->pod] (get-all-pods-in-kubernetes api-client compute-cluster-name)
         callbacks
         [(tools/make-atom-updater all-pods-atom) ; Update the set of all pods.
          (tools/make-nested-atom-updater node-name->pod-name->pod pod->node-name get-pod-namespaced-key)
@@ -322,10 +322,10 @@
   [cook-pool-taint-name cook-pool-taint-prefix ^V1Node node]
   ; In the case of nil, we have taints-on-node == [], and we'll map to no-pool.
   (let [taints-on-node (or (some-> node .getSpec .getTaints) [])
-        found-cook-pool-taint (filter #(= cook-pool-taint-name (.getKey %)) taints-on-node)]
+        found-cook-pool-taint (filter #(= cook-pool-taint-name (.getKey ^V1Taint %)) taints-on-node)]
     (if (= 1 (count found-cook-pool-taint))
-      (let [taint-value
-            (-> found-cook-pool-taint first .getValue)]
+      (let [^String taint-value
+            (-> found-cook-pool-taint ^V1Taint first .getValue)]
         (if (str/starts-with? taint-value cook-pool-taint-prefix)
           (subs taint-value (count cook-pool-taint-prefix))
           "no-pool"))
@@ -521,7 +521,7 @@
           other-taints
           (remove #(contains?
                      #{cook-pool-taint-name k8s-deletion-candidate-taint gpu-node-taint tenured-node-taint}
-                     (.getKey %))
+                     (.getKey ^V1Taint %))
                   taints-on-node)]
     (seq other-taints) (do
                          (log/info "Filtering out" node-name "because it has taints" other-taints)
@@ -593,7 +593,7 @@
        (filter #(-> % second seq))
        (pc/map-vals (fn [pods]
                       (->> pods
-                           (remove #(and clobber-synthetic-pods (some-> % .getMetadata .getName synthetic-pod?)))
+                           (remove #(and clobber-synthetic-pods (some-> ^V1Pod % .getMetadata .getName synthetic-pod?)))
                            (map (fn [^V1Pod pod]
                                   (let [containers (some-> pod .getSpec .getContainers)
                                         container-requests (map (fn [^V1Container c]
@@ -637,11 +637,11 @@
 
 (defn- make-empty-volume
   "Make a kubernetes volume"
-  [name]
-  (.. (V1VolumeBuilder.)
-      (withName name)
-      (withEmptyDir (V1EmptyDirVolumeSource.))
-      (build)))
+  [^String name]
+  (let [^V1VolumeBuilder builder (-> ^V1VolumeBuilder (V1VolumeBuilder.)
+                                     (.withName name)
+                                     (.withEmptyDir (V1EmptyDirVolumeSource.)))]
+    (.build builder)))
 
 (defn- make-volume-mount
   "Make a kubernetes volume mount"
@@ -978,7 +978,7 @@
       :or {pod-supports-cook-init? true
            pod-supports-cook-sidecar? true}}
      {:keys [computed-mem workdir custom-shell init-container-workdir-volume-mount-fn main-container-checkpoint-volume-mounts main-env-vars
-             pod-name pod-spec pool-name scratch-space-volume-mount-fn sidecar-workdir-volume-mount-fn use-cook-init? volume-mounts]}]
+             pod-name ^V1PodSpec pod-spec pool-name scratch-space-volume-mount-fn sidecar-workdir-volume-mount-fn use-cook-init? volume-mounts]}]
     (let [{:keys [scalar-requests job resources]} task-request
           ;; NOTE: The scheduler's adjust-job-resources-for-pool-fn may modify :resources,
           ;; whereas :scalar-requests always contains the unmodified job resource values.
@@ -1058,7 +1058,7 @@
   (defn add-cook-init-to-pod
     "Create Cook init container and add it to the pod"
     [{:keys [computed-mem cpus init-container init-container-checkpoint-volume-mounts init-container-workdir
-             init-container-workdir-volume-mount-fn main-env-vars pod-spec scratch-space-volume-mount-fn sidecar use-cook-sidecar?]}]
+             init-container-workdir-volume-mount-fn main-env-vars ^V1PodSpec pod-spec scratch-space-volume-mount-fn sidecar use-cook-sidecar?]}]
     (when-let [{:keys [command image]} init-container]
       (let [container (V1Container.)
             get-resource-requirements-fn (fn [fieldname] (if use-cook-sidecar?
@@ -1084,7 +1084,7 @@
 
   (defn add-cook-sidecar-to-pod
     "Create Cook Sidecar container and add it to the pod"
-    [{:keys [main-env-vars pod-spec sidecar sandbox-dir sandbox-volume-mount-fn scratch-space-volume-mount-fn sidecar-workdir sidecar-workdir-volume-mount-fn]}]
+    [{:keys [main-env-vars ^V1PodSpec pod-spec sidecar sandbox-dir sandbox-volume-mount-fn scratch-space-volume-mount-fn sidecar-workdir sidecar-workdir-volume-mount-fn]}]
     (when-let [{:keys [command health-check-endpoint image port resource-requirements]} sidecar]
       (let [{:keys [cpu-request cpu-limit memory-request memory-limit]} resource-requirements
             container (V1Container.)
@@ -1497,7 +1497,7 @@
           ; * We want a pod to be considered failed if any container with the name required-* fails or any container
           ;   with the name extra-* fails.
           ; * A job may have additional containers with the name aux-*
-          job-status (first (filter (fn [c] (= cook-container-name-for-job (.getName c)))
+          ^V1ContainerStatus job-status (first (filter (fn [^V1ContainerStatus c] (= cook-container-name-for-job (.getName c)))
                                     container-statuses))
           {:keys [node-preempted-label]} (config/kubernetes)
           pod-metadata (some-> pod .getMetadata)
@@ -1594,7 +1594,7 @@
           ^V1ContainerStatus file-server-status
           (first
             (filter
-              (fn [c]
+              (fn [^V1ContainerStatus c]
                 (= cook-container-name-for-file-server (.getName c)))
               container-statuses))]
       (cond
@@ -1606,10 +1606,10 @@
   "Kill this kubernetes pod. This is the same as deleting it."
   [^ApiClient api-client compute-cluster-name ^V1Pod pod & {:keys [grace-period-seconds]}]
   (let [api (CoreV1Api. api-client)
-        delete-options-builder
+        ^V1DeleteOptionsBuilder delete-options-builder
         (cond-> (V1DeleteOptionsBuilder.)
                 true (.withPropagationPolicy "Background")
-                grace-period-seconds (.withGracePeriodSeconds grace-period-seconds))
+                grace-period-seconds (.withGracePeriodSeconds ^long grace-period-seconds))
         ^V1DeleteOptions deleteOptions (.build delete-options-builder)
         pod-name (-> pod .getMetadata .getName)
         pod-namespace (-> pod .getMetadata .getNamespace)]
@@ -1648,7 +1648,7 @@
 
 (defn create-namespaced-pod
   "Delegates to the k8s API .createNamespacedPod function"
-  [api namespace pod]
+  [^CoreV1Api api namespace pod]
   (.createNamespacedPod api namespace pod nil nil nil))
 
 (let [json (JSON.)]
@@ -1662,7 +1662,7 @@
     launch operation failed."
     [api-client compute-cluster-name {:keys [launch-pod]} pod-name]
     (if launch-pod
-      (let [{:keys [pod]} launch-pod
+      (let [{:keys [^V1Pod pod]} launch-pod
             pod-name-from-pod (-> pod .getMetadata .getName)
             namespace (-> pod .getMetadata .getNamespace)
             api (CoreV1Api. api-client)]

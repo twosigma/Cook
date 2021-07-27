@@ -81,7 +81,7 @@
   (let [key (get-key key)]
     (locking cache
       (let [tbf (tbf/earn-tokens (get-token-bucket-filter this key) (current-time-in-millis))]
-        (.put cache key tbf)))))
+        (.put ^LoadingCache cache key tbf)))))
 
 (defrecord TokenBucketFilterRateLimiter
   [config ^LoadingCache cache ^Boolean enforce?]
