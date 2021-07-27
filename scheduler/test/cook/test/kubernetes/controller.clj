@@ -31,7 +31,11 @@
                                                           pod-status container-status))))))
 (deftest test-process
   (with-redefs [cached-queries/instance-uuid->job-uuid-datomic-query (constantly (java.util.UUID/randomUUID))
-    d/db (constantly nil)]
+                d/db (constantly nil)
+                cached-queries/job-uuid->job-map-cache-lookup (constantly {:job/name "sample-name"
+                                                                           :job/user "sample-user"
+                                                                           :job/uuid "sample-uuid"
+                                                                           :job/pool {:pool/name "sample-pool"}})]
     (let [name "TestPodName"
           reason (atom nil)
           do-process-full-state (fn [cook-expected-state k8s-actual-state & {:keys [create-namespaced-pod-fn
@@ -264,7 +268,11 @@
 
 (deftest test-handle-pod-completed
   (with-redefs [cached-queries/instance-uuid->job-uuid-datomic-query (constantly (java.util.UUID/randomUUID))
-                d/db (constantly nil)]
+                d/db (constantly nil)
+                cached-queries/job-uuid->job-map-cache-lookup (constantly {:job/name "sample-name"
+                                                                           :job/user "sample-user"
+                                                                           :job/uuid "sample-uuid"
+                                                                           :job/pool {:pool/name "sample-pool"}})]
     (testing "graceful handling of lack of exit code"
       (let [pod (tu/pod-helper "podA" "hostA" {})
             pod-status (V1PodStatus.)]

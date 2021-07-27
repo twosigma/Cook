@@ -45,3 +45,8 @@
     (.maximumSize (get-in config/config [:settings :passport :job-uuid-cache-set-size]))
     (.expireAfterAccess (get-in config/config [:settings :passport :job-uuid-cache-expiry-time-hours]) TimeUnit/HOURS)
     (.build)))
+(mount/defstate ^Cache job-uuid->job-map :start
+                (-> (CacheBuilder/newBuilder)
+                  (.maximumSize (get-in config/config [:settings :passport :job-uuid-cache-set-size]))
+                  (.expireAfterAccess (get-in config/config [:settings :passport :job-uuid-cache-expiry-time-hours]) TimeUnit/HOURS)
+                  (.build)))

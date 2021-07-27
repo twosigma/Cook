@@ -82,16 +82,23 @@
   (when-not (synthetic-pod? pod-name)
     pod-name))
 
-(defn assoc-uuids
-  "Returns event-map with added fields :job-uuid (based on pod-name) and :instance-uuid (if pod is not synthetic)"
+(defn assoc-fields
+  "Returns event-map with added fields :instance-uuid (if pod is not synthetic), job-name, job-uuid, pool, and user."
   [event-map pod-name]
   (let [instance-uuid (pod-name->instance-uuid pod-name)
         job-uuid (or (pod-name->job-uuid pod-name)
-                     (cached-queries/instance-uuid->job-uuid-cache-lookup instance-uuid))]
+                     (cached-queries/instance-uuid->job-uuid-cache-lookup instance-uuid))
+        job-map (cached-queries/job-uuid->job-map-cache-lookup job-uuid)
+        job-name (:job/name job-map)
+        pool (:pool/name (:job/pool job-map))
+        user (:job/user job-map)]
     (cond->
       event-map
       instance-uuid (assoc :instance-uuid instance-uuid)
-      job-uuid (assoc :job-uuid job-uuid))))
+      job-uuid (assoc :job-uuid job-uuid)
+      job-name (assoc :job-name job-name)
+      pool (assoc :pool pool)
+      user (assoc :user user))))
 
 ; DeletionCandidateTaint is a soft taint that k8s uses to mark unneeded
 ; nodes as preferably unschedulable. This taint is added as soon as the
@@ -1670,7 +1677,7 @@
                 (str "Pod name from pod (" pod-name-from-pod ") "
                      "does not match pod name argument (" pod-name ")"))
         (log/info "In" compute-cluster-name "compute cluster, launching pod with name" pod-name "in namespace" namespace ":" (.serialize json pod))
-        (let [event-map (assoc-uuids
+        (let [event-map (assoc-fields
                           {:compute-cluster compute-cluster-name
                            :event-type passport/pod-launched
                            :namespace namespace
