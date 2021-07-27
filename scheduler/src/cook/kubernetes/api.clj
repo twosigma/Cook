@@ -1140,11 +1140,13 @@
         {:keys [docker volumes]} container
         {:keys [parameters]} docker
         {:keys [environment]} command
-        pool-name (cached-queries/job->pool-name job)
-        pod (V1Pod.)
-        pod-spec (V1PodSpec.)
-        metadata (V1ObjectMeta.)
-        pod-labels (merge (job->pod-labels job) pod-labels)
+        job-name (:job/name job)
+          user (:job/user job)
+          pool-name (cached-queries/job->pool-name job)
+          pod (V1Pod.)
+          pod-spec (V1PodSpec.)
+          metadata (V1ObjectMeta.)
+          pod-labels (merge (job->pod-labels job) pod-labels)
           labels (assoc pod-labels cook-pod-label compute-cluster-name)
           security-context (make-security-context parameters (:user command))
           sandbox-dir (:default-workdir (config/kubernetes))
@@ -1184,6 +1186,8 @@
           progress-env (task/build-executor-environment job)
           checkpoint-env (checkpoint->env checkpoint)
           metadata-env {"COOK_COMPUTE_CLUSTER_NAME" compute-cluster-name
+                        "COOK_JOB_NAME" job-name
+                        "COOK_JOB_USER" user
                         "COOK_POOL" pool-name
                         "COOK_SCHEDULER_REST_URL" (config/scheduler-rest-url)}
           main-env-base (merge environment params-env progress-env sandbox-env checkpoint-env metadata-env)
