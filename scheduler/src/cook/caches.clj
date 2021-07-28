@@ -16,6 +16,12 @@
       (.expireAfterAccess 2 TimeUnit/HOURS)
       (.build)))
 
+(defn passport-cache [config]
+  "Build a new passport-related cache"
+  (-> (CacheBuilder/newBuilder)
+    (.maximumSize (get-in config [:settings :passport :job-uuid-cache-set-size]))
+    (.expireAfterAccess (get-in config [:settings :passport :job-uuid-cache-expiry-time-hours]) TimeUnit/HOURS)
+    (.build)))
 
 (defn lookup-cache-datomic-entity!
   "Specialized function for caching where datomic entities are the key.
@@ -40,13 +46,5 @@
 (mount/defstate ^Cache pool-name->accepts-submissions?-cache :start (new-cache config/config))
 (mount/defstate ^Cache pool-name->db-id-cache :start (new-cache config/config))
 (mount/defstate ^Cache user-and-pool-name->quota :start (new-cache config/config))
-(mount/defstate ^Cache instance-uuid->job-uuid :start
-  (-> (CacheBuilder/newBuilder)
-    (.maximumSize (get-in config/config [:settings :passport :job-uuid-cache-set-size]))
-    (.expireAfterAccess (get-in config/config [:settings :passport :job-uuid-cache-expiry-time-hours]) TimeUnit/HOURS)
-    (.build)))
-(mount/defstate ^Cache job-uuid->job-map :start
-                (-> (CacheBuilder/newBuilder)
-                  (.maximumSize (get-in config/config [:settings :passport :job-uuid-cache-set-size]))
-                  (.expireAfterAccess (get-in config/config [:settings :passport :job-uuid-cache-expiry-time-hours]) TimeUnit/HOURS)
-                  (.build)))
+(mount/defstate ^Cache instance-uuid->job-uuid :start (passport-cache config/config))
+(mount/defstate ^Cache job-uuid->job-map :start (passport-cache config/config))

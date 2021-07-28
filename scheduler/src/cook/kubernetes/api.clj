@@ -88,16 +88,13 @@
   (let [instance-uuid (pod-name->instance-uuid pod-name)
         job-uuid (or (pod-name->job-uuid pod-name)
                      (cached-queries/instance-uuid->job-uuid-cache-lookup instance-uuid))
-        job-map (cached-queries/job-uuid->job-map-cache-lookup job-uuid)
-        job-name (:job/name job-map)
-        pool (:pool/name (:job/pool job-map))
-        user (:job/user job-map)]
+        {job-name :job/name user :job/user {pool-name :pool/name} :job/pool} (cached-queries/job-uuid->job-map-cache-lookup job-uuid)]
     (cond->
       event-map
       instance-uuid (assoc :instance-uuid instance-uuid)
       job-uuid (assoc :job-uuid job-uuid)
       job-name (assoc :job-name job-name)
-      pool (assoc :pool pool)
+      pool-name (assoc :pool pool-name)
       user (assoc :user user))))
 
 ; DeletionCandidateTaint is a soft taint that k8s uses to mark unneeded
