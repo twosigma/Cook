@@ -19,8 +19,8 @@
 (defn passport-cache [config]
   "Build a new passport-related cache"
   (-> (CacheBuilder/newBuilder)
-    (.maximumSize (get-in config [:settings :passport :job-uuid-cache-set-size]))
-    (.expireAfterAccess (get-in config [:settings :passport :job-uuid-cache-expiry-time-hours]) TimeUnit/HOURS)
+    (.maximumSize (get-in config [:settings :passport :job-cache-set-size]))
+    (.expireAfterAccess (get-in config [:settings :passport :job-cache-expiry-time-hours]) TimeUnit/HOURS)
     (.build)))
 
 (defn lookup-cache-datomic-entity!
