@@ -636,7 +636,13 @@
         (is (= 2 (count volume-mounts))))
       (let [{:keys [volumes volume-mounts]} (api/make-volumes [{:container-path "/tmp/foo"}] "/tmp/unused" {})]
         (is (= 1 (count volumes)))
-        (is (= 2 (count volume-mounts)))))))
+        (is (= 2 (count volume-mounts))))))
+
+  (testing "shm volume correctly created"
+    (with-redefs [config/kubernetes (constantly {:add-job-label-to-pod-prefix "the.secret.prefix/"})]
+      (let [{:keys [volumes volume-mounts]} (api/make-volumes [] sandbox-path {"the.secret.prefix/shared-memory" "true"})]
+        (is (= 2 (count volumes)))
+        (is (= 3 (count volume-mounts)))))))
 
 
 (deftest test-pod->synthesized-pod-state
