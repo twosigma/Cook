@@ -113,27 +113,6 @@ else
     COOK_ZOOKEEPER=""
 fi
 
-echo "About to: Setup data local service"
-DATA_LOCAL_IP=$(docker inspect data-local | jq -r '.[].NetworkSettings.IPAddress // empty')
-if [[ -z "${DATA_LOCAL_IP}" ]];
-then
-    echo "Starting data local server"
-    PROJECT_ROOT="$( dirname ${SCHEDULER_DIR} )"
-    ${PROJECT_ROOT}/integration/bin/run-data-local-server.sh &
-    ITERATIONS=0
-    while [[ -z "${DATA_LOCAL_IP}" && $ITERATIONS -lt 10 ]];
-    do
-        sleep 1
-        DATA_LOCAL_IP=$(docker inspect data-local | jq -r '.[].NetworkSettings.IPAddress // empty')
-        ((ITERATIONS++))
-    done
-    if [[ -z "${DATA_LOCAL_IP}" ]];
-    then
-        echo "Unable to start data local server"
-        exit 1
-    fi
-fi
-
 echo "Starting cook..."
 
 # NOTE: since the cook scheduler directory is mounted as a volume
@@ -167,7 +146,6 @@ docker create \
     -e "COOK_ONE_USER_AUTH=root" \
     -e "COOK_EXECUTOR_PORTION=${COOK_EXECUTOR_PORTION:-0}" \
     -e "COOK_KEYSTORE_PATH=/opt/ssl/cook.p12" \
-    -e "DATA_LOCAL_ENDPOINT=http://${DATA_LOCAL_IP}:35847/retrieve-costs" \
     -v ${DIR}/../log:/opt/cook/log \
     cook-scheduler:latest ${COOK_CONFIG:-}
 

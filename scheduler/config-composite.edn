@@ -67,9 +67,6 @@
                                                                    :bucket-size 10000
                                                                    :tokens-replenished-per-minute 5000}}}]
  :cors-origins ["https?://cors.example.com"]
- :data-local {:fitness-calculator {:cache-ttl-ms 60000
-                                   :cost-endpoint #config/env "DATA_LOCAL_ENDPOINT"
-                                   :update-interval-ms 1000}}
  :database {:datomic-uri #config/env "COOK_DATOMIC_URI"}
  :plugins {:job-submission-validator {:batch-timeout-seconds 40
                                       :factory-fns ["cook.plugins.demo-plugin/submission-factory"
@@ -85,7 +82,6 @@
        :levels {"datomic.db" :warn
                 "datomic.kv-cluster" :warn
                 "datomic.peer" :warn
-                "cook.scheduler.data-locality" :debug
                 "cook.scheduler.fenzo-utils" :debug
                 "cook.scheduler.rebalancer" :debug
                 "cook.scheduler.scheduler" :debug
@@ -131,8 +127,7 @@
               :min-dru-diff 1.0
               :safe-dru-threshold 1.0}
  :sandbox-syncer {:sync-interval-ms 1000}
- :scheduler {:fenzo-fitness-calculator "cook.scheduler.data-locality/make-data-local-fitness-calculator"
-             :offer-incubate-ms 15000
+ :scheduler {:offer-incubate-ms 15000
              :task-constraints {:command-length-limit 5000
                                 :cpus 10
                                 :memory-gb 48

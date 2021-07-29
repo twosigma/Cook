@@ -26,7 +26,6 @@
             [cook.monitor]
             [cook.queue-limit :as queue-limit]
             [cook.rebalancer]
-            [cook.scheduler.data-locality :as dl]
             [cook.scheduler.optimizer]
             [cook.scheduler.scheduler :as sched]
             [cook.tools :as tools]
@@ -95,8 +94,7 @@
    {:keys [timeout-interval-minutes]
     :or {timeout-interval-minutes 1}
     :as task-constraints}]
-  (let [{:keys [update-interval-ms]} (config/data-local-fitness-config)
-        prepare-trigger-chan (fn prepare-trigger-chan [interval]
+  (let [prepare-trigger-chan (fn prepare-trigger-chan [interval]
                                (let [ch (async/chan (async/sliding-buffer 1))]
                                  (async/pipe (chime-ch (util/time-seq (time/now) interval))
                                              ch)
@@ -109,9 +107,7 @@
          :progress-updater-trigger-chan (prepare-trigger-chan (time/millis (:publish-interval-ms progress-config)))
          :rank-trigger-chan (prepare-trigger-chan (time/seconds 5))
          :rebalancer-trigger-chan (prepare-trigger-chan (time/seconds (:interval-seconds rebalancer-config)))
-         :straggler-trigger-chan (prepare-trigger-chan (time/minutes timeout-interval-minutes))}
-      update-interval-ms
-      (assoc :update-data-local-costs-trigger-chan (prepare-trigger-chan (time/millis update-interval-ms))))))
+         :straggler-trigger-chan (prepare-trigger-chan (time/minutes timeout-interval-minutes))})))
 
 (defn make-compute-cluster-config-updater-task
   "Create a Runnable that periodically checks for updated compute cluster configurations"
@@ -276,8 +272,6 @@
                                                                                           view-incubating-offers
                                                                                           optimizer-config
                                                                                           optimizer-trigger-chan))
-                                      (when (:update-data-local-costs-trigger-chan trigger-chans)
-                                        (dl/start-update-cycles! mesos-datomic-conn (:update-data-local-costs-trigger-chan trigger-chans)))
                                       ; This counter exists so that the cook leader has a '1' and the others have a '0'.
                                       ; So we can see who the leader is in the graphs by graphing the value.
                                       (counters/inc! mesos-leader)

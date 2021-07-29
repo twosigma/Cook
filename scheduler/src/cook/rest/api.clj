@@ -49,7 +49,6 @@
             [cook.quota :as quota]
             [cook.rate-limit :as rate-limit]
             [cook.scheduler.constraints :as constraints]
-            [cook.scheduler.data-locality :as dl]
             [cook.scheduler.share :as share]
             [cook.schema :refer [constraint-operators host-placement-types straggler-handling-types]]
             [cook.task :as task]
@@ -133,8 +132,6 @@
                schema))
 
 (def iso-8601-format (:date-time tf/formatters))
-
-(def partition-date-format (:basic-date tf/formatters))
 
 (s/defschema CookInfo
   "Schema for the /info endpoint response"
@@ -257,22 +254,6 @@
   [s]
   (re-matches #"[\.a-zA-Z0-9_-]{1,128}" s))
 
-(defn non-empty-max-128-characters
-  "String of between 1 and 128 characters"
-  [s]
-  (<= 1 (.length s) 128))
-
-(def non-empty-max-128-characters-str
-  (s/constrained s/Str non-empty-max-128-characters))
-
-(defn valid-date-str?
-  "yyyyMMdd"
-  [s]
-  (try
-    (tf/parse partition-date-format s)
-    true
-    (catch Exception e false)))
-
 (defn valid-k8s-pod-label-value?
   "Returns true if s contains only '.', '_', '-' or any word or
   number characters, has length at least 2 and at most 63, and
@@ -290,30 +271,11 @@
    (s/optional-key :workload-id) (s/constrained s/Str valid-k8s-pod-label-value?)
    (s/optional-key :workload-details) (s/constrained s/Str valid-k8s-pod-label-value?)})
 
-; Datasets represent the data dependencies of jobs, which can be used by the scheduler to schedule jobs
-; on hosts to take advantage of data locality.
-; A dataset is decribed by two fields:
-; - dataset: a dictionary from string->string describing the dataset
-;   e.g. {"kind": "trades", "market": "NYSE"}
-; - partitions (optional): a description of a subset of the dataset required
-;   e.g. [{"begin": "20180101", "end": "20180201"}, {"begin": "20180301", "end": "20180401"}]
-; If partitions are specified, the dataset field must contain the key "partition-type" to describe the type of partition scheme.
-;   e.g. "partition-type": "date"
-(def Dataset
-  "Schema for a job dataset"
-  {:dataset {non-empty-max-128-characters-str non-empty-max-128-characters-str}
-   (s/optional-key :partitions) #{{non-empty-max-128-characters-str non-empty-max-128-characters-str}}})
-
 (def Disk
   "Schema for disk limit specifications"
   {:request (s/pred #(> % 1.0) 'greater-than-one)
    (s/optional-key :limit) (s/pred #(> % 1.0) 'greater-than-one)
    (s/optional-key :type) s/Str})
-
-(def DatePartition
-  "Schema for a date partition"
-  {(s/required-key "begin") (s/constrained s/Str valid-date-str?)
-   (s/required-key "end") (s/constrained s/Str valid-date-str?)})
 
 (def Constraint
   "Schema for user defined job host constraint"
@@ -370,8 +332,7 @@
    ;; a lower case character or a digit, and has length between 2 to (62 + 2).
    :user UserName
    (s/optional-key :application) Application
-   (s/optional-key :expected-runtime) PosInt
-   (s/optional-key :datasets) #{Dataset}})
+   (s/optional-key :expected-runtime) PosInt})
 
 (def Job
   "Full schema for a job"
@@ -388,8 +349,6 @@
              (s/optional-key :max-runtime) PosInt
              (s/optional-key :name) JobName
              (s/optional-key :priority) JobPriority
-             (s/optional-key :datasets) [{:dataset {s/Keyword s/Str}
-                                          (s/optional-key :partitions) [{s/Keyword s/Str}]}]
              ;; The Java job client used to send the
              ;; status field on job submission. At some
              ;; point, that changed, but we will keep
@@ -419,8 +378,6 @@
               (s/optional-key :groups) [s/Uuid]
               (s/optional-key :instances) [Instance]
               (s/optional-key :pool) s/Str
-              (s/optional-key :datasets) #{{:dataset {s/Str s/Str}
-                                            (s/optional-key :partitions) #{{s/Str s/Str}}}}
               (s/optional-key :submit-pool) s/Str})
       prepare-schema-response))
 
@@ -699,17 +656,6 @@
                       :commit-latch/uuid (d/squuid)}]
     [commit-latch-id commit-latch]))
 
-(defn make-partition-ent
-  "Makes a datomic entity for a partition"
-  [partition-type partition]
-  (let [coerce-date (fn coerce-date [date-str]
-                      (tc/to-date (tf/parse partition-date-format date-str)))]
-    (case partition-type
-      "date"
-      {:dataset.partition/begin (coerce-date (partition "begin"))
-       :dataset.partition/end (coerce-date (partition "end"))}
-      :default (throw (IllegalArgumentException. (str "Unsupported partition type " partition-type))))))
-
 (defn get-default-container-for-pool
   "Given a pool name, determine a default container that should be run on it."
   [default-containers effective-pool-name]
@@ -746,7 +692,7 @@
   [{:keys [job pool-name pool-name-from-submission]} :- {:job Job} commit-latch-id db]
   (let [{:keys [uuid command max-retries max-runtime expected-runtime priority cpus mem disk gpus
                 user name ports uris env labels container group application disable-mea-culpa-retries
-                constraints executor progress-output-file progress-regex-string datasets checkpoint]
+                constraints executor progress-output-file progress-regex-string checkpoint]
          :or {group nil
               disable-mea-culpa-retries false}} job
         db-id (d/tempid :db.part/user)
@@ -829,21 +775,6 @@
                                    {:db/id gpus-id
                                     :resource/type :resource.type/gpus
                                     :resource/amount (double gpus)}]))])
-        datasets (map (fn [{:keys [dataset partitions]}]
-                        (let [parameters (map (fn [[k v]] {:db/id (d/tempid :db.part/user)
-                                                           :dataset.parameter/key k
-                                                           :dataset.parameter/value v})
-                                              dataset)]
-                          (if (contains? dataset "partition-type")
-                            (let [partition-type (get dataset "partition-type")
-                                  partitions (map (partial make-partition-ent partition-type) partitions)]
-                              {:db/id (d/tempid :db.part/user)
-                               :dataset/parameters parameters
-                               :dataset/partition-type partition-type
-                               :dataset/partitions partitions})
-                            {:db/id (d/tempid :db.part/user)
-                             :dataset/parameters parameters})))
-                      datasets)
         job-submit-time (Date.)
         txn (cond-> {:db/id db-id
                      :job/command command
@@ -896,8 +827,7 @@
                                pool-name))
                       (assoc :job/submit-pool-name
                              pool-name-from-submission))
-                    checkpoint (assoc :job/checkpoint (build-checkpoint checkpoint))
-                    (seq datasets) (assoc :job/datasets datasets))
+                    checkpoint (assoc :job/checkpoint (build-checkpoint checkpoint)))
         txn (plugins/adjust-job adjustment/plugin txn db)]
 
     ;; TODO batch these transactions to improve performance
@@ -982,33 +912,6 @@
    :host-placement (make-default-host-placement)
    :straggler-handling default-straggler-handling})
 
-(defn validate-partitions
-  "Ensures that the given partitions are valid.
-   Currently, we only support date partitions which have a begin and end value, specified as a yyyyMMdd date."
-  [{:keys [dataset partitions] :as in}]
-  (let [partition-type (get dataset "partition-type" nil)]
-    (cond
-      (nil? partition-type)
-      (when-not (empty? partitions)
-        (throw (ex-info "Dataset with partitions must supply partition-type"
-                        {:dataset dataset})))
-      (= "date" partition-type)
-      (run! (partial s/validate DatePartition) partitions)
-      :else
-      (throw (ex-info "Dataset with unsupported partition type"
-                      {:dataset dataset}))))
-  in)
-
-(defn munge-datasets
-  "Converts dataset and partition keys (keywords) into strings"
-  [datasets]
-  (->> datasets
-       (map (fn [{:keys [dataset partitions]}]
-              (cond-> {:dataset (walk/stringify-keys dataset)}
-                partitions
-                (assoc :partitions (into #{} (walk/stringify-keys partitions))))))
-       (into #{})))
-
 (defn validate-gpu-job
   "Validates that a job requesting GPUs is supported on the pool"
   [gpu-enabled? pool-name {:keys [gpus env]}]
@@ -1051,7 +954,7 @@
   [db pool-name user task-constraints gpu-enabled? new-group-uuids
    {:keys [cpus mem disk gpus uuid command priority max-retries max-runtime expected-runtime name
            uris ports env labels container group application disable-mea-culpa-retries
-           constraints executor progress-output-file progress-regex-string datasets checkpoint]
+           constraints executor progress-output-file progress-regex-string checkpoint]
     :or {group nil
          disable-mea-culpa-retries false}
     :as job}
@@ -1096,7 +999,6 @@
                  (when progress-output-file {:progress-output-file progress-output-file})
                  (when progress-regex-string {:progress-regex-string progress-regex-string})
                  (when application {:application application})
-                 (when datasets {:datasets (munge-datasets datasets)})
                  (when checkpoint {:checkpoint (if (-> checkpoint :options :preserve-paths)
                                                  (update-in checkpoint [:options :preserve-paths] set)
                                                  checkpoint)}))
@@ -1141,8 +1043,6 @@
     (doseq [{:keys [executable? extract?] :as uri} (:uris munged)
             :when (and (not (nil? executable?)) (not (nil? extract?)))]
       (throw (ex-info "Uri cannot set executable and extract" uri)))
-    (doseq [dataset (:datasets munged)]
-      (validate-partitions dataset))
     (when (and group-uuid
                (not (valid-group-uuid? db
                                        new-group-uuids
@@ -1312,8 +1212,6 @@
                                        (map str)))))
           instances (map #(fetch-instance-map db %1) (:job/instance job))
           submit-time (util/job->submit-time job)
-          datasets (when (seq (:job/datasets job))
-                     (dl/get-dataset-maps job))
           attempts-consumed (util/job-ent->attempts-consumed db job)
           retries-remaining (- (:job/max-retries job) attempts-consumed)
           disable-mea-culpa-retries (:job/disable-mea-culpa-retries job false)
@@ -1361,7 +1259,6 @@
               pool (assoc :pool (:pool/name pool))
               container (assoc :container (container->response-map container))
               checkpoint (assoc :checkpoint (util/job-ent->checkpoint job))
-              datasets (assoc :datasets datasets)
               submit-pool-name (assoc :submit-pool submit-pool-name)))))
 
 (defn fetch-job-map
@@ -3273,46 +3170,6 @@
                     (->> (pool/all-pools db)
                          (mapv pool-entity->consumable-map))))}))
 
-(def DataLocalUpdateTimeResponse
-  {s/Uuid (s/maybe s/Str)})
-
-(def DataLocalCostResponse
-  {s/Str {:cost s/Num
-          :suitable s/Bool}})
-
-(defn data-local-update-time-handler
-  "Handler for return the last update time of data locality"
-  [conn]
-  (base-cook-handler
-    {:allowed-methods [:get]
-     ; TODO (pschorf) - cache this if it is a performance bottleneck
-     :handle-ok (fn [_]
-                  (let [uuid->datasets (->> (d/db conn)
-                                            queries/get-pending-job-ents
-                                            (filter (fn [j] (not (empty? (:job/datasets j)))))
-                                            (map (fn [j] [(:job/uuid j) (dl/get-dataset-maps j)]))
-                                            (into {}))
-                        datasets->update-time (dl/get-last-update-time)]
-                    (pc/map-vals (fn [datasets]
-                                   (when-let [update-time (get datasets->update-time datasets nil)]
-                                     (tf/unparse iso-8601-format update-time)))
-                                 uuid->datasets)))}))
-
-(defn data-local-cost-handler
-  "Handler which returns the data locality costs for a given job"
-  [conn]
-  (base-cook-handler
-    {:allowed-methods [:get]
-     :exists? (fn [ctx]
-                (let [uuid (get-in ctx [:request :params :uuid])
-                      job-ent (d/entity (d/db conn) [:job/uuid (UUID/fromString uuid)])
-                      datasets (dl/get-dataset-maps job-ent)]
-                  (if-let [costs (get (dl/get-data-local-costs) datasets nil)]
-                    {:costs costs}
-                    false)))
-     :handle-ok (fn [{:keys [costs]}]
-                  costs)}))
-
 ;;
 ;; /compute-clusters
 ;;
@@ -3960,24 +3817,6 @@
                                      mock-auth-fn (constantly true)]
                                  (update-instance-progress-handler
                                    conn mock-auth-fn leadership-atom leader-selector progress-aggregator-chan))}}))))
-
-      ; Data locality debug endpoints
-      (c-api/context
-        "/data-local/:uuid" []
-        :path-params [uuid :- s/Uuid]
-        (c-api/resource
-          {:produces ["application/json"]
-           :responses {200 {:schema DataLocalCostResponse}}
-           :get {:summary "Returns summary information on the current data locality status"
-                 :handler (data-local-cost-handler conn)}}))
-
-      (c-api/context
-        "/data-local" []
-        (c-api/resource
-          {:produces ["application/json"]
-           :responses {200 {:schema DataLocalUpdateTimeResponse}}
-           :get {:summary "Returns summary information on the current data locality status"
-                 :handler (data-local-update-time-handler conn)}}))
 
       (ANY "/queue" []
         (waiting-jobs conn mesos-pending-jobs-fn is-authorized-fn leadership-atom leader-selector))

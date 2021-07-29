@@ -471,17 +471,6 @@
      :estimated-completion-constraint (fnk [[:config {estimated-completion-constraint nil}]]
                                         (merge {:agent-start-grace-period-mins 10}
                                                estimated-completion-constraint))
-     :data-local-fitness-calculator (fnk [[:config {data-local {}}]]
-                                      (let [fitness-calculator (get data-local :fitness-calculator {})]
-                                        {:auth (get fitness-calculator :auth nil)
-                                         :base-calculator (config-string->fitness-calculator
-                                                            (get fitness-calculator :base-calculator "com.netflix.fenzo.plugins.BinPackingFitnessCalculators/cpuMemBinPacker"))
-                                         :batch-size (get fitness-calculator :batch-size 500)
-                                         :cache-ttl-ms (get fitness-calculator :cache-ttl-ms 300000)
-                                         :cost-endpoint (get fitness-calculator :cost-endpoint nil)
-                                         :data-locality-weight (get fitness-calculator :data-locality-weight 0.95)
-                                         :launch-wait-seconds (get fitness-calculator :launch-wait-seconds 60)
-                                         :update-interval-ms (get fitness-calculator :update-interval-ms nil)}))
      :plugins (fnk [[:config {plugins {}}]]
                 (let [{:keys [job-launch-filter job-routing job-submission-validator pool-selection]} plugins]
                   (merge plugins
@@ -650,10 +639,6 @@
 (defn estimated-completion-config
   []
   (-> config :settings :estimated-completion-constraint))
-
-(defn data-local-fitness-config
-  []
-  (-> config :settings :data-local-fitness-calculator))
 
 (defn fitness-calculator-config
   []

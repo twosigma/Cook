@@ -243,22 +243,6 @@
         (async/close! chan)
         (d/delete-database test-db-uri)))))
 
-
-(deftest test-make-trigger-chans
-  (with-redefs [config/data-local-fitness-config (constantly {:update-interval-ms nil})]
-    (let [trigger-chans (mesos/make-trigger-chans {:interval-seconds 1}
-                                                  {:publish-interval-ms 1000}
-                                                  {:optimizer-interval-seconds 1}
-                                                  {})]
-      (is (nil? (:update-data-local-costs-trigger-chan trigger-chans)))))
-
-  (with-redefs [config/data-local-fitness-config (constantly {:update-interval-ms 1000})]
-    (let [trigger-chans (mesos/make-trigger-chans {:interval-seconds 1}
-                                                  {:publish-interval-ms 1000}
-                                                  {:optimizer-interval-seconds 1}
-                                                  {})]
-      (is (:update-data-local-costs-trigger-chan trigger-chans)))))
-
 (defn dumy-new-cluster-configurations-fn [])
 (deftest test-dynamic-compute-cluster-configurations-setup
   (let [uri "datomic:mem://test-compute-cluster-config"

@@ -74,12 +74,6 @@ then
    COOK_MULTICLUSTER_ENV="${COOK_MULTICLUSTER_ENV} -e COOK_SLAVE_URL=${COOK_SLAVE_URL} -e COOK_MASTER_SLAVE=${COOK_MASTER_SLAVE}"
 fi
 
-DATA_LOCAL_IP=$(docker inspect data-local | jq -r '.[].NetworkSettings.IPAddress')
-DATA_LOCAL_ENV=""
-if [ ! "${DATA_LOCAL_IP}" = "null" ];
-then
-    DATA_LOCAL_ENV="-e DATA_LOCAL_SERVICE=http://${DATA_LOCAL_IP}:35847"
-fi
 
 docker create \
        --rm \
@@ -90,7 +84,6 @@ docker create \
        -e "COOK_TEST_DOCKER_IMAGE=python:3.5.9-stretch" \
        -v "/tmp/cook-integration-mount:/tmp/cook-integration-mount" \
        ${COOK_MULTICLUSTER_ENV} \
-       ${DATA_LOCAL_ENV} \
        ${DOCKER_VOLUME_ARGS} \
        cook-integration:latest \
        "$@"
