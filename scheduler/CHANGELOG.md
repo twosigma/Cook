@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.53.8] - 2021-07-29
+### Fixed
+- Adjust test_user_pool_rate_limit to make it more reliable, from @scrosby
+- Fix Location header of redirects to include request parameters, from @scrosby
+- Make /unscheduled endpoint redirect to leader, from @scrosby
+- Avoid a lot of reflection costs in core Cook inner match and k8s loop, from @scrosby
+- Use date in passport log file name, from @nsinkov
+### Added
+- Add pool-name, job-name, and user to Passport Logs, from @calebhar12
+### Changed
+- Update passport event types with cook-scheduler source and namespace, from @calebhar12
+- Logs info instead of warn for node-watch timeouts, from @dposada
+
 ## [1.53.7] - 2021-07-15
 ### Fixed
 - When adding a job to an existing job group, don't override the group, from @nsinkov
