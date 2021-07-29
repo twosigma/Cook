@@ -1975,9 +1975,11 @@
               (map (fn [job-pool-name-map]
                      (update job-pool-name-map :job #(dissoc % :command)))
                    job-pool-name-maps))
-    (doseq [{{:keys [uuid, user]} :job} job-pool-name-maps]
+    (doseq [{{:keys [uuid, user, name]} :job pool :pool-name} job-pool-name-maps]
       (passport/log-event {:event-type passport/job-created
+                           :job-name name
                            :job-uuid (str uuid)
+                           :pool pool
                            :user user}))
     (let [jobs (map :job job-pool-name-maps)
           group-uuids (set (map :uuid groups))
@@ -2182,9 +2184,10 @@
                          time-until-out-of-debt (rate-limit/time-until-out-of-debt-millis! rate-limit/job-submission-rate-limiter user)
                          in-debt? (not (zero? time-until-out-of-debt))]
                      (try
-                       (doseq [{:keys [uuid]} jobs]
+                       (doseq [{:keys [uuid name]} jobs]
                          (passport/log-event
                            {:event-type passport/job-submitted
+                            :job-name name
                             :job-uuid (str uuid)
                             :pool pool-name
                             :pool-header pool-header

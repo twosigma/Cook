@@ -82,16 +82,20 @@
   (when-not (synthetic-pod? pod-name)
     pod-name))
 
-(defn assoc-uuids
-  "Returns event-map with added fields :job-uuid (based on pod-name) and :instance-uuid (if pod is not synthetic)"
-  [event-map pod-name]
+(defn pod-name->job-map
+  "Returns event-map with added fields :instance-uuid (if pod is not synthetic), job-name, job-uuid, pool, and user."
+  [pod-name]
   (let [instance-uuid (pod-name->instance-uuid pod-name)
         job-uuid (or (pod-name->job-uuid pod-name)
-                     (cached-queries/instance-uuid->job-uuid-cache-lookup instance-uuid))]
+                     (cached-queries/instance-uuid->job-uuid-cache-lookup instance-uuid))
+        {job-name :job/name user :job/user {pool-name :pool/name} :job/pool} (cached-queries/job-uuid->job-map-cache-lookup job-uuid)]
     (cond->
-      event-map
-      instance-uuid (assoc :instance-uuid instance-uuid)
-      job-uuid (assoc :job-uuid job-uuid))))
+          {:job-name job-name
+           :job-uuid job-uuid
+           :pod-name pod-name
+           :pool pool-name
+           :user user}
+          instance-uuid (assoc :instance-uuid instance-uuid))))
 
 ; DeletionCandidateTaint is a soft taint that k8s uses to mark unneeded
 ; nodes as preferably unschedulable. This taint is added as soon as the
@@ -1133,6 +1137,8 @@
         {:keys [docker volumes]} container
         {:keys [parameters]} docker
         {:keys [environment]} command
+        job-name (:job/name job)
+        user (:job/user job)
         pool-name (cached-queries/job->pool-name job)
         pod (V1Pod.)
         pod-spec (V1PodSpec.)
@@ -1177,6 +1183,8 @@
           progress-env (task/build-executor-environment job)
           checkpoint-env (checkpoint->env checkpoint)
           metadata-env {"COOK_COMPUTE_CLUSTER_NAME" compute-cluster-name
+                        "COOK_JOB_NAME" job-name
+                        "COOK_JOB_USER" user
                         "COOK_POOL" pool-name
                         "COOK_SCHEDULER_REST_URL" (config/scheduler-rest-url)}
           main-env-base (merge environment params-env progress-env sandbox-env checkpoint-env metadata-env)
@@ -1670,13 +1678,11 @@
                 (str "Pod name from pod (" pod-name-from-pod ") "
                      "does not match pod name argument (" pod-name ")"))
         (log/info "In" compute-cluster-name "compute cluster, launching pod with name" pod-name "in namespace" namespace ":" (.serialize json pod))
-        (let [event-map (assoc-uuids
-                          {:compute-cluster compute-cluster-name
-                           :event-type passport/pod-launched
-                           :namespace namespace
-                           :pod-name pod-name}
-                          pod-name)]
-          (passport/log-event event-map))
+        (passport/log-event (merge
+                              (pod-name->job-map pod-name)
+                              {:compute-cluster compute-cluster-name
+                               :event-type passport/pod-launched
+                               :namespace namespace}))
         (try
           (timers/time! (metrics/timer "launch-pod" compute-cluster-name)
                         (create-namespaced-pod api namespace pod))

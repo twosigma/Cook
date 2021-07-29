@@ -292,10 +292,14 @@
         pod-name (:task-id task-metadata)
         ^V1Pod pod (api/task-metadata->pod pod-namespace compute-cluster task-metadata)
         new-cook-expected-state-dict {:cook-expected-state :cook-expected-state/starting
-                                      :launch-pod {:pod pod}}]
+                                      :launch-pod {:pod pod}}
+        {:keys [job/uuid] :as job-map} (get-in task-metadata [:task-request :job])
+        job-uuid (str uuid)]
     ; If a pod is not synthetic, cache a mapping of its instance-uuid to job-uuid in order to give all state machine passport events access to job-uuid
     (when-not (api/synthetic-pod? pod-name)
-      (cache/put-cache! caches/instance-uuid->job-uuid identity pod-name (str (get-in task-metadata [:task-request :job :job/uuid]))))
+      (cache/put-cache! caches/instance-uuid->job-uuid identity pod-name job-uuid))
+    ; Cache job-uuid->job-map for use when doing passport logging
+    (cache/put-cache! caches/job-uuid->job-map identity job-uuid job-map)
     (try
       (controller/update-cook-expected-state compute-cluster pod-name new-cook-expected-state-dict)
       (.stop timer-context)
@@ -492,7 +496,7 @@
                     task-metadata-seq
                     (->> new-jobs
                          (take max-launchable)
-                         (map (fn [{:keys [job/user job/uuid job/environment] :as job}]
+                         (map (fn [{:keys [job/name job/user job/uuid job/environment] :as job}]
                                 (let [pool-specific-resources
                                       ((adjust-job-resources-for-pool-fn pool-name) job (tools/job-ent->resources job))]
                                   (.put cook.caches/recent-synthetic-pod-job-uuids uuid uuid)
@@ -535,7 +539,10 @@
                                    :task-id (str api/cook-synthetic-pod-name-prefix "-" pool-name "-" uuid)
                                    :task-request {:scalar-requests (walk/stringify-keys pool-specific-resources)
                                                   :job {:job/pool {:pool/name synthetic-task-pool-name}
-                                                        :job/environment environment}
+                                                        :job/environment environment
+                                                        :job/name name
+                                                        :job/user user
+                                                        :job/uuid uuid}
                                                   ; Need to pass in resources to task-metadata->pod for gpu count
                                                   :resources pool-specific-resources}}))))
                     num-synthetic-pods-to-launch (count task-metadata-seq)]

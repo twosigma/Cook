@@ -195,6 +195,8 @@
             (is (= "alpine:latest" (.getImage container)))
             (is (not (nil? container)))
             (is (= ["COOK_COMPUTE_CLUSTER_NAME"
+                    "COOK_JOB_NAME"
+                    "COOK_JOB_USER"
                     "COOK_MEMORY_REQUEST_BYTES"
                     "COOK_POOL"
                     "COOK_SANDBOX"

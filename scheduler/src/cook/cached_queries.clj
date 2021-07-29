@@ -33,6 +33,14 @@
       (fn [instance-uuid]
         (str (instance-uuid->job-uuid-datomic-query (d/db datomic/conn) instance-uuid)))]
   (defn instance-uuid->job-uuid-cache-lookup
-    "Get value from cache if it is present, else search datomic for it"
+    "Get job-uuid from cache if it is present, else search datomic for it"
     [instance-uuid]
     (ccache/lookup-cache! caches/instance-uuid->job-uuid identity miss-fn instance-uuid)))
+
+(let [miss-fn
+      (fn [job-uuid]
+        (d/entity (d/db datomic/conn) [:job/uuid job-uuid]))]
+  (defn job-uuid->job-map-cache-lookup
+    "Get job-map from cache if it is present, else search datomic for it"
+    [job-uuid]
+    (ccache/lookup-cache! caches/job-uuid->job-map identity miss-fn job-uuid)))
