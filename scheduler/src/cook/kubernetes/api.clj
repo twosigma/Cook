@@ -89,12 +89,13 @@
         job-uuid (or (pod-name->job-uuid pod-name)
                      (cached-queries/instance-uuid->job-uuid-cache-lookup instance-uuid))
         {job-name :job/name user :job/user {pool-name :pool/name} :job/pool} (cached-queries/job-uuid->job-map-cache-lookup job-uuid)]
-    {:instance-uuid instance-uuid
-     :job-name job-name
-     :job-uuid job-uuid
-     :pod-name pod-name
-     :pool pool-name
-     :user user}))
+    (cond->
+          {:job-name job-name
+           :job-uuid job-uuid
+           :pod-name pod-name
+           :pool pool-name
+           :user user}
+          instance-uuid (assoc :instance-uuid instance-uuid))))
 
 ; DeletionCandidateTaint is a soft taint that k8s uses to mark unneeded
 ; nodes as preferably unschedulable. This taint is added as soon as the
