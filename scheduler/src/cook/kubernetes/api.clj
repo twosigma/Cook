@@ -1137,12 +1137,12 @@
         {:keys [parameters]} docker
         {:keys [environment]} command
         job-name (:job/name job)
-          user (:job/user job)
-          pool-name (cached-queries/job->pool-name job)
-          pod (V1Pod.)
-          pod-spec (V1PodSpec.)
-          metadata (V1ObjectMeta.)
-          pod-labels (merge (job->pod-labels job) pod-labels)
+        user (:job/user job)
+        pool-name (cached-queries/job->pool-name job)
+        pod (V1Pod.)
+        pod-spec (V1PodSpec.)
+        metadata (V1ObjectMeta.)
+        pod-labels (merge (job->pod-labels job) pod-labels)
           labels (assoc pod-labels cook-pod-label compute-cluster-name)
           security-context (make-security-context parameters (:user command))
           sandbox-dir (:default-workdir (config/kubernetes))
