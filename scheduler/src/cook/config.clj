@@ -33,7 +33,8 @@
            (java.io File)
            (java.net InetAddress)
            (org.apache.curator.test TestingServer)
-           (org.apache.log4j DailyRollingFileAppender Logger PatternLayout)))
+           (org.apache.log4j DailyRollingFileAppender Logger PatternLayout)
+           (org.apache.log4j.rolling RollingFileAppender TimeBasedRollingPolicy)))
 
 (defn env
   ^String
@@ -80,11 +81,13 @@
               overrides)
        (log4j-conf/set-loggers!
          (Logger/getLogger ^String passport-logger-ns)
-         {:out (DailyRollingFileAppender.
-                 (PatternLayout.
-                   "%d{ISO8601} %-5p %c [%t] - %m%n")
-                 "log/cook-passport.log"
-                 "'.'yyyy-MM-dd")
+         {:out (doto (RollingFileAppender.)
+                 (.setLayout (PatternLayout.
+                               "%d{ISO8601} %-5p %c [%t] - %m%n"))
+                 (.setRollingPolicy (doto (TimeBasedRollingPolicy.)
+                                      (.setFileNamePattern "log/cook-passport.log.%d")
+                                      (.activateOptions)))
+                 (.activateOptions))
           :level default}))
      (catch Throwable t
        (.println System/err (str "Failed to initialize logging! Error: " (.toString t)))
