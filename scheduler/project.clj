@@ -60,6 +60,7 @@
                   :exclusions [commons-codec]]
                  [prismatic/plumbing "0.5.3"]
                  [log4j "1.2.17"]
+                 [log4j/apache-log4j-extras "1.2.17"]
                  [instaparse "1.4.0"]
                  [org.codehaus.jsr166-mirror/jsr166y "1.7.0"]
                  [clj-pid "0.1.1"]
