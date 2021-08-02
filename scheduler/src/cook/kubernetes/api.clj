@@ -677,7 +677,7 @@
   "Conj the item onto the accum only if not nil"
   [accum item]
   (cond-> accum
-    (not (nil? item)) (conj item)))
+    (some? item) (conj item)))
 
 
 (defn make-volumes
