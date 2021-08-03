@@ -648,6 +648,7 @@
   []
   (let [^V1EmptyDirVolumeSource volume-source (V1EmptyDirVolumeSource.)
         _ (.medium volume-source "Memory")
+        ; Randomize the name to reduce the changes of name collision with any other volume name.
         ^String name (str "shmvolume-" (+ (rand-int 899999) 100000))
         ^V1VolumeBuilder builder (-> ^V1VolumeBuilder (V1VolumeBuilder.)
                                      (.withName name)
