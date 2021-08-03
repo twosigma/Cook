@@ -647,6 +647,25 @@
                                      (.withEmptyDir (V1EmptyDirVolumeSource.)))]
     (.build builder)))
 
+(defn make-shm-volume
+  "Make a volume for /dev/shm and add it to the volume mount for the given image"
+  []
+  (let [^V1EmptyDirVolumeSource volume-source (V1EmptyDirVolumeSource.)
+        _ (.medium volume-source "Memory")
+        ; Randomize the name to reduce the changes of name collision with any other volume name.
+        ^String name (str "shmvolume-" (+ (rand-int 899999) 100000))
+        ^V1VolumeBuilder builder (-> ^V1VolumeBuilder (V1VolumeBuilder.)
+                                     (.withName name)
+                                     (.withEmptyDir volume-source))]
+    (.build builder)))
+
+(defn- make-shm-volume-mount
+  "Make a volume mount for a shm volume mount."
+  ([^V1Volume volume]
+     (doto (V1VolumeMount.)
+       (.setName (.getName volume))
+       (.setMountPath "/dev/shm"))))
+
 (defn- make-volume-mount
   "Make a kubernetes volume mount"
   ([^V1Volume volume path read-only]
@@ -659,9 +678,16 @@
        (.setReadOnly read-only)
        (cond-> sub-path (.setSubPath sub-path))))))
 
+(defn maybe-conj
+  "Conj the item onto the accum only if not nil"
+  [accum item]
+  (cond-> accum
+    (some? item) (conj item)))
+
+
 (defn make-volumes
   "Converts a list of cook volumes to kubernetes volumes and volume mounts."
-  [cook-volumes sandbox-dir]
+  [cook-volumes sandbox-dir job-labels]
   (let [{:keys [disallowed-container-paths]} (config/kubernetes)
         allowed-cook-volumes (remove (fn [{:keys [container-path host-path mode]}]
                                        (contains? disallowed-container-paths
@@ -686,10 +712,14 @@
         sandbox-volume-mount-fn #(make-volume-mount sandbox-volume sandbox-dir %)
         sandbox-volume-mount (sandbox-volume-mount-fn false)
         ; mesos-sandbox-volume-mount added for Mesos backward compatibility
-        mesos-sandbox-volume-mount (make-volume-mount sandbox-volume "/mnt/mesos/sandbox" false)]
+        mesos-sandbox-volume-mount (make-volume-mount sandbox-volume "/mnt/mesos/sandbox" false)
+        label-prefix (:add-job-label-to-pod-prefix (config/kubernetes))
+        make-shm-volume? (= "true" (get job-labels (str label-prefix "shared-memory")))
+        shm-volume (when make-shm-volume? (make-shm-volume))
+        shm-volume-mount (when make-shm-volume? (make-shm-volume-mount shm-volume))]
     {:sandbox-volume-mount-fn sandbox-volume-mount-fn
-     :volumes (conj volumes sandbox-volume)
-     :volume-mounts (conj volume-mounts sandbox-volume-mount mesos-sandbox-volume-mount)}))
+     :volumes (maybe-conj (conj volumes sandbox-volume) shm-volume)
+     :volume-mounts (maybe-conj (conj volume-mounts sandbox-volume-mount mesos-sandbox-volume-mount) shm-volume-mount)}))
 
 (defn toleration-for-pool
   "For a given cook pool name, create the right V1Toleration so that Cook will ignore that cook-pool taint."
@@ -1148,7 +1178,7 @@
           security-context (make-security-context parameters (:user command))
           sandbox-dir (:default-workdir (config/kubernetes))
           workdir (get-workdir parameters sandbox-dir)
-          {:keys [volumes volume-mounts sandbox-volume-mount-fn]} (make-volumes volumes sandbox-dir)
+          {:keys [volumes volume-mounts sandbox-volume-mount-fn]} (make-volumes volumes sandbox-dir pod-labels)
           {:keys [custom-shell init-container sidecar telemetry-agent-host-var-name telemetry-env-var-name
                   telemetry-env-value telemetry-service-var-name telemetry-tags-entry-separator
                   telemetry-tags-key-invalid-char-pattern telemetry-tags-key-invalid-char-replacement

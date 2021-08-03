@@ -588,7 +588,7 @@
 
 (deftest test-make-volumes
   (testing "empty cook volumes"
-    (let [{:keys [volumes volume-mounts]} (api/make-volumes [] sandbox-path)
+    (let [{:keys [volumes volume-mounts]} (api/make-volumes [] sandbox-path {})
           volumes (map k8s-volume->clj volumes)
           volume-mounts (map k8s-mount->clj volume-mounts)]
       (is (= volumes [expected-sandbox-volume]))
@@ -596,7 +596,7 @@
 
   (testing "valid generated volume names"
     (let [host-path "/tmp/main/foo"
-          {:keys [volumes volume-mounts]} (api/make-volumes [{:host-path host-path}] sandbox-path)]
+          {:keys [volumes volume-mounts]} (api/make-volumes [{:host-path host-path}] sandbox-path {})]
       (let [volume (first volumes)
             volume-mount (first volume-mounts)]
         (is (= (.getName volume)
@@ -607,7 +607,7 @@
   (testing "validate minimal cook volume spec defaults"
     (with-redefs [d/squuid (dummy-uuid-generator)]
       (let [host-path "/tmp/main/foo"
-            {:keys [volumes volume-mounts]} (api/make-volumes [{:host-path host-path}] sandbox-path)
+            {:keys [volumes volume-mounts]} (api/make-volumes [{:host-path host-path}] sandbox-path {})
           volumes (map k8s-volume->clj volumes)
           volume-mounts (map k8s-mount->clj volume-mounts)]
         (is (= volumes
@@ -622,7 +622,7 @@
           container-path "/mnt/foo"
           {:keys [volumes volume-mounts]} (api/make-volumes [{:host-path host-path
                                                               :container-path container-path
-                                                              :mode "RW"}] container-path)
+                                                              :mode "RW"}] container-path {})
           [volume] volumes
           [volume-mount] volume-mounts]
       (is (= (.getName volume)
@@ -633,12 +633,18 @@
 
   (testing "disallows configured volumes"
     (with-redefs [config/kubernetes (constantly {:disallowed-container-paths #{"/tmp/foo"}})]
-      (let [{:keys [volumes volume-mounts]} (api/make-volumes [{:host-path "/tmp/foo"}] "/tmp/unused")]
+      (let [{:keys [volumes volume-mounts]} (api/make-volumes [{:host-path "/tmp/foo"}] "/tmp/unused" {})]
         (is (= 1 (count volumes)))
         (is (= 2 (count volume-mounts))))
-      (let [{:keys [volumes volume-mounts]} (api/make-volumes [{:container-path "/tmp/foo"}] "/tmp/unused")]
+      (let [{:keys [volumes volume-mounts]} (api/make-volumes [{:container-path "/tmp/foo"}] "/tmp/unused" {})]
         (is (= 1 (count volumes)))
-        (is (= 2 (count volume-mounts)))))))
+        (is (= 2 (count volume-mounts))))))
+
+  (testing "shm volume correctly created"
+    (with-redefs [config/kubernetes (constantly {:add-job-label-to-pod-prefix "the.secret.prefix/"})]
+      (let [{:keys [volumes volume-mounts]} (api/make-volumes [] sandbox-path {"the.secret.prefix/shared-memory" "true"})]
+        (is (= 2 (count volumes)))
+        (is (= 3 (count volume-mounts)))))))
 
 
 (deftest test-pod->synthesized-pod-state
