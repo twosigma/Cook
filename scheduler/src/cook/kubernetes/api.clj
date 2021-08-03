@@ -88,12 +88,12 @@
   (let [instance-uuid (pod-name->instance-uuid pod-name)
         job-uuid (or (pod-name->job-uuid pod-name)
                      (cached-queries/instance-uuid->job-uuid-cache-lookup instance-uuid))
-        {job-name :job/name user :job/user {pool-name :pool/name} :job/pool} (cached-queries/job-uuid->job-map-cache-lookup job-uuid)]
+        {:keys [job/name job/user] :as job} (cached-queries/job-uuid->job-map-cache-lookup job-uuid)]
     (cond->
-          {:job-name job-name
+          {:job-name name
            :job-uuid job-uuid
            :pod-name pod-name
-           :pool pool-name
+           :pool (cached-queries/job->pool-name job)
            :user user}
           instance-uuid (assoc :instance-uuid instance-uuid))))
 
