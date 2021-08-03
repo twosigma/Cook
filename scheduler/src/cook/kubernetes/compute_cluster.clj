@@ -7,6 +7,7 @@
             [clojure.tools.logging :as log]
             [clojure.walk :as walk]
             [cook.cache :as cache]
+            [cook.cached-queries :as cached-queries]
             [cook.caches :as caches]
             [cook.compute-cluster :as cc]
             [cook.compute-cluster.metrics :as ccmetrics]
@@ -293,13 +294,15 @@
         ^V1Pod pod (api/task-metadata->pod pod-namespace compute-cluster task-metadata)
         new-cook-expected-state-dict {:cook-expected-state :cook-expected-state/starting
                                       :launch-pod {:pod pod}}
-        {:keys [job/uuid] :as job-map} (get-in task-metadata [:task-request :job])
-        job-uuid (str uuid)]
+        job-uuid (get-in task-metadata [:task-request :job :job/uuid])
+        job-map (if (api/synthetic-pod? pod-name)
+                  (get-in task-metadata [:task-request :job])
+                  (cached-queries/job-uuid->job-map-cache-lookup job-uuid))]
     ; If a pod is not synthetic, cache a mapping of its instance-uuid to job-uuid in order to give all state machine passport events access to job-uuid
     (when-not (api/synthetic-pod? pod-name)
-      (cache/put-cache! caches/instance-uuid->job-uuid identity pod-name job-uuid))
+      (cache/put-cache! caches/instance-uuid->job-uuid identity pod-name (str job-uuid)))
     ; Cache job-uuid->job-map for use when doing passport logging
-    (cache/put-cache! caches/job-uuid->job-map identity job-uuid job-map)
+    (cache/put-cache! caches/job-uuid->job-map identity (str job-uuid) job-map)
     (try
       (controller/update-cook-expected-state compute-cluster pod-name new-cook-expected-state-dict)
       (.stop timer-context)
