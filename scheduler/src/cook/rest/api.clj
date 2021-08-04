@@ -2184,11 +2184,14 @@
                          time-until-out-of-debt (rate-limit/time-until-out-of-debt-millis! rate-limit/job-submission-rate-limiter user)
                          in-debt? (not (zero? time-until-out-of-debt))]
                      (try
-                       (doseq [{:keys [uuid name]} jobs]
+                       (doseq [{:keys [cpus gpus mem name uuid]} jobs]
                          (passport/log-event
-                           {:event-type passport/job-submitted
+                           {:cpus cpus
+                            :event-type passport/job-submitted
+                            :gpus (or gpus 0)
                             :job-name name
                             :job-uuid (str uuid)
+                            :mem mem
                             :pool pool-name
                             :pool-header pool-header
                             :pool-param pool-param
