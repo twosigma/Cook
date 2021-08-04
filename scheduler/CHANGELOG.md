@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.54.0] - 2021-08-04
+### Added
+- Support for shared memory on k8s, from @scrosby 
+- Resource requests to the `job-submitted` passport event, from @dposada
+### Fixed
+- Bug where `pod-launched` and `pod-completed` passport events sometimes have a `nil` pool, from @calebhar12
+
 ## [1.53.8] - 2021-07-29
 ### Fixed
 - Adjust test_user_pool_rate_limit to make it more reliable, from @scrosby
