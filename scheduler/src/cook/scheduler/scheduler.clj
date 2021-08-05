@@ -41,7 +41,6 @@
             [cook.quota :as quota]
             [cook.rate-limit :as ratelimit]
             [cook.scheduler.constraints :as constraints]
-            [cook.scheduler.data-locality :as dl]
             [cook.scheduler.dru :as dru]
             [cook.scheduler.fenzo-utils :as fenzo]
             [cook.scheduler.offer :as offer]
@@ -605,7 +604,6 @@
       {:matches [] :failures []})
     (do
       (log/debug "In" pool-name "pool, tasks to scheduleOnce" considerable)
-      (dl/update-cost-staleness-metric considerable)
       (let [t (System/currentTimeMillis)
             leases (mapv #(offer/offer->lease % t) offers)
             considerable->task-id (plumbing.core/map-from-keys (fn [_] (str (d/squuid))) considerable)

@@ -34,7 +34,6 @@
             [cook.rest.api :as api]
             [cook.rest.authorization :as auth]
             [cook.rest.impersonation :as imp]
-            [cook.scheduler.data-locality :as dl]
             [cook.scheduler.scheduler :as sched]
             [cook.task :as task]
             [cook.test.testutil :as testutil
@@ -1436,7 +1435,7 @@
           ; will have to dissoc it.
           [{:keys [mem max-retries max-runtime expected-runtime name gpus
                    command ports priority uuid user cpus application
-                   disable-mea-culpa-retries executor datasets checkpoint disk]
+                   disable-mea-culpa-retries executor checkpoint disk]
             :or {disable-mea-culpa-retries false}}]
           (cond-> {;; Fields we will fill in from the provided args:
                    :command command
@@ -1466,10 +1465,8 @@
             disk (assoc :disk disk)
             expected-runtime (assoc :expected-runtime expected-runtime)
             executor (assoc :executor executor)
-            checkpoint (assoc :checkpoint checkpoint)
-            datasets (assoc :datasets datasets)))]
-    (with-redefs [caches/job-uuid->dataset-maps-cache (testutil/new-cache)
-                  config/compute-clusters (constantly [{:factory-fn 'cook.mesos.mesos-compute-cluster/factory-fn
+            checkpoint (assoc :checkpoint checkpoint)))]
+    (with-redefs [config/compute-clusters (constantly [{:factory-fn 'cook.mesos.mesos-compute-cluster/factory-fn
                                                         :config {:framework-id "test-framework"}}])]
 
       (testing "Job creation"
@@ -1528,20 +1525,6 @@
             (is (thrown-with-msg? ExecutionException
                                   (re-pattern (str ".*:job/uuid.*" uuid ".*already exists"))
                                   (testutil/create-jobs! conn {::api/job-pool-name-maps [{:job job}]})))))
-
-        (testing "should work with datasets"
-          (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
-                {:keys [uuid] :as job} (assoc (minimal-job) :datasets #{{:dataset {"foo" "bar"}}
-                                                                        {:dataset {"foo" "bar"
-                                                                                   "partition-type" "date"}
-                                                                         :partitions #{{"begin" "20180101"
-                                                                                        "end" "20180201"}
-                                                                                       {"begin" "20180301"
-                                                                                        "end" "20180401"}}}})]
-            (is (= {::api/results (str "submitted jobs " uuid)}
-                   (testutil/create-jobs! conn {::api/job-pool-name-maps [{:job job}]})))
-            (is (= (expected-job-map job)
-                   (dissoc (api/fetch-job-map (db conn) uuid) :submit_time)))))
 
         (testing "should work when the job specifies an application"
           (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
@@ -1609,15 +1592,6 @@
                    (-> (api/fetch-job-map (db conn) uuid)
                        (dissoc :submit_time)
                        (update :executor name))))))
-
-        (testing "should work with data locality support"
-          (let [conn (restore-fresh-database! "datomic:mem://data-locality-submit")
-                {:keys [uuid] :as job} (assoc (minimal-job) :supports_data_locality true)]
-            (is (= {::api/results (str "submitted jobs " uuid)}
-                   (testutil/create-jobs! conn {::api/job-pool-name-maps [{:job job}]})))
-            (is (= (expected-job-map job)
-                   (-> (api/fetch-job-map (db conn) uuid)
-                       (dissoc :submit_time))))))
 
         (testing "should work for docker containers with"
           (let [docker-container {:docker {:force-pull-image false
@@ -2491,31 +2465,6 @@
                 {:keys [status] :as response} (handler request)]
             (is (= 201 status) (str response))
             (is (= "large-job-pool" (-> conn d/db (d/entity [:job/uuid job-uuid]) cached-queries/job->pool-name)))))))))
-
-(deftest test-validate-partitions
-  (is (api/validate-partitions {:dataset {"foo" "bar"}}))
-  (is (thrown-with-msg? ExceptionInfo #"supply partition-type"
-                        (api/validate-partitions {:dataset {"foo" "bar"}
-                                                  :partitions [{}]})))
-  (is (api/validate-partitions {:dataset {"foo" "bar"
-                                          "partition-type" "date"}
-                                :partitions [{"begin" "20180801"
-                                              "end" "20180801"}]}))
-  (is (thrown-with-msg? ExceptionInfo #"unsupported partition type"
-                        (api/validate-partitions {:dataset {"partition-type" "foo"}})))
-  (is (thrown-with-msg? ExceptionInfo #"\"foo\" disallowed-key"
-                        (api/validate-partitions {:dataset {"partition-type" "date"}
-                                                  :partitions [{"begin" "20180101"
-                                                                "end" "20180101"
-                                                                "foo" "bar"}]})))
-  (is (thrown-with-msg? ExceptionInfo #"\"end\" missing"
-                        (api/validate-partitions {:dataset {"partition-type" "date"}
-                                                  :partitions [{"begin" "20180101"}]}))))
-
-(deftest test-date?
-  (is (api/valid-date-str? "20180101"))
-  (is (not (api/valid-date-str? "2018-01-01")))
-  (is (not (api/valid-date-str? "20180132"))))
 
 (deftest test-match-default-containers
   (let [default-containers

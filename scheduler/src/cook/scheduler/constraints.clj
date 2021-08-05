@@ -25,7 +25,6 @@
             [cook.group :as group]
             [cook.rate-limit :as ratelimit]
             [cook.regexp-tools :as regexp-tools]
-            [cook.scheduler.data-locality :as dl]
             [cook.tools :as util]
             [swiss.arrows :refer :all])
   (:import (com.netflix.fenzo ConstraintEvaluator ConstraintEvaluator$Result TaskRequest TaskTrackerState VirtualMachineCurrentState VirtualMachineLease TaskTracker$ActiveTask)
@@ -252,35 +251,6 @@
     [this _ vm-attributes _]
     (job-constraint-evaluate this _ vm-attributes)))
 
-(defrecord data-locality-constraint [job launch-wait-seconds]
-  JobConstraint
-  (job-constraint-name [this] (get-class-name this))
-  (job-constraint-evaluate [this _ vm-attributes]
-    (let [{:keys [job/submit-time]} job
-          datasets (dl/get-dataset-maps job)
-          data-locality-costs (dl/get-data-local-costs)
-          launch-after-age (t/plus (tc/from-date submit-time) (t/seconds launch-wait-seconds))
-          launch-without-data? (t/after? (t/now) launch-after-age)]
-      (if (contains? data-locality-costs datasets)
-        (let [{:keys [suitable] :or {suitable true}} (get-in data-locality-costs [datasets (get vm-attributes "HOSTNAME")])]
-          (if suitable
-            [true nil]
-            [false "Host is not suitable for datasets"]))
-        (if launch-without-data?
-          [true nil]
-          [false "No data locality costs available"]))))
-  (job-constraint-evaluate [this _ vm-attributes _]
-    (job-constraint-evaluate this _ vm-attributes)))
-
-(defn build-data-locality-constraint
-  "If the job supports data local and the data local fitness calculator is in use,
-   returns a data-locality-constraint"
-  [{:keys [job/datasets] :as job}]
-  (let [{:keys [launch-wait-seconds]} (config/data-local-fitness-config)
-        fitness-calculator (config/fitness-calculator-config)]
-    (when (and (not (empty? datasets)) (= fitness-calculator dl/data-local-fitness-calculator))
-      (->data-locality-constraint job launch-wait-seconds))))
-
 (defn job->default-constraints
   "Returns the list of default constraints configured for the job's pool"
   [job]
@@ -440,7 +410,6 @@
                                   build-disk-host-constraint
                                   build-user-defined-constraint
                                   build-estimated-completion-constraint
-                                  build-data-locality-constraint
                                   build-checkpoint-locality-constraint])
 
 (defn fenzoize-job-constraint

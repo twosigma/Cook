@@ -129,7 +129,6 @@
                            #'cook.plugins.pool/plugin
                            #'cook.plugins.submission/plugin-object
                            #'caches/job-ent->resources-cache
-                           #'caches/job-uuid->dataset-maps-cache
                            #'caches/job-ent->pool-cache
                            #'caches/task-ent->user-cache
                            #'caches/task->feature-vector-cache
@@ -225,21 +224,6 @@
       @(d/transact conn t))
     conn))
 
-(defn- make-dataset-entity
-  [{:keys [dataset partitions]}]
-  (let [dataset-ent {:db/id (d/tempid :db.part/user)
-                     :dataset/parameters (map (fn [[k v]]
-                                                {:db/id (d/tempid :db.part/user)
-                                                 :dataset.parameter/key k
-                                                 :dataset.parameter/value v})
-                                              dataset)}]
-    (if (contains? dataset "partition-type")
-      (let [partition-type (get dataset "partition-type")]
-        (assoc dataset-ent
-               :dataset/partition-type partition-type
-               :dataset/partitions (map (partial api/make-partition-ent partition-type) partitions)))
-      dataset-ent)))
-
 (defn create-dummy-job
   "Return the entity id for the created dummy job."
   [conn & {:keys [command committed? container custom-executor? datasets disable-mea-culpa-retries env executor gpus disk group
@@ -290,9 +274,7 @@
                         (when pool
                           {:job/pool (d/entid (d/db conn) [:pool/name pool])})
                         (when expected-runtime
-                          {:job/expected-runtime expected-runtime})
-                        (when datasets
-                          {:job/datasets (map make-dataset-entity datasets)}))
+                          {:job/expected-runtime expected-runtime}))
         job-info (if gpus
                    (update-in job-info [:job/resource] conj {:resource/type :resource.type/gpus
                                                              :resource/amount (double gpus)})

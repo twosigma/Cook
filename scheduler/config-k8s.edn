@@ -103,7 +103,6 @@
        :levels {"datomic.db" :warn
                 "datomic.kv-cluster" :warn
                 "datomic.peer" :warn
-                "cook.scheduler.data-locality" :debug
                 "cook.scheduler.fenzo-utils" :debug
                 "cook.scheduler.rebalancer" :debug
                 "cook.scheduler.scheduler" :debug

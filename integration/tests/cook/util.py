@@ -1656,11 +1656,6 @@ def should_expect_sandbox_directory_for_job(job):
     instance = job['instances'][0]
     return should_expect_sandbox_directory(instance)
 
-
-def data_local_service_is_set():
-    return os.getenv('DATA_LOCAL_SERVICE', None) is not None
-
-
 def demo_plugins_are_configured(cook_url):
     settings_dict = settings(cook_url)
     # Because we always create plugin configuration in config.clj, the first keys always exist.
@@ -1682,22 +1677,6 @@ def pool_mover_plugin_configured():
     configured = plugins.get('job-adjuster', {}).get('factory-fn') == \
                  'cook.plugins.pool-mover/make-pool-mover-job-adjuster'
     return configured
-
-
-@functools.lru_cache()
-def _fenzo_fitness_calculator():
-    """Get the cook executor config from the /settings endpoint"""
-    cook_url = retrieve_cook_url()
-    _wait_for_cook(cook_url)
-    init_cook_session(cook_url)
-    fitness_calculator = get_in(settings(cook_url), 'fenzo-fitness-calculator')
-    logger.info(f"Cook's fitness calculator is {fitness_calculator}")
-    return fitness_calculator
-
-
-def using_data_local_fitness_calculator():
-    return _fenzo_fitness_calculator() == 'cook.scheduler.data-locality/make-data-local-fitness-calculator'
-
 
 def get_agent_endpoint(slaves, agent_hostname):
     agent = [agent for agent in slaves

@@ -54,7 +54,6 @@ if ! [ -x "$(command -v flask)" ]; then
 fi
 
 INTEGRATION_DIR="$(dirname ${SCHEDULER_DIR})/integration"
-FLASK_APP=${INTEGRATION_DIR}/src/data_locality/service.py flask run -p 35847 &
 
 echo "Mesos Master IP is ${MASTER_IP}"
 
@@ -76,7 +75,6 @@ export MESOS_MASTER="${MASTER_IP}:5050"
 export MESOS_NATIVE_JAVA_LIBRARY="${MESOS_NATIVE_JAVA_LIBRARY}"
 export COOK_SSL_PORT="${COOK_SSL_PORT}"
 export COOK_KEYSTORE_PATH="${COOK_KEYSTORE_PATH}"
-export DATA_LOCAL_ENDPOINT="http://localhost:35847/retrieve-costs"
 
 echo "Starting cook..."
 lein run config.edn

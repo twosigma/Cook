@@ -38,7 +38,6 @@
             [cook.progress :as progress]
             [cook.quota :as quota]
             [cook.rate-limit :as rate-limit]
-            [cook.scheduler.data-locality :as dl]
             [cook.scheduler.offer :as offer]
             [cook.scheduler.scheduler :as sched]
             [cook.scheduler.share :as share]
