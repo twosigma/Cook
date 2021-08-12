@@ -33,6 +33,7 @@
             [cook.cached-queries :as cached-queries]
             [cook.compute-cluster :as cc]
             [cook.config :as config]
+            [cook.config-incremental :as config-incremental]
             [cook.datomic :as datomic]
             [cook.mesos]
             [cook.mesos.reason :as reason]
@@ -581,7 +582,7 @@
     (throw (ex-info "The uid is unavailable for the user" {:job-id id :user user}))))
 
 (defn- build-docker-container
-  [user id container]
+  [user id container job]
   (let [container-id (d/tempid :db.part/user)
         docker-id (d/tempid :db.part/user)
         volumes (or (:volumes container) [])
@@ -595,7 +596,7 @@
             (mkvolumes container-id volumes))
      [:db/add container-id :container/docker docker-id]
      (merge {:db/id docker-id
-             :docker/image (:image docker)
+             :docker/image (config-incremental/resolve-incremental-config job (:image docker))
              :docker/force-pull-image (:force-pull-image docker false)}
             (when (:network docker) {:docker/network (:network docker)})
             (mk-container-params docker-id params)
@@ -617,9 +618,9 @@
 
 (defn- build-container
   "Helper for submit-jobs, deal with container structure."
-  [user id {:keys [type] :as container}]
+  [user id {:keys [type] :as container} job]
   (case (str/lower-case type)
-    "docker" (build-docker-container user id container)
+    "docker" (build-docker-container user id container job)
     "mesos" (build-mesos-container user id container)
     {}))
 
@@ -742,10 +743,10 @@
         container (if (nil? container)
                     (if pool-name
                       (if-let [default-container (get-default-container-for-pool default-containers pool-name)]
-                        (build-container user db-id default-container)
+                        (build-container user db-id default-container job)
                         [])
                       [])
-                    (build-container user db-id container))
+                    (build-container user db-id container job))
         executor (str->executor-enum executor)
         ;; These are optionally set datoms w/ default values
         maybe-datoms (reduce into
@@ -3399,6 +3400,70 @@
        :post-enacted? (constantly false)
        :post! post-shutdown-leader!})))
 
+;;
+;; /incremental-config
+;;
+
+(defn upsert-incremental-config!
+  [conn leadership-atom ctx]
+  (if @leadership-atom
+    (let [body-params (-> ctx :request :body-params)
+          [key values] (first (seq body-params))
+          result (:tempids (config-incremental/write-config key values))]
+      (log/info "Result of create-compute-cluster! REST API call"
+                {:key key
+                 :values values
+                 :result result})
+      [true {:response result}])
+    ; When we're not the leader, we need processable? to go down
+    ; the "true" branch in order to trigger the redirect flow
+    true))
+
+(defn check-incremental-config-allowed
+  [is-authorized-fn ctx]
+  (let [request-user (get-in ctx [:request :authorization/user])
+        impersonator (get-in ctx [:request :authorization/impersonator])
+        request-method (get-in ctx [:request :request-method])]
+    (if-not (is-authorized-fn request-user
+                              request-method
+                              impersonator
+                              {:owner ::system :item :incremental-config})
+      [false {::error
+              (str "You are not authorized to access incremental configurations")}]
+      true)))
+
+(defn base-incremental-config-handler
+  [is-authorized-fn leadership-atom leader-selector resource-attrs]
+  (base-cook-handler
+    (merge
+      ;; only the leader handles incremental-config requests
+      (redirect-to-leader leadership-atom leader-selector)
+      {:allowed? (partial check-incremental-config-allowed is-authorized-fn)}
+      resource-attrs)))
+
+(defn post-incremental-config-handler
+  [conn is-authorized-fn leadership-atom leader-selector]
+  (base-incremental-config-handler
+    is-authorized-fn
+    leadership-atom
+    leader-selector
+    {:allowed-methods [:post]
+     :handle-created (fn [{:keys [response]}] response)
+     :processable? (partial upsert-incremental-config! conn leadership-atom)}))
+
+(defn read-incremental-config
+  [conn ctx]
+  (config-incremental/read-all-configs))
+
+(defn get-incremental-config-handler
+  [conn is-authorized-fn leadership-atom leader-selector]
+  (base-incremental-config-handler
+    is-authorized-fn
+    leadership-atom
+    leader-selector
+    {:allowed-methods [:get]
+     :handle-ok (partial read-incremental-config conn)}))
+
 (defn streaming-json-encoder
   "Takes as input the response body which can be converted into JSON,
   and returns a function which takes a ServletResponse and writes the JSON
@@ -3797,6 +3862,30 @@
                                                         leadership-atom
                                                         leader-selector)
               :responses {204 {:description "The compute cluster was deleted."}
+                          307 {:description "Redirecting request to leader node."}}}}))
+
+        (c-api/context
+          "/incremental-config" []
+          (c-api/resource
+            {:produces ["application/json"]
+
+             :post
+             {:summary "Upsert the dynamic incremental configuration specified by the key"
+              ;:parameters {:body-params IncrementalConfigRequest}
+              :handler (post-incremental-config-handler conn
+                                                        is-authorized-fn
+                                                        leadership-atom
+                                                        leader-selector)
+              :responses {201 {:description "The incremental configuration was upserted."}
+                          307 {:description "Redirecting request to leader node."}}}
+
+             :get
+             {:summary "Get the dynamic incremental configuration specified by the key"
+              :handler (get-incremental-config-handler conn
+                                                       is-authorized-fn
+                                                       leadership-atom
+                                                       leader-selector)
+              :responses {200 {:description "The incremental configuration was returned."}
                           307 {:description "Redirecting request to leader node."}}}}))
 
         (c-api/undocumented
