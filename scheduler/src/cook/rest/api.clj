@@ -596,7 +596,7 @@
             (mkvolumes container-id volumes))
      [:db/add container-id :container/docker docker-id]
      (merge {:db/id docker-id
-             :docker/image (config-incremental/resolve-incremental-config job (:image docker))
+             :docker/image (config-incremental/resolve-incremental-config (:uuid job) (:image docker))
              :docker/force-pull-image (:force-pull-image docker false)}
             (when (:network docker) {:docker/network (:network docker)})
             (mk-container-params docker-id params)

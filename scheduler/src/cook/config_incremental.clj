@@ -85,9 +85,9 @@
       (weighted-values->flat-values-array (sort-by :weighted-value/ordinal weighted-values)))))
 
 (defn select-config-from-values
-  "Select one value for a job given weighted values."
-  [job weighted-values]
-  (let [pct (double (/ (Math/abs (.hashCode ^UUID (:job/uuid job))) Integer/MAX_VALUE))]
+  "Select one value for a uuid given weighted values."
+  [^UUID uuid weighted-values]
+  (let [pct (double (/ (Math/abs (.hashCode ^UUID uuid)) Integer/MAX_VALUE))]
     (reduce (fn [weight-acc {:keys [weighted-value/weight weighted-value/value]}]
               (let [total-weight (+ weight-acc weight)]
                 (if (>= total-weight pct) (reduced value) total-weight)))
@@ -95,15 +95,15 @@
             weighted-values)))
 
 (defn select-config-from-key
-  "Select one value for a job given a key to loop up weighted values."
-  [job config-key]
-  (select-config-from-values job (read-config config-key)))
+  "Select one value for a uuid given a key to loop up weighted values."
+  [^UUID uuid config-key]
+  (select-config-from-values uuid (read-config config-key)))
 
 (defn resolve-incremental-config
   "Resolve an incremental config to the appropriate value."
-  [job incremental-config]
+  [^UUID uuid incremental-config]
   (if (string? incremental-config)
     incremental-config
     (if (coll? incremental-config)
-      (select-config-from-values job (flat-values-array->weighted-values incremental-config))
-      (select-config-from-key job incremental-config))))
+      (select-config-from-values uuid (flat-values-array->weighted-values incremental-config))
+      (select-config-from-key uuid incremental-config))))

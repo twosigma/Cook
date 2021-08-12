@@ -44,13 +44,13 @@
           (is (= {:weighted-value/weight 0.2 :weighted-value/value "value a"} (map-from-keys #(% wv-a) fields)))
           (is (= {:weighted-value/weight 0.35 :weighted-value/value "value b"} (map-from-keys #(% wv-b) fields)))
           (is (= {:weighted-value/weight 0.45 :weighted-value/value "value c"} (map-from-keys #(% wv-c) fields))))
-        (is (= "value a" (select-config-from-key {:job/uuid uuid-a} key)))
-        (is (= "value b" (select-config-from-key {:job/uuid uuid-b} key)))
-        (is (= "value c" (select-config-from-key {:job/uuid uuid-c} key))))
+        (is (= "value a" (select-config-from-key uuid-a key)))
+        (is (= "value b" (select-config-from-key uuid-b key)))
+        (is (= "value c" (select-config-from-key uuid-c key))))
       (testing "static or dynamic config"
-        (is (= "value a" (resolve-incremental-config {:job/uuid uuid-a} key)))
-        (is (= "value a" (resolve-incremental-config {:job/uuid uuid-a} values)))
-        (is (= "other value" (resolve-incremental-config {:job/uuid uuid-a} "other value"))))
+        (is (= "value a" (resolve-incremental-config uuid-a key)))
+        (is (= "value a" (resolve-incremental-config uuid-a values)))
+        (is (= "other value" (resolve-incremental-config uuid-a "other value"))))
       (testing "statistical distribution"
         (let [get-distribution (fn get-distribution
                                  [rand bytes key]
@@ -58,7 +58,7 @@
                                        freqs (->> (range samples)
                                                   (map (fn [_]
                                                          (.nextBytes rand bytes)
-                                                         (select-config-from-key {:job/uuid (UUID/nameUUIDFromBytes bytes)} key)))
+                                                         (select-config-from-key (UUID/nameUUIDFromBytes bytes) key)))
                                                   frequencies)
                                        round #(double (.setScale (bigdec (/ % samples)) 2 RoundingMode/HALF_EVEN))]
                                    (->> ["value a" "value b" "value c" "value d" "value e"]
