@@ -588,15 +588,21 @@
         volumes (or (:volumes container) [])
         docker (:docker container)
         params (->> (or (:parameters docker) [])
-                 (ensure-user-parameter user id))
-        port-mappings (or (:port-mapping docker) [])]
+                    (ensure-user-parameter user id))
+        port-mappings (or (:port-mapping docker) [])
+        image-config (:image docker)
+        image (if (string? image-config)
+                image-config
+                (or (config-incremental/resolve-incremental-config (:uuid job) image-config)
+                    ; use a fallback image in case there is a problem resolving an incremental config
+                    (:image-fallback docker)))]
     [[:db/add id :job/container container-id]
      (merge {:db/id container-id
              :container/type "DOCKER"}
             (mkvolumes container-id volumes))
      [:db/add container-id :container/docker docker-id]
      (merge {:db/id docker-id
-             :docker/image (config-incremental/resolve-incremental-config (:uuid job) (:image docker))
+             :docker/image image
              :docker/force-pull-image (:force-pull-image docker false)}
             (when (:network docker) {:docker/network (:network docker)})
             (mk-container-params docker-id params)

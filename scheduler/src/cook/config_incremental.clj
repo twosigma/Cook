@@ -14,7 +14,8 @@
 ;; limitations under the License.
 ;;
 (ns cook.config-incremental
-  (:require [cook.datomic :as datomic]
+  (:require [clojure.tools.logging :as log]
+            [cook.datomic :as datomic]
             [datomic.api :as d]
             [plumbing.core :refer [for-map map-from-vals]])
   (:import (java.util UUID)))
@@ -87,12 +88,18 @@
 (defn select-config-from-values
   "Select one value for a uuid given weighted values."
   [^UUID uuid weighted-values]
-  (let [pct (double (/ (Math/abs (.hashCode ^UUID uuid)) Integer/MAX_VALUE))]
-    (reduce (fn [weight-acc {:keys [weighted-value/weight weighted-value/value]}]
-              (let [total-weight (+ weight-acc weight)]
-                (if (>= total-weight pct) (reduced value) total-weight)))
-            0.0
-            weighted-values)))
+  (try
+    (when (not-empty weighted-values)
+      (let [pct (double (/ (Math/abs (.hashCode ^UUID uuid)) Integer/MAX_VALUE))]
+        (reduce (fn [weight-acc {:keys [weighted-value/weight weighted-value/value]}]
+                  (let [total-weight (+ weight-acc weight)]
+                    (if (>= total-weight pct) (reduced value) total-weight)))
+                0.0
+                weighted-values)))
+    (catch Exception _
+      (log/warn "Failed to select incremental config from weighted values."
+                {:uuid uuid
+                 :weighted-values weighted-values}))))
 
 (defn select-config-from-key
   "Select one value for a uuid given a key to loop up weighted values."
@@ -102,8 +109,8 @@
 (defn resolve-incremental-config
   "Resolve an incremental config to the appropriate value."
   [^UUID uuid incremental-config]
-  (if (string? incremental-config)
-    incremental-config
-    (if (coll? incremental-config)
-      (select-config-from-values uuid (flat-values-array->weighted-values incremental-config))
-      (select-config-from-key uuid incremental-config))))
+  (cond
+    (coll? incremental-config)
+    (select-config-from-values uuid (flat-values-array->weighted-values incremental-config))
+    (keyword? incremental-config)
+    (select-config-from-key uuid incremental-config)))

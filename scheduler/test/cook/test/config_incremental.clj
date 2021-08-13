@@ -50,7 +50,7 @@
       (testing "static or dynamic config"
         (is (= "value a" (resolve-incremental-config uuid-a key)))
         (is (= "value a" (resolve-incremental-config uuid-a values)))
-        (is (= "other value" (resolve-incremental-config uuid-a "other value"))))
+        (is (= nil (resolve-incremental-config uuid-a "other value"))))
       (testing "statistical distribution"
         (let [get-distribution (fn get-distribution
                                  [rand bytes key]
@@ -72,4 +72,8 @@
       (testing "multiple configs"
         (write-config key2 values)
         (is (= values2 (weighted-values->flat-values-array (read-config key))))
-        (is (= values (weighted-values->flat-values-array (read-config key2))))))))
+        (is (= values (weighted-values->flat-values-array (read-config key2)))))
+      (testing "miss"
+        (is (= nil (select-config-from-values uuid-a nil)))
+        (is (= nil (select-config-from-values uuid-a '())))
+        (is (= nil (select-config-from-values uuid-a [{}])))))))
