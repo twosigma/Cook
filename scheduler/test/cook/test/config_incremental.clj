@@ -28,8 +28,8 @@
         conn (restore-fresh-database! uri)
         key :my-incremental-config
         key2 :my-incremental-config-2
-        values [0.2 "value a" 0.35 "value b" 0.45 "value c"]
-        values2 [0.5 "value d" 0.5 "value e"]
+        values [{:value "value a" :portion 0.2} {:value "value b" :portion 0.35} {:value "value c" :portion 0.45}]
+        values2 [{:value "value d" :portion 0.5} {:value "value e" :portion 0.5}]
         uuid-a (java.util.UUID/fromString "41062821-b248-4375-82f8-a8256643c94e")
         uuid-b (java.util.UUID/fromString "61062821-b248-4375-82f8-a8256643c94e")
         uuid-c (java.util.UUID/fromString "21062821-b248-4375-82f8-a8256643c94e")
@@ -39,11 +39,7 @@
       (testing "database"
         (is (= '() (read-config key)))
         (write-config key values)
-        (let [[wv-a wv-b wv-c] (read-config key)
-              fields [:weighted-value/weight :weighted-value/value]]
-          (is (= {:weighted-value/weight 0.2 :weighted-value/value "value a"} (map-from-keys #(% wv-a) fields)))
-          (is (= {:weighted-value/weight 0.35 :weighted-value/value "value b"} (map-from-keys #(% wv-b) fields)))
-          (is (= {:weighted-value/weight 0.45 :weighted-value/value "value c"} (map-from-keys #(% wv-c) fields))))
+        (is (= values (read-config key)))
         (is (= "value a" (select-config-from-key uuid-a key)))
         (is (= "value b" (select-config-from-key uuid-b key)))
         (is (= "value c" (select-config-from-key uuid-c key))))
@@ -62,17 +58,16 @@
                                                   frequencies)
                                        round #(double (.setScale (bigdec (/ % samples)) 2 RoundingMode/HALF_EVEN))]
                                    (->> ["value a" "value b" "value c" "value d" "value e"]
-                                        (map (fn [v] (some-> v freqs round (vector v))))
-                                        (keep seq)
-                                        flatten)))]
+                                        (map (fn [v] {:value v :portion (some-> v freqs round)}))
+                                        (filter (fn [{:keys [portion]}] portion)))))]
           (is (= values (get-distribution rand bytes key)))
           ; override
           (write-config key values2)
           (is (= values2 (get-distribution rand bytes key)))))
       (testing "multiple configs"
         (write-config key2 values)
-        (is (= values2 (weighted-values->flat-values-array (read-config key))))
-        (is (= values (weighted-values->flat-values-array (read-config key2)))))
+        (is (= values2 (read-config key)))
+        (is (= values (read-config key2))))
       (testing "miss"
         (is (= nil (select-config-from-values uuid-a nil)))
         (is (= nil (select-config-from-values uuid-a '())))

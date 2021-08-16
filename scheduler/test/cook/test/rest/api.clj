@@ -2779,16 +2779,16 @@
     (setup)
     (let [conn (restore-fresh-database! "datomic:mem://test-create-compute-cluster")
           handler (basic-handler conn :is-authorized-fn is-authorized-fn)
-          key :my-incremental-config
-          values [0.2 "value a" 0.35 "value b" 0.45 "value c"]
-          values2 [0.5 "value d" 0.5 "value e"]
+          key "my-incremental-config"
+          values [{"value" "value a" "portion" 0.2} {"value" "value b" "portion" 0.35} {"value" "value c" "portion" 0.45}]
+          values2 [{"value" "value d" "portion" 0.5} {"value" "value e" "portion" 0.5}]
           request-post {:authorization/user admin-user
-                        :body-params {key values}
+                        :body-params {:key key :values values}
                         :request-method :post
                         :scheme :http
                         :headers {"Content-Type" "application/json"}
                         :uri endpoint}
-          request-post2 (assoc request-post :body-params {key values2})
+          request-post2 (assoc request-post :body-params {:key key :values values2})
           request-get {:authorization/user admin-user
                        :request-method :get
                        :scheme :http
@@ -2799,13 +2799,13 @@
             (is (= 201 status) (-> response response->body-data str)))
           (let [{:keys [status] :as response} (handler request-get)]
             (is (= 200 status) (-> response response->body-data str))
-            (is (= {(name key) values} (-> response response->body-data)))))
+            (is (= {key values} (-> response response->body-data)))))
         (testing "update"
           (let [{:keys [status] :as response} (handler request-post2)]
             (is (= 201 status) (-> response response->body-data str)))
           (let [{:keys [status] :as response} (handler request-get)]
             (is (= 200 status) (-> response response->body-data str))
-            (is (= {(name key) values2} (-> response response->body-data)))))))))
+            (is (= {key values2} (-> response response->body-data)))))))))
 
 (deftest test-make-job-txn
   (setup)

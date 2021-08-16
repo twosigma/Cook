@@ -3410,20 +3410,24 @@
 ;; /incremental-config
 ;;
 
+(def IncrementalConfigRequest
+  {; key
+   :key s/Keyword
+   ; values
+   :values [{; actual config value
+             :value s/Str
+             ; number between 0 and 1. portion of jobs that should have the associated value. portions must add up to 1
+             :portion s/Num}]})
+
 (defn upsert-incremental-config!
   [conn leadership-atom ctx]
-  (if @leadership-atom
-    (let [body-params (-> ctx :request :body-params)
-          [key values] (first (seq body-params))
-          result (:tempids (config-incremental/write-config key values))]
-      (log/info "Result of create-compute-cluster! REST API call"
-                {:key key
-                 :values values
-                 :result result})
-      [true {:response result}])
-    ; When we're not the leader, we need processable? to go down
-    ; the "true" branch in order to trigger the redirect flow
-    true))
+  (let [{:keys [key values]} (-> ctx :request :body-params)
+        result (:tempids (config-incremental/write-config key values))]
+    (log/info "Result of create-compute-cluster! REST API call"
+              {:key key
+               :values values
+               :result result})
+    [true {:response result}]))
 
 (defn check-incremental-config-allowed
   [is-authorized-fn ctx]
@@ -3441,11 +3445,8 @@
 (defn base-incremental-config-handler
   [is-authorized-fn leadership-atom leader-selector resource-attrs]
   (base-cook-handler
-    (merge
-      ;; only the leader handles incremental-config requests
-      (redirect-to-leader leadership-atom leader-selector)
-      {:allowed? (partial check-incremental-config-allowed is-authorized-fn)}
-      resource-attrs)))
+    (merge {:allowed? (partial check-incremental-config-allowed is-authorized-fn)}
+           resource-attrs)))
 
 (defn post-incremental-config-handler
   [conn is-authorized-fn leadership-atom leader-selector]
@@ -3877,7 +3878,7 @@
 
              :post
              {:summary "Upsert the dynamic incremental configuration specified by the key"
-              ;:parameters {:body-params IncrementalConfigRequest}
+              :parameters {:body-params IncrementalConfigRequest}
               :handler (post-incremental-config-handler conn
                                                         is-authorized-fn
                                                         leadership-atom

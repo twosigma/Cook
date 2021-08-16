@@ -25,52 +25,45 @@
   []
   datomic/conn)
 
-(defn flat-values-array->weighted-values
-  "Convert an incremental configuration specified by a flat array to a list of weighted values.
-
-  e.g. convert [0.1 a 0.9 b] to
-  [{:weighted-value/ordinal 0
-  :weighted-value/weight 0.1
-  :weighted-value/value a}
-  {:weighted-value/ordinal 1
-  :weighted-value/weight 0.9
-  :weighted-value/value b}]"
-  [flat-values-array]
+(defn incremental-values->incremental-value-ents
+  "Convert plain map incremental values to datomic entities"
+  [incremental-values]
   (map-indexed
-    (fn [index [weight value]]
-      {:weighted-value/ordinal index
-       :weighted-value/weight weight
-       :weighted-value/value value})
-    (partition 2 flat-values-array)))
-
-(defn weighted-values->flat-values-array
-  "Reverse of flat-values-array->weighted-values"
-  [weighted-values]
-  (->> weighted-values
-       (map (fn [{:keys [:weighted-value/weight :weighted-value/value]}] [weight value]))
-       flatten))
+    (fn [index {:keys [value portion]}]
+      {:incremental-value/ordinal index
+       :incremental-value/value value
+       :incremental-value/portion portion})
+    incremental-values))
 
 (defn write-config
   "Write an incremental configuration to the database."
-  [key flat-values-array]
+  [key incremental-values]
   @(d/transact
      (get-conn)
-     [; We need to retract existing weighted values; otherwise,
+     [; We need to retract existing incremental values; otherwise,
       ; values simply get added to the existing list
       [:db.fn/resetAttribute
        [:incremental-configuration/key key]
-       :incremental-configuration/weighted-values
+       :incremental-configuration/incremental-values
        nil]
       {:db/id (d/tempid :db.part/user)
        :incremental-configuration/key key
-       :incremental-configuration/weighted-values (flat-values-array->weighted-values flat-values-array)}]))
+       :incremental-configuration/incremental-values (incremental-values->incremental-value-ents incremental-values)}]))
+
+(defn incremental-value-ents->incremental-values
+  "Convert datomic incremental value entities to plain maps"
+  [incremental-value-ents]
+  (map (fn [{:keys [:incremental-value/value :incremental-value/portion]}]
+         {:value value :portion portion})
+       incremental-value-ents))
 
 (defn read-config
   "Read an incremental configuration from the database."
   [key]
   (->> (d/entity (d/db (get-conn)) [:incremental-configuration/key key])
-       :incremental-configuration/weighted-values
-       (sort-by :weighted-value/ordinal)))
+       :incremental-configuration/incremental-values
+       (sort-by :incremental-value/ordinal)
+       incremental-value-ents->incremental-values))
 
 (defn read-all-configs
   "Read all incremental configurations from the database."
@@ -81,28 +74,28 @@
                             :where
                             [?incremental-configuration :incremental-configuration/key ?key]]
                           db))]
-    (for-map [{:keys [:incremental-configuration/key :incremental-configuration/weighted-values]} configs]
+    (for-map [{:keys [:incremental-configuration/key :incremental-configuration/incremental-values]} configs]
       key
-      (weighted-values->flat-values-array (sort-by :weighted-value/ordinal weighted-values)))))
+      (incremental-value-ents->incremental-values (sort-by :incremental-value/ordinal incremental-values)))))
 
 (defn select-config-from-values
-  "Select one value for a uuid given weighted values."
-  [^UUID uuid weighted-values]
+  "Select one value for a uuid given incremental values."
+  [^UUID uuid incremental-values]
   (try
-    (when (not-empty weighted-values)
+    (when (not-empty incremental-values)
       (let [pct (double (/ (Math/abs (.hashCode ^UUID uuid)) Integer/MAX_VALUE))]
-        (reduce (fn [weight-acc {:keys [weighted-value/weight weighted-value/value]}]
-                  (let [total-weight (+ weight-acc weight)]
-                    (if (>= total-weight pct) (reduced value) total-weight)))
+        (reduce (fn [portion-acc {:keys [value portion]}]
+                  (let [total-portion (+ portion-acc portion)]
+                    (if (>= total-portion pct) (reduced value) total-portion)))
                 0.0
-                weighted-values)))
+                incremental-values)))
     (catch Exception _
-      (log/warn "Failed to select incremental config from weighted values."
+      (log/warn "Failed to select a value from incremental values."
                 {:uuid uuid
-                 :weighted-values weighted-values}))))
+                 :incremental-values incremental-values}))))
 
 (defn select-config-from-key
-  "Select one value for a uuid given a key to loop up weighted values."
+  "Select one value for a uuid given a key to loop up incremental values."
   [^UUID uuid config-key]
   (select-config-from-values uuid (read-config config-key)))
 
@@ -111,6 +104,6 @@
   [^UUID uuid incremental-config]
   (cond
     (coll? incremental-config)
-    (select-config-from-values uuid (flat-values-array->weighted-values incremental-config))
+    (select-config-from-values uuid incremental-config)
     (keyword? incremental-config)
     (select-config-from-key uuid incremental-config)))
