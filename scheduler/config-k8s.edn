@@ -138,7 +138,12 @@
          [{:pool-regex "^k8s-.*"
            :default-constraints [{:constraint/attribute "node-type"
                                   :constraint/operator :constraint.operator/equals
-                                  :constraint/pattern "g1-small"}]}]}
+                                  :constraint/pattern "g1-small"}]}]
+         :default-env
+         [{:pool-regex "unused" :env {"foo" "bar"}}
+                       {:pool-regex ".*" :env
+                        {"SAMPLE_DEFAULT_ENV_KEY" "SAMPLE_DEFAULT_ENV_VAL"}}]}
+
  :port #config/env-int "COOK_PORT"
  :ssl {:port #config/env-int "COOK_SSL_PORT"
        :keystore-path #config/env "COOK_KEYSTORE_PATH"

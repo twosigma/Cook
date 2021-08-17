@@ -115,7 +115,9 @@
     (is (= value (.getValue variable)))))
 
 (deftest test-task-metadata->pod
-  (tu/setup)
+  (tu/setup :config {:pools {:default-env [{:pool-regex "unused" :env {"foo" "bar"}}
+                                           {:pool-regex ".*" :env
+                                            {"SAMPLE_DEFAULT_ENV_KEY" "SAMPLE_DEFAULT_ENV_VAL"}}]}})
   (let [fake-cc-config {:name "test-compute-cluster" :cook-pool-taint-name "test-taint" :cook-pool-taint-prefix ""}]
     (testing "supplemental group ids"
       (with-redefs [sh/sh (constantly {:exit 0 :out "12 34 56 78"})]
@@ -208,6 +210,7 @@
                     "HOST_IP"
                     "MESOS_DIRECTORY"
                     "MESOS_SANDBOX"
+                    "SAMPLE_DEFAULT_ENV_KEY"
                     "SIDECAR_WORKDIR"]
                    (->> container-env (map #(.getName %)) sort)))
             (is (= "/mnt/sandbox" (.getWorkingDir container)))
@@ -218,6 +221,7 @@
               (is (= "/mnt/sandbox" (.getMountPath cook-sandbox-mount))))
 
             (assert-env-var-value container "FOO" "BAR")
+            (assert-env-var-value container "SAMPLE_DEFAULT_ENV_KEY" "SAMPLE_DEFAULT_ENV_VAL")
             (assert-env-var-value container "HOME" (.getWorkingDir container))
             (assert-env-var-value container "MESOS_SANDBOX" (.getWorkingDir container))
 

@@ -462,6 +462,8 @@
                            (update :pool-regex re-pattern)))
                 (not (:default-containers pools))
                 (assoc :default-containers [])
+                (not (:default-env pools))
+                (assoc :default-env [])
                 (not (:quotas pools))
                 (assoc :quotas [])))
      :api-only? (fnk [[:config {api-only? false}]]
