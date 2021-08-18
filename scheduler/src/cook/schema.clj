@@ -1406,6 +1406,12 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :reason/name :container-readiness-timed-out
     :reason/mea-culpa? true
     :reason/mesos-reason :reason-container-readiness-timed-out}
+   {:db/id (d/tempid :db.part/user)
+    :reason/code 1010
+    :reason/string "Kubernetes pod submission API error"
+    :reason/name :pod-submission-api-error
+    :reason/mea-culpa? true
+    :reason/mesos-reason :reason-pod-submission-api-error}
 
    {:db/id (d/tempid :db.part/user)
     :reason/code 2000
@@ -1484,6 +1490,12 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :reason/name :mesos-slave-unknown
     :reason/mea-culpa? false
     :reason/mesos-reason :reason-slave-unknown}
+   {:db/id (d/tempid :db.part/user)
+    :reason/code 3008
+    :reason/string "Could not reconstruct pod"
+    :reason/name :could-not-reconstruct-pod
+    :reason/mea-culpa? true
+    :reason/mesos-reason :reason-could-not-reconstruct-pod}
 
    {:db/id (d/tempid :db.part/user)
     :reason/code 4000

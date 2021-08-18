@@ -167,11 +167,11 @@
 (defn handle-pod-submission-failed
   "Marks the corresponding job instance as failed in the database and
   returns the `completed` cook expected state"
-  [{:keys [name] :as compute-cluster} pod-name]
+  [{:keys [name] :as compute-cluster} pod-name reason]
   (log/info "In compute cluster" name ", pod" pod-name "submission failed")
   (when-not (api/synthetic-pod? pod-name)
     (let [instance-id pod-name
-          status {:reason :reason-task-invalid
+          status {:reason reason
                   :state :task-failed
                   :task-id {:value instance-id}}]
       (write-status-to-datomic compute-cluster status)))
@@ -205,14 +205,18 @@
 
 (defn launch-pod
   [{:keys [api-client name] :as compute-cluster} cook-expected-state-dict pod-name]
-  (if (api/launch-pod api-client name cook-expected-state-dict pod-name)
-    ; These metrics only measure the happy paths to avoid wide variations from error rates changing.
-    ; k8s-response-time-until-waiting helps us characterize watch latency
-    (let [metric-suffix (if (api/synthetic-pod? pod-name) "-synthetic" "")]
-    (merge {:waiting-metric-timer (timers/start (metrics/timer (str "k8s-response-time-until-waiting" metric-suffix) name))
-            :running-metric-timer (timers/start (metrics/timer (str "k8s-response-time-until-running" metric-suffix) name))}
-           cook-expected-state-dict))
-    (handle-pod-submission-failed compute-cluster pod-name)))
+  (let [{:keys [failure-reason terminal-failure?]}
+        (api/launch-pod api-client name cook-expected-state-dict pod-name)]
+    (if terminal-failure?
+      (handle-pod-submission-failed compute-cluster pod-name failure-reason)
+      ; These metrics only measure the happy paths to avoid wide variations from error rates changing.
+      ; k8s-response-time-until-waiting helps us characterize watch latency
+      (let [metric-suffix (if (api/synthetic-pod? pod-name) "-synthetic" "")]
+        (merge {:waiting-metric-timer
+                (timers/start (metrics/timer (str "k8s-response-time-until-waiting" metric-suffix) name))
+                :running-metric-timer
+                (timers/start (metrics/timer (str "k8s-response-time-until-running" metric-suffix) name))}
+               cook-expected-state-dict)))))
 
 (defn update-or-delete!
   "Given a map atom, key, and value, if the value is not nil, set the key to the value in the map.
