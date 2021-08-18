@@ -749,11 +749,12 @@
                   :state-locked? true
                   :template "template1"
                   :location "us-east1"
-                  :features [{:key "three" :value "four"}
-                             {:key "one" :value "two"}]}
+                  :features (sort-by :value [{:key "three" :value "four"}
+                                             {:key "one" :value "two"}])}
                  (-> (get-db-config-ents (d/db conn))
                      (get "name")
-                     compute-cluster-config-ent->compute-cluster-config)))))
+                     compute-cluster-config-ent->compute-cluster-config
+                     (update :features (partial sort-by :value)))))))
 
       (let [conn (restore-fresh-database! uri)]
         (testing "normal update - insert then update"
