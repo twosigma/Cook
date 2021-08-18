@@ -1736,8 +1736,16 @@
                     (cond
                       bad-pod-spec? :reason-task-invalid
                       k8s-api-error? :reason-pod-submission-api-error))]
-              (log/info e "In" compute-cluster-name "compute cluster, error submitting pod with name" pod-name "in namespace" namespace
-                        ", code:" code ", response body:" (.getResponseBody e))
+              (log/info e "In" compute-cluster-name "compute cluster, error submitting pod"
+                        {:bad-pod-spec? bad-pod-spec?
+                         :code code
+                         :compute-cluster compute-cluster-name
+                         :failure-reason failure-reason
+                         :k8s-api-error? k8s-api-error?
+                         :namespace namespace
+                         :pod-name pod-name
+                         :response-body (.getResponseBody e)
+                         :terminal-failure? terminal-failure?})
               (if bad-pod-spec?
                 (meters/mark! (metrics/meter "launch-pod-bad-spec-errors" compute-cluster-name))
                 (meters/mark! (metrics/meter "launch-pod-good-spec-errors" compute-cluster-name)))
