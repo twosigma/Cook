@@ -810,6 +810,13 @@
          (mapv #(apply make-env %))
          (cons hostIpEnvVar))))
 
+(defn get-default-env-for-pool
+  "Given a pool name, determine the default environment for containers in that pool"
+  [pool-name]
+  (let [effective-pool-name (or pool-name config/default-pool "")
+        default-envs (get-in config/config [:settings :pools :default-env])]
+    (regexp-tools/match-based-on-pool-name default-envs effective-pool-name :env :default-value {})))
+
 (defn- add-as-decimals
   "Takes two doubles and adds them as decimals to avoid floating point error. Kubernetes will not be able to launch a
    pod if the required cpu has too much precision. For example, adding 0.1 and 0.02 as doubles results in 0.12000000000000001"
@@ -1262,12 +1269,14 @@
                      telemetry-version-var-name
                      (assoc telemetry-version-var-name
                             (or (:application/version application) "undefined")))
-          main-env-vars (cond->> (make-filtered-env-vars main-env)
-                                 telemetry-agent-host-var-name
-                                 (cons (doto
-                                         (V1EnvVar.)
-                                         (.setName telemetry-agent-host-var-name)
-                                         (.valueFrom hostIpEnvVarSource))))
+        main-env-vars (cond->> (-> main-env
+                                   (merge (get-default-env-for-pool pool-name))
+                                   make-filtered-env-vars)
+                               telemetry-agent-host-var-name
+                               (cons (doto
+                                       (V1EnvVar.)
+                                       (.setName telemetry-agent-host-var-name)
+                                       (.valueFrom hostIpEnvVarSource))))
           container-attributes {:computed-mem computed-mem
                                 :cpus cpus
                                 :custom-shell custom-shell
