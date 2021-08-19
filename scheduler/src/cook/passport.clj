@@ -28,7 +28,8 @@
                                                      :source :cook-scheduler
                                                      :event-type (str "cook-scheduler/" (name event-type)))))))
 
+(def default-image-selected :default-image-selected)
 (def job-created :job-created)
 (def job-submitted :job-submitted)
-(def pod-launched :pod-launched)
 (def pod-completed :pod-completed)
+(def pod-launched :pod-launched)

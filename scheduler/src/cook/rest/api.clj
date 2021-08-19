@@ -582,7 +582,7 @@
     (throw (ex-info "The uid is unavailable for the user" {:job-id id :user user}))))
 
 (defn- build-docker-container
-  [user id container job]
+  [user id container {:keys [uuid]} pool-name]
   (let [container-id (d/tempid :db.part/user)
         docker-id (d/tempid :db.part/user)
         volumes (or (:volumes container) [])
@@ -593,9 +593,20 @@
         image-config (:image docker)
         image (if (string? image-config)
                 image-config
-                (or (config-incremental/resolve-incremental-config (:uuid job) image-config)
-                    ; use a fallback image in case there is a problem resolving an incremental config
-                    (:image-fallback docker)))]
+                (let [incremental-image-config (config-incremental/resolve-incremental-config uuid image-config)
+                      [resolved-config reason] (if incremental-image-config
+                           [incremental-image-config :resolved-incremental-config]
+                           ; use a fallback image in case there is a problem resolving an incremental config
+                           [(:image-fallback docker) :used-image-fallback])]
+                  (passport/log-event {:event-type passport/default-image-selected
+                                       :image-config image-config
+                                       :resolved-config resolved-config
+                                       :reason reason
+                                       :job-name name
+                                       :job-uuid (str uuid)
+                                       :pool pool-name
+                                       :user user})
+                  resolved-config))]
     [[:db/add id :job/container container-id]
      (merge {:db/id container-id
              :container/type "DOCKER"}
@@ -624,9 +635,9 @@
 
 (defn- build-container
   "Helper for submit-jobs, deal with container structure."
-  [user id {:keys [type] :as container} job]
+  [user id {:keys [type] :as container} job pool-name]
   (case (str/lower-case type)
-    "docker" (build-docker-container user id container job)
+    "docker" (build-docker-container user id container job pool-name)
     "mesos" (build-mesos-container user id container)
     {}))
 
@@ -749,10 +760,10 @@
         container (if (nil? container)
                     (if pool-name
                       (if-let [default-container (get-default-container-for-pool default-containers pool-name)]
-                        (build-container user db-id default-container job)
+                        (build-container user db-id default-container job pool-name)
                         [])
                       [])
-                    (build-container user db-id container job))
+                    (build-container user db-id container job pool-name))
         executor (str->executor-enum executor)
         ;; These are optionally set datoms w/ default values
         maybe-datoms (reduce into
@@ -3423,7 +3434,7 @@
   [conn leadership-atom ctx]
   (let [{:keys [key values]} (-> ctx :request :body-params)
         result (:tempids (config-incremental/write-config key values))]
-    (log/info "Result of create-compute-cluster! REST API call"
+    (log/info "Result of upsert-incremental-config! REST API call"
               {:key key
                :values values
                :result result})

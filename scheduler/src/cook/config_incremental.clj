@@ -55,14 +55,13 @@
   [incremental-value-ents]
   (map (fn [{:keys [:incremental-value/value :incremental-value/portion]}]
          {:value value :portion portion})
-       incremental-value-ents))
+       (sort-by :incremental-value/ordinal incremental-value-ents)))
 
 (defn read-config
   "Read an incremental configuration from the database."
   [key]
   (->> (d/entity (d/db (get-conn)) [:incremental-configuration/key key])
        :incremental-configuration/incremental-values
-       (sort-by :incremental-value/ordinal)
        incremental-value-ents->incremental-values))
 
 (defn read-all-configs
@@ -76,14 +75,14 @@
                           db))]
     (for-map [{:keys [:incremental-configuration/key :incremental-configuration/incremental-values]} configs]
       key
-      (incremental-value-ents->incremental-values (sort-by :incremental-value/ordinal incremental-values)))))
+      (incremental-value-ents->incremental-values incremental-values))))
 
 (defn select-config-from-values
   "Select one value for a uuid given incremental values."
   [^UUID uuid incremental-values]
   (try
     (when (not-empty incremental-values)
-      (let [pct (double (/ (Math/abs (.hashCode ^UUID uuid)) Integer/MAX_VALUE))]
+      (let [pct (-> uuid .hashCode Math/abs (/ Integer/MAX_VALUE) double)]
         (reduce (fn [portion-acc {:keys [value portion]}]
                   (let [total-portion (+ portion-acc portion)]
                     (if (>= total-portion pct) (reduced value) total-portion)))
@@ -95,7 +94,7 @@
                  :incremental-values incremental-values}))))
 
 (defn select-config-from-key
-  "Select one value for a uuid given a key to loop up incremental values."
+  "Select one value for a uuid given a key to look up incremental values."
   [^UUID uuid config-key]
   (select-config-from-values uuid (read-config config-key)))
 
