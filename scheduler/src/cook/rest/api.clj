@@ -595,16 +595,16 @@
                 image-config
                 (let [incremental-image-config (config-incremental/resolve-incremental-config uuid image-config)
                       [resolved-config reason] (if incremental-image-config
-                           [incremental-image-config :resolved-incremental-config]
-                           ; use a fallback image in case there is a problem resolving an incremental config
-                           [(:image-fallback docker) :used-image-fallback])]
+                                                 [incremental-image-config :resolved-incremental-config]
+                                                 ; use a fallback image in case there is a problem resolving an incremental config
+                                                 [(:image-fallback docker) :used-image-fallback])]
                   (passport/log-event {:event-type passport/default-image-selected
                                        :image-config image-config
-                                       :resolved-config resolved-config
-                                       :reason reason
                                        :job-name name
                                        :job-uuid (str uuid)
                                        :pool pool-name
+                                       :reason reason
+                                       :resolved-config resolved-config
                                        :user user})
                   resolved-config))]
     [[:db/add id :job/container container-id]
