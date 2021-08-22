@@ -8,7 +8,8 @@
             [cook.scheduler.constraints :as constraints]
             [cook.test.testutil :as tu]
             [datomic.api :as d])
-  (:import (io.kubernetes.client.openapi.models V1Container V1ContainerState V1ContainerStateWaiting V1ContainerStatus
+  (:import (io.kubernetes.client.openapi ApiException)
+           (io.kubernetes.client.openapi.models V1Container V1ContainerState V1ContainerStateWaiting V1ContainerStatus
                                                 V1EnvVar V1ListMeta V1Node V1NodeSpec V1ObjectMeta V1Pod
                                                 V1PodAffinityTerm V1PodCondition V1PodList V1PodSpec V1PodStatus
                                                 V1ResourceRequirements V1Taint V1Volume V1VolumeMount)
@@ -1116,3 +1117,28 @@
              {:job/application
               {:application/name "~!@-completely-broken#$%"
                :application/version "~!@-also-completely-broken#$%"}})))))
+
+(deftest test-launch-pod
+  (tu/setup)
+
+  (let [pod-metadata (doto (V1ObjectMeta.) (.setName "test-pod"))
+        pod (doto (V1Pod.) (.setMetadata pod-metadata))]
+    (with-redefs [api/pod-name->job-map (constantly {})]
+
+      (testing "500 code handling"
+        (with-redefs [api/create-namespaced-pod (fn [_ _ _] (throw (ApiException. 500 "Really bad API error")))]
+          (is (= {:failure-reason :reason-pod-submission-api-error
+                  :terminal-failure? true}
+                 (api/launch-pod nil "test-compute-cluster" {:launch-pod {:pod pod}} "test-pod")))))
+
+      (testing "bad pod spec handling"
+        (with-redefs [api/create-namespaced-pod (fn [_ _ _] (throw (ApiException. 400 "Really bad pod spec")))]
+          (is (= {:failure-reason :reason-task-invalid
+                  :terminal-failure? true}
+                 (api/launch-pod nil "test-compute-cluster" {:launch-pod {:pod pod}} "test-pod")))))
+
+      (testing "409 code handling"
+        (with-redefs [api/create-namespaced-pod (fn [_ _ _] (throw (ApiException. 409 "Already exists")))]
+          (is (= {:failure-reason nil
+                  :terminal-failure? false}
+                 (api/launch-pod nil "test-compute-cluster" {:launch-pod {:pod pod}} "test-pod"))))))))
