@@ -1,6 +1,8 @@
 (ns cook.test.task
   (:require [clojure.test :refer :all]
-            [cook.task :as task]))
+            [cook.task :as task]
+            [cook.test.testutil :refer [restore-fresh-database!
+                                        setup]]))
 
 (deftest test-build-executor-environment
   (testing "default values"
@@ -84,4 +86,31 @@
                           :job/progress-regex-string "custom-regex"
                           :job/progress-sample-interval-ms 5000000}]
              (with-redefs [cook.config/executor-config (constantly executor-config)]
+               (task/build-executor-environment job-ent))))))
+
+  (testing "Incremental config environment"
+    (setup)
+    (is (= {"EXECUTOR_LOG_LEVEL" "INFO"
+            "EXECUTOR_MAX_MESSAGE_LENGTH" 256
+            "INCREMENTAL_1" "foo"
+            "INCREMENTAL_2" "bar"
+            "INCREMENTAL_3" ""
+            "PROGRESS_REGEX_STRING" "default-regex"
+            "PROGRESS_SAMPLE_INTERVAL_MS" 2000}
+           (let [executor-config {:command "command"
+                                  :default-progress-regex-string "default-regex"
+                                  :log-level "INFO"
+                                  :max-message-length 256
+                                  :progress-sample-interval-ms 2000
+                                  :incremental-config-environment {"INCREMENTAL_1" [{:value "foo" :portion 1.0}]
+                                                                   "INCREMENTAL_2" :bar
+                                                                   "INCREMENTAL_3" :baz}}
+                 job-ent {:job/uuid (java.util.UUID/fromString "41062821-b248-4375-82f8-a8256643c94e")}
+                 uri "datomic:mem://test-compute-cluster-config"
+                 conn (restore-fresh-database! uri)
+                 key :bar
+                 values [{:value "bar" :portion 1.0}]]
+             (with-redefs [cook.config/executor-config (constantly executor-config)
+                           cook.config-incremental/get-conn (fn [] conn)]
+               (cook.config-incremental/write-config key values)
                (task/build-executor-environment job-ent)))))))

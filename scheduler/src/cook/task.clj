@@ -16,7 +16,9 @@
 (ns cook.task
   (:require [cook.compute-cluster :as cc]
             [cook.config :as config]
-            [datomic.api :as d]))
+            [cook.config-incremental :as config-incremental]
+            [datomic.api :as d]
+            [plumbing.core :refer [for-map]]))
 
 (defn task-entity-id->task-id
   "Given a task entity, what is the task-id associated with it?"
@@ -71,9 +73,9 @@
 
 (defn build-executor-environment
   "Build the environment for the job's executor and/or progress monitor."
-  [job-ent]
+  [{:keys [:job/uuid] :as job-ent}]
   (let [{:keys [default-progress-regex-string environment log-level max-message-length
-                progress-sample-interval-ms] :as executor-config} (config/executor-config)
+                progress-sample-interval-ms incremental-config-environment] :as executor-config} (config/executor-config)
         progress-output-file (:job/progress-output-file job-ent)]
     (cond-> environment
       (seq executor-config)
@@ -84,4 +86,8 @@
         "PROGRESS_SAMPLE_INTERVAL_MS" progress-sample-interval-ms)
       progress-output-file
       (assoc progress-meta-env-name progress-meta-env-value
-             progress-meta-env-value progress-output-file))))
+             progress-meta-env-value progress-output-file)
+      incremental-config-environment
+      (merge (for-map [[key value] incremental-config-environment]
+               key
+               (or (config-incremental/resolve-incremental-config uuid value) ""))))))

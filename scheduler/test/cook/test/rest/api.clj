@@ -25,6 +25,7 @@
             [cook.caches :as caches]
             [cook.compute-cluster :as cc]
             [cook.config :as config]
+            [cook.config-incremental :as config-incremental]
             [cook.mesos.reason :as reason]
             [cook.plugins.definitions :refer [FileUrlGenerator JobRouter]]
             [cook.plugins.file :as file-plugin]
@@ -2765,6 +2766,46 @@
           (let [{:keys [status] :as response} (handler request)]
             (is (= 422 status) (-> response response->body-data str))
             (is (= (str "Compute cluster with name " name " does not exist") (-> response response->body-data (get-in ["error" "message"]))))))))))
+
+(let [admin-user "alice"
+      is-authorized-fn
+      (fn [user verb _ object]
+        (auth/admins-open-gets-allowed-users-auth
+          #{admin-user} user verb object true))
+      sample-leader-base-url "http://cook-scheduler.example:12321"
+      endpoint "/incremental-config"]
+
+  (deftest test-incremental-config-crud
+    (setup)
+    (let [conn (restore-fresh-database! "datomic:mem://test-create-compute-cluster")
+          handler (basic-handler conn :is-authorized-fn is-authorized-fn)
+          key "my-incremental-config"
+          values [{"value" "value a" "portion" 0.2} {"value" "value b" "portion" 0.35} {"value" "value c" "portion" 0.45}]
+          values2 [{"value" "value d" "portion" 0.5} {"value" "value e" "portion" 0.5}]
+          request-post {:authorization/user admin-user
+                        :body-params {:key key :values values}
+                        :request-method :post
+                        :scheme :http
+                        :headers {"Content-Type" "application/json"}
+                        :uri endpoint}
+          request-post2 (assoc request-post :body-params {:key key :values values2})
+          request-get {:authorization/user admin-user
+                       :request-method :get
+                       :scheme :http
+                       :uri endpoint}]
+      (with-redefs [config-incremental/get-conn (fn [] conn)]
+        (testing "successful insert"
+          (let [{:keys [status] :as response} (handler request-post)]
+            (is (= 201 status) (-> response response->body-data str)))
+          (let [{:keys [status] :as response} (handler request-get)]
+            (is (= 200 status) (-> response response->body-data str))
+            (is (= {key values} (-> response response->body-data)))))
+        (testing "update"
+          (let [{:keys [status] :as response} (handler request-post2)]
+            (is (= 201 status) (-> response response->body-data str)))
+          (let [{:keys [status] :as response} (handler request-get)]
+            (is (= 200 status) (-> response response->body-data str))
+            (is (= {key values2} (-> response response->body-data)))))))))
 
 (deftest test-make-job-txn
   (setup)

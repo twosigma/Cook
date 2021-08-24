@@ -915,6 +915,42 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :db/doc "The DRU mode of the pool."
     :db/valueType :db.type/keyword
     :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+
+   ;; Incremental configurations
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :incremental-configuration/key
+    :db/doc "Key for an incremental configuration. An incremental configuration is a configuration with multiple values.
+    Each value only applies to a portion of jobs."
+    :db/valueType :db.type/keyword
+    :db/cardinality :db.cardinality/one
+    :db/unique :db.unique/identity
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :incremental-configuration/incremental-values
+    :db/doc "A collection of incremental values."
+    :db/valueType :db.type/ref
+    :db/isComponent true
+    :db/cardinality :db.cardinality/many
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :incremental-value/ordinal
+    :db/doc "Ordinal of an incremental value. Incremental values must be ordered so that a portion between 0 and 1 can be
+    deterministically mapped to one of the values."
+    :db/valueType :db.type/long
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :incremental-value/portion
+    :db/doc "Portion for a value. Portions must add up to 1."
+    :db/valueType :db.type/double
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :incremental-value/value
+    :db/doc "Value part of an incremental value."
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}])
 
 (def migration-add-index-to-job-state
