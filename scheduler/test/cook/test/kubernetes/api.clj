@@ -524,6 +524,7 @@
                                                    :telemetry-agent-host-var-name "TEST_AGENT"
                                                    :telemetry-env-var-name "TEST_ENV"
                                                    :telemetry-env-value "test-env"
+                                                   :telemetry-pool-regex "^telemetry-pool$"
                                                    :telemetry-service-var-name "TEST_SERVICE"
                                                    :telemetry-tags-entry-separator " "
                                                    :telemetry-tags-key-invalid-char-pattern (re-pattern "[^a-zA-Z0-9-]")
@@ -532,7 +533,8 @@
                                                    :telemetry-tags-var-name "TEST_TAGS"
                                                    :telemetry-version-var-name "TEST_VERSION"})]
         (let [task-metadata {:command {:user "test-user"}
-                             :task-request {:job {:job/application {:application/name "test-name"
+                             :task-request {:job {:job/pool {:pool/name "telemetry-pool"}
+                                                  :job/application {:application/name "test-name"
                                                                     :application/version "test-version"
                                                                     :application/workload-class "foo"
                                                                     :application/workload-id "bar"
@@ -557,7 +559,22 @@
                                      "test-prefix.application.workload-class:foo "
                                      "test-prefix.application.workload-id:bar "
                                      "test-prefix.application.workload-details:baz"))
-          (assert-env-var-value container "TEST_VERSION" "test-version"))))))
+          (assert-env-var-value container "TEST_VERSION" "test-version"))
+        (let [task-metadata {:command {:user "test-user"}
+                             :task-request {:job {:job/pool {:pool/name "non-telemetry-pool"}
+                                                  :job/application {:application/name "test-name"
+                                                                    :application/version "test-version"
+                                                                    :application/workload-class "foo"
+                                                                    :application/workload-id "bar"
+                                                                    :application/workload-details "baz"}}
+                                            :scalar-requests {"mem" 512 "cpus" 1.0}}}
+              pod (api/task-metadata->pod "test-namespace" fake-cc-config task-metadata)
+              ^V1Container container (-> pod .getSpec .getContainers first)
+              container-env (.getEnv container)]
+          (is (= "required-cook-job-container" (.getName container)))
+          (is (not (set/subset?
+                     #{"TEST_AGENT"}
+                     (->> container-env (map #(.getName %)) set)))))))))
 
 (defn- k8s-volume->clj [^V1Volume volume]
   {:name (.getName volume)
