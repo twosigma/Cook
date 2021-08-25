@@ -1272,7 +1272,7 @@
         main-env-vars (cond->> (-> main-env
                                    (merge (get-default-env-for-pool pool-name))
                                    make-filtered-env-vars)
-                               (and telemetry-agent-host-var-name (-> telemetry-pool-regexp re-pattern (re-matches pool-name)))
+                               (and telemetry-agent-host-var-name (some-> telemetry-pool-regexp re-pattern (re-matches pool-name)))
                                (cons (doto
                                        (V1EnvVar.)
                                        (.setName telemetry-agent-host-var-name)
