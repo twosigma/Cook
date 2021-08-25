@@ -1186,7 +1186,7 @@
           sandbox-dir (:default-workdir (config/kubernetes))
           workdir (get-workdir parameters sandbox-dir)
           {:keys [volumes volume-mounts sandbox-volume-mount-fn]} (make-volumes volumes sandbox-dir pod-labels)
-          {:keys [custom-shell init-container sidecar telemetry-pool-regexp telemetry-agent-host-var-name telemetry-env-var-name
+          {:keys [custom-shell init-container sidecar telemetry-pool-regex telemetry-agent-host-var-name telemetry-env-var-name
                   telemetry-env-value telemetry-service-var-name telemetry-tags-entry-separator
                   telemetry-tags-key-invalid-char-pattern telemetry-tags-key-invalid-char-replacement
                   telemetry-tags-key-value-separator telemetry-tags-var-name telemetry-version-var-name]}
@@ -1229,6 +1229,7 @@
           progress-file-path (get main-env-base progress-file-var)
           computed-mem (if checkpoint-memory-overhead (add-as-decimals mem checkpoint-memory-overhead) mem)
           application (:job/application job)
+          include-telemetry (some-> telemetry-pool-regex re-pattern (re-matches pool-name))
           main-env (cond-> main-env-base
                      ;; Add a default progress file path to the environment when missing,
                      ;; preserving compatibility with Meosos + Cook Executor.
@@ -1241,15 +1242,16 @@
                      computed-mem
                      (assoc "COOK_MEMORY_REQUEST_BYTES" (* memory-multiplier computed-mem))
 
-                     (and telemetry-env-var-name telemetry-env-value)
+                     (and include-telemetry telemetry-env-var-name telemetry-env-value)
                      (assoc telemetry-env-var-name
                             telemetry-env-value)
 
-                     telemetry-service-var-name
+                     (and include-telemetry telemetry-service-var-name)
                      (assoc telemetry-service-var-name
                             (or (:application/name application) "cook-job"))
 
-                     (and telemetry-tags-entry-separator
+                     (and include-telemetry
+                          telemetry-tags-entry-separator
                           telemetry-tags-key-value-separator
                           telemetry-tags-var-name)
                      (assoc telemetry-tags-var-name
@@ -1266,13 +1268,13 @@
                                              v)))
                                  (str/join telemetry-tags-entry-separator)))
 
-                     telemetry-version-var-name
+                     (and include-telemetry telemetry-version-var-name)
                      (assoc telemetry-version-var-name
                             (or (:application/version application) "undefined")))
         main-env-vars (cond->> (-> main-env
                                    (merge (get-default-env-for-pool pool-name))
                                    make-filtered-env-vars)
-                               (and telemetry-agent-host-var-name (some-> telemetry-pool-regexp re-pattern (re-matches pool-name)))
+                               (and include-telemetry telemetry-agent-host-var-name)
                                (cons (doto
                                        (V1EnvVar.)
                                        (.setName telemetry-agent-host-var-name)

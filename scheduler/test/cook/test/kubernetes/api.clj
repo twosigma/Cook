@@ -524,7 +524,7 @@
                                                    :telemetry-agent-host-var-name "TEST_AGENT"
                                                    :telemetry-env-var-name "TEST_ENV"
                                                    :telemetry-env-value "test-env"
-                                                   :telemetry-pool-regexp "^telemetry-pool$"
+                                                   :telemetry-pool-regex "^telemetry-pool$"
                                                    :telemetry-service-var-name "TEST_SERVICE"
                                                    :telemetry-tags-entry-separator " "
                                                    :telemetry-tags-key-invalid-char-pattern (re-pattern "[^a-zA-Z0-9-]")
