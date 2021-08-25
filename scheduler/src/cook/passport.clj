@@ -32,4 +32,7 @@
 (def job-created :job-created)
 (def job-submitted :job-submitted)
 (def pod-completed :pod-completed)
-(def pod-launched :pod-launched)
+(def pod-submission-succeeded :pod-submission-succeeded)
+(def synthetic-pod-submission-succeeded :synthetic-pod-submission-succeeded)
+(def pod-submission-failed :pod-submission-failed)
+(def synthetic-pod-submission-failed :synthetic-pod-submission-failed)
