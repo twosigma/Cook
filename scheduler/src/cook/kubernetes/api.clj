@@ -1186,7 +1186,7 @@
           sandbox-dir (:default-workdir (config/kubernetes))
           workdir (get-workdir parameters sandbox-dir)
           {:keys [volumes volume-mounts sandbox-volume-mount-fn]} (make-volumes volumes sandbox-dir pod-labels)
-          {:keys [custom-shell init-container sidecar telemetry-agent-host-var-name telemetry-env-var-name
+          {:keys [custom-shell init-container sidecar telemetry-pool-regexp telemetry-agent-host-var-name telemetry-env-var-name
                   telemetry-env-value telemetry-service-var-name telemetry-tags-entry-separator
                   telemetry-tags-key-invalid-char-pattern telemetry-tags-key-invalid-char-replacement
                   telemetry-tags-key-value-separator telemetry-tags-var-name telemetry-version-var-name]}
@@ -1272,7 +1272,7 @@
         main-env-vars (cond->> (-> main-env
                                    (merge (get-default-env-for-pool pool-name))
                                    make-filtered-env-vars)
-                               telemetry-agent-host-var-name
+                               (and telemetry-agent-host-var-name (-> telemetry-pool-regexp re-pattern (re-matches pool-name)))
                                (cons (doto
                                        (V1EnvVar.)
                                        (.setName telemetry-agent-host-var-name)

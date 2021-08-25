@@ -11,7 +11,7 @@
             (config/default-pool)
             "no-pool"))]
   (defn job->pool-name
-    "Return the pool name of the job."
+    "Return the pool name of the job. Guaranteed non nil."
     [job]
     (caches/lookup-cache-datomic-entity! caches/job-ent->pool-cache miss-fn job)))
 
