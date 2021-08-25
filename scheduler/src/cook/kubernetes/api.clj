@@ -1727,16 +1727,32 @@
         (try
           (timers/time! (metrics/timer "launch-pod" compute-cluster-name)
                         (create-namespaced-pod api namespace pod))
-          true
+          {:terminal-failure? false}
           (catch ApiException e
             (let [code (.getCode e)
-                  bad-pod-spec? (contains? #{400 404 422} code)]
-              (log/info e "In" compute-cluster-name "compute cluster, error submitting pod with name" pod-name "in namespace" namespace
-                        ", code:" code ", response body:" (.getResponseBody e))
+                  bad-pod-spec? (contains? #{400 404 422} code)
+                  k8s-api-error? (= 500 code)
+                  terminal-failure? (or bad-pod-spec? k8s-api-error?)
+                  failure-reason
+                  (when terminal-failure?
+                    (cond
+                      bad-pod-spec? :reason-task-invalid
+                      k8s-api-error? :reason-pod-submission-api-error))]
+              (log/info e "In" compute-cluster-name "compute cluster, error submitting pod"
+                        {:bad-pod-spec? bad-pod-spec?
+                         :code code
+                         :compute-cluster compute-cluster-name
+                         :failure-reason failure-reason
+                         :k8s-api-error? k8s-api-error?
+                         :namespace namespace
+                         :pod-name pod-name
+                         :response-body (.getResponseBody e)
+                         :terminal-failure? terminal-failure?})
               (if bad-pod-spec?
                 (meters/mark! (metrics/meter "launch-pod-bad-spec-errors" compute-cluster-name))
                 (meters/mark! (metrics/meter "launch-pod-good-spec-errors" compute-cluster-name)))
-              (not bad-pod-spec?)))))
+              {:failure-reason failure-reason
+               :terminal-failure? terminal-failure?}))))
       (do
         ; Because of the complicated nature of task-metadata-seq, we can't easily run the pod
         ; creation code for launching a pod on a server restart. Thus, if we create an instance,
@@ -1744,7 +1760,8 @@
         ; the message isn't sent, or there's a k8s problem) --- we will be unable to create a new
         ; pod and we can't retry this at the kubernetes level.
         (log/info "Unable to launch pod because we do not reconstruct the pod on startup:" pod-name)
-        false))))
+        {:failure-reason :reason-could-not-reconstruct-pod
+         :terminal-failure? true}))))
 
 
 ;; TODO: Need the 'stuck pod scanner' to detect stuck states and move them into killed.

@@ -9,6 +9,7 @@
 01007: Container initialization timed out
 01008: Killed externally
 01009: Container readiness timed out
+01010: Kubernetes pod submission API error
 
 02xxx: Job Misconfiguration
 02000: REASON_CONTAINER_LIMITATION
@@ -26,6 +27,7 @@
 03005: REASON_TASK_UNAUTHORIZED
 03006: REASON_TASK_UNKNOWN
 03007: REASON_SLAVE_UNKNOWN
+03008: Could not reconstruct pod
 
 04xxx: Mesos Slave Error
 04000: REASON_SLAVE_REMOVED
