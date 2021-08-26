@@ -23,7 +23,6 @@
                  ^:displace [cheshire "5.3.1"]
                  [byte-streams "0.1.4"]
                  [org.clojure/data.json "0.2.2"]
-                 [circleci/clj-yaml "0.5.5"]
                  [camel-snake-kebab "0.4.0"]
                  [com.rpl/specter "1.0.1"]
 
@@ -117,7 +116,16 @@
 
                  ;; Kubernetes
                  [io.kubernetes/client-java "11.0.0"]
-                 [com.google.auth/google-auth-library-oauth2-http "0.16.2"]]
+                 [com.google.auth/google-auth-library-oauth2-http "0.16.2"]
+
+                 ;Version forcing by JDK11 upgrade.
+                 [org.flatland/ordered "1.5.9"] ; Upgraded from 1.5.3, brought in by clj-yaml.
+                 ;IMPL: NOT NEEDED (I think) [com.sun.xml.ws/jaxws-rt "2.3.3"] ; Needed via liberator, No longer in JDK11.
+                 [jakarta.xml.ws/jakarta.xml.ws-api "2.3.3"] ; Needed via liberator, No longer in JDK11.
+                 ; TODO: javassist upgrade. Used by curator-test, Illegal reflective access.
+
+
+                 ]
 
   :repositories {"maven2" {:url "https://files.couchbase.com/maven2/"}
                  "sonatype-oss-public" "https://oss.sonatype.org/content/groups/public/"}
@@ -219,5 +227,6 @@
              ;"-Dsun.security.jgss.native=true"
              ;"-Dsun.security.jgss.lib=/opt/mitkrb5/lib/libgssapi_krb5.so"
              ;"-Djavax.security.auth.useSubjectCredsOnly=false"
-             "-XX:+HeapDumpOnOutOfMemoryError"])
+             "-XX:+HeapDumpOnOutOfMemoryError"
+             "--illegal-access=warn"])
 ; TODO: Re-add back needed GC options suitable for JDK11.
