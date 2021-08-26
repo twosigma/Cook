@@ -219,38 +219,47 @@
                                   nil         ; watch
                                   )]
     {:continue (-> response .getMetadata .getContinue)
-     :pods (.getItems response)}))
+     :pods (.getItems response)
+     :resource-version (-> response .getMetadata .getResourceVersion)}))
 
 (defn list-pods
-  "Calls .listPodForAllNamespaces with chunks of size limit
-  (https://kubernetes.io/docs/reference/using-api/api-concepts/#retrieving-large-results-sets-in-chunks)"
+  "Calls .listPodForAllNamespaces with chunks of size limit"
   [api-client compute-cluster-name limit]
   (let [pods-atom (atom [])
         continue-string-atom (atom nil)
         continue?-atom (atom true)
+        resource-version-atom (atom nil)
         api (CoreV1Api. api-client)]
     (while @continue?-atom
       (log/info "In" compute-cluster-name "compute cluster, listing pods for all namespaces"
                 {:continue @continue-string-atom
                  :limit limit
-                 :number-pods-so-far (count @pods-atom)})
-      (let [{:keys [continue pods]} (list-pods-for-all-namespaces api @continue-string-atom limit)]
+                 :number-pods-so-far (count @pods-atom)
+                 :resource-version @resource-version-atom})
+      (let [{:keys [continue pods resource-version]}
+            (list-pods-for-all-namespaces api @continue-string-atom limit)]
         (swap! pods-atom concat pods)
         (reset! continue-string-atom continue)
-        (reset! continue?-atom (-> continue str/blank? not))))
+        (reset! continue?-atom (-> continue str/blank? not))
+        ; Note that the resourceVersion of the list remains constant across each request,
+        ; indicating the server is showing us a consistent snapshot of the pods.
+        ; (https://kubernetes.io/docs/reference/using-api/api-concepts/#retrieving-large-results-sets-in-chunks)
+        (reset! resource-version-atom resource-version)))
     (log/info "In" compute-cluster-name "compute cluster, done listing pods for all namespaces"
               {:continue @continue-string-atom
                :limit limit
-               :number-pods (count @pods-atom)})
-    @pods-atom))
+               :number-pods (count @pods-atom)
+               :resource-version @resource-version-atom})
+    {:pods @pods-atom
+     :resource-version @resource-version-atom}))
 
 (defn get-all-pods-in-kubernetes
   "Get all pods in kubernetes."
   [api-client compute-cluster-name limit]
   (timers/time! (metrics/timer "get-all-pods" compute-cluster-name)
-    (let [current-pods (list-pods api-client compute-cluster-name limit)
-          namespaced-pod-name->pod (pc/map-from-vals get-pod-namespaced-key current-pods)]
-      [current-pods namespaced-pod-name->pod])))
+    (let [{:keys [pods resource-version]} (list-pods api-client compute-cluster-name limit)
+          namespaced-pod-name->pod (pc/map-from-vals get-pod-namespaced-key pods)]
+      [resource-version namespaced-pod-name->pod])))
 
 (defn try-forever-get-all-pods-in-kubernetes
   "Try forever to get all pods in kubernetes. Used when starting a cluster up."
@@ -278,7 +287,9 @@
   "Help creating pod watch. Returns a new watch Callable"
   [{:keys [^ApiClient api-client all-pods-atom ^ExecutorService controller-executor-service node-name->pod-name->pod]
     compute-cluster-name :name :as compute-cluster} cook-pod-callback]
-  (let [[^V1PodList current-pods namespaced-pod-name->pod] (get-all-pods-in-kubernetes api-client compute-cluster-name)
+  (let [{:keys [list-pods-limit]} (config/kubernetes)
+        [^String resource-version namespaced-pod-name->pod]
+        (get-all-pods-in-kubernetes api-client compute-cluster-name list-pods-limit)
         callbacks
         [(tools/make-atom-updater all-pods-atom) ; Update the set of all pods.
          (tools/make-nested-atom-updater node-name->pod-name->pod pod->node-name get-pod-namespaced-key)
@@ -287,7 +298,8 @@
         new-pod-names (set (keys namespaced-pod-name->pod))
         old-pod-names (set (keys old-all-pods))]
     (log/info "In" compute-cluster-name "compute cluster, pod watch processing pods"
-              {:number-pods (count namespaced-pod-name->pod)})
+              {:number-pods (count namespaced-pod-name->pod)
+               :resource-version resource-version})
     ; We want to process all changes through the callback process.
     ; So compute the delta between the old and new and process those via the callbacks.
     ; Note as a side effect, the callbacks mutate all-pods-atom
@@ -310,9 +322,7 @@
                                                   "compute cluster, pod watch error while processing callback for" task)))))))
                  tasks))]
       (run! deref futures))
-    (let [watch (create-pod-watch api-client (-> current-pods
-                                                 .getMetadata
-                                                 .getResourceVersion))]
+    (let [watch (create-pod-watch api-client resource-version)]
       (fn []
         (try
           (log/info "In" compute-cluster-name "compute cluster, handling pod watch updates")
