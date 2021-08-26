@@ -220,11 +220,11 @@
                                       nil                   ; allowWatchBookmarks
                                       @continue-string-atom ; continue
                                       nil                   ; fieldSelector
-                                      nil                   ; includeUninitialized
                                       nil                   ; labelSelector
                                       limit                 ; limit
                                       nil                   ; pretty
                                       nil                   ; resourceVersion
+                                      nil                   ; resourceVersionMatch
                                       nil                   ; timeoutSeconds
                                       nil                   ; watch
                                       )
