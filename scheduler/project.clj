@@ -219,7 +219,5 @@
              ;"-Dsun.security.jgss.native=true"
              ;"-Dsun.security.jgss.lib=/opt/mitkrb5/lib/libgssapi_krb5.so"
              ;"-Djavax.security.auth.useSubjectCredsOnly=false"
-             "-verbose:gc"
-             "-XX:+PrintGCDetails"
              "-XX:+HeapDumpOnOutOfMemoryError"])
 ; TODO: Re-add back needed GC options suitable for JDK11.
