@@ -221,7 +221,7 @@
                                       @continue-string-atom ; continue
                                       nil                   ; fieldSelector
                                       nil                   ; labelSelector
-                                      limit                 ; limit
+                                      (int limit)           ; limit
                                       nil                   ; pretty
                                       nil                   ; resourceVersion
                                       nil                   ; resourceVersionMatch
