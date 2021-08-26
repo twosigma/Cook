@@ -203,6 +203,25 @@
              {:pod pod}))))
 
 (defn list-pods-for-all-namespaces
+  "Thin wrapper around .listPodForAllNamespaces"
+  [api continue limit]
+  (let [response
+        (.listPodForAllNamespaces api
+                                  nil         ; allowWatchBookmarks
+                                  continue    ; continue
+                                  nil         ; fieldSelector
+                                  nil         ; labelSelector
+                                  (int limit) ; limit
+                                  nil         ; pretty
+                                  nil         ; resourceVersion
+                                  nil         ; resourceVersionMatch
+                                  nil         ; timeoutSeconds
+                                  nil         ; watch
+                                  )]
+    {:continue (-> response .getMetadata .getContinue)
+     :pods (.getItems response)}))
+
+(defn list-pods
   "Calls .listPodForAllNamespaces with chunks of size limit
   (https://kubernetes.io/docs/reference/using-api/api-concepts/#retrieving-large-results-sets-in-chunks)"
   [api-client compute-cluster-name limit]
@@ -215,23 +234,10 @@
                 {:continue @continue-string-atom
                  :limit limit
                  :number-pods-so-far (count @pods-atom)})
-      (let [response
-            (.listPodForAllNamespaces api
-                                      nil                   ; allowWatchBookmarks
-                                      @continue-string-atom ; continue
-                                      nil                   ; fieldSelector
-                                      nil                   ; labelSelector
-                                      (int limit)           ; limit
-                                      nil                   ; pretty
-                                      nil                   ; resourceVersion
-                                      nil                   ; resourceVersionMatch
-                                      nil                   ; timeoutSeconds
-                                      nil                   ; watch
-                                      )
-            continue-string (-> response .getMetadata .getContinue)]
-        (swap! pods-atom conj (.getItems response))
-        (reset! continue-string-atom continue-string)
-        (reset! continue?-atom (-> continue-string str/blank? not))))
+      (let [{:keys [continue pods]} (list-pods-for-all-namespaces api @continue-string-atom limit)]
+        (swap! pods-atom concat pods)
+        (reset! continue-string-atom continue)
+        (reset! continue?-atom (-> continue str/blank? not))))
     (log/info "In" compute-cluster-name "compute cluster, done listing pods for all namespaces"
               {:continue @continue-string-atom
                :limit limit
@@ -242,7 +248,7 @@
   "Get all pods in kubernetes."
   [api-client compute-cluster-name limit]
   (timers/time! (metrics/timer "get-all-pods" compute-cluster-name)
-    (let [current-pods (list-pods-for-all-namespaces api-client compute-cluster-name limit)
+    (let [current-pods (list-pods api-client compute-cluster-name limit)
           namespaced-pod-name->pod (pc/map-from-vals get-pod-namespaced-key current-pods)]
       [current-pods namespaced-pod-name->pod])))
 

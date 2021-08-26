@@ -1159,3 +1159,24 @@
           (is (= {:failure-reason nil
                   :terminal-failure? false}
                  (api/launch-pod nil "test-compute-cluster" {:launch-pod {:pod pod}} "test-pod"))))))))
+
+(deftest test-list-pods
+  (let [pod-1 (V1Pod.)
+        pod-2 (V1Pod.)
+        pod-3 (V1Pod.)
+        pods [pod-1 pod-2 pod-3]]
+
+    (testing "single chunk"
+      (with-redefs [api/list-pods-for-all-namespaces
+                    (constantly {:continue "" :pods pods})]
+        (is (= pods (api/list-pods nil "test-compute-cluster" 500)))))
+
+    (testing "multiple chunks"
+      (with-redefs [api/list-pods-for-all-namespaces
+                    (fn [_ continue limit]
+                      (is (= 1 limit))
+                      (case continue
+                        nil {:continue "foo" :pods [pod-1]}
+                        "foo" {:continue "bar" :pods [pod-2]}
+                        "bar" {:continue "" :pods [pod-3]}))]
+        (is (= pods (api/list-pods nil "test-compute-cluster" 1)))))))
