@@ -246,8 +246,7 @@
         ; (https://kubernetes.io/docs/reference/using-api/api-concepts/#retrieving-large-results-sets-in-chunks)
         (reset! resource-version-atom resource-version)))
     (log/info "In" compute-cluster-name "compute cluster, done listing pods for all namespaces"
-              {:continue @continue-string-atom
-               :limit limit
+              {:limit limit
                :number-pods (count @pods-atom)
                :resource-version @resource-version-atom})
     {:pods @pods-atom
