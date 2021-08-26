@@ -202,34 +202,57 @@
              (str "Unable to get namespaced key for pod: " pod)
              {:pod pod}))))
 
+(defn list-pods-for-all-namespaces
+  "Calls .listPodForAllNamespaces with chunks of size limit
+  (https://kubernetes.io/docs/reference/using-api/api-concepts/#retrieving-large-results-sets-in-chunks)"
+  [api-client compute-cluster-name limit]
+  (let [pods-atom (atom [])
+        continue-string-atom (atom nil)
+        continue?-atom (atom true)
+        api (CoreV1Api. api-client)]
+    (while @continue?-atom
+      (log/info "In" compute-cluster-name "compute cluster, listing pods for all namespaces"
+                {:continue @continue-string-atom
+                 :limit limit
+                 :number-pods-so-far (count @pods-atom)})
+      (let [response
+            (.listPodForAllNamespaces api
+                                      nil                   ; allowWatchBookmarks
+                                      @continue-string-atom ; continue
+                                      nil                   ; fieldSelector
+                                      nil                   ; includeUninitialized
+                                      nil                   ; labelSelector
+                                      limit                 ; limit
+                                      nil                   ; pretty
+                                      nil                   ; resourceVersion
+                                      nil                   ; timeoutSeconds
+                                      nil                   ; watch
+                                      )
+            continue-string (-> response .getMetadata .getContinue)]
+        (swap! pods-atom conj (.getItems response))
+        (reset! continue-string-atom continue-string)
+        (reset! continue?-atom (-> continue-string str/blank? not))))
+    (log/info "In" compute-cluster-name "compute cluster, done listing pods for all namespaces"
+              {:continue @continue-string-atom
+               :limit limit
+               :number-pods (count @pods-atom)})
+    @pods-atom))
+
 (defn get-all-pods-in-kubernetes
   "Get all pods in kubernetes."
-  [api-client compute-cluster-name]
+  [api-client compute-cluster-name limit]
   (timers/time! (metrics/timer "get-all-pods" compute-cluster-name)
-    (let [api (CoreV1Api. api-client)
-          current-pods (.listPodForAllNamespaces api
-                                                 nil ; allowWatchBookmarks
-                                                 nil ; continue
-                                                 nil ; fieldSelector
-                                                 nil ; includeUninitialized
-                                                 nil ; labelSelector
-                                                 nil ; limit
-                                                 nil ; pretty
-                                                 nil ; resourceVersion
-                                                 nil ; timeoutSeconds
-                                                 nil ; watch
-                                                 )
-          namespaced-pod-name->pod (pc/map-from-vals get-pod-namespaced-key
-                                                     (.getItems current-pods))]
+    (let [current-pods (list-pods-for-all-namespaces api-client compute-cluster-name limit)
+          namespaced-pod-name->pod (pc/map-from-vals get-pod-namespaced-key current-pods)]
       [current-pods namespaced-pod-name->pod])))
 
 (defn try-forever-get-all-pods-in-kubernetes
   "Try forever to get all pods in kubernetes. Used when starting a cluster up."
   [api-client compute-cluster-name]
   (loop []
-    (let [{:keys [reconnect-delay-ms]} (config/kubernetes)
+    (let [{:keys [list-pods-limit reconnect-delay-ms]} (config/kubernetes)
           out (try
-                (get-all-pods-in-kubernetes api-client compute-cluster-name)
+                (get-all-pods-in-kubernetes api-client compute-cluster-name list-pods-limit)
                 (catch Throwable e
                   (log/error e "Error during cluster startup getting all pods for" compute-cluster-name
                              "and sleeping" reconnect-delay-ms "milliseconds before reconnect")
