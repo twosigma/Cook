@@ -221,9 +221,5 @@
              ;"-Djavax.security.auth.useSubjectCredsOnly=false"
              "-verbose:gc"
              "-XX:+PrintGCDetails"
-             "-Xloggc:gclog"
-             "-XX:+UseGCLogFileRotation"
-             "-XX:NumberOfGCLogFiles=20"
-             "-XX:GCLogFileSize=128M"
-             "-XX:+PrintGCDateStamps"
              "-XX:+HeapDumpOnOutOfMemoryError"])
+; TODO: Re-add back needed GC options suitable for JDK11.
