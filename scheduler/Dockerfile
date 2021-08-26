@@ -15,7 +15,7 @@ RUN rm /etc/apt/sources.list.d/docker.list && \
 ENV HOME "/root/"
 ENV LEIN_ROOT true
 ENV MESOS_NATIVE_JAVA_LIBRARY /usr/lib/libmesos.so
-ENV JAVA_CMD=/usr/lib/jvm/java-8-openjdk-amd64/bin/java
+ENV JAVA_CMD=/usr/lib/jvm/java-11-openjdk-amd64/bin/java
 
 # Generate SSL certificate
 RUN mkdir /opt/ssl
