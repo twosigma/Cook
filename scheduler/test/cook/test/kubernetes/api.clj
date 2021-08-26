@@ -930,7 +930,7 @@
   (testing "basics"
     (with-redefs [config/kubernetes (constantly {:list-pods-limit 500})
                   api/list-pods-for-all-namespaces
-                  (constantly {:continue "" :pods []})
+                  (constantly {:continue "" :pods [] :resource-version "test-version"})
                   api/create-pod-watch (constantly nil)]
       (is (true? (fn? (api/initialize-pod-watch-helper {:all-pods-atom (atom [])} nil))))))
 
@@ -1186,8 +1186,8 @@
                     (fn [_ continue limit]
                       (is (= 1 limit))
                       (case continue
-                        nil {:continue "foo" :pods [pod-1]}
-                        "foo" {:continue "bar" :pods [pod-2]}
+                        nil {:continue "foo" :pods [pod-1] :resource-version "something"}
+                        "foo" {:continue "bar" :pods [pod-2] :resource-version "something"}
                         "bar" {:continue "" :pods [pod-3] :resource-version "something"}))]
         (is (= {:pods pods :resource-version "something"}
                (api/list-pods nil "test-compute-cluster" 1)))))))

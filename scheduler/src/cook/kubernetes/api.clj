@@ -225,32 +225,50 @@
 (defn list-pods
   "Calls .listPodForAllNamespaces with chunks of size limit"
   [api-client compute-cluster-name limit]
-  (let [pods-atom (atom [])
-        continue-string-atom (atom nil)
-        continue?-atom (atom true)
-        resource-version-atom (atom nil)
-        api (CoreV1Api. api-client)]
-    (while @continue?-atom
+  (let [api (CoreV1Api. api-client)]
+    (loop [all-pods []
+           continue-string nil
+           resource-version-string nil]
       (log/info "In" compute-cluster-name "compute cluster, listing pods for all namespaces"
-                {:continue @continue-string-atom
+                {:continue continue-string
                  :limit limit
-                 :number-pods-so-far (count @pods-atom)
-                 :resource-version @resource-version-atom})
+                 :number-pods-so-far (count all-pods)
+                 :resource-version resource-version-string})
       (let [{:keys [continue pods resource-version]}
-            (list-pods-for-all-namespaces api @continue-string-atom limit)]
-        (swap! pods-atom concat pods)
-        (reset! continue-string-atom continue)
-        (reset! continue?-atom (-> continue str/blank? not))
+            (timers/time!
+              (metrics/timer "get-all-pods-single-chunk" compute-cluster-name)
+              (list-pods-for-all-namespaces api continue-string limit))
+            new-all-pods (concat all-pods pods)]
+
         ; Note that the resourceVersion of the list remains constant across each request,
         ; indicating the server is showing us a consistent snapshot of the pods.
         ; (https://kubernetes.io/docs/reference/using-api/api-concepts/#retrieving-large-results-sets-in-chunks)
-        (reset! resource-version-atom resource-version)))
-    (log/info "In" compute-cluster-name "compute cluster, done listing pods for all namespaces"
-              {:limit limit
-               :number-pods (count @pods-atom)
-               :resource-version @resource-version-atom})
-    {:pods @pods-atom
-     :resource-version @resource-version-atom}))
+        (when (or (and (some? resource-version-string)
+                       (not= resource-version resource-version-string))
+                  (str/blank? resource-version))
+          (throw
+            (ex-info (str "In " compute-cluster-name
+                          " compute cluster, unexpected resource version on chunk")
+                     {:continue continue-string
+                      :limit limit
+                      :number-pods-so-far (count new-all-pods)
+                      :number-pods-this-chunk (count pods)
+                      :resource-version-new resource-version
+                      :resource-version-previous resource-version-string})))
+
+        (if (str/blank? continue)
+          (do
+            (log/info "In" compute-cluster-name
+                      "compute cluster, done listing pods for all namespaces"
+                      {:limit limit
+                       :number-pods (count new-all-pods)
+                       :number-pods-this-chunk (count pods)
+                       :resource-version resource-version})
+            {:pods new-all-pods
+             :resource-version resource-version})
+          (recur new-all-pods
+                 continue
+                 resource-version))))))
 
 (defn get-all-pods-in-kubernetes
   "Get all pods in kubernetes."

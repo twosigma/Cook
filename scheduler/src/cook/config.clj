@@ -524,7 +524,7 @@
                              :clobber-synthetic-pods false
                              :controller-lock-num-shards controller-lock-num-shards
                              :default-workdir "/mnt/sandbox"
-                             :list-pods-limit 500
+                             :list-pods-limit 2000
                              :max-jobs-for-autoscaling 1000
                              :pod-condition-containers-not-initialized-seconds 120
                              :pod-condition-containers-not-ready-seconds 120
