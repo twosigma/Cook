@@ -1871,20 +1871,6 @@ class CookTest(util.CookTest):
         resp = util.query_groups(self.cook_url)
         self.assertEqual(400, resp.status_code)
 
-    @unittest.skipUnless(util.docker_tests_enabled(), "Requires a test docker image")
-    def test_basic_docker_job(self):
-        image = util.docker_image()
-        self.logger.debug(f'Using docker image {image}')
-        job_uuid, resp = util.submit_job(
-            self.cook_url,
-            command='cat /.dockerenv',
-            container={'type': 'DOCKER',
-                       'docker': {'image': image}},
-            max_retries=5)
-        self.assertEqual(resp.status_code, 201)
-        job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
-        self.assertIn('success', [i['status'] for i in job['instances']])
-
     def test_submit_job_with_disk(self):
         settings_dict = util.settings(self.cook_url)
         # disk_config_list is a list of regexp's with pool regex, valid disk types, default disk type, and max requestable size of disk
@@ -2080,7 +2066,6 @@ class CookTest(util.CookTest):
         # Special logic in util.submit_jobs.full_spec maps container=None and removes it from the submitted job spec.
         job_uuid, resp = util.submit_job(
             self.cook_url,
-            command='cat /.dockerenv',
             container=None,
             max_retries=5)
         self.assertEqual(resp.status_code, 201)
