@@ -2487,11 +2487,11 @@ class CookTest(util.CookTest):
                        re.match(ii["pool-regex"], pool_name)]
         # If the pool doesn't have the right quota constraints, fail the test.
         logging.info("Quota: " + repr(match_quota))
-        if (len(match_quota) == 0):
+        if len(match_quota) == 0:
             self.fail(f"Pool {pool_name} lacks quota assignment.")
         quota = match_quota[0]
         logging.info(f"Pool quota: {quota}")
-        if (quota["count"] >= 10):
+        if quota["count"] >= 10:
             self.fail(f"Job count quota too large for test")
         quota_count = quota["count"]
         job_count = quota_count + 2
@@ -2518,19 +2518,24 @@ class CookTest(util.CookTest):
         if user_quota["cpus"] < total_cpus_requested:
             self.fail("User Quota cpus to small for test")
 
+        # We need to kill any running or waiting jobs in the pool we're testing
+        # against, because if we don't, they will take up quota and could cause
+        # the jobs submitted below to never get scheduled
+        util.kill_running_and_waiting_jobs(self.cook_url, user, pool=pool_name)
+
         sleep_command = f'sleep {util.DEFAULT_TEST_TIMEOUT_SECS}'
         job_resources = {'cpus': job_cpus, 'mem': job_mem}
         job_specs = util.minimal_jobs(job_count, command=sleep_command, **job_resources)
-        job_uuids, resp = util.submit_jobs(self.cook_url, job_specs, pool=util.pool_quota_test_pool())
+        job_uuids, resp = util.submit_jobs(self.cook_url, job_specs, pool=pool_name)
         self.assertEqual(resp.status_code, 201, resp.content)
         try:
             def query():
                 return util.query_jobs(self.cook_url, True, uuid=job_uuids)
 
-            def predicate(resp):
-                jobs = resp.json()
-                logging.info("Job statuses: " + str([(job['uuid'], job['status']) for job in jobs]))
-                return len([job for job in jobs if job['status'] == 'running']) >= 2
+            def predicate(response):
+                response_jobs = response.json()
+                logging.info("Job statuses: " + str([(job['uuid'], job['status']) for job in response_jobs]))
+                return len([job for job in response_jobs if job['status'] == 'running']) >= 2
 
             # Wait until at least 2 are running.
             util.wait_until(query, predicate)
