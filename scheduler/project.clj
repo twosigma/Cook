@@ -122,6 +122,9 @@
                  [org.flatland/ordered "1.5.9"] ; Upgraded from 1.5.3, brought in by clj-yaml.
                  ;IMPL: NOT NEEDED (I think) [com.sun.xml.ws/jaxws-rt "2.3.3"] ; Needed via liberator, No longer in JDK11.
                  [jakarta.xml.ws/jakarta.xml.ws-api "2.3.3"] ; Needed via liberator, No longer in JDK11.
+                 ; Note: This doesn't silence the warning.
+                 [org.javassist/javassist "3.28.0-GA"] ; Needed bu cyrator-test. Upgraded from 3.18.1-GA
+
                  ; TODO: javassist upgrade. Used by curator-test, Illegal reflective access.
                  ; TODO: mockito-core upgrade Currently 1.10.19. Imported directly into :test profile.
 
@@ -200,7 +203,7 @@
    :test
    {:dependencies [[criterium "0.4.4"]
                    [org.clojure/test.check "0.6.1"]
-                   [org.mockito/mockito-core "1.10.19"]
+                   [org.mockito/mockito-core "3.12.4"]
                    [twosigma/cook-jobclient "0.8.6-SNAPSHOT"]]}
 
    :test-console
