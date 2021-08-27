@@ -4,9 +4,17 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.55.0] - 2021-08-27
+### Added
+- Incremental feature flags, from @nsinkov
+- A flag for controlling which pools get telemetry-related environment variables, from @scrosby
+- Support for defaulting environment variables by pool, from @scrosby
+- Chunking to the `listPodForAllNamespaces` k8s API call, from @dposada
+- Fast failing of job instances on 500 responses from k8s pod submissions, from @dposada
+
 ## [1.54.0] - 2021-08-04
 ### Added
-- Support for shared memory on k8s, from @scrosby 
+- Support for shared memory on k8s, from @scrosby
 - Resource requests to the `job-submitted` passport event, from @dposada
 ### Fixed
 - Bug where `pod-launched` and `pod-completed` passport events sometimes have a `nil` pool, from @calebhar12
