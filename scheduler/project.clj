@@ -103,13 +103,13 @@
                  [liberator "0.15.0"]
 
                  ;;Databases
-                 [org.apache.curator/curator-framework "2.7.1"
+                 [org.apache.curator/curator-framework "5.2.0"
                   :exclusions [io.netty/netty]]
-                 [org.apache.curator/curator-recipes "2.7.1"
+                 [org.apache.curator/curator-recipes "5.2.0"
                   :exclusions [org.slf4j/slf4j-log4j12
                                org.slf4j/log4j
                                log4j]]
-                 [org.apache.curator/curator-test "2.7.1"]
+                 [org.apache.curator/curator-test "5.2.0"]
 
                  ;; Dependency management
                  [mount "0.1.12"]
@@ -120,14 +120,7 @@
 
                  ;Version forcing by JDK11 upgrade.
                  [org.flatland/ordered "1.5.9"] ; Upgraded from 1.5.3, brought in by clj-yaml.
-                 ;IMPL: NOT NEEDED (I think) [com.sun.xml.ws/jaxws-rt "2.3.3"] ; Needed via liberator, No longer in JDK11.
                  [jakarta.xml.ws/jakarta.xml.ws-api "2.3.3"] ; Needed via liberator, No longer in JDK11.
-                 ; Note: This doesn't silence the warning.
-                 [org.javassist/javassist "3.28.0-GA"] ; Needed bu cyrator-test. Upgraded from 3.18.1-GA
-
-                 ; TODO: javassist upgrade. Used by curator-test, Illegal reflective access.
-                 ; TODO: mockito-core upgrade Currently 1.10.19. Imported directly into :test profile.
-
                  ]
 
   :repositories {"maven2" {:url "https://files.couchbase.com/maven2/"}
