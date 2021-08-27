@@ -123,7 +123,7 @@
                  ;IMPL: NOT NEEDED (I think) [com.sun.xml.ws/jaxws-rt "2.3.3"] ; Needed via liberator, No longer in JDK11.
                  [jakarta.xml.ws/jakarta.xml.ws-api "2.3.3"] ; Needed via liberator, No longer in JDK11.
                  ; TODO: javassist upgrade. Used by curator-test, Illegal reflective access.
-
+                 ; TODO: mockito-core upgrade Currently 1.10.19. Imported directly into :test profile.
 
                  ]
 
