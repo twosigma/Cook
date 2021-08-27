@@ -927,6 +927,13 @@
         (is (api/node-schedulable? {:node-blocklist-labels []} node 30 nil))))))
 
 (deftest test-initialize-pod-watch-helper
+  (testing "basics"
+    (with-redefs [config/kubernetes (constantly {:list-pods-limit 500})
+                  api/list-pods-for-all-namespaces
+                  (constantly {:continue "" :pods [] :resource-version "test-version"})
+                  api/create-pod-watch (constantly nil)]
+      (is (true? (fn? (api/initialize-pod-watch-helper {:all-pods-atom (atom [])} nil))))))
+
   (testing "only processes each pod once"
     (let [pod-list-metadata (V1ListMeta.)
           pod-list (doto (V1PodList.) (.setMetadata pod-list-metadata))
@@ -1159,3 +1166,28 @@
           (is (= {:failure-reason nil
                   :terminal-failure? false}
                  (api/launch-pod nil "test-compute-cluster" {:launch-pod {:pod pod}} "test-pod"))))))))
+
+(deftest test-list-pods
+  (let [pod-1 (V1Pod.)
+        pod-2 (V1Pod.)
+        pod-3 (V1Pod.)
+        pods [pod-1 pod-2 pod-3]]
+
+    (testing "single chunk"
+      (with-redefs [api/list-pods-for-all-namespaces
+                    (constantly {:continue ""
+                                 :pods pods
+                                 :resource-version "test-resource-version"})]
+        (is (= {:pods pods :resource-version "test-resource-version"}
+               (api/list-pods nil "test-compute-cluster" 500)))))
+
+    (testing "multiple chunks"
+      (with-redefs [api/list-pods-for-all-namespaces
+                    (fn [_ continue limit]
+                      (is (= 1 limit))
+                      (case continue
+                        nil {:continue "foo" :pods [pod-1] :resource-version "something"}
+                        "foo" {:continue "bar" :pods [pod-2] :resource-version "something"}
+                        "bar" {:continue "" :pods [pod-3] :resource-version "something"}))]
+        (is (= {:pods pods :resource-version "something"}
+               (api/list-pods nil "test-compute-cluster" 1)))))))
