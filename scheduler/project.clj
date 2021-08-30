@@ -37,7 +37,7 @@
                  [clj-time "0.12.0"]
                  [org.clojure/core.async "0.3.442" :exclusions [org.clojure/tools.reader]]
                  [org.clojure/tools.cli "0.3.5"]
-                 [prismatic/schema "1.1.3"]
+                 [prismatic/schema "1.1.3"]7
                  [clojure-miniprofiler "0.4.0"]
                  [jarohen/chime "0.1.6"]
                  [org.clojure/data.priority-map "0.0.5"]
@@ -223,7 +223,8 @@
              ;"-Dsun.security.jgss.native=true"
              ;"-Dsun.security.jgss.lib=/opt/mitkrb5/lib/libgssapi_krb5.so"
              ;"-Djavax.security.auth.useSubjectCredsOnly=false"
-             "-Xlog:gc*,compaction*,stringdedup*=debug,stringtable*,ergo*,safepoint,age=trace:file=gclog-%t:time,level,tags"
+;             "-Xlog:gc*,compaction*,stringdedup*=debug,stringtable*,ergo*,safepoint,age=trace:file=gclog-%t:time,level,tags"
+; TODO: Disable logging until whole stack migrated to JDK-11
              "-XX:+UseG1GC"
              "-XX:+UseStringDeduplication"
              "-XX:+HeapDumpOnOutOfMemoryError"
