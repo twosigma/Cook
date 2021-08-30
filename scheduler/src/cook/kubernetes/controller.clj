@@ -161,6 +161,7 @@
                         {:compute-cluster name
                          :event-type passport/pod-completed
                          :exit-code exit-code
+                         :instance-exited? (some? exit-code)
                          :reason reason
                          :state state})))
 
