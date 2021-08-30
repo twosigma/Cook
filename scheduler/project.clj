@@ -37,7 +37,7 @@
                  [clj-time "0.12.0"]
                  [org.clojure/core.async "0.3.442" :exclusions [org.clojure/tools.reader]]
                  [org.clojure/tools.cli "0.3.5"]
-                 [prismatic/schema "1.1.3"]7
+                 [prismatic/schema "1.1.3"]
                  [clojure-miniprofiler "0.4.0"]
                  [jarohen/chime "0.1.6"]
                  [org.clojure/data.priority-map "0.0.5"]
