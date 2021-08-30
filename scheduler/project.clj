@@ -228,4 +228,3 @@
              "-XX:+UseStringDeduplication"
              "-XX:+HeapDumpOnOutOfMemoryError"
              "--illegal-access=warn"])
-; TODO: Re-add back needed GC options suitable for JDK11.
