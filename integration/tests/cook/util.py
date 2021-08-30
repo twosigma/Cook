@@ -1742,13 +1742,20 @@ def pool_quota_test_pool():
     return os.getenv("COOK_TEST_POOL_QUOTA_TEST_POOL", None)
 
 
-def kill_running_and_waiting_jobs(cook_url, user, log_jobs=True):
+def kill_running_and_waiting_jobs(cook_url, user, log_jobs=True, pool=None):
     one_hour_in_millis = 60 * 60 * 1000
     start = current_milli_time() - (72 * one_hour_in_millis)
     end = current_milli_time() + one_hour_in_millis
     while True:
         logger.info(f'Querying for running / waiting jobs for {user}')
-        running = jobs(cook_url, user=user, state=['running', 'waiting'], start=start, end=end, limit=500).json()
+        args = {'user': user,
+                'state': ['running', 'waiting'],
+                'start': start,
+                'end': end,
+                'limit': 500}
+        if pool:
+            args['pool'] = pool
+        running = jobs(cook_url, **args).json()
         logger.info(f'{len(running)} running / waiting jobs for {user}')
         if len(running) == 0:
             break
