@@ -446,13 +446,13 @@ class MultiUserCookTest(util.CookTest):
     # @pytest.mark.xfail
     # The test timeout needs to be a little more than 2 times the
     # rebalancer interval to allow at least two runs of the rebalancer
-    @pytest.mark.timeout(((util.rebalancer_interval_seconds() * 2.5) + 60)*15)
+    @pytest.mark.timeout(((util.rebalancer_interval_seconds() * 2.5) + 60)*5)
     def test_preemption_basic(self):
         pool = util.default_submit_pool()
         rebalancer_pool_regex = util.rebalancer_settings().get('pool-regex', None)
         if rebalancer_pool_regex and re.match(rebalancer_pool_regex, pool):
             user = self.user_factory.new_user()
-            for i in range(15):
+            for i in range(5):
                 self.logger.info('=====')
                 self.logger.info(f'Starting {i}')
                 self.logger.info('=====')
