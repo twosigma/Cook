@@ -48,7 +48,7 @@ jobs:
           ./cli/travis/setup.sh
           cd scheduler && ./travis/setup.sh
       - name: JobClient Java unit tests
-        run: cd ./jobclient/java && mvn test 
+        run: cd ./jobclient/java && mvn test -X 
       - name: JobClient Python unit tests
         run: cd ./jobclient/python && python -m pytest
       - name: CLI unit tests
