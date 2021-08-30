@@ -361,7 +361,7 @@ class MultiUserCookTest(util.CookTest):
 
             trigger_submission_rate_limit()
 
-    def trigger_preemption(self, pool):
+    def trigger_preemption(self, pool, user):
         """
         Triggers preemption on the provided pool (which can be None) by doing the following:
 
@@ -372,7 +372,6 @@ class MultiUserCookTest(util.CookTest):
         5. Submit a job, J2, from X with 0.1 cpu and priority 100
         6. Wait until J1 is preempted (to make room for J2)
         """
-        user = self.user_factory.new_user()
         all_job_uuids = []
         try:
             large_cpus = util.get_default_cpus()
@@ -452,11 +451,12 @@ class MultiUserCookTest(util.CookTest):
         pool = util.default_submit_pool()
         rebalancer_pool_regex = util.rebalancer_settings().get('pool-regex', None)
         if rebalancer_pool_regex and re.match(rebalancer_pool_regex, pool):
+            user = self.user_factory.new_user()
             for i in range(25):
                 self.logger.info('=====')
                 self.logger.info(f'Starting {i}')
                 self.logger.info('=====')
-                self.trigger_preemption(pool=pool)
+                self.trigger_preemption(pool, user)
                 self.logger.info('=====')
                 self.logger.info(f'Finished {i}')
                 self.logger.info('=====')
