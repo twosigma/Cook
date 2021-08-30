@@ -1770,22 +1770,33 @@
       (let [{:keys [^V1Pod pod]} launch-pod
             pod-name-from-pod (-> pod .getMetadata .getName)
             namespace (-> pod .getMetadata .getNamespace)
-            api (CoreV1Api. api-client)]
+            api (CoreV1Api. api-client)
+            synthetic? (synthetic-pod? pod-name)
+            passport-base-map
+            (merge
+              (pod-name->job-map pod-name)
+              {:compute-cluster compute-cluster-name
+               :namespace namespace})
+            start-time (System/currentTimeMillis)]
         (assert (= pod-name-from-pod pod-name)
                 (str "Pod name from pod (" pod-name-from-pod ") "
                      "does not match pod name argument (" pod-name ")"))
         (log/info "In" compute-cluster-name "compute cluster, launching pod with name" pod-name "in namespace" namespace ":" (.serialize json pod))
-        (passport/log-event (merge
-                              (pod-name->job-map pod-name)
-                              {:compute-cluster compute-cluster-name
-                               :event-type passport/pod-launched
-                               :namespace namespace}))
         (try
           (timers/time! (metrics/timer "launch-pod" compute-cluster-name)
                         (create-namespaced-pod api namespace pod))
+          (passport/log-event
+            (merge
+              passport-base-map
+              {:duration-ms (- (System/currentTimeMillis) start-time)
+               :event-type
+               (if synthetic?
+                 passport/synthetic-pod-submission-succeeded
+                 passport/pod-submission-succeeded)}))
           {:terminal-failure? false}
           (catch ApiException e
-            (let [code (.getCode e)
+            (let [duration-ms (- (System/currentTimeMillis) start-time)
+                  code (.getCode e)
                   bad-pod-spec? (contains? #{400 404 422} code)
                   k8s-api-error? (= 500 code)
                   terminal-failure? (or bad-pod-spec? k8s-api-error?)
@@ -1793,11 +1804,25 @@
                   (when terminal-failure?
                     (cond
                       bad-pod-spec? :reason-task-invalid
-                      k8s-api-error? :reason-pod-submission-api-error))]
+                      k8s-api-error? :reason-pod-submission-api-error))
+                  passport-event-type
+                  (if synthetic?
+                    passport/synthetic-pod-submission-failed
+                    passport/pod-submission-failed)]
+              (passport/log-event
+                (merge
+                  passport-base-map
+                  {:bad-pod-spec? bad-pod-spec?
+                   :code code
+                   :duration-ms duration-ms
+                   :event-type passport-event-type
+                   :k8s-api-error? k8s-api-error?
+                   :terminal-failure? terminal-failure?}))
               (log/info e "In" compute-cluster-name "compute cluster, error submitting pod"
                         {:bad-pod-spec? bad-pod-spec?
                          :code code
                          :compute-cluster compute-cluster-name
+                         :duration-ms duration-ms
                          :failure-reason failure-reason
                          :k8s-api-error? k8s-api-error?
                          :namespace namespace
