@@ -67,7 +67,6 @@
 
                  ;;Networking
                  [twosigma/clj-http "2.0.0-ts1"]
-                 [io.netty/netty "3.10.1.Final"]
                  [cc.qbits/jet "0.6.4" :exclusions [org.eclipse.jetty/jetty-io
                                                     org.eclipse.jetty/jetty-security
                                                     org.eclipse.jetty/jetty-server
