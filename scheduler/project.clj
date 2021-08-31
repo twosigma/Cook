@@ -84,7 +84,8 @@
                  [metrics-clojure-jvm "2.6.1"]
                  [io.dropwizard.metrics/metrics-graphite "3.1.2"]
                  [com.aphyr/metrics3-riemann-reporter "0.4.0"
-                  :exclusions [com.google.protobuf/protobuf-java
+                  :exclusions [io.netty/netty
+                               com.google.protobuf/protobuf-java
                                com.amazonaws/aws-java-sdk]] ; Brings in a lot of dependencies
 
                  ;;External system integrations
