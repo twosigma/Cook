@@ -443,23 +443,16 @@ class MultiUserCookTest(util.CookTest):
     @unittest.skipUnless(util.is_preemption_enabled(), 'Preemption is not enabled on the cluster')
     @unittest.skipUnless(util.default_submit_pool() is not None, 'Test requires a default test pool')
     @pytest.mark.serial
-    # @pytest.mark.xfail
     # The test timeout needs to be a little more than 2 times the
     # rebalancer interval to allow at least two runs of the rebalancer
-    @pytest.mark.timeout(((util.rebalancer_interval_seconds() * 2.5) + 60)*5)
+    @pytest.mark.timeout((util.rebalancer_interval_seconds() * 2.5) + 60)
     def test_preemption_basic(self):
         pool = util.default_submit_pool()
         rebalancer_pool_regex = util.rebalancer_settings().get('pool-regex', None)
         if rebalancer_pool_regex and re.match(rebalancer_pool_regex, pool):
             user = self.user_factory.new_user()
-            for i in range(5):
-                self.logger.info('=====')
-                self.logger.info(f'Starting {i}')
-                self.logger.info('=====')
-                self.trigger_preemption(pool, user)
-                self.logger.info('=====')
-                self.logger.info(f'Finished {i}')
-                self.logger.info('=====')
+            self.logger.info(f'Using pool {pool} and user {user.name} for preemption test')
+            self.trigger_preemption(pool, user)
         else:
             self.skipTest(f'The rebalancer pool regex ({rebalancer_pool_regex}) '
                           f'does not match the default submit pool ({pool})')
