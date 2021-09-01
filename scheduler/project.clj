@@ -75,11 +75,12 @@
                  [org.eclipse.jetty/jetty-server "9.2.6.v20141205"]
                  [org.eclipse.jetty/jetty-security "9.2.6.v20141205"]
 
+                 ; TODO: Upgrade netty.
                  ; Bring in netty. Note that this is brought in in a lot of other places, Exclude it whenever finding another one.
                  ; Need to make sure all imports are importing the same version.
                  ;[io.netty/netty-handler "4.1.63.Final"]
                  ; Netty now uses epoll with a native library. We need to tell lein our architecture so it can bring in the
-                 ; right library architecture. Make sure this version smatches.
+                 ; right library architecture. Make sure this version matches.
                  ;[io.netty/netty-transport-native-epoll "4.1.63.Final" :classifier "linux-x86_64"]
                  ;[io.netty/netty-transport-native-unix-common "4.1.63.Final" :classifier "linux-x86_64"]
                  [io.netty/netty "3.10.1.Final"]
@@ -111,6 +112,7 @@
                  [liberator "0.15.0"]
 
                  ;;Databases
+                 ;; TODO: Should upgrade curator to avoid illegal reflective access warnings.
                  [org.apache.curator/curator-framework "2.7.1"
                   :exclusions [io.netty/netty]]
                  [org.apache.curator/curator-recipes "2.7.1"
@@ -166,7 +168,6 @@
                    [com.datomic/datomic-free "0.9.5206"
                     :exclusions [io.netty/netty
                                  com.fasterxml.jackson.core/jackson-core
-                                 io.netty/netty
                                  joda-time
                                  org.slf4j/jcl-over-slf4j
                                  org.slf4j/jul-to-slf4j
