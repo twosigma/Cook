@@ -118,9 +118,8 @@
                                org.slf4j/log4j
                                log4j]]
                  [org.apache.curator/curator-test "2.7.1"
-                 ;:exclusions [io.netty/netty
-                 ;             io.netty/netty-transport-native-epoll]
-                              ]
+                 :exclusions [io.netty/netty
+                              io.netty/netty-transport-native-epoll]]
 
                  ;; Dependency management
                  [mount "0.1.12"]
@@ -165,8 +164,9 @@
                    ; using a profiles.clj file that defines a profile
                    ; which pulls in datomic-pro
                    [com.datomic/datomic-free "0.9.5206"
-                    :exclusions [;io.netty/netty
+                    :exclusions [io.netty/netty
                                  com.fasterxml.jackson.core/jackson-core
+                                 io.netty/netty
                                  joda-time
                                  org.slf4j/jcl-over-slf4j
                                  org.slf4j/jul-to-slf4j
