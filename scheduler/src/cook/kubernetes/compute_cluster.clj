@@ -413,7 +413,7 @@
         (let [node-name->node (get @pool->node-name->node pool-name)]
           (if-not (or (cc/autoscaling? this pool-name) node-name->node)
             (log/info "In" name "compute cluster, not looking for offers for pool" pool-name
-                      ". Skipping pool because it is not a known Kubernetes pool.")
+                      "; it doesn't autoscale for, and has 0 nodes tainted for" pool-name)
             (do
               (log/info "In" name "compute cluster, looking for offers for pool" pool-name)
               (let [timer (timers/start (metrics/timer "cc-pending-offers-compute" name))
