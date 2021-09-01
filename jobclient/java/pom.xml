@@ -12,7 +12,7 @@
     </license>
   </licenses>
   <properties>
-      <jmockit.version>1.18</jmockit.version>
+      <jmockit.version>1.41</jmockit.version>  <!-- 1.42 is broken and fails to run. -->
   </properties>
   <build>
       <directory>target</directory>
@@ -51,8 +51,7 @@
               <artifactId>maven-surefire-plugin</artifactId>
               <version>2.22.1</version>
               <configuration>
-		  <forkCount>0</forkCount> <!-- changed this to 0 -->
-                  <argLine>-javaagent:${env.HOME}/.m2/repository/org/jmockit/jmockit/${jmockit.version}/jmockit-${jmockit.version}.jar  --illegal-access=permit -Djdk.attach.allowAttachSelf=true</argLine>
+                  <argLine>-javaagent:${env.HOME}/.m2/repository/org/jmockit/jmockit/${jmockit.version}/jmockit-${jmockit.version}.jar</argLine>
               </configuration>
           </plugin>
       </plugins>
