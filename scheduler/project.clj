@@ -75,6 +75,11 @@
                  [org.eclipse.jetty/jetty-server "9.2.6.v20141205"]
                  [org.eclipse.jetty/jetty-security "9.2.6.v20141205"]
 
+                 ; Bring in netty. Note the black magic needed to import the native netty library for lein
+                 ; These versions must match. Make sure to add exclusions for both of these to suppress mismatched imports.
+                 [io.netty/netty-handler "4.1.63.Final"]
+                 [io.netty/netty-transport-native-epoll "4.1.63.Final" :classifier "linux-x86_64"]
+
 
                  ;;Metrics
                  [metrics-clojure "2.6.1"
@@ -109,7 +114,9 @@
                   :exclusions [org.slf4j/slf4j-log4j12
                                org.slf4j/log4j
                                log4j]]
-                 [org.apache.curator/curator-test "5.2.0"]
+                 [org.apache.curator/curator-test "5.2.0"
+                 :exclusions [io.netty/netty
+                              io.netty/netty-transport-native-epoll]]
 
                  ;; Dependency management
                  [mount "0.1.12"]
@@ -154,7 +161,9 @@
                    ; using a profiles.clj file that defines a profile
                    ; which pulls in datomic-pro
                    [com.datomic/datomic-free "0.9.5206"
-                    :exclusions [com.fasterxml.jackson.core/jackson-core
+                    :exclusions [io.netty/netty
+                                 com.fasterxml.jackson.core/jackson-core
+                                 io.netty/netty
                                  joda-time
                                  org.slf4j/jcl-over-slf4j
                                  org.slf4j/jul-to-slf4j
