@@ -112,7 +112,7 @@
                  [liberator "0.15.0"]
 
                  ;;Databases
-                 ;; TODO: Should upgrade curator to avoid illegal reflective access warnings.
+                 ;; TODO: Should upgrade curator to avoid illegal reflective access warnings. (5.2.0 is latest)
                  [org.apache.curator/curator-framework "2.7.1"
                   :exclusions [io.netty/netty]]
                  [org.apache.curator/curator-recipes "2.7.1"
