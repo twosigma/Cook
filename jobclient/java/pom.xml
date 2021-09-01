@@ -51,7 +51,7 @@
               <artifactId>maven-surefire-plugin</artifactId>
               <version>2.22.1</version>
               <configuration>
-                  <argLine>-javaagent:${env.HOME}/.m2/repository/org/jmockit/jmockit/${jmockit.version}/jmockit-${jmockit.version}.jar</argLine>
+                  <argLine>-javaagent:${env.HOME}/.m2/repository/org/jmockit/jmockit/${jmockit.version}/jmockit-${jmockit.version}.jar  --illegal-access=permit</argLine>
               </configuration>
           </plugin>
       </plugins>
