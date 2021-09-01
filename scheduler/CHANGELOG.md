@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.55.1] - 2021-09-01
+### Added
+- `exit-code` and `instance-exited?` to `pod-completed` passport events, from @dposada
+### Changed
+- Revamped pod-submission-related passport events, from @dposada
+- Clarified not-looking-for-offers log, from @dposada
+
 ## [1.55.0] - 2021-08-27
 ### Added
 - Incremental feature flags, from @nsinkov
