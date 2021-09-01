@@ -236,7 +236,7 @@
              ;"-Dsun.security.jgss.native=true"
              ;"-Dsun.security.jgss.lib=/opt/mitkrb5/lib/libgssapi_krb5.so"
              ;"-Djavax.security.auth.useSubjectCredsOnly=false"
-             "-Xlog:gc*,compaction*,stringdedup*=debug,stringtable*,ergo*,safepoint,age=trace:file=gclog-%t:time,level,tags"
+             "-Xlog:gc*,compaction*,stringdedup*=debug,stringtable*,ergo*,safepoint,gc+age=trace:file=gclog-%t:time,level,tags"
              "-XX:+UseG1GC"
              "-XX:+UseStringDeduplication"
              "-XX:+HeapDumpOnOutOfMemoryError"
