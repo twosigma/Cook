@@ -52,7 +52,7 @@
               <version>2.22.1</version>
               <configuration>
 		  <forkCount>0</forkCount> <!-- changed this to 0 -->
-                  <argLine>-javaagent:${env.HOME}/.m2/repository/org/jmockit/jmockit/${jmockit.version}/jmockit-${jmockit.version}.jar  --illegal-access=permit</argLine>
+                  <argLine>-javaagent:${env.HOME}/.m2/repository/org/jmockit/jmockit/${jmockit.version}/jmockit-${jmockit.version}.jar  --illegal-access=permit -Djdk.attach.allowAttachSelf=true</argLine>
               </configuration>
           </plugin>
       </plugins>
