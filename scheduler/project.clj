@@ -77,12 +77,12 @@
 
                  ; Bring in netty. Note that this is brought in in a lot of other places, Exclude it whenever finding another one.
                  ; Need to make sure all imports are importing the same version.
-                 [io.netty/netty-handler "4.1.63.Final"]
+                 ;[io.netty/netty-handler "4.1.63.Final"]
                  ; Netty now uses epoll with a native library. We need to tell lein our architecture so it can bring in the
                  ; right library architecture. Make sure this version smatches.
-                 [io.netty/netty-transport-native-epoll "4.1.63.Final" :classifier "linux-x86_64"]
-                 [io.netty/netty-transport-native-unix-common "4.1.63.Final" :classifier "linux-x86_64"]
-
+                 ;[io.netty/netty-transport-native-epoll "4.1.63.Final" :classifier "linux-x86_64"]
+                 ;[io.netty/netty-transport-native-unix-common "4.1.63.Final" :classifier "linux-x86_64"]
+                 [io.netty/netty "3.10.1.Final"]
 
                  ;;Metrics
                  [metrics-clojure "2.6.1"
@@ -111,13 +111,13 @@
                  [liberator "0.15.0"]
 
                  ;;Databases
-                 [org.apache.curator/curator-framework "5.2.0"
+                 [org.apache.curator/curator-framework "2.7.1"
                   :exclusions [io.netty/netty]]
-                 [org.apache.curator/curator-recipes "5.2.0"
+                 [org.apache.curator/curator-recipes "2.7.1"
                   :exclusions [org.slf4j/slf4j-log4j12
                                org.slf4j/log4j
                                log4j]]
-                 [org.apache.curator/curator-test "5.2.0"
+                 [org.apache.curator/curator-test "2.7.1"
                  :exclusions [io.netty/netty
                               io.netty/netty-transport-native-epoll]]
 
