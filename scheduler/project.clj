@@ -75,10 +75,13 @@
                  [org.eclipse.jetty/jetty-server "9.2.6.v20141205"]
                  [org.eclipse.jetty/jetty-security "9.2.6.v20141205"]
 
-                 ; Bring in netty. Note the black magic needed to import the native netty library for lein
-                 ; These versions must match. Make sure to add exclusions for both of these to suppress mismatched imports.
+                 ; Bring in netty. Note that this is brought in in a lot of other places, Exclude it whenever finding another one.
+                 ; Need to make sure all imports are importing the same version.
                  [io.netty/netty-handler "4.1.63.Final"]
+                 ; Netty now uses epoll with a native library. We need to tell lein our architecture so it can bring in the
+                 ; right library architecture. Make sure this version smatches.
                  [io.netty/netty-transport-native-epoll "4.1.63.Final" :classifier "linux-x86_64"]
+                 [io.netty/netty-transport-native-unix-common "4.1.63.Final" :classifier "linux-x86_64"]
 
 
                  ;;Metrics
