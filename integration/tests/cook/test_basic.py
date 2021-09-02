@@ -2070,7 +2070,25 @@ class CookTest(util.CookTest):
             max_retries=5)
         self.assertEqual(resp.status_code, 201)
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
-        self.assertEqual(job["container"]["docker"]["image"], expected_container["docker"]["image"])
+        default_image_config = expected_container["docker"]["image"]
+        job_image = job["container"]["docker"]["image"]
+        if default_image_config != job_image:
+            resp = util.session.get(f'{self.cook_url}/incremental-config')
+            self.assertEqual(200, resp.status_code)
+            resp_json = resp.json()
+            config_values = resp_json.get(default_image_config, None)
+            test_failed = False
+            if not config_values or not isinstance(config_values, list):
+                test_failed = True
+            else:
+                image_matched = False
+                for config_value in config_values:
+                    if config_value.get('value', None) == job_image:
+                        image_matched = True
+                test_failed = not image_matched
+            if test_failed:
+                self.fail(f'job_image ({job_image}) does not match default_image_config ({default_image_config})'
+                          f' and does not match any incremental default image configurations ({config_values})')
         self.assertIn('success', [i['status'] for i in job['instances']])
 
     @unittest.skipUnless(util.docker_tests_enabled() and util.has_docker_service() and not util.using_kubernetes(),
