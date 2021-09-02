@@ -582,7 +582,7 @@
     (throw (ex-info "The uid is unavailable for the user" {:job-id id :user user}))))
 
 (defn- build-docker-container
-  [user id container {:keys [uuid]} pool-name]
+  [user id container {:keys [uuid name]} pool-name]
   (let [container-id (d/tempid :db.part/user)
         docker-id (d/tempid :db.part/user)
         volumes (or (:volumes container) [])
