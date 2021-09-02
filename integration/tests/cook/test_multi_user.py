@@ -361,7 +361,7 @@ class MultiUserCookTest(util.CookTest):
 
             trigger_submission_rate_limit()
 
-    def trigger_preemption(self, pool):
+    def trigger_preemption(self, pool, user):
         """
         Triggers preemption on the provided pool (which can be None) by doing the following:
 
@@ -372,7 +372,6 @@ class MultiUserCookTest(util.CookTest):
         5. Submit a job, J2, from X with 0.1 cpu and priority 100
         6. Wait until J1 is preempted (to make room for J2)
         """
-        user = self.user_factory.new_user()
         all_job_uuids = []
         try:
             large_cpus = util.get_default_cpus()
@@ -442,24 +441,21 @@ class MultiUserCookTest(util.CookTest):
                 util.reset_limit(self.cook_url, 'quota', user.name, reason=self.current_name(), pool=pool)
 
     @unittest.skipUnless(util.is_preemption_enabled(), 'Preemption is not enabled on the cluster')
+    @unittest.skipUnless(util.default_submit_pool() is not None, 'Test requires a default test pool')
     @pytest.mark.serial
-    @pytest.mark.xfail
     # The test timeout needs to be a little more than 2 times the
     # rebalancer interval to allow at least two runs of the rebalancer
     @pytest.mark.timeout((util.rebalancer_interval_seconds() * 2.5) + 60)
     def test_preemption_basic(self):
-        self.trigger_preemption(pool=None)
-
-    @unittest.skipUnless(util.is_preemption_enabled(), 'Preemption is not enabled on the cluster')
-    @unittest.skipUnless(util.are_pools_enabled(), 'Pools are not enabled on the cluster')
-    @pytest.mark.serial
-    @pytest.mark.xfail
-    def test_preemption_for_pools(self):
-        pools, _ = util.active_pools(self.cook_url)
-        self.assertLess(0, len(pools))
-        for pool in pools:
-            self.logger.info(f'Triggering preemption for {pool}')
-            self.trigger_preemption(pool=pool['name'])
+        pool = util.default_submit_pool()
+        rebalancer_pool_regex = util.rebalancer_settings().get('pool-regex', None)
+        if rebalancer_pool_regex and re.match(rebalancer_pool_regex, pool):
+            user = self.user_factory.new_user()
+            self.logger.info(f'Using pool {pool} and user {user.name} for preemption test')
+            self.trigger_preemption(pool, user)
+        else:
+            self.skipTest(f'The rebalancer pool regex ({rebalancer_pool_regex}) '
+                          f'does not match the default submit pool ({pool})')
 
     @unittest.skipUnless(util.are_pools_enabled(), "Requires pools")
     @unittest.skipIf(util.using_kubernetes(), 'This test is not yet supported on kubernetes')
