@@ -118,6 +118,7 @@
    :kubernetes {:synthetic-pod-recency-seconds 1 :max-jobs-for-autoscaling 1000 :autoscaling-scale-factor 1000.0}
    :unhandled-exceptions {}
    :zookeeper {:local? true}})
+   
 (defn setup
   "Given an optional config map, initializes the config state"
   [& {:keys [config] :or {config nil}}]
