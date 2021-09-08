@@ -97,51 +97,54 @@
       (fake-test-compute-cluster-with-driver conn cluster-name nil))
     (or compute-cluster (cc/compute-cluster-name->ComputeCluster cluster-name))))
 
-(let [minimal-config {:authorization {:one-user ""}
-                      :cache-working-set-size 1000
-                      :compute-clusters [{:factory-fn cook.mesos.mesos-compute-cluster/factory-fn
-                                          :config {:compute-cluster-name fake-test-compute-cluster-name}}]
-                      :database {:datomic-uri ""}
-                      :log (cond-> {}
-                             ; Allow tests that go through the real logging
-                             ; initialization code to log to the console when
-                             ; requested via the property
-                             (System/getProperty "cook.test.logging.console")
-                             (assoc :file "/dev/stdout"))
-                      :mesos {:leader-path "", :master ""}
-                      :metrics {}
-                      :nrepl {}
-                      :port 80
-                      :scheduler {}
-                      :kubernetes {:synthetic-pod-recency-seconds 1 :max-jobs-for-autoscaling 1000 :autoscaling-scale-factor 1000.0}
-                      :unhandled-exceptions {}
-                      :zookeeper {:local? true}}]
-  (defn setup
-    "Given an optional config map, initializes the config state"
-    [& {:keys [config], :or nil}]
-    (mount/stop)
-    (mount/start-with-args (merge minimal-config config)
-                           #'cook.config/config
-                           #'cook.plugins.adjustment/plugin
-                           #'cook.plugins.file/plugin
-                           #'cook.plugins.launch/job-launch-cache
-                           #'cook.plugins.launch/plugin-object
-                           #'cook.plugins.pool/plugin
-                           #'cook.plugins.submission/plugin-object
-                           #'caches/job-ent->resources-cache
-                           #'caches/job-ent->pool-cache
-                           #'caches/task-ent->user-cache
-                           #'caches/task->feature-vector-cache
-                           #'caches/job-ent->user-cache
-                           #'cook.quota/per-user-per-pool-launch-rate-limiter
-                           #'caches/user->group-ids-cache
-                           #'caches/recent-synthetic-pod-job-uuids
-                           #'caches/pool-name->exists?-cache
-                           #'caches/pool-name->accepts-submissions?-cache
-                           #'caches/pool-name->db-id-cache
-                           #'caches/user-and-pool-name->quota
-                           #'caches/instance-uuid->job-uuid
-                           #'caches/job-uuid->job-map)))
+(defn minimal-config
+  []
+  {:authorization {:one-user ""}
+   :cache-working-set-size 1000
+   :compute-clusters [{:factory-fn cook.mesos.mesos-compute-cluster/factory-fn
+                       :config {:compute-cluster-name fake-test-compute-cluster-name}}]
+   :database {:datomic-uri ""}
+   :log (cond-> {}
+          ; Allow tests that go through the real logging
+          ; initialization code to log to the console when
+          ; requested via the property
+          (System/getProperty "cook.test.logging.console")
+          (assoc :file "/dev/stdout"))
+   :mesos {:leader-path "", :master ""}
+   :metrics {}
+   :nrepl {}
+   :port 80
+   :scheduler {}
+   :kubernetes {:synthetic-pod-recency-seconds 1 :max-jobs-for-autoscaling 1000 :autoscaling-scale-factor 1000.0}
+   :unhandled-exceptions {}
+   :zookeeper {:local? true}})
+   
+(defn setup
+  "Given an optional config map, initializes the config state"
+  [& {:keys [config] :or {config nil}}]
+  (mount/stop)
+  (mount/start-with-args (merge (minimal-config) config)
+                         #'cook.config/config
+                         #'cook.plugins.adjustment/plugin
+                         #'cook.plugins.file/plugin
+                         #'cook.plugins.launch/job-launch-cache
+                         #'cook.plugins.launch/plugin-object
+                         #'cook.plugins.pool/plugin
+                         #'cook.plugins.submission/plugin-object
+                         #'caches/job-ent->resources-cache
+                         #'caches/job-ent->pool-cache
+                         #'caches/task-ent->user-cache
+                         #'caches/task->feature-vector-cache
+                         #'caches/job-ent->user-cache
+                         #'cook.quota/per-user-per-pool-launch-rate-limiter
+                         #'caches/user->group-ids-cache
+                         #'caches/recent-synthetic-pod-job-uuids
+                         #'caches/pool-name->exists?-cache
+                         #'caches/pool-name->accepts-submissions?-cache
+                         #'caches/pool-name->db-id-cache
+                         #'caches/user-and-pool-name->quota
+                         #'caches/instance-uuid->job-uuid
+                         #'caches/job-uuid->job-map))
 
 (defn run-test-server-in-thread
   "Runs a minimal cook scheduler server for testing inside a thread. Note that it is not properly kerberized."
