@@ -1156,7 +1156,7 @@
 (defn resolve-image-from-incremental-config
   "Helper method to resolve a container's image from an incremental configuration"
   [job passport-event-base passport-event-type image-config image-fallback]
-  (let [job-uuid (:uuid job)]
+  (let [job-uuid (:job/uuid job)]
     (if (string? image-config)
       image-config
       (let [[resolved-config reason] (config-incremental/resolve-incremental-config job-uuid image-config image-fallback)]
@@ -1367,7 +1367,7 @@
                                 :main-container-checkpoint-volume-mounts main-container-checkpoint-volume-mounts
                                 :main-env-vars main-env-vars
                                 :passport-event-base {:job-name job-name
-                                                      :job-uuid (str (:uuid job))
+                                                      :job-uuid (str (:job/uuid job))
                                                       :pool pool-name
                                                       :user user}
                                 :pod-name pod-name

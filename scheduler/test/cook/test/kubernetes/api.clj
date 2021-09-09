@@ -1193,7 +1193,7 @@
                (api/list-pods nil "test-compute-cluster" 1)))))))
 
 (deftest test-resolve-image-from-incremental-config
-  (let [job {:uuid (java.util.UUID/fromString "41062821-b248-4375-82f8-a8256643c94e")}
+  (let [job {:job/uuid (java.util.UUID/fromString "41062821-b248-4375-82f8-a8256643c94e")}
         image-config [{:value "my-image" :portion 1.0}]
         image-fallback "fallback-image"]
     (is (= "my-image" (api/resolve-image-from-incremental-config job nil nil image-config image-fallback)))
