@@ -29,10 +29,12 @@
                                                      :event-type (str "cook-scheduler/" (name event-type)))))))
 
 (def default-image-selected :default-image-selected)
+(def init-container-image-selected :init-container-image-selected)
 (def job-created :job-created)
 (def job-submitted :job-submitted)
 (def pod-completed :pod-completed)
 (def pod-submission-succeeded :pod-submission-succeeded)
+(def sidecar-image-selected :sidecar-image-selected)
 (def synthetic-pod-submission-succeeded :synthetic-pod-submission-succeeded)
 (def pod-submission-failed :pod-submission-failed)
 (def synthetic-pod-submission-failed :synthetic-pod-submission-failed)

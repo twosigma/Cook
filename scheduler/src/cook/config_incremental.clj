@@ -99,10 +99,18 @@
   (select-config-from-values uuid (read-config config-key)))
 
 (defn resolve-incremental-config
-  "Resolve an incremental config to the appropriate value."
-  [^UUID uuid incremental-config]
-  (cond
-    (coll? incremental-config)
-    (select-config-from-values uuid incremental-config)
-    (keyword? incremental-config)
-    (select-config-from-key uuid incremental-config)))
+  "Resolve an incremental config to the appropriate value.
+  With an overload that takes a fallback config to use in case the incremental config cannot be resolved."
+  ([^UUID uuid incremental-config]
+   (cond
+     (coll? incremental-config)
+     (select-config-from-values uuid incremental-config)
+     (keyword? incremental-config)
+     (select-config-from-key uuid incremental-config)))
+  ([^UUID uuid incremental-config fallback-config]
+   (let [resolved-incremental-config (resolve-incremental-config uuid incremental-config)]
+     (if resolved-incremental-config
+       [resolved-incremental-config :resolved-incremental-config]
+       ; use a fallback config in case there is a problem resolving an incremental config
+       [fallback-config :used-fallback-config]))))
+
