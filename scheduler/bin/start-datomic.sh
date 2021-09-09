@@ -3,7 +3,7 @@
 set -euf -o pipefail
 
 PROJECT_DIR="$(dirname $0)/.."
-DATOMIC_VERSION="0.9.5394"
+DATOMIC_VERSION="0.9.5561.56"
 DATOMIC_DIR="${PROJECT_DIR}/datomic/datomic-free-${DATOMIC_VERSION}"
 
 if [ ! -d "${DATOMIC_DIR}" ];

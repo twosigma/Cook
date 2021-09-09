@@ -721,8 +721,8 @@
                   :state-locked? true
                   :template "template1"
                   :location "us-east1"
-                  :features [{:key "foo" :value "bar"}
-                             {:key "baz" :value "qux"}]}
+                  :features (list {:key "baz" :value "qux"}
+                                  {:key "foo" :value "bar"})}
                  (-> (get-db-config-ents (d/db conn))
                      (get "name")
                      compute-cluster-config-ent->compute-cluster-config)))
