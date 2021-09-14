@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.56.0] - 2021-09-14
+### Changed
+- Upgraded Cook to work with JDK11 and Clojure 1.10, from @scrosby 
+
 ## [1.55.2] - 2021-09-02
 ### Fixed
 - Bug in default image selection logging, from @nsinkov
