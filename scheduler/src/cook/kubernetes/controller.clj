@@ -11,6 +11,7 @@
             [cook.scheduler.scheduler :as scheduler]
             [metrics.timers :as timers])
   (:import (clojure.lang IAtom)
+           (com.twosigma.cook.kubernetes RemoveFinalizerHelper)
            (io.kubernetes.client.openapi.models V1ContainerStatus V1ObjectMeta V1Pod V1PodStatus)
            (java.net URLEncoder)
            (java.util.concurrent.locks Lock)))
@@ -663,7 +664,17 @@
   if force-process? is true."
   ([compute-cluster pod-name ^V1Pod pod]
    (synthesize-state-and-process-pod-if-changed compute-cluster pod-name pod false))
-  ([{:keys [k8s-actual-state-map name] :as compute-cluster} pod-name ^V1Pod pod force-process?]
+  ([{:keys [k8s-actual-state-map api-client name] :as compute-cluster} pod-name ^V1Pod pod force-process?]
+
+   (let [^V1ObjectMeta pod-metadata (some-> pod .getMetadata)
+         pod-deletion-timestamp (some-> pod .getMetadata .getDeletionTimestamp)]
+     (when (and pod-deletion-timestamp (some #(= RemoveFinalizerHelper/collectResultsFinalizer %) (.getFinalizers pod-metadata)))
+       (log/info "In compute-cluster" name ", deleting finalizer for pod" pod-name)
+       (try
+         (RemoveFinalizerHelper/removeFinalizer api-client pod)
+         (catch Exception e
+           (log/error e "In compute-cluster" name ", error deleting finalizer for pod" pod-name)))))
+
    (let [new-state {:pod pod
                     :synthesized-state (api/pod->synthesized-pod-state pod-name pod)
                     :sandbox-file-server-container-state (api/pod->sandbox-file-server-container-state pod)}
