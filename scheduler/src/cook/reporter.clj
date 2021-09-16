@@ -28,7 +28,7 @@
 
 (defn jmx-reporter
   []
-  (.. (com.codahale.metrics.JmxReporter/forRegistry metrics/default-registry)
+  (.. (com.codahale.metrics.jmx.JmxReporter/forRegistry metrics/default-registry)
       (build)
       (start)))
 
