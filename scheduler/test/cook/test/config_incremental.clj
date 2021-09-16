@@ -46,7 +46,10 @@
       (testing "static or dynamic config"
         (is (= "value a" (resolve-incremental-config uuid-a key)))
         (is (= "value a" (resolve-incremental-config uuid-a values)))
-        (is (= nil (resolve-incremental-config uuid-a "other value"))))
+        (is (= nil (resolve-incremental-config uuid-a "other value")))
+        (is (= ["value a" :resolved-incremental-config] (resolve-incremental-config uuid-a key "fallback")))
+        (is (= ["value a" :resolved-incremental-config] (resolve-incremental-config uuid-a values "fallback")))
+        (is (= ["fallback" :used-fallback-config] (resolve-incremental-config uuid-a "other value" "fallback"))))
       (testing "statistical distribution"
         (let [get-distribution (fn get-distribution
                                  [rand bytes key]

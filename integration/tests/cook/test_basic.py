@@ -2941,9 +2941,9 @@ class CookTest(util.CookTest):
             util.kill_jobs(self.cook_url, [job_uuid1, job_uuid2])
 
     @unittest.skipUnless(util.using_kubernetes() and util.in_cloud(), 'Test requires kubernetes')
-    @pytest.mark.xfail  # Temporarily disable because of infrastructure issue. TODO: this should not exist past 20210312
     def test_kubernetes_checkpointing(self):
         docker_image = util.docker_image()
+
         container = {'type': 'docker',
                      'docker': {'image': docker_image}}
         try:

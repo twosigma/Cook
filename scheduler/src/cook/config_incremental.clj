@@ -99,10 +99,25 @@
   (select-config-from-values uuid (read-config config-key)))
 
 (defn resolve-incremental-config
-  "Resolve an incremental config to the appropriate value."
-  [^UUID uuid incremental-config]
-  (cond
-    (coll? incremental-config)
-    (select-config-from-values uuid incremental-config)
-    (keyword? incremental-config)
-    (select-config-from-key uuid incremental-config)))
+  "Resolve an incremental config to the appropriate value.
+  With an overload that takes a fallback config to use in case the incremental config cannot be resolved.
+  If the incremental config cannot be resolved and there is no fallback then nil is returned and it is up to the caller
+  to handle appropriately.
+
+  An incremental configuration can either be a collection of incremental values or a keyword.
+  If it is a keyword, then it is used as a key to look up a collection of incremental values in the database.
+  An collection of incremental values is resolved by picking one of the values using the job uuid hash. Each incremental
+  value has an associated portion and the portions must add up to 1.0"
+  ([^UUID uuid incremental-config]
+   (cond
+     (coll? incremental-config)
+     (select-config-from-values uuid incremental-config)
+     (keyword? incremental-config)
+     (select-config-from-key uuid incremental-config)))
+  ([^UUID uuid incremental-config fallback-config]
+   (let [resolved-incremental-config (resolve-incremental-config uuid incremental-config)]
+     (if resolved-incremental-config
+       [resolved-incremental-config :resolved-incremental-config]
+       ; use a fallback config in case there is a problem resolving an incremental config
+       [fallback-config :used-fallback-config]))))
+

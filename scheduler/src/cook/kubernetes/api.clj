@@ -7,6 +7,7 @@
             [clojure.walk :as walk]
             [cook.cached-queries :as cached-queries]
             [cook.config :as config]
+            [cook.config-incremental :as config-incremental]
             [cook.kubernetes.metrics :as metrics]
             [cook.passport :as passport]
             [cook.regexp-tools :as regexp-tools]
@@ -1152,11 +1153,26 @@
 
     (.addContainersItem pod-spec container)))
 
+(defn resolve-image-from-incremental-config
+  "Helper method to resolve a container's image from an incremental configuration"
+  [job passport-event-base passport-event-type image-config image-fallback]
+  (let [job-uuid (:job/uuid job)]
+    (if (string? image-config)
+      image-config
+      (let [[resolved-config reason] (config-incremental/resolve-incremental-config job-uuid image-config image-fallback)]
+        (passport/log-event (merge passport-event-base
+                                   {:event-type passport-event-type
+                                    :image-config image-config
+                                    :reason reason
+                                    :resolved-config resolved-config}))
+        resolved-config))))
+
 (defn add-cook-init-to-pod
   "Create Cook init container and add it to the pod"
   [{:keys [computed-mem cpus init-container init-container-checkpoint-volume-mounts init-container-workdir
-           init-container-workdir-volume-mount-fn main-env-vars ^V1PodSpec pod-spec scratch-space-volume-mount-fn sidecar use-cook-sidecar?]}]
-  (when-let [{:keys [command image]} init-container]
+           init-container-workdir-volume-mount-fn main-env-vars ^V1PodSpec pod-spec scratch-space-volume-mount-fn
+           sidecar use-cook-sidecar? job passport-event-base]}]
+  (when-let [{:keys [command image image-fallback]} init-container]
     (let [container (V1Container.)
           get-resource-requirements-fn (fn [fieldname] (if use-cook-sidecar?
                                                          (get-in sidecar [:resource-requirements fieldname])
@@ -1168,7 +1184,9 @@
           resources (V1ResourceRequirements.)]
       ; container
       (.setName container cook-init-container-name)
-      (.setImage container image)
+      (.setImage container (resolve-image-from-incremental-config
+                             job passport-event-base passport/init-container-image-selected
+                             image image-fallback))
       (.setCommand container command)
       (.setWorkingDir container init-container-workdir)
       (.setEnv container main-env-vars)
@@ -1181,14 +1199,17 @@
 
 (defn add-cook-sidecar-to-pod
   "Create Cook Sidecar container and add it to the pod"
-  [{:keys [main-env-vars ^V1PodSpec pod-spec sidecar sandbox-dir sandbox-volume-mount-fn scratch-space-volume-mount-fn sidecar-workdir sidecar-workdir-volume-mount-fn]}]
-  (when-let [{:keys [command health-check-endpoint image port resource-requirements]} sidecar]
+  [{:keys [main-env-vars ^V1PodSpec pod-spec sidecar sandbox-dir sandbox-volume-mount-fn scratch-space-volume-mount-fn
+           sidecar-workdir sidecar-workdir-volume-mount-fn job passport-event-base]}]
+  (when-let [{:keys [command health-check-endpoint image image-fallback port resource-requirements]} sidecar]
     (let [{:keys [cpu-request cpu-limit memory-request memory-limit]} resource-requirements
           container (V1Container.)
           resources (V1ResourceRequirements.)]
       ; container
       (.setName container cook-container-name-for-file-server)
-      (.setImage container image)
+      (.setImage container (resolve-image-from-incremental-config
+                             job passport-event-base passport/sidecar-image-selected
+                             image image-fallback))
       (.setCommand container (conj command (str port)))
       (.setWorkingDir container sidecar-workdir)
       (.setPorts container [(.containerPort (V1ContainerPort.) (int port))])
@@ -1342,8 +1363,13 @@
                                 :init-container-checkpoint-volume-mounts init-container-checkpoint-volume-mounts
                                 :init-container-workdir init-container-workdir
                                 :init-container-workdir-volume-mount-fn init-container-workdir-volume-mount-fn
+                                :job job
                                 :main-container-checkpoint-volume-mounts main-container-checkpoint-volume-mounts
                                 :main-env-vars main-env-vars
+                                :passport-event-base {:job-name job-name
+                                                      :job-uuid (str (:job/uuid job))
+                                                      :pool pool-name
+                                                      :user user}
                                 :pod-name pod-name
                                 :pod-spec pod-spec
                                 :pool-name pool-name

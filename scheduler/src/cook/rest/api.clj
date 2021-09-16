@@ -593,11 +593,7 @@
         image-config (:image docker)
         image (if (string? image-config)
                 image-config
-                (let [incremental-image-config (config-incremental/resolve-incremental-config uuid image-config)
-                      [resolved-config reason] (if incremental-image-config
-                                                 [incremental-image-config :resolved-incremental-config]
-                                                 ; use a fallback image in case there is a problem resolving an incremental config
-                                                 [(:image-fallback docker) :used-image-fallback])]
+                (let [[resolved-config reason] (config-incremental/resolve-incremental-config uuid image-config (:image-fallback docker))]
                   (passport/log-event {:event-type passport/default-image-selected
                                        :image-config image-config
                                        :job-name name
