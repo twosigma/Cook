@@ -48,6 +48,7 @@
             [cook.rest.impersonation :refer [impersonation-authorized-wrapper]]
             [cook.util :as util]
             [datomic.api :as d]
+            [fork.metrics-clojure.metrics.jvm.core :as metrics-jvm]
             [metrics.ring.instrument :refer [instrument]]
             [mount.core :as mount]
             [plumbing.core :refer [fnk]]
@@ -346,6 +347,7 @@
     ; dependency tree of anything using mount. See also issue #1370
     (mount/start-with-args (cook.config/read-config config-file-path))
     (pool/guard-invalid-default-pool (d/db datomic/conn))
+    (metrics-jvm/instrument-jvm)
     (let [server (scheduler-server config)]
       (intern 'user 'main-graph server)
       (log/info "Started Cook, stored variable in user/main-graph"))
