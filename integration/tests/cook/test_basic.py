@@ -2943,6 +2943,7 @@ class CookTest(util.CookTest):
     @unittest.skipUnless(util.using_kubernetes() and util.in_cloud(), 'Test requires kubernetes')
     def test_kubernetes_checkpointing(self):
         docker_image = util.docker_image()
+
         container = {'type': 'docker',
                      'docker': {'image': docker_image}}
         try:
