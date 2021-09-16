@@ -409,19 +409,6 @@
                          :publish-interval-ms 2500
                          :sequence-cache-threshold 1000}
                         progress))
-     :riemann (fnk [[:config [:metrics {riemann nil}]]]
-                riemann)
-     :riemann-metrics (fnk [[:config [:metrics {riemann nil}]]]
-                        (when riemann
-                          (when-not (:host riemann)
-                            (throw (ex-info "You must specific the :host to send the riemann metrics to!" {:riemann riemann})))
-                          (when-not (every? string? (:tags riemann))
-                            (throw (ex-info "Riemann tags must be a [\"list\", \"of\", \"strings\"]" riemann)))
-                          (let [config (merge {:port 5555
-                                               :local-host (.getHostName
-                                                             (InetAddress/getLocalHost))}
-                                              riemann)]
-                            ((util/lazy-load-var 'cook.reporter/riemann-reporter) config))))
      :console-metrics (fnk [[:config [:metrics {console false}]]]
                         (when console
                           ((util/lazy-load-var 'cook.reporter/console-reporter))))
