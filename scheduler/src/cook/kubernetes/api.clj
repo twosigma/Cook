@@ -1311,7 +1311,7 @@
                      ;; Add a default progress file path to the environment when missing,
                      ;; preserving compatibility with Meosos + Cook Executor.
                      (not progress-file-path)
-                     (assoc progress-file-var (str workdir "/" task-id ".progress"))
+                     (assoc progress-file-var (str workdir "/" (str (:job/uuid job)) ".progress"))
 
                      mem
                      (assoc "COOK_USER_MEMORY_REQUEST_BYTES" (* memory-multiplier mem))

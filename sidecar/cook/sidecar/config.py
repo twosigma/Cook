@@ -67,6 +67,9 @@ def initialize_config(environment):
     instance_id = environment.get('COOK_INSTANCE_UUID')
     if instance_id is None:
         raise Exception('Task unknown! COOK_INSTANCE_UUID not set in environment.')
+    job_uuid = environment.get('COOK_JOB_UUID')
+    if job_uuid is None:
+        raise Exception('Job unknown! job_uuid not set in environment.')
 
     cook_scheduler_rest_url = environment.get('COOK_SCHEDULER_REST_URL')
     if cook_scheduler_rest_url is None:
@@ -83,7 +86,7 @@ def initialize_config(environment):
     if progress_output_env_variable not in environment:
         logging.info(f'No entry found for {progress_output_env_variable} in the environment')
 
-    default_progress_output_name = environment.get(progress_output_env_variable, f'{instance_id}.progress')
+    default_progress_output_name = environment.get(progress_output_env_variable, f'{job_uuid}.progress')
     if sandbox_directory:
         default_progress_output_file = os.path.join(sandbox_directory, default_progress_output_name)
     else:
