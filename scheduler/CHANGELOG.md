@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.56.1] - 2021-09-20
+### Changed
+- Add incremental image configuration support for aux containers, from @nsinkov
+### Fixed
+- Fix metric reporting that was broken in JDK-11, from @scrosby
+- Make progress updates compatible with checkpointing, from @nsinkov
+
 ## [1.56.0] - 2021-09-14
 ### Changed
 - Upgraded Cook to work with JDK11 and Clojure 1.10, from @scrosby 
