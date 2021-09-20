@@ -18,10 +18,8 @@
             [datomic.api :refer [q]]
             [metatransaction.core :refer [db]]
             [metrics.core :as metrics])
-  (:import (com.aphyr.riemann.client RiemannClient)
-           (com.codahale.metrics ConsoleReporter MetricFilter)
+  (:import (com.codahale.metrics ConsoleReporter MetricFilter)
            (com.codahale.metrics.graphite Graphite GraphiteReporter PickledGraphite)
-           (com.codahale.metrics.riemann Riemann RiemannReporter)
            (java.net InetSocketAddress)
            (java.util.concurrent TimeUnit)))
 
@@ -30,7 +28,7 @@
 
 (defn jmx-reporter
   []
-  (.. (com.codahale.metrics.JmxReporter/forRegistry metrics/default-registry)
+  (.. (com.codahale.metrics.jmx.JmxReporter/forRegistry metrics/default-registry)
       (build)
       (start)))
 
@@ -46,30 +44,6 @@
               (convertRatesTo TimeUnit/SECONDS)
               (convertDurationsTo TimeUnit/MILLISECONDS)
               (build graphite))
-      (.start 30 TimeUnit/SECONDS))))
-
-(defn riemann-reporter
-  [{:keys [host port tags prefix mode local-host] :or {tags [] mode :tcp} :as cfg}]
-  (when (= mode :udp)
-    (throw (ex-info "You shouldn't use UDP mode Riemann! Almost every user finds it annoying when, without TCP backpressure, they start losing critical metrics during failure events." {})))
-  (let [addr (InetSocketAddress. host port)
-        riemann-client (case mode
-                         :tcp (RiemannClient/tcp host port)
-                         :udp (RiemannClient/udp addr)
-                         (throw (ex-info "Mode must be :tcp or :udp" cfg)))]
-    (try
-      (.connect riemann-client)
-      (catch Exception e
-        (log/warn e "Couldn't immediately connect to riemann. It will try to reconnect but for now no metrics are being sent.")))
-    (doto (.. (RiemannReporter/forRegistry metrics/default-registry)
-              (localHost local-host)
-              (prefixedWith prefix)
-              (filter MetricFilter/ALL)
-              (convertRatesTo TimeUnit/SECONDS)
-              (convertDurationsTo TimeUnit/MILLISECONDS)
-              (withTtl (float 60))
-              (tags tags)
-              (build (Riemann. riemann-client)))
       (.start 30 TimeUnit/SECONDS))))
 
 (defn console-reporter

@@ -85,18 +85,27 @@
                  ;[io.netty/netty-transport-native-unix-common "4.1.63.Final" :classifier "linux-x86_64"]
                  [io.netty/netty "3.10.1.Final"]
 
+
                  ;;Metrics
-                 [metrics-clojure "2.6.1"
+
+                 ; Metrics-clojure-jvm 2.10.0 depends on io.dropwizard.metrics 3.x, but
+                 ; io.dropwizard.metrics/metrics-jvm 3.x is broken on JDK > 8 because it makes an illegal access.
+                 ; metrics-clojure-jvm has had a fix for this -- updated dependencies -- since 2019 (in the unreleased 3.x)
+                 ; So we bring in 2.10.0 but force a later version of io.dropwizard.
+
+                 [io.dropwizard.metrics/metrics-graphite "4.1.21"]
+                 [io.dropwizard.metrics/metrics-core "4.1.21"]
+                 [io.dropwizard.metrics/metrics-jvm "4.1.21"]
+                 [io.dropwizard.metrics/metrics-jmx "4.1.21"]
+                 [metrics-clojure "2.10.0"
                   :exclusions [io.netty/netty org.clojure/clojure]]
+                 ; We want to include jvm metrics, but can't. Between dropwizard 3.x and 4.x, JvmAttributeGaugeSet moved
+                 ; packages metrics-clojure-jvm 3.x has the new location, but isn't released. So keep this disabled for now.
+                 ;[metrics-clojure-jvm "2.10.0"]; :exclusions [io.dropwizard.metrics/metrics-jvm]]
+                 [metrics-clojure-graphite "2.10.0"]
+
                  [metrics-clojure-ring "2.3.0" :exclusions [com.codahale.metrics/metrics-core
                                                             org.clojure/clojure io.netty/netty]]
-                 [metrics-clojure-jvm "2.6.1"]
-                 [io.dropwizard.metrics/metrics-graphite "3.1.2"]
-                 [com.aphyr/metrics3-riemann-reporter "0.4.0"
-                  :exclusions [io.netty/netty
-                               com.google.protobuf/protobuf-java
-                               com.amazonaws/aws-java-sdk]] ; Brings in a lot of dependencies
-
                  ;;External system integrations
                  [org.clojure/tools.nrepl "0.2.3"]
 

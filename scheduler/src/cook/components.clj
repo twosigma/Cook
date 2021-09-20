@@ -48,7 +48,7 @@
             [cook.rest.impersonation :refer [impersonation-authorized-wrapper]]
             [cook.util :as util]
             [datomic.api :as d]
-            [metrics.jvm.core :as metrics-jvm]
+            [fork.metrics-clojure.metrics.jvm.core :as metrics-jvm]
             [metrics.ring.instrument :refer [instrument]]
             [mount.core :as mount]
             [plumbing.core :refer [fnk]]
