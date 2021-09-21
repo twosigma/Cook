@@ -11,7 +11,7 @@
             [cook.scheduler.scheduler :as scheduler]
             [metrics.timers :as timers])
   (:import (clojure.lang IAtom)
-           (io.kubernetes.client.openapi.models V1ContainerStatus V1Pod V1PodStatus)
+           (io.kubernetes.client.openapi.models V1ContainerStatus V1ObjectMeta V1Pod V1PodStatus)
            (java.net URLEncoder)
            (java.util.concurrent.locks Lock)))
 
@@ -108,7 +108,17 @@
         (dissoc :pod)
         (assoc 
           :node-name (api/pod->node-name pod)
-          :pod-metadata (some-> ^V1Pod pod .getMetadata)
+          :pod-metadata
+          (when-let [^V1ObjectMeta metadata (some-> ^V1Pod pod .getMetadata)]
+            {:annotations (.getAnnotations metadata)
+             :creation-timestamp (.getCreationTimestamp metadata)
+             :deletion-timestamp (.getDeletionTimestamp metadata)
+             :finalizers (.getFinalizers metadata)
+             :labels (.getLabels metadata)
+             :name (.getName metadata)
+             :namespace (.getNamespace metadata)
+             :resource-version (.getResourceVersion metadata)
+             :uid (.getUid metadata)})
           :pod-status (some-> ^V1Pod pod .getStatus)))
     (catch Throwable t
       (log/error t "Error preparing k8s actual state for logging:" k8s-actual-state-dict)
