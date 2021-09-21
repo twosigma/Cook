@@ -110,11 +110,11 @@
           :node-name (api/pod->node-name pod)
           :pod-metadata
           (when-let [^V1ObjectMeta metadata (some-> ^V1Pod pod .getMetadata)]
-            {:annotations (.getAnnotations metadata)
+            {:annotations (some-> metadata .getAnnotations .entrySet)
              :creation-timestamp (.getCreationTimestamp metadata)
              :deletion-timestamp (.getDeletionTimestamp metadata)
              :finalizers (.getFinalizers metadata)
-             :labels (.getLabels metadata)
+             :labels (some-> metadata .getLabels .entrySet)
              :name (.getName metadata)
              :namespace (.getNamespace metadata)
              :resource-version (.getResourceVersion metadata)
