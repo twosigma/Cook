@@ -16,7 +16,7 @@
 (defproject cook "1.56.2-SNAPSHOT"
   :description "This launches jobs on a Mesos cluster with fair sharing and preemption"
   :license {:name "Apache License, Version 2.0"}
-  :dependencies [[org.clojure/clojure "1.10.3"]
+  :dependencies [[org.clojure/clojure "1.8.0"]
 
                  ;;Data marshalling
                  [org.clojure/data.codec "0.1.0"]
@@ -128,7 +128,6 @@
                   :exclusions [org.slf4j/slf4j-log4j12
                                org.slf4j/log4j
                                log4j]]
-                 ; Used when doing local testing in open source to setup mock curator.
                  [org.apache.curator/curator-test "2.7.1"
                  :exclusions [io.netty/netty
                               io.netty/netty-transport-native-epoll]]
@@ -140,11 +139,9 @@
                  [io.kubernetes/client-java "11.0.0"]
                  [com.google.auth/google-auth-library-oauth2-http "0.16.2"]
 
-
                  ;Version forcing by JDK11 upgrade.
                  [org.flatland/ordered "1.5.9"] ; Upgraded from 1.5.3, brought in by clj-yaml.
                  [jakarta.xml.ws/jakarta.xml.ws-api "2.3.3"] ; Needed via liberator, No longer in JDK11.
-                 [com.taoensso/encore "3.19.0"] ; Used by ring-congestion. 
                  ]
 
   :repositories {"maven2" {:url "https://files.couchbase.com/maven2/"}
@@ -177,7 +174,7 @@
                    ; library instead of the datomic-free library, by
                    ; using a profiles.clj file that defines a profile
                    ; which pulls in datomic-pro
-                   [com.datomic/datomic-free "0.9.5206" ; Note that updating this causes activeMQ errors. Suspect related to OpenSSL.
+                   [com.datomic/datomic-free "0.9.5206"
                     :exclusions [io.netty/netty
                                  com.fasterxml.jackson.core/jackson-core
                                  joda-time
@@ -193,7 +190,7 @@
 
    :uberjar
    {:aot [cook.components]
-    :dependencies [[com.datomic/datomic-free "0.9.5206" ; Note that updating this causes activeMQ errors. Suspect related to OpenSSL.
+    :dependencies [[com.datomic/datomic-free "0.9.5206"
                     :exclusions [com.fasterxml.jackson.core/jackson-core
                                  joda-time
                                  org.slf4j/jcl-over-slf4j
