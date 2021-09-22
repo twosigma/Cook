@@ -2176,8 +2176,7 @@ class CookTest(util.CookTest):
         self.assertEqual(job_uuid_1, jobs[0]['uuid'])
 
     def test_retrieve_jobs_with_deprecated_api(self):
-        pools, _ = util.active_pools(self.cook_url)
-        pool = pools[0]['name'] if len(pools) > 0 else None
+        pool = util.default_pool(self.cook_url)
         job_uuid_1, resp = util.submit_job(self.cook_url, pool=pool)
         self.assertEqual(201, resp.status_code, msg=resp.content)
         job_uuid_2, resp = util.submit_job(self.cook_url)
@@ -2191,8 +2190,8 @@ class CookTest(util.CookTest):
         self.assertEqual(job_uuid_2, resp.json()[1]['uuid'])
 
         # Query by instance uuid
-        instance_uuid_1 = util.wait_for_instance(self.cook_url, job_uuid_1)['task_id']
-        instance_uuid_2 = util.wait_for_instance(self.cook_url, job_uuid_2)['task_id']
+        instance_uuid_1 = util.wait_for_instance(self.cook_url, job_uuid_1, wait_interval_ms=5000)['task_id']
+        instance_uuid_2 = util.wait_for_instance(self.cook_url, job_uuid_2, wait_interval_ms=5000)['task_id']
         resp = util.query_jobs_via_rawscheduler_endpoint(self.cook_url, instance=[instance_uuid_1, instance_uuid_2])
         instance_uuids = [i['task_id'] for j in resp.json() for i in j['instances']]
         self.assertEqual(200, resp.status_code, msg=resp.content)
