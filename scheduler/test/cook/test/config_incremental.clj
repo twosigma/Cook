@@ -28,8 +28,8 @@
         conn (restore-fresh-database! uri)
         key :my-incremental-config
         key2 :my-incremental-config-2
-        values [{:value "value a" :portion 0.2} {:value "value b" :portion 0.35} {:value "value c" :portion 0.45}]
-        values2 [{:value "value d" :portion 0.5} {:value "value e" :portion 0.5}]
+        values [{:value "value a" :portion 0.2} {:value "value b" :portion 0.35 :comment "test comment"} {:value "value c" :portion 0.45}]
+        values2 [{:value "value d" :portion 0.5} {:value "value e" :portion 0.5 :comment "test comment 2"}]
         uuid-a (java.util.UUID/fromString "41062821-b248-4375-82f8-a8256643c94e")
         uuid-b (java.util.UUID/fromString "61062821-b248-4375-82f8-a8256643c94e")
         uuid-c (java.util.UUID/fromString "21062821-b248-4375-82f8-a8256643c94e")
@@ -63,10 +63,10 @@
                                    (->> ["value a" "value b" "value c" "value d" "value e"]
                                         (map (fn [v] {:value v :portion (some-> v freqs round)}))
                                         (filter (fn [{:keys [portion]}] portion)))))]
-          (is (= values (get-distribution rand bytes key)))
+          (is (= (map (fn [{:keys [value portion]}] {:value value :portion portion}) values) (get-distribution rand bytes key)))
           ; override
           (write-config key values2)
-          (is (= values2 (get-distribution rand bytes key)))))
+          (is (= (map (fn [{:keys [value portion]}] {:value value :portion portion}) values2) (get-distribution rand bytes key)))))
       (testing "multiple configs"
         (write-config key2 values)
         (is (= values2 (read-config key)))
