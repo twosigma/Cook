@@ -100,6 +100,49 @@
       (assoc stripped-cook-expected-state-dict :launch-pod [:elided-for-brevity])
       stripped-cook-expected-state-dict)))
 
+(defn prepare-pod-metadata-for-logging
+  "Generates a pruned version of pod metadata that is suitable for logging.
+
+  Logging the full metadata object is too much, in particular the
+  managedFields. This function generates a pruned version of metadata
+  that's not as verbose. This cuts logging output by about 2x compared to a
+  simple toString on V1ObjectMeta. As of version 11.0.0 of the Kubernetes
+  client library, the following fields are present in V1ObjectMeta,
+  separated by whether or not we're choosing to log them.
+
+  We do log the following fields because we either use them to determine
+  state in the state machine (e.g. labels) or because we know they are
+  useful for debugging purposes (e.g. resourceVersion):
+
+  - annotations
+  - deletionTimestamp
+  - finalizers
+  - labels
+  - name
+  - namespace
+  - resourceVersion
+
+  We do not log the following fields:
+
+  - clusterName
+  - creationTimestamp
+  - deletionGracePeriodSeconds
+  - generateName
+  - generation
+  - managedFields
+  - ownerReferences
+  - selfLink
+  - uid"
+  [pod]
+  (when-let [^V1ObjectMeta metadata (some-> ^V1Pod pod .getMetadata)]
+    {:annotations (some-> metadata .getAnnotations .toString)
+     :deletion-timestamp (some-> metadata .getDeletionTimestamp .toString)
+     :finalizers (some-> metadata .getFinalizers .toString)
+     :labels (some-> metadata .getLabels .toString)
+     :name (.getName metadata)
+     :namespace (.getNamespace metadata)
+     :resource-version (.getResourceVersion metadata)}))
+
 (defn prepare-k8s-actual-state-dict-for-logging
   [{:keys [pod] :as k8s-actual-state-dict}]
   (try
@@ -108,17 +151,7 @@
         (dissoc :pod)
         (assoc 
           :node-name (api/pod->node-name pod)
-          :pod-metadata
-          (when-let [^V1ObjectMeta metadata (some-> ^V1Pod pod .getMetadata)]
-            {:annotations (some-> metadata .getAnnotations .entrySet)
-             :creation-timestamp (.getCreationTimestamp metadata)
-             :deletion-timestamp (.getDeletionTimestamp metadata)
-             :finalizers (.getFinalizers metadata)
-             :labels (some-> metadata .getLabels .entrySet)
-             :name (.getName metadata)
-             :namespace (.getNamespace metadata)
-             :resource-version (.getResourceVersion metadata)
-             :uid (.getUid metadata)})
+          :pod-metadata (prepare-pod-metadata-for-logging pod)
           :pod-status (some-> ^V1Pod pod .getStatus)))
     (catch Throwable t
       (log/error t "Error preparing k8s actual state for logging:" k8s-actual-state-dict)
