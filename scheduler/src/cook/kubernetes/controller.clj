@@ -11,7 +11,7 @@
             [cook.scheduler.scheduler :as scheduler]
             [metrics.timers :as timers])
   (:import (clojure.lang IAtom)
-           (com.twosigma.cook.kubernetes RemoveFinalizerHelper)
+           (com.twosigma.cook.kubernetes FinalizerHelper)
            (io.kubernetes.client.openapi.models V1ContainerStatus V1ObjectMeta V1Pod V1PodStatus)
            (java.net URLEncoder)
            (java.util.concurrent.locks Lock)))
@@ -668,10 +668,10 @@
 
    (let [^V1ObjectMeta pod-metadata (some-> pod .getMetadata)
          pod-deletion-timestamp (some-> pod .getMetadata .getDeletionTimestamp)]
-     (when (and pod-deletion-timestamp (some #(= RemoveFinalizerHelper/collectResultsFinalizer %) (.getFinalizers pod-metadata)))
+     (when (and pod-deletion-timestamp (some #(= FinalizerHelper/collectResultsFinalizer %) (.getFinalizers pod-metadata)))
        (log/info "In compute-cluster" name ", deleting finalizer for pod" pod-name)
        (try
-         (RemoveFinalizerHelper/removeFinalizer api-client pod)
+         (FinalizerHelper/removeFinalizer api-client pod)
          (catch Exception e
            (log/error e "In compute-cluster" name ", error deleting finalizer for pod" pod-name)))))
 

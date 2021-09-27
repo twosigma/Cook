@@ -21,7 +21,7 @@
             [metrics.timers :as timers]
             [plumbing.core :as pc])
   (:import (com.google.gson JsonSyntaxException)
-           (com.twosigma.cook.kubernetes WatchHelper RemoveFinalizerHelper)
+           (com.twosigma.cook.kubernetes FinalizerHelper WatchHelper)
            (io.kubernetes.client.custom IntOrString Quantity Quantity$Format)
            (io.kubernetes.client.openapi ApiClient ApiException JSON)
            (io.kubernetes.client.openapi.apis CoreV1Api)
@@ -1455,7 +1455,7 @@
       (.setLabels metadata labels)
       ; Only include finalizers with real pods.
       (when-not (synthetic-pod? pod-name)
-        (.setFinalizers metadata (list RemoveFinalizerHelper/collectResultsFinalizer)))
+        (.setFinalizers metadata (list FinalizerHelper/collectResultsFinalizer)))
       (when pod-annotations
         (.setAnnotations metadata pod-annotations))
 

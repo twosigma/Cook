@@ -10,10 +10,10 @@ import org.joda.time.DateTime;
 
 import java.util.List;
 
-public class RemoveFinalizerHelper {
+public class FinalizerHelper {
     /** A finalizer that is attached to a pod to ensure that it is not GC'ed by K8s before cook
      * has had a chance to collect the completion result (success or failed) */
-    static public final String collectResultsFinalizer = "ts.cook/prevent-pod-gc";
+    static public final String collectResultsFinalizer = "cook/prevent-pod-gc";
 
     /** Remove the collectResultsFinalizer from a pod if it exists on a pod and the pod is morked for
      * deletion. */
@@ -43,7 +43,7 @@ public class RemoveFinalizerHelper {
                                                 null),
                                 V1Patch.PATCH_FORMAT_JSON_PATCH,
                                 apiClient);
-                        return; // Early abort of we've found the finalizer.
+                        return; // Early abort if we've found the finalizer.
                     }
                 }
             }
