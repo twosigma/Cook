@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.56.2] - 2021-09-22
+### Changed
+- Reverted 1.10 clojure change, from @scrosby
+
 ## [1.56.1] - 2021-09-20
 ### Changed
 - Add incremental image configuration support for aux containers, from @nsinkov
