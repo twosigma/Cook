@@ -470,39 +470,99 @@
         ^Callable first-success (->> tmpfn repeatedly (some identity))]
     (.submit kubernetes-executor ^Callable first-success)))
 
+(defn prepare-object-metadata-for-logging
+  "Generates a pruned version of object metadata that is suitable for logging.
+
+  Logging the full metadata object is too much, in particular the
+  managedFields. This function generates a pruned version of metadata
+  that's not as verbose. This cuts logging output by about 2x compared to a
+  simple toString on V1ObjectMeta. As of version 11.0.0 of the Kubernetes
+  client library, the following fields are present in V1ObjectMeta,
+  separated by whether or not we're choosing to log them.
+
+  We do log the following fields because we either use them to determine
+  state in the state machine (e.g. labels) or because we know they are
+  useful for debugging purposes (e.g. resourceVersion):
+
+  - annotations
+  - deletionTimestamp
+  - finalizers
+  - labels
+  - name
+  - namespace
+  - resourceVersion
+
+  We do not log the following fields:
+
+  - clusterName
+  - creationTimestamp
+  - deletionGracePeriodSeconds
+  - generateName
+  - generation
+  - managedFields
+  - ownerReferences
+  - selfLink
+  - uid"
+  [^V1ObjectMeta metadata]
+  (let [annotations (.getAnnotations metadata)
+        deletion-timestamp (.getDeletionTimestamp metadata)
+        finalizers (.getFinalizers metadata)
+        labels (.getLabels metadata)]
+    (cond->
+      {:name (.getName metadata)
+       :namespace (.getNamespace metadata)
+       :resource-version (.getResourceVersion metadata)}
+      (seq annotations) (assoc :annotations (.toString annotations))
+      deletion-timestamp (assoc :deletion-timestamp (.toString deletion-timestamp))
+      (seq finalizers) (assoc :finalizers (.toString finalizers))
+      (seq labels) (assoc :labels (.toString labels)))))
+
 (declare initialize-event-watch)
-(let [json (JSON.)]
-  (defn ^Callable initialize-event-watch-helper
-    "Returns a new event watch Callable"
-    [^ApiClient api-client compute-cluster-name all-pods-atom]
-    (let [watch (WatchHelper/createEventWatch api-client nil)]
-      (fn []
-        (try
-          (log/info "In" compute-cluster-name "compute cluster, handling event watch updates")
-          (while (.hasNext watch)
-            (let [watch-response (.next watch)
-                  ^CoreV1Event event (.-object watch-response)]
-              (when event
-                (let [^V1ObjectReference involved-object (.getInvolvedObject event)]
-                  (when (and involved-object (= (.getKind involved-object) "Pod"))
-                    (let [namespaced-pod-name {:namespace (.getNamespace involved-object)
-                                               :name (.getName involved-object)}]
-                      (when (some-> @all-pods-atom
-                                    (get namespaced-pod-name)
-                                    (is-cook-scheduler-pod compute-cluster-name))
-                        (log/info "In" compute-cluster-name
-                                  "compute cluster, received pod event"
-                                  {:event-reason (.getReason event)
-                                   :event (.serialize json event)
-                                   :watch-response-type (.-type watch-response)}))))))))
-          (catch Exception e
-            (let [cause (.getCause e)]
-              (if (and cause (instance? SocketTimeoutException cause))
-                (log/info e "In" compute-cluster-name "compute cluster, event watch timed out")
-                (log/error e "In" compute-cluster-name "compute cluster, error during event watch"))))
-          (finally
-            (.close watch)
-            (initialize-event-watch api-client compute-cluster-name all-pods-atom)))))))
+(defn ^Callable initialize-event-watch-helper
+  "Returns a new event watch Callable"
+  [^ApiClient api-client compute-cluster-name all-pods-atom]
+  (let [watch (WatchHelper/createEventWatch api-client nil)]
+    (fn []
+      (try
+        (log/info "In" compute-cluster-name "compute cluster, handling event watch updates")
+        (while (.hasNext watch)
+          (let [watch-response (.next watch)
+                ^CoreV1Event event (.-object watch-response)]
+            (when event
+              (let [^V1ObjectReference involved-object (.getInvolvedObject event)]
+                (when (and involved-object (= (.getKind involved-object) "Pod"))
+                  (let [namespaced-pod-name {:namespace (.getNamespace involved-object)
+                                             :name (.getName involved-object)}]
+                    (when (some-> @all-pods-atom
+                                  (get namespaced-pod-name)
+                                  (is-cook-scheduler-pod compute-cluster-name))
+                      (log/info "In" compute-cluster-name
+                                "compute cluster, received pod event"
+                                {:event-reason (.getReason event)
+                                 :event {:first-timestamp (some-> event .getFirstTimestamp .toString)
+                                         :involved-object
+                                         {:field-path (.getFieldPath involved-object)
+                                          :name (.getName involved-object)
+                                          :namespace (.getNamespace involved-object)
+                                          :resource-version (.getResourceVersion involved-object)}
+                                         :kind (.getKind event)
+                                         :last-timestamp (some-> event .getLastTimestamp .toString)
+                                         :message (.getMessage event)
+                                         :metadata (some-> event .getMetadata prepare-object-metadata-for-logging)
+                                         :reason (.getReason event)
+                                         :source
+                                         {:component (some-> event .getSource .getComponent)
+                                          :host (some-> event .getSource .getHost)}
+                                         :type (.getType event)}
+                                 :watch-response-type (.-type watch-response)}))))))))
+        (catch Exception e
+          (let [cause (.getCause e)]
+            (if (and cause (instance? SocketTimeoutException cause))
+              (log/info e "In" compute-cluster-name "compute cluster, event watch timed out")
+              (log/error e "In" compute-cluster-name "compute cluster, error during event watch"))))
+        (finally
+          (.close watch)
+          (initialize-event-watch api-client compute-cluster-name all-pods-atom))))))
 
 (defn initialize-event-watch
   "Initializes the event watch"
