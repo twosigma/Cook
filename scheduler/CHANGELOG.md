@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.57.0] - 2021-09-28
+### Added
+- Optional comments to incremental value configurations, from @nsinkov
+### Changed
+- Trimmed down pod metadata logging, from @dposada
+### Fixed
+- Reverting JDK11 upgrade (back to JDK8), from @nsinkov
+
 ## [1.56.2] - 2021-09-22
 ### Changed
 - Reverted 1.10 clojure change, from @scrosby
