@@ -3424,7 +3424,9 @@
    :values [{; actual config value
              :value s/Str
              ; number between 0 and 1. portion of jobs that should have the associated value. portions must add up to 1
-             :portion s/Num}]})
+             :portion s/Num
+             ; optional comment to describe how this incremental value is different from the others
+             (s/optional-key :comment) s/Str}]})
 
 (defn upsert-incremental-config!
   [conn leadership-atom ctx]

@@ -2780,8 +2780,8 @@
     (let [conn (restore-fresh-database! "datomic:mem://test-create-compute-cluster")
           handler (basic-handler conn :is-authorized-fn is-authorized-fn)
           key "my-incremental-config"
-          values [{"value" "value a" "portion" 0.2} {"value" "value b" "portion" 0.35} {"value" "value c" "portion" 0.45}]
-          values2 [{"value" "value d" "portion" 0.5} {"value" "value e" "portion" 0.5}]
+          values [{"value" "value a" "portion" 0.2} {"value" "value b" "portion" 0.35 "comment" "test comment"} {"value" "value c" "portion" 0.45}]
+          values2 [{"value" "value d" "portion" 0.5} {"value" "value e" "portion" 0.5 "comment" "test comment 2"}]
           request-post {:authorization/user admin-user
                         :body-params {:key key :values values}
                         :request-method :post
