@@ -532,7 +532,9 @@
               (let [^V1ObjectReference involved-object (.getInvolvedObject event)]
                 (when (and involved-object (= (.getKind involved-object) "Pod"))
                   (let [namespaced-pod-name {:namespace (.getNamespace involved-object)
-                                             :name (.getName involved-object)}]
+                                             :name (.getName involved-object)}
+                        host (some-> event .getSource .getHost)
+                        field-path (.getFieldPath involved-object)]
                     (when (some-> @all-pods-atom
                                   (get namespaced-pod-name)
                                   (is-cook-scheduler-pod compute-cluster-name))
@@ -541,18 +543,20 @@
                                 {:event-reason (.getReason event)
                                  :event {:first-timestamp (some-> event .getFirstTimestamp .toString)
                                          :involved-object
-                                         {:field-path (.getFieldPath involved-object)
-                                          :name (.getName involved-object)
-                                          :namespace (.getNamespace involved-object)
-                                          :resource-version (.getResourceVersion involved-object)}
+                                         (cond->
+                                           {:name (.getName involved-object)
+                                            :namespace (.getNamespace involved-object)
+                                            :resource-version (.getResourceVersion involved-object)}
+                                           field-path (assoc :field-path field-path))
                                          :kind (.getKind event)
                                          :last-timestamp (some-> event .getLastTimestamp .toString)
                                          :message (.getMessage event)
                                          :metadata (some-> event .getMetadata prepare-object-metadata-for-logging)
                                          :reason (.getReason event)
                                          :source
-                                         {:component (some-> event .getSource .getComponent)
-                                          :host (some-> event .getSource .getHost)}
+                                         (cond->
+                                           {:component (some-> event .getSource .getComponent)}
+                                           host (assoc :host host))
                                          :type (.getType event)}
                                  :watch-response-type (.-type watch-response)}))))))))
         (catch Exception e
