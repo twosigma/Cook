@@ -951,6 +951,12 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :db/doc "Value part of an incremental value."
     :db/valueType :db.type/string
     :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :incremental-value/comment
+    :db/doc "Optional comment to describe how this incremental value is different from the others."
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}])
 
 (def migration-add-index-to-job-state

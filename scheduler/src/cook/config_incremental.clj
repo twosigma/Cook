@@ -29,10 +29,13 @@
   "Convert plain map incremental values to datomic entities"
   [incremental-values]
   (map-indexed
-    (fn [index {:keys [value portion]}]
-      {:incremental-value/ordinal index
-       :incremental-value/value value
-       :incremental-value/portion portion})
+    (fn [index {:keys [value portion comment]}]
+      (cond->
+        {:incremental-value/ordinal index
+         :incremental-value/value value
+         :incremental-value/portion portion}
+        comment
+        (assoc :incremental-value/comment comment)))
     incremental-values))
 
 (defn write-config
@@ -53,8 +56,11 @@
 (defn incremental-value-ents->incremental-values
   "Convert datomic incremental value entities to plain maps"
   [incremental-value-ents]
-  (map (fn [{:keys [:incremental-value/value :incremental-value/portion]}]
-         {:value value :portion portion})
+  (map (fn [{:keys [:incremental-value/value :incremental-value/portion :incremental-value/comment]}]
+         (cond->
+           {:value value :portion portion}
+           comment
+           (assoc :comment comment)))
        (sort-by :incremental-value/ordinal incremental-value-ents)))
 
 (defn read-config
