@@ -14,7 +14,7 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-16.04
+    runs-on: ubuntu-18.04
     env:
       PYTEST_ADDOPTS: --color=yes
       MESOS_NATIVE_JAVA_LIBRARY: /usr/lib/libmesos.so
