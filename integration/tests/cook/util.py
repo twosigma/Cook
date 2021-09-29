@@ -522,11 +522,18 @@ def add_container_to_job_if_needed(job):
 
 
 def minimal_job(**kwargs):
+    workload_id = 'none'
+    current_test = os.getenv('PYTEST_CURRENT_TEST', None)
+    if current_test:
+        last_part = current_test.split('::')[-1]
+        test_name = last_part.split(' ')[0]
+        workload_id = test_name
+
     job = {
         'application': {'name': 'cook-integration-tests',
                         'version': os.getenv('TEST_METRICS_COMMIT_HASH_UNDER_TEST', 'none'),
                         'workload-class': 'cook-integration-tests',
-                        'workload-id': os.getenv('PYTEST_CURRENT_TEST', 'none'),
+                        'workload-id': workload_id,
                         'workload-details': 'cook-integration-test-job'},
         'command': 'echo Default Test Command',
         'cpus': get_default_cpus(),
