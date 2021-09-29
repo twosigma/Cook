@@ -522,18 +522,17 @@ def add_container_to_job_if_needed(job):
 
 
 def minimal_job(**kwargs):
-    caller = get_caller()
     job = {
         'application': {'name': 'cook-integration-tests',
                         'version': os.getenv('TEST_METRICS_COMMIT_HASH_UNDER_TEST', 'none'),
                         'workload-class': 'cook-integration-tests',
-                        'workload-id': caller,
+                        'workload-id': get_caller(),
                         'workload-details': 'cook-integration-test-job'},
         'command': 'echo Default Test Command',
         'cpus': get_default_cpus(),
         'max_retries': 1,
         'mem': int(os.getenv('COOK_DEFAULT_JOB_MEM_MB', 32)),
-        'name': (DEFAULT_JOB_NAME_PREFIX + caller),
+        'name': (DEFAULT_JOB_NAME_PREFIX + get_caller()),
         'priority': 1,
         'uuid': str(make_temporal_uuid())
     }
