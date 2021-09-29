@@ -526,7 +526,7 @@ def minimal_job(**kwargs):
         'application': {'name': 'cook-integration-tests',
                         'version': os.getenv('TEST_METRICS_COMMIT_HASH_UNDER_TEST', 'none'),
                         'workload-class': 'cook-integration-tests',
-                        'workload-id': get_caller(),
+                        'workload-id': os.getenv('PYTEST_CURRENT_TEST', 'none'),
                         'workload-details': 'cook-integration-test-job'},
         'command': 'echo Default Test Command',
         'cpus': get_default_cpus(),
