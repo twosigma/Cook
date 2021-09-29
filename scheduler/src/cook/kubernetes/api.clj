@@ -485,6 +485,7 @@
   useful for debugging purposes (e.g. resourceVersion):
 
   - annotations
+  - creationTimestamp
   - deletionTimestamp
   - finalizers
   - labels
@@ -495,7 +496,6 @@
   We do not log the following fields:
 
   - clusterName
-  - creationTimestamp
   - deletionGracePeriodSeconds
   - generateName
   - generation
@@ -505,6 +505,7 @@
   - uid"
   [^V1ObjectMeta metadata]
   (let [annotations (.getAnnotations metadata)
+        creation-timestamp (.getCreationTimestamp metadata)
         deletion-timestamp (.getDeletionTimestamp metadata)
         finalizers (.getFinalizers metadata)
         labels (.getLabels metadata)]
@@ -513,6 +514,7 @@
        :namespace (.getNamespace metadata)
        :resource-version (.getResourceVersion metadata)}
       (seq annotations) (assoc :annotations (.toString annotations))
+      creation-timestamp (assoc :creation-timestamp (.toString creation-timestamp))
       deletion-timestamp (assoc :deletion-timestamp (.toString deletion-timestamp))
       (seq finalizers) (assoc :finalizers (.toString finalizers))
       (seq labels) (assoc :labels (.toString labels)))))
@@ -552,7 +554,6 @@
                                          :last-timestamp (some-> event .getLastTimestamp .toString)
                                          :message (.getMessage event)
                                          :metadata (some-> event .getMetadata prepare-object-metadata-for-logging)
-                                         :reason (.getReason event)
                                          :source
                                          (cond->
                                            {:component (some-> event .getSource .getComponent)}
