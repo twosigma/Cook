@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.57.1] - 2021-09-29
+### Changed
+- Trimmed down pod event logging, from @dposada
+
 ## [1.57.0] - 2021-09-28
 ### Added
 - Optional comments to incremental value configurations, from @nsinkov
