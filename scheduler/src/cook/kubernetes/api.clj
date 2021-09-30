@@ -1135,89 +1135,6 @@
       ; QoS, which requires limits for both memory and cpu
       (.putLimitsItem resources "cpu" (double->quantity cpu-limit)))))
 
-(defn add-cook-main-container-to-pod
-  "Create main cook container and add it to the pod"
-  [{:keys [command container pod-supports-cook-init? pod-supports-cook-sidecar? task-id task-request]
-    :or {pod-supports-cook-init? true
-         pod-supports-cook-sidecar? true}}
-   {:keys [computed-mem workdir custom-shell init-container-workdir-volume-mount-fn main-container-checkpoint-volume-mounts main-env-vars
-           pod-name ^V1PodSpec pod-spec pool-name scratch-space-volume-mount-fn sidecar-workdir-volume-mount-fn use-cook-init? volume-mounts]}]
-  (let [{:keys [scalar-requests job resources]} task-request
-        ;; NOTE: The scheduler's adjust-job-resources-for-pool-fn may modify :resources,
-        ;; whereas :scalar-requests always contains the unmodified job resource values.
-        {:strs [cpus]} scalar-requests
-        {:keys [docker]} container
-        {:keys [image port-mapping]} docker
-        ; gpu count is not stored in scalar-requests because Fenzo does not handle gpus in binpacking
-        gpus (or (:gpus resources) 0)
-        gpu-model-requested (constraints/job->gpu-model-requested gpus job pool-name)
-        ;; if disk config for pool has enable-constraint? set to true, add disk info to the job
-        enable-disk-constraint? (regexp-tools/match-based-on-pool-name (config/disk) pool-name :enable-constraint? :default-value false)
-        ;; if user did not specify disk request, use default on pool
-        disk-request (when enable-disk-constraint?
-                       (constraints/job-resources->disk-request resources pool-name))
-        disk-limit (when enable-disk-constraint? (-> resources :disk :limit))
-        ;; if user did not specify disk type, use default on pool
-        disk-type (when enable-disk-constraint? (constraints/job-resources->disk-type resources pool-name))
-        checkpoint (calculate-effective-checkpointing-config job task-id)
-        job-submit-time (tools/job->submit-time job)
-        image (if (synthetic-pod? pod-name)
-                image
-                (calculate-effective-image (config/kubernetes) job-submit-time image checkpoint task-id))
-
-        container (V1Container.)
-        resources (V1ResourceRequirements.)]
-    (.setName container cook-container-name-for-job)
-    (.setCommand container
-                 (conj (or (when use-cook-init? custom-shell) default-shell)
-                       (:value command)))
-    (.setEnv container main-env-vars)
-    (.setImage container image)
-    (doseq [{:keys [container-port host-port protocol]} port-mapping]
-      (when container-port
-        (let [port (V1ContainerPort.)]
-          (.containerPort port (int container-port))
-          (when host-port
-            (.hostPort port (int host-port)))
-          (when protocol
-            (.protocol port protocol))
-          (.addPortsItem container port))))
-
-    ; allocate a TTY to support tools that need to read from stdin
-    (.setTty container true)
-    (.setStdin container true)
-
-    ; Don't add memory limit if user sets job label to allow memory usage above request to "true"
-    (let [allow-memory-usage-above-request (some->> (:memory-limit-job-label-name (config/kubernetes))
-                                                    (get (tools/job-ent->label job))
-                                                    clojure.string/lower-case
-                                                    (= "true"))]
-      (set-mem-cpu-resources resources computed-mem (when-not allow-memory-usage-above-request computed-mem) cpus cpus))
-
-    (when (pos? gpus)
-      (.putLimitsItem resources "nvidia.com/gpu" (double->quantity gpus))
-      (.putRequestsItem resources "nvidia.com/gpu" (double->quantity gpus))
-      (add-node-selector pod-spec "cloud.google.com/gke-accelerator" gpu-model-requested)
-      ; GKE nodes with GPUs have gpu-count label, so synthetic pods need a matching node selector
-      (add-node-selector pod-spec "gpu-count" (-> gpus int str)))
-    (when disk-request
-      ; do not add disk request/limit to synthetic pod yaml because GKE CA will not scale up from 0 if unschedulable pods
-      ; require ephemeral-storage: https://github.com/kubernetes/autoscaler/issues/1869
-      (when-not (synthetic-pod? pod-name)
-        (.putRequestsItem resources "ephemeral-storage" (double->quantity (* constraints/disk-multiplier disk-request)))
-        ; by default, do not set disk-limit
-        (when disk-limit
-          (.putLimitsItem resources "ephemeral-storage" (double->quantity (* constraints/disk-multiplier disk-limit)))))
-      (add-node-selector pod-spec (pool->disk-type-label-name pool-name) disk-type))
-    (.setResources container resources)
-    (.setVolumeMounts container (filterv some? (conj (concat volume-mounts main-container-checkpoint-volume-mounts)
-                                                     (init-container-workdir-volume-mount-fn true)
-                                                     (scratch-space-volume-mount-fn false)
-                                                     (sidecar-workdir-volume-mount-fn true))))
-    (.setWorkingDir container workdir)
-
-    (.addContainersItem pod-spec container)))
-
 (defn resolve-image-from-incremental-config
   "Helper method to resolve a container's image from an incremental configuration"
   [job passport-event-base passport-event-type image-config image-fallback]
@@ -1231,74 +1148,6 @@
                                     :reason reason
                                     :resolved-config resolved-config}))
         resolved-config))))
-
-(defn add-cook-init-to-pod
-  "Create Cook init container and add it to the pod"
-  [{:keys [computed-mem cpus init-container init-container-checkpoint-volume-mounts init-container-workdir
-           init-container-workdir-volume-mount-fn main-env-vars ^V1PodSpec pod-spec scratch-space-volume-mount-fn
-           sidecar use-cook-sidecar? job passport-event-base]}]
-  (when-let [{:keys [command image image-fallback]} init-container]
-    (let [container (V1Container.)
-          get-resource-requirements-fn (fn [fieldname] (if use-cook-sidecar?
-                                                         (get-in sidecar [:resource-requirements fieldname])
-                                                         0))
-          total-memory-request (add-as-decimals computed-mem (get-resource-requirements-fn :memory-request))
-          total-memory-limit (add-as-decimals computed-mem (get-resource-requirements-fn :memory-limit))
-          total-cpu-request (add-as-decimals cpus (get-resource-requirements-fn :cpu-request))
-          total-cpu-limit (add-as-decimals cpus (get-resource-requirements-fn :cpu-limit))
-          resources (V1ResourceRequirements.)]
-      ; container
-      (.setName container cook-init-container-name)
-      (.setImage container (resolve-image-from-incremental-config
-                             job passport-event-base passport/init-container-image-selected
-                             image image-fallback))
-      (.setCommand container command)
-      (.setWorkingDir container init-container-workdir)
-      (.setEnv container main-env-vars)
-      (.setVolumeMounts container (filterv some? (concat [(init-container-workdir-volume-mount-fn false)
-                                                          (scratch-space-volume-mount-fn false)]
-                                                         init-container-checkpoint-volume-mounts)))
-      (set-mem-cpu-resources resources total-memory-request total-memory-limit total-cpu-request total-cpu-limit)
-      (.setResources container resources)
-      (.addInitContainersItem pod-spec container))))
-
-(defn add-cook-sidecar-to-pod
-  "Create Cook Sidecar container and add it to the pod"
-  [{:keys [main-env-vars ^V1PodSpec pod-spec sidecar sandbox-dir sandbox-volume-mount-fn scratch-space-volume-mount-fn
-           sidecar-workdir sidecar-workdir-volume-mount-fn job passport-event-base]}]
-  (when-let [{:keys [command health-check-endpoint image image-fallback port resource-requirements]} sidecar]
-    (let [{:keys [cpu-request cpu-limit memory-request memory-limit]} resource-requirements
-          container (V1Container.)
-          resources (V1ResourceRequirements.)]
-      ; container
-      (.setName container cook-container-name-for-file-server)
-      (.setImage container (resolve-image-from-incremental-config
-                             job passport-event-base passport/sidecar-image-selected
-                             image image-fallback))
-      (.setCommand container (conj command (str port)))
-      (.setWorkingDir container sidecar-workdir)
-      (.setPorts container [(.containerPort (V1ContainerPort.) (int port))])
-
-      (.setEnv container (conj main-env-vars
-                               ;; DEPRECATED - sidecar should use COOK_SANDBOX instead.
-                               ;; Will remove this environment variable in a future release.
-                               (make-env "COOK_WORKDIR" sandbox-dir)))
-
-      ; optionally enable http-based readiness probe
-      (when health-check-endpoint
-        (let [http-get-action (doto (V1HTTPGetAction.)
-                                (.setPort (-> port int IntOrString.))
-                                (.setPath health-check-endpoint))
-              readiness-probe (doto (V1Probe.)
-                                (.setHttpGet http-get-action))]
-          (.setReadinessProbe container readiness-probe)))
-
-      ; resources
-      (set-mem-cpu-resources resources memory-request memory-limit cpu-request cpu-limit)
-      (.setResources container resources)
-
-      (.setVolumeMounts container [(sandbox-volume-mount-fn true) (sidecar-workdir-volume-mount-fn false) (scratch-space-volume-mount-fn false)])
-      (.addContainersItem pod-spec container))))
 
 (defn ^V1Pod task-metadata->pod
   "Given a task-request and other data generate the kubernetes V1Pod to launch that task."
@@ -1323,263 +1172,367 @@
         pod-spec (V1PodSpec.)
         metadata (V1ObjectMeta.)
         pod-labels (merge (job->pod-labels job) pod-labels)
-          labels (assoc pod-labels cook-pod-label compute-cluster-name)
-          security-context (make-security-context parameters (:user command))
-          sandbox-dir (:default-workdir (config/kubernetes))
-          workdir (get-workdir parameters sandbox-dir)
-          {:keys [volumes volume-mounts sandbox-volume-mount-fn]} (make-volumes volumes sandbox-dir pod-labels)
-          {:keys [custom-shell init-container sidecar telemetry-pool-regex telemetry-agent-host-var-name telemetry-env-var-name
-                  telemetry-env-value telemetry-service-var-name telemetry-tags-entry-separator
-                  telemetry-tags-key-invalid-char-pattern telemetry-tags-key-invalid-char-replacement
-                  telemetry-tags-key-value-separator telemetry-tags-var-name telemetry-version-var-name]}
-          (config/kubernetes)
-          checkpoint (calculate-effective-checkpointing-config job task-id)
-          pod-name (str task-id)
-          checkpoint-memory-overhead (:memory-overhead checkpoint)
-          use-cook-init? (and init-container pod-supports-cook-init?)
-          use-cook-sidecar? (and sidecar pod-supports-cook-sidecar?)
-          init-container-workdir "/mnt/init-container"
-          init-container-workdir-volume (when use-cook-init?
-                                          (make-empty-volume "cook-init-container-workdir-volume"))
-          init-container-workdir-volume-mount-fn (partial make-volume-mount
-                                                          init-container-workdir-volume
-                                                          init-container-workdir)
-          sidecar-workdir "/mnt/sidecar"
-          sidecar-workdir-volume (when use-cook-sidecar? (make-empty-volume "cook-sidecar-workdir-volume"))
-          sidecar-workdir-volume-mount-fn (partial make-volume-mount sidecar-workdir-volume sidecar-workdir)
-          scratch-space "/mnt/scratch-space"
-          scratch-space-volume (make-empty-volume "cook-scratch-space-volume")
-          scratch-space-volume-mount-fn (partial make-volume-mount scratch-space-volume scratch-space)
-          checkpoint-volume (checkpoint->volume checkpoint)
-          {:keys [init-container-checkpoint-volume-mounts main-container-checkpoint-volume-mounts]}
-          (checkpoint->volume-mounts checkpoint checkpoint-volume)
-          sandbox-env {"COOK_SANDBOX" sandbox-dir
-                       "HOME" sandbox-dir
-                       "MESOS_DIRECTORY" sandbox-dir
-                       "MESOS_SANDBOX" sandbox-dir
-                       "SIDECAR_WORKDIR" sidecar-workdir}
-          params-env (build-params-env parameters)
-          progress-env (task/build-executor-environment job)
-          checkpoint-env (checkpoint->env checkpoint)
-          metadata-env {"COOK_COMPUTE_CLUSTER_NAME" compute-cluster-name
-                        "COOK_JOB_NAME" job-name
-                        "COOK_JOB_USER" user
-                        "COOK_POOL" pool-name
-                        "COOK_SCHEDULER_REST_URL" (config/scheduler-rest-url)}
-          main-env-base (merge environment params-env progress-env sandbox-env checkpoint-env metadata-env)
-          progress-file-var (get main-env-base task/progress-meta-env-name task/default-progress-env-name)
-          progress-file-path (get main-env-base progress-file-var)
-          computed-mem (if checkpoint-memory-overhead (add-as-decimals mem checkpoint-memory-overhead) mem)
-          application (:job/application job)
-          include-telemetry (some-> telemetry-pool-regex re-pattern (re-matches pool-name))
-          main-env (cond-> main-env-base
-                     ;; Add a default progress file path to the environment when missing,
-                     ;; preserving compatibility with Meosos + Cook Executor.
-                     (not progress-file-path)
-                     (assoc progress-file-var (str workdir "/" (str (:job/uuid job)) ".progress"))
+        labels (assoc pod-labels cook-pod-label compute-cluster-name)
+        security-context (make-security-context parameters (:user command))
+        sandbox-dir (:default-workdir (config/kubernetes))
+        workdir (get-workdir parameters sandbox-dir)
+        {:keys [volumes volume-mounts sandbox-volume-mount-fn]} (make-volumes volumes sandbox-dir pod-labels)
+        {:keys [custom-shell init-container sidecar telemetry-pool-regex telemetry-agent-host-var-name telemetry-env-var-name
+                telemetry-env-value telemetry-service-var-name telemetry-tags-entry-separator
+                telemetry-tags-key-invalid-char-pattern telemetry-tags-key-invalid-char-replacement
+                telemetry-tags-key-value-separator telemetry-tags-var-name telemetry-version-var-name]}
+        (config/kubernetes)
+        checkpoint (calculate-effective-checkpointing-config job task-id)
+        pod-name (str task-id)
+        checkpoint-memory-overhead (:memory-overhead checkpoint)
+        use-cook-init? (and init-container pod-supports-cook-init?)
+        use-cook-sidecar? (and sidecar pod-supports-cook-sidecar?)
+        init-container-workdir "/mnt/init-container"
+        init-container-workdir-volume (when use-cook-init?
+                                        (make-empty-volume "cook-init-container-workdir-volume"))
+        init-container-workdir-volume-mount-fn (partial make-volume-mount
+                                                        init-container-workdir-volume
+                                                        init-container-workdir)
+        sidecar-workdir "/mnt/sidecar"
+        sidecar-workdir-volume (when use-cook-sidecar? (make-empty-volume "cook-sidecar-workdir-volume"))
+        sidecar-workdir-volume-mount-fn (partial make-volume-mount sidecar-workdir-volume sidecar-workdir)
+        scratch-space "/mnt/scratch-space"
+        scratch-space-volume (make-empty-volume "cook-scratch-space-volume")
+        scratch-space-volume-mount-fn (partial make-volume-mount scratch-space-volume scratch-space)
+        checkpoint-volume (checkpoint->volume checkpoint)
+        {:keys [init-container-checkpoint-volume-mounts main-container-checkpoint-volume-mounts]}
+        (checkpoint->volume-mounts checkpoint checkpoint-volume)
+        sandbox-env {"COOK_SANDBOX" sandbox-dir
+                     "HOME" sandbox-dir
+                     "MESOS_DIRECTORY" sandbox-dir
+                     "MESOS_SANDBOX" sandbox-dir
+                     "SIDECAR_WORKDIR" sidecar-workdir}
+        params-env (build-params-env parameters)
+        progress-env (task/build-executor-environment job)
+        checkpoint-env (checkpoint->env checkpoint)
+        metadata-env {"COOK_COMPUTE_CLUSTER_NAME" compute-cluster-name
+                      "COOK_JOB_NAME" job-name
+                      "COOK_JOB_USER" user
+                      "COOK_POOL" pool-name
+                      "COOK_SCHEDULER_REST_URL" (config/scheduler-rest-url)}
+        main-env-base (merge environment params-env progress-env sandbox-env checkpoint-env metadata-env)
+        progress-file-var (get main-env-base task/progress-meta-env-name task/default-progress-env-name)
+        progress-file-path (get main-env-base progress-file-var)
+        computed-mem (if checkpoint-memory-overhead (add-as-decimals mem checkpoint-memory-overhead) mem)
+        application (:job/application job)
+        include-telemetry (some-> telemetry-pool-regex re-pattern (re-matches pool-name))
+        main-env (cond-> main-env-base
+                   ;; Add a default progress file path to the environment when missing,
+                   ;; preserving compatibility with Meosos + Cook Executor.
+                   (not progress-file-path)
+                   (assoc progress-file-var (str workdir "/" (str (:job/uuid job)) ".progress"))
 
-                     mem
-                     (assoc "COOK_USER_MEMORY_REQUEST_BYTES" (* memory-multiplier mem))
+                   mem
+                   (assoc "COOK_USER_MEMORY_REQUEST_BYTES" (* memory-multiplier mem))
 
-                     computed-mem
-                     (assoc "COOK_MEMORY_REQUEST_BYTES" (* memory-multiplier computed-mem))
+                   computed-mem
+                   (assoc "COOK_MEMORY_REQUEST_BYTES" (* memory-multiplier computed-mem))
 
-                     (and include-telemetry telemetry-env-var-name telemetry-env-value)
-                     (assoc telemetry-env-var-name
-                            telemetry-env-value)
+                   (and include-telemetry telemetry-env-var-name telemetry-env-value)
+                   (assoc telemetry-env-var-name
+                          telemetry-env-value)
 
-                     (and include-telemetry telemetry-service-var-name)
-                     (assoc telemetry-service-var-name
-                            (or (:application/name application) "cook-job"))
+                   (and include-telemetry telemetry-service-var-name)
+                   (assoc telemetry-service-var-name
+                          (or (:application/name application) "cook-job"))
 
-                     (and include-telemetry
-                          telemetry-tags-entry-separator
-                          telemetry-tags-key-value-separator
-                          telemetry-tags-var-name)
-                     (assoc telemetry-tags-var-name
-                            (->> pod-labels
-                                 (map (fn [[k v]]
-                                        (str (if (and telemetry-tags-key-invalid-char-pattern
-                                                      telemetry-tags-key-invalid-char-replacement)
-                                               (str/replace
-                                                 k
-                                                 telemetry-tags-key-invalid-char-pattern
-                                                 telemetry-tags-key-invalid-char-replacement)
-                                               k)
-                                             telemetry-tags-key-value-separator
-                                             v)))
-                                 (str/join telemetry-tags-entry-separator)))
+                   (and include-telemetry
+                        telemetry-tags-entry-separator
+                        telemetry-tags-key-value-separator
+                        telemetry-tags-var-name)
+                   (assoc telemetry-tags-var-name
+                          (->> pod-labels
+                               (map (fn [[k v]]
+                                      (str (if (and telemetry-tags-key-invalid-char-pattern
+                                                    telemetry-tags-key-invalid-char-replacement)
+                                             (str/replace
+                                               k
+                                               telemetry-tags-key-invalid-char-pattern
+                                               telemetry-tags-key-invalid-char-replacement)
+                                             k)
+                                           telemetry-tags-key-value-separator
+                                           v)))
+                               (str/join telemetry-tags-entry-separator)))
 
-                     (and include-telemetry telemetry-version-var-name)
-                     (assoc telemetry-version-var-name
-                            (or (:application/version application) "undefined")))
+                   (and include-telemetry telemetry-version-var-name)
+                   (assoc telemetry-version-var-name
+                          (or (:application/version application) "undefined")))
         main-env-vars (cond->> (-> main-env
-                                   (merge (get-default-env-for-pool pool-name))
-                                   make-filtered-env-vars)
-                               (and include-telemetry telemetry-agent-host-var-name)
-                               (cons (doto
-                                       (V1EnvVar.)
-                                       (.setName telemetry-agent-host-var-name)
-                                       (.valueFrom hostIpEnvVarSource))))
-          container-attributes {:computed-mem computed-mem
-                                :cpus cpus
-                                :custom-shell custom-shell
-                                :init-container init-container
-                                :init-container-checkpoint-volume-mounts init-container-checkpoint-volume-mounts
-                                :init-container-workdir init-container-workdir
-                                :init-container-workdir-volume-mount-fn init-container-workdir-volume-mount-fn
-                                :job job
-                                :main-container-checkpoint-volume-mounts main-container-checkpoint-volume-mounts
-                                :main-env-vars main-env-vars
-                                :passport-event-base {:job-name job-name
-                                                      :job-uuid (str (:job/uuid job))
-                                                      :pool pool-name
-                                                      :user user}
-                                :pod-name pod-name
-                                :pod-spec pod-spec
-                                :pool-name pool-name
-                                :sandbox-dir sandbox-dir
-                                :sandbox-volume-mount-fn sandbox-volume-mount-fn
-                                :scratch-space-volume-mount-fn scratch-space-volume-mount-fn
-                                :sidecar sidecar
-                                :sidecar-workdir sidecar-workdir
-                                :sidecar-workdir-volume-mount-fn sidecar-workdir-volume-mount-fn
-                                :use-cook-init? use-cook-init?
-                                :use-cook-sidecar? use-cook-sidecar?
-                                :volume-mounts volume-mounts
-                                :workdir workdir}]
+                                 (merge (get-default-env-for-pool pool-name))
+                                 make-filtered-env-vars)
+                        (and include-telemetry telemetry-agent-host-var-name)
+                        (cons (doto
+                                (V1EnvVar.)
+                                (.setName telemetry-agent-host-var-name)
+                                (.valueFrom hostIpEnvVarSource))))
+        passport-event-base {:job-name job-name
+                             :job-uuid (str (:job/uuid job))
+                             :pool pool-name
+                             :user user}]
 
-      ; metadata
-      (.setName metadata pod-name)
-      (.setNamespace metadata namespace)
-      (.setLabels metadata labels)
-      ; Only include finalizers with real pods.
+    ; metadata
+    (.setName metadata pod-name)
+    (.setNamespace metadata namespace)
+    (.setLabels metadata labels)
+    ; Only include finalizers with real pods.
       (when-not (synthetic-pod? pod-name)
         (let [[resolved-config reason] (config-incremental/resolve-incremental-config task-id :add-finalizer "false")]
           (if (= "true" resolved-config)
-            (.setFinalizers metadata (list FinalizerHelper/collectResultsFinalizer)))))
-      (when pod-annotations
-        (.setAnnotations metadata pod-annotations))
+            (.setFinalizers metadata (list FinalizerHelper/collectResultsFinalizer)))))(when pod-annotations
+      (.setAnnotations metadata pod-annotations))
 
-      (.setHostnameAsFQDN pod-spec false)
+    (.setHostnameAsFQDN pod-spec false)
 
-      (add-cook-main-container-to-pod task-metadata container-attributes)
+    ; main container
+    (let [{:keys [resources]} task-request
+          ;; NOTE: The scheduler's adjust-job-resources-for-pool-fn may modify :resources,
+          ;; whereas :scalar-requests always contains the unmodified job resource values.
+          {:keys [image port-mapping]} docker
+          ; gpu count is not stored in scalar-requests because Fenzo does not handle gpus in binpacking
+          gpus (or (:gpus resources) 0)
+          gpu-model-requested (constraints/job->gpu-model-requested gpus job pool-name)
+          ;; if disk config for pool has enable-constraint? set to true, add disk info to the job
+          enable-disk-constraint? (regexp-tools/match-based-on-pool-name (config/disk) pool-name :enable-constraint? :default-value false)
+          ;; if user did not specify disk request, use default on pool
+          disk-request (when enable-disk-constraint?
+                         (constraints/job-resources->disk-request resources pool-name))
+          disk-limit (when enable-disk-constraint? (-> resources :disk :limit))
+          ;; if user did not specify disk type, use default on pool
+          disk-type (when enable-disk-constraint? (constraints/job-resources->disk-type resources pool-name))
+          checkpoint (calculate-effective-checkpointing-config job task-id)
+          job-submit-time (tools/job->submit-time job)
+          image (if (synthetic-pod? pod-name)
+                  image
+                  (calculate-effective-image (config/kubernetes) job-submit-time image checkpoint task-id))
 
-      ;init container
-      (when use-cook-init?
-        (add-cook-init-to-pod container-attributes))
+          container (V1Container.)
+          resources (V1ResourceRequirements.)]
+      (.setName container cook-container-name-for-job)
+      (.setCommand container
+                   (conj (or (when use-cook-init? custom-shell) default-shell)
+                         (:value command)))
+      (.setEnv container main-env-vars)
+      (.setImage container image)
+      (doseq [{:keys [container-port host-port protocol]} port-mapping]
+        (when container-port
+          (let [port (V1ContainerPort.)]
+            (.containerPort port (int container-port))
+            (when host-port
+              (.hostPort port (int host-port)))
+            (when protocol
+              (.protocol port protocol))
+            (.addPortsItem container port))))
 
-      ; sandbox file server container
-      (when use-cook-sidecar?
-        (add-cook-sidecar-to-pod container-attributes))
+      ; allocate a TTY to support tools that need to read from stdin
+      (.setTty container true)
+      (.setStdin container true)
 
-      ; We're either using the hostname (in the case of users' job pods)
-      ; or pod-hostnames-to-avoid (in the case of synthetic pods), but not both.
-      (if hostname
-        ; Why not just set the node name?
-        ; The reason is that setting the node name prevents pod preemption
-        ; (https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/)
-        ; from happening. We want this pod to preempt lower priority pods
-        ; (e.g. synthetic pods).
-        (do
-          (add-node-selector pod-spec k8s-hostname-label hostname)
-          ; Allow real pods to run on tenured nodes.
-          (.addTolerationsItem pod-spec toleration-tenured-node))
-        (when (seq pod-hostnames-to-avoid)
-          ; Use node "anti"-affinity to disallow scheduling on nodes with particular labels
-          ; (https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#node-affinity)
-          (let [affinity (V1Affinity.)
-                node-affinity (V1NodeAffinity.)
-                node-selector (V1NodeSelector.)
-                node-selector-term (V1NodeSelectorTerm.)]
+      ; Don't add memory limit if user sets job label to allow memory usage above request to "true"
+      (let [allow-memory-usage-above-request (some->> (:memory-limit-job-label-name (config/kubernetes))
+                                               (get (tools/job-ent->label job))
+                                               clojure.string/lower-case
+                                               (= "true"))]
+        (set-mem-cpu-resources resources computed-mem (when-not allow-memory-usage-above-request computed-mem) cpus cpus))
 
-            ; Disallow scheduling on hostnames we're being told to avoid (if any)
-            (let [node-selector-requirement-k8s-hostname-label (V1NodeSelectorRequirement.)]
-              (.setKey node-selector-requirement-k8s-hostname-label k8s-hostname-label)
-              (.setOperator node-selector-requirement-k8s-hostname-label "NotIn")
-              (run! #(.addValuesItem node-selector-requirement-k8s-hostname-label %) pod-hostnames-to-avoid)
-              (.addMatchExpressionsItem node-selector-term node-selector-requirement-k8s-hostname-label))
+      (when (pos? gpus)
+        (.putLimitsItem resources "nvidia.com/gpu" (double->quantity gpus))
+        (.putRequestsItem resources "nvidia.com/gpu" (double->quantity gpus))
+        (add-node-selector pod-spec "cloud.google.com/gke-accelerator" gpu-model-requested)
+        ; GKE nodes with GPUs have gpu-count label, so synthetic pods need a matching node selector
+        (add-node-selector pod-spec "gpu-count" (-> gpus int str)))
+      (when disk-request
+        ; do not add disk request/limit to synthetic pod yaml because GKE CA will not scale up from 0 if unschedulable pods
+        ; require ephemeral-storage: https://github.com/kubernetes/autoscaler/issues/1869
+        (when-not (synthetic-pod? pod-name)
+          (.putRequestsItem resources "ephemeral-storage" (double->quantity (* constraints/disk-multiplier disk-request)))
+          ; by default, do not set disk-limit
+          (when disk-limit
+            (.putLimitsItem resources "ephemeral-storage" (double->quantity (* constraints/disk-multiplier disk-limit)))))
+        (add-node-selector pod-spec (pool->disk-type-label-name pool-name) disk-type))
+      (.setResources container resources)
+      (.setVolumeMounts container (filterv some? (conj (concat volume-mounts main-container-checkpoint-volume-mounts)
+                                                       (init-container-workdir-volume-mount-fn true)
+                                                       (scratch-space-volume-mount-fn false)
+                                                       (sidecar-workdir-volume-mount-fn true))))
+      (.setWorkingDir container workdir)
 
-            (.addNodeSelectorTermsItem node-selector node-selector-term)
-            (.setRequiredDuringSchedulingIgnoredDuringExecution node-affinity node-selector)
-            (.setNodeAffinity affinity node-affinity)
-            (.setAffinity pod-spec affinity))))
+      (.addContainersItem pod-spec container))
 
-      (.setRestartPolicy pod-spec "Never")
+    ;init container
+    (when use-cook-init?
+      (let [{:keys [command image image-fallback]} init-container
+            container (V1Container.)
+            get-resource-requirements-fn (fn [fieldname] (if use-cook-sidecar?
+                                                           (get-in sidecar [:resource-requirements fieldname])
+                                                           0))
+            total-memory-request (add-as-decimals computed-mem (get-resource-requirements-fn :memory-request))
+            total-memory-limit (add-as-decimals computed-mem (get-resource-requirements-fn :memory-limit))
+            total-cpu-request (add-as-decimals cpus (get-resource-requirements-fn :cpu-request))
+            total-cpu-limit (add-as-decimals cpus (get-resource-requirements-fn :cpu-limit))
+            resources (V1ResourceRequirements.)]
+        ; container
+        (.setName container cook-init-container-name)
+        (.setImage container (resolve-image-from-incremental-config
+                               job passport-event-base passport/init-container-image-selected
+                               image image-fallback))
+        (.setCommand container command)
+        (.setWorkingDir container init-container-workdir)
+        (.setEnv container main-env-vars)
+        (.setVolumeMounts container (filterv some? (concat [(init-container-workdir-volume-mount-fn false)
+                                                            (scratch-space-volume-mount-fn false)]
+                                                           init-container-checkpoint-volume-mounts)))
+        (set-mem-cpu-resources resources total-memory-request total-memory-limit total-cpu-request total-cpu-limit)
+        (.setResources container resources)
+        (.addInitContainersItem pod-spec container)))
 
-      (.addTolerationsItem pod-spec toleration-for-deletion-candidate-of-autoscaler)
-      (.addTolerationsItem pod-spec (toleration-for-pool cook-pool-taint-name cook-pool-taint-prefix pool-name))
-      ; We need to make sure synthetic pods --- which don't have a hostname set --- have a node selector
-      ; to run only in nodes labelled with the appropriate cook pool
-      (when-not hostname (add-node-selector pod-spec cook-pool-label-name pool-name))
+    ; sandbox file server container
+    (when use-cook-sidecar?
+      (let [{:keys [command health-check-endpoint image image-fallback port resource-requirements]} sidecar
+            {:keys [cpu-request cpu-limit memory-request memory-limit]} resource-requirements
+            container (V1Container.)
+            resources (V1ResourceRequirements.)]
+        ; container
+        (.setName container cook-container-name-for-file-server)
+        (.setImage container (resolve-image-from-incremental-config
+                               job passport-event-base passport/sidecar-image-selected
+                               image image-fallback))
+        (.setCommand container (conj command (str port)))
+        (.setWorkingDir container sidecar-workdir)
+        (.setPorts container [(.containerPort (V1ContainerPort.) (int port))])
 
-      (when pod-constraints
-        (doseq [{:keys [constraint/attribute
-                        constraint/operator
-                        constraint/pattern]}
-                pod-constraints]
-          (condp = operator
-            :constraint.operator/equals
-            ; Add a node selector for any EQUALS constraints
-            ; either defined by the user on their job spec
-            ; or defaulted on the Cook pool via configuration
-            (add-node-selector pod-spec attribute pattern)
-            :else
-            ; A bad constraint operator should have
-            ; been blocked at job submission time
-            (throw (ex-info "Encountered unexpected constraint operator"
-                            {:operator operator
-                             :task-id task-id})))))
+        (.setEnv container (conj main-env-vars
+                                 ;; DEPRECATED - sidecar should use COOK_SANDBOX instead.
+                                 ;; Will remove this environment variable in a future release.
+                                 (make-env "COOK_WORKDIR" sandbox-dir)))
 
-      (.setVolumes pod-spec (filterv some? (conj volumes
-                                                 init-container-workdir-volume
-                                                 scratch-space-volume
-                                                 sidecar-workdir-volume
-                                                 checkpoint-volume)))
-      (.setSecurityContext pod-spec security-context)
-      (.setPriorityClassName pod-spec pod-priority-class)
+        ; optionally enable http-based readiness probe
+        (when health-check-endpoint
+          (let [http-get-action (doto (V1HTTPGetAction.)
+                                  (.setPort (-> port int IntOrString.))
+                                  (.setPath health-check-endpoint))
+                readiness-probe (doto (V1Probe.)
+                                  (.setHttpGet http-get-action))]
+            (.setReadinessProbe container readiness-probe)))
 
-      ; pod
-      (.setMetadata pod metadata)
-      (.setSpec pod pod-spec)
+        ; resources
+        (set-mem-cpu-resources resources memory-request memory-limit cpu-request cpu-limit)
+        (.setResources container resources)
 
-      (when (synthetic-pod? pod-name)
-        ; We want to allow synthetic pods to have a non-default (typically 0) termination grace period,
-        ; so that they can be deleted quickly to free up space on nodes for real job pods. The default
-        ; grace period of 30 seconds can cause real job pods to be deemed unschedulable and fail.
-        (when-let [{:keys [synthetic-pod-termination-grace-period-seconds]} (config/kubernetes)]
-          (.setTerminationGracePeriodSeconds pod-spec synthetic-pod-termination-grace-period-seconds))
+        (.setVolumeMounts container [(sandbox-volume-mount-fn true) (sidecar-workdir-volume-mount-fn false) (scratch-space-volume-mount-fn false)])
+        (.addContainersItem pod-spec container)))
 
-        ; We want to allow synthetic pods to be repelled from certain nodes via inter-pod (anti-)affinity
-        ; (https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#inter-pod-affinity-and-anti-affinity)
-        ; in order to repel them from "tenured" nodes, e.g. by running a "repeller" pod on nodes that
-        ; have been up and running for a certain amount of time. Without this, synthetic pods will often
-        ; run on nodes that have been alive for a while (tenured nodes) when job pods complete and free
-        ; up space, causing those synthetic pods to not serve their purpose of triggering scale-up.
-        (let [{:keys [synthetic-pod-anti-affinity-namespace
-                      synthetic-pod-anti-affinity-pod-label-key
-                      synthetic-pod-anti-affinity-pod-label-value]}
-              (config/kubernetes)]
-          (when (and synthetic-pod-anti-affinity-pod-label-key
-                     synthetic-pod-anti-affinity-pod-label-value)
-            ; If the synthetic pod spec already has an affinity defined (see the code for
-            ; pod-hostnames-to-avoid above), we add to it; otherwise, we create a new one
-            (let [affinity (or (.getAffinity pod-spec) (V1Affinity.))
-                  pod-anti-affinity (V1PodAntiAffinity.)
-                  pod-affinity-term (V1PodAffinityTerm.)
-                  label-selector (V1LabelSelector.)]
-              (.setMatchLabels label-selector
-                               {synthetic-pod-anti-affinity-pod-label-key
-                                synthetic-pod-anti-affinity-pod-label-value})
-              (.setLabelSelector pod-affinity-term label-selector)
-              (.setTopologyKey pod-affinity-term k8s-hostname-label)
-              (when synthetic-pod-anti-affinity-namespace
-                (.addNamespacesItem pod-affinity-term synthetic-pod-anti-affinity-namespace))
-              (.setRequiredDuringSchedulingIgnoredDuringExecution pod-anti-affinity [pod-affinity-term])
-              (.setPodAntiAffinity affinity pod-anti-affinity)
-              (.setAffinity pod-spec affinity)))))
+    ; We're either using the hostname (in the case of users' job pods)
+    ; or pod-hostnames-to-avoid (in the case of synthetic pods), but not both.
+    (if hostname
+      ; Why not just set the node name?
+      ; The reason is that setting the node name prevents pod preemption
+      ; (https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/)
+      ; from happening. We want this pod to preempt lower priority pods
+      ; (e.g. synthetic pods).
+      (do
+        (add-node-selector pod-spec k8s-hostname-label hostname)
+        ; Allow real pods to run on tenured nodes.
+        (.addTolerationsItem pod-spec toleration-tenured-node))
+      (when (seq pod-hostnames-to-avoid)
+        ; Use node "anti"-affinity to disallow scheduling on nodes with particular labels
+        ; (https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#node-affinity)
+        (let [affinity (V1Affinity.)
+              node-affinity (V1NodeAffinity.)
+              node-selector (V1NodeSelector.)
+              node-selector-term (V1NodeSelectorTerm.)]
 
-      pod))
+          ; Disallow scheduling on hostnames we're being told to avoid (if any)
+          (let [node-selector-requirement-k8s-hostname-label (V1NodeSelectorRequirement.)]
+            (.setKey node-selector-requirement-k8s-hostname-label k8s-hostname-label)
+            (.setOperator node-selector-requirement-k8s-hostname-label "NotIn")
+            (run! #(.addValuesItem node-selector-requirement-k8s-hostname-label %) pod-hostnames-to-avoid)
+            (.addMatchExpressionsItem node-selector-term node-selector-requirement-k8s-hostname-label))
+
+          (.addNodeSelectorTermsItem node-selector node-selector-term)
+          (.setRequiredDuringSchedulingIgnoredDuringExecution node-affinity node-selector)
+          (.setNodeAffinity affinity node-affinity)
+          (.setAffinity pod-spec affinity))))
+
+    (.setRestartPolicy pod-spec "Never")
+
+    (.addTolerationsItem pod-spec toleration-for-deletion-candidate-of-autoscaler)
+    (.addTolerationsItem pod-spec (toleration-for-pool cook-pool-taint-name cook-pool-taint-prefix pool-name))
+    ; We need to make sure synthetic pods --- which don't have a hostname set --- have a node selector
+    ; to run only in nodes labelled with the appropriate cook pool
+    (when-not hostname (add-node-selector pod-spec cook-pool-label-name pool-name))
+
+    (when pod-constraints
+      (doseq [{:keys [constraint/attribute
+                      constraint/operator
+                      constraint/pattern]}
+              pod-constraints]
+        (condp = operator
+          :constraint.operator/equals
+          ; Add a node selector for any EQUALS constraints
+          ; either defined by the user on their job spec
+          ; or defaulted on the Cook pool via configuration
+          (add-node-selector pod-spec attribute pattern)
+          :else
+          ; A bad constraint operator should have
+          ; been blocked at job submission time
+          (throw (ex-info "Encountered unexpected constraint operator"
+                          {:operator operator
+                           :task-id task-id})))))
+
+    (.setVolumes pod-spec (filterv some? (conj volumes
+                                               init-container-workdir-volume
+                                               scratch-space-volume
+                                               sidecar-workdir-volume
+                                               checkpoint-volume)))
+    (.setSecurityContext pod-spec security-context)
+    (.setPriorityClassName pod-spec pod-priority-class)
+
+    ; pod
+    (.setMetadata pod metadata)
+    (.setSpec pod pod-spec)
+
+    (when (synthetic-pod? pod-name)
+      ; We want to allow synthetic pods to have a non-default (typically 0) termination grace period,
+      ; so that they can be deleted quickly to free up space on nodes for real job pods. The default
+      ; grace period of 30 seconds can cause real job pods to be deemed unschedulable and fail.
+      (when-let [{:keys [synthetic-pod-termination-grace-period-seconds]} (config/kubernetes)]
+        (.setTerminationGracePeriodSeconds pod-spec synthetic-pod-termination-grace-period-seconds))
+
+      ; We want to allow synthetic pods to be repelled from certain nodes via inter-pod (anti-)affinity
+      ; (https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#inter-pod-affinity-and-anti-affinity)
+      ; in order to repel them from "tenured" nodes, e.g. by running a "repeller" pod on nodes that
+      ; have been up and running for a certain amount of time. Without this, synthetic pods will often
+      ; run on nodes that have been alive for a while (tenured nodes) when job pods complete and free
+      ; up space, causing those synthetic pods to not serve their purpose of triggering scale-up.
+      (let [{:keys [synthetic-pod-anti-affinity-namespace
+                    synthetic-pod-anti-affinity-pod-label-key
+                    synthetic-pod-anti-affinity-pod-label-value]}
+            (config/kubernetes)]
+        (when (and synthetic-pod-anti-affinity-pod-label-key
+                   synthetic-pod-anti-affinity-pod-label-value)
+          ; If the synthetic pod spec already has an affinity defined (see the code for
+          ; pod-hostnames-to-avoid above), we add to it; otherwise, we create a new one
+          (let [affinity (or (.getAffinity pod-spec) (V1Affinity.))
+                pod-anti-affinity (V1PodAntiAffinity.)
+                pod-affinity-term (V1PodAffinityTerm.)
+                label-selector (V1LabelSelector.)]
+            (.setMatchLabels label-selector
+                             {synthetic-pod-anti-affinity-pod-label-key
+                              synthetic-pod-anti-affinity-pod-label-value})
+            (.setLabelSelector pod-affinity-term label-selector)
+            (.setTopologyKey pod-affinity-term k8s-hostname-label)
+            (when synthetic-pod-anti-affinity-namespace
+              (.addNamespacesItem pod-affinity-term synthetic-pod-anti-affinity-namespace))
+            (.setRequiredDuringSchedulingIgnoredDuringExecution pod-anti-affinity [pod-affinity-term])
+            (.setPodAntiAffinity affinity pod-anti-affinity)
+            (.setAffinity pod-spec affinity)))))
+
+    pod))
 
 (defn V1Pod->name
   "Extract the name of a pod from the pod itself"
