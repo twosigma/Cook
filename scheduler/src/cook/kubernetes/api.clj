@@ -1455,7 +1455,9 @@
       (.setLabels metadata labels)
       ; Only include finalizers with real pods.
       (when-not (synthetic-pod? pod-name)
-        (.setFinalizers metadata (list FinalizerHelper/collectResultsFinalizer)))
+        (let [[resolved-config reason] (config-incremental/resolve-incremental-config task-id :add-finalizer "false")]
+          (if (= "true" resolved-config)
+            (.setFinalizers metadata (list FinalizerHelper/collectResultsFinalizer)))))
       (when pod-annotations
         (.setAnnotations metadata pod-annotations))
 
