@@ -21,7 +21,7 @@
             [metrics.timers :as timers]
             [plumbing.core :as pc])
   (:import (com.google.gson JsonSyntaxException)
-           (com.twosigma.cook.kubernetes WatchHelper)
+           (com.twosigma.cook.kubernetes FinalizerHelper WatchHelper)
            (io.kubernetes.client.custom IntOrString Quantity Quantity$Format)
            (io.kubernetes.client.openapi ApiClient ApiException JSON)
            (io.kubernetes.client.openapi.apis CoreV1Api)
@@ -1453,6 +1453,11 @@
       (.setName metadata pod-name)
       (.setNamespace metadata namespace)
       (.setLabels metadata labels)
+      ; Only include finalizers with real pods.
+      (when-not (synthetic-pod? pod-name)
+        (let [[resolved-config reason] (config-incremental/resolve-incremental-config task-id :add-finalizer "false")]
+          (if (= "true" resolved-config)
+            (.setFinalizers metadata (list FinalizerHelper/collectResultsFinalizer)))))
       (when pod-annotations
         (.setAnnotations metadata pod-annotations))
 
@@ -1696,7 +1701,7 @@
           ^V1ContainerStatus job-status (first (filter (fn [^V1ContainerStatus c] (= cook-container-name-for-job (.getName c)))
                                     container-statuses))
           {:keys [node-preempted-label]} (config/kubernetes)
-          pod-metadata (some-> pod .getMetadata)
+          ^V1ObjectMeta pod-metadata (some-> pod .getMetadata)
           pod-preempted-timestamp
           (some-> pod-metadata
                   .getLabels

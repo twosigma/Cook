@@ -85,7 +85,7 @@
 
 (defn select-config-from-values
   "Select one value for a uuid given incremental values."
-  [^UUID uuid incremental-values]
+  [uuid incremental-values]
   (try
     (when (not-empty incremental-values)
       (let [pct (-> uuid .hashCode Math/abs (/ Integer/MAX_VALUE) double)]
@@ -101,7 +101,7 @@
 
 (defn select-config-from-key
   "Select one value for a uuid given a key to look up incremental values."
-  [^UUID uuid config-key]
+  [uuid config-key]
   (select-config-from-values uuid (read-config config-key)))
 
 (defn resolve-incremental-config
@@ -114,7 +114,7 @@
   If it is a keyword, then it is used as a key to look up a collection of incremental values in the database.
   An collection of incremental values is resolved by picking one of the values using the job uuid hash. Each incremental
   value has an associated portion and the portions must add up to 1.0"
-  ([^UUID uuid incremental-config]
+  ([uuid incremental-config]
    (cond
      (coll? incremental-config)
      (select-config-from-values uuid incremental-config)
