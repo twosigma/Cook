@@ -1172,8 +1172,7 @@
            pod-labels pod-priority-class pod-supports-cook-init? pod-supports-cook-sidecar?]
     :or {pod-priority-class cook-job-pod-priority-class
          pod-supports-cook-init? true
-         pod-supports-cook-sidecar? true}
-    :as task-metadata}]
+         pod-supports-cook-sidecar? true}}]
   (let [{:keys [scalar-requests job]} task-request
         ;; NOTE: The scheduler's adjust-job-resources-for-pool-fn may modify :resources,
         ;; whereas :scalar-requests always contains the unmodified job resource values.
