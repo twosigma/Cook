@@ -977,14 +977,30 @@
   (when (and mode volume-name)
     (make-empty-volume volume-name)))
 
+(defn resolve-incremental-config-volume-mounts
+  "Helper method to resolve a container's volume mounts from an incremental configuration"
+  [{:keys [incremental-config-volume-mounts-key incremental-config-volume-mounts] :as checkpoint} {:keys [job/uuid]} passport-event-base]
+  (if (and incremental-config-volume-mounts-key incremental-config-volume-mounts)
+    (let [resolved-key (if (string? incremental-config-volume-mounts-key)
+                         incremental-config-volume-mounts-key
+                         (config-incremental/resolve-incremental-config uuid incremental-config-volume-mounts-key))]
+      (passport/log-event (merge passport-event-base
+                                 {:event-type passport/checkpoint-volume-mounts-key-selected
+                                  :volume-mounts-key resolved-key}))
+      (get incremental-config-volume-mounts resolved-key checkpoint))
+    checkpoint))
+
 (defn- checkpoint->volume-mounts
   "Get custom volume mounts needed for checkpointing"
-  [{:keys [mode init-container-volume-mounts main-container-volume-mounts]} checkpointing-tools-volume]
-  (let [volumes-from-spec-fn #(map (fn [{:keys [path sub-path]}]
-                                     (make-volume-mount checkpointing-tools-volume path sub-path false)) %)]
-    (when (and mode checkpointing-tools-volume)
-      {:init-container-checkpoint-volume-mounts (volumes-from-spec-fn init-container-volume-mounts)
-       :main-container-checkpoint-volume-mounts (volumes-from-spec-fn main-container-volume-mounts)})))
+  [{:keys [mode] :as checkpoint} checkpointing-tools-volume job passport-event-base]
+  (when (and mode checkpointing-tools-volume)
+    (let [volume-mounts-config (resolve-incremental-config-volume-mounts checkpoint job passport-event-base)
+          volumes-from-spec-fn #(map (fn [{:keys [path sub-path]}]
+                                       (make-volume-mount checkpointing-tools-volume path sub-path false)) %)
+          make-volume-mounts-fn (fn [{:keys [init-container-volume-mounts main-container-volume-mounts]}]
+                                  {:init-container-checkpoint-volume-mounts (volumes-from-spec-fn init-container-volume-mounts)
+                                   :main-container-checkpoint-volume-mounts (volumes-from-spec-fn main-container-volume-mounts)})]
+      (make-volume-mounts-fn volume-mounts-config))))
 
 (defn checkpoint->env
   "Get environment variables needed for checkpointing"
@@ -1200,8 +1216,12 @@
         scratch-space-volume (make-empty-volume "cook-scratch-space-volume")
         scratch-space-volume-mount-fn (partial make-volume-mount scratch-space-volume scratch-space)
         checkpoint-volume (checkpoint->volume checkpoint)
+        passport-event-base {:job-name job-name
+                             :job-uuid (str (:job/uuid job))
+                             :pool pool-name
+                             :user user}
         {:keys [init-container-checkpoint-volume-mounts main-container-checkpoint-volume-mounts]}
-        (checkpoint->volume-mounts checkpoint checkpoint-volume)
+        (checkpoint->volume-mounts checkpoint checkpoint-volume job passport-event-base)
         sandbox-env {"COOK_SANDBOX" sandbox-dir
                      "HOME" sandbox-dir
                      "MESOS_DIRECTORY" sandbox-dir
@@ -1269,11 +1289,7 @@
                         (cons (doto
                                 (V1EnvVar.)
                                 (.setName telemetry-agent-host-var-name)
-                                (.valueFrom hostIpEnvVarSource))))
-        passport-event-base {:job-name job-name
-                             :job-uuid (str (:job/uuid job))
-                             :pool pool-name
-                             :user user}]
+                                (.valueFrom hostIpEnvVarSource))))]
 
     ; metadata
     (.setName metadata pod-name)

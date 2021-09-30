@@ -28,6 +28,7 @@
                                                      :source :cook-scheduler
                                                      :event-type (str "cook-scheduler/" (name event-type)))))))
 
+(def checkpoint-volume-mounts-key-selected :checkpoint-volume-mounts-key-selected)
 (def default-image-selected :default-image-selected)
 (def init-container-image-selected :init-container-image-selected)
 (def job-created :job-created)
