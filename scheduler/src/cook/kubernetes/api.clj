@@ -1482,7 +1482,7 @@
         ; from happening. We want this pod to preempt lower priority pods
         ; (e.g. synthetic pods).
         (do
-          (add-node-selector pod-spec k8s-hostname-label hostname)
+          ;(add-node-selector pod-spec k8s-hostname-label hostname)
           ; Allow real pods to run on tenured nodes.
           (.addTolerationsItem pod-spec toleration-tenured-node))
         (when (seq pod-hostnames-to-avoid)
