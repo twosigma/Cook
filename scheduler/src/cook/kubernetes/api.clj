@@ -978,7 +978,9 @@
     (make-empty-volume volume-name)))
 
 (defn resolve-incremental-config-volume-mounts
-  "Helper method to resolve a container's volume mounts from an incremental configuration"
+  "Helper method to resolve a container's volume mounts from an incremental configuration.
+  We want to be able to dynamically set the container's volume mounts so that we can incrementally migrate to a
+  new version of the software that checkpoints the application."
   [{:keys [incremental-config-volume-mounts-key incremental-config-volume-mounts] :as checkpoint} {:keys [job/uuid]} passport-event-base]
   (if (and incremental-config-volume-mounts-key incremental-config-volume-mounts)
     (let [resolved-key (if (string? incremental-config-volume-mounts-key)
