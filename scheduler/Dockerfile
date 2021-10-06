@@ -5,6 +5,7 @@ FROM mesosphere/mesos:1.3.0
 # https://www.docker.com/blog/changes-dockerproject-org-apt-yum-repositories/
 RUN rm /etc/apt/sources.list.d/docker.list && \
     apt-get -y update && apt-get -y install software-properties-common && \
+    sudo apt-get install --reinstall ca-certificates && \
     add-apt-repository ppa:openjdk-r/ppa && apt-get -y update && \
     apt-get --no-install-recommends -y install \
     curl \
