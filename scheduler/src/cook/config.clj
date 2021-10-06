@@ -63,7 +63,7 @@
                              "com.netflix.fenzo.AssignableVMs" :warn
                              "com.netflix.fenzo.TaskScheduler" :warn
                              "com.netflix.fenzo.AssignableVirtualMachine" :warn}}))
-  ([{:keys [file] :or {file "log/cook.log"} {:keys [default] :or {default :info} :as overrides} :levels}]
+  ([{:keys [file rotate-hourly] :or {file "log/cook.log" rotate-hourly false} {:keys [default] :or {default :info} :as overrides} :levels}]
    (try
      (-> (Logger/getRootLogger) .getLoggerRepository .resetConfiguration)
      (let [overrides (->> overrides
@@ -76,7 +76,9 @@
                       (PatternLayout.
                         "%d{ISO8601} %-5p %c [%t] - %m%n")
                       file
-                      "'.'yyyy-MM-dd")
+                      (if rotate-hourly
+                        "'.'yyyy-MM-dd-HH"
+                        "'.'yyyy-MM-dd"))
                :level default}
               overrides)
        (log4j-conf/set-loggers!

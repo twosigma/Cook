@@ -100,6 +100,7 @@
                                                 :memory-limit 128.0}}
               :set-memory-limit? true}
  :log {:file #config/env "COOK_LOG_FILE"
+       :rotate-hourly true
        :levels {"datomic.db" :warn
                 "datomic.kv-cluster" :warn
                 "datomic.peer" :warn
