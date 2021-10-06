@@ -524,12 +524,16 @@ public class JobClient implements Closeable, JobClientInterface {
     private ScheduledExecutorService startListenService() {
         final ScheduledExecutorService scheduledExecutorService =
                 Executors.newScheduledThreadPool(1,
-                        new ThreadFactoryBuilder().setUncaughtExceptionHandler(new UncaughtExceptionHandler() {
-                            @Override
-                            public void uncaughtException(Thread t, Throwable e) {
-                                _log.error("Can not handle exception for listener service.", e);
-                            }
-                        }).build());
+                        new ThreadFactoryBuilder()
+                                .setNameFormat("cook-client-listener-%d")
+                                .setDaemon(true)
+                                .setUncaughtExceptionHandler(new UncaughtExceptionHandler() {
+                                    @Override
+                                    public void uncaughtException(Thread t, Throwable e) {
+                                        _log.error("Can not handle exception for listener service.", e);
+                                    }
+                                })
+                                .build());
 
         scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
             @Override
