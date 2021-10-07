@@ -137,9 +137,16 @@
                  [mount "0.1.12"]
 
                  ;; Kubernetes
-                 [io.kubernetes/client-java "11.0.0"]
-                 [com.google.auth/google-auth-library-oauth2-http "0.16.2"]
 
+                 ;; We exclude okhttp3 from the kubernetes-client and force it to be a later version
+                 ;; for less buggy http2 support. As of okhttp 4.9.2, still buggy, but only buggy in production!
+                 ;; As a short-term mitigation, we're forcing http 1.1. (see make-api-client)
+                 ;; At some point when okhttp matures, we should test http 2.
+                 ;; Test removing these lines with client-java > 13.
+                 [io.kubernetes/client-java "11.0.2" :exclusions [com.squareup.okhttp3/okhttp com.squareup.okhttp3/logging-interceptor]]
+                 [com.squareup.okhttp3/okhttp "4.9.2"]
+                 [com.squareup.okhttp3/logging-interceptor "4.9.2"]
+                 [com.google.auth/google-auth-library-oauth2-http "0.16.2"]
 
                  ;Version forcing by JDK11 upgrade.
                  [org.flatland/ordered "1.5.9"] ; Upgraded from 1.5.3, brought in by clj-yaml.
