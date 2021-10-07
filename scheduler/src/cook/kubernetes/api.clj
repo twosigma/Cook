@@ -1813,17 +1813,6 @@
     ; I suspect our predicate of k8s-actual-state-equivalent needs tweaking.
     (timers/time! (metrics/timer "delete-pod" compute-cluster-name)
       (try
-        (.deleteNamespacedPod
-          api
-          pod-name
-          pod-namespace
-          nil ; pretty
-          nil ; dryRun
-          nil ; gracePeriodSeconds
-          nil ; orphanDependents
-          nil ; propagationPolicy
-          deleteOptions
-          )
         (catch JsonSyntaxException e
           ; Silently gobble this exception.
           ;
@@ -1841,11 +1830,10 @@
             (if already-deleted?
               (log/info "In" compute-cluster-name "compute cluster, pod" pod-name "was already deleted")
               (throw e))))))))
-
 (defn create-namespaced-pod
   "Delegates to the k8s API .createNamespacedPod function"
   [^CoreV1Api api namespace pod]
-  (.createNamespacedPod api namespace pod nil nil nil))
+  )
 
 (let [json (JSON.)]
   (defn launch-pod
