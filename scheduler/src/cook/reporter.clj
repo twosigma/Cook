@@ -34,6 +34,7 @@
 
 (defn graphite-reporter
   [{:keys [prefix host port pickled?]}]
+  (log/info "Starting graphite reporter")
   (let [addr (InetSocketAddress. host port)
         graphite (if pickled?
                    (PickledGraphite. addr)
