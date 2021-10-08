@@ -101,12 +101,6 @@ class Application:
     :type name: str
     :param version: Application version.
     :type version: str
-    :param workload_class: The class of workload being run.
-    :type workload_class: str
-    :param workload_id: An identifier for the workload.
-    :type workload_id: str
-    :param workload_details: Freeform additional information.
-    :type workload_details: str
     """
     name: str
     version: str
