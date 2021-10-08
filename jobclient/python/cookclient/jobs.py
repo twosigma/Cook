@@ -104,21 +104,31 @@ class Application:
     """
     name: str
     version: str
+    workload_class: str
+    workload_id: str
+    workload_details: str
 
-    def __init__(self, name: str, version: str):
+    def __init__(self, name: str, version: str, **kwargs):
         self.name = name
         self.version = version
+        self.workload_class = kwargs.get('workload-class', None)
+        self.workload_id = kwargs.get('workload-id', None)
+        self.workload_details = kwargs.get('workload-details', None)
 
     def __str__(self):
         return json.dumps(self.to_dict, indent=4)
 
     def __repr__(self):
-        return f'Application({self.name}, {self.version})'
+        return f'Application({self.name}, {self.version}, {self.workload_class}, ' \
+               f'{self.workload_id}, {self.workload_details}) '
 
     def to_dict(self) -> dict:
         return {
             'name': self.name,
-            'version': self.version
+            'version': self.version,
+            'workload-class': self.workload_class,
+            'workload-id': self.workload_id,
+            'workload-details': self.workload_details
         }
 
     @classmethod
