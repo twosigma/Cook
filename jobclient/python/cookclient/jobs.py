@@ -101,24 +101,45 @@ class Application:
     :type name: str
     :param version: Application version.
     :type version: str
+    :param workload_class: The class of workload being run.
+    :type version: str
+    :param workload_id: An identifier for the workload.
+    :type version: str
+    :param workload_details: Freeform additional information.
+    :type version: str
     """
     name: str
     version: str
+    workload_class: str
+    workload_id: str
+    workload_details: str
 
-    def __init__(self, name: str, version: str):
+    def __init__(self,
+                 name: str,
+                 version: str,
+                 workload_class: str = None,
+                 workload_id: str = None,
+                 workload_details: str = None):
         self.name = name
         self.version = version
+        self.workload_class = workload_class
+        self.workload_id = workload_id
+        self.workload_details = workload_details
 
     def __str__(self):
         return json.dumps(self.to_dict, indent=4)
 
     def __repr__(self):
-        return f'Application({self.name}, {self.version})'
+        return f'Application({self.name}, {self.version}, {self.workload_class}, ' \
+               f'{self.workload_id}, {self.workload_details}) '
 
     def to_dict(self) -> dict:
         return {
             'name': self.name,
-            'version': self.version
+            'version': self.version,
+            'workload-class': self.workload_class,
+            'workload-id': self.workload_id,
+            'workload-details': self.workload_details
         }
 
     @classmethod
