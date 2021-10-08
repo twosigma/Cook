@@ -114,17 +114,12 @@ class Application:
     workload_id: str
     workload_details: str
 
-    def __init__(self,
-                 name: str,
-                 version: str,
-                 workload_class: str = None,
-                 workload_id: str = None,
-                 workload_details: str = None):
+    def __init__(self, name: str, version: str, **kwargs):
         self.name = name
         self.version = version
-        self.workload_class = workload_class
-        self.workload_id = workload_id
-        self.workload_details = workload_details
+        self.workload_class = kwargs.get('workload-class', None)
+        self.workload_id = kwargs.get('workload-id', None)
+        self.workload_details = kwargs.get('workload-details', None)
 
     def __str__(self):
         return json.dumps(self.to_dict, indent=4)
