@@ -2176,7 +2176,7 @@ class CookTest(util.CookTest):
         self.assertEqual(job_uuid_1, jobs[0]['uuid'])
 
     def test_retrieve_jobs_with_deprecated_api(self):
-        pool = util.default_pool(self.cook_url)
+        pool = util.default_submit_pool()
         job_uuid_1, resp = util.submit_job(self.cook_url, pool=pool)
         self.assertEqual(201, resp.status_code, msg=resp.content)
         job_uuid_2, resp = util.submit_job(self.cook_url)
