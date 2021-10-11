@@ -52,7 +52,7 @@
             [metrics.timers :as timers]
             [plumbing.core :as pc])
   (:import (clojure.lang ExceptionInfo)
-           (com.netflix.fenzo SimpleAssignmentResult TaskAssignmentResult TaskRequest TaskScheduler)
+           (com.netflix.fenzo SchedulingResult SimpleAssignmentResult TaskAssignmentResult TaskRequest TaskScheduler)
            (com.netflix.fenzo.plugins BinPackingFitnessCalculators)
            (cook.compute_cluster ComputeCluster)
            (java.util UUID)
@@ -181,7 +181,7 @@
                     :cpus cpus :mem mem :gpus gpus :disk disk :attrs attrs) 0))
 
 (defn schedule-and-run-jobs
-  [conn scheduler offers job-ids]
+  [conn ^TaskScheduler scheduler offers job-ids]
   (let [db (d/db conn)
         jobs (->> job-ids
                   (map #(d/entity db %))
@@ -192,8 +192,8 @@
         tasks (map #(sched/make-task-request db %1 nil :task-id %2 :guuid->considerable-cotask-ids guuid->considerable-cotask-ids
                                              :running-cotask-cache cache)
                    jobs task-ids)
-        result (-> scheduler
-                   (.scheduleOnce tasks offers))
+        ^SchedulingResult result (-> scheduler
+                                     (.scheduleOnce tasks offers))
         tasks-assigned (some->> result
                                 .getResultMap
                                 vals

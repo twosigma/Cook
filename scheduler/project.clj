@@ -16,14 +16,13 @@
 (defproject cook "1.57.2-SNAPSHOT"
   :description "This launches jobs on a Mesos cluster with fair sharing and preemption"
   :license {:name "Apache License, Version 2.0"}
-  :dependencies [[org.clojure/clojure "1.8.0"]
+  :dependencies [[org.clojure/clojure "1.10.3"]
 
                  ;;Data marshalling
                  [org.clojure/data.codec "0.1.0"]
                  ^:displace [cheshire "5.3.1"]
                  [byte-streams "0.1.4"]
                  [org.clojure/data.json "0.2.2"]
-                 [circleci/clj-yaml "0.5.5"]
                  [camel-snake-kebab "0.4.0"]
                  [com.rpl/specter "1.0.1"]
 
@@ -68,7 +67,6 @@
 
                  ;;Networking
                  [twosigma/clj-http "2.0.0-ts1"]
-                 [io.netty/netty "3.10.1.Final"]
                  [cc.qbits/jet "0.6.4" :exclusions [org.eclipse.jetty/jetty-io
                                                     org.eclipse.jetty/jetty-security
                                                     org.eclipse.jetty/jetty-server
@@ -77,6 +75,15 @@
                  [org.eclipse.jetty/jetty-server "9.2.6.v20141205"]
                  [org.eclipse.jetty/jetty-security "9.2.6.v20141205"]
 
+                 ; TODO: Upgrade netty.
+                 ; Bring in netty. Note that this is brought in in a lot of other places, Exclude it whenever finding another one.
+                 ; Need to make sure all imports are importing the same version.
+                 ;[io.netty/netty-handler "4.1.63.Final"]
+                 ; Netty now uses epoll with a native library. We need to tell lein our architecture so it can bring in the
+                 ; right library architecture. Make sure this version matches.
+                 ;[io.netty/netty-transport-native-epoll "4.1.63.Final" :classifier "linux-x86_64"]
+                 ;[io.netty/netty-transport-native-unix-common "4.1.63.Final" :classifier "linux-x86_64"]
+                 [io.netty/netty "3.10.1.Final"]
 
 
                  ;;Metrics
@@ -114,20 +121,38 @@
                  [liberator "0.15.0"]
 
                  ;;Databases
+                 ;; TODO: Should upgrade curator to avoid illegal reflective access warnings. (5.2.0 is latest)
                  [org.apache.curator/curator-framework "2.7.1"
                   :exclusions [io.netty/netty]]
                  [org.apache.curator/curator-recipes "2.7.1"
                   :exclusions [org.slf4j/slf4j-log4j12
                                org.slf4j/log4j
                                log4j]]
-                 [org.apache.curator/curator-test "2.7.1"]
+                 ; Used when doing local testing in open source to setup mock curator.
+                 [org.apache.curator/curator-test "2.7.1"
+                 :exclusions [io.netty/netty
+                              io.netty/netty-transport-native-epoll]]
 
                  ;; Dependency management
                  [mount "0.1.12"]
 
                  ;; Kubernetes
-                 [io.kubernetes/client-java "11.0.0"]
-                 [com.google.auth/google-auth-library-oauth2-http "0.16.2"]]
+
+                 ;; We exclude okhttp3 from the kubernetes-client and force it to be a later version
+                 ;; for less buggy http2 support. As of okhttp 4.9.2, still buggy, but only buggy in production!
+                 ;; As a short-term mitigation, we're forcing http 1.1. (see make-api-client)
+                 ;; At some point when okhttp matures, we should test http 2.
+                 ;; Test removing these lines with client-java > 13.
+                 [io.kubernetes/client-java "11.0.2" :exclusions [com.squareup.okhttp3/okhttp com.squareup.okhttp3/logging-interceptor]]
+                 [com.squareup.okhttp3/okhttp "4.9.2"]
+                 [com.squareup.okhttp3/logging-interceptor "4.9.2"]
+                 [com.google.auth/google-auth-library-oauth2-http "0.16.2"]
+
+                 ;Version forcing by JDK11 upgrade.
+                 [org.flatland/ordered "1.5.9"] ; Upgraded from 1.5.3, brought in by clj-yaml.
+                 [jakarta.xml.ws/jakarta.xml.ws-api "2.3.3"] ; Needed via liberator, No longer in JDK11.
+                 [com.taoensso/encore "3.19.0"] ; Used by ring-congestion. 
+                 ]
 
   :repositories {"maven2" {:url "https://files.couchbase.com/maven2/"}
                  "sonatype-oss-public" "https://oss.sonatype.org/content/groups/public/"}
@@ -159,8 +184,9 @@
                    ; library instead of the datomic-free library, by
                    ; using a profiles.clj file that defines a profile
                    ; which pulls in datomic-pro
-                   [com.datomic/datomic-free "0.9.5206"
-                    :exclusions [com.fasterxml.jackson.core/jackson-core
+                   [com.datomic/datomic-free "0.9.5206" ; Note that updating this causes activeMQ errors. Suspect related to OpenSSL.
+                    :exclusions [io.netty/netty
+                                 com.fasterxml.jackson.core/jackson-core
                                  joda-time
                                  org.slf4j/jcl-over-slf4j
                                  org.slf4j/jul-to-slf4j
@@ -174,7 +200,7 @@
 
    :uberjar
    {:aot [cook.components]
-    :dependencies [[com.datomic/datomic-free "0.9.5206"
+    :dependencies [[com.datomic/datomic-free "0.9.5206" ; Note that updating this causes activeMQ errors. Suspect related to OpenSSL.
                     :exclusions [com.fasterxml.jackson.core/jackson-core
                                  joda-time
                                  org.slf4j/jcl-over-slf4j
@@ -202,7 +228,7 @@
    :test
    {:dependencies [[criterium "0.4.4"]
                    [org.clojure/test.check "0.6.1"]
-                   [org.mockito/mockito-core "1.10.19"]
+                   [org.mockito/mockito-core "3.12.4"]
                    [twosigma/cook-jobclient "0.8.6-SNAPSHOT"]]}
 
    :test-console
@@ -229,11 +255,9 @@
              ;"-Dsun.security.jgss.native=true"
              ;"-Dsun.security.jgss.lib=/opt/mitkrb5/lib/libgssapi_krb5.so"
              ;"-Djavax.security.auth.useSubjectCredsOnly=false"
-             "-verbose:gc"
-             "-XX:+PrintGCDetails"
-             "-Xloggc:gclog"
-             "-XX:+UseGCLogFileRotation"
-             "-XX:NumberOfGCLogFiles=20"
-             "-XX:GCLogFileSize=128M"
-             "-XX:+PrintGCDateStamps"
-             "-XX:+HeapDumpOnOutOfMemoryError"])
+             "-Xlog:gc*,compaction*,stringdedup*=debug,stringtable*,ergo*,safepoint,gc+age=trace:file=gclog-%t:time,level,tags"
+             "-XX:+UseG1GC"
+             "-XX:+UseStringDeduplication"
+             "-XX:+HeapDumpOnOutOfMemoryError"
+             "--illegal-access=warn"
+	     ])

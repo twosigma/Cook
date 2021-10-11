@@ -26,7 +26,7 @@ apt-get clean
 rm -Rf /var/lib/apt/lists/*
 
 # Java setup
-export JAVA_CMD=/usr/lib/jvm/java-8-openjdk-amd64/bin/java
+export JAVA_CMD=/usr/lib/jvm/java-11-openjdk-amd64/bin/java
 echo 'export JAVA_CMD='$JAVA_CMD | tee -a $bashrc
 
 # Lein setup (https://leiningen.org/#install)
