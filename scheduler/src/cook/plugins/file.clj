@@ -20,7 +20,7 @@
         (log/info "Creating file url plugin with" factory-fn)
         (if-let [resolved-fn (cook.plugins.util/resolve-symbol (symbol factory-fn))]
           (resolved-fn config)
-          (throw (ex-info (str "Unable to resolve factory fn " factory-fn)))))
+          (throw (ex-info (str "Unable to resolve factory fn " factory-fn) {}))))
       (NilFileUrlPlugin.))))
 
 (mount/defstate plugin
