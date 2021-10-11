@@ -123,13 +123,14 @@ class Application:
                f'{self.workload_id}, {self.workload_details}) '
 
     def to_dict(self) -> dict:
-        return {
-            'name': self.name,
-            'version': self.version,
-            'workload-class': self.workload_class,
-            'workload-id': self.workload_id,
-            'workload-details': self.workload_details
-        }
+        d = {'name': self.name, 'version': self.version}
+        if self.workload_class:
+            d['workload-class'] = self.workload_class
+        if self.workload_id:
+            d['workload-id'] = self.workload_id
+        if self.workload_details:
+            d['workload-details'] = self.workload_details
+        return d
 
     @classmethod
     def from_dict(cls, d: dict) -> 'Application':
