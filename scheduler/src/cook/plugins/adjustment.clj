@@ -22,4 +22,4 @@
       no-op)))
 
 (mount/defstate plugin
-                :start (create-default-plugin-object config/config))
+  :start (create-default-plugin-object config/config))

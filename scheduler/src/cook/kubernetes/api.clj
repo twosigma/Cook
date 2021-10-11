@@ -91,12 +91,12 @@
                      (cached-queries/instance-uuid->job-uuid-cache-lookup instance-uuid))
         {:keys [job/name job/user] :as job} (cached-queries/job-uuid->job-map-cache-lookup job-uuid)]
     (cond->
-          {:job-name name
-           :job-uuid job-uuid
-           :pod-name pod-name
-           :pool (cached-queries/job->pool-name job)
-           :user user}
-          instance-uuid (assoc :instance-uuid instance-uuid))))
+      {:job-name name
+       :job-uuid job-uuid
+       :pod-name pod-name
+       :pool (cached-queries/job->pool-name job)
+       :user user}
+      instance-uuid (assoc :instance-uuid instance-uuid))))
 
 ; DeletionCandidateTaint is a soft taint that k8s uses to mark unneeded
 ; nodes as preferably unschedulable. This taint is added as soon as the
@@ -784,9 +784,9 @@
 (defn- make-shm-volume-mount
   "Make a volume mount for a shm volume mount."
   ([^V1Volume volume]
-     (doto (V1VolumeMount.)
-       (.setName (.getName volume))
-       (.setMountPath "/dev/shm"))))
+   (doto (V1VolumeMount.)
+     (.setName (.getName volume))
+     (.setMountPath "/dev/shm"))))
 
 (defn- make-volume-mount
   "Make a kubernetes volume mount"
@@ -1297,11 +1297,11 @@
     (.setNamespace metadata namespace)
     (.setLabels metadata labels)
     ; Only include finalizers with real pods.
-      (when-not (synthetic-pod? pod-name)
-        (let [[resolved-config reason] (config-incremental/resolve-incremental-config task-id :add-finalizer "false")]
-          (if (= "true" resolved-config)
-            (.setFinalizers metadata (list FinalizerHelper/collectResultsFinalizer)))))(when pod-annotations
-      (.setAnnotations metadata pod-annotations))
+    (when-not (synthetic-pod? pod-name)
+      (let [[resolved-config reason] (config-incremental/resolve-incremental-config task-id :add-finalizer "false")]
+        (if (= "true" resolved-config)
+          (.setFinalizers metadata (list FinalizerHelper/collectResultsFinalizer)))))(when pod-annotations
+                                                                                       (.setAnnotations metadata pod-annotations))
 
     (.setHostnameAsFQDN pod-spec false)
 
@@ -1669,7 +1669,7 @@
           ;   with the name extra-* fails.
           ; * A job may have additional containers with the name aux-*
           ^V1ContainerStatus job-status (first (filter (fn [^V1ContainerStatus c] (= cook-container-name-for-job (.getName c)))
-                                    container-statuses))
+                                                       container-statuses))
           {:keys [node-preempted-label]} (config/kubernetes)
           ^V1ObjectMeta pod-metadata (some-> pod .getMetadata)
           pod-preempted-timestamp
@@ -1779,8 +1779,8 @@
   (let [api (CoreV1Api. api-client)
         ^V1DeleteOptionsBuilder delete-options-builder
         (cond-> (V1DeleteOptionsBuilder.)
-                true (.withPropagationPolicy "Background")
-                grace-period-seconds (.withGracePeriodSeconds ^long grace-period-seconds))
+          true (.withPropagationPolicy "Background")
+          grace-period-seconds (.withGracePeriodSeconds ^long grace-period-seconds))
         ^V1DeleteOptions deleteOptions (.build delete-options-builder)
         pod-name (-> pod .getMetadata .getName)
         pod-namespace (-> pod .getMetadata .getNamespace)]
@@ -1850,7 +1850,7 @@
         (log/info "In" compute-cluster-name "compute cluster, launching pod with name" pod-name "in namespace" namespace ":" (.serialize json pod))
         (try
           (timers/time! (metrics/timer "launch-pod" compute-cluster-name)
-                        (create-namespaced-pod api namespace pod))
+            (create-namespaced-pod api namespace pod))
           (passport/log-event
             (merge
               passport-base-map

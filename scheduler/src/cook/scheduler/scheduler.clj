@@ -458,13 +458,13 @@
                             running-cotask-cache (atom (cache/fifo-cache-factory {} :threshold 1))
                             reserved-hosts #{}}}]
   (let [constraints (-> (constraints/make-fenzo-job-constraints job)
-                      (conj (constraints/build-rebalancer-reservation-constraint reserved-hosts))
-                      (into
-                        (remove nil?
-                                (mapv (fn make-group-constraints [group]
-                                        (constraints/make-fenzo-group-constraint
-                                          db group #(guuid->considerable-cotask-ids (:group/uuid group)) running-cotask-cache))
-                                      (:group/_job job)))))
+                        (conj (constraints/build-rebalancer-reservation-constraint reserved-hosts))
+                        (into
+                          (remove nil?
+                                  (mapv (fn make-group-constraints [group]
+                                          (constraints/make-fenzo-group-constraint
+                                            db group #(guuid->considerable-cotask-ids (:group/uuid group)) running-cotask-cache))
+                                        (:group/_job job)))))
         constraints-list (into (list) constraints)
         scalar-requests (job->scalar-request job)
         pool-specific-resources ((adjust-job-resources-for-pool-fn pool-name) job resources)]
@@ -473,7 +473,7 @@
                           (:mem pool-specific-resources)
                           (:ports pool-specific-resources)
                           (-> job :job/uuid str)
-                           task-id assigned-resources guuid->considerable-cotask-ids constraints-list scalar-requests)))
+                          task-id assigned-resources guuid->considerable-cotask-ids constraints-list scalar-requests)))
 
 (defn jobs->resource-maps
   "Given a collection of jobs, returns a collection
@@ -502,9 +502,9 @@
                    (let [{request "request", limit "limit"} disk
                          type (get disk "type" "unspecified-disk-type")]
                      (cond-> res-map
-                             true (dissoc "disk")
-                             (not (nil? request)) (assoc (str "disk/" type "/request") request)
-                             (not (nil? limit)) (assoc (str "disk/" type "/limit") limit)))
+                       true (dissoc "disk")
+                       (not (nil? request)) (assoc (str "disk/" type "/request") request)
+                       (not (nil? limit)) (assoc (str "disk/" type "/limit") limit)))
                    res-map))]
            (-> resource-map
                flatten-gpus
@@ -1515,10 +1515,10 @@
   (let [config (merge {:timeout-hours (* 2 24)}
                       config)]
     (tools/chime-at-ch trigger-chan
-                      (fn kill-linger-task-event []
-                        (kill-lingering-tasks (time/now) conn config))
-                      {:error-handler (fn [e]
-                                        (log/error e "Failed to reap timeout tasks!"))})))
+                       (fn kill-linger-task-event []
+                         (kill-lingering-tasks (time/now) conn config))
+                       {:error-handler (fn [e]
+                                         (log/error e "Failed to reap timeout tasks!"))})))
 
 (defn handle-stragglers
   "Searches for running jobs in groups and runs the associated straggler handler"
@@ -1546,12 +1546,12 @@
    straggler handler."
   [conn trigger-chan]
   (tools/chime-at-ch trigger-chan
-                    (fn straggler-handler-event []
-                      (handle-stragglers conn (fn [task-ent]
-                                                (cc/kill-task-if-possible (cook.task/task-ent->ComputeCluster task-ent)
-                                                              (:instance/task-id task-ent)))))
-                    {:error-handler (fn [e]
-                                      (log/error e "Failed to handle stragglers"))}))
+                     (fn straggler-handler-event []
+                       (handle-stragglers conn (fn [task-ent]
+                                                 (cc/kill-task-if-possible (cook.task/task-ent->ComputeCluster task-ent)
+                                                                           (:instance/task-id task-ent)))))
+                     {:error-handler (fn [e]
+                                       (log/error e "Failed to handle stragglers"))}))
 
 (defn killable-cancelled-tasks
   [db]
@@ -1795,11 +1795,11 @@
   (let [offensive-jobs-ch (make-offensive-job-stifler conn)
         offensive-job-filter (partial filter-offensive-jobs task-constraints offensive-jobs-ch)]
     (tools/chime-at-ch trigger-chan
-                      (fn rank-jobs-event []
-                        (log/info "Starting pending job ranking")
-                        (reset! pool-name->pending-jobs-atom
-                                (rank-jobs (d/db conn) offensive-job-filter))
-                        (log/info "Done with pending job ranking")))))
+                       (fn rank-jobs-event []
+                         (log/info "Starting pending job ranking")
+                         (reset! pool-name->pending-jobs-atom
+                                 (rank-jobs (d/db conn) offensive-job-filter))
+                         (log/info "Done with pending job ranking")))))
 
 (meters/defmeter [cook-mesos scheduler mesos-error])
 (meters/defmeter [cook-mesos scheduler offer-chan-full-error])
@@ -1898,8 +1898,8 @@
   [match-trigger-chan pools]
   (let [{:keys [global-min-match-interval-millis target-per-pool-match-interval-millis]} (config/offer-matching)
         match-interval-millis (-> target-per-pool-match-interval-millis
-                                  (/ (count pools)) 
-                                  int 
+                                  (/ (count pools))
+                                  int
                                   (max global-min-match-interval-millis))]
     (when (= match-interval-millis global-min-match-interval-millis)
       (log/warn "match-trigger-chan is set to the global minimum interval of " global-min-match-interval-millis " ms. "
