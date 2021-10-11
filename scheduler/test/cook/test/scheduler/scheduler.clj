@@ -52,7 +52,7 @@
             [metrics.timers :as timers]
             [plumbing.core :as pc])
   (:import (clojure.lang ExceptionInfo)
-           (com.netflix.fenzo SimpleAssignmentResult TaskAssignmentResult TaskRequest TaskScheduler SchedulingResult)
+           (com.netflix.fenzo SchedulingResult SimpleAssignmentResult TaskAssignmentResult TaskRequest TaskScheduler)
            (com.netflix.fenzo.plugins BinPackingFitnessCalculators)
            (cook.compute_cluster ComputeCluster)
            (java.util UUID)
