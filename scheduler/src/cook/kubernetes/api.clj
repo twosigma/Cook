@@ -31,7 +31,7 @@
              V1HTTPGetAction V1LabelSelector V1ObjectFieldSelector V1Node V1NodeList V1NodeAffinity V1NodeSelector
              V1NodeSelectorRequirement V1NodeSelectorTerm V1ObjectMeta V1ObjectReference V1Pod V1PodAffinityTerm
              V1PodAntiAffinity V1PodCondition V1PodSecurityContext V1PodSpec V1PodStatus V1Probe V1ResourceRequirements
-             V1Toleration V1Volume V1VolumeBuilder V1VolumeMount V1WeightedPodAffinityTerm V1Taint V1PodList V1VolumeFluent)
+             V1Toleration V1Volume V1VolumeBuilder V1VolumeMount V1Taint)
            (io.kubernetes.client.util Watch)
            (java.net SocketTimeoutException)
            (java.util.concurrent Executors ExecutorService)))

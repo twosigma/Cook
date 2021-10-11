@@ -15,10 +15,8 @@
 ;;
 
 (ns cook.test.scheduler.constraints
-  (:require [clj-time.coerce :as tc]
-            [clj-time.core :as t]
+  (:require [clj-time.core :as t]
             [clojure.test :refer :all]
-            [cook.caches :as caches]
             [cook.config :as config]
             [cook.scheduler.constraints :as constraints]
             [cook.scheduler.offer :as offer]
@@ -28,9 +26,8 @@
                      make-task-assignment-result make-task-request restore-fresh-database! setup]]
             [cook.tools :as util]
             [datomic.api :as d :refer [db]])
-  (:import (java.util Date UUID)
-           (org.joda.time DateTime)
-           (org.mockito Mockito)))
+  (:import (java.util Date)
+           (org.joda.time DateTime)))
 
 (deftest test-get-group-constraint-name
   (is (= "unique-host-placement-group-constraint"

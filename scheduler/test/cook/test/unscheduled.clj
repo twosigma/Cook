@@ -17,7 +17,6 @@
   (:require [clojure.test :refer :all]
             [cook.quota :as quota]
             [cook.rate-limit :as rate-limit]
-            [cook.scheduler.scheduler :as scheduler]
             [cook.test.testutil :refer [create-dummy-instance create-dummy-job restore-fresh-database! setup]]
             [cook.tools :as tools]
             [cook.unscheduled :as u]

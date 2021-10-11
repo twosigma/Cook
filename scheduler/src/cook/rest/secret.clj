@@ -15,7 +15,7 @@
 ;;
 (ns cook.rest.secret
   "This namespace is for development. It uses a fake secret."
-  (:require [ring.middleware.params :as params]))
+  (:require [ring.middleware.params]))
 
 (defn wrap-terribly-insecure-auth
   [handler]

@@ -17,7 +17,6 @@
   (:require [clojure.tools.logging :as log]
             [cook.config :refer [config]]
             [cook.rate-limit.generic :as rtg]
-            [cook.regexp-tools :as regexp-tools]
             [mount.core :as mount]))
 
 ; Import from cook.rate-limit.generic some relevant functions.
