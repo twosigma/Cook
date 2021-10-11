@@ -687,7 +687,7 @@
                                    ;; In JDK11, we're getting SocketTimeouts.
                                    ;; https://stackoverflow.com/questions/62031298/sockettimeout-on-java-11-but-not-on-java-8
                                    ;; suggests forcing HTTP_1_1 because HTTP_2 can be flaky.
-                                   ;; We can try to removed this when the client is more mature, but as
+                                   ;; We can try to remove this when the client is more mature, but as
                                    ;; of okhttp 4.9.1, still buggy.
                                    (.protocols (list Protocol/HTTP_1_1))
                                    .build)
