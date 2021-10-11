@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.58.0] - 2021-10-11
+### Changed
+- Switch to JDK-11 and Clojure 1.10, from @scrosby
+
+### Added
+- Cook can add a finalizer to pods, from @scrosby
+- Support for incremental config for checkpointing volume mounts, from @nsinkov
+- Support for rotating logs every hour, from @scrosby
+
 ## [1.57.1] - 2021-09-29
 ### Changed
 - Trimmed down pod event logging, from @dposada
