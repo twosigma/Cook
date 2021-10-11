@@ -1429,15 +1429,7 @@
             resources (V1ResourceRequirements.)]
         ; container
         (.setName container cook-init-container-name)
-<<<<<<< Updated upstream
-        (.setImage container
-                   (or (get main-env "COOK_INIT_CONTAINER_IMAGE")
-                       (resolve-image-from-incremental-config
-                         job passport-event-base passport/init-container-image-selected
-                         image image-fallback)))
-=======
         (.setImage container (get main-env init-container-image-var-name))
->>>>>>> Stashed changes
         (.setCommand container command)
         (.setWorkingDir container init-container-workdir)
         (.setEnv container main-env-vars)
@@ -1456,15 +1448,7 @@
             resources (V1ResourceRequirements.)]
         ; container
         (.setName container cook-container-name-for-file-server)
-<<<<<<< Updated upstream
-        (.setImage container
-                   (or (get main-env "COOK_SIDECAR_CONTAINER_IMAGE")
-                       (resolve-image-from-incremental-config
-                         job passport-event-base passport/sidecar-image-selected
-                         image image-fallback)))
-=======
         (.setImage container (get main-env sidecar-container-image-var-name))
->>>>>>> Stashed changes
         (.setCommand container (conj command (str port)))
         (.setWorkingDir container sidecar-workdir)
         (.setPorts container [(.containerPort (V1ContainerPort.) (int port))])
