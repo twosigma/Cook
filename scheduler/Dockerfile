@@ -38,7 +38,7 @@ RUN lein deps
 
 # Datomic setup
 COPY datomic /opt/cook/datomic
-RUN unzip -uo /opt/cook/datomic/datomic-free-0.9.5394.zip
+RUN unzip -uo /opt/cook/datomic/datomic-free-0.9.5561.56.zip
 
 # Copy the whole scheduler into the container
 COPY docker /opt/cook/docker
@@ -47,7 +47,7 @@ COPY java /opt/cook/java
 COPY src /opt/cook/src
 
 RUN lein uberjar
-RUN cp "target/cook-$(lein print :version | tr -d '"').jar" datomic-free-0.9.5394/lib/cook-$(lein print :version | tr -d '"').jar
+RUN cp "target/cook-$(lein print :version | tr -d '"').jar" datomic-free-0.9.5561.56/lib/cook-$(lein print :version | tr -d '"').jar
 COPY config* /opt/cook/
 
 # Run cook
