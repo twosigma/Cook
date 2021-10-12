@@ -21,7 +21,7 @@
         (log/info "Creating pool selection plugin with" factory-fn)
         (if-let [resolved-fn (cook.plugins.util/resolve-symbol (symbol factory-fn))]
           (resolved-fn config)
-          (throw (ex-info (str "Unable to resolve factory fn " factory-fn)))))
+          (throw (ex-info (str "Unable to resolve factory fn " factory-fn) {}))))
       (AttributePoolSelector. (:attribute-name pool-selection)
                               (:default-pool pool-selection)))))
 
