@@ -49,7 +49,6 @@
             [cook.queue-limit :as queue-limit]
             [cook.quota :as quota]
             [cook.rate-limit :as rate-limit]
-            [cook.scheduler.constraints :as constraints]
             [cook.scheduler.share :as share]
             [cook.schema :refer [constraint-operators host-placement-types straggler-handling-types]]
             [cook.task :as task]

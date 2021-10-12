@@ -15,26 +15,24 @@
             [cook.kubernetes.controller :as controller]
             [cook.kubernetes.metrics :as metrics]
             [cook.monitor :as monitor]
-            [cook.passport :as passport]
             [cook.pool]
             [cook.scheduler.constraints :as constraints]
             [cook.tools :as tools]
             [cook.util :as util]
             [datomic.api :as d]
             [metrics.meters :as meters]
-            [metrics.timers :as timers]
-            [plumbing.core :as pc])
+            [metrics.timers :as timers])
   (:import (com.google.auth.oauth2 GoogleCredentials)
            (com.twosigma.cook.kubernetes TokenRefreshingAuthenticator)
            (io.kubernetes.client.openapi ApiClient)
            (io.kubernetes.client.openapi.models V1Node V1Pod)
-           (io.kubernetes.client.util ClientBuilder Config KubeConfig)
+           (io.kubernetes.client.util ClientBuilder KubeConfig)
            (java.nio.charset StandardCharsets)
            (java.io ByteArrayInputStream File FileInputStream InputStreamReader)
            (java.util.concurrent Executors ExecutorService ScheduledExecutorService TimeUnit)
            (java.util.concurrent.locks ReentrantLock)
            (java.util Base64 UUID)
-           (okhttp3 OkHttpClient$Builder Protocol)))
+           (okhttp3 Protocol)))
 
 (defn schedulable-node-filter
   "Is a node schedulable?"

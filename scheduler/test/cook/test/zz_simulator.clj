@@ -8,7 +8,6 @@
             [clj-time.coerce :as tc]
             [clj-time.core :as t]
             [clojure.core.async :as async]
-            [clojure.core.cache :as cache]
             [clojure.data.csv :as csv]
             [clojure.data.json :as json]
             [clojure.edn :as edn]

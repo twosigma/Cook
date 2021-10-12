@@ -3,7 +3,6 @@
             [cook.cached-queries :as cached-queries]
             [cook.config :as config]
             [cook.plugins.definitions :as chd]
-            [cook.tools :as util]
             [datomic.api :as d]
             [metrics.counters :as counters]))
 

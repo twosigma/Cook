@@ -60,7 +60,7 @@
             [plumbing.core :as pc])
   (:import (com.netflix.fenzo
              TaskAssignmentResult TaskRequest TaskScheduler TaskScheduler$Builder VirtualMachineCurrentState
-             VirtualMachineLease VirtualMachineLease$Range SchedulingResult VMAssignmentResult)
+             VirtualMachineLease SchedulingResult VMAssignmentResult)
            (com.netflix.fenzo.functions Action1 Action2 Func1)
            (java.util LinkedList Date)))
 

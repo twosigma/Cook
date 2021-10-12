@@ -24,7 +24,6 @@
             [clojure.test :refer :all]
             [clojure.tools.logging :as log]
             [clojure.walk :as walk]
-            [cook.caches :as caches]
             [cook.compute-cluster :as cc]
             [cook.config :as config]
             [cook.datomic :as datomic]

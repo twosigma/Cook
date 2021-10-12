@@ -38,10 +38,7 @@
             [metatransaction.core :refer [db]]
             [metrics.timers :as timers]
             [plumbing.core :as pc :refer [map-keys map-vals]])
-  (:import (com.google.common.cache Cache CacheBuilder)
-           (java.util.concurrent TimeUnit)
-           (java.util Date)
-           (org.joda.time DateTime ReadablePeriod)))
+  (:import (java.util Date)))
 
 (defn retrieve-system-ids
   "Executes a shell command to retrieve the user/group id for the specified user"

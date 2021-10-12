@@ -22,7 +22,7 @@
             [cook.plugins.definitions :refer [check-job-launch JobLaunchFilter]]
             [cook.plugins.util]
             [mount.core :as mount])
-  (:import (com.google.common.cache Cache CacheBuilder)
+  (:import (com.google.common.cache CacheBuilder)
            (java.util.concurrent TimeUnit)))
 
 (def default-accept

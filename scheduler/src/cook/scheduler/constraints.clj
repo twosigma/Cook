@@ -14,8 +14,7 @@
 ;; limitations under the License.
 ;;
 (ns cook.scheduler.constraints
-  (:require [clj-time.coerce :as tc]
-            [clj-time.core :as t]
+  (:require [clj-time.core :as t]
             [clojure.core.cache :as cache]
             [clojure.set :as set]
             [clojure.tools.logging :as log]
@@ -23,11 +22,10 @@
             [cook.compute-cluster :as cc]
             [cook.config :as config]
             [cook.group :as group]
-            [cook.rate-limit :as ratelimit]
             [cook.regexp-tools :as regexp-tools]
             [cook.tools :as util]
             [swiss.arrows :refer :all])
-  (:import (com.netflix.fenzo ConstraintEvaluator ConstraintEvaluator$Result TaskRequest TaskTrackerState VirtualMachineCurrentState VirtualMachineLease TaskTracker$ActiveTask)
+  (:import (com.netflix.fenzo ConstraintEvaluator ConstraintEvaluator$Result TaskRequest TaskTrackerState VirtualMachineCurrentState VirtualMachineLease)
            (java.util Date)
            (org.joda.time DateTime)))
 

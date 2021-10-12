@@ -1,8 +1,7 @@
 (ns cook.pool
   (:require [clojure.tools.logging :as log]
             [cook.config :as config]
-            [datomic.api :as d])
-  (:import (java.util UUID)))
+            [datomic.api :as d]))
 
 (defn check-pool
   "Returns true if requesting-default-pool? and the entity does not have a pool

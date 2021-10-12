@@ -19,7 +19,6 @@
             [clojure.test :refer :all]
             [clojure.tools.logging :as log]
             [cook.compute-cluster :as cc]
-            [cook.config :as config]
             [cook.datomic]
             [cook.mesos :as mesos]
             [cook.test.testutil :refer [create-dummy-job-with-instances restore-fresh-database!]]
