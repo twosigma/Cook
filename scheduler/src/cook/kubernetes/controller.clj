@@ -113,7 +113,7 @@
     (-> k8s-actual-state-dict
         (update-in [:synthesized-state :state] #(or % :missing))
         (dissoc :pod)
-        (assoc 
+        (assoc
           :node-name (api/pod->node-name pod)
           :pod-metadata (prepare-pod-metadata-for-logging pod)
           :pod-status (some-> ^V1Pod pod .getStatus)))
