@@ -1501,7 +1501,7 @@ class CookTest(util.CookTest):
         util.wait_for_job(self.cook_url, jobs[0], 'completed')
         util.wait_for_job(self.cook_url, jobs[1], 'completed')
 
-    @pytest.mark.xfail
+    # @pytest.mark.xfail
     # The test timeout needs to be a little more than 2 times the timeout
     # interval to allow at least two runs of the straggler handler
     @pytest.mark.timeout(max((2 * util.timeout_interval_minutes() * 60) + 60,
@@ -1516,20 +1516,17 @@ class CookTest(util.CookTest):
         }
         slow_job_wait_seconds = 1200
         group_spec = util.minimal_group(straggler_handling=straggler_handling)
-        job_fast = util.minimal_job(group=group_spec["uuid"])
-        job_slow = util.minimal_job(group=group_spec["uuid"],
-                                    command='sleep %d' % slow_job_wait_seconds)
-        data = {'jobs': [job_fast, job_slow], 'groups': [group_spec]}
-        resp = util.session.post('%s/rawscheduler' % self.cook_url, json=data)
+        job_fast = util.minimal_job(group=group_spec['uuid'], command='true', max_retries=5)
+        job_slow = util.minimal_job(group=group_spec['uuid'], command=f'sleep {slow_job_wait_seconds}', max_retries=5)
+        data = {'jobs': [job_fast, job_slow], 'groups': [group_spec], 'pool': util.default_submit_pool()}
+        resp = util.session.post(f'{self.cook_url}/jobs', json=data)
         self.assertEqual(resp.status_code, 201)
         util.wait_for_job(self.cook_url, job_fast['uuid'], 'completed')
-        util.wait_for_job(self.cook_url, job_slow['uuid'], 'completed',
-                          slow_job_wait_seconds * 1000)
-        jobs = util.query_jobs(self.cook_url, True, uuid=[job_fast, job_slow]).json()
-        self.logger.debug('Loaded jobs %s', jobs)
-        self.assertEqual('success', jobs[0]['state'], 'Job details: %s' % (json.dumps(jobs[0], sort_keys=True)))
-        self.assertEqual('failed', jobs[1]['state'])
-        self.assertEqual(2004, jobs[1]['instances'][0]['reason_code'])
+        job_fast = util.load_job(self.cook_url, job_fast['uuid'])
+        self.assertEqual('success', job_fast['state'], 'Job details: %s' % (json.dumps(job_fast, sort_keys=True)))
+        util.wait_until(lambda: util.load_job(self.cook_url, job_slow['uuid']),
+                        # Wait for the job to have a failed instance with reason code 2004 ("Task was a straggler")
+                        lambda job: any(i['status'] == 'failed' and i['reason_code'] == 2004 for i in job['instances']))
 
     def test_expected_runtime_field(self):
         # Should support expected_runtime
