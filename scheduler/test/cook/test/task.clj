@@ -112,5 +112,5 @@
                  values [{:value "bar" :portion 1.0}]]
              (with-redefs [cook.config/executor-config (constantly executor-config)
                            cook.config-incremental/get-conn (fn [] conn)]
-               (cook.config-incremental/write-config key values)
+               (cook.config-incremental/write-configs [{:key key :values values}])
                (task/build-executor-environment job-ent)))))))
