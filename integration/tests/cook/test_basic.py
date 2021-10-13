@@ -850,38 +850,36 @@ class CookTest(util.CookTest):
     def memory_limit_exceeded_helper(self, command, executor_type, mem=128):
         """Given a command that needs more memory than it is allocated, when the command is submitted to cook,
         the job should be killed by Mesos as it exceeds its memory limits."""
-        job_uuid, resp = util.submit_job(self.cook_url, command=command, executor=executor_type, mem=mem)
+        job_uuid, resp = util.submit_job(self.cook_url, command=command, executor=executor_type, mem=mem, max_retries=5)
         self.assertEqual(201, resp.status_code, msg=resp.content)
-        instance = util.wait_for_instance(self.cook_url, job_uuid)
-        self.logger.debug('instance: %s' % instance)
-        job = instance['parent']
-        try:
-            job = util.wait_for_job(self.cook_url, job_uuid, 'completed', max_wait_ms=480000)
+
+        def job_has_oom_instance(job):
             job_details = f"Job details: {json.dumps(job, sort_keys=True)}"
-            self.assertEqual('failed', job['state'], job_details)
-            self.assertLessEqual(1, len(job['instances']), job_details)
+            assert 1 <= len(job['instances']), job_details
             instance = next(i for i in job['instances'] if i['reason_code'] in [2002, 99003])
             instance_details = json.dumps(instance, sort_keys=True)
-            self.logger.debug('instance: %s' % instance)
             # did the job fail as expected?
-            self.assertEqual(executor_type, instance['executor'], instance_details)
-            self.assertEqual('failed', instance['status'], instance_details)
-            # Mesos chooses to kill the task (exit code 137) or kill the executor with a memory limit exceeded message
+            assert executor_type == instance['executor'], instance_details
+            assert 'failed' == instance['status'], instance_details
+            # Mesos chooses to kill the task (exit code 137) or kill the executor with memory limit exceeded message
             if 2002 == instance['reason_code']:
-                self.assertEqual('Container memory limit exceeded', instance['reason_string'], instance_details)
+                assert 'Container memory limit exceeded' == instance['reason_string'], instance_details
             elif 99003 == instance['reason_code']:
                 # If the command was killed, it will have exited with either:
                 # 137 (Fatal error signal of 128 + SIGKILL)
                 # -9 (Negative return values are the signal number which was used to kill the process)
-                self.assertEqual('Command exited non-zero', instance['reason_string'], instance_details)
+                assert 'Command exited non-zero' == instance['reason_string'], instance_details
                 if executor_type == 'cook':
                     instance = util.wait_for_exit_code(self.cook_url, job_uuid)
-                    self.logger.info(f'Exit code: {instance["exit_code"]}')
-                    self.assertIn(instance['exit_code'], [137, -9], instance_details)
+                    assert instance['exit_code'] in [137, -9], instance_details
             else:
-                self.fail('Unknown reason code {}, details {}'.format(instance['reason_code'], instance_details))
+                assert False, f'Unknown reason code {instance["reason_code"]}, details {instance_details}'
+
+            return True
+
+        try:
+            util.wait_until(lambda: util.load_job(self.cook_url, job_uuid), job_has_oom_instance)
         finally:
-            mesos.dump_sandbox_files(util.session, instance, job)
             util.kill_jobs(self.cook_url, [job_uuid])
 
     @pytest.mark.memlimit
