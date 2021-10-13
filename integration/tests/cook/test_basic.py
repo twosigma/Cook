@@ -1518,9 +1518,13 @@ class CookTest(util.CookTest):
         group_spec = util.minimal_group(straggler_handling=straggler_handling)
         job_fast = util.minimal_job(group=group_spec['uuid'], command='true', max_retries=5)
         job_slow = util.minimal_job(group=group_spec['uuid'], command=f'sleep {slow_job_wait_seconds}', max_retries=5)
-        data = {'jobs': [job_fast, job_slow], 'groups': [group_spec], 'pool': util.default_submit_pool()}
+        data = {'jobs': [job_fast, job_slow], 'groups': [group_spec]}
+        pool = util.default_submit_pool()
+        if pool:
+            data['pool'] = pool
+
         resp = util.session.post(f'{self.cook_url}/jobs', json=data)
-        self.assertEqual(resp.status_code, 201)
+        self.assertEqual(resp.status_code, 201, resp.text)
         util.wait_for_job(self.cook_url, job_fast['uuid'], 'completed')
         job_fast = util.load_job(self.cook_url, job_fast['uuid'])
         self.assertEqual('success', job_fast['state'], 'Job details: %s' % (json.dumps(job_fast, sort_keys=True)))
