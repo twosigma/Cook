@@ -538,7 +538,10 @@
                               offer-matching))
      :queue-limits (fnk [[:config {queue-limits {}}]]
                      (merge {:update-interval-seconds 180}
-                            queue-limits))}))
+                       queue-limits))
+     :constraint-attribute->transformation
+     (fnk [[:config {constraint-attribute->transformation {}}]]
+       (pc/map-vals #(-> % :pattern-regex re-pattern) constraint-attribute->transformation))}))
 
 (defn read-config
   "Given a config file path, reads the config and returns the map"
