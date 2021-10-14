@@ -714,3 +714,7 @@
 (defn job-routing
   []
   (-> config :settings :plugins :job-routing))
+
+(defn constraint-attribute->transformation
+  []
+  (-> config :settings :constraint-attribute->transformation))

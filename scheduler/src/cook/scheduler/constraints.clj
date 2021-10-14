@@ -260,6 +260,31 @@
 (def machine-type-constraint-attributes
   #{"cpu-architecture" "node-family" "node-type"})
 
+(defn transform-constraints
+  "Given a collection of job constraints and a map from constraint
+  attribute to transformation, where transformation has the shape:
+
+  {:new-attribute ... :pattern-regex ...}
+
+  returns a collection of (potentially) transformed job constraints"
+  [constraints attribute->transformation]
+  (if (seq attribute->transformation)
+    (map
+      (fn [{:keys [constraint/attribute constraint/pattern] :as constraint}]
+        (if-let [{:keys [new-attribute pattern-regex]}
+                 (get attribute->transformation attribute)]
+          (assoc constraint
+            :constraint/attribute
+            (or new-attribute attribute)
+            :constraint/pattern
+            (let [matches (re-matches (or pattern-regex #"^(.*)$") pattern)]
+              (if (vector? matches)
+                (second matches)
+                pattern)))
+          constraint))
+      constraints)
+    constraints))
+
 (defn job->constraints
   "Given a job, returns all job constraints that should be in effect,
   either specified on the job submission or defaulted via configuration"
@@ -296,6 +321,7 @@
 
     (-> user-specified-constraints
         (concat default-constraints)
+        (transform-constraints (config/constraint-attribute->transformation))
         ; De-lazy the output; Fenzo can call from multiple
         ; threads and we want to avoid contention in LazySeq
         vec)))
