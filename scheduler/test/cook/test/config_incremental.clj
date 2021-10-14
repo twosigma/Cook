@@ -25,7 +25,7 @@
 (deftest test-incremental-config
   (setup)
   (let [uri "datomic:mem://test-compute-cluster-config"
-        conn (restore-fresh-database! uri)
+        conn-atom (atom (restore-fresh-database! uri))
         key :my-incremental-config
         key2 :my-incremental-config-2
         values [{:value "value a" :portion 0.2} {:value "value b" :portion 0.35 :comment "test comment"} {:value "value c" :portion 0.45}]
@@ -35,10 +35,10 @@
         uuid-c (java.util.UUID/fromString "21062821-b248-4375-82f8-a8256643c94e")
         rand (Random. 0)
         bytes (byte-array 16)]
-    (with-redefs [get-conn (fn [] conn)]
+    (with-redefs [get-conn (fn [] @conn-atom)]
       (testing "database"
         (is (= '() (read-config key)))
-        (write-config key values)
+        (write-configs [{:key key :values values}])
         (is (= values (read-config key)))
         (is (= "value a" (select-config-from-key uuid-a key)))
         (is (= "value b" (select-config-from-key uuid-b key)))
@@ -65,13 +65,20 @@
                                         (filter (fn [{:keys [portion]}] portion)))))]
           (is (= (map (fn [{:keys [value portion]}] {:value value :portion portion}) values) (get-distribution rand bytes key)))
           ; override
-          (write-config key values2)
+          (write-configs [{:key key :values values2}])
           (is (= (map (fn [{:keys [value portion]}] {:value value :portion portion}) values2) (get-distribution rand bytes key)))))
       (testing "multiple configs"
-        (write-config key2 values)
+        (write-configs [{:key key2 :values values}])
         (is (= values2 (read-config key)))
         (is (= values (read-config key2))))
       (testing "miss"
         (is (= nil (select-config-from-values uuid-a nil)))
         (is (= nil (select-config-from-values uuid-a '())))
-        (is (= nil (select-config-from-values uuid-a [{}])))))))
+        (is (= nil (select-config-from-values uuid-a [{}]))))
+      (testing "multiple configs - write two at once"
+        (reset! conn-atom (restore-fresh-database! uri))
+        (is (= '() (read-config key)))
+        (is (= '() (read-config key2)))
+        (write-configs [{:key key :values values} {:key key2 :values values2}])
+        (is (= values (read-config key)))
+        (is (= values2 (read-config key2)))))))

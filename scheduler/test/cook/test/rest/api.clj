@@ -2777,35 +2777,51 @@
 
   (deftest test-incremental-config-crud
     (setup)
-    (let [conn (restore-fresh-database! "datomic:mem://test-create-compute-cluster")
-          handler (basic-handler conn :is-authorized-fn is-authorized-fn)
+    (let [uri "datomic:mem://test-create-compute-cluster"
+          conn-atom (atom (restore-fresh-database! uri))
+          handler-atom (atom (basic-handler @conn-atom :is-authorized-fn is-authorized-fn))
           key "my-incremental-config"
+          key2 "my-incremental-config-2"
           values [{"value" "value a" "portion" 0.2} {"value" "value b" "portion" 0.35 "comment" "test comment"} {"value" "value c" "portion" 0.45}]
           values2 [{"value" "value d" "portion" 0.5} {"value" "value e" "portion" 0.5 "comment" "test comment 2"}]
           request-post {:authorization/user admin-user
-                        :body-params {:key key :values values}
+                        :body-params {:configs [{:key key :values values}]}
                         :request-method :post
                         :scheme :http
                         :headers {"Content-Type" "application/json"}
                         :uri endpoint}
-          request-post2 (assoc request-post :body-params {:key key :values values2})
+          request-post2 (assoc request-post :body-params {:configs [{:key key :values values2}]})
           request-get {:authorization/user admin-user
                        :request-method :get
                        :scheme :http
-                       :uri endpoint}]
-      (with-redefs [config-incremental/get-conn (fn [] conn)]
+                       :uri endpoint}
+          request-post-two-keys {:authorization/user admin-user
+                                 :body-params {:configs [{:key key :values values} {:key key2 :values values2}]}
+                                 :request-method :post
+                                 :scheme :http
+                                 :headers {"Content-Type" "application/json"}
+                                 :uri endpoint}]
+      (with-redefs [config-incremental/get-conn (fn [] @conn-atom)]
         (testing "successful insert"
-          (let [{:keys [status] :as response} (handler request-post)]
+          (let [{:keys [status] :as response} (@handler-atom request-post)]
             (is (= 201 status) (-> response response->body-data str)))
-          (let [{:keys [status] :as response} (handler request-get)]
+          (let [{:keys [status] :as response} (@handler-atom request-get)]
             (is (= 200 status) (-> response response->body-data str))
             (is (= {key values} (-> response response->body-data)))))
         (testing "update"
-          (let [{:keys [status] :as response} (handler request-post2)]
+          (let [{:keys [status] :as response} (@handler-atom request-post2)]
             (is (= 201 status) (-> response response->body-data str)))
-          (let [{:keys [status] :as response} (handler request-get)]
+          (let [{:keys [status] :as response} (@handler-atom request-get)]
             (is (= 200 status) (-> response response->body-data str))
-            (is (= {key values2} (-> response response->body-data)))))))))
+            (is (= {key values2} (-> response response->body-data)))))
+        (testing "successful insert - two at once"
+          (reset! conn-atom (restore-fresh-database! uri))
+          (reset! handler-atom (basic-handler @conn-atom :is-authorized-fn is-authorized-fn))
+          (let [{:keys [status] :as response} (@handler-atom request-post-two-keys)]
+            (is (= 201 status) (-> response response->body-data str)))
+          (let [{:keys [status] :as response} (@handler-atom request-get)]
+            (is (= 200 status) (-> response response->body-data str))
+            (is (= {key values key2 values2} (-> response response->body-data)))))))))
 
 (deftest test-make-job-txn
   (setup)
