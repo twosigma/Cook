@@ -494,6 +494,8 @@
                           (merge {:attribute-name "cook-pool"
                                   :default-pool "no-pool"}
                                  pool-selection)})))
+     :pg-config (fnk [[:config {pg-config nil}]]
+                  pg-config)
      :passport (fnk [[:config {passport {}}]]
                  (merge {:job-cache-expiry-time-hours 24
                          :job-cache-set-size 1000000}
