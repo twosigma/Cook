@@ -1523,12 +1523,16 @@ class CookTest(util.CookTest):
 
         resp = util.session.post(f'{self.cook_url}/jobs', json=data)
         self.assertEqual(resp.status_code, 201, resp.text)
-        util.wait_for_job(self.cook_url, job_fast['uuid'], 'completed')
-        job_fast = util.load_job(self.cook_url, job_fast['uuid'])
-        self.assertEqual('success', job_fast['state'], 'Job details: %s' % (json.dumps(job_fast, sort_keys=True)))
-        util.wait_until(lambda: util.load_job(self.cook_url, job_slow['uuid']),
-                        # Wait for the job to have a failed instance with reason code 2004 ("Task was a straggler")
-                        lambda job: any(i['status'] == 'failed' and i['reason_code'] == 2004 for i in job['instances']))
+        try:
+            util.wait_for_job(self.cook_url, job_fast['uuid'], 'completed')
+            job_fast = util.load_job(self.cook_url, job_fast['uuid'])
+            self.assertEqual('success', job_fast['state'], 'Job details: %s' % (json.dumps(job_fast, sort_keys=True)))
+            util.wait_until(
+                lambda: util.load_job(self.cook_url, job_slow['uuid']),
+                # Wait for the job to have a failed instance with reason code 2004 ("Task was a straggler")
+                lambda job: any(i['status'] == 'failed' and i['reason_code'] == 2004 for i in job['instances']))
+        finally:
+            util.kill_jobs(self.cook_url, [job_fast['uuid'], job_slow['uuid']], assert_response=False)
 
     def test_expected_runtime_field(self):
         # Should support expected_runtime
