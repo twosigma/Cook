@@ -3417,23 +3417,23 @@
 ;;
 
 (def IncrementalConfigRequest
-  {; key
-   :key s/Keyword
-   ; values
-   :values [{; actual config value
-             :value s/Str
-             ; number between 0 and 1. portion of jobs that should have the associated value. portions must add up to 1
-             :portion s/Num
-             ; optional comment to describe how this incremental value is different from the others
-             (s/optional-key :comment) s/Str}]})
+  {; configs
+   :configs [{; key
+              :key s/Keyword
+              ; values
+              :values [{; actual config value
+                        :value s/Str
+                        ; number between 0 and 1. portion of jobs that should have the associated value. portions must add up to 1
+                        :portion s/Num
+                        ; optional comment to describe how this incremental value is different from the others
+                        (s/optional-key :comment) s/Str}]}]})
 
-(defn upsert-incremental-config!
+(defn upsert-incremental-configs!
   [conn leadership-atom ctx]
-  (let [{:keys [key values]} (-> ctx :request :body-params)
-        result (:tempids (config-incremental/write-config key values))]
+  (let [{:keys [configs]} (-> ctx :request :body-params)
+        result (:tempids (config-incremental/write-configs configs))]
     (log/info "Result of upsert-incremental-config! REST API call"
-              {:key key
-               :values values
+              {:configs configs
                :result result})
     [true {:response result}]))
 
@@ -3464,7 +3464,7 @@
     leader-selector
     {:allowed-methods [:post]
      :handle-created (fn [{:keys [response]}] response)
-     :processable? (partial upsert-incremental-config! conn leadership-atom)}))
+     :processable? (partial upsert-incremental-configs! conn leadership-atom)}))
 
 (defn read-incremental-config
   [conn ctx]

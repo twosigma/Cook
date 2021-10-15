@@ -38,20 +38,23 @@
         (assoc :incremental-value/comment comment)))
     incremental-values))
 
-(defn write-config
-  "Write an incremental configuration to the database."
-  [key incremental-values]
+(defn write-configs
+  "Write incremental configurations to the database."
+  [incremental-configurations]
   @(d/transact
      (get-conn)
-     [; We need to retract existing incremental values; otherwise,
-      ; values simply get added to the existing list
-      [:db.fn/resetAttribute
-       [:incremental-configuration/key key]
-       :incremental-configuration/incremental-values
-       nil]
-      {:db/id (d/tempid :db.part/user)
-       :incremental-configuration/key key
-       :incremental-configuration/incremental-values (incremental-values->incremental-value-ents incremental-values)}]))
+     (mapcat
+       (fn [{:keys [key values]}]
+         [; We need to retract existing incremental values; otherwise,
+          ; values simply get added to the existing list
+          [:db.fn/resetAttribute
+           [:incremental-configuration/key key]
+           :incremental-configuration/incremental-values
+           nil]
+          {:db/id (d/tempid :db.part/user)
+           :incremental-configuration/key key
+           :incremental-configuration/incremental-values (incremental-values->incremental-value-ents values)}])
+       incremental-configurations)))
 
 (defn incremental-value-ents->incremental-values
   "Convert datomic incremental value entities to plain maps"
