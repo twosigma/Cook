@@ -1499,7 +1499,6 @@ class CookTest(util.CookTest):
         util.wait_for_job(self.cook_url, jobs[0], 'completed')
         util.wait_for_job(self.cook_url, jobs[1], 'completed')
 
-    # @pytest.mark.xfail
     # The test timeout needs to be a little more than 2 times the timeout
     # interval to allow at least two runs of the straggler handler
     @pytest.mark.timeout(max((2 * util.timeout_interval_minutes() * 60) + 60,
