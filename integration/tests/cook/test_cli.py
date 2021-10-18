@@ -2408,8 +2408,8 @@ if __name__ == '__main__':
 
         submit_flags = f'--constraint node-family={node_family} --constraint cpu-architecture={cpu_architecture}'
         cp, uuids = cli.submit('ls', self.cook_url, submit_flags=submit_flags)
-        if not node_type_lookups[0].get(None, {}).get(node_family, {}).get(cpu_architecture, None):
-            self.assertEqual(1, cp.returncode, cp.stderr)
+        if not node_type_lookups[0].get('', {}).get(node_family, {}).get(cpu_architecture, None):
+            self.assertEqual(1, cp.returncode, cp.stdout)
         else:
             self.assertEqual(0, cp.returncode, cp.stderr)
             try:
