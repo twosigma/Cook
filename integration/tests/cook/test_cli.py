@@ -2396,6 +2396,8 @@ if __name__ == '__main__':
                              re.match(entry['pool-regex'], default_pool)]
         if len(node_type_lookups) == 0:
             self.skipTest(f'There is no job shape validation configured for the {default_pool} pool')
+        else:
+            self.logger.info(f'Using job shape validation: {json.dumps(node_type_lookups, indent=2)}')
 
         node_family = 'n2'
         cpu_architecture = 'intel-cascade-lake'
