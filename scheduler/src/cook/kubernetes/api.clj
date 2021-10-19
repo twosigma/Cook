@@ -626,6 +626,11 @@
   (let [node-name->pods (group-by pod->node-name pods)]
     (-> node-name->pods (get node-name []) count)))
 
+(defn node->resource-map
+  "Given a node, returns the resource map used internally by Cook"
+  [^V1Node node]
+  (some-> node .getStatus .getAllocatable convert-resource-map))
+
 (defn node-schedulable?
   "Can we schedule on a node. For now, yes, unless there are other taints on it or it contains any label in the
   node-blocklist-labels list.
@@ -665,6 +670,19 @@
                                             (log/info "Filtering out" node-name "because it has node blocklist labels" matching-node-blocklist-keyvals)
                                             false)
 
+    ; If a node is tainted as having GPUs but has no allocatable GPUs, log an error and filter
+    ; it out so that we don't risk matching any jobs to it (something is wrong with the node)
+    :let [has-gpu-node-taint? (->> taints-on-node (map #(.getKey ^V1Taint %)) (some #{gpu-node-taint}))
+          has-allocatable-gpus? (some-> node node->resource-map :gpus pos?)
+          filter-out-unsound? (:filter-out-unsound-gpu-nodes? (config/kubernetes))]
+    (and has-gpu-node-taint? (not has-allocatable-gpus?))
+    (do
+      (log/warn
+        node-name "has" gpu-node-taint "taint but no allocatable GPUs"
+        {:allocatable (some-> node .getStatus .getAllocatable)
+         :filter-out? filter-out-unsound?})
+      (not filter-out-unsound?))
+
     :else true))
 
 (defn force-gpu-model-in-resource-map
@@ -696,7 +714,7 @@
   "Given a map from node-name to node, generate a map from node-name->resource-type-><capacity>"
   [node-name->node pool-name]
   (pc/map-vals (fn [^V1Node node]
-                 (let [resource-map (some-> node .getStatus .getAllocatable convert-resource-map)
+                 (let [resource-map (node->resource-map node)
                        gpu-model (some-> node .getMetadata .getLabels (get "gpu-type"))
                        disk-type (some-> node .getMetadata .getLabels (get (pool->disk-type-label-name pool-name)))]
                    (->> resource-map
