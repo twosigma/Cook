@@ -673,15 +673,14 @@
     ; If a node is tainted as having GPUs but has no allocatable GPUs, log an error and filter
     ; it out so that we don't risk matching any jobs to it (something is wrong with the node)
     :let [has-gpu-node-taint? (->> taints-on-node (map #(.getKey ^V1Taint %)) (some #{gpu-node-taint}))
-          has-allocatable-gpus? (some-> node node->resource-map :gpus pos?)
-          filter-out-unsound? (:filter-out-unsound-gpu-nodes? (config/kubernetes))]
+          has-allocatable-gpus? (some-> node node->resource-map :gpus pos?)]
     (and has-gpu-node-taint? (not has-allocatable-gpus?))
-    (do
+    (let [filter-out? (:filter-out-unsound-gpu-nodes? (config/kubernetes))]
       (log/warn
         node-name "has" gpu-node-taint "taint but no allocatable GPUs"
-        {:allocatable (some-> node .getStatus .getAllocatable)
-         :filter-out? filter-out-unsound?})
-      (not filter-out-unsound?))
+        {:allocatable (some->> node .getStatus .getAllocatable (pc/map-vals #(.toSuffixedString %)))
+         :filter-out? filter-out?})
+      (not filter-out?))
 
     :else true))
 
