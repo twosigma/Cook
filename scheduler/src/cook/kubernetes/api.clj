@@ -670,8 +670,8 @@
                                             (log/info "Filtering out" node-name "because it has node blocklist labels" matching-node-blocklist-keyvals)
                                             false)
 
-    ; If a node is tainted as having GPUs but has no allocatable GPUs, log an error and filter
-    ; it out so that we don't risk matching any jobs to it (something is wrong with the node)
+    ; If a node is tainted as having GPUs but has no allocatable GPUs, log and filter it
+    ; out so that we don't risk matching any jobs to it (something is wrong with the node)
     :let [has-gpu-node-taint? (->> taints-on-node (map #(.getKey ^V1Taint %)) (some #{gpu-node-taint}))
           has-allocatable-gpus? (some-> node node->resource-map :gpus pos?)]
     (and has-gpu-node-taint? (not has-allocatable-gpus?))
