@@ -17,6 +17,7 @@
   (:require [clj-time.core :as t]
             [clojure.core.cache :as cache]
             [clojure.set :as set]
+            [clojure.string :as str]
             [clojure.tools.logging :as log]
             [cook.cached-queries :as cached-queries]
             [cook.compute-cluster :as cc]
@@ -264,23 +265,35 @@
   "Given a collection of job constraints and a map from constraint
   attribute to transformation, where transformation has the shape:
 
-  {:new-attribute ... :pattern-regex ...}
+  {:new-attribute ... :pattern-transformations ...},
 
-  returns a collection of (potentially) transformed job constraints"
+  and :pattern-transformations has the shape:
+
+  [{:match ... :replacement ...}
+   {:match ... :replacement ...}
+   ...],
+
+  and the match/replacement pairs are fed to str/replace to
+  transform the constraint pattern, returns a collection of
+  (potentially) transformed job constraints"
   [constraints attribute->transformation]
   (if (seq attribute->transformation)
     (map
       (fn [{:keys [constraint/attribute constraint/pattern] :as constraint}]
-        (if-let [{:keys [new-attribute pattern-regex]}
+        (if-let [{:keys [new-attribute pattern-transformations]}
                  (get attribute->transformation attribute)]
           (assoc constraint
             :constraint/attribute
             (or new-attribute attribute)
             :constraint/pattern
-            (let [matches (re-matches (or pattern-regex #"^(.*)$") pattern)]
-              (if (vector? matches)
-                (second matches)
-                pattern)))
+            (loop [new-pattern pattern
+                   transformations pattern-transformations]
+              (if (seq transformations)
+                (let [{:keys [match replacement]} (first transformations)]
+                  (recur
+                    (str/replace new-pattern match replacement)
+                    (rest transformations)))
+                new-pattern)))
           constraint))
       constraints)
     constraints))

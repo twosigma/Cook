@@ -479,7 +479,8 @@
 
     (testing "constraint transformations"
       (with-redefs [config/constraint-attribute->transformation
-                    (constantly {"a" {:new-attribute "z" :pattern-regex #"^bcd-(.*)$"}})]
+                    (constantly {"a" {:new-attribute "z"
+                                      :pattern-transformations [{:match #"^bcd-" :replacement ""}]}})]
         (let [user-constraints [{:constraint/attribute "a"
                                  :constraint/operator :constraint.operator/equals
                                  :constraint/pattern "bcd-efg"}]]
@@ -496,7 +497,18 @@
         [{:constraint/attribute "z" :constraint/pattern "efg"}]
         (cook.scheduler.constraints/transform-constraints
           [{:constraint/attribute "a" :constraint/pattern "bcd-efg"}]
-          {"a" {:new-attribute "z" :pattern-regex #"^bcd-(.*)$"}}))))
+          {"a" {:new-attribute "z" :pattern-transformations [{:match #"^bcd-" :replacement ""}]}}))))
+
+  (testing "multiple transformations"
+    (is
+      (=
+        [{:constraint/attribute "z" :constraint/pattern "something else"}]
+        (cook.scheduler.constraints/transform-constraints
+          [{:constraint/attribute "a" :constraint/pattern "bcd-efg"}]
+          {"a" {:new-attribute "z"
+                :pattern-transformations
+                [{:match #"^bcd-" :replacement ""}
+                 {:match #"^efg$" :replacement "something else"}]}}))))
 
   (testing "no transformations"
     (is
@@ -512,7 +524,7 @@
         [{:constraint/attribute "h" :constraint/pattern "bcd-efg"}]
         (cook.scheduler.constraints/transform-constraints
           [{:constraint/attribute "h" :constraint/pattern "bcd-efg"}]
-          {"a" {:new-attribute "oops" :pattern-regex "oops"}}))))
+          {"a" {}}))))
 
   (testing "no constraints"
     (is
@@ -520,4 +532,4 @@
         []
         (cook.scheduler.constraints/transform-constraints
           nil
-          {"a" {:new-attribute "oops" :pattern-regex "oops"}})))))
+          {"a" {}})))))

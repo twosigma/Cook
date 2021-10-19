@@ -541,7 +541,16 @@
                        queue-limits))
      :constraint-attribute->transformation
      (fnk [[:config {constraint-attribute->transformation {}}]]
-       (pc/map-vals #(update % :pattern-regex re-pattern) constraint-attribute->transformation))}))
+       (pc/map-vals
+         #(update
+            %
+            :pattern-transformations
+            (fn [pattern-transformations]
+              (map
+                (fn [pattern-transformation]
+                  (update pattern-transformation :match re-pattern))
+                pattern-transformations)))
+         constraint-attribute->transformation))}))
 
 (defn read-config
   "Given a config file path, reads the config and returns the map"
