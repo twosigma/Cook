@@ -1824,8 +1824,7 @@ if __name__ == '__main__':
         self.assertEqual(0, cp.returncode, cp.stderr)
 
         # List the jobs
-        user = util.get_user(self.cook_url, uuids[0])
-        jobs_flags = f'--user {user} --name {name} --all --limit {num_jobs}'
+        jobs_flags = f'--name {name} --all --limit {num_jobs}'
         cp, jobs = cli.jobs_json(self.cook_url, jobs_flags)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(num_jobs, len(jobs))
@@ -1839,7 +1838,7 @@ if __name__ == '__main__':
         self.assertIn(f'Successful: {num_jobs}, Failed: 0', cli.stdout(cp))
 
         # All jobs should now be completed
-        cp, jobs = cli.jobs_json(self.cook_url, f'--user {user} --name {name} --completed --limit {num_jobs}')
+        cp, jobs = cli.jobs_json(self.cook_url, f'--name {name} --completed --limit {num_jobs}')
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(num_jobs, len(jobs))
 

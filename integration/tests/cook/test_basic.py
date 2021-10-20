@@ -850,38 +850,36 @@ class CookTest(util.CookTest):
     def memory_limit_exceeded_helper(self, command, executor_type, mem=128):
         """Given a command that needs more memory than it is allocated, when the command is submitted to cook,
         the job should be killed by Mesos as it exceeds its memory limits."""
-        job_uuid, resp = util.submit_job(self.cook_url, command=command, executor=executor_type, mem=mem)
+        job_uuid, resp = util.submit_job(self.cook_url, command=command, executor=executor_type, mem=mem, max_retries=5)
         self.assertEqual(201, resp.status_code, msg=resp.content)
-        instance = util.wait_for_instance(self.cook_url, job_uuid)
-        self.logger.debug('instance: %s' % instance)
-        job = instance['parent']
-        try:
-            job = util.wait_for_job(self.cook_url, job_uuid, 'completed', max_wait_ms=480000)
+
+        def job_has_oom_instance(job):
             job_details = f"Job details: {json.dumps(job, sort_keys=True)}"
-            self.assertEqual('failed', job['state'], job_details)
-            self.assertLessEqual(1, len(job['instances']), job_details)
+            assert 1 <= len(job['instances']), job_details
             instance = next(i for i in job['instances'] if i['reason_code'] in [2002, 99003])
             instance_details = json.dumps(instance, sort_keys=True)
-            self.logger.debug('instance: %s' % instance)
             # did the job fail as expected?
-            self.assertEqual(executor_type, instance['executor'], instance_details)
-            self.assertEqual('failed', instance['status'], instance_details)
-            # Mesos chooses to kill the task (exit code 137) or kill the executor with a memory limit exceeded message
+            assert executor_type == instance['executor'], instance_details
+            assert 'failed' == instance['status'], instance_details
+            # Mesos chooses to kill the task (exit code 137) or kill the executor with memory limit exceeded message
             if 2002 == instance['reason_code']:
-                self.assertEqual('Container memory limit exceeded', instance['reason_string'], instance_details)
+                assert 'Container memory limit exceeded' == instance['reason_string'], instance_details
             elif 99003 == instance['reason_code']:
                 # If the command was killed, it will have exited with either:
                 # 137 (Fatal error signal of 128 + SIGKILL)
                 # -9 (Negative return values are the signal number which was used to kill the process)
-                self.assertEqual('Command exited non-zero', instance['reason_string'], instance_details)
+                assert 'Command exited non-zero' == instance['reason_string'], instance_details
                 if executor_type == 'cook':
                     instance = util.wait_for_exit_code(self.cook_url, job_uuid)
-                    self.logger.info(f'Exit code: {instance["exit_code"]}')
-                    self.assertIn(instance['exit_code'], [137, -9], instance_details)
+                    assert instance['exit_code'] in [137, -9], instance_details
             else:
-                self.fail('Unknown reason code {}, details {}'.format(instance['reason_code'], instance_details))
+                assert False, f'Unknown reason code {instance["reason_code"]}, details {instance_details}'
+
+            return True
+
+        try:
+            util.wait_until(lambda: util.load_job(self.cook_url, job_uuid), job_has_oom_instance)
         finally:
-            mesos.dump_sandbox_files(util.session, instance, job)
             util.kill_jobs(self.cook_url, [job_uuid])
 
     @pytest.mark.memlimit
@@ -1501,7 +1499,6 @@ class CookTest(util.CookTest):
         util.wait_for_job(self.cook_url, jobs[0], 'completed')
         util.wait_for_job(self.cook_url, jobs[1], 'completed')
 
-    @pytest.mark.xfail
     # The test timeout needs to be a little more than 2 times the timeout
     # interval to allow at least two runs of the straggler handler
     @pytest.mark.timeout(max((2 * util.timeout_interval_minutes() * 60) + 60,
@@ -1516,20 +1513,25 @@ class CookTest(util.CookTest):
         }
         slow_job_wait_seconds = 1200
         group_spec = util.minimal_group(straggler_handling=straggler_handling)
-        job_fast = util.minimal_job(group=group_spec["uuid"])
-        job_slow = util.minimal_job(group=group_spec["uuid"],
-                                    command='sleep %d' % slow_job_wait_seconds)
+        job_fast = util.minimal_job(group=group_spec['uuid'], command='true', max_retries=5)
+        job_slow = util.minimal_job(group=group_spec['uuid'], command=f'sleep {slow_job_wait_seconds}', max_retries=5)
         data = {'jobs': [job_fast, job_slow], 'groups': [group_spec]}
-        resp = util.session.post('%s/rawscheduler' % self.cook_url, json=data)
-        self.assertEqual(resp.status_code, 201)
-        util.wait_for_job(self.cook_url, job_fast['uuid'], 'completed')
-        util.wait_for_job(self.cook_url, job_slow['uuid'], 'completed',
-                          slow_job_wait_seconds * 1000)
-        jobs = util.query_jobs(self.cook_url, True, uuid=[job_fast, job_slow]).json()
-        self.logger.debug('Loaded jobs %s', jobs)
-        self.assertEqual('success', jobs[0]['state'], 'Job details: %s' % (json.dumps(jobs[0], sort_keys=True)))
-        self.assertEqual('failed', jobs[1]['state'])
-        self.assertEqual(2004, jobs[1]['instances'][0]['reason_code'])
+        pool = util.default_submit_pool()
+        if pool:
+            data['pool'] = pool
+
+        resp = util.session.post(f'{self.cook_url}/jobs', json=data)
+        self.assertEqual(resp.status_code, 201, resp.text)
+        try:
+            util.wait_for_job(self.cook_url, job_fast['uuid'], 'completed')
+            job_fast = util.load_job(self.cook_url, job_fast['uuid'])
+            self.assertEqual('success', job_fast['state'], 'Job details: %s' % (json.dumps(job_fast, sort_keys=True)))
+            util.wait_until(
+                lambda: util.load_job(self.cook_url, job_slow['uuid']),
+                # Wait for the job to have a failed instance with reason code 2004 ("Task was a straggler")
+                lambda job: any(i['status'] == 'failed' and i['reason_code'] == 2004 for i in job['instances']))
+        finally:
+            util.kill_jobs(self.cook_url, [job_fast['uuid'], job_slow['uuid']], assert_response=False)
 
     def test_expected_runtime_field(self):
         # Should support expected_runtime

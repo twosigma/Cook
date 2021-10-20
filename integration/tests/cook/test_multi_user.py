@@ -813,7 +813,7 @@ class MultiUserCookTest(util.CookTest):
                     self.assertEqual(resp.status_code, 200, resp.text)
                     self.assertEqual(default_cpus, resp.json()['cpus'], resp.text)
 
-                    pools, _ = util.all_pools(self.cook_url)
+                    pools, _ = util.active_pools(self.cook_url)
                     non_default_pools = [p['name'] for p in pools if p['name'] != default_pool]
 
                     for pool in non_default_pools:
