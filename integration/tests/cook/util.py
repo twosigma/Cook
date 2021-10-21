@@ -537,6 +537,7 @@ def minimal_job(**kwargs):
                         'workload-details': 'cook-integration-test-job'},
         'command': 'echo Default Test Command',
         'cpus': get_default_cpus(),
+        'env': json.loads(os.getenv('COOK_DEFAULT_JOB_ENV_JSON', '{"COOK_INTEGRATION_TEST": "true"}')),
         'max_retries': 1,
         'mem': int(os.getenv('COOK_DEFAULT_JOB_MEM_MB', 32)),
         'name': (DEFAULT_JOB_NAME_PREFIX + get_caller()),
