@@ -635,7 +635,7 @@
   "Can we schedule on a node. For now, yes, unless there are other taints on it or it contains any label in the
   node-blocklist-labels list.
   TODO: Incorporate other node-health measures here."
-  [{:keys [node-blocklist-labels cook-pool-taint-name]} ^V1Node node pod-count-capacity node-name->pods]
+  [{:keys [name node-blocklist-labels cook-pool-taint-name]} ^V1Node node pod-count-capacity node-name->pods]
   (b/cond
     (nil? node)
     false
@@ -676,9 +676,10 @@
           has-allocatable-gpus? (some-> node node->resource-map :gpus pos?)]
     (and has-gpu-node-taint? (not has-allocatable-gpus?))
     (let [filter-out? (:filter-out-unsound-gpu-nodes? (config/kubernetes))]
-      (log/warn
+      (log/error
         node-name "has" gpu-node-taint "taint but no allocatable GPUs"
         {:allocatable (some->> node .getStatus .getAllocatable (pc/map-vals #(.toSuffixedString %)))
+         :compute-cluster-name name
          :filter-out? filter-out?})
       (not filter-out?))
 
