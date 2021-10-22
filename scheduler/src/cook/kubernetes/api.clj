@@ -677,10 +677,11 @@
     (and has-gpu-node-taint? (not has-allocatable-gpus?))
     (let [filter-out? (:filter-out-unsound-gpu-nodes? (config/kubernetes))]
       (log/error
-        node-name "has" gpu-node-taint "taint but no allocatable GPUs"
+        "In" name "compute cluster, encountered node with GPU taint but no allocatable GPUs"
         {:allocatable (some->> node .getStatus .getAllocatable (pc/map-vals #(.toSuffixedString %)))
-         :compute-cluster-name name
-         :filter-out? filter-out?})
+         :filter-out? filter-out?
+         :gpu-node-taint gpu-node-taint
+         :node-name node-name})
       (not filter-out?))
 
     :else true))
