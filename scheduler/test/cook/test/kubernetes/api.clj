@@ -8,9 +8,10 @@
             [cook.scheduler.constraints :as constraints]
             [cook.test.testutil :as tu]
             [datomic.api :as d])
-  (:import (io.kubernetes.client.openapi ApiException)
+  (:import (io.kubernetes.client.custom Quantity)
+           (io.kubernetes.client.openapi ApiException)
            (io.kubernetes.client.openapi.models V1Container V1ContainerState V1ContainerStateWaiting V1ContainerStatus
-                                                V1EnvVar V1ListMeta V1Node V1NodeSpec V1ObjectMeta V1Pod
+                                                V1EnvVar V1ListMeta V1Node V1NodeSpec V1NodeStatus V1ObjectMeta V1Pod
                                                 V1PodAffinityTerm V1PodCondition V1PodList V1PodSpec V1PodStatus
                                                 V1ResourceRequirements V1Taint V1Volume V1VolumeMount)
            (java.util.concurrent Executors)))
@@ -886,7 +887,8 @@
       (let [^V1Node node (V1Node.)
             metadata (V1ObjectMeta.)
             ^V1NodeSpec spec (V1NodeSpec.)
-            ^V1Taint taint (V1Taint.)]
+            ^V1Taint taint (V1Taint.)
+            ^V1NodeStatus status (V1NodeStatus.)]
         (.setKey taint "nvidia.com/gpu")
         (.setValue taint "present")
         (.setEffect taint "NoSchedule")
@@ -897,6 +899,8 @@
         (.setMetadata node metadata)
         (.setUnschedulable spec false)
         (.setSpec node spec)
+        (.setAllocatable status {"nvidia.com/gpu" (Quantity. "1")})
+        (.setStatus node status)
         (is (api/node-schedulable? {:node-blocklist-labels ["blocklist-1"]} node 30 nil))))
     (testing "Unschedule node spec"
       (let [^V1Node node (V1Node.)
@@ -926,7 +930,22 @@
         (.setMetadata node metadata)
         (.setUnschedulable spec false)
         (.setSpec node spec)
-        (is (api/node-schedulable? {:node-blocklist-labels []} node 30 nil))))))
+        (is (api/node-schedulable? {:node-blocklist-labels []} node 30 nil))))
+
+    (testing "Unsound GPU nodes"
+      (let [^V1Node node (V1Node.)
+            ^V1NodeSpec spec (V1NodeSpec.)
+            ^V1Taint taint (V1Taint.)]
+        (.setKey taint "nvidia.com/gpu")
+        (.addTaintsItem spec taint)
+        (.setSpec node spec)
+        (is (api/node-schedulable? nil node 30 nil))
+        (with-redefs [config/kubernetes (constantly {:filter-out-unsound-gpu-nodes? true})]
+          (is (not (api/node-schedulable? nil node 30 nil)))
+          (let [^V1NodeStatus status (V1NodeStatus.)]
+            (.setAllocatable status {"nvidia.com/gpu" (Quantity. "0")})
+            (.setStatus node status)
+            (is (not (api/node-schedulable? nil node 30 nil)))))))))
 
 (deftest test-initialize-pod-watch-helper
   (testing "basics"
