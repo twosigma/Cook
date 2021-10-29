@@ -2030,22 +2030,24 @@ if __name__ == '__main__':
 
     def test_usage(self):
         command = f'sleep {util.DEFAULT_TEST_TIMEOUT_SECS}'
+        primary_pool_mem = util.default_job_mem_mb()
+        primary_pool_submit_flags = f'--cpus 0.1 --mem {primary_pool_mem} --max-retries 5'
 
         # Submit un-grouped jobs
-        cp, uuids = cli.submit(command, self.cook_url, submit_flags='--cpus 0.1 --mem 16')
+        cp, uuids = cli.submit(command, self.cook_url, submit_flags=primary_pool_submit_flags)
         self.assertEqual(0, cp.returncode, cp.stderr)
         uuid_1 = uuids[0]
-        cp, uuids = cli.submit(command, self.cook_url, submit_flags='--cpus 0.1 --mem 16')
+        cp, uuids = cli.submit(command, self.cook_url, submit_flags=primary_pool_submit_flags)
         self.assertEqual(0, cp.returncode, cp.stderr)
         uuid_2 = uuids[0]
-        cp, uuids = cli.submit(command, self.cook_url, submit_flags='--cpus 0.1 --mem 16')
+        cp, uuids = cli.submit(command, self.cook_url, submit_flags=primary_pool_submit_flags)
         self.assertEqual(0, cp.returncode, cp.stderr)
         uuid_3 = uuids[0]
 
         # Submit grouped jobs
         guuid_1 = util.make_temporal_uuid()
         cp, uuids = cli.submit_stdin([command, command, command], self.cook_url,
-                                     submit_flags=f'--group-name foo --group {guuid_1} --cpus 0.1 --mem 16')
+                                     submit_flags=f'--group-name foo --group {guuid_1} {primary_pool_submit_flags}')
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(3, len(uuids))
         uuid_4, uuid_5, uuid_6 = uuids
@@ -2058,8 +2060,7 @@ if __name__ == '__main__':
                                                   f'--group {guuid_2} '
                                                   f'--application-name {custom_application} '
                                                   '--application-version does-not-matter '
-                                                  '--cpus 0.1 '
-                                                  '--mem 16')
+                                                  f'{primary_pool_submit_flags}')
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(3, len(uuids))
         uuid_7, uuid_8, uuid_9 = uuids
@@ -2073,13 +2074,15 @@ if __name__ == '__main__':
         # If using pools, submit jobs to another pool
         uuid_10 = None
         uuid_11 = None
+        extra_pool_mem = primary_pool_mem * 2
         if len(active_pools) > 1:
             extra_pool = next(pool['name'] for pool in active_pools if pool['name'] != default_pool)
-            cp, uuids = cli.submit(command, self.cook_url, submit_flags=f'--cpus 0.2 --mem 32 --pool {extra_pool}')
+            extra_pool_submit_flags = f'--cpus 0.2 --mem {extra_pool_mem} --pool {extra_pool} --max-retries 5'
+            cp, uuids = cli.submit(command, self.cook_url, submit_flags=extra_pool_submit_flags)
             self.assertEqual(0, cp.returncode, cp.stderr)
             uuid_10 = uuids[0]
             all_uuids.append(uuid_10)
-            cp, uuids = cli.submit(command, self.cook_url, submit_flags=f'--cpus 0.2 --mem 32 --pool {extra_pool}')
+            cp, uuids = cli.submit(command, self.cook_url, submit_flags=extra_pool_submit_flags)
             self.assertEqual(0, cp.returncode, cp.stderr)
             uuid_11 = uuids[0]
             all_uuids.append(uuid_11)
@@ -2114,7 +2117,7 @@ if __name__ == '__main__':
 
             # Check the output data
             self.assertLessEqual(round(0.1 * 9, 1), round(total_usage['cpus'], 1))
-            self.assertLessEqual(round(16 * 9, 1), round(total_usage['mem'], 1))
+            self.assertLessEqual(round(primary_pool_mem * 9, 1), round(total_usage['mem'], 1))
             self.assertLessEqual(0, total_usage['gpus'])
             self.assertLessEqual(9, usage['count'])
 
@@ -2130,26 +2133,26 @@ if __name__ == '__main__':
             self.assertEqual(actual_quota['gpus'], quota['gpus'])
 
             self.assertLessEqual(round(0.1 * 6, 1), round(cs_usage['cpus'], 1))
-            self.assertLessEqual(round(16 * 6, 1), round(cs_usage['mem'], 1))
+            self.assertLessEqual(round(primary_pool_mem * 6, 1), round(cs_usage['mem'], 1))
             self.assertLessEqual(0, cs_usage['gpus'])
             self.assertLessEqual(round(0.1 * 3, 1), round(ungrouped_usage['cpus'], 1))
-            self.assertLessEqual(round(16 * 3, 1), round(ungrouped_usage['mem'], 1))
+            self.assertLessEqual(round(primary_pool_mem * 3, 1), round(ungrouped_usage['mem'], 1))
             self.assertLessEqual(0, ungrouped_usage['gpus'])
             self.assertIn(uuid_1, ungrouped_jobs)
             self.assertIn(uuid_2, ungrouped_jobs)
             self.assertIn(uuid_3, ungrouped_jobs)
             self.assertEqual(round(0.1 * 3, 1), round(grouped_usage['cpus'], 1))
-            self.assertEqual(round(16 * 3, 1), round(grouped_usage['mem'], 1))
+            self.assertEqual(round(primary_pool_mem * 3, 1), round(grouped_usage['mem'], 1))
             self.assertEqual(0, grouped_usage['gpus'])
             self.assertEqual(3, len(grouped_jobs))
             self.assertIn(uuid_4, grouped_jobs)
             self.assertIn(uuid_5, grouped_jobs)
             self.assertIn(uuid_6, grouped_jobs)
             self.assertEqual(round(0.1 * 3, 1), round(custom_application_usage['cpus'], 1))
-            self.assertEqual(round(16 * 3, 1), round(custom_application_usage['mem'], 1))
+            self.assertEqual(round(primary_pool_mem * 3, 1), round(custom_application_usage['mem'], 1))
             self.assertEqual(0, custom_application_usage['gpus'])
             self.assertEqual(round(0.1 * 3, 1), round(custom_application_grouped_usage['cpus'], 1))
-            self.assertEqual(round(16 * 3, 1), round(custom_application_grouped_usage['mem'], 1))
+            self.assertEqual(round(primary_pool_mem * 3, 1), round(custom_application_grouped_usage['mem'], 1))
             self.assertEqual(0, custom_application_grouped_usage['gpus'])
             self.assertEqual(3, len(custom_application_grouped_jobs))
             self.assertIn(uuid_7, custom_application_grouped_jobs)
@@ -2168,7 +2171,7 @@ if __name__ == '__main__':
                 ungrouped_jobs = applications['cook-scheduler-cli']['groups']['null']['jobs']
 
                 self.assertLessEqual(round(0.2 * 2, 1), round(total_usage['cpus'], 1))
-                self.assertLessEqual(round(32 * 2, 1), round(total_usage['mem'], 1))
+                self.assertLessEqual(round(extra_pool_mem * 2, 1), round(total_usage['mem'], 1))
                 self.assertLessEqual(0, total_usage['gpus'])
                 self.assertLessEqual(9, usage['count'])
 
@@ -2183,10 +2186,10 @@ if __name__ == '__main__':
                 self.assertEqual(actual_quota['gpus'], quota['gpus'])
 
                 self.assertLessEqual(round(0.2 * 2, 1), round(cs_usage['cpus'], 1))
-                self.assertLessEqual(round(32 * 2, 1), round(cs_usage['mem'], 1))
+                self.assertLessEqual(round(extra_pool_mem * 2, 1), round(cs_usage['mem'], 1))
                 self.assertLessEqual(0, cs_usage['gpus'])
                 self.assertLessEqual(round(0.2 * 2, 1), round(ungrouped_usage['cpus'], 1))
-                self.assertLessEqual(round(32 * 2, 1), round(ungrouped_usage['mem'], 1))
+                self.assertLessEqual(round(extra_pool_mem * 2, 1), round(ungrouped_usage['mem'], 1))
                 self.assertLessEqual(0, ungrouped_usage['gpus'])
                 self.assertIn(uuid_10, ungrouped_jobs)
                 self.assertIn(uuid_11, ungrouped_jobs)

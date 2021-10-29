@@ -521,6 +521,10 @@ def add_container_to_job_if_needed(job):
         }
 
 
+def default_job_mem_mb():
+    return int(os.getenv('COOK_DEFAULT_JOB_MEM_MB', 32))
+
+
 def minimal_job(**kwargs):
     workload_id = 'none'
     current_test = os.getenv('PYTEST_CURRENT_TEST', None)
@@ -538,7 +542,7 @@ def minimal_job(**kwargs):
         'command': 'echo Default Test Command',
         'cpus': get_default_cpus(),
         'max_retries': 1,
-        'mem': int(os.getenv('COOK_DEFAULT_JOB_MEM_MB', 32)),
+        'mem': default_job_mem_mb(),
         'name': (DEFAULT_JOB_NAME_PREFIX + get_caller()),
         'priority': 1,
         'uuid': str(make_temporal_uuid())
