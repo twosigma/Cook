@@ -1838,7 +1838,8 @@
               (throw e))))))))
 
 (defn delete-collect-results-finalizer
-  "Delete the finalizer that collects the results of a pot state once the pod has a deletion timestamp"
+  "Delete the finalizer that collects the results of a pod completion state once the pod has a
+  deletion timestamp"
   [{:keys [compute-cluster-name api-client name]} pod-name ^V1Pod pod]
   (let [^V1ObjectMeta pod-metadata (some-> pod .getMetadata)
         pod-deletion-timestamp (some-> pod .getMetadata .getDeletionTimestamp)
@@ -1846,7 +1847,7 @@
     (when (and finalizers (> (.size finalizers) 1))
       ; Finalizers are stored in a list and deleted by index. If there's more than one,
       ; cook can race with whatever deletes the other one, or even delete both (see race discussed below)
-      (log/error "Cook's deletion of more than one finalizer on a pod is racy and not supported"))
+      (log/error "In compute-cluster" name ", deleting finalizer for pod" pod-name "Cook's deletion of more than one finalizer on a pod is racy and not supported. Finalizers are" finalizers))
     (when (and pod-deletion-timestamp (some #(= FinalizerHelper/collectResultsFinalizer %) finalizers))
       (log/info "In compute-cluster" name ", deleting finalizer for pod" pod-name)
       (timers/time! (metrics/timer "delete-finalizer" compute-cluster-name)
@@ -1854,7 +1855,7 @@
           (FinalizerHelper/removeFinalizer api-client pod)
           (catch ApiException e
             (let [code (.getCode e)]
-              ; There can be races here. Whenever we hit the state machine, we will run this code.
+              ; There can be races here. Whenever we hit the state machine, we will run this code
               ; and may try to delete the finalizer twice. The second invocation can see the pod
               ; already deleted or it can see an unprocesssable entity as we try to delete a finalizer
               ; that's already gone.
