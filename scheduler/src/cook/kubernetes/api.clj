@@ -34,6 +34,7 @@
              V1Toleration V1Volume V1VolumeBuilder V1VolumeMount V1Taint)
            (io.kubernetes.client.util Watch)
            (java.net SocketTimeoutException)
+           (java.util List)
            (java.util.concurrent Executors ExecutorService)))
 
 
@@ -1816,6 +1817,42 @@
             (if already-deleted?
               (log/info "In" compute-cluster-name "compute cluster, pod" pod-name "was already deleted")
               (throw e))))))))
+
+(defn delete-collect-results-finalizer
+  "Delete the finalizer that collects the results of a pot state once the pod has a deletion timestamp"
+  [{:keys [compute-cluster-name api-client name]} pod-name ^V1Pod pod]
+  (let [^V1ObjectMeta pod-metadata (some-> pod .getMetadata)
+        pod-deletion-timestamp (some-> pod .getMetadata .getDeletionTimestamp)
+        ^List finalizers (some-> pod-metadata .getFinalizers)]
+    (when (and finalizers (> (.size finalizers) 1))
+      ; Finalizers are stored in a list and deleted by index. If there's more than one,
+      ; cook can race with whatever deletes the other one, or even delete both (see race discussed below)
+      (log/error "Cook's deletion of more than one finalizer on a pod is racy and not supported"))
+    (when (and pod-deletion-timestamp (some #(= FinalizerHelper/collectResultsFinalizer %) finalizers))
+      (log/info "In compute-cluster" name ", deleting finalizer for pod" pod-name)
+      (timers/time! (metrics/timer "delete-finalizer" compute-cluster-name)
+        (try
+          (FinalizerHelper/removeFinalizer api-client pod)
+          (catch ApiException e
+            (let [code (.getCode e)]
+              ; There can be races here. Whenever we hit the state machine, we will run this code.
+              ; and may try to delete the finalizer twice. The second invocation can see the pod
+              ; already deleted or it can see an unprocesssable entity as we try to delete a finalizer
+              ; that's already gone.
+              (when (= 404 code)
+                (meters/mark! (metrics/meter "delete-finalizer-expected-errors" compute-cluster-name))
+                (log/info "In compute-cluster" name ", Not Found error deleting finalizer for pod" pod-name))
+              (when (= 422 code)
+                (meters/mark! (metrics/meter "delete-finalizer-expected-errors" compute-cluster-name))
+                (log/info "In compute-cluster" name ", Unprocessable Entity error deleting finalizer for pod" pod-name))
+              (when-not (contains? #{404 422} code)
+                (meters/mark! (metrics/meter "delete-finalizer-unexpected-errors" compute-cluster-name))
+                (log/error e "In compute-cluster" name ", error deleting finalizer for pod" pod-name))))
+          (catch Exception e
+            (meters/mark! (metrics/meter "delete-finalizer-unexpected-errors" compute-cluster-name))
+            (log/error e "In compute-cluster" name ", error deleting finalizer for pod" pod-name)))))))
+
+
 
 (defn create-namespaced-pod
   "Delegates to the k8s API .createNamespacedPod function"
