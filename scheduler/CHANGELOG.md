@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.58.3] - 2021-10-28
+### Changed
+- Cleaned up the 'no acceptable compute cluster' log, from @dposada
+
+## [1.58.2] - 2021-10-22
+### Changed
+- Added support for transforming job constraints via configuration, from @dposada
+### Fixed
+- Filtering out unsound GPU nodes, from @dposada
+
 ## [1.58.1] - 2021-10-15
 ### Changed
 - Support upserting > 1 incremental config in one transaction, from @nsinkov

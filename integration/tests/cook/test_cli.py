@@ -1824,8 +1824,7 @@ if __name__ == '__main__':
         self.assertEqual(0, cp.returncode, cp.stderr)
 
         # List the jobs
-        user = util.get_user(self.cook_url, uuids[0])
-        jobs_flags = f'--user {user} --name {name} --all --limit {num_jobs}'
+        jobs_flags = f'--name {name} --all --limit {num_jobs}'
         cp, jobs = cli.jobs_json(self.cook_url, jobs_flags)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(num_jobs, len(jobs))
@@ -1839,7 +1838,7 @@ if __name__ == '__main__':
         self.assertIn(f'Successful: {num_jobs}, Failed: 0', cli.stdout(cp))
 
         # All jobs should now be completed
-        cp, jobs = cli.jobs_json(self.cook_url, f'--user {user} --name {name} --completed --limit {num_jobs}')
+        cp, jobs = cli.jobs_json(self.cook_url, f'--name {name} --completed --limit {num_jobs}')
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(num_jobs, len(jobs))
 
@@ -2388,27 +2387,53 @@ if __name__ == '__main__':
             util.kill_jobs(self.cook_url, uuids, assert_response=False)
 
     def test_submit_constraint(self):
-        const = {
-            'node-family': {'value': 'n2', 'found': False},
-            'cpu-architecture': {'value': 'intel-cascade-lake', 'found': False},
-        }
-        cp, uuids = cli.submit('ls', self.cook_url,
-                               submit_flags=f'--constraint node-family={const["node-family"]["value"]} --constraint cpu-architecture={const["cpu-architecture"]["value"]}')
-        self.assertEqual(0, cp.returncode, cp.stderr)
-        try:
-            job = util.load_job(self.cook_url, uuids[0])
-            constraints = job['constraints']
-            for c in constraints:
-                k = c[0]
-                v = c[2]
-                self.assertTrue(k in const)
-                self.assertEqual(v, const[k]['value'])
-                const[k]['found'] = True
-            for _, v in const.items():
-                self.assertTrue(v['found'])
+        settings_dict = util.settings(self.cook_url)
+        job_shape_validation_config_map = \
+            settings_dict.get('plugins', {}).get('job-shape-validation', {}).get('non-gpu-jobs', [])
+        default_pool = util.default_submit_pool()
+        node_type_lookups = [entry['node-type-lookup'] for entry in job_shape_validation_config_map if
+                             re.match(entry['pool-regex'], default_pool)]
+        if len(node_type_lookups) == 0:
+            self.skipTest(f'There is no job shape validation configured for the {default_pool} pool')
+        else:
+            self.logger.info(f'Using job shape validation: {json.dumps(node_type_lookups, indent=2)}')
 
-        finally:
-            util.kill_jobs(self.cook_url, uuids, assert_response=False)
+        def choose_constraints():
+            for type_key, node_type_dict in node_type_lookups[0].items():
+                for family, node_family_dict in node_type_dict.items():
+                    for architecture, cpu_architecture_dict in node_family_dict.items():
+                        if type_key and family and architecture:
+                            return type_key, family, architecture
+
+            return None, None, None
+
+        node_type, node_family, cpu_architecture = choose_constraints()
+        if node_type and node_family and cpu_architecture:
+            const = {
+                'node-type': {'value': node_type, 'found': False},
+                'node-family': {'value': node_family, 'found': False},
+                'cpu-architecture': {'value': cpu_architecture, 'found': False},
+            }
+            submit_flags = f'--constraint node-type={node_type} ' \
+                           f'--constraint node-family={node_family} ' \
+                           f'--constraint cpu-architecture={cpu_architecture}'
+            cp, uuids = cli.submit('ls', self.cook_url, submit_flags=submit_flags)
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            try:
+                job = util.load_job(self.cook_url, uuids[0])
+                constraints = job['constraints']
+                for c in constraints:
+                    k = c[0]
+                    v = c[2]
+                    self.assertTrue(k in const)
+                    self.assertEqual(v, const[k]['value'])
+                    const[k]['found'] = True
+                for _, v in const.items():
+                    self.assertTrue(v['found'])
+            finally:
+                util.kill_jobs(self.cook_url, uuids, assert_response=False)
+        else:
+            self.skipTest(f'There is no usable job shape validation configured for the {default_pool} pool')
 
     def test_bad_cluster_argument(self):
         cluster_name = 'foo'

@@ -991,7 +991,7 @@
     (when-let [jobs (:no-acceptable-compute-cluster compute-cluster->jobs)]
       (log/info "In" pool-name
                 "pool, there are jobs with no acceptable compute cluster for autoscaling"
-                {:first-10-jobs (take 10 jobs)}))
+                {:first-10-jobs (->> jobs (take 10) (map :job/uuid) (map str))}))
     (dissoc compute-cluster->jobs :no-acceptable-compute-cluster)))
 
 (defn trigger-autoscaling!

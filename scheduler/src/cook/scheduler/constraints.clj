@@ -17,6 +17,7 @@
   (:require [clj-time.core :as t]
             [clojure.core.cache :as cache]
             [clojure.set :as set]
+            [clojure.string :as str]
             [clojure.tools.logging :as log]
             [cook.cached-queries :as cached-queries]
             [cook.compute-cluster :as cc]
@@ -260,6 +261,43 @@
 (def machine-type-constraint-attributes
   #{"cpu-architecture" "node-family" "node-type"})
 
+(defn transform-constraints
+  "Given a collection of job constraints and a map from constraint
+  attribute to transformation, where transformation has the shape:
+
+  {:new-attribute ... :pattern-transformations ...},
+
+  and :pattern-transformations has the shape:
+
+  [{:match ... :replacement ...}
+   {:match ... :replacement ...}
+   ...],
+
+  and the match/replacement pairs are fed to str/replace to
+  transform the constraint pattern, returns a collection of
+  (potentially) transformed job constraints"
+  [constraints attribute->transformation]
+  (if (seq attribute->transformation)
+    (map
+      (fn [{:keys [constraint/attribute constraint/pattern] :as constraint}]
+        (if-let [{:keys [new-attribute pattern-transformations]}
+                 (get attribute->transformation attribute)]
+          (assoc constraint
+            :constraint/attribute
+            (or new-attribute attribute)
+            :constraint/pattern
+            (loop [new-pattern pattern
+                   transformations pattern-transformations]
+              (if (seq transformations)
+                (let [{:keys [match replacement]} (first transformations)]
+                  (recur
+                    (str/replace new-pattern match replacement)
+                    (rest transformations)))
+                new-pattern)))
+          constraint))
+      constraints)
+    constraints))
+
 (defn job->constraints
   "Given a job, returns all job constraints that should be in effect,
   either specified on the job submission or defaulted via configuration"
@@ -296,6 +334,7 @@
 
     (-> user-specified-constraints
         (concat default-constraints)
+        (transform-constraints (config/constraint-attribute->transformation))
         ; De-lazy the output; Fenzo can call from multiple
         ; threads and we want to avoid contention in LazySeq
         vec)))
