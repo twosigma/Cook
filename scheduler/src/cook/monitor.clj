@@ -23,11 +23,13 @@
             [cook.datomic :as datomic]
             [cook.pool :as pool]
             [cook.queries :as queries]
+            [cook.quota :as quota]
             [cook.scheduler.share :as share]
             [cook.util :as util]
             [cook.tools :as tools]
             [datomic.api :as d :refer [q]]
-            [metrics.counters :as counters]))
+            [metrics.counters :as counters]
+            [plumbing.core :refer [map-keys]]))
 
 (defn- get-job-stats
   "Given all jobs for a particular job state, e.g. running or
@@ -81,11 +83,37 @@
              (recur users starved-stats)))
          starved-stats)))))
 
+(defn- get-waiting-under-quota-job-stats
+  "Return a map from users waiting under quota ONLY to their stats where a stats is a map
+   from stats types to amounts."
+  ([db running-stats waiting-stats pool-name]
+   (let [waiting-users (keys waiting-stats)
+         user->quota (quota/create-user->quota-fn db pool-name)
+         promised-resources (fn [user] (map-keys (fn [k] (if (= k :count) :jobs k)) (user->quota user)))
+         ; remaining-quota = max(quota - running, 0)
+         ; waiting-under-quota = min(remaining-quota, waiting)
+         compute-waiting-under-quota (fn [user]
+                                       (->> (merge-with (fn [quota running] (max (- quota running) 0))
+                                                        (promised-resources user) (get running-stats user))
+                                            (merge-with min (get waiting-stats user))))]
+     (loop [[user & users] waiting-users
+            waiting-under-quota-stats {}]
+       (if user
+         (let [used-resources (get running-stats user)]
+           ;; Check if a user is under quota.
+           (if (every? true? (map (fn [[resource amount]]
+                                    (< (or (resource used-resources) 0.0)
+                                       amount))
+                                  (promised-resources user)))
+             (recur users (assoc waiting-under-quota-stats user (compute-waiting-under-quota user)))
+             (recur users waiting-under-quota-stats)))
+         waiting-under-quota-stats)))))
+
 (defn set-counter!
   "Sets the value of the counter to the new value.
    A data race is possible if two threads invoke this function concurrently."
   [counter value]
-  (let [amount-to-inc (- (long value) (counters/value counter))]
+  (let [amount-to-inc (- (long (min value Long/MAX_VALUE)) (counters/value counter))]
     (counters/inc! counter amount-to-inc)))
 
 (defn- clear-old-counters!
@@ -133,24 +161,29 @@
   (let [running-stats (get-job-stats running-job-ents pool-name)
         waiting-stats (get-job-stats pending-job-ents pool-name)
         starved-stats (get-starved-job-stats db running-stats waiting-stats pool-name)
+        waiting-under-quota-stats (get-waiting-under-quota-job-stats  db running-stats waiting-stats pool-name)
         running-users (set (keys running-stats))
         waiting-users (set (keys waiting-stats))
         satisfied-users (difference running-users waiting-users)
         starved-users (set (keys starved-stats))
+        waiting-under-quota-users (set (keys waiting-under-quota-stats))
         hungry-users (difference waiting-users starved-users)
         total-count (count (union running-users waiting-users))
         starved-count (count starved-users)
+        waiting-under-quota-count (count waiting-under-quota-users)
         hungry-count (count hungry-users)
         satisfied-count (count satisfied-users)]
     (set-user-counters! "running" running-stats state->previous-stats-atom pool-name)
     (set-user-counters! "waiting" waiting-stats state->previous-stats-atom pool-name)
     (set-user-counters! "starved" starved-stats state->previous-stats-atom pool-name)
+    (set-user-counters! "waiting-under-quota" waiting-under-quota-stats state->previous-stats-atom pool-name)
     (set-total-counter! "total" total-count pool-name)
     (set-total-counter! "starved" starved-count pool-name)
+    (set-total-counter! "waiting-under-quota" waiting-under-quota-count pool-name)
     (set-total-counter! "hungry" hungry-count pool-name)
     (set-total-counter! "satisfied" satisfied-count pool-name)
     (log/info "Pool" pool-name "user stats: total" total-count "starved" starved-count
-              "hungry" hungry-count "satisfied" satisfied-count)))
+              "waiting-under-quota" waiting-under-quota-count "hungry" hungry-count "satisfied" satisfied-count)))
 
 (defn start-collecting-stats
   "Starts a periodic timer to collect stats about running, waiting, and starved jobs per user.
