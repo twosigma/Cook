@@ -2393,7 +2393,7 @@ if __name__ == '__main__':
         settings_dict = util.settings(self.cook_url)
         job_shape_validation_config_map = \
             settings_dict.get('plugins', {}).get('job-shape-validation', {}).get('non-gpu-jobs', [])
-        default_pool = util.default_submit_pool()
+        default_pool = util.default_submit_pool() or util.default_pool(self.cook_url)
         node_type_lookups = [entry['node-type-lookup'] for entry in job_shape_validation_config_map if
                              re.match(entry['pool-regex'], default_pool)]
         if len(node_type_lookups) == 0:
