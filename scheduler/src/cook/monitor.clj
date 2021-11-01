@@ -161,7 +161,7 @@
   (let [running-stats (get-job-stats running-job-ents pool-name)
         waiting-stats (get-job-stats pending-job-ents pool-name)
         starved-stats (get-starved-job-stats db running-stats waiting-stats pool-name)
-        waiting-under-quota-stats (get-waiting-under-quota-job-stats  db running-stats waiting-stats pool-name)
+        waiting-under-quota-stats (get-waiting-under-quota-job-stats db running-stats waiting-stats pool-name)
         running-users (set (keys running-stats))
         waiting-users (set (keys waiting-stats))
         satisfied-users (difference running-users waiting-users)
