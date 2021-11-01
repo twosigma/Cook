@@ -19,6 +19,7 @@
             [cook.mesos :as mesos]
             [cook.monitor :as monitor]
             [cook.queries :as queries]
+            [cook.quota :as quota]
             [cook.rest.api :as api]
             [cook.scheduler.share :as share]
             [cook.test.testutil :as testutil :refer [restore-fresh-database! setup]]
@@ -48,11 +49,15 @@
     (is (= 0 (counter ["starved" "all" "cpus"])))
     (is (= 0 (counter ["starved" "all" "jobs"])))
     (is (= 0 (counter ["starved" "all" "mem"])))
+    (is (= 0 (counter ["waiting-under-quota" "all" "cpus"])))
+    (is (= 0 (counter ["waiting-under-quota" "all" "jobs"])))
+    (is (= 0 (counter ["waiting-under-quota" "all" "mem"])))
     (is (= 0 (counter ["waiting" "all" "cpus"])))
     (is (= 0 (counter ["waiting" "all" "jobs"])))
     (is (= 0 (counter ["waiting" "all" "mem"])))
     (is (= 0 (counter ["total" "users"])))
     (is (= 0 (counter ["starved" "users"])))
+    (is (= 0 (counter ["waiting-under-quota" "users"])))
     (is (= 0 (counter ["hungry" "users"])))
     (is (= 0 (counter ["satisfied" "users"])))
 
@@ -83,8 +88,18 @@
     (is (= 1 (counter ["starved" "bob" "jobs"])))
     (is (= 2 (counter ["starved" "bob" "cpus"])))
     (is (= 256 (counter ["starved" "bob" "mem"])))
+    (is (= 2 (counter ["waiting-under-quota" "all" "jobs"])))
+    (is (= 3 (counter ["waiting-under-quota" "all" "cpus"])))
+    (is (= 384 (counter ["waiting-under-quota" "all" "mem"])))
+    (is (= 1 (counter ["waiting-under-quota" "alice" "jobs"])))
+    (is (= 1 (counter ["waiting-under-quota" "alice" "cpus"])))
+    (is (= 128 (counter ["waiting-under-quota" "alice" "mem"])))
+    (is (= 1 (counter ["waiting-under-quota" "bob" "jobs"])))
+    (is (= 2 (counter ["waiting-under-quota" "bob" "cpus"])))
+    (is (= 256 (counter ["waiting-under-quota" "bob" "mem"])))
     (is (= 2 (counter ["total" "users"])))
     (is (= 2 (counter ["starved" "users"])))
+    (is (= 2 (counter ["waiting-under-quota" "users"])))
     (is (= 0 (counter ["hungry" "users"])))
     (is (= 0 (counter ["satisfied" "users"])))
 
@@ -117,8 +132,18 @@
     (is (= 1 (counter ["starved" "bob" "jobs"])))
     (is (= 2 (counter ["starved" "bob" "cpus"])))
     (is (= 256 (counter ["starved" "bob" "mem"])))
+    (is (= 1 (counter ["waiting-under-quota" "all" "jobs"])))
+    (is (= 2 (counter ["waiting-under-quota" "all" "cpus"])))
+    (is (= 256 (counter ["waiting-under-quota" "all" "mem"])))
+    (is (= 0 (counter ["waiting-under-quota" "alice" "jobs"])))
+    (is (= 0 (counter ["waiting-under-quota" "alice" "cpus"])))
+    (is (= 0 (counter ["waiting-under-quota" "alice" "mem"])))
+    (is (= 1 (counter ["waiting-under-quota" "bob" "jobs"])))
+    (is (= 2 (counter ["waiting-under-quota" "bob" "cpus"])))
+    (is (= 256 (counter ["waiting-under-quota" "bob" "mem"])))
     (is (= 2 (counter ["total" "users"])))
     (is (= 1 (counter ["starved" "users"])))
+    (is (= 1 (counter ["waiting-under-quota" "users"])))
     (is (= 0 (counter ["hungry" "users"])))
     (is (= 1 (counter ["satisfied" "users"])))
 
@@ -219,7 +244,8 @@
     (is (= 0 (counter ["satisfied" "users"])))
 
     (testutil/create-jobs! conn {::api/job-pool-name-maps [{:job job3}]})
-    (with-redefs [share/get-share (constantly {:cpus 0 :mem 0})]
+    (with-redefs [share/get-share (constantly {:cpus 0 :mem 0})
+                  quota/get-quota (constantly {:mem 10, :cpus 10, :gpus 10, :count 10, :launch-rate-saved 1.0000097E7, :launch-rate-per-minute 600013.0})]
 
       (monitor/set-stats-counters! (db conn) stats-atom
                                    (queries/get-pending-job-ents (db conn))
@@ -252,8 +278,21 @@
     (is (= 0 (counter ["starved" "sally" "jobs"])))
     (is (= 0 (counter ["starved" "sally" "cpus"])))
     (is (= 0 (counter ["starved" "sally" "mem"])))
+    (is (= 1 (counter ["waiting-under-quota" "all" "jobs"])))
+    (is (= 4 (counter ["waiting-under-quota" "all" "cpus"])))
+    (is (= 10 (counter ["waiting-under-quota" "all" "mem"])))
+    (is (= 0 (counter ["waiting-under-quota" "alice" "jobs"])))
+    (is (= 0 (counter ["waiting-under-quota" "alice" "cpus"])))
+    (is (= 0 (counter ["waiting-under-quota" "alice" "mem"])))
+    (is (= 0 (counter ["waiting-under-quota" "bob" "jobs"])))
+    (is (= 0 (counter ["waiting-under-quota" "bob" "cpus"])))
+    (is (= 0 (counter ["waiting-under-quota" "bob" "mem"])))
+    (is (= 1 (counter ["waiting-under-quota" "sally" "jobs"])))
+    (is (= 4 (counter ["waiting-under-quota" "sally" "cpus"])))
+    (is (= 10 (counter ["waiting-under-quota" "sally" "mem"])))
     (is (= 1 (counter ["total" "users"])))
     (is (= 0 (counter ["starved" "users"])))
+    (is (= 1 (counter ["waiting-under-quota" "users"])))
     (is (= 1 (counter ["hungry" "users"])))
     (is (= 0 (counter ["satisfied" "users"])))
 
@@ -295,7 +334,38 @@
     (is (= 1 (counter ["total" "users"])))
     (is (= 0 (counter ["starved" "users"])))
     (is (= 0 (counter ["hungry" "users"])))
-    (is (= 1 (counter ["satisfied" "users"])))))
+    (is (= 1 (counter ["satisfied" "users"])))
+
+    (let [job1 {:uuid (UUID/randomUUID), :command "ls", :max-retries 1, :cpus 2., :mem 3., :user "user"}
+          job2 {:uuid (UUID/randomUUID), :command "ls", :max-retries 1, :cpus 5., :mem 8., :user "user"}
+          job3 {:uuid (UUID/randomUUID), :command "ls", :max-retries 1, :cpus 13., :mem 21., :user "user"}]
+      (testutil/create-jobs! conn {::api/job-pool-name-maps [{:job job1} {:job job2} {:job job3}]})
+      (with-redefs [quota/get-quota (constantly {:mem 10, :cpus 100, :gpus 10, :count 10, :launch-rate-saved 10, :launch-rate-per-minute 10})]
+        (monitor/set-stats-counters! (db conn) stats-atom
+                                     (queries/get-pending-job-ents (db conn))
+                                     (util/get-running-job-ents (db conn))
+                                     "no-pool")
+        (is (= 3 (counter ["waiting-under-quota" "user" "jobs"])))
+        (is (= 20 (counter ["waiting-under-quota" "user" "cpus"])))
+        (is (= 10 (counter ["waiting-under-quota" "user" "mem"])))
+
+        (run-job job1)
+        (monitor/set-stats-counters! (db conn) stats-atom
+                                     (queries/get-pending-job-ents (db conn))
+                                     (util/get-running-job-ents (db conn))
+                                     "no-pool")
+        (is (= 2 (counter ["waiting-under-quota" "user" "jobs"])))
+        (is (= 18 (counter ["waiting-under-quota" "user" "cpus"])))
+        (is (= 7 (counter ["waiting-under-quota" "user" "mem"])))
+
+        (run-job job2)
+        (monitor/set-stats-counters! (db conn) stats-atom
+                                     (queries/get-pending-job-ents (db conn))
+                                     (util/get-running-job-ents (db conn))
+                                     "no-pool")
+        (is (= 0 (counter ["waiting-under-quota" "user" "jobs"])))
+        (is (= 0 (counter ["waiting-under-quota" "user" "cpus"])))
+        (is (= 0 (counter ["waiting-under-quota" "user" "mem"])))))))
 
 (deftest test-start-collecting-stats
   (setup :config {:metrics {:user-metrics-interval-seconds 1}})
