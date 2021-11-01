@@ -482,8 +482,8 @@
           (set-counter-fn "max-total-pods" max-total-pods)
           (set-counter-fn "total-nodes" total-nodes)
           (set-counter-fn "max-total-nodes" max-total-nodes)
-          (set-counter-fn "num-synthetic-pods" num-synthetic-pods)
-          (set-counter-fn "max-pods-outstanding" max-pods-outstanding)
+          (set-counter-fn "total-synthetic-pods" num-synthetic-pods)
+          (set-counter-fn "max-total-synthetic-pods" max-pods-outstanding)
 
           (let [max-launchable (min (- max-pods-outstanding num-synthetic-pods)
                                     (- max-total-nodes total-nodes)
