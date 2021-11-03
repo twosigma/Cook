@@ -1847,11 +1847,11 @@
     (when (and finalizers (> (.size finalizers) 1))
       ; Finalizers are stored in a list and deleted by index. If there's more than one,
       ; cook can race with whatever deletes the other one, or even delete both (see race discussed below)
-      (log/error "In compute-cluster" name ", deleting finalizer for pod " pod-name
+      (log/error "In" name "compute cluster, deleting finalizer for pod " pod-name
                  " Cook's deletion of more than one finalizer on a pod is racy and not supported. "
                  "Finalizers are" finalizers))
     (when (and pod-deletion-timestamp (some #(= FinalizerHelper/collectResultsFinalizer %) finalizers))
-      (log/info "In compute-cluster" name ", deleting finalizer for pod" pod-name)
+      (log/info "In" name "compute cluster, deleting finalizer for pod" pod-name)
       (timers/time! (metrics/timer "delete-finalizer" compute-cluster-name)
         (try
           (FinalizerHelper/removeFinalizer api-client pod)
@@ -1865,14 +1865,14 @@
                 404
                 (do
                   (meters/mark! (metrics/meter "delete-finalizer-expected-errors" compute-cluster-name))
-                  (log/info "In " name " compute cluster, Not Found error deleting finalizer for pod" pod-name))
+                  (log/info "In" name "compute cluster, Not Found error deleting finalizer for pod" pod-name))
                 422
                 (do
                   (meters/mark! (metrics/meter "delete-finalizer-expected-errors" compute-cluster-name))
-                  (log/info "In " name " compute cluster, Unprocessable Entity error deleting finalizer for pod" pod-name))
+                  (log/info "In" name "compute cluster, Unprocessable Entity error deleting finalizer for pod" pod-name))
                 (do
                   (meters/mark! (metrics/meter "delete-finalizer-unexpected-errors" compute-cluster-name))
-                  (log/error e "In " name " compute cluster, error deleting finalizer for pod" pod-name)))))
+                  (log/error e "In" name "compute cluster, error deleting finalizer for pod" pod-name)))))
           (catch Exception e
             (meters/mark! (metrics/meter "delete-finalizer-unexpected-errors" compute-cluster-name))
             (log/error e "In " name " compute cluster, error deleting finalizer for pod" pod-name)))))))
