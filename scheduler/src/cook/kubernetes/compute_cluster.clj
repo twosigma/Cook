@@ -462,7 +462,7 @@
                :or {command "exit 0" max-total-pods 32000 max-total-nodes 1000}} synthetic-pods-config
               set-counter-fn (fn [counter-name counter-value]
                                (monitor/set-counter!
-                                 (counters/counter ["cook-k8s" counter-name (str "pool-" pool-name)])
+                                 (counters/counter ["cook-k8s" counter-name (str "compute-cluster-" name "pool-" pool-name)])
                                  counter-value))]
 
           (when (>= total-pods max-total-pods)
@@ -478,10 +478,6 @@
                       {:max-synthetic-pods max-pods-outstanding
                        :synthetic-pods num-synthetic-pods}))
 
-          (set-counter-fn "total-pods" total-pods)
-          (set-counter-fn "max-total-pods" max-total-pods)
-          (set-counter-fn "total-nodes" total-nodes)
-          (set-counter-fn "max-total-nodes" max-total-nodes)
           (set-counter-fn "total-synthetic-pods" num-synthetic-pods)
           (set-counter-fn "max-total-synthetic-pods" max-pods-outstanding)
 

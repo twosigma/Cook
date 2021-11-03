@@ -9,6 +9,7 @@
             [cook.config :as config]
             [cook.config-incremental :as config-incremental]
             [cook.kubernetes.metrics :as metrics]
+            [cook.monitor :as monitor]
             [cook.passport :as passport]
             [cook.regexp-tools :as regexp-tools]
             [cook.rest.api :as api]
@@ -17,6 +18,7 @@
             [cook.tools :as tools]
             [cook.util :as util]
             [datomic.api :as d]
+            [metrics.counters :as counters]
             [metrics.meters :as meters]
             [metrics.timers :as timers]
             [plumbing.core :as pc])
@@ -301,11 +303,17 @@
   [^ApiClient api-client resource-version]
   (WatchHelper/createPodWatch api-client resource-version))
 
+(defn- set-metric-counter
+  [counter-name counter-value compute-cluster-name]
+  (monitor/set-counter!
+    (counters/counter ["cook-k8s" counter-name (str "compute-cluster-" compute-cluster-name)])
+    counter-value))
+
 (declare initialize-pod-watch)
 (defn ^Callable initialize-pod-watch-helper
   "Help creating pod watch. Returns a new watch Callable"
   [{:keys [^ApiClient api-client all-pods-atom ^ExecutorService controller-executor-service node-name->pod-name->pod]
-    compute-cluster-name :name :as compute-cluster} cook-pod-callback]
+    compute-cluster-name :name {:keys [max-total-pods]} :synthetic-pods-config :as compute-cluster} cook-pod-callback]
   (let [{:keys [list-pods-limit]} (config/kubernetes)
         [^String resource-version namespaced-pod-name->pod]
         (get-all-pods-in-kubernetes api-client compute-cluster-name list-pods-limit)
@@ -347,6 +355,8 @@
           (log/info "In" compute-cluster-name "compute cluster, handling pod watch updates")
           (handle-watch-updates all-pods-atom watch get-pod-namespaced-key
                                 callbacks)
+          (set-metric-counter "total-pods" (-> @all-pods-atom keys count) compute-cluster-name)
+          (set-metric-counter "max-total-pods" max-total-pods compute-cluster-name)
           (catch Exception e
             (let [cause (.getCause e)]
               (if (and cause (instance? SocketTimeoutException cause))
@@ -396,7 +406,8 @@
 (declare initialize-node-watch)
 (defn initialize-node-watch-helper
   "Help creating node watch. Returns a new watch Callable"
-  [{:keys [^ApiClient api-client current-nodes-atom pool->node-name->node cook-pool-taint-name cook-pool-taint-prefix] compute-cluster-name :name :as compute-cluster}]
+  [{:keys [^ApiClient api-client current-nodes-atom pool->node-name->node cook-pool-taint-name cook-pool-taint-prefix]
+    compute-cluster-name :name {:keys [max-total-nodes]} :synthetic-pods-config :as compute-cluster}]
   (let [api (CoreV1Api. api-client)
         ^V1NodeList current-nodes-raw
         (timers/time! (metrics/timer "get-all-nodes" compute-cluster-name)
@@ -442,6 +453,8 @@
           (log/info "In" compute-cluster-name "compute cluster, handling node watch updates")
           (handle-watch-updates current-nodes-atom watch node->node-name
                                 callbacks) ; Update the set of all nodes.
+          (set-metric-counter "total-nodes" (-> @current-nodes-atom keys count) compute-cluster-name)
+          (set-metric-counter "max-total-nodes" max-total-nodes compute-cluster-name)
           (catch Exception e
             (let [cause (-> e Throwable->map :cause)]
               (if (= cause "Socket closed")
