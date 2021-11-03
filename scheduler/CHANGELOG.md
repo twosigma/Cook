@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.58.4] - 2021-11-03
+### Changed
+- Changed logging with finalizer deletion, from @scrosby
+- Collected metrics for waiting jobs under quota, from @nsinkov
+
 ## [1.58.3] - 2021-10-28
 ### Changed
 - Cleaned up the 'no acceptable compute cluster' log, from @dposada
