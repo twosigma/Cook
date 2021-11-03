@@ -1875,7 +1875,7 @@
                   (log/error e "In" name "compute cluster, error deleting finalizer for pod" pod-name)))))
           (catch Exception e
             (meters/mark! (metrics/meter "delete-finalizer-unexpected-errors" compute-cluster-name))
-            (log/error e "In " name " compute cluster, error deleting finalizer for pod" pod-name)))))))
+            (log/error e "In" name "compute cluster, error deleting finalizer for pod" pod-name)))))))
 
 
 
