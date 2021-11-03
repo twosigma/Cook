@@ -550,7 +550,10 @@
                 (fn [pattern-transformation]
                   (update pattern-transformation :match re-pattern))
                 pattern-transformations)))
-         constraint-attribute->transformation))}))
+         constraint-attribute->transformation))
+     :production?
+     (fnk [[:config {production? nil}]]
+       production?)}))
 
 (defn read-config
   "Given a config file path, reads the config and returns the map"
