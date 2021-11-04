@@ -185,13 +185,15 @@
 (defn handle-watch-updates
   "When a watch update occurs (for pods or nodes) update both the state atom as well as
   invoke the callbacks on the previous and new values for the key."
-  [state-atom ^Watch watch key-fn callbacks]
+  [state-atom ^Watch watch key-fn callbacks set-metric-counters-fn]
   (while (.hasNext watch)
     (let [watch-response (.next watch)
           item (.-object watch-response)
           type (.-type watch-response)]
       (if (some? item)
-        (process-watch-response! state-atom item type key-fn callbacks)
+        (do
+          (process-watch-response! state-atom item type key-fn callbacks)
+          (set-metric-counters-fn))
         (throw (ex-info "Encountered nil object on watch response"
                         {:watch-object item
                          :watch-status (.-status watch-response)
@@ -355,10 +357,11 @@
         (try
           (log/info "In" compute-cluster-name "compute cluster, handling pod watch updates")
           (handle-watch-updates all-pods-atom watch get-pod-namespaced-key
-                                callbacks)
-          (log/info "zzz In" compute-cluster-name "compute cluster, handled pod watch updates")
-          (set-metric-counter "total-pods" (-> @all-pods-atom keys count) compute-cluster-name)
-          (set-metric-counter "max-total-pods" max-total-pods compute-cluster-name)
+                                callbacks
+                                (fn []
+                                  (log/info "zzz In" compute-cluster-name "compute cluster, handled pod watch updates")
+                                  (set-metric-counter "total-pods" (-> @all-pods-atom keys count) compute-cluster-name)
+                                  (set-metric-counter "max-total-pods" max-total-pods compute-cluster-name)))
           (catch Exception e
             (let [cause (.getCause e)]
               (if (and cause (instance? SocketTimeoutException cause))
@@ -454,10 +457,11 @@
         (try
           (log/info "In" compute-cluster-name "compute cluster, handling node watch updates")
           (handle-watch-updates current-nodes-atom watch node->node-name
-                                callbacks) ; Update the set of all nodes.
-          (log/info "zzz In" compute-cluster-name "compute cluster, handled node watch updates")
-          (set-metric-counter "total-nodes" (-> @current-nodes-atom keys count) compute-cluster-name)
-          (set-metric-counter "max-total-nodes" max-total-nodes compute-cluster-name)
+                                callbacks              ; Update the set of all nodes.
+                                (fn []
+                                  (log/info "zzz In" compute-cluster-name "compute cluster, handled node watch updates")
+                                  (set-metric-counter "total-nodes" (-> @current-nodes-atom keys count) compute-cluster-name)
+                                  (set-metric-counter "max-total-nodes" max-total-nodes compute-cluster-name)))
           (catch Exception e
             (let [cause (-> e Throwable->map :cause)]
               (if (= cause "Socket closed")
