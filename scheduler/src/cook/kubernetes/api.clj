@@ -305,6 +305,7 @@
 
 (defn- set-metric-counter
   [counter-name counter-value compute-cluster-name]
+  (log/info "zzz" ["cook-k8s" counter-name (str "compute-cluster-" compute-cluster-name)] counter-value)
   (monitor/set-counter!
     (counters/counter ["cook-k8s" counter-name (str "compute-cluster-" compute-cluster-name)])
     counter-value))
@@ -355,6 +356,7 @@
           (log/info "In" compute-cluster-name "compute cluster, handling pod watch updates")
           (handle-watch-updates all-pods-atom watch get-pod-namespaced-key
                                 callbacks)
+          (log/info "zzz In" compute-cluster-name "compute cluster, handled pod watch updates")
           (set-metric-counter "total-pods" (-> @all-pods-atom keys count) compute-cluster-name)
           (set-metric-counter "max-total-pods" max-total-pods compute-cluster-name)
           (catch Exception e
@@ -453,6 +455,7 @@
           (log/info "In" compute-cluster-name "compute cluster, handling node watch updates")
           (handle-watch-updates current-nodes-atom watch node->node-name
                                 callbacks) ; Update the set of all nodes.
+          (log/info "zzz In" compute-cluster-name "compute cluster, handled node watch updates")
           (set-metric-counter "total-nodes" (-> @current-nodes-atom keys count) compute-cluster-name)
           (set-metric-counter "max-total-nodes" max-total-nodes compute-cluster-name)
           (catch Exception e

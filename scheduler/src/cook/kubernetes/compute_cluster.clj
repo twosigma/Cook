@@ -461,6 +461,7 @@
               {:keys [image user command max-pods-outstanding max-total-pods max-total-nodes]
                :or {command "exit 0" max-total-pods 32000 max-total-nodes 1000}} synthetic-pods-config
               set-counter-fn (fn [counter-name counter-value]
+                               (log/info "zzz" ["cook-k8s" counter-name (str "compute-cluster-" name "pool-" pool-name)] counter-value)
                                (monitor/set-counter!
                                  (counters/counter ["cook-k8s" counter-name (str "compute-cluster-" name "pool-" pool-name)])
                                  counter-value))]
