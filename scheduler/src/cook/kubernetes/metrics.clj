@@ -1,5 +1,6 @@
 (ns cook.kubernetes.metrics
   (:require [metrics.counters :as counters]
+            [metrics.histograms :as histograms]
             [metrics.meters :as meters]
             [metrics.timers :as timers]))
 
@@ -24,3 +25,8 @@
   "Given a metric name and a compute cluster name, returns a timer metric."
   [metric-name compute-cluster-name]
   (timers/timer (calculate-name metric-name compute-cluster-name)))
+
+(defn histogram
+  "Given a metric name and a compute cluster name, returns a histogram metric."
+  [metric-name compute-cluster-name]
+  (histograms/histogram (calculate-name metric-name compute-cluster-name)))

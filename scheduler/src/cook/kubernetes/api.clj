@@ -17,6 +17,7 @@
             [cook.tools :as tools]
             [cook.util :as util]
             [datomic.api :as d]
+            [metrics.histograms :as histograms]
             [metrics.meters :as meters]
             [metrics.timers :as timers]
             [plumbing.core :as pc])
@@ -180,20 +181,38 @@
         (catch Exception e
           (log/error e "Error while processing callback"))))))
 
-(defn handle-watch-updates
-  "When a watch update occurs (for pods or nodes) update both the state atom as well as
-  invoke the callbacks on the previous and new values for the key."
-  [state-atom ^Watch watch key-fn callbacks]
-  (while (.hasNext watch)
-    (let [watch-response (.next watch)
-          item (.-object watch-response)
-          type (.-type watch-response)]
-      (if (some? item)
-        (process-watch-response! state-atom item type key-fn callbacks)
-        (throw (ex-info "Encountered nil object on watch response"
-                        {:watch-object item
-                         :watch-status (.-status watch-response)
-                         :watch-type type}))))))
+(let [last-watch-response-millis-atom (atom {})]
+  (defn handle-watch-updates
+    "When a watch update occurs (for pods or nodes) update both the state atom as well as
+    invoke the callbacks on the previous and new values for the key."
+    [state-atom ^Watch watch key-fn callbacks compute-cluster-name watch-object-type]
+    (when-let [last-watch-response-millis
+               (get-in
+                 @last-watch-response-millis-atom
+                 [compute-cluster-name watch-object-type])]
+      (histograms/update!
+        (metrics/histogram
+          (str (name watch-object-type) "-watch-gap-millis")
+          compute-cluster-name)
+        (- (System/currentTimeMillis) last-watch-response-millis)))
+    (while (.hasNext watch)
+      (let [watch-response (.next watch)
+            item (.-object watch-response)
+            type (.-type watch-response)]
+        (if (some? item)
+          (do
+            (swap!
+              last-watch-response-millis-atom
+              assoc-in
+              [compute-cluster-name watch-object-type]
+              (System/currentTimeMillis))
+            (process-watch-response! state-atom item type key-fn callbacks))
+          (throw (ex-info "Encountered nil object on watch response"
+                   {:compute-cluster-name compute-cluster-name
+                    :watch-object item
+                    :watch-object-type watch-object-type
+                    :watch-status (.-status watch-response)
+                    :watch-type type})))))))
 
 (defn get-pod-namespaced-key
   [^V1Pod pod]
@@ -346,7 +365,7 @@
         (try
           (log/info "In" compute-cluster-name "compute cluster, handling pod watch updates")
           (handle-watch-updates all-pods-atom watch get-pod-namespaced-key
-                                callbacks)
+                                callbacks compute-cluster-name :pod)
           (catch Exception e
             (let [cause (.getCause e)]
               (if (and cause (instance? SocketTimeoutException cause))
@@ -441,7 +460,7 @@
         (try
           (log/info "In" compute-cluster-name "compute cluster, handling node watch updates")
           (handle-watch-updates current-nodes-atom watch node->node-name
-                                callbacks) ; Update the set of all nodes.
+                                callbacks compute-cluster-name :node)
           (catch Exception e
             (let [cause (-> e Throwable->map :cause)]
               (if (= cause "Socket closed")
