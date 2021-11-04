@@ -307,7 +307,6 @@
 
 (defn- set-metric-counter
   [counter-name counter-value compute-cluster-name]
-  (log/info "zzz" ["cook-k8s" counter-name (str "compute-cluster-" compute-cluster-name)] counter-value)
   (monitor/set-counter!
     (counters/counter ["cook-k8s" counter-name (str "compute-cluster-" compute-cluster-name)])
     counter-value))
@@ -359,9 +358,8 @@
           (handle-watch-updates all-pods-atom watch get-pod-namespaced-key
                                 callbacks
                                 (fn []
-                                  (log/info "zzz In" compute-cluster-name "compute cluster, handled pod watch updates")
                                   (set-metric-counter "total-pods" (-> @all-pods-atom keys count) compute-cluster-name)
-                                  (set-metric-counter "max-total-pods" max-total-pods compute-cluster-name)))
+                                  (when max-total-pods (set-metric-counter "max-total-pods" max-total-pods compute-cluster-name))))
           (catch Exception e
             (let [cause (.getCause e)]
               (if (and cause (instance? SocketTimeoutException cause))
@@ -459,9 +457,8 @@
           (handle-watch-updates current-nodes-atom watch node->node-name
                                 callbacks              ; Update the set of all nodes.
                                 (fn []
-                                  (log/info "zzz In" compute-cluster-name "compute cluster, handled node watch updates")
                                   (set-metric-counter "total-nodes" (-> @current-nodes-atom keys count) compute-cluster-name)
-                                  (set-metric-counter "max-total-nodes" max-total-nodes compute-cluster-name)))
+                                  (when max-total-nodes (set-metric-counter "max-total-nodes" max-total-nodes compute-cluster-name))))
           (catch Exception e
             (let [cause (-> e Throwable->map :cause)]
               (if (= cause "Socket closed")
