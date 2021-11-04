@@ -638,66 +638,64 @@ class MultiUserCookTest(util.CookTest):
 
     def test_instance_stats_success(self):
         name = str(util.make_temporal_uuid())
+        base_mem = util.default_job_mem_mb()
         job_uuid_1, resp = util.submit_job(self.cook_url, command='exit 0', name=name,
-                                           cpus=0.10, mem=32, max_retries=5)
+                                           cpus=0.10, mem=base_mem, max_retries=5)
         self.assertEqual(resp.status_code, 201, msg=resp.content)
         job_uuid_2, resp = util.submit_job(self.cook_url, command='sleep 1', name=name,
-                                           cpus=0.11, mem=33, max_retries=5)
+                                           cpus=0.11, mem=base_mem+1, max_retries=5)
         self.assertEqual(resp.status_code, 201, msg=resp.content)
         job_uuid_3, resp = util.submit_job(self.cook_url, command='sleep 2', name=name,
-                                           cpus=0.12, mem=34, max_retries=5)
+                                           cpus=0.12, mem=base_mem+2, max_retries=5)
         self.assertEqual(resp.status_code, 201, msg=resp.content)
         job_uuids = [job_uuid_1, job_uuid_2, job_uuid_3]
         try:
             util.wait_for_jobs(self.cook_url, job_uuids, 'completed')
             instances = [util.wait_for_instance(self.cook_url, j, status='success') for j in job_uuids]
-            try:
-                for instance in instances:
-                    self.assertEqual('success', instance['parent']['state'])
-                start_time = min(i['start_time'] for i in instances)
-                end_time = max(i['start_time'] for i in instances)
-                with self.user_factory.admin():
-                    stats, _ = util.get_instance_stats(self.cook_url,
-                                                       status='success',
-                                                       start=util.to_iso(start_time),
-                                                       end=util.to_iso(end_time + 1),
-                                                       name=name)
-                user = util.get_user(self.cook_url, job_uuid_1)
-                stats_overall = stats['overall']
-                self.assertEqual(3, stats_overall['count'])
-                self.assertEqual(3, stats['by-reason']['']['count'])
-                self.assertEqual(3, stats['by-user-and-reason'][user]['']['count'])
-                run_times = [(i['end_time'] - i['start_time']) / 1000 for i in instances]
-                run_time_seconds = stats_overall['run-time-seconds']
-                percentiles = run_time_seconds['percentiles']
-                self.assertEqual(util.percentile(run_times, 50), percentiles['50'])
-                self.assertEqual(util.percentile(run_times, 75), percentiles['75'])
-                self.assertEqual(util.percentile(run_times, 95), percentiles['95'])
-                self.assertEqual(util.percentile(run_times, 99), percentiles['99'])
-                self.assertEqual(util.percentile(run_times, 100), percentiles['100'])
-                self.assertAlmostEqual(sum(run_times), run_time_seconds['total'])
-                cpu_times = [((i['end_time'] - i['start_time']) / 1000) * i['parent']['cpus'] for i in instances]
-                cpu_seconds = stats_overall['cpu-seconds']
-                percentiles = cpu_seconds['percentiles']
-                self.assertEqual(util.percentile(cpu_times, 50), percentiles['50'])
-                self.assertEqual(util.percentile(cpu_times, 75), percentiles['75'])
-                self.assertEqual(util.percentile(cpu_times, 95), percentiles['95'])
-                self.assertEqual(util.percentile(cpu_times, 99), percentiles['99'])
-                self.assertEqual(util.percentile(cpu_times, 100), percentiles['100'])
-                self.assertAlmostEqual(sum(cpu_times), cpu_seconds['total'])
-                mem_times = [((i['end_time'] - i['start_time']) / 1000) * i['parent']['mem'] for i in instances]
-                mem_seconds = stats_overall['mem-seconds']
-                percentiles = mem_seconds['percentiles']
-                self.assertEqual(util.percentile(mem_times, 50), percentiles['50'])
-                self.assertEqual(util.percentile(mem_times, 75), percentiles['75'])
-                self.assertEqual(util.percentile(mem_times, 95), percentiles['95'])
-                self.assertEqual(util.percentile(mem_times, 99), percentiles['99'])
-                self.assertEqual(util.percentile(mem_times, 100), percentiles['100'])
-                self.assertAlmostEqual(sum(mem_times), mem_seconds['total'])
-            except:
-                for instance in instances:
-                    mesos.dump_sandbox_files(util.session, instance, instance['parent'])
-                raise
+            for instance in instances:
+                self.assertEqual('success', instance['parent']['state'])
+
+            start_time = min(i['start_time'] for i in instances)
+            end_time = max(i['start_time'] for i in instances)
+            with self.user_factory.admin():
+                stats, _ = util.get_instance_stats(self.cook_url,
+                                                   status='success',
+                                                   start=util.to_iso(start_time),
+                                                   end=util.to_iso(end_time + 1),
+                                                   name=name)
+
+            user = util.get_user(self.cook_url, job_uuid_1)
+            stats_overall = stats['overall']
+            self.assertEqual(3, stats_overall['count'])
+            self.assertEqual(3, stats['by-reason']['']['count'])
+            self.assertEqual(3, stats['by-user-and-reason'][user]['']['count'])
+            run_times = [(i['end_time'] - i['start_time']) / 1000 for i in instances]
+            run_time_seconds = stats_overall['run-time-seconds']
+            percentiles = run_time_seconds['percentiles']
+            self.assertEqual(util.percentile(run_times, 50), percentiles['50'])
+            self.assertEqual(util.percentile(run_times, 75), percentiles['75'])
+            self.assertEqual(util.percentile(run_times, 95), percentiles['95'])
+            self.assertEqual(util.percentile(run_times, 99), percentiles['99'])
+            self.assertEqual(util.percentile(run_times, 100), percentiles['100'])
+            self.assertAlmostEqual(sum(run_times), run_time_seconds['total'])
+            cpu_times = [((i['end_time'] - i['start_time']) / 1000) * i['parent']['cpus'] for i in instances]
+            cpu_seconds = stats_overall['cpu-seconds']
+            percentiles = cpu_seconds['percentiles']
+            self.assertEqual(util.percentile(cpu_times, 50), percentiles['50'])
+            self.assertEqual(util.percentile(cpu_times, 75), percentiles['75'])
+            self.assertEqual(util.percentile(cpu_times, 95), percentiles['95'])
+            self.assertEqual(util.percentile(cpu_times, 99), percentiles['99'])
+            self.assertEqual(util.percentile(cpu_times, 100), percentiles['100'])
+            self.assertAlmostEqual(sum(cpu_times), cpu_seconds['total'])
+            mem_times = [((i['end_time'] - i['start_time']) / 1000) * i['parent']['mem'] for i in instances]
+            mem_seconds = stats_overall['mem-seconds']
+            percentiles = mem_seconds['percentiles']
+            self.assertEqual(util.percentile(mem_times, 50), percentiles['50'])
+            self.assertEqual(util.percentile(mem_times, 75), percentiles['75'])
+            self.assertEqual(util.percentile(mem_times, 95), percentiles['95'])
+            self.assertEqual(util.percentile(mem_times, 99), percentiles['99'])
+            self.assertEqual(util.percentile(mem_times, 100), percentiles['100'])
+            self.assertAlmostEqual(sum(mem_times), mem_seconds['total'])
         finally:
             util.kill_jobs(self.cook_url, job_uuids)
 
