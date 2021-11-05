@@ -550,7 +550,7 @@
                               (= event-type "Warning")
                               ; The fieldPath is something like:
                               ; "spec.containers{aux-cook-sidecar-container}"
-                              (-> field-path str/lower-case (str/includes? "cook"))))
+                              (some-> field-path str/lower-case (str/includes? "cook"))))
                       (log/info "In" compute-cluster-name
                                 "compute cluster, received pod event"
                                 {:event-reason (.getReason event)
