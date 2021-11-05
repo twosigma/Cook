@@ -537,10 +537,13 @@
                   (let [namespaced-pod-name {:namespace (.getNamespace involved-object)
                                              :name (.getName involved-object)}
                         host (some-> event .getSource .getHost)
-                        field-path (.getFieldPath involved-object)]
-                    (when (some-> @all-pods-atom
-                                  (get namespaced-pod-name)
-                                  (is-cook-scheduler-pod compute-cluster-name))
+                        field-path (.getFieldPath involved-object)
+                        event-type (.getType event)
+                        tracked-pod?
+                        (some-> @all-pods-atom
+                          (get namespaced-pod-name)
+                          (is-cook-scheduler-pod compute-cluster-name))]
+                    (when (or tracked-pod? (= event-type "Warning"))
                       (log/info "In" compute-cluster-name
                                 "compute cluster, received pod event"
                                 {:event-reason (.getReason event)
@@ -559,7 +562,8 @@
                                          (cond->
                                            {:component (some-> event .getSource .getComponent)}
                                            host (assoc :host host))
-                                         :type (.getType event)}
+                                         :type event-type}
+                                 :tracked-pod? tracked-pod?
                                  :watch-response-type (.-type watch-response)}))))))))
         (catch Exception e
           (let [cause (.getCause e)]
