@@ -543,7 +543,14 @@
                         (some-> @all-pods-atom
                           (get namespaced-pod-name)
                           (is-cook-scheduler-pod compute-cluster-name))]
-                    (when (or tracked-pod? (= event-type "Warning"))
+                    (when (or
+                            tracked-pod?
+                            (and
+                              ; The event type is either "Normal" or "Warning"
+                              (= event-type "Warning")
+                              ; The fieldPath is something like:
+                              ; "spec.containers{aux-cook-sidecar-container}"
+                              (-> field-path str/lower-case (str/includes? "cook"))))
                       (log/info "In" compute-cluster-name
                                 "compute cluster, received pod event"
                                 {:event-reason (.getReason event)
