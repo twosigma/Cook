@@ -192,11 +192,13 @@
                (get-in
                  @last-watch-response-millis-atom
                  [compute-cluster-name watch-object-type])]
-      (histograms/update!
-        (metrics/histogram
-          (str (name watch-object-type) "-" metric-name)
-          compute-cluster-name)
-        (- (System/currentTimeMillis) last-watch-response-millis))))
+      (let [millis (- (System/currentTimeMillis) last-watch-response-millis)]
+        (histograms/update!
+          (metrics/histogram
+            (str (name watch-object-type) "-" metric-name)
+            compute-cluster-name)
+          millis)
+        millis)))
 
   (defn mark-watch-gap!
     "Updates the watch-gap-millis metric and stores the current time
@@ -215,10 +217,14 @@
   (defn mark-disconnected-watch-gap!
     "Updates the disconnected-watch-gap-millis metric."
     [compute-cluster-name watch-object-type]
-    (update-watch-gap-metric!
-      compute-cluster-name
-      watch-object-type
-      "disconnected-watch-gap-millis")))
+    (when-let [millis
+               (update-watch-gap-metric!
+                 compute-cluster-name
+                 watch-object-type
+                 "disconnected-watch-gap-millis")]
+      (log/info
+        "In" compute-cluster-name "compute cluster, marking disconnected"
+        (name watch-object-type) "watch gap" {:millis millis}))))
 
 (defn handle-watch-updates
   "When a watch update occurs (for pods or nodes) update both the state atom as well as
@@ -239,7 +245,10 @@
                   :watch-object item
                   :watch-object-type watch-object-type
                   :watch-status (.-status watch-response)
-                  :watch-type type}))))))
+                  :watch-type type})))))
+  (log/info
+    "In" compute-cluster-name "compute cluster, there are no more"
+    (name watch-object-type) "watch updates"))
 
 (defn get-pod-namespaced-key
   [^V1Pod pod]
