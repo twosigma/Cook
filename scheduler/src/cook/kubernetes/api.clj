@@ -182,37 +182,47 @@
           (log/error e "Error while processing callback"))))))
 
 (let [last-watch-response-millis-atom (atom {})]
-  (defn handle-watch-updates
-    "When a watch update occurs (for pods or nodes) update both the state atom as well as
-    invoke the callbacks on the previous and new values for the key."
-    [state-atom ^Watch watch key-fn callbacks compute-cluster-name watch-object-type]
-    (when-let [last-watch-response-millis
-               (get-in
-                 @last-watch-response-millis-atom
-                 [compute-cluster-name watch-object-type])]
-      (histograms/update!
-        (metrics/histogram
-          (str (name watch-object-type) "-watch-gap-millis")
-          compute-cluster-name)
-        (- (System/currentTimeMillis) last-watch-response-millis)))
-    (while (.hasNext watch)
-      (let [watch-response (.next watch)
-            item (.-object watch-response)
-            type (.-type watch-response)]
-        (if (some? item)
-          (do
-            (swap!
-              last-watch-response-millis-atom
-              assoc-in
-              [compute-cluster-name watch-object-type]
-              (System/currentTimeMillis))
-            (process-watch-response! state-atom item type key-fn callbacks))
-          (throw (ex-info "Encountered nil object on watch response"
-                   {:compute-cluster-name compute-cluster-name
-                    :watch-object item
-                    :watch-object-type watch-object-type
-                    :watch-status (.-status watch-response)
-                    :watch-type type})))))))
+  (defn update-watch-gap-metric!
+    "Given a compute cluster name and a watch object type
+    (either :pod or :node), updates a metric with the gap
+    in milliseconds between the last watch response and
+    the current watch response."
+    [compute-cluster-name watch-object-type]
+    (let [now-millis (System/currentTimeMillis)]
+      (when-let [last-watch-response-millis
+                 (get-in
+                   @last-watch-response-millis-atom
+                   [compute-cluster-name watch-object-type])]
+        (histograms/update!
+          (metrics/histogram
+            (str (name watch-object-type) "-watch-gap-millis")
+            compute-cluster-name)
+          (- now-millis last-watch-response-millis)))
+      (swap!
+        last-watch-response-millis-atom
+        assoc-in
+        [compute-cluster-name watch-object-type]
+        now-millis))))
+
+(defn handle-watch-updates
+  "When a watch update occurs (for pods or nodes) update both the state atom as well as
+  invoke the callbacks on the previous and new values for the key."
+  [state-atom ^Watch watch key-fn callbacks compute-cluster-name watch-object-type]
+  (while (.hasNext watch)
+    (let [watch-response (.next watch)
+          item (.-object watch-response)
+          type (.-type watch-response)]
+      (if (some? item)
+        (do
+          (update-watch-gap-metric! compute-cluster-name watch-object-type)
+          (process-watch-response! state-atom item type key-fn callbacks))
+        (throw (ex-info
+                 "Encountered nil object on watch response"
+                 {:compute-cluster-name compute-cluster-name
+                  :watch-object item
+                  :watch-object-type watch-object-type
+                  :watch-status (.-status watch-response)
+                  :watch-type type}))))))
 
 (defn get-pod-namespaced-key
   [^V1Pod pod]
