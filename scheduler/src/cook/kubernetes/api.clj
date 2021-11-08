@@ -414,18 +414,18 @@
   (let [api (CoreV1Api. api-client)
         ^V1NodeList current-nodes-raw
         (timers/time! (metrics/timer "get-all-nodes" compute-cluster-name)
-          (.listNode api
-                     nil ; pretty
-                     nil ; allowWatchBookmarks
-                     nil ; continue
-                     nil ; fieldSelector
-                     nil ; labelSelector
-                     nil ; limit
-                     nil ; resourceVersion
-                     nil ; resourceVersionMatch
-                     nil ; timeoutSeconds
-                     nil ; watch
-                     ))
+                      (.listNode api
+                                 nil ; pretty
+                                 nil ; allowWatchBookmarks
+                                 nil ; continue
+                                 nil ; fieldSelector
+                                 nil ; labelSelector
+                                 nil ; limit
+                                 nil ; resourceVersion
+                                 nil ; resourceVersionMatch
+                                 nil ; timeoutSeconds
+                                 nil ; watch
+                                 ))
         current-nodes (pc/map-from-vals node->node-name (.getItems current-nodes-raw))
         callbacks
         [(tools/make-atom-updater current-nodes-atom) ; Update the set of all pods.
@@ -455,7 +455,7 @@
         (try
           (log/info "In" compute-cluster-name "compute cluster, handling node watch updates")
           (handle-watch-updates current-nodes-atom watch node->node-name
-                                callbacks              ; Update the set of all nodes.
+                                callbacks ; Update the set of all nodes.
                                 (fn []
                                   (set-metric-counter "total-nodes" (-> @current-nodes-atom keys count) compute-cluster-name)
                                   (when max-total-nodes (set-metric-counter "max-total-nodes" max-total-nodes compute-cluster-name))))
