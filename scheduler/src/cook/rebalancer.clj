@@ -513,7 +513,9 @@
                   [:db/add task-eid :instance/reason [:reason/name :preempted-by-rebalancer]]
                   [:db/add task-eid :instance/preempted? true]]))
             (catch Throwable e
-              (log/warn e "Failed to transact preemption")))
+              (log/warn
+                e "In" pool-name "pool, failed to transact preemption"
+                {:to-preempt (prep-task-ent-for-printing task-ent)})))
           (when-let [task-id (:instance/task-id task-ent)]
             (when-let [compute-cluster (task/task-ent->ComputeCluster task-ent)]
               (cc/safe-kill-task compute-cluster task-id))))))))
