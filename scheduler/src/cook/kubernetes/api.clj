@@ -1,5 +1,6 @@
 (ns cook.kubernetes.api
   (:require [better-cond.core :as b]
+            [clj-time.coerce :as tc]
             [clj-time.core :as t]
             [clojure.set :as set]
             [clojure.string :as str]
@@ -198,7 +199,8 @@
             (str (name watch-object-type) "-" metric-name)
             compute-cluster-name)
           millis)
-        millis)))
+        {:watch-gap-millis millis
+         :watch-last-response (tc/from-long last-watch-response-millis)})))
 
   (defn mark-watch-gap!
     "Updates the watch-gap-millis metric and stores the current time
@@ -217,14 +219,14 @@
   (defn mark-disconnected-watch-gap!
     "Updates the disconnected-watch-gap-millis metric."
     [compute-cluster-name watch-object-type]
-    (when-let [millis
+    (when-let [watch-gap-info
                (update-watch-gap-metric!
                  compute-cluster-name
                  watch-object-type
                  "disconnected-watch-gap-millis")]
       (log/info
         "In" compute-cluster-name "compute cluster, marking disconnected"
-        (name watch-object-type) "watch gap" {:millis millis}))))
+        (name watch-object-type) "watch gap" {:watch-gap-info watch-gap-info}))))
 
 (defn handle-watch-updates
   "When a watch update occurs (for pods or nodes) update both the state atom as well as
