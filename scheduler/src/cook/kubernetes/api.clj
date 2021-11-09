@@ -370,10 +370,12 @@
                     (let [state @state-atom]
                       (if (= state :deleted)
                         (log/info
-                          e "In" compute-cluster-name "compute cluster, cannot create pod watch (cluster is deleted)"
+                          e "In" compute-cluster-name
+                          "compute cluster, cannot create pod watch (cluster is deleted); sleeping before next attempt"
                           {:reconnect-delay-ms reconnect-delay-ms :state state})
                         (log/error
-                          e "In" compute-cluster-name "compute cluster, error during pod watch initial setup"
+                          e "In" compute-cluster-name
+                          "compute cluster, error during pod watch initial setup; sleeping before next attempt"
                           {:reconnect-delay-ms reconnect-delay-ms :state state})))
                     (Thread/sleep reconnect-delay-ms)
                     nil)))
@@ -473,10 +475,12 @@
                     (let [state @state-atom]
                       (if (= state :deleted)
                         (log/info
-                          e "In" compute-cluster-name "compute cluster, cannot create node watch (cluster is deleted)"
+                          e "In" compute-cluster-name
+                          "compute cluster, cannot create node watch (cluster is deleted); sleeping before next attempt"
                           {:reconnect-delay-ms reconnect-delay-ms :state state})
                         (log/error
-                          e "In" compute-cluster-name "compute cluster, error during node watch initial setup"
+                          e "In" compute-cluster-name
+                          "compute cluster, error during node watch initial setup; sleeping before next attempt"
                           {:reconnect-delay-ms reconnect-delay-ms :state state})))
                     (Thread/sleep reconnect-delay-ms)
                     nil)))
@@ -595,10 +599,12 @@
                     (let [state @state-atom]
                       (if (= state :deleted)
                         (log/info
-                          e "In" compute-cluster-name "compute cluster, cannot create event watch (cluster is deleted)"
+                          e "In" compute-cluster-name
+                          "compute cluster, cannot create event watch (cluster is deleted); sleeping before next attempt"
                           {:reconnect-delay-ms reconnect-delay-ms :state state})
                         (log/error
-                          e "In" compute-cluster-name "compute cluster, error during event watch initial setup"
+                          e "In" compute-cluster-name
+                          "compute cluster, error during event watch initial setup; sleeping before next attempt"
                           {:reconnect-delay-ms reconnect-delay-ms :state state})))
                     (Thread/sleep reconnect-delay-ms)
                     nil)))
