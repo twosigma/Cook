@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.58.5] - 2021-11-09
+### Added
+- Metrics for node and pod counts, from @nsinkov
+- `:production?` to the config, from @dposada
+### Changed
+- Changed logging from ERROR to INFO when a deleted cluster's watch fails, from @dposada
+
 ## [1.58.4] - 2021-11-03
 ### Changed
 - Changed logging with finalizer deletion, from @scrosby
