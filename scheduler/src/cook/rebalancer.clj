@@ -470,7 +470,28 @@
         (select-keys [:db/id :instance/task-id])
         (assoc :job (prep-job-ent-for-printing job-ent)))))
 
-
+(defn transact-preemption!
+  "Transacts the rebalancer preemption for the given task-ent"
+  [db conn pool-name task-ent]
+  (try
+    @(d/transact
+       conn
+       ;; Make :instance/status and :instance/preempted? consistent to simplify the state machine.
+       ;; We don't want to deal with {:instance/status :instance.status/running, :instance/preempted? true}
+       ;; all over the place.
+       (let [job-eid (:db/id (:job/_instance task-ent))
+             task-eid (:db/id task-ent)]
+         [[:generic/ensure task-eid :instance/status (d/entid db :instance.status/running)]
+          [:generic/atomic-inc job-eid :job/preemptions 1]
+          ;; The database can become inconsistent if we make multiple calls to :instance/update-state in a single
+          ;; transaction; see the comment in the definition of :instance/update-state for more details
+          [:instance/update-state task-eid :instance.status/failed [:reason/name :preempted-by-rebalancer]]
+          [:db/add task-eid :instance/reason [:reason/name :preempted-by-rebalancer]]
+          [:db/add task-eid :instance/preempted? true]]))
+    (catch Throwable e
+      (log/warn
+        e "In" pool-name "pool, failed to transact preemption"
+        {:to-preempt (prep-task-ent-for-printing task-ent)}))))
 
 (defn rebalance!
   [db conn agent-attributes-cache rebalancer-reservation-atom params init-state jobs-to-make-room-for pool-name]
@@ -497,25 +518,7 @@
         ;;        however it is here now to allow us to audit how frequently a synthetic
         ;;        task is "preempted"
         (doseq [task-ent (filter :db/id task-ents-to-preempt)]
-          (try
-            @(d/transact
-               conn
-               ;; Make :instance/status and :instance/preempted? consistent to simplify the state machine.
-               ;; We don't want to deal with {:instance/status :instance.status/running, :instance/preempted? true}
-               ;; all over the place.
-               (let [job-eid (:db/id (:job/_instance task-ent))
-                     task-eid (:db/id task-ent)]
-                 [[:generic/ensure task-eid :instance/status (d/entid db :instance.status/running)]
-                  [:generic/atomic-inc job-eid :job/preemptions 1]
-                  ;; The database can become inconsistent if we make multiple calls to :instance/update-state in a single
-                  ;; transaction; see the comment in the definition of :instance/update-state for more details
-                  [:instance/update-state task-eid :instance.status/failed [:reason/name :preempted-by-rebalancer]]
-                  [:db/add task-eid :instance/reason [:reason/name :preempted-by-rebalancer]]
-                  [:db/add task-eid :instance/preempted? true]]))
-            (catch Throwable e
-              (log/warn
-                e "In" pool-name "pool, failed to transact preemption"
-                {:to-preempt (prep-task-ent-for-printing task-ent)})))
+          (transact-preemption! db conn pool-name task-ent)
           (when-let [task-id (:instance/task-id task-ent)]
             (when-let [compute-cluster (task/task-ent->ComputeCluster task-ent)]
               (cc/safe-kill-task compute-cluster task-id))))))))
