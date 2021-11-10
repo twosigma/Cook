@@ -182,7 +182,8 @@
         (catch Exception e
           (log/error e "Error while processing callback"))))))
 
-(let [last-watch-response-millis-atom (atom {})]
+(let [last-watch-response-millis-atom (atom {})
+      last-watch-connect-millis-atom (atom {})]
   (defn update-watch-gap-metric!
     "Given a compute cluster name and a watch object type
     (either :pod or :node), updates a metric with the gap
@@ -198,9 +199,34 @@
           (metrics/histogram
             (str (name watch-object-type) "-" metric-name)
             compute-cluster-name)
-          millis)
-        {:watch-gap-millis millis
-         :watch-last-response (tc/from-long last-watch-response-millis)})))
+          millis))))
+
+  (defn update-disconnected-watch-gap-metric!
+    "TODO(DPO)"
+    [compute-cluster-name watch-object-type metric-name]
+    (let [last-watch-response-millis
+          (get-in
+            @last-watch-response-millis-atom
+            [compute-cluster-name watch-object-type])
+          last-watch-connect-millis
+          (get-in
+            @last-watch-connect-millis-atom
+            [compute-cluster-name watch-object-type])]
+      (when (or last-watch-response-millis last-watch-connect-millis)
+        (let [last-watch-event-millis
+              (max (or last-watch-response-millis 0)
+                   (or last-watch-connect-millis 0))
+              millis (- (System/currentTimeMillis) last-watch-event-millis)]
+          (histograms/update!
+            (metrics/histogram
+              (str (name watch-object-type) "-" metric-name)
+              compute-cluster-name)
+            millis)
+          (log/info
+            "In" compute-cluster-name "compute cluster, marking disconnected"
+            (name watch-object-type) "watch gap"
+            {:watch-gap-millis millis
+             :watch-last-event (-> last-watch-event-millis tc/from-long str)})))))
 
   (defn mark-watch-gap!
     "Updates the watch-gap-millis metric and stores the current time
@@ -219,14 +245,10 @@
   (defn mark-disconnected-watch-gap!
     "Updates the disconnected-watch-gap-millis metric."
     [compute-cluster-name watch-object-type]
-    (when-let [watch-gap-info
-               (update-watch-gap-metric!
-                 compute-cluster-name
-                 watch-object-type
-                 "disconnected-watch-gap-millis")]
-      (log/info
-        "In" compute-cluster-name "compute cluster, marking disconnected"
-        (name watch-object-type) "watch gap" {:watch-gap-info watch-gap-info}))))
+    (update-disconnected-watch-gap-metric!
+      compute-cluster-name
+      watch-object-type
+      "disconnected-watch-gap-millis")))
 
 (defn handle-watch-updates
   "When a watch update occurs (for pods or nodes) update both the state atom as well as
