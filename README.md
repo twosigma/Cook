@@ -60,7 +60,7 @@ To run automated tests:
 1. Run `cd ../jobclient/java && mvn install -DskipTests && cd -` to build jobclient dependency
 1. Run `lein test :all-but-benchmark` to run unit tests
 1. Run `cd ../integration && pytest -m 'not cli'` to run integration tests
-1. Run `cd ../integration && pytest -k test_basic_submit -n 0 -s` to run a particular integration test
+1. Run `cd ../integration && pytest tests/cook/test_basic.py -k test_basic_submit -n 0 -s` to run a particular integration test
 
 ### Using Mesos
 
