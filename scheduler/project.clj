@@ -49,6 +49,7 @@
                                           org.slf4j/slf4j-api
                                           org.slf4j/slf4j-simple]]
                  [better-cond "1.0.1"]
+                 [potemkin "0.4.5"]
 
                  ;;Logging
                  [org.clojure/tools.logging "0.2.6"]
