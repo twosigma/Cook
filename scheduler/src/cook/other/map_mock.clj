@@ -53,9 +53,7 @@
          (.increment adder))
        (let [result (get backing-map field-name default-value)]
          (if (instance? datomic.query.EntityMap result)
-           (if-let [ix (str/index-of (str field-name) "/_")]
-             (make-access-logging-map result (keyword (str (name entity-name) (subs field-name (+ 1 ix)))))
-             result)
+           (make-access-logging-map result (keyword (str (name entity-name) "_" (str field-name))))
            result)))
   (assoc [_ k v] (assoc backing-map k v))
   (dissoc [_ k] (dissoc backing-map k))
