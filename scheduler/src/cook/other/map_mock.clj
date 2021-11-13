@@ -26,10 +26,11 @@
     (some #(re-find (re-pattern %) classname) ignored)))
 
 (defn cook-callers []
-  (let [fns (map #(str (.getClassName %))
+  (let [fns (map #(str (.getClassName %) ":" (.getLineNumber %))
                  (-> (Throwable.) .fillInStackTrace .getStackTrace))]
     ;(vec (doall (remove ignored? fns)))
-    (vec (doall (filter #(str/starts-with? % "cook.") fns)))))
+    ;(vec (doall (filter #(str/starts-with? % "cook.") fns)))
+    (vec fns)))
 
 (def ^Function make-map-if-absent
   (reify Function (apply [_ _] (ConcurrentHashMap.))))
@@ -40,6 +41,8 @@
 (def ^ConcurrentHashMap access-map
   (ConcurrentHashMap.))
 
+(declare make-access-logging-map)
+
 (def-map-type
   AccessLoggingMapType [backing-map entity-name]
   (get [_ field-name default-value]
@@ -48,10 +51,19 @@
              callstack (-> (cook-callers) distinct into-array Arrays/asList)
              ^LongAdder adder (.computeIfAbsent access-map-by-field callstack make-long-adder-if-absent)]
          (.increment adder))
-       (get backing-map field-name default-value))
+       (let [result (get backing-map field-name default-value)]
+         (if (instance? datomic.query.EntityMap result)
+           (if-let [ix (str/index-of (str field-name) "/_")]
+             (make-access-logging-map result (keyword (str (name entity-name) (subs field-name (+ 1 ix)))))
+             result)
+           result)))
   (assoc [_ k v] (assoc backing-map k v))
   (dissoc [_ k] (dissoc backing-map k))
   (keys [_] (keys backing-map))
   (meta [_] (meta backing-map))
   (empty [_] {})
   (with-meta [_ new-meta] (with-meta backing-map new-meta)))
+
+(defn make-access-logging-map
+  [backing-map entity-name]
+  (->AccessLoggingMapType backing-map entity-name))
