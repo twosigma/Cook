@@ -51,7 +51,7 @@
             [?cl :commit-latch/committed? ?committed?]]
           unfiltered-db :job.state/waiting committed?)
        (map (partial d/entity unfiltered-db))
-       (map #(mm/->AccessLoggingMapType % :pending-job))))
+       (map #(mm/->AccessLoggingMapType % "pending-job"))))
 
 (timers/deftimer [cook-mesos scheduler get-pending-jobs-duration])
 

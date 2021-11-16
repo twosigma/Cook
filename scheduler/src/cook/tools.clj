@@ -490,7 +490,7 @@
               [?i :instance/status ?status]]
             db [:instance.status/running :instance.status/unknown])
          (map (partial d/entity db))
-         (map #(mm/->AccessLoggingMapType % :running-task)))))
+         (map #(mm/->AccessLoggingMapType % "running-task")))))
 
 (defn retrieve-instance
   "Given an instance UUID, return the instance entity."
