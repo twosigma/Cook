@@ -3400,30 +3400,31 @@
   (let [reason (get-in ctx [:request :body-params :reason])
         request-user (get-in ctx [:request :authorization/user])]
     (log/info "Exiting due to /shutdown-leader request from" request-user "with reason:" reason)
-    (with-open [^java.io.BufferedWriter w (clojure.java.io/writer "datomic_field_access.txt")]
-      (doseq [[entity-name v] mm/access-map]
-        (.write w (str entity-name))
-        (.newLine w)
-        (doseq [[field-name _] v]
-          (.write w (str "    " field-name))
-          (.newLine w))
-        (.newLine w)
-        (.newLine w)))
-    (with-open [^java.io.BufferedWriter w (clojure.java.io/writer "datomic_field_access_detailed.txt")]
-      (doseq [[entity-name v] mm/access-map]
-        (.write w (str entity-name))
-        (.newLine w)
-        (doseq [[field-name vv] v]
-          (.write w (str "    " field-name))
+    (let [timestamp (quot (System/currentTimeMillis) 1000)]
+      (with-open [^java.io.BufferedWriter w (clojure.java.io/writer "datomic_field_access_" timestamp ".txt")]
+        (doseq [[entity-name v] mm/access-map]
+          (.write w (str entity-name))
           (.newLine w)
-          (doseq [[callstack count] (sort-by (fn [[k, v]] (- v)) vv)]
-            (.write w (str "        " count))
+          (doseq [[field-name _] v]
+            (.write w (str "    " field-name))
+            (.newLine w))
+          (.newLine w)
+          (.newLine w)))
+      (with-open [^java.io.BufferedWriter w (clojure.java.io/writer "datomic_field_access_detailed_" timestamp ".txt")]
+        (doseq [[entity-name v] mm/access-map]
+          (.write w (str entity-name))
+          (.newLine w)
+          (doseq [[field-name vv] v]
+            (.write w (str "    " field-name))
             (.newLine w)
-            (doseq [function callstack]
-              (.write w (str "            " function))
-              (.newLine w))))
-        (.newLine w)
-        (.newLine w)))
+            (doseq [[callstack count] (sort-by (fn [[k, v]] (- v)) vv)]
+              (.write w (str "        " count))
+              (.newLine w)
+              (doseq [function callstack]
+                (.write w (str "            " function))
+                (.newLine w))))
+          (.newLine w)
+          (.newLine w))))
     (shutdown!)))
 
 (defn post-shutdown-leader-handler
