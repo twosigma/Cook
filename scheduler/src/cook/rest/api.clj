@@ -3401,7 +3401,7 @@
         request-user (get-in ctx [:request :authorization/user])]
     (log/info "Exiting due to /shutdown-leader request from" request-user "with reason:" reason)
     (let [timestamp (quot (System/currentTimeMillis) 1000)]
-      (with-open [^java.io.BufferedWriter w (clojure.java.io/writer "datomic_field_access_" timestamp ".txt")]
+      (with-open [^java.io.BufferedWriter w (clojure.java.io/writer (str "datomic_field_access_" timestamp ".txt"))]
         (doseq [[entity-name v] mm/access-map]
           (.write w (str entity-name))
           (.newLine w)
@@ -3410,7 +3410,7 @@
             (.newLine w))
           (.newLine w)
           (.newLine w)))
-      (with-open [^java.io.BufferedWriter w (clojure.java.io/writer "datomic_field_access_detailed_" timestamp ".txt")]
+      (with-open [^java.io.BufferedWriter w (clojure.java.io/writer (str "datomic_field_access_detailed_" timestamp ".txt"))]
         (doseq [[entity-name v] mm/access-map]
           (.write w (str entity-name))
           (.newLine w)
