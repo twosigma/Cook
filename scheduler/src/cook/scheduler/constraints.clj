@@ -24,7 +24,6 @@
             [cook.config :as config]
             [cook.config-incremental :as config-incremental]
             [cook.group :as group]
-            [cook.passport :as passport]
             [cook.regexp-tools :as regexp-tools]
             [cook.tools :as util]
             [swiss.arrows :refer :all])
@@ -254,35 +253,24 @@
 
 (defn- resolve-incremental-default-job-constraints
   "Resolve any incremental configurations used for default job constraint patterns"
-  [default-job-constraints {:keys [job/uuid job/name job/user]} pool-name]
-  (let [passport-event-base {:job-name name
-                             :job-uuid (str uuid)
-                             :pool pool-name
-                             :user user}]
-    (->> default-job-constraints
-         (map (fn [{:keys [constraint/attribute constraint/pattern constraint/pattern-fallback] :as constraint}]
-                (if (string? pattern)
-                  constraint
-                  (let [[resolved-pattern reason] (config-incremental/resolve-incremental-config uuid pattern pattern-fallback)]
-                    (passport/log-event (merge passport-event-base
-                                               {:event-type passport/default-job-constraint-pattern-selected
-                                                :constraint-attribute attribute
-                                                :constraint-pattern pattern
-                                                :reason reason
-                                                :resolved-pattern resolved-pattern}))
-                    (-> constraint
-                      (dissoc :constraint/pattern-fallback)
-                      (assoc :constraint/pattern resolved-pattern)))))))))
+  [default-job-constraints {:keys [job/uuid]}]
+  (->> default-job-constraints
+       (map (fn [{:keys [constraint/pattern constraint/pattern-fallback] :as constraint}]
+              (if (string? pattern)
+                constraint
+                (let [[resolved-pattern _] (config-incremental/resolve-incremental-config uuid pattern pattern-fallback)]
+                  (-> constraint
+                    (dissoc :constraint/pattern-fallback)
+                    (assoc :constraint/pattern resolved-pattern))))))))
 
 (defn job->default-constraints
   "Returns the list of default constraints configured for the job's pool"
   [job]
-  (let [pool-name (cached-queries/job->pool-name job)
-        default-job-constraints (regexp-tools/match-based-on-pool-name
-                                  (config/default-job-constraints)
-                                  pool-name
-                                  :default-constraints)]
-    (resolve-incremental-default-job-constraints default-job-constraints job pool-name)))
+  (resolve-incremental-default-job-constraints
+    (regexp-tools/match-based-on-pool-name
+      (config/default-job-constraints)
+      (cached-queries/job->pool-name job)
+      :default-constraints) job))
 
 (def machine-type-constraint-attributes
   #{"cpu-architecture" "node-family" "node-type"})
