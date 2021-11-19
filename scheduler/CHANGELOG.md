@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.58.6] - 2021-11-19
+### Added
+- Field for command length, from @dposada
+- Logging of job instance when rebalancer preemption transaction fails, from @dposada
+
 ## [1.58.5] - 2021-11-09
 ### Added
 - Metrics for node and pod counts, from @nsinkov
