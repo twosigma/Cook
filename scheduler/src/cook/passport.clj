@@ -30,6 +30,7 @@
 
 (def checkpoint-volume-mounts-key-selected :checkpoint-volume-mounts-key-selected)
 (def default-image-selected :default-image-selected)
+(def default-job-constraint-pattern-selected :default-job-constraint-pattern-selected)
 (def init-container-image-selected :init-container-image-selected)
 (def job-created :job-created)
 (def job-submitted :job-submitted)
