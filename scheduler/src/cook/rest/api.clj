@@ -593,9 +593,9 @@
         ; A user can specify their own container but use the image of the default container. This allows the
         ; user to set other container properties such as ports but not have to provide the actual image themselves.
         ; To do this, a user must specify a special symbolic name for the image. This image name must match the
-        ; :default-image-symbolic-name field of the default container. The default container image is then used.
+        ; default-image-symbolic-name config. The default container image is then used.
         image (if (string? image-config)
-                (if (= (-> default-container :docker :default-image-symbolic-name) image-config)
+                (if (= (config/default-image-symbolic-name) image-config)
                   (-> default-container :docker :image)
                   image-config)
                 (let [[resolved-config reason] (config-incremental/resolve-incremental-config uuid image-config (:image-fallback docker))]
