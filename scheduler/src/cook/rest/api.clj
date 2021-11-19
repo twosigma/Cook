@@ -581,7 +581,7 @@
     (throw (ex-info "The uid is unavailable for the user" {:job-id id :user user}))))
 
 (defn- build-docker-container
-  [user id container {:keys [uuid name]} pool-name]
+  [user id container {:keys [uuid name]} pool-name default-container]
   (let [container-id (d/tempid :db.part/user)
         docker-id (d/tempid :db.part/user)
         volumes (or (:volumes container) [])
@@ -590,8 +590,14 @@
                     (ensure-user-parameter user id))
         port-mappings (or (:port-mapping docker) [])
         image-config (:image docker)
+        ; A user can specify their own container but use the image of the default container. This allows the
+        ; user to set other container properties such as ports but not have to provide the actual image themselves.
+        ; To do this, a user must specify a special symbolic name for the image. This image name must match the
+        ; :default-image-symbolic-name field of the default container. The default container image is then used.
         image (if (string? image-config)
-                image-config
+                (if (= (-> default-container :docker :default-image-symbolic-name) image-config)
+                  (-> default-container :docker :image)
+                  image-config)
                 (let [[resolved-config reason] (config-incremental/resolve-incremental-config uuid image-config (:image-fallback docker))]
                   (passport/log-event {:event-type passport/default-image-selected
                                        :image-config image-config
@@ -630,9 +636,9 @@
 
 (defn- build-container
   "Helper for submit-jobs, deal with container structure."
-  [user id {:keys [type] :as container} job pool-name]
+  [user id {:keys [type] :as container} job pool-name default-container]
   (case (str/lower-case type)
-    "docker" (build-docker-container user id container job pool-name)
+    "docker" (build-docker-container user id container job pool-name default-container)
     "mesos" (build-mesos-container user id container)
     {}))
 
@@ -752,13 +758,14 @@
                                   :constraint/pattern pattern}]))
                             constraints)
         default-containers (get-in config/config [:settings :pools :default-containers])
+        default-container (get-default-container-for-pool default-containers pool-name)
         container (if (nil? container)
                     (if pool-name
-                      (if-let [default-container (get-default-container-for-pool default-containers pool-name)]
-                        (build-container user db-id default-container job pool-name)
+                      (if default-container
+                        (build-container user db-id default-container job pool-name default-container)
                         [])
                       [])
-                    (build-container user db-id container job pool-name))
+                    (build-container user db-id container job pool-name default-container))
         executor (str->executor-enum executor)
         ;; These are optionally set datoms w/ default values
         maybe-datoms (reduce into
