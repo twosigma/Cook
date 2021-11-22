@@ -51,6 +51,7 @@
     (is (= config (compute-cluster-config-ent->compute-cluster-config config-ent)))))
 
 (deftest test-db-config-ents
+  (setup)
   (let [uri "datomic:mem://test-compute-cluster-config"
         conn (restore-fresh-database! uri)
         temp-db-id (d/tempid :db.part/user)
@@ -192,6 +193,7 @@
            {:a {}}))))
 
 (deftest test-get-job-instance-ids-for-cluster-name
+  (setup)
   (let [uri "datomic:mem://test-compute-cluster-config"
         conn (restore-fresh-database! uri)
         name "cluster1"
