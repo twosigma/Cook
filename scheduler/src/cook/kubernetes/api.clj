@@ -546,7 +546,8 @@
                     (when (or
                             tracked-pod?
                             (and
-                              ; The event type is either "Normal" or "Warning"
+                              ; The event type can be either "Normal" or "Warning", and we're
+                              ; only interested in "Warning" events for non-tracked pods
                               (= event-type "Warning")
                               ; The fieldPath is something like:
                               ; "spec.containers{aux-cook-sidecar-container}"
