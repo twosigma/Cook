@@ -570,10 +570,21 @@
                   (let [namespaced-pod-name {:namespace (.getNamespace involved-object)
                                              :name (.getName involved-object)}
                         host (some-> event .getSource .getHost)
-                        field-path (.getFieldPath involved-object)]
-                    (when (some-> @all-pods-atom
-                                  (get namespaced-pod-name)
-                                  (is-cook-scheduler-pod compute-cluster-name))
+                        field-path (.getFieldPath involved-object)
+                        event-type (.getType event)
+                        tracked-pod?
+                        (some-> @all-pods-atom
+                          (get namespaced-pod-name)
+                          (is-cook-scheduler-pod compute-cluster-name))]
+                    (when (or
+                            tracked-pod?
+                            (and
+                              ; The event type can be either "Normal" or "Warning", and we're
+                              ; only interested in "Warning" events for non-tracked pods
+                              (= event-type "Warning")
+                              ; The fieldPath is something like:
+                              ; "spec.containers{aux-cook-sidecar-container}"
+                              (some-> field-path str/lower-case (str/includes? "cook"))))
                       (log/info "In" compute-cluster-name
                                 "compute cluster, received pod event"
                                 {:event-reason (.getReason event)
@@ -592,7 +603,8 @@
                                          (cond->
                                            {:component (some-> event .getSource .getComponent)}
                                            host (assoc :host host))
-                                         :type (.getType event)}
+                                         :type event-type}
+                                 :tracked-pod? tracked-pod?
                                  :watch-response-type (.-type watch-response)}))))))))
         (catch Exception e
           (let [cause (.getCause e)]
