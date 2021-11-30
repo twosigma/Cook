@@ -164,8 +164,8 @@ class DockerPortMapping:
 class DockerContainer(AbstractContainer):
     """A Docker container description.
 
-    :param image: Name of the image to use.
-    :type image: str
+    :param image: Name of the image to use. Defaults to None.
+    :type image: str, optional
     :param network: Network the container should be in. Defaults to None.
     :type network: str, optional
     :param force_pull_image: If true, then the image will always be pulled.
@@ -177,15 +177,16 @@ class DockerContainer(AbstractContainer):
         Defaults to None.
     :type port_mapping: List[DockerPortMapping], optional
     """
-    image: str
+    image: Optional[str]
 
     network: Optional[str]
     force_pull_image: Optional[bool]
     parameters: Optional[List[Dict[str, str]]]
     port_mapping: Optional[List[DockerPortMapping]]
 
-    def __init__(self, image: str, *,
+    def __init__(self, *,
 
+                 image: Optional[str] = None,
                  network: Optional[str] = None,
                  force_pull_image: Optional[bool] = None,
                  parameters: Optional[List[Dict[str, str]]] = None,
