@@ -539,8 +539,6 @@
      :queue-limits (fnk [[:config {queue-limits {}}]]
                      (merge {:update-interval-seconds 180}
                             queue-limits))
-     :default-image-symbolic-name (fnk [[:config {default-image-symbolic-name nil}]]
-                                    default-image-symbolic-name)
      :constraint-attribute->transformation
      (fnk [[:config {constraint-attribute->transformation {}}]]
        (pc/map-vals
