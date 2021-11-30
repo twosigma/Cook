@@ -149,7 +149,7 @@
 
 (def DockerInfo
   "Schema for a DockerInfo"
-  {:image s/Str
+  {(s/optional-key :image) s/Str
    (s/optional-key :network) s/Str
    (s/optional-key :force-pull-image) s/Bool
    (s/optional-key :parameters) [{:key s/Str :value s/Str}]
@@ -592,22 +592,21 @@
         image-config (:image docker)
         ; A user can specify their own container but use the image of the default container. This allows the
         ; user to set other container properties such as ports but not have to provide the actual image themselves.
-        ; To do this, a user must specify a special symbolic name for the image. This image name must match the
-        ; default-image-symbolic-name config. The default container image is then used.
-        image (if (string? image-config)
-                (if (= (config/default-image-symbolic-name) image-config)
-                  (-> default-container :docker :image)
-                  image-config)
-                (let [[resolved-config reason] (config-incremental/resolve-incremental-config uuid image-config (:image-fallback docker))]
-                  (passport/log-event {:event-type passport/default-image-selected
-                                       :image-config image-config
-                                       :job-name name
-                                       :job-uuid (str uuid)
-                                       :pool pool-name
-                                       :reason reason
-                                       :resolved-config resolved-config
-                                       :user user})
-                  resolved-config))]
+        ; To do this, a user can omit the image field. The default container image is then used.
+        image (if-not image-config
+                (-> default-container :docker :image)
+                (if (string? image-config)
+                  image-config
+                  (let [[resolved-config reason] (config-incremental/resolve-incremental-config uuid image-config (:image-fallback docker))]
+                    (passport/log-event {:event-type passport/default-image-selected
+                                         :image-config image-config
+                                         :job-name name
+                                         :job-uuid (str uuid)
+                                         :pool pool-name
+                                         :reason reason
+                                         :resolved-config resolved-config
+                                         :user user})
+                    resolved-config)))]
     [[:db/add id :job/container container-id]
      (merge {:db/id container-id
              :container/type "DOCKER"}

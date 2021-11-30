@@ -735,7 +735,3 @@
 (defn constraint-attribute->transformation
   []
   (-> config :settings :constraint-attribute->transformation))
-
-(defn default-image-symbolic-name
-  []
-  (-> config :settings :default-image-symbolic-name))
