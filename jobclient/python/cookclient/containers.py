@@ -184,7 +184,7 @@ class DockerContainer(AbstractContainer):
     parameters: Optional[List[Dict[str, str]]]
     port_mapping: Optional[List[DockerPortMapping]]
 
-    def __init__(self, *,
+    def __init__(self, *args,
 
                  image: Optional[str] = None,
                  network: Optional[str] = None,
@@ -193,7 +193,8 @@ class DockerContainer(AbstractContainer):
                  port_mapping: Optional[List[DockerPortMapping]] = None,
 
                  volumes: Optional[List[Volume]] = None):
-        self.image = image
+        # backwards-compatible change to allow user to keep supplying image as the first positional argument
+        self.image = image or args[0]
         self.network = network
         self.force_pull_image = force_pull_image
         self.parameters = parameters
