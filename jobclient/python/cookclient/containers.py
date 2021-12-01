@@ -194,7 +194,7 @@ class DockerContainer(AbstractContainer):
 
                  volumes: Optional[List[Volume]] = None):
         # backwards-compatible change to allow user to keep supplying image as the first positional argument
-        self.image = image or args[0]
+        self.image = image or (args[0] if args else None)
         self.network = network
         self.force_pull_image = force_pull_image
         self.parameters = parameters
