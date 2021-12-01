@@ -217,7 +217,9 @@ class DockerContainer(AbstractContainer):
         """Get the ``dict`` representation of this container."""
         d = super().to_dict()
 
-        docker = {'image': self.image}
+        docker = {}
+        if self.image is not None:
+            docker['image'] = self.image
         if self.network is not None:
             docker['network'] = self.network
         if self.force_pull_image is not None:
