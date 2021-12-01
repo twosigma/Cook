@@ -139,6 +139,52 @@ class ClientTest(util.CookTest):
         finally:
             self.client.kill(uuid)
 
+    @unittest.skipUnless(util.docker_tests_enabled(), "Requires setting the COOK_TEST_DOCKER_IMAGE environment variable")
+    @unittest.skipUnless(util.using_kubernetes(), "Requires running on Kubernetes")
+    @unittest.skipUnless(util.is_job_progress_supported(), "Requires progress reporting")
+    def test_container_submit_no_image(self):
+        """Test submitting a job with a port specification but no image."""
+        settings_dict = util.settings(self.cook_url)
+        if 'pools' not in settings_dict or 'default-containers' not in settings_dict['pools']:
+            self.skipTest("Test requires default containers")
+        JOB_PORT = 30030
+        progress_file_env = util.retrieve_progress_file_env(type(self).cook_url)
+        hostname_progress_cmd = util.progress_line(type(self).cook_url,
+                                                   50,  # Don't really care, we just need a val
+                                                   '$(hostname -I)',
+                                                   write_to_file=True)
+
+        container = DockerContainer(port_mapping=[
+            DockerPortMapping(host_port=0, container_port=JOB_PORT,
+                              protocol='tcp')
+        ])
+        uuid = self.client.submit(command=f'{hostname_progress_cmd} && nc -l -p {JOB_PORT} $(hostname -I)',
+                                  container=container,
+                                  env={progress_file_env: 'progress.txt'},
+                                  max_retries=5,
+                                  pool=util.default_submit_pool())
+
+        addr = None
+        try:
+            util.wait_for_instance_with_progress(type(self).cook_url, str(uuid), 50)
+            job = self.client.query(uuid)
+            addr = job.instances[0].progress_message
+
+            self.assertIsNotNone(addr)
+
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.connect((addr, JOB_PORT))
+                message = b"hello world!"
+
+                self.assertEqual(sock.send(message), len(message))
+        except Exception as e:
+            if addr is not None:
+                raise Exception(f"Could not connect to {addr}: {e}") from e
+            else:
+                raise e
+        finally:
+            self.client.kill(uuid)
+
     def test_instance_query(self):
         """Test that parsing an instance yielded from Cook works."""
         uuid = self.client.submit(command=f'sleep {util.DEFAULT_TEST_TIMEOUT_SECS}',
