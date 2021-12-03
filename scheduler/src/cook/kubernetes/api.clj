@@ -201,7 +201,8 @@
                (get-in
                  @last-watch-response-or-connect-millis-atom
                  [compute-cluster-name watch-object-type])]
-      (let [millis (- (System/currentTimeMillis) last-watch-response-or-connect-millis)]
+      (let [millis (- (System/currentTimeMillis) last-watch-response-or-connect-millis)
+            metric-name (str (name watch-object-type) "-" metric-name)]
         (set-metric-counter metric-name millis compute-cluster-name)
         ;(histograms/update!
         ;  (metrics/histogram
@@ -217,7 +218,8 @@
                (get-in
                  @last-watch-response-or-connect-millis-atom
                  [compute-cluster-name watch-object-type])]
-      (let [millis (- (System/currentTimeMillis) last-watch-response-or-connect-millis)]
+      (let [millis (- (System/currentTimeMillis) last-watch-response-or-connect-millis)
+            metric-name (str (name watch-object-type) "-" metric-name)]
         (set-metric-counter metric-name millis compute-cluster-name)
         ;(histograms/update!
         ;  (metrics/histogram
