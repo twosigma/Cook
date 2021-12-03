@@ -1373,8 +1373,20 @@
     (when-not (synthetic-pod? pod-name)
       (let [[resolved-config reason] (config-incremental/resolve-incremental-config task-id :add-finalizer "false")]
         (if (= "true" resolved-config)
-          (.setFinalizers metadata (list FinalizerHelper/collectResultsFinalizer)))))(when pod-annotations
-                                                                                       (.setAnnotations metadata pod-annotations))
+          (.setFinalizers metadata (list FinalizerHelper/collectResultsFinalizer)))))
+    (let [[resolved-config _]
+          (config-incremental/resolve-incremental-config
+            task-id :add-use-all-gids-annotation "false")
+          use-all-gids-annotation-name
+          (:use-all-gids-annotation-name (config/kubernetes))
+          pod-annotations'
+          (cond-> pod-annotations
+            (and
+              (= "true" resolved-config)
+              use-all-gids-annotation-name)
+            (assoc use-all-gids-annotation-name "true"))]
+      (when (seq pod-annotations')
+        (.setAnnotations metadata pod-annotations')))
 
     (.setHostnameAsFQDN pod-spec false)
 
