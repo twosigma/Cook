@@ -538,7 +538,7 @@
                               offer-matching))
      :queue-limits (fnk [[:config {queue-limits {}}]]
                      (merge {:update-interval-seconds 180}
-                       queue-limits))
+                            queue-limits))
      :constraint-attribute->transformation
      (fnk [[:config {constraint-attribute->transformation {}}]]
        (pc/map-vals

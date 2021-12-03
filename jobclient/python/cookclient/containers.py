@@ -164,8 +164,8 @@ class DockerPortMapping:
 class DockerContainer(AbstractContainer):
     """A Docker container description.
 
-    :param image: Name of the image to use.
-    :type image: str
+    :param image: Name of the image to use. Defaults to None.
+    :type image: str, optional
     :param network: Network the container should be in. Defaults to None.
     :type network: str, optional
     :param force_pull_image: If true, then the image will always be pulled.
@@ -177,22 +177,24 @@ class DockerContainer(AbstractContainer):
         Defaults to None.
     :type port_mapping: List[DockerPortMapping], optional
     """
-    image: str
+    image: Optional[str]
 
     network: Optional[str]
     force_pull_image: Optional[bool]
     parameters: Optional[List[Dict[str, str]]]
     port_mapping: Optional[List[DockerPortMapping]]
 
-    def __init__(self, image: str, *,
+    def __init__(self, *args,
 
+                 image: Optional[str] = None,
                  network: Optional[str] = None,
                  force_pull_image: Optional[bool] = None,
                  parameters: Optional[List[Dict[str, str]]] = None,
                  port_mapping: Optional[List[DockerPortMapping]] = None,
 
                  volumes: Optional[List[Volume]] = None):
-        self.image = image
+        # backwards-compatible change to allow user to keep supplying image as the first positional argument
+        self.image = image or (args[0] if args else None)
         self.network = network
         self.force_pull_image = force_pull_image
         self.parameters = parameters
@@ -215,7 +217,9 @@ class DockerContainer(AbstractContainer):
         """Get the ``dict`` representation of this container."""
         d = super().to_dict()
 
-        docker = {'image': self.image}
+        docker = {}
+        if self.image is not None:
+            docker['image'] = self.image
         if self.network is not None:
             docker['network'] = self.network
         if self.force_pull_image is not None:
