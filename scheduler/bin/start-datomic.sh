@@ -16,6 +16,9 @@ COOK_VERSION=$(lein print :version | tr -d '"')
 if [ ! -f "${DATOMIC_DIR}/lib/cook-${COOK_VERSION}.jar" ];
 then
     lein uberjar
+    # `lein print :version` would not have worked if nothing was built, so need to
+    # get version again after building
+    COOK_VERSION=$(lein print :version | tr -d '"')
     cp "${PROJECT_DIR}/target/cook-${COOK_VERSION}.jar" "${DATOMIC_DIR}/lib/"
 fi
 

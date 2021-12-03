@@ -13,7 +13,7 @@
 ;; See the License for the specific language governing permissions and
 ;; limitations under the License.
 ;;
-(defproject cook "1.58.5-SNAPSHOT"
+(defproject cook "1.58.8-SNAPSHOT"
   :description "This launches jobs on a Mesos cluster with fair sharing and preemption"
   :license {:name "Apache License, Version 2.0"}
   :dependencies [[org.clojure/clojure "1.10.3"]
@@ -229,7 +229,7 @@
    {:dependencies [[criterium "0.4.4"]
                    [org.clojure/test.check "0.6.1"]
                    [org.mockito/mockito-core "3.12.4"]
-                   [twosigma/cook-jobclient "0.8.6-SNAPSHOT"]]}
+                   [twosigma/cook-jobclient "0.8.7-SNAPSHOT"]]}
 
    :test-console
    [:test {:jvm-opts ["-Dcook.test.logging.console"]}]

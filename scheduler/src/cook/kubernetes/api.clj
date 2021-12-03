@@ -10,6 +10,7 @@
             [cook.config :as config]
             [cook.config-incremental :as config-incremental]
             [cook.kubernetes.metrics :as metrics]
+            [cook.monitor :as monitor]
             [cook.passport :as passport]
             [cook.regexp-tools :as regexp-tools]
             [cook.rest.api :as api]
@@ -18,6 +19,7 @@
             [cook.tools :as tools]
             [cook.util :as util]
             [datomic.api :as d]
+            [metrics.counters :as counters]
             [metrics.histograms :as histograms]
             [metrics.meters :as meters]
             [metrics.timers :as timers]
@@ -231,7 +233,7 @@
 (defn handle-watch-updates
   "When a watch update occurs (for pods or nodes) update both the state atom as well as
   invoke the callbacks on the previous and new values for the key."
-  [state-atom ^Watch watch key-fn callbacks compute-cluster-name watch-object-type]
+  [state-atom ^Watch watch key-fn callbacks set-metric-counters-fn compute-cluster-name watch-object-type]
   (mark-disconnected-watch-gap! compute-cluster-name watch-object-type)
   (while (.hasNext watch)
     (let [watch-response (.next watch)
@@ -240,7 +242,8 @@
       (if (some? item)
         (do
           (mark-watch-gap! compute-cluster-name watch-object-type)
-          (process-watch-response! state-atom item type key-fn callbacks))
+          (process-watch-response! state-atom item type key-fn callbacks)
+          (set-metric-counters-fn))
         (throw (ex-info
                  "Encountered nil object on watch response"
                  {:compute-cluster-name compute-cluster-name
@@ -358,11 +361,17 @@
   [^ApiClient api-client resource-version]
   (WatchHelper/createPodWatch api-client resource-version))
 
+(defn- set-metric-counter
+  [counter-name counter-value compute-cluster-name]
+  (monitor/set-counter!
+    (counters/counter ["cook-k8s" counter-name (str "compute-cluster-" compute-cluster-name)])
+    counter-value))
+
 (declare initialize-pod-watch)
 (defn ^Callable initialize-pod-watch-helper
   "Help creating pod watch. Returns a new watch Callable"
   [{:keys [^ApiClient api-client all-pods-atom ^ExecutorService controller-executor-service node-name->pod-name->pod]
-    compute-cluster-name :name :as compute-cluster} cook-pod-callback]
+    compute-cluster-name :name {:keys [max-total-pods]} :synthetic-pods-config :as compute-cluster} cook-pod-callback]
   (let [{:keys [list-pods-limit]} (config/kubernetes)
         [^String resource-version namespaced-pod-name->pod]
         (get-all-pods-in-kubernetes api-client compute-cluster-name list-pods-limit)
@@ -402,8 +411,16 @@
       (fn []
         (try
           (log/info "In" compute-cluster-name "compute cluster, handling pod watch updates")
-          (handle-watch-updates all-pods-atom watch get-pod-namespaced-key
-                                callbacks compute-cluster-name :pod)
+          (handle-watch-updates
+            all-pods-atom
+            watch
+            get-pod-namespaced-key
+            callbacks
+            (fn []
+              (set-metric-counter "total-pods" (-> @all-pods-atom keys count) compute-cluster-name)
+              (when max-total-pods (set-metric-counter "max-total-pods" max-total-pods compute-cluster-name)))
+            compute-cluster-name
+            :pod)
           (catch Exception e
             (let [cause (.getCause e)]
               (if (and cause (instance? SocketTimeoutException cause))
@@ -415,7 +432,7 @@
 
 (defn initialize-pod-watch
   "Initialize the pod watch. This fills all-pods-atom with data and invokes the callback on pod changes."
-  [{compute-cluster-name :name :as compute-cluster} cook-pod-callback]
+  [{:keys [state-atom] compute-cluster-name :name :as compute-cluster} cook-pod-callback]
   (log/info "In" compute-cluster-name "compute cluster, initializing pod watch")
   ; We'll iterate trying to connect to k8s until the initialize-pod-watch-helper returns a watch function.
   (let [{:keys [reconnect-delay-ms]} (config/kubernetes)
@@ -424,8 +441,16 @@
                   (log/info "In" compute-cluster-name "compute cluster, initializing pod watch helper")
                   (initialize-pod-watch-helper compute-cluster cook-pod-callback)
                   (catch Exception e
-                    (log/error e "Error during pod watch initial setup of looking at pods for" compute-cluster-name
-                               "and sleeping" reconnect-delay-ms "milliseconds before reconnect")
+                    (let [state @state-atom]
+                      (if (= state :deleted)
+                        (log/info
+                          e "In" compute-cluster-name
+                          "compute cluster, cannot create pod watch (cluster is deleted); sleeping before next attempt"
+                          {:reconnect-delay-ms reconnect-delay-ms :state state})
+                        (log/error
+                          e "In" compute-cluster-name
+                          "compute cluster, error during pod watch initial setup; sleeping before next attempt"
+                          {:reconnect-delay-ms reconnect-delay-ms :state state})))
                     (Thread/sleep reconnect-delay-ms)
                     nil)))
         ^Callable first-success (->> tmpfn repeatedly (some identity))]
@@ -453,22 +478,23 @@
 (declare initialize-node-watch)
 (defn initialize-node-watch-helper
   "Help creating node watch. Returns a new watch Callable"
-  [{:keys [^ApiClient api-client current-nodes-atom pool->node-name->node cook-pool-taint-name cook-pool-taint-prefix] compute-cluster-name :name :as compute-cluster}]
+  [{:keys [^ApiClient api-client current-nodes-atom pool->node-name->node cook-pool-taint-name cook-pool-taint-prefix]
+    compute-cluster-name :name {:keys [max-total-nodes]} :synthetic-pods-config :as compute-cluster}]
   (let [api (CoreV1Api. api-client)
         ^V1NodeList current-nodes-raw
         (timers/time! (metrics/timer "get-all-nodes" compute-cluster-name)
-          (.listNode api
-                     nil ; pretty
-                     nil ; allowWatchBookmarks
-                     nil ; continue
-                     nil ; fieldSelector
-                     nil ; labelSelector
-                     nil ; limit
-                     nil ; resourceVersion
-                     nil ; resourceVersionMatch
-                     nil ; timeoutSeconds
-                     nil ; watch
-                     ))
+                      (.listNode api
+                                 nil ; pretty
+                                 nil ; allowWatchBookmarks
+                                 nil ; continue
+                                 nil ; fieldSelector
+                                 nil ; labelSelector
+                                 nil ; limit
+                                 nil ; resourceVersion
+                                 nil ; resourceVersionMatch
+                                 nil ; timeoutSeconds
+                                 nil ; watch
+                                 ))
         current-nodes (pc/map-from-vals node->node-name (.getItems current-nodes-raw))
         callbacks
         [(tools/make-atom-updater current-nodes-atom) ; Update the set of all pods.
@@ -497,8 +523,16 @@
       (fn []
         (try
           (log/info "In" compute-cluster-name "compute cluster, handling node watch updates")
-          (handle-watch-updates current-nodes-atom watch node->node-name
-                                callbacks compute-cluster-name :node)
+          (handle-watch-updates
+            current-nodes-atom
+            watch
+            node->node-name
+            callbacks ; Update the set of all nodes.
+            (fn []
+              (set-metric-counter "total-nodes" (-> @current-nodes-atom keys count) compute-cluster-name)
+              (when max-total-nodes (set-metric-counter "max-total-nodes" max-total-nodes compute-cluster-name)))
+            compute-cluster-name
+            :node)
           (catch Exception e
             (let [cause (-> e Throwable->map :cause)]
               (if (= cause "Socket closed")
@@ -512,7 +546,7 @@
 
 (defn initialize-node-watch
   "Initialize the node watch. This fills current-nodes-atom with data and invokes the callback on pod changes."
-  [{:keys [^ApiClient api-client current-nodes-atom] compute-cluster-name :name :as compute-cluster}]
+  [{:keys [state-atom] compute-cluster-name :name :as compute-cluster}]
   (log/info "In" compute-cluster-name "compute cluster, initializing node watch")
   ; We'll iterate trying to connect to k8s until the initialize-node-watch-helper returns a watch function.
   (let [{:keys [reconnect-delay-ms]} (config/kubernetes)
@@ -521,8 +555,16 @@
                   (log/info "In" compute-cluster-name "compute cluster, initializing node watch helper")
                   (initialize-node-watch-helper compute-cluster)
                   (catch Exception e
-                    (log/error e "Error during node watch initial setup of looking at nodes for" compute-cluster-name
-                               "and sleeping" reconnect-delay-ms "milliseconds before reconnect")
+                    (let [state @state-atom]
+                      (if (= state :deleted)
+                        (log/info
+                          e "In" compute-cluster-name
+                          "compute cluster, cannot create node watch (cluster is deleted); sleeping before next attempt"
+                          {:reconnect-delay-ms reconnect-delay-ms :state state})
+                        (log/error
+                          e "In" compute-cluster-name
+                          "compute cluster, error during node watch initial setup; sleeping before next attempt"
+                          {:reconnect-delay-ms reconnect-delay-ms :state state})))
                     (Thread/sleep reconnect-delay-ms)
                     nil)))
         ^Callable first-success (->> tmpfn repeatedly (some identity))]
@@ -580,7 +622,7 @@
 (declare initialize-event-watch)
 (defn ^Callable initialize-event-watch-helper
   "Returns a new event watch Callable"
-  [^ApiClient api-client compute-cluster-name all-pods-atom]
+  [{:keys [^ApiClient api-client all-pods-atom] compute-cluster-name :name :as compute-cluster}]
   (let [watch (WatchHelper/createEventWatch api-client nil)]
     (fn []
       (try
@@ -594,10 +636,21 @@
                   (let [namespaced-pod-name {:namespace (.getNamespace involved-object)
                                              :name (.getName involved-object)}
                         host (some-> event .getSource .getHost)
-                        field-path (.getFieldPath involved-object)]
-                    (when (some-> @all-pods-atom
-                                  (get namespaced-pod-name)
-                                  (is-cook-scheduler-pod compute-cluster-name))
+                        field-path (.getFieldPath involved-object)
+                        event-type (.getType event)
+                        tracked-pod?
+                        (some-> @all-pods-atom
+                          (get namespaced-pod-name)
+                          (is-cook-scheduler-pod compute-cluster-name))]
+                    (when (or
+                            tracked-pod?
+                            (and
+                              ; The event type can be either "Normal" or "Warning", and we're
+                              ; only interested in "Warning" events for non-tracked pods
+                              (= event-type "Warning")
+                              ; The fieldPath is something like:
+                              ; "spec.containers{aux-cook-sidecar-container}"
+                              (some-> field-path str/lower-case (str/includes? "cook"))))
                       (log/info "In" compute-cluster-name
                                 "compute cluster, received pod event"
                                 {:event-reason (.getReason event)
@@ -616,7 +669,8 @@
                                          (cond->
                                            {:component (some-> event .getSource .getComponent)}
                                            host (assoc :host host))
-                                         :type (.getType event)}
+                                         :type event-type}
+                                 :tracked-pod? tracked-pod?
                                  :watch-response-type (.-type watch-response)}))))))))
         (catch Exception e
           (let [cause (.getCause e)]
@@ -625,20 +679,28 @@
               (log/error e "In" compute-cluster-name "compute cluster, error during event watch"))))
         (finally
           (.close watch)
-          (initialize-event-watch api-client compute-cluster-name all-pods-atom))))))
+          (initialize-event-watch compute-cluster))))))
 
 (defn initialize-event-watch
   "Initializes the event watch"
-  [^ApiClient api-client compute-cluster-name all-pods-atom]
+  [{:keys [state-atom] compute-cluster-name :name :as compute-cluster}]
   (log/info "In" compute-cluster-name "compute cluster, initializing event watch")
   (let [{:keys [reconnect-delay-ms]} (config/kubernetes)
         tmpfn (fn []
                 (try
                   (log/info "In" compute-cluster-name "compute cluster, initializing event watch helper")
-                  (initialize-event-watch-helper api-client compute-cluster-name all-pods-atom)
+                  (initialize-event-watch-helper compute-cluster)
                   (catch Exception e
-                    (log/error e "Error during event watch initial setup of looking at events for" compute-cluster-name
-                               "and sleeping" reconnect-delay-ms "milliseconds before reconnect")
+                    (let [state @state-atom]
+                      (if (= state :deleted)
+                        (log/info
+                          e "In" compute-cluster-name
+                          "compute cluster, cannot create event watch (cluster is deleted); sleeping before next attempt"
+                          {:reconnect-delay-ms reconnect-delay-ms :state state})
+                        (log/error
+                          e "In" compute-cluster-name
+                          "compute cluster, error during event watch initial setup; sleeping before next attempt"
+                          {:reconnect-delay-ms reconnect-delay-ms :state state})))
                     (Thread/sleep reconnect-delay-ms)
                     nil)))
         ^Callable first-success (->> tmpfn repeatedly (some identity))]

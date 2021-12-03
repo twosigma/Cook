@@ -791,6 +791,7 @@
         job-submit-time (Date.)
         txn (cond-> {:db/id db-id
                      :job/command command
+                     :job/command-length (count command)
                      :job/commit-latch commit-latch-id
                      :job/custom-executor false
                      :job/disable-mea-culpa-retries disable-mea-culpa-retries

@@ -20,6 +20,7 @@
             [cook.tools :as tools]
             [cook.util :as util]
             [datomic.api :as d]
+            [metrics.counters :as counters]
             [metrics.meters :as meters]
             [metrics.timers :as timers])
   (:import (com.google.auth.oauth2 GoogleCredentials)
@@ -395,7 +396,7 @@
         ; Initialize the node watch path.
         (api/initialize-node-watch this)
 
-        (api/initialize-event-watch api-client name all-pods-atom)
+        (api/initialize-event-watch this)
         (catch Throwable e
           (log/error e "Failed to bring up compute cluster" name)
           (throw e))))
@@ -458,7 +459,11 @@
               total-pods (-> @all-pods-atom keys count)
               total-nodes (-> @current-nodes-atom keys count)
               {:keys [image user command max-pods-outstanding max-total-pods max-total-nodes]
-               :or {command "exit 0" max-total-pods 32000 max-total-nodes 1000}} synthetic-pods-config]
+               :or {command "exit 0" max-total-pods 32000 max-total-nodes 1000}} synthetic-pods-config
+              set-counter-fn (fn [counter-name counter-value]
+                               (monitor/set-counter!
+                                 (counters/counter ["cook-k8s" counter-name (str "compute-cluster-" name) (str "pool-" pool-name)])
+                                 counter-value))]
 
           (when (>= total-pods max-total-pods)
             (log/warn "In" name "compute cluster, total pods are maxed out"
@@ -472,6 +477,9 @@
             (log/warn "In" name "compute cluster, synthetic pods are maxed out"
                       {:max-synthetic-pods max-pods-outstanding
                        :synthetic-pods num-synthetic-pods}))
+
+          (set-counter-fn "total-synthetic-pods" num-synthetic-pods)
+          (set-counter-fn "max-total-synthetic-pods" max-pods-outstanding)
 
           (let [max-launchable (min (- max-pods-outstanding num-synthetic-pods)
                                     (- max-total-nodes total-nodes)
