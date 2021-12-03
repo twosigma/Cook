@@ -20,7 +20,7 @@
             [cook.util :as util]
             [datomic.api :as d]
             [metrics.counters :as counters]
-            ;[metrics.histograms :as histograms]
+            [metrics.histograms :as histograms]
             [metrics.meters :as meters]
             [metrics.timers :as timers]
             [plumbing.core :as pc])
@@ -203,13 +203,7 @@
                  [compute-cluster-name watch-object-type])]
       (let [millis (- (System/currentTimeMillis) last-watch-response-or-connect-millis)
             metric-name (str (name watch-object-type) "-" metric-name)]
-        (set-metric-counter metric-name millis compute-cluster-name)
-        ;(histograms/update!
-        ;  (metrics/histogram
-        ;    (str (name watch-object-type) "-" metric-name)
-        ;    compute-cluster-name)
-        ;  millis)
-        )))
+        (histograms/update! (metrics/histogram metric-name compute-cluster-name) millis))))
 
   (defn update-disconnected-watch-gap-metric!
     "TODO(DPO)"
@@ -220,12 +214,7 @@
                  [compute-cluster-name watch-object-type])]
       (let [millis (- (System/currentTimeMillis) last-watch-response-or-connect-millis)
             metric-name (str (name watch-object-type) "-" metric-name)]
-        (set-metric-counter metric-name millis compute-cluster-name)
-        ;(histograms/update!
-        ;  (metrics/histogram
-        ;    (str (name watch-object-type) "-" metric-name)
-        ;    compute-cluster-name)
-        ;  millis)
+        (histograms/update! (metrics/histogram metric-name compute-cluster-name) millis)
         (log/info
           "In" compute-cluster-name "compute cluster, marking disconnected"
           (name watch-object-type) "watch gap"
