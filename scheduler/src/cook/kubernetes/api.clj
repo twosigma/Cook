@@ -20,7 +20,7 @@
             [cook.util :as util]
             [datomic.api :as d]
             [metrics.counters :as counters]
-            [metrics.histograms :as histograms]
+            ;[metrics.histograms :as histograms]
             [metrics.meters :as meters]
             [metrics.timers :as timers]
             [plumbing.core :as pc])
@@ -184,6 +184,12 @@
         (catch Exception e
           (log/error e "Error while processing callback"))))))
 
+(defn- set-metric-counter
+  [counter-name counter-value compute-cluster-name]
+  (monitor/set-counter!
+    (counters/counter ["cook-k8s" counter-name (str "compute-cluster-" compute-cluster-name)])
+    counter-value))
+
 (let [last-watch-response-or-connect-millis-atom (atom {})]
   (defn update-watch-gap-metric!
     "Given a compute cluster name and a watch object type
@@ -196,11 +202,13 @@
                  @last-watch-response-or-connect-millis-atom
                  [compute-cluster-name watch-object-type])]
       (let [millis (- (System/currentTimeMillis) last-watch-response-or-connect-millis)]
-        (histograms/update!
-          (metrics/histogram
-            (str (name watch-object-type) "-" metric-name)
-            compute-cluster-name)
-          millis))))
+        (set-metric-counter metric-name millis compute-cluster-name)
+        ;(histograms/update!
+        ;  (metrics/histogram
+        ;    (str (name watch-object-type) "-" metric-name)
+        ;    compute-cluster-name)
+        ;  millis)
+        )))
 
   (defn update-disconnected-watch-gap-metric!
     "TODO(DPO)"
@@ -210,11 +218,12 @@
                  @last-watch-response-or-connect-millis-atom
                  [compute-cluster-name watch-object-type])]
       (let [millis (- (System/currentTimeMillis) last-watch-response-or-connect-millis)]
-        (histograms/update!
-          (metrics/histogram
-            (str (name watch-object-type) "-" metric-name)
-            compute-cluster-name)
-          millis)
+        (set-metric-counter metric-name millis compute-cluster-name)
+        ;(histograms/update!
+        ;  (metrics/histogram
+        ;    (str (name watch-object-type) "-" metric-name)
+        ;    compute-cluster-name)
+        ;  millis)
         (log/info
           "In" compute-cluster-name "compute cluster, marking disconnected"
           (name watch-object-type) "watch gap"
@@ -383,12 +392,6 @@
   "Wrapper for WatchHelper/createPodWatch"
   [^ApiClient api-client resource-version]
   (WatchHelper/createPodWatch api-client resource-version))
-
-(defn- set-metric-counter
-  [counter-name counter-value compute-cluster-name]
-  (monitor/set-counter!
-    (counters/counter ["cook-k8s" counter-name (str "compute-cluster-" compute-cluster-name)])
-    counter-value))
 
 (declare initialize-pod-watch)
 (defn ^Callable initialize-pod-watch-helper
