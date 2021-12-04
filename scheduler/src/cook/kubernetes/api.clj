@@ -204,41 +204,22 @@
             "In" compute-cluster-name "compute cluster, marked watch gap"
             {:metric-name metric-name
              :watch-gap-millis millis
-             :watch-last-event (-> last-watch-response-or-connect-millis tc/from-long str)})))))
-
-  (defn mark-last-watch-response-or-connect-millis!
-    "Stores the current time as the last watch response or
-    connection for the given compute cluster and type."
-    [compute-cluster-name watch-object-type]
+             :watch-last-event (-> last-watch-response-or-connect-millis tc/from-long str)}))))
     (swap!
       last-watch-response-or-connect-millis-atom
       assoc-in
       [compute-cluster-name watch-object-type]
-      (System/currentTimeMillis)))
+      (System/currentTimeMillis))))
 
-  (defn mark-watch-gap!
-    "Updates the watch-gap-millis metric."
-    [compute-cluster-name watch-object-type]
-    (update-watch-gap-metric!
-      compute-cluster-name
-      watch-object-type
-      "watch-gap-millis"
-      false)
-    (mark-last-watch-response-or-connect-millis!
-      compute-cluster-name
-      watch-object-type))
+(defn mark-watch-gap!
+  "Updates the watch-gap-millis metric."
+  [compute-cluster-name watch-object-type]
+  (update-watch-gap-metric! compute-cluster-name watch-object-type "watch-gap-millis" false))
 
-  (defn mark-disconnected-watch-gap!
-    "Updates the disconnected-watch-gap-millis metric."
-    [compute-cluster-name watch-object-type]
-    (update-watch-gap-metric!
-      compute-cluster-name
-      watch-object-type
-      "disconnected-watch-gap-millis"
-      true)
-    (mark-last-watch-response-or-connect-millis!
-      compute-cluster-name
-      watch-object-type)))
+(defn mark-disconnected-watch-gap!
+  "Updates the disconnected-watch-gap-millis metric."
+  [compute-cluster-name watch-object-type]
+  (update-watch-gap-metric! compute-cluster-name watch-object-type "disconnected-watch-gap-millis" true))
 
 (defn handle-watch-updates
   "When a watch update occurs (for pods or nodes) update both the state atom as well as
