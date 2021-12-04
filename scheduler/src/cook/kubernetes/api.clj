@@ -184,45 +184,31 @@
         (catch Exception e
           (log/error e "Error while processing callback"))))))
 
-(defn- set-metric-counter
-  [counter-name counter-value compute-cluster-name]
-  (monitor/set-counter!
-    (counters/counter ["cook-k8s" counter-name (str "compute-cluster-" compute-cluster-name)])
-    counter-value))
-
 (let [last-watch-response-or-connect-millis-atom (atom {})]
   (defn update-watch-gap-metric!
     "Given a compute cluster name and a watch object type
     (either :pod or :node), updates a metric with the gap
-    in milliseconds between the last watch response and
-    the current watch response."
-    [compute-cluster-name watch-object-type metric-name]
+    in milliseconds between the last watch response or
+    connection and the current watch response or connection."
+    [compute-cluster-name watch-object-type metric-name log?]
     (when-let [last-watch-response-or-connect-millis
                (get-in
                  @last-watch-response-or-connect-millis-atom
                  [compute-cluster-name watch-object-type])]
       (let [millis (- (System/currentTimeMillis) last-watch-response-or-connect-millis)
             metric-name (str (name watch-object-type) "-" metric-name)]
-        (histograms/update! (metrics/histogram metric-name compute-cluster-name) millis))))
-
-  (defn update-disconnected-watch-gap-metric!
-    "TODO(DPO)"
-    [compute-cluster-name watch-object-type metric-name]
-    (when-let [last-watch-response-or-connect-millis
-               (get-in
-                 @last-watch-response-or-connect-millis-atom
-                 [compute-cluster-name watch-object-type])]
-      (let [millis (- (System/currentTimeMillis) last-watch-response-or-connect-millis)
-            metric-name (str (name watch-object-type) "-" metric-name)]
-        (histograms/update! (metrics/histogram metric-name compute-cluster-name) millis)
-        (log/info
-          "In" compute-cluster-name "compute cluster, marking disconnected"
-          (name watch-object-type) "watch gap"
-          {:watch-gap-millis millis
-           :watch-last-event (-> last-watch-response-or-connect-millis tc/from-long str)}))))
+        (histograms/update!
+          (metrics/histogram metric-name compute-cluster-name) millis)
+        (when log?
+          (log/info
+            "In" compute-cluster-name "compute cluster, marked watch gap"
+            {:metric-name metric-name
+             :watch-gap-millis millis
+             :watch-last-event (-> last-watch-response-or-connect-millis tc/from-long str)})))))
 
   (defn mark-last-watch-response-or-connect-millis!
-    "TODO(DPO)"
+    "Stores the current time as the last watch response or
+    connection for the given compute cluster and type."
     [compute-cluster-name watch-object-type]
     (swap!
       last-watch-response-or-connect-millis-atom
@@ -231,13 +217,13 @@
       (System/currentTimeMillis)))
 
   (defn mark-watch-gap!
-    "Updates the watch-gap-millis metric and stores the current time
-    as the last watch response for the given compute cluster and type."
+    "Updates the watch-gap-millis metric."
     [compute-cluster-name watch-object-type]
     (update-watch-gap-metric!
       compute-cluster-name
       watch-object-type
-      "watch-gap-millis")
+      "watch-gap-millis"
+      false)
     (mark-last-watch-response-or-connect-millis!
       compute-cluster-name
       watch-object-type))
@@ -245,10 +231,11 @@
   (defn mark-disconnected-watch-gap!
     "Updates the disconnected-watch-gap-millis metric."
     [compute-cluster-name watch-object-type]
-    (update-disconnected-watch-gap-metric!
+    (update-watch-gap-metric!
       compute-cluster-name
       watch-object-type
-      "disconnected-watch-gap-millis")
+      "disconnected-watch-gap-millis"
+      true)
     (mark-last-watch-response-or-connect-millis!
       compute-cluster-name
       watch-object-type)))
@@ -383,6 +370,12 @@
   "Wrapper for WatchHelper/createPodWatch"
   [^ApiClient api-client resource-version]
   (WatchHelper/createPodWatch api-client resource-version))
+
+(defn- set-metric-counter
+  [counter-name counter-value compute-cluster-name]
+  (monitor/set-counter!
+    (counters/counter ["cook-k8s" counter-name (str "compute-cluster-" compute-cluster-name)])
+    counter-value))
 
 (declare initialize-pod-watch)
 (defn ^Callable initialize-pod-watch-helper
