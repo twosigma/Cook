@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.58.8] - 2021-12-06
+### Added
+- Support using default image with a user-specified container, from @nsinkov
+
 ## [1.58.7] - 2021-12-01
 ### Added
 - Allow incremental configurations for default job constraints, from @nsinkov
