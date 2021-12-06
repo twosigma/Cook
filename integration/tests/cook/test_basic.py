@@ -1966,7 +1966,7 @@ class CookTest(util.CookTest):
 
         def submit_job(**spec):
             minimal_job = util.minimal_job(**spec)
-            del minimal_job['container']
+            minimal_job.pop('container', None)
             return util.submit_job(self.cook_url, **minimal_job)
         # If GPUs are not enabled, assert that submission gets rejected
         if not gpu_enabled:
