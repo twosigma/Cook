@@ -1669,19 +1669,15 @@
                (:normal (sched/remove-matched-jobs-from-pending-jobs pool->pending-jobs (:normal pool->matched-job-uuids) :normal))))))))
 
 
-
 (let [uri "datomic:mem://test-handle-resource-offers"
-      _ (setup) ;To create the caches that are flushed by restore-fresh-database!
-      conn (restore-fresh-database! uri)
       compute-cluster-name "kubernetes"
-      cluster-entity-id (kcc/get-or-create-cluster-entity-id conn compute-cluster-name)
       launched-offer-ids-atom (atom [])
       launched-job-names-atom (atom [])
       compute-cluster (reify ComputeCluster
                         (use-cook-executor? [_] true)
                         (max-tasks-per-host [_] nil)
                         (num-tasks-on-host [_ _] nil)
-                        (db-id [_] cluster-entity-id)
+                        (db-id [_] 123)
                         (compute-cluster-name [_] compute-cluster-name)
                         (restore-offers [_ _ _] nil)
                         (launch-tasks [this _ matches process-task-post-launch-fn]
@@ -1852,17 +1848,19 @@
           (is (= #{"job-1" "job-2"} (set @launched-job-names-atom)))))
 
       (testing "enough offers for all normal jobs, limited by num-considerable of 2, but beyond rate limit"
-        (with-redefs [quota/per-user-per-pool-launch-rate-limiter
-                      (quota/create-per-user-per-pool-launch-rate-limiter conn job-launch-rate-limit-config-for-testing)
-                      rate-limit/get-token-count! (constantly 1)]
-          ;; We do pending filtering here, so we should filter off the excess jobs and launch one job.
-          (let [num-considerable 2
-                offers [offer-1 offer-2 offer-3]]
-            (is (run-handle-resource-offers! num-considerable offers "test-pool"))
-            (is (= :end-marker (async/<!! offers-chan)))
-            (is (= 1 (count @launched-offer-ids-atom)))
-            (is (= 1 (count @launched-job-names-atom)))
-            (is (= #{"job-1"} (set @launched-job-names-atom))))))
+        (let [_ (setup) ;To create the caches that are flushed by restore-fresh-database!
+              conn (restore-fresh-database! uri)]
+          (with-redefs [quota/per-user-per-pool-launch-rate-limiter
+                        (quota/create-per-user-per-pool-launch-rate-limiter conn job-launch-rate-limit-config-for-testing)
+                        rate-limit/get-token-count! (constantly 1)]
+            ;; We do pending filtering here, so we should filter off the excess jobs and launch one job.
+            (let [num-considerable 2
+                  offers [offer-1 offer-2 offer-3]]
+              (is (run-handle-resource-offers! num-considerable offers "test-pool"))
+              (is (= :end-marker (async/<!! offers-chan)))
+              (is (= 1 (count @launched-offer-ids-atom)))
+              (is (= 1 (count @launched-job-names-atom)))
+              (is (= #{"job-1"} (set @launched-job-names-atom)))))))
 
       (with-redefs [cc/launch-rate-limiter
                     (constantly (rate-limit/create-compute-cluster-launch-rate-limiter "fake-name-a" compute-cluster-launch-rate-limits-for-testing))
