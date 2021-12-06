@@ -1,8 +1,6 @@
 import datetime
 import json
 import logging
-import math
-import operator
 import os
 import re
 import subprocess
@@ -1965,10 +1963,14 @@ class CookTest(util.CookTest):
     def test_request_gpu_models(self):
         settings_dict = util.settings(self.cook_url)
         gpu_enabled = settings_dict['mesos-gpu-enabled']
+
+        def submit_job(**spec):
+            minimal_job = util.minimal_job(**spec)
+            del minimal_job['container']
+            return util.submit_job(self.cook_url, **minimal_job)
         # If GPUs are not enabled, assert that submission gets rejected
         if not gpu_enabled:
-            job_uuid, resp = util.submit_job(
-                self.cook_url,
+            job_uuid, resp = submit_job(
                 gpus=1,
                 env={'COOK_GPU_MODEL': 'nvidia-tesla-p100'})
             self.assertEqual(resp.status_code, 400)
@@ -1979,8 +1981,7 @@ class CookTest(util.CookTest):
             # If no pools support valid GPU models, submit a job to the default pool and assert the submission gets rejected
             if not valid_gpu_models_config_map:
                 default_pool = util.default_submit_pool()
-                job_uuid, resp = util.submit_job(
-                    self.cook_url,
+                job_uuid, resp = submit_job(
                     pool=default_pool,
                     gpus=1,
                     env={'COOK_GPU_MODEL': 'nvidia-tesla-p100'})
@@ -2000,8 +2001,7 @@ class CookTest(util.CookTest):
                                            re.match(ii["pool-regex"], pool_name)]
                     # If there are no supported GPU models for pool, assert submission gets rejected
                     if len(matching_gpu_models) == 0 or len(matching_gpu_models[0]) == 0:
-                        job_uuid, resp = util.submit_job(
-                            self.cook_url,
+                        job_uuid, resp = submit_job(
                             pool=pool_name,
                             gpus=1,
                             env={'COOK_GPU_MODEL': 'nvidia-tesla-p100'})
@@ -2009,8 +2009,7 @@ class CookTest(util.CookTest):
                         self.assertTrue(
                             f"Job requested GPUs but pool {pool_name} does not have any valid GPU models" in resp.text,
                             msg=resp.content)
-                        job_uuid, resp = util.submit_job(
-                            self.cook_url,
+                        job_uuid, resp = submit_job(
                             pool=pool_name,
                             gpus=2)
                         self.assertEqual(resp.status_code, 400)
@@ -2021,8 +2020,7 @@ class CookTest(util.CookTest):
                         # Job submission with valid GPU model
                         self.logger.info(f'Submitting to {pool}')
                         expected_model = matching_gpu_models[0][0]
-                        job_uuid, resp = util.submit_job(
-                            self.cook_url,
+                        job_uuid, resp = submit_job(
                             pool=pool_name,
                             gpus=1,
                             env={'COOK_GPU_MODEL': expected_model})
@@ -2032,15 +2030,13 @@ class CookTest(util.CookTest):
 
                         # Job submission with default GPU model
                         self.logger.info(f'Submitting to {pool}')
-                        job_uuid, resp = util.submit_job(
-                            self.cook_url,
+                        job_uuid, resp = submit_job(
                             pool=pool_name,
                             gpus=1)
                         self.assertEqual(resp.status_code, 201, resp.text)
 
                         # Job submission with invalid GPU model
-                        job_uuid, resp = util.submit_job(
-                            self.cook_url,
+                        job_uuid, resp = submit_job(
                             pool=pool_name,
                             gpus=1,
                             env={'COOK_GPU_MODEL': 'invalid-gpu-model'})
