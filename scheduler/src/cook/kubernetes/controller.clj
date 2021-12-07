@@ -9,6 +9,7 @@
             [cook.mesos.sandbox :as sandbox]
             [cook.passport :as passport]
             [cook.scheduler.scheduler :as scheduler]
+            [metrics.meters :as meters]
             [metrics.timers :as timers])
   (:import (clojure.lang IAtom)
            (com.twosigma.cook.kubernetes FinalizerHelper)
@@ -684,6 +685,8 @@
          (record-sandbox-url pod-name new-state)))
      (when (or force-process?
                (not (k8s-actual-state-equivalent? old-state new-state)))
+       (when-not force-process?
+         (meters/mark! (metrics/meter "pods-processed-unforced" name)))
        (try
          (process compute-cluster pod-name)
          (catch Exception e

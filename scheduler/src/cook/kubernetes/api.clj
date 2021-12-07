@@ -1,5 +1,6 @@
 (ns cook.kubernetes.api
   (:require [better-cond.core :as b]
+            [clj-time.coerce :as tc]
             [clj-time.core :as t]
             [clojure.set :as set]
             [clojure.string :as str]
@@ -19,6 +20,7 @@
             [cook.util :as util]
             [datomic.api :as d]
             [metrics.counters :as counters]
+            [metrics.histograms :as histograms]
             [metrics.meters :as meters]
             [metrics.timers :as timers]
             [plumbing.core :as pc])
@@ -182,22 +184,70 @@
         (catch Exception e
           (log/error e "Error while processing callback"))))))
 
+(let [last-watch-response-or-connect-millis-atom (atom {})]
+  (defn update-watch-gap-metric!
+    "Given a compute cluster name and a watch object type (either :pod or :node), updates a
+    metric with the gap in milliseconds between the last watch response or connection and the
+    current watch response or connection. The goal here is to measure 1) the gap between events
+    when we process watches, and 2) the gap when we're not processing anything because we're
+    reconnecting the watch. This function is called at the start of watch processing (with one
+    metric name) and between watch events (with a different metric name). In both cases, we
+    update the last-watch-response-or-connect timestamp."
+    [compute-cluster-name watch-object-type metric-name log?]
+    (when-let [last-watch-response-or-connect-millis
+               (get-in
+                 @last-watch-response-or-connect-millis-atom
+                 [compute-cluster-name watch-object-type])]
+      (let [millis (- (System/currentTimeMillis) last-watch-response-or-connect-millis)
+            metric-name (str (name watch-object-type) "-" metric-name)]
+        (histograms/update!
+          (metrics/histogram metric-name compute-cluster-name) millis)
+        (when log?
+          (log/info
+            "In" compute-cluster-name "compute cluster, marked watch gap"
+            {:metric-name metric-name
+             :watch-gap-millis millis
+             :watch-last-event (-> last-watch-response-or-connect-millis tc/from-long str)}))))
+    (swap!
+      last-watch-response-or-connect-millis-atom
+      assoc-in
+      [compute-cluster-name watch-object-type]
+      (System/currentTimeMillis))))
+
+(defn mark-watch-gap!
+  "Updates the watch-gap-millis metric."
+  [compute-cluster-name watch-object-type]
+  (update-watch-gap-metric! compute-cluster-name watch-object-type "watch-gap-millis" false))
+
+(defn mark-disconnected-watch-gap!
+  "Updates the disconnected-watch-gap-millis metric."
+  [compute-cluster-name watch-object-type]
+  (update-watch-gap-metric! compute-cluster-name watch-object-type "disconnected-watch-gap-millis" true))
+
 (defn handle-watch-updates
   "When a watch update occurs (for pods or nodes) update both the state atom as well as
   invoke the callbacks on the previous and new values for the key."
-  [state-atom ^Watch watch key-fn callbacks set-metric-counters-fn]
+  [state-atom ^Watch watch key-fn callbacks set-metric-counters-fn compute-cluster-name watch-object-type]
+  (mark-disconnected-watch-gap! compute-cluster-name watch-object-type)
   (while (.hasNext watch)
     (let [watch-response (.next watch)
           item (.-object watch-response)
           type (.-type watch-response)]
       (if (some? item)
         (do
+          (mark-watch-gap! compute-cluster-name watch-object-type)
           (process-watch-response! state-atom item type key-fn callbacks)
           (set-metric-counters-fn))
-        (throw (ex-info "Encountered nil object on watch response"
-                        {:watch-object item
-                         :watch-status (.-status watch-response)
-                         :watch-type type}))))))
+        (throw (ex-info
+                 "Encountered nil object on watch response"
+                 {:compute-cluster-name compute-cluster-name
+                  :watch-object item
+                  :watch-object-type watch-object-type
+                  :watch-status (.-status watch-response)
+                  :watch-type type})))))
+  (log/info
+    "In" compute-cluster-name "compute cluster, there are no more"
+    (name watch-object-type) "watch updates"))
 
 (defn get-pod-namespaced-key
   [^V1Pod pod]
@@ -355,11 +405,16 @@
       (fn []
         (try
           (log/info "In" compute-cluster-name "compute cluster, handling pod watch updates")
-          (handle-watch-updates all-pods-atom watch get-pod-namespaced-key
-                                callbacks
-                                (fn []
-                                  (set-metric-counter "total-pods" (-> @all-pods-atom keys count) compute-cluster-name)
-                                  (when max-total-pods (set-metric-counter "max-total-pods" max-total-pods compute-cluster-name))))
+          (handle-watch-updates
+            all-pods-atom
+            watch
+            get-pod-namespaced-key
+            callbacks
+            (fn []
+              (set-metric-counter "total-pods" (-> @all-pods-atom keys count) compute-cluster-name)
+              (when max-total-pods (set-metric-counter "max-total-pods" max-total-pods compute-cluster-name)))
+            compute-cluster-name
+            :pod)
           (catch Exception e
             (let [cause (.getCause e)]
               (if (and cause (instance? SocketTimeoutException cause))
@@ -462,11 +517,16 @@
       (fn []
         (try
           (log/info "In" compute-cluster-name "compute cluster, handling node watch updates")
-          (handle-watch-updates current-nodes-atom watch node->node-name
-                                callbacks ; Update the set of all nodes.
-                                (fn []
-                                  (set-metric-counter "total-nodes" (-> @current-nodes-atom keys count) compute-cluster-name)
-                                  (when max-total-nodes (set-metric-counter "max-total-nodes" max-total-nodes compute-cluster-name))))
+          (handle-watch-updates
+            current-nodes-atom
+            watch
+            node->node-name
+            callbacks ; Update the set of all nodes.
+            (fn []
+              (set-metric-counter "total-nodes" (-> @current-nodes-atom keys count) compute-cluster-name)
+              (when max-total-nodes (set-metric-counter "max-total-nodes" max-total-nodes compute-cluster-name)))
+            compute-cluster-name
+            :node)
           (catch Exception e
             (let [cause (-> e Throwable->map :cause)]
               (if (= cause "Socket closed")
