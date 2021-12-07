@@ -42,7 +42,7 @@
         ; time window reservoir, which gives zeros when there is no data. See
         ; https://engineering.salesforce.com/be-careful-with-reservoirs-708884018daf
         ; for more information.
-        (SlidingTimeWindowArrayReservoir. 30 TimeUnit/SECONDS)))))
+        (SlidingTimeWindowArrayReservoir. 300 TimeUnit/SECONDS)))))
 
 (defn histogram
   "Given a metric name and a compute cluster name, returns a histogram metric."

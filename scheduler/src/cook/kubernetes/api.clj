@@ -186,10 +186,13 @@
 
 (let [last-watch-response-or-connect-millis-atom (atom {})]
   (defn update-watch-gap-metric!
-    "Given a compute cluster name and a watch object type
-    (either :pod or :node), updates a metric with the gap
-    in milliseconds between the last watch response or
-    connection and the current watch response or connection."
+    "Given a compute cluster name and a watch object type (either :pod or :node), updates a
+    metric with the gap in milliseconds between the last watch response or connection and the
+    current watch response or connection. The goal here is to measure 1) the gap between events
+    when we process watches, and 2) the gap when we're not processing anything because we're
+    reconnecting the watch. This function is called at the start of watch processing (with one
+    metric name) and between watch events (with a different metric name). In both cases, we
+    update the last-watch-response-or-connect timestamp."
     [compute-cluster-name watch-object-type metric-name log?]
     (when-let [last-watch-response-or-connect-millis
                (get-in
