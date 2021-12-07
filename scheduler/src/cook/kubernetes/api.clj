@@ -1374,17 +1374,25 @@
       (let [[resolved-config reason] (config-incremental/resolve-incremental-config task-id :add-finalizer "false")]
         (if (= "true" resolved-config)
           (.setFinalizers metadata (list FinalizerHelper/collectResultsFinalizer)))))
-    (let [[resolved-config _]
-          (config-incremental/resolve-incremental-config
-            task-id :add-use-all-gids-annotation "false")
-          use-all-gids-annotation-name
-          (:use-all-gids-annotation-name (config/kubernetes))
-          pod-annotations'
-          (cond-> pod-annotations
-            (and
-              (= "true" resolved-config)
-              use-all-gids-annotation-name)
-            (assoc use-all-gids-annotation-name "true"))]
+    (let [pod-annotations'
+          (if (synthetic-pod? pod-name)
+            pod-annotations
+            ; For non-synthetic (real job) pods, when configured to do so,
+            ; we add a pod annotation indicating that Kubernetes should
+            ; use all of the group IDs the user is a member of, in order
+            ; to avoid contradictions between which group Cook thinks a
+            ; user belongs to and which group Kubernetes thinks the user
+            ; belongs to.
+            (let [[resolved-config _]
+                  (config-incremental/resolve-incremental-config
+                    task-id :add-use-all-gids-annotation "false")
+                  use-all-gids-annotation-name
+                  (:use-all-gids-annotation-name (config/kubernetes))]
+              (cond-> pod-annotations
+                (and
+                  (= "true" resolved-config)
+                  use-all-gids-annotation-name)
+                (assoc use-all-gids-annotation-name "true"))))]
       (when (seq pod-annotations')
         (.setAnnotations metadata pod-annotations')))
 
