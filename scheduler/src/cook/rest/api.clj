@@ -586,6 +586,7 @@
         docker-id (d/tempid :db.part/user)
         volumes (or (:volumes container) [])
         docker (:docker container)
+        default-docker (:docker default-container)
         params (->> (or (:parameters docker) [])
                     (ensure-user-parameter user id))
         port-mappings (or (:port-mapping docker) [])
@@ -594,11 +595,15 @@
         ; user to set other container properties such as ports but not have to provide the actual image themselves.
         ; To do this, a user can omit the image field. The default container image is then used.
         image-config (if-not user-image
-                       (-> default-container :docker :image)
+                       (:image default-docker)
                        user-image)
         image (if (string? image-config)
                 image-config
-                (let [[resolved-config reason] (config-incremental/resolve-incremental-config uuid image-config (:image-fallback docker))]
+                (let [[resolved-config reason]
+                      (config-incremental/resolve-incremental-config
+                        uuid
+                        image-config
+                        (or (:image-fallback docker) (:image-fallback default-docker)))]
                   (passport/log-event {:event-type passport/default-image-selected
                                        :image-config image-config
                                        :job-name name
