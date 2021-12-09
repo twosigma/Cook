@@ -586,27 +586,33 @@
         docker-id (d/tempid :db.part/user)
         volumes (or (:volumes container) [])
         docker (:docker container)
+        default-docker (:docker default-container)
         params (->> (or (:parameters docker) [])
                     (ensure-user-parameter user id))
         port-mappings (or (:port-mapping docker) [])
-        image-config (:image docker)
+        user-image (:image docker)
         ; A user can specify their own container but use the image of the default container. This allows the
         ; user to set other container properties such as ports but not have to provide the actual image themselves.
         ; To do this, a user can omit the image field. The default container image is then used.
-        image (if-not image-config
-                (-> default-container :docker :image)
-                (if (string? image-config)
-                  image-config
-                  (let [[resolved-config reason] (config-incremental/resolve-incremental-config uuid image-config (:image-fallback docker))]
-                    (passport/log-event {:event-type passport/default-image-selected
-                                         :image-config image-config
-                                         :job-name name
-                                         :job-uuid (str uuid)
-                                         :pool pool-name
-                                         :reason reason
-                                         :resolved-config resolved-config
-                                         :user user})
-                    resolved-config)))]
+        image-config (if-not user-image
+                       (:image default-docker)
+                       user-image)
+        image (if (string? image-config)
+                image-config
+                (let [[resolved-config reason]
+                      (config-incremental/resolve-incremental-config
+                        uuid
+                        image-config
+                        (or (:image-fallback docker) (:image-fallback default-docker)))]
+                  (passport/log-event {:event-type passport/default-image-selected
+                                       :image-config image-config
+                                       :job-name name
+                                       :job-uuid (str uuid)
+                                       :pool pool-name
+                                       :reason reason
+                                       :resolved-config resolved-config
+                                       :user user})
+                  resolved-config))]
     [[:db/add id :job/container container-id]
      (merge {:db/id container-id
              :container/type "DOCKER"}
