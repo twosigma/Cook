@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.58.9] - 2021-12-09
+### Added
+- Metrics of gaps in Kubernetes watches, from @dposada
+### Fixed
+- Fix support for incremental default image configuration, from @nsinkov
+
 ## [1.58.8] - 2021-12-06
 ### Added
 - Support using default image with a user-specified container, from @nsinkov
