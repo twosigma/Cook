@@ -18,8 +18,11 @@
   (:require [clojure.core.async :as async]
             [clojure.test :refer :all]
             [cook.mesos.heartbeat :as heartbeat]
+            [cook.postgres]
             [cook.test.testutil :refer [create-dummy-instance create-dummy-job restore-fresh-database!]]
             [datomic.api :as d :refer [q]]))
+
+(use-fixtures :once cook.postgres/with-pg-db)
 
 (deftest test-update-heartbeat
   (testing

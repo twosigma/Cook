@@ -21,8 +21,11 @@
             [cook.compute-cluster :as cc]
             [cook.datomic]
             [cook.mesos :as mesos]
+            [cook.postgres]
             [cook.test.testutil :refer [create-dummy-job-with-instances restore-fresh-database!]]
             [datomic.api :as d :refer (q db)]))
+
+(use-fixtures :once cook.postgres/with-pg-db)
 
 (defn make-jobs-in-db
   "Takes a list of pairs, where the pairs are the cpu/memory of the job, and returns

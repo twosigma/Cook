@@ -6,6 +6,7 @@
             [clojure.tools.logging :as log]
             [cook.compute-cluster :as cc]
             [cook.mesos.mesos-mock :as mm]
+            [cook.postgres]
             [cook.scheduler.share :as share]
             [cook.test.testutil :refer [create-dummy-job poll-until restore-fresh-database! setup]]
             [cook.test.zz-simulator :refer [dump-jobs-to-csv pull-all-task-ents with-cook-scheduler]]
@@ -14,6 +15,8 @@
             [mesomatic.scheduler :as mesos]
             [mesomatic.types :as mesos-types])
   (:import (java.util UUID)))
+
+(use-fixtures :once cook.postgres/with-pg-db)
 
 (defn string->uuid
   "Parses the uuid if `uuid-str` is a uuid, returns nil otherwise"

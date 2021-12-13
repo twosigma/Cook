@@ -5,6 +5,7 @@
             [clojure.test :refer :all]
             [cook.config :as config]
             [cook.kubernetes.api :as api]
+            [cook.postgres]
             [cook.scheduler.constraints :as constraints]
             [cook.test.testutil :as tu]
             [datomic.api :as d])
@@ -15,6 +16,8 @@
                                                 V1PodAffinityTerm V1PodCondition V1PodList V1PodSpec V1PodStatus
                                                 V1ResourceRequirements V1Taint V1Volume V1VolumeMount)
            (java.util.concurrent Executors)))
+
+(use-fixtures :once cook.postgres/with-pg-db)
 
 (deftest test-get-consumption
   (testing "correctly computes consumption for a single pod without gpus"

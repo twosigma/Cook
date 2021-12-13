@@ -16,8 +16,11 @@
 (ns cook.test.mesos.reason
   (:use clojure.test)
   (:require [cook.mesos.reason :as r]
+            [cook.postgres]
             [cook.test.testutil :refer (restore-fresh-database!)]
             [datomic.api :as d :refer (q db)]))
+
+(use-fixtures :once cook.postgres/with-pg-db)
 
 (deftest reasons-api
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")

@@ -16,8 +16,11 @@
 
 (ns cook.test.schema
   (:require [clojure.test :refer :all]
+            [cook.postgres]
             [cook.test.testutil :refer [create-dummy-instance create-dummy-job restore-fresh-database!]]
             [datomic.api :as d :refer [db q]]))
+
+(use-fixtures :once cook.postgres/with-pg-db)
 
 (def datomic-uri "datomic:mem://test")
 

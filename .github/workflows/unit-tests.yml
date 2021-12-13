@@ -22,6 +22,8 @@ jobs:
       GDRIVE_LOG_POST_URL: https://script.google.com/macros/s/AKfycbxOB55OzrQSbpZO_0gzsxZaJ8LaUWWo3PDLNc-gCiMN1iObxu7x/exec
     steps:
       - uses: actions/checkout@v2
+      - name: Showcase docker state.
+        run: docker ps
       - name: Set up JDK 11
         uses: actions/setup-java@v1
         with:
@@ -48,10 +50,38 @@ jobs:
           ./cli/travis/setup.sh
           cd scheduler && ./travis/setup.sh
       - name: JobClient Java unit tests
-        run: cd ./jobclient/java && mvn test -X 
+        run: cd ./jobclient/java && mvn test -X
       - name: JobClient Python unit tests
         run: cd ./jobclient/python && python -m pytest
       - name: CLI unit tests
         run: cd ./cli && python -m pytest
+      - name: Setup the database
+        run: cd ./scheduler/postgresql && bin/setup-database.sh
+        env:
+          PGPASSWORD: postgres
+          COOK_SCHEMA: cook_local
       - name: Scheduler Unit tests
         run: cd ./scheduler && lein with-profile +test test :all-but-benchmark
+        env:
+          PGPASSWORD: postgres
+          COOK_DB_TEST_PG_USER: cook_scheduler
+          COOK_DB_TEST_PG_SERVER: 127.0.0.1
+          COOK_DB_TEST_PG_SCHEMA: cook_local
+
+    services:
+      # Give it cook-postgres to match what our external build scripts use.
+      cook-postgres:
+        # Docker Hub image
+        image: postgres
+        # Provide the password for postgres
+        env:
+          POSTGRES_PASSWORD: postgres
+        # Set health checks to wait until postgres has started
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          # Maps tcp port 5432 on service container to the host
+          - 5432:5432
