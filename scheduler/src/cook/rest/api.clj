@@ -267,9 +267,11 @@
   "If the label has the (:add-job-label-to-pod-prefix (config/kubernetes)) prefix, then we check that it is
   also a valid-k8s-pod-label-value?"
   [s]
-  (or
-    (not (str/starts-with? s (:add-job-label-to-pod-prefix (config/kubernetes))))
-    (valid-k8s-pod-label-value? s)))
+  (if-let [add-job-label-to-pod-prefix (:add-job-label-to-pod-prefix (config/kubernetes))]
+    (or
+      (not (str/starts-with? s add-job-label-to-pod-prefix))
+      (valid-k8s-pod-label-value? s))
+    true))
 
 (def Application
   "Schema for the application a job corresponds to"
