@@ -2,7 +2,7 @@
 # 1. Run postgresql in docker (this script)
 # 2. Run a database outside of docker, for, e.g., development.
 
-# For #2, its pretty easy. The main thing you need to do is create the database and a user, set COOK_DB_TEST_PG_DB, PGPASSWORD and COOK_DB_TEST_PG_USER, (or put a :pg-config section in config.edn, for integration tests), and then you can set it up using
+# For #2, it's pretty easy. The main thing you need to do is create the database and a user, set COOK_DB_TEST_PG_DB, PGPASSWORD and COOK_DB_TEST_PG_USER, (or put a :pg-config section in config.edn, for integration tests), and then you can set it up using
 #   psql -h localhost -U $COOK_DB_TEST_PG_USER -d $COOK_DB_TEST_PG_DB -f sql/reset_init_cook_database.sql
 
 ##
