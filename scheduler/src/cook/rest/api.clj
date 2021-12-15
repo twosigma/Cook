@@ -263,6 +263,14 @@
   [s]
   (re-matches #"[a-zA-Z0-9][\.a-zA-Z0-9_-]{0,61}[a-zA-Z0-9]" s))
 
+(defn valid-job-label-value?
+  "If the label has the (:add-job-label-to-pod-prefix (config/kubernetes)) prefix, then we check that it is
+  also a valid-k8s-pod-label-value?"
+  [s]
+  (or
+    (not (str/starts-with? s (:add-job-label-to-pod-prefix (config/kubernetes))))
+    (valid-k8s-pod-label-value? s)))
+
 (def Application
   "Schema for the application a job corresponds to"
   {:name (s/constrained s/Str non-empty-max-128-characters-and-alphanum?)
@@ -315,7 +323,7 @@
    (s/optional-key :uris) [Uri]
    (s/optional-key :ports) (s/pred #(not (neg? %)) 'nonnegative?)
    (s/optional-key :env) {NonEmptyString s/Str}
-   (s/optional-key :labels) {NonEmptyString s/Str}
+   (s/optional-key :labels) {NonEmptyString (s/constrained s/Str valid-job-label-value?)}
    (s/optional-key :constraints) [Constraint]
    (s/optional-key :checkpoint) Checkpoint
    (s/optional-key :container) Container
