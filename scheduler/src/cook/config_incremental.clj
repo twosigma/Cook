@@ -123,7 +123,7 @@
      (select-config-from-values uuid incremental-config)
      (keyword? incremental-config)
      (select-config-from-key uuid incremental-config)))
-  ([^UUID uuid incremental-config fallback-config]
+  ([uuid incremental-config fallback-config]
    (let [resolved-incremental-config (resolve-incremental-config uuid incremental-config)]
      (if resolved-incremental-config
        [resolved-incremental-config :resolved-incremental-config]
