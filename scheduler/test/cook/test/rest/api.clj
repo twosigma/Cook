@@ -378,7 +378,32 @@
                                 :uri "/rawscheduler"
                                 :headers {"Content-Type" "application/json"}
                                 :authorization/user "test"
-                                :body-params {"jobs" [job]}}))))))))))
+                                :body-params {"jobs" [job]}})))))))
+
+      (testing "valid pod label"
+        (with-redefs [config/kubernetes (constantly {:add-job-label-to-pod-prefix "pod-label"})]
+          (let [job (assoc (basic-job) "labels" {"pod-label/test" "12345"})
+                resp (h {:request-method :post
+                         :scheme :http
+                         :uri "/rawscheduler"
+                         :headers {"Content-Type" "application/json"}
+                         :authorization/user "test"
+                         :body-params {"jobs" [job]}})]
+            (is (= 201 (:status resp))))))
+      (testing "invalid pod label"
+        (with-redefs [config/kubernetes (constantly {:add-job-label-to-pod-prefix "pod-label"})]
+          (let [job (assoc (basic-job) "labels" {"pod-label/test" "-12345"})
+                resp (h {:request-method :post
+                         :scheme :http
+                         :uri "/rawscheduler"
+                         :headers {"Content-Type" "application/json"}
+                         :authorization/user "test"
+                         :body-params {"jobs" [job]}})]
+            (is (str/includes? (:cook.rest.api/error resp) "Value does not match schema"))
+            (is (str/includes? (:cook.rest.api/error resp) "pod prefix `pod-label`"))
+            (is (str/includes? (:cook.rest.api/error resp) "don't match the regex"))
+            (is (str/includes? (:cook.rest.api/error resp) "-12345"))
+            (is (= 400 (:status resp)))))))))
 
 (deftest gpus-api
   (setup)
