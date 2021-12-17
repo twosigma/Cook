@@ -41,10 +41,10 @@
 
 
 (let [custom-formatter (clj-time.format/formatter "yyyyMMdd")]
-(defn make-new-schema-name
-  "Generate the schema name we want to use for unit tests"
-  []
-  (str "db_tests_" (System/getenv "USER") "_" (clj-time.format/unparse-local-date custom-formatter (clj-time.core/today)) "_" (+ 1000 (.nextInt (Random.) 9000)))))
+  (defn make-new-schema-name
+    "Generate the schema name we want to use for unit tests"
+    []
+    (str "db_tests_" (System/getenv "USER") "_" (clj-time.format/unparse-local-date custom-formatter (clj-time.core/today)) "_" (+ 1000 (.nextInt (Random.) 9000)))))
 
 (defn configure-database-connection-for-unit-tests
   "Configure the database connection."
@@ -76,7 +76,8 @@
     (reset! saved-pg-config-dictionary nil)))
 
 (defn with-pg-db [f]
-  "Test fixture that sets up a new postgres database (if needed), runs the unit tests, and demolishes it afterwards. Setup a postgres database test fixture that creates a database and destroys it afterwards"
+  "Test fixture that sets up a new postgres database (if needed), runs the unit tests, and demolishes it afterwards.
+  Setup a postgres database test fixture that creates a database and destroys it afterwards"
   (configure-database-connection-for-unit-tests)
   (try
     (f)
