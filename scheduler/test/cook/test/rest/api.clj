@@ -390,6 +390,16 @@
                          :authorization/user "test"
                          :body-params {"jobs" [job]}})]
             (is (= 201 (:status resp))))))
+      (testing "valid pod label - no pod prefix"
+        (with-redefs [config/kubernetes (constantly {:add-job-label-to-pod-prefix "pod-label"})]
+          (let [job (assoc (basic-job) "labels" {"not-pod-label/test" "-12345"})
+                resp (h {:request-method :post
+                         :scheme :http
+                         :uri "/rawscheduler"
+                         :headers {"Content-Type" "application/json"}
+                         :authorization/user "test"
+                         :body-params {"jobs" [job]}})]
+            (is (= 201 (:status resp))))))
       (testing "invalid pod label"
         (with-redefs [config/kubernetes (constantly {:add-job-label-to-pod-prefix "pod-label"})]
           (let [job (assoc (basic-job) "labels" {"pod-label/test" "-12345"})
