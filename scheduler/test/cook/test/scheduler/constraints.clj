@@ -18,7 +18,7 @@
   (:require [clj-time.core :as t]
             [clojure.test :refer :all]
             [cook.config :as config]
-            [cook.postgres]
+            [cook.test.postgres]
             [cook.scheduler.constraints :as constraints]
             [cook.scheduler.offer :as offer]
             [cook.scheduler.scheduler :as sched]
@@ -30,7 +30,7 @@
   (:import (java.util Date)
            (org.joda.time DateTime)))
 
-(use-fixtures :once cook.postgres/with-pg-db)
+(use-fixtures :once cook.test.postgres/with-pg-db)
 
 (deftest test-get-group-constraint-name
   (is (= "unique-host-placement-group-constraint"

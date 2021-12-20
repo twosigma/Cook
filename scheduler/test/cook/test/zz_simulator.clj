@@ -23,7 +23,7 @@
             [cook.mesos.mesos-compute-cluster :as mcc]
             [cook.mesos.mesos-mock :as mm]
             [cook.plugins.completion :as completion]
-            [cook.postgres]
+            [cook.test.postgres]
             [cook.progress :as progress]
             [cook.scheduler.scheduler :as sched]
             [cook.scheduler.share :as share]
@@ -37,7 +37,7 @@
            (org.apache.curator.retry BoundedExponentialBackoffRetry)
            (org.joda.time DateTimeUtils)))
 
-(use-fixtures :once cook.postgres/with-pg-db)
+(use-fixtures :once cook.test.postgres/with-pg-db)
 
 ;;; This namespace contains a simulator for cook scheduler that accepts a trace file
 ;;; (defined later on) of jobs to "run" through the simulation as well as how much

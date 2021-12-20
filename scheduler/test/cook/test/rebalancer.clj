@@ -20,7 +20,7 @@
             [cook.cache :as ccache]
             [cook.queries :as queries]
             [cook.quota :as quota]
-            [cook.postgres]
+            [cook.test.postgres]
             [cook.rebalancer :as rebalancer :refer [->State]]
             [cook.scheduler.dru :as dru]
             [cook.scheduler.scheduler :as sched]
@@ -29,7 +29,7 @@
             [cook.tools :as util]
             [datomic.api :as d :refer [q]]))
 
-(use-fixtures :once cook.postgres/with-pg-db)
+(use-fixtures :once cook.test.postgres/with-pg-db)
 
 (defn create-running-job
   [conn host & args]

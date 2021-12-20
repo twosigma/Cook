@@ -20,7 +20,7 @@
             [clojure.core.cache :as cache]
             [clojure.test :refer :all]
             [cook.config :as config]
-            [cook.postgres]
+            [cook.test.postgres]
             [cook.queries :as queries]
             [cook.test.testutil :as testutil
              :refer [create-dummy-group create-dummy-instance create-dummy-job create-dummy-job-with-instances create-pool restore-fresh-database!]]
@@ -31,7 +31,7 @@
            (java.util Date)
            (org.joda.time DateTime)))
 
-(use-fixtures :once cook.postgres/with-pg-db)
+(use-fixtures :once cook.test.postgres/with-pg-db)
 
 (deftest test-total-resources-of-jobs
   (let [uri "datomic:mem://test-total-resources-of-jobs"

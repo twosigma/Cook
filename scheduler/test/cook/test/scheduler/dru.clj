@@ -15,7 +15,7 @@
 ;;
 (ns cook.test.scheduler.dru
   (:require [clojure.test :refer :all]
-            [cook.postgres]
+            [cook.test.postgres]
             [cook.scheduler.dru :as dru]
             [cook.scheduler.share :as share]
             [cook.test.testutil :refer [create-dummy-instance create-dummy-job restore-fresh-database!]]
@@ -23,7 +23,7 @@
             [datomic.api :as d :refer [db q]]
             [plumbing.core :refer [map-vals]]))
 
-(use-fixtures :once cook.postgres/with-pg-db)
+(use-fixtures :once cook.test.postgres/with-pg-db)
 
 (deftest test-compute-task-scored-task-pairs
   (testing "return empty set on input empty set"

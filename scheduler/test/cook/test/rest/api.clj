@@ -30,7 +30,7 @@
             [cook.plugins.definitions :refer [FileUrlGenerator JobRouter]]
             [cook.plugins.file :as file-plugin]
             [cook.plugins.submission :as submission-plugin]
-            [cook.postgres]
+            [cook.test.postgres]
             [cook.quota :as quota]
             [cook.rate-limit :as rate-limit]
             [cook.rest.api :as api]
@@ -54,7 +54,7 @@
            (javax.servlet ServletOutputStream ServletResponse)
            (org.apache.curator.test TestingServer)))
 
-(use-fixtures :once cook.postgres/with-pg-db)
+(use-fixtures :once cook.test.postgres/with-pg-db)
 
 (defn kw-keys
   [m]

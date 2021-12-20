@@ -16,7 +16,7 @@
 (ns cook.test.jobclient.jobclient
   (:require [clojure.core.async :as async]
             [clojure.test :refer :all]
-            [cook.postgres]
+            [cook.test.postgres]
             [cook.test.testutil :refer [create-dummy-instance restore-fresh-database! setup with-test-server]]
             [datomic.api :as d])
   (:import (com.twosigma.cook.jobclient FetchableURI FetchableURI$Builder Group Group$Builder Group$Status GroupListener HostPlacement
@@ -24,7 +24,7 @@
                                         JobListener StragglerHandling StragglerHandling$Builder StragglerHandling$Type)
            (java.util ArrayList UUID)))
 
-(use-fixtures :once cook.postgres/with-pg-db)
+(use-fixtures :once cook.test.postgres/with-pg-db)
 
 (def port 3001)
 

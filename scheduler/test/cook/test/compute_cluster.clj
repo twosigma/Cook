@@ -17,7 +17,7 @@
   (:require [clojure.test :refer :all]
             [cook.compute-cluster :refer :all]
             [cook.config :as config]
-            [cook.postgres]
+            [cook.test.postgres]
             [cook.test.testutil :refer [create-dummy-job-with-instances
                                         restore-fresh-database!
                                         setup]]
@@ -26,7 +26,7 @@
             [plumbing.core :refer [map-vals map-from-vals]])
   (:import (clojure.lang ExceptionInfo)))
 
-(use-fixtures :once cook.postgres/with-pg-db)
+(use-fixtures :once cook.test.postgres/with-pg-db)
 
 (deftest test-datomic-entity-conversion
   (let [config {:name "name"

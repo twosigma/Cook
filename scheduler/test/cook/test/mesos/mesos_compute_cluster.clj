@@ -6,7 +6,7 @@
             [cook.mesos.heartbeat :as heartbeat]
             [cook.mesos.mesos-compute-cluster :as mcc]
             [cook.mesos.sandbox :as sandbox]
-            [cook.postgres]
+            [cook.test.postgres]
             [cook.scheduler.scheduler :as sched]
             [cook.test.testutil :as testutil :refer [create-dummy-instance create-dummy-job]]
             [datomic.api :as d]
@@ -16,7 +16,7 @@
   (:import (java.util.concurrent CountDownLatch TimeUnit)
            (org.apache.mesos Protos$TaskStatus$Reason)))
 
-(use-fixtures :once cook.postgres/with-pg-db)
+(use-fixtures :once cook.test.postgres/with-pg-db)
 
 (deftest test-in-order-status-update-processing
   (let [status-store (atom {})

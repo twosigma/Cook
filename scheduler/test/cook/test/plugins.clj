@@ -20,12 +20,12 @@
             [cook.config :as config]
             [cook.plugins.definitions :as chd]
             [cook.plugins.launch :as launch-plugin]
-            [cook.postgres]
+            [cook.test.postgres]
             [cook.test.testutil :as testutil :refer [create-dummy-job restore-fresh-database!]]
             [cook.tools :as util]
             [datomic.api :as d]))
 
-(use-fixtures :once cook.postgres/with-pg-db)
+(use-fixtures :once cook.test.postgres/with-pg-db)
 
 (deftest test-aged-out?
   (with-redefs

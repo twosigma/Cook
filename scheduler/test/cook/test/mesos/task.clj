@@ -5,14 +5,14 @@
             [clojure.test :refer :all]
             [cook.compute-cluster :as cc]
             [cook.mesos.task :as task]
-            [cook.postgres]
+            [cook.test.postgres]
             [cook.scheduler.offer :as offer]
             [cook.test.testutil :as tu]
             [datomic.api :as d]
             [mesomatic.types :as mtypes])
   (:import (java.util UUID)))
 
-(use-fixtures :once cook.postgres/with-pg-db)
+(use-fixtures :once cook.test.postgres/with-pg-db)
 
 (deftest test-resources-by-role
   (let [

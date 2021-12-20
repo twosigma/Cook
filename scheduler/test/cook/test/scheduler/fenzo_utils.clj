@@ -15,7 +15,7 @@
 ;;
 (ns cook.test.scheduler.fenzo-utils
   (:require [clojure.test :refer :all]
-            [cook.postgres]
+            [cook.test.postgres]
             [cook.scheduler.fenzo-utils :as fenzo]
             [cook.scheduler.scheduler :as scheduler]
             [cook.test.testutil :refer [create-dummy-job restore-fresh-database!]]
@@ -23,7 +23,7 @@
             [datomic.api :as d])
   (:import (com.netflix.fenzo AssignmentFailure ConstraintFailure SimpleAssignmentResult VMResource)))
 
-(use-fixtures :once cook.postgres/with-pg-db)
+(use-fixtures :once cook.test.postgres/with-pg-db)
 
 ;; Fenzo is aware of other resources as well; just limiting it to ones
 ;; Cook will usually encounter
