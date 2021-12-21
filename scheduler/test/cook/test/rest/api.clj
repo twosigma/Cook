@@ -429,7 +429,7 @@
             (is (str/includes? (:cook.rest.api/error resp) "a"))
             (is (= 400 (:status resp))))))
       (testing "valid constraints"
-        (let [job (assoc (basic-job) "constraints" [["aa" "EQUALS" "bb"]])
+        (let [job (assoc (basic-job) "constraints" [["aa" "EQUALS" "will-not-get-scheduled"]])
               resp (h {:request-method :post
                        :scheme :http
                        :uri "/rawscheduler"

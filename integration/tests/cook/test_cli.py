@@ -490,7 +490,7 @@ if __name__ == '__main__':
         name = f'{self.current_name()}_{util.make_temporal_uuid()}'
 
         # Submit a job that will never run
-        raw_job = {'command': 'ls', 'name': name, 'constraints': [['HOSTNAME', 'EQUALS', 'will not get scheduled']]}
+        raw_job = {'command': 'ls', 'name': name, 'constraints': [['HOSTNAME', 'EQUALS', 'will-not-get-scheduled']]}
         cp, uuids = cli.submit(stdin=cli.encode(json.dumps(raw_job)), cook_url=self.cook_url, submit_flags='--raw')
         self.assertEqual(0, cp.returncode, cp.stderr)
         user = util.get_user(self.cook_url, uuids[0])
@@ -743,7 +743,7 @@ if __name__ == '__main__':
         self.assertIn('; bash', stdout)
 
     def test_ssh_no_instances(self):
-        raw_job = {'command': 'ls', 'constraints': [['HOSTNAME', 'EQUALS', 'will not get scheduled']]}
+        raw_job = {'command': 'ls', 'constraints': [['HOSTNAME', 'EQUALS', 'will-not-get-scheduled']]}
         cp, uuids = cli.submit(stdin=cli.encode(json.dumps(raw_job)), cook_url=self.cook_url, submit_flags='--raw')
         self.assertEqual(0, cp.returncode, cp.stderr)
         try:
@@ -1955,7 +1955,7 @@ if __name__ == '__main__':
         self.assertIn('No matching data found', cli.decode(cp.stderr))
 
     def test_cat_job_with_no_instances(self):
-        raw_job = {'command': 'ls', 'constraints': [['HOSTNAME', 'EQUALS', 'will not get scheduled']]}
+        raw_job = {'command': 'ls', 'constraints': [['HOSTNAME', 'EQUALS', 'will-not-get-scheduled']]}
         cp, uuids = cli.submit(stdin=cli.encode(json.dumps(raw_job)), cook_url=self.cook_url, submit_flags='--raw')
         self.assertEqual(0, cp.returncode, cp.stderr)
         waiting_uuid = uuids[0]
