@@ -68,6 +68,8 @@
             [ring.middleware.format-params :as format-params]
             [ring.util.response :as res]
             [schema.core :as s]
+            [schema.macros :as macros]
+            [schema.spec.leaf :as leaf]
             [swiss.arrows :refer :all])
   (:import (clojure.lang Atom Var)
            (com.codahale.metrics ScheduledReporter)
@@ -79,7 +81,7 @@
            (org.apache.curator.framework.recipes.leader LeaderSelector)
            (org.apache.curator.test TestingServer)
            (org.joda.time DateTime Minutes)
-           (schema.core OptionalKey)))
+           (schema.core OptionalKey Schema)))
 
 ;; We use Liberator to handle requests on our REST endpoints.
 ;; The control flow among Liberator's handler functions is described here:
@@ -254,6 +256,9 @@
   [s]
   (re-matches #"[\.a-zA-Z0-9_-]{1,128}" s))
 
+(def valid-k8s-pod-label-value-regex
+  #"[a-zA-Z0-9][\.a-zA-Z0-9_-]{0,61}[a-zA-Z0-9]")
+
 (defn valid-k8s-pod-label-value?
   "Returns true if s contains only '.', '_', '-' or any word or
   number characters, has length at least 2 and at most 63, and
@@ -261,7 +266,36 @@
   on the validation for k8s pod label values:
   https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#syntax-and-character-set"
   [s]
-  (re-matches #"[a-zA-Z0-9][\.a-zA-Z0-9_-]{0,61}[a-zA-Z0-9]" s))
+  (re-matches valid-k8s-pod-label-value-regex s))
+
+(defn valid-job-label-value?
+  "If the label has the (:add-job-label-to-pod-prefix (config/kubernetes)) prefix, then we check that
+  the value is a valid-k8s-pod-label-value?"
+  [[label value]]
+  (if-let [add-job-label-to-pod-prefix (:add-job-label-to-pod-prefix (config/kubernetes))]
+    (or
+      (not (str/starts-with? label add-job-label-to-pod-prefix))
+      (valid-k8s-pod-label-value? value))
+    true))
+
+(defn validate-job-labels
+  "Given job labels, return an error message if they are not valid"
+  [job-labels]
+  (if-not (map? job-labels)
+    (str job-labels " is not a map")
+    (let [invalid-job-labels (vec (filter #(not (valid-job-label-value? %)) job-labels))]
+      (if-not (empty? invalid-job-labels)
+        (str "The following job labels have the pod prefix `" (:add-job-label-to-pod-prefix (config/kubernetes))
+             "` but don't match the regex " valid-k8s-pod-label-value-regex ": " invalid-job-labels)))))
+
+(defrecord JobLabelsSchema []
+  Schema
+  (spec [this] (leaf/leaf-spec
+                 (fn [value]
+                   (when-let [error (macros/try-catchall (validate-job-labels value) (catch e# 'throws?))]
+                     (macros/validation-error this value nil error)))))
+  (explain [this] (str "Labels with keys starting with " (:add-job-label-to-pod-prefix (config/kubernetes))
+                       " must have values that match " valid-k8s-pod-label-value-regex)))
 
 (def Application
   "Schema for the application a job corresponds to"
@@ -315,7 +349,7 @@
    (s/optional-key :uris) [Uri]
    (s/optional-key :ports) (s/pred #(not (neg? %)) 'nonnegative?)
    (s/optional-key :env) {NonEmptyString s/Str}
-   (s/optional-key :labels) {NonEmptyString s/Str}
+   (s/optional-key :labels) (JobLabelsSchema.)
    (s/optional-key :constraints) [Constraint]
    (s/optional-key :checkpoint) Checkpoint
    (s/optional-key :container) Container
