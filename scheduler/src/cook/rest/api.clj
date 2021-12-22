@@ -313,12 +313,12 @@
 
 (def Constraint
   "Schema for user defined job host constraint"
-  [(s/one NonEmptyString "attribute")
+  [(s/one (s/constrained s/Str valid-k8s-pod-label-value? 'valid-k8s-pod-label-value?) "attribute")
    (s/one (s/pred #(contains? (set (map name constraint-operators))
                               (str/lower-case %))
                   'constraint-operator-exists?)
           "operator")
-   (s/one NonEmptyString "pattern")])
+   (s/one (s/constrained s/Str valid-k8s-pod-label-value? 'valid-k8s-pod-label-value?) "pattern")])
 
 (s/defschema JobName
   (s/both s/Str (s/both s/Str (s/pred max-128-characters-and-alphanum? 'max-128-characters-and-alphanum?))))

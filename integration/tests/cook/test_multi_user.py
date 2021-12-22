@@ -860,7 +860,7 @@ class MultiUserCookTest(util.CookTest):
     def test_queue_endpoint(self):
         bad_constraints = [["HOSTNAME",
                            "EQUALS",
-                           "won't get scheduled"]]
+                           "will-not-get-scheduled"]]
         group = {'uuid': str(util.make_temporal_uuid())}
         uuid, resp = util.submit_job(self.cook_url, command='sleep 30', group=group['uuid'], constraints=bad_constraints)
         self.assertEqual(201, resp.status_code, resp.content)
