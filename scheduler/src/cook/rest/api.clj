@@ -3254,7 +3254,7 @@
    (s/optional-key :state-locked?) s/Bool
    ; Key used to look up the configuration template
    :template NonEmptyString
-   (s/optional-key :location) s/Str
+   (s/optional-key :location) (s/maybe s/Str)
    (s/optional-key :features) [{:key s/Str :value s/Str}]})
 
 (defn compute-cluster-exists?
