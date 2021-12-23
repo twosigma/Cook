@@ -3253,7 +3253,9 @@
    ; The state can't be modified when it's locked
    (s/optional-key :state-locked?) s/Bool
    ; Key used to look up the configuration template
-   :template NonEmptyString})
+   :template NonEmptyString
+   (s/optional-key :location) (s/maybe s/Str)
+   (s/optional-key :features) [{:key s/Str :value s/Str}]})
 
 (defn compute-cluster-exists?
   [conn name]

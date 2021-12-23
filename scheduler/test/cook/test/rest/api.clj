@@ -2708,7 +2708,9 @@
                                    "ca-cert" "test-ca-cert"
                                    "name" name
                                    "state" "running"
-                                   "template" "test-template"}
+                                   "template" "test-template"
+                                   "location" nil
+                                   "features" []}
                      :request-method :post
                      :scheme :http
                      :uri endpoint}]
@@ -2758,12 +2760,16 @@
                                          :ca-cert "ca-cert-1"
                                          :name "name-1"
                                          :state "running"
-                                         :template "template-1"}
+                                         :template "template-1"
+                                         :location nil
+                                         :features []}
                                :pending {:base-path "base-path-1"
                                          :ca-cert "ca-cert-1"
                                          :name "name-1"
                                          :state "running"
-                                         :template "template-1"}}]]
+                                         :template "template-1"
+                                         :location nil
+                                         :features []}}]]
         (with-redefs [api/read-compute-clusters (constantly compute-clusters)]
           (testing "successful query"
             (let [{:keys [status] :as response} (handler request)
