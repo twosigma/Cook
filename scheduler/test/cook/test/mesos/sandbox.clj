@@ -19,11 +19,14 @@
             [clojure.string :as str]
             [clojure.test :refer :all]
             [cook.mesos.sandbox :as sandbox]
+            [cook.test.postgres]
             [cook.test.testutil :as tu]
             [datomic.api :as d]
             [metrics.counters :as counters]
             [plumbing.core :as pc])
   (:import (java.util.concurrent CountDownLatch TimeUnit)))
+
+(use-fixtures :once cook.test.postgres/with-pg-db)
 
 (deftest test-agent->task-id->sandbox
   (let [agent->task-id->value (fn [an-agent task-id] (get @an-agent task-id))

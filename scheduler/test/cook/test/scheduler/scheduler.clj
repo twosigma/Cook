@@ -34,6 +34,7 @@
             [cook.plugins.definitions :as pd]
             [cook.plugins.launch :as launch-plugin]
             [cook.pool :as pool]
+            [cook.test.postgres]
             [cook.progress :as progress]
             [cook.quota :as quota]
             [cook.rate-limit :as rate-limit]
@@ -56,6 +57,9 @@
            (cook.compute_cluster ComputeCluster)
            (java.util UUID)
            (org.mockito Mockito)))
+
+
+(use-fixtures :once cook.test.postgres/with-pg-db)
 
 (def datomic-uri "datomic:mem://test-mesos-jobs")
 

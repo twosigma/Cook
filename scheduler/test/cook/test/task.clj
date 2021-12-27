@@ -1,8 +1,11 @@
 (ns cook.test.task
   (:require [clojure.test :refer :all]
+            [cook.test.postgres]
             [cook.task :as task]
             [cook.test.testutil :refer [restore-fresh-database!
                                         setup]]))
+
+(use-fixtures :once cook.test.postgres/with-pg-db)
 
 (deftest test-build-executor-environment
   (testing "default values"

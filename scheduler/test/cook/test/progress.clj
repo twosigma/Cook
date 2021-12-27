@@ -18,10 +18,13 @@
   (:require [clojure.core.async :as async]
             [clojure.core.cache :as cache]
             [clojure.test :refer :all]
+            [cook.test.postgres]
             [cook.progress :as progress]
             [cook.test.testutil :refer [create-dummy-instance create-dummy-job poll-until restore-fresh-database!]]
             [datomic.api :as d]
             [plumbing.core :as pc]))
+
+(use-fixtures :once cook.test.postgres/with-pg-db)
 
 (defn- progress-entry
   [message percent sequence & {:keys [instance-id]}]

@@ -6,6 +6,7 @@
             [cook.kubernetes.api :as api]
             [cook.kubernetes.compute-cluster :as kcc]
             [cook.mesos.task :as task]
+            [cook.test.postgres]
             [cook.scheduler.scheduler :as sched]
             [cook.test.testutil :as tu]
             [datomic.api :as d])
@@ -14,6 +15,8 @@
            (java.util.concurrent Executors)
            (java.util.concurrent.locks ReentrantLock)
            (java.util UUID)))
+
+(use-fixtures :once cook.test.postgres/with-pg-db)
 
 (deftest test-get-or-create-cluster-entity-id
   (let [conn (tu/restore-fresh-database! "datomic:mem://test-get-or-create-cluster-entity-id")]

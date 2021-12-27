@@ -16,9 +16,12 @@
 (ns cook.test.scheduler.share
   (:require [clojure.test :refer :all]
             [cook.config :as config]
+            [cook.test.postgres]
             [cook.scheduler.share :as share]
             [cook.test.testutil :refer [create-pool restore-fresh-database!]]
             [metatransaction.core :as mt]))
+
+(use-fixtures :once cook.test.postgres/with-pg-db)
 
 (deftest test'
   (let [uri "datomic:mem://test"

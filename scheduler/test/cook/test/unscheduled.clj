@@ -15,12 +15,15 @@
 ;;
 (ns cook.test.unscheduled
   (:require [clojure.test :refer :all]
+            [cook.test.postgres]
             [cook.quota :as quota]
             [cook.rate-limit :as rate-limit]
             [cook.test.testutil :refer [create-dummy-instance create-dummy-job restore-fresh-database! setup]]
             [cook.tools :as tools]
             [cook.unscheduled :as u]
             [datomic.api :as d]))
+
+(use-fixtures :once cook.test.postgres/with-pg-db)
 
 (defn resource-map->list
   [m]

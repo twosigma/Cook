@@ -1,8 +1,11 @@
 (ns cook.test.pool
   (:require [clojure.test :refer :all]
             [cook.config :as config]
-            [cook.pool :as pool])
+            [cook.pool :as pool]
+            [cook.test.postgres])
   (:import (clojure.lang ExceptionInfo)))
+
+(use-fixtures :once cook.test.postgres/with-pg-db)
 
 (deftest test-guard-invalid-default-pool
   (with-redefs [pool/all-pools (constantly [{:pool/name "foo"}])

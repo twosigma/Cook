@@ -16,11 +16,14 @@
 (ns cook.test.config-incremental
   (:require [clojure.test :refer :all]
             [cook.config-incremental :refer :all]
+            [cook.test.postgres]
             [cook.test.testutil :refer [restore-fresh-database!
                                         setup]]
             [plumbing.core :refer [map-from-keys]])
   (:import (java.util Random UUID)
            (java.math RoundingMode)))
+
+(use-fixtures :once cook.test.postgres/with-pg-db)
 
 (deftest test-incremental-config
   (setup)

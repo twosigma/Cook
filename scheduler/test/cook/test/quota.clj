@@ -17,9 +17,12 @@
   (:require [clojure.test :refer :all]
             [cook.config :as config]
             [cook.quota :as quota]
+            [cook.test.postgres]
             [cook.test.testutil :refer [create-pool restore-fresh-database!]]
             [datomic.api :as d]
             [metatransaction.core :as mt :refer [db]]))
+
+(use-fixtures :once cook.test.postgres/with-pg-db)
 
 (deftest test-quota
   (let [uri "datomic:mem://test"

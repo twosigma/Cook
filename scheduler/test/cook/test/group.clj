@@ -3,8 +3,11 @@
             [clj-time.core :as t]
             [clojure.test :refer :all]
             [cook.group :as group]
+            [cook.test.postgres]
             [cook.test.testutil :refer [create-dummy-group create-dummy-instance create-dummy-job restore-fresh-database!]]
             [datomic.api :as d :refer [db q]]))
+
+(use-fixtures :once cook.test.postgres/with-pg-db)
 
 (deftest test-find-stragglers
   (let [uri "datomic:mem://test-find-stragglers"
