@@ -73,15 +73,18 @@ class TestDynamicClusters(util.CookTest):
         command = "true"
         job_uuid, resp = util.submit_job(self.cook_url, command=command, container=container)
         self.assertEqual(201, resp.status_code, resp.content)
-        instance = util.wait_for_instance(self.cook_url, job_uuid)
-        message = repr(instance)
-        self.assertIsNotNone(instance['compute-cluster'], message)
-        instance_compute_cluster_name = instance['compute-cluster']['name']
-        self.assertEqual(test_cluster["name"], instance_compute_cluster_name, instance['compute-cluster'])
-        util.wait_for_instance(self.cook_url, job_uuid, status='success')
-        running_clusters = [cluster for cluster in util.compute_clusters(self.cook_url)['db-configs'] if cluster["state"] == "running"]
-        self.assertEqual(1, len(running_clusters), running_clusters)
-        self.assertEqual(test_cluster["name"], running_clusters[0]["name"], running_clusters)
+        try:
+            instance = util.wait_for_instance(self.cook_url, job_uuid)
+            message = repr(instance)
+            self.assertIsNotNone(instance['compute-cluster'], message)
+            instance_compute_cluster_name = instance['compute-cluster']['name']
+            self.assertEqual(test_cluster["name"], instance_compute_cluster_name, instance['compute-cluster'])
+            util.wait_for_instance(self.cook_url, job_uuid, status='success')
+            running_clusters = [cluster for cluster in util.compute_clusters(self.cook_url)['db-configs'] if cluster["state"] == "running"]
+            self.assertEqual(1, len(running_clusters), running_clusters)
+            self.assertEqual(test_cluster["name"], running_clusters[0]["name"], running_clusters)
+        finally:
+            util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
 
 
         with admin:
@@ -113,7 +116,11 @@ class TestDynamicClusters(util.CookTest):
         command = "true"
         job_uuid, resp = util.submit_job(self.cook_url, command=command, container=container)
         self.assertEqual(201, resp.status_code, resp.content)
-        util.wait_for_instance(self.cook_url, job_uuid, status='success')
+        try:
+            util.wait_for_instance(self.cook_url, job_uuid, status='success')
+        finally:
+            util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
+
 
         with admin:
             # Hard-delete test cluster
