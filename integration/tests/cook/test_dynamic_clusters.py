@@ -7,6 +7,7 @@ import pytest
 
 from tests.cook import util
 
+logger = logging.getLogger(__name__)
 
 @pytest.mark.prodskip
 @pytest.mark.timeout(util.DEFAULT_TEST_TIMEOUT_SECS)  # individual test timeout
@@ -36,6 +37,15 @@ class TestDynamicClusters(util.CookTest):
         admin = self.user_factory.admin()
         # Force all clusters to have state = deleted via the API
         clusters = [cluster for cluster in util.compute_clusters(self.cook_url)['db-configs'] if cluster["state"] == "running"]
+
+
+        def debug_update_compute_cluster(cook_url, cluster):
+
+            leader_url = util.scheduler_info_uncached(cook_url)['leader-url']
+            resp = util.session.get(f'{leader_url}/running?limit=10')
+            logger.info(f'xxxx running jobs during dynamic cluster test: {resp.json()}')
+            util.update_compute_cluster(cook_url, cluster)
+
         with admin:
             self.logger.info(f'Clusters {clusters}')
             # First state = draining
@@ -48,7 +58,7 @@ class TestDynamicClusters(util.CookTest):
             # Then state = deleted
             for cluster in clusters:
                 cluster["state"] = "deleted"
-                util.wait_until(lambda: util.update_compute_cluster(self.cook_url, cluster),
+                util.wait_until(lambda: debug_update_compute_cluster(self.cook_url, cluster),
                                 lambda x: 201 == x[1].status_code,
                                 300000, 5000)
             # Create at least one new cluster with a unique test name (using one of the existing cluster's IP and cert)
