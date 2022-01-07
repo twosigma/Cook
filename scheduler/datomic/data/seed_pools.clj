@@ -1,5 +1,6 @@
 (ns data.seed-pools
   (:require [cook.datomic :as datomic]
+            [cook.postgres :as pg]
             [cook.quota :as quota]
             [datomic.api :as d]))
 
@@ -27,6 +28,9 @@
 
 (try
   (let [conn (datomic/create-connection {:settings {:mesos-datomic-uri uri}})]
+    (->> (System/getenv "COOK_DB_TEST_PG_SCHEMA")
+         (pg/make-database-connection-dictionary-from-env-vars)
+         (reset! pg/saved-pg-config-dictionary))
     (println "Connected to Datomic:" conn)
     (create-pool conn "mesos-alpha" :pool.state/active)
     (create-pool conn "mesos-beta" :pool.state/inactive)
