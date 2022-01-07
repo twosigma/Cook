@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.58.10] - 2022-01-07
+### Added
+- Reject jobs with invalid job constraints at submission time, from @nsinkov
+- Reject jobs with invalid pob labels at submission time, from @nsinkov
+- Support for setting annotation to use all group IDs in Kubernetes, from @dposada
+- Ability for Cook to use a Postgres database, from @scrosby
+### Fixed
+- Add missing fields to compute cluster API validation, from @nsinkov
+
 ## [1.58.9] - 2021-12-09
 ### Added
 - Metrics of gaps in Kubernetes watches, from @dposada
