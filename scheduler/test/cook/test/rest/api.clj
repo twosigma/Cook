@@ -461,6 +461,16 @@
                          :authorization/user "test"
                          :body-params {"jobs" [job]}})]
             (is (= 201 (:status resp))))))
+      (testing "Valid pod label shortest non alpha"
+        (with-redefs [config/kubernetes (constantly {:add-job-label-to-pod-prefix "pod-label"})]
+          (let [job (assoc (basic-job) "labels" {"pod-label/test" "b.b"})
+                resp (h {:request-method :post
+                         :scheme :http
+                         :uri "/rawscheduler"
+                         :headers {"Content-Type" "application/json"}
+                         :authorization/user "test"
+                         :body-params {"jobs" [job]}})]
+            (is (= 201 (:status resp))))))
       (testing "valid constraints"
         (let [job (assoc (basic-job) "constraints" [["aa" "EQUALS" "will-not-get-scheduled"]])
               resp (h {:request-method :post
