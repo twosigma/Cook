@@ -431,6 +431,20 @@
             (is (str/includes? (:cook.rest.api/error resp) "don't match the regex"))
             (is (str/includes? (:cook.rest.api/error resp) "1234567890123456789012345678901234567890123456789012345678901234"))
             (is (= 400 (:status resp))))))
+      (testing "invalid pod label bad non alpha"
+        (with-redefs [config/kubernetes (constantly {:add-job-label-to-pod-prefix "pod-label"})]
+          (let [job (assoc (basic-job) "labels" {"pod-label/test" "b/b"})
+                resp (h {:request-method :post
+                         :scheme :http
+                         :uri "/rawscheduler"
+                         :headers {"Content-Type" "application/json"}
+                         :authorization/user "test"
+                         :body-params {"jobs" [job]}})]
+            (is (str/includes? (:cook.rest.api/error resp) "Value does not match schema"))
+            (is (str/includes? (:cook.rest.api/error resp) "pod prefix `pod-label`"))
+            (is (str/includes? (:cook.rest.api/error resp) "don't match the regex"))
+            (is (str/includes? (:cook.rest.api/error resp) "b/b"))
+            (is (= 400 (:status resp))))))
       (testing "Valid pod label one character"
         (with-redefs [config/kubernetes (constantly {:add-job-label-to-pod-prefix "pod-label"})]
           (let [job (assoc (basic-job) "labels" {"pod-label/test" "a"})
