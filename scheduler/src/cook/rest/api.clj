@@ -257,7 +257,7 @@
   (re-matches #"[\.a-zA-Z0-9_-]{1,128}" s))
 
 (def valid-k8s-pod-label-value-regex
-  #"[a-zA-Z0-9][\.a-zA-Z0-9_-]{0,61}[a-zA-Z0-9]")
+  #"([a-zA-Z0-9]{1,2}|[a-zA-Z0-9][\.a-zA-Z0-9_-]{0,61}[a-zA-Z0-9])?")
 
 (defn valid-k8s-pod-label-value?
   "Returns true if s contains only '.', '_', '-' or any word or
