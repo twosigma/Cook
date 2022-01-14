@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.58.11] - 2022-01-14
+### Fixed
+- Fix pod label value validation regex, from @nsinkov
+
 ## [1.58.10] - 2022-01-07
 ### Added
 - Reject jobs with invalid job constraints at submission time, from @nsinkov
