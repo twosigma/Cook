@@ -5,3 +5,7 @@
 DROP ROLE IF EXISTS cook_scheduler;
 CREATE ROLE cook_scheduler with password :'cook_user_password' LOGIN;
 CREATE DATABASE cook_local WITH owner cook_scheduler;
+
+-- Ensure that all schemas on this database are writeable by cook_scheduler user.
+ALTER DEFAULT PRIVILEGES GRANT ALL ON SCHEMAS TO cook_scheduler;
+ALTER DEFAULT PRIVILEGES GRANT ALL ON TABLES TO cook_scheduler;
