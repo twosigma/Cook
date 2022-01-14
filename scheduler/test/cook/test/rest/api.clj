@@ -385,7 +385,7 @@
 
       (testing "valid pod label"
         (with-redefs [config/kubernetes (constantly {:add-job-label-to-pod-prefix "pod-label"})]
-          (let [job (assoc (basic-job) "labels" {"pod-label/test" "12345"})
+          (let [job (assoc (basic-job) "labels" {"pod-label/test" "123.-_45"})
                 resp (h {:request-method :post
                          :scheme :http
                          :uri "/rawscheduler"
@@ -417,9 +417,9 @@
             (is (str/includes? (:cook.rest.api/error resp) "don't match the regex"))
             (is (str/includes? (:cook.rest.api/error resp) "-12345"))
             (is (= 400 (:status resp))))))
-      (testing "invalid pod label (too short)"
+      (testing "invalid pod label too long"
         (with-redefs [config/kubernetes (constantly {:add-job-label-to-pod-prefix "pod-label"})]
-          (let [job (assoc (basic-job) "labels" {"pod-label/test" "a"})
+          (let [job (assoc (basic-job) "labels" {"pod-label/test" "1234567890123456789012345678901234567890123456789012345678901234"})
                 resp (h {:request-method :post
                          :scheme :http
                          :uri "/rawscheduler"
@@ -429,8 +429,38 @@
             (is (str/includes? (:cook.rest.api/error resp) "Value does not match schema"))
             (is (str/includes? (:cook.rest.api/error resp) "pod prefix `pod-label`"))
             (is (str/includes? (:cook.rest.api/error resp) "don't match the regex"))
-            (is (str/includes? (:cook.rest.api/error resp) "a"))
+            (is (str/includes? (:cook.rest.api/error resp) "1234567890123456789012345678901234567890123456789012345678901234"))
             (is (= 400 (:status resp))))))
+      (testing "Valid pod label one character"
+        (with-redefs [config/kubernetes (constantly {:add-job-label-to-pod-prefix "pod-label"})]
+          (let [job (assoc (basic-job) "labels" {"pod-label/test" "a"})
+                resp (h {:request-method :post
+                         :scheme :http
+                         :uri "/rawscheduler"
+                         :headers {"Content-Type" "application/json"}
+                         :authorization/user "test"
+                         :body-params {"jobs" [job]}})]
+            (is (= 201 (:status resp))))))
+      (testing "Valid pod label max length"
+        (with-redefs [config/kubernetes (constantly {:add-job-label-to-pod-prefix "pod-label"})]
+          (let [job (assoc (basic-job) "labels" {"pod-label/test" "123456789012345678901234567890123456789012345678901234567890123"})
+                resp (h {:request-method :post
+                         :scheme :http
+                         :uri "/rawscheduler"
+                         :headers {"Content-Type" "application/json"}
+                         :authorization/user "test"
+                         :body-params {"jobs" [job]}})]
+            (is (= 201 (:status resp))))))
+      (testing "Valid pod label empty"
+        (with-redefs [config/kubernetes (constantly {:add-job-label-to-pod-prefix "pod-label"})]
+          (let [job (assoc (basic-job) "labels" {"pod-label/test" ""})
+                resp (h {:request-method :post
+                         :scheme :http
+                         :uri "/rawscheduler"
+                         :headers {"Content-Type" "application/json"}
+                         :authorization/user "test"
+                         :body-params {"jobs" [job]}})]
+            (is (= 201 (:status resp))))))
       (testing "valid constraints"
         (let [job (assoc (basic-job) "constraints" [["aa" "EQUALS" "will-not-get-scheduled"]])
               resp (h {:request-method :post
