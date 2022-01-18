@@ -132,7 +132,7 @@
                  [org.apache.curator/curator-test "2.7.1"
                  :exclusions [io.netty/netty
                               io.netty/netty-transport-native-epoll]]
-                 [com.mchange/c3p0 "0.9.5.2"] ; Connection pooling.
+                 [com.mchange/c3p0 "0.9.5.5"] ; Connection pooling.
                  [org.clojure/java.jdbc "0.7.12"]
 
                  ;; Dependency management
