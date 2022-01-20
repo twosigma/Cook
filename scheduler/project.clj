@@ -133,7 +133,7 @@
                  :exclusions [io.netty/netty
                               io.netty/netty-transport-native-epoll]]
                  [com.mchange/c3p0 "0.9.5.5"] ; Connection pooling.
-                 [org.clojure/java.jdbc "0.7.12"]
+                 [com.github.seancorfield/next.jdbc "1.2.761"]
 
                  ;; Dependency management
                  [mount "0.1.12"]

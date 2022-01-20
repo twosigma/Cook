@@ -1,8 +1,8 @@
 (ns cook.test.postgres
-  (:require [clojure.java.jdbc :as sql]
-            [clojure.test :refer :all]
+  (:require [clojure.test :refer :all]
             [clojure.tools.logging :as log]
-            [cook.postgres :as pg])
+            [cook.postgres :as pg]
+            [next.jdbc :as sql])
   (:import (java.lang Runtime)
            (java.util Random)))
 
