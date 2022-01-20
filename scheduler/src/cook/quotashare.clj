@@ -1,16 +1,17 @@
 (ns cook.quotashare
   (:require [clojure.set :as set]
             [clojure.tools.logging :as log]
-            [clojure.java.jdbc :as sql]
+            [clojure.walk :as walk]
             [cook.config :as config]
             [cook.datomic]
             [cook.pool :as pool]
+            [cook.postgres :as pg]
             [cook.rate-limit]
             [cook.rate-limit.generic :as rtg]
             [cook.queries :as queries]
             [datomic.api :as d]
             [mount.core :as mount]
-            [cook.postgres :as pg]
+            [next.jdbc :as sql]
             [plumbing.core :as pc]))
 
 (def default-user "default")
@@ -29,6 +30,7 @@
   "Returns a map from 'quotssharetype -> pool -> user -> resource -> amount.
   Convenience debugging method to show an entire entire resource limit map"
   [sql-result]
+  ;; BROKEN: NEEDS KEYWORDS HERE.
   (let [split-by-resource-name (fn [key] (net-map key :resource_name #(-> % first :amount)))
         split-by-user-name (fn [key] (net-map key :user_name split-by-resource-name))
         split-by-pool-name (fn [key] (net-map key :pool_name split-by-user-name))
@@ -39,12 +41,12 @@
 (defn query-quotashares-all
   "Do a query for everything in resource_limits"
   []
-  (sql/query (pg/pg-db) ["SELECT resource_limit_type, pool_name, user_name, resource_name, amount from resource_limits"]))
+  (sql/execute! (pg/pg-db) ["SELECT resource_limit_type, pool_name, user_name, resource_name, amount from resource_limits"]))
 
 (defn query-quota-pool-user
   "Do a query for the quota for a specific user and pool in resource_limits"
   [pool user]
-  (sql/query (pg/pg-db) ["SELECT resource_limit_type, pool_name, user_name, resource_name, amount from resource_limits WHERE resource_limit_type = 'quota' AND pool_name = ? and user_name = ?" pool user]))
+  (sql/execute! (pg/pg-db) ["SELECT resource_limit_type, pool_name, user_name, resource_name, amount from resource_limits WHERE resource_limit_type = 'quota' AND pool_name = ? and user_name = ?" pool user]))
 
 
 ; Some defaults to be effectively infinity if you don't configure quotas explicitly.
@@ -61,7 +63,7 @@
 
 (defn make-quotadict-from-val
   "Given a :resource_name and :amount keys in a sql result, map them into the quota keywords (:count, :gpus, etc.) and assoc onto the result."
-  [result {:keys [resource_name amount]}]
+  [result {:keys [:resource_limits/resource_name :resource_limits/amount] :as tuple}]
   (assoc result
     (case resource_name
       "count" :count
@@ -75,20 +77,20 @@
       amount)))
 
 (defn split-one-resource-type
-  "TGake either a sql result of quota or share and turn into a map
+  "Take either a sql result of quota or share and turn into a map
     pool -> user -> {:cpu ... :mem ... :count ... ...}"
   [quota-subset-sql-result]
   "Returns a map from 'pool -> user -> quota-map"
   (let [split-by-resource-name (fn [key] (reduce make-quotadict-from-val {} key))
-        split-by-user-name (fn [key] (net-map key :user_name split-by-resource-name))
-        split-by-pool-name (fn [key] (net-map key :pool_name split-by-user-name))]
+        split-by-user-name (fn [key] (net-map key :resource_limits/user_name split-by-resource-name))
+        split-by-pool-name (fn [key] (net-map key :resource_limits/pool_name split-by-user-name))]
     (split-by-pool-name quota-subset-sql-result)))
 
 (defn sql-result->quotamap
   "Given a sql result, extract just the 'quota' fields and turn into a map:
      pool -> user -> {:cpu ... :mem ... :count ... ...}"
   [sql-result]
-  (let [split-by-type (group-by :resource_limit_type sql-result)
+  (let [split-by-type (group-by :resource_limits/resource_limit_type sql-result)
         sqlresult-quota (get split-by-type "quota")]
     ; TODO: This should just cache all of the quota maps and refresh every 30 seconds into a global var for quota and share.
     (split-one-resource-type sqlresult-quota)))
