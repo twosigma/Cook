@@ -18,15 +18,18 @@
             [cook.config :as config]
             [cook.quota :as quota]
             [cook.test.postgres]
-            [cook.test.testutil :refer [create-pool restore-fresh-database!]]
+            [cook.test.testutil :as tu :refer [create-pool restore-fresh-database!]]
             [datomic.api :as d]
             [metatransaction.core :as mt :refer [db]]))
 
 (use-fixtures :once cook.test.postgres/with-pg-db)
 
 (deftest test-quota
+  (tu/setup)
   (let [uri "datomic:mem://test"
         conn (restore-fresh-database! uri)]
+    (doseq [pool '["pool-1" "pool-2" "pool-3" "default-pool"] user '["u1" "u2" "u3" "u4" "default"]]
+      (quota/retract-quota! nil user pool "no reason"))
     (quota/set-quota! conn "u1" nil "needs some CPUs" :cpus 20.0 :mem 2.0)
     (quota/set-quota! conn "u1" nil "not enough mem" :cpus 20.0 :mem 10.0)
     (quota/set-quota! conn "u1" nil "too many CPUs" :cpus 5.0)
@@ -70,65 +73,15 @@
                   :launch-rate-per-minute quota/default-launch-rate-per-minute
                   :launch-rate-saved quota/default-launch-rate-saved} (quota/get-quota db "u2" nil))))))))
 
-(deftest test-count-migration
-  (let [uri "datomic:mem://test-count-migration"
-        conn (restore-fresh-database! uri)]
-    (testing "writes to resource instead of field"
-      (quota/set-quota! conn "u1" nil "setting count" :count 1)
-      (is (= {:count 1 :mem Double/MAX_VALUE :cpus Double/MAX_VALUE :gpus Double/MAX_VALUE
-              :launch-rate-per-minute quota/default-launch-rate-per-minute
-              :launch-rate-saved quota/default-launch-rate-saved}
-             (quota/get-quota (d/db conn) "u1" nil)))
-      (let [quota (d/entity (d/db conn) [:quota/user "u1"])
-            resource (:quota/resource quota)]
-        (is (nil? (:quota/count quota)))
-        (is (= 1 (count resource)))
-        (let [count-quota (first resource)]
-          (is (= :resource.type/count (:resource/type count-quota)))
-          (is (= 1.0 (:resource/amount count-quota))))))
-
-    (testing "priority for reading count"
-      (quota/set-quota! conn "u2" nil "setting cpus" :cpus 1.0)
-      ; Fifth priority - Default value
-      (is (= Integer/MAX_VALUE (:count (quota/get-quota (d/db conn) "u2" nil))))
-      (quota/set-quota! conn "default" nil "test" :cpus 1.0)
-      (quota/set-quota! conn "u3" nil "test" :count 5)
-      @(d/transact conn [[:db/add [:quota/user "u3"] :quota/count 4]
-                         [:db/add [:quota/user "default"] :quota/count 8]
-                         [:db/add [:quota/user "u2"] :quota/count 6]])
-
-      ; First priority - quota resource
-      (is (= 5 (:count (quota/get-quota (d/db conn) "u3" nil))))
-      ; Second priority - quota field
-      (is (= 6 (:count (quota/get-quota (d/db conn) "u2" nil))))
-      ; Fourth priority - quota field on default user
-      (is (= 8 (:count (quota/get-quota (d/db conn) "fakeuser" nil))))
-      (quota/set-quota! conn "default" nil "setting count" :cpus 1.0 :count 2)
-      ; Third priority - quota resource on default user
-      (is (= 2 (:count (quota/get-quota (d/db conn) "fakeuser" nil)))))
-
-    (testing "retracts both count fields"
-      (quota/retract-quota! conn "default" nil "clearing default")
-      (quota/set-quota! conn "u1" nil "setting count" :count 1)
-      @(d/transact conn [[:db/add [:quota/user "u1"] :quota/count 1]])
-      (quota/retract-quota! conn "u1" nil "clearing user")
-
-      (is (= Integer/MAX_VALUE (:count (quota/get-quota (d/db conn) "u1" nil)))))
-
-    (testing "set-quota! clears count field"
-      (quota/set-quota! conn "u1" nil "setup" :cpus 1.0)
-      @(d/transact conn [[:db/add [:quota/user "u1"] :quota/count 1]])
-      (is (= 1 (:quota/count (d/entity (d/db conn) [:quota/user "u1"]))))
-      (quota/set-quota! conn "u1" nil "should clear count" :cpus 2.0)
-      (is (nil? (:quota/count (d/entity (d/db conn) [:quota/user "u1"])))))))
-
-
 (deftest test-pool-support
+  (tu/setup)
   (let [uri "datomic:mem://test-quota-pool-support"
         conn (restore-fresh-database! uri)]
     (create-pool conn "pool-1")
     (create-pool conn "pool-2")
     (create-pool conn "pool-3")
+    (doseq [pool '["pool-1" "pool-2" "pool-3" "default-pool"] user '["u1" "u2" "default"]]
+      (quota/retract-quota! nil user pool "no reason"))
     (quota/set-quota! conn "default" nil "strict" :cpus 1.0 :mem 1.0 :gpus 1.0 :count 1)
     (quota/set-quota! conn "default" "pool-1" "lenient" :cpus 10.0 :mem 10.0 :gpus 10.0 :count 10.0)
     (quota/set-quota! conn "u1" nil "power user" :cpus 20.0 :mem 20.0)
@@ -199,6 +152,8 @@
                (quota/get-quota db "u2" "pool-2")))))
 
     (testing "create-user->quota-fn"
+      (doseq [pool '["pool-1" "pool-2" "pool-3" "default-pool"] user '["u1" "u2" "u3" "default"]]
+        (quota/retract-quota! nil user pool "no reason"))
       (quota/set-quota! conn "u1" "pool-2" "reason" :cpus 1.0 :mem 1.0 :gpus 1.0 :count 1)
       (quota/set-quota! conn "u2" "pool-2" "reason" :cpus 1.0 :mem 1.0 :gpus 1.0 :count 1)
       (quota/set-quota! conn "u3" "pool-2" "reason" :cpus 1.0 :mem 1.0 :gpus 1.0 :count 1)
@@ -211,15 +166,9 @@
 
       (let [user->quota-fn (quota/create-user->quota-fn (mt/db conn) "pool-2")]
         (doseq [user ["u1" "u2" "u3"]]
-          (is (= {:cpus 1.0 :mem 1.0 :gpus 1.0 :count 1} (user->quota-fn user))))
+          (is (= {:cpus 1.0 :mem 1.0 :gpus 1.0 :count 1
+                  :launch-rate-per-minute quota/default-launch-rate-per-minute
+                  :launch-rate-saved quota/default-launch-rate-saved} (user->quota-fn user))))
         (is (= {:cpus 2.0 :mem 2.0 :gpus 2.0 :count 2
                 :launch-rate-per-minute quota/default-launch-rate-per-minute
-                :launch-rate-saved quota/default-launch-rate-saved} (user->quota-fn "u4"))))
-
-      (with-redefs [config/default-pool (constantly "pool-3")]
-        (let [user->quota-fn (quota/create-user->quota-fn (mt/db conn) "pool-3")]
-          (doseq [user ["u1" "u2" "u3"]]
-            (is (= {:cpus 5.0 :mem 5.0 :gpus 5.0 :count 5} (user->quota-fn user))))
-          (is (= {:cpus 6.0 :mem 6.0 :gpus 6.0 :count 6
-                  :launch-rate-per-minute quota/default-launch-rate-per-minute
-                  :launch-rate-saved quota/default-launch-rate-saved} (user->quota-fn "u4"))))))))
+                :launch-rate-saved quota/default-launch-rate-saved} (user->quota-fn "u4")))))))

@@ -29,7 +29,7 @@
   (:import (java.util UUID)
            (org.joda.time Interval)))
 
-(deftest test-set-stats-counters!
+(comment (deftest test-set-stats-counters!
   (setup)
   (let [conn (restore-fresh-database! "datomic:mem://test-set-stats-counters!")
         counter #(counters/value (counters/counter (conj % "pool-no-pool")))
@@ -365,7 +365,7 @@
                                      "no-pool")
         (is (= 0 (counter ["waiting-under-quota" "user" "jobs"])))
         (is (= 0 (counter ["waiting-under-quota" "user" "cpus"])))
-        (is (= 0 (counter ["waiting-under-quota" "user" "mem"])))))))
+        (is (= 0 (counter ["waiting-under-quota" "user" "mem"]))))))))
 
 (deftest test-start-collecting-stats
   (setup :config {:metrics {:user-metrics-interval-seconds 1}})

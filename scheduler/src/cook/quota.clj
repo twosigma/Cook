@@ -14,17 +14,15 @@
 ;; limitations under the License.
 ;;
 (ns cook.quota
-  (:require [clojure.set :as set]
-            [clojure.tools.logging :as log]
+  (:require [clojure.tools.logging :as log]
             [cook.config :as config]
             [cook.datomic]
             [cook.pool :as pool]
             [cook.rate-limit]
             [cook.rate-limit.generic :as rtg]
-            [cook.queries :as queries]
+            [cook.quotashare :as quotashare]
             [datomic.api :as d]
-            [mount.core :as mount]
-            [plumbing.core :as pc]))
+            [mount.core :as mount]))
 ;; This namespace is dangerously similar to cook.share (it was copied..)
 ;; it isn't obvious what the abstraction is, but there must be one.
 
@@ -65,7 +63,7 @@
       (get-quota-by-type db type default-user pool-name)
       Double/MAX_VALUE))
 
-(defn get-quota-extra
+(defn- get-quota-extra
   "Get quota for additional resource types"
   [db resource-type user pool-name default-value]
   (or (get-quota-by-type db resource-type user pool-name)
@@ -79,6 +77,10 @@
 (def default-launch-rate-saved 10000097.)
 (def default-launch-rate-per-minute 600013.)
 
+(defn defaultify-pool
+  [pool-name]
+  (or pool-name (config/default-pool) "default-pool"))
+
 (defn get-quota
   "Query a user's pre-defined quota.
 
@@ -86,29 +88,7 @@
    `default-user`. If there is NO `default-user` value for a specific type,
    return Double.MAX_VALUE."
   [db user pool-name]
-  (let [mesos-resource-quota (pc/map-from-keys (fn [type] (get-quota-by-type-or-default db type user pool-name))
-                                               (queries/get-all-resource-types db))
-        ;; As part of the pool migration, there might be a mix of quotas that have the count as an attribute or a resource.
-        ;; We prefer to read the resource if available and fall back to the attribute.
-        count-quota (or (get-quota-by-type db :resource.type/count user pool-name) ; prefer resource
-                        (:quota/count (d/entity db [:quota/user user])) ; then the field on the user
-                        (get-quota-by-type db :resource.type/count default-user pool-name) ; then the resource from the default user
-                        (:quota/count (d/entity db [:quota/user default-user])) ; then the field on the default user
-                        Integer/MAX_VALUE)
-        launch-rate-saved (get-quota-extra db
-                                                     :resource.type/launch-rate-saved
-                                                     user
-                                                     pool-name
-                                                     default-launch-rate-saved)
-        launch-rate-per-minute (get-quota-extra
-                                           db
-                                           :resource.type/launch-rate-per-minute
-                                           user
-                                           pool-name
-                                           default-launch-rate-per-minute)]
-    (assoc mesos-resource-quota :count (int count-quota)
-                                :launch-rate-saved launch-rate-saved
-                                :launch-rate-per-minute launch-rate-per-minute)))
+  (quotashare/get-quota-pool-user (defaultify-pool pool-name) user))
 
 (defn pool+user->token-key
   "Given a pool name and a user, create a key suitable for the per-user-per-pool ratelimit code"
@@ -155,26 +135,7 @@
 
 (defn retract-quota!
   [conn user pool-name reason]
-  (let [db (d/db conn)
-        pool-name' (pool/pool-name-or-default pool-name)
-        requesting-default-pool? (pool/requesting-default-pool? pool-name)
-        resources (d/q '[:find [?r ...]
-                         :in $ ?u ?pool-name ?requesting-default-pool
-                         :where
-                         [?s :quota/user ?u]
-                         [?s :quota/resource ?r]
-                         [(cook.pool/check-pool $ ?r :resource/pool ?pool-name
-                                                      ?requesting-default-pool)]]
-                       db user pool-name' requesting-default-pool?)
-        _ (doseq [r resources]
-            (maybe-flush-ratelimit pool-name user (:resource/type (d/entity db r))))
-        resource-txns (mapv #(conj [:db.fn/retractEntity] %) resources)
-        txns (conj resource-txns [:db/add [:quota/user user] :quota/reason reason])
-        count-field (:quota/count (d/entity db [:quota/user user]))]
-
-    @(d/transact conn (cond-> txns
-                        ; If the user has a count field, remove that as well.
-                        count-field (conj [:db/retract [:quota/user user] :quota/count count-field])))))
+  (quotashare/retract-quota! (defaultify-pool pool-name) user))
 
 (defn set-quota!
   "Set the quota for a user. Note that the type of resource must be in the
@@ -185,89 +146,8 @@
    or
    (set-quota! conn \"u1\" \"pool-a\" \"updating quota\" :cpus 20.0)
    etc."
-  [conn user pool-name reason & kvs]
-  (let [pool-name' (pool/pool-name-or-default pool-name)
-        requesting-default-pool? (pool/requesting-default-pool? pool-name)
-        db (d/db conn)]
-    (loop [[type amount & kvs] kvs
-           txns []]
-      (if (nil? amount)
-        @(d/transact conn txns)
-        (let [type (resource-type->datomic-resource-type type)
-              resource (-> (d/q '[:find ?r
-                                  :in $ ?user ?type ?pool-name ?requesting-default-pool
-                                  :where
-                                  [?e :quota/user ?user]
-                                  [?e :quota/resource ?r]
-                                  [?r :resource/type ?type]
-                                  [(cook.pool/check-pool $ ?r :resource/pool ?pool-name
-                                                               ?requesting-default-pool)]]
-                                db user type pool-name' requesting-default-pool?)
-                           ffirst)
-              txn (if resource
-                    [[:db/add resource :resource/amount (double amount)]]
-                    (let [resource (cond-> {:resource/type type
-                                            :resource/amount (double amount)}
-                                     pool-name (assoc :resource/pool [:pool/name pool-name]))]
-                      [{:db/id (d/tempid :db.part/user)
-                        :quota/user user
-                        :quota/resource [resource]}]))]
-          (maybe-flush-ratelimit pool-name user type)
-          (recur kvs (into txn txns)))))
-    (let [count-field (:quota/count (d/entity db [:quota/user user]))]
-      @(d/transact conn (cond-> [[:db/add [:quota/user user] :quota/reason reason]]
-                          ; If the user had a legacy count attribute, retract that as part of this update.
-                          count-field
-                          (conj [:db/retract [:quota/user user] :quota/count count-field]))))))
-
-(defn- retrieve-user->resource-quota-amount
-  "Returns the user->amount map for all quota resources specified for the given pool and resource type.
-   This function only supports the mechanism of storing quota counts as resources."
-  [db pool-name resource-type]
-  (let [type (resource-type->datomic-resource-type resource-type)
-        pool-name' (pool/pool-name-or-default pool-name)
-        requesting-default-pool (pool/requesting-default-pool? pool-name)
-        query '[:find ?u ?a
-                :in $ ?t ?pool-name ?requesting-default-pool
-                :where
-                [?e :quota/user ?u]
-                [?e :quota/resource ?r]
-                [?r :resource/type ?t]
-                [?r :resource/amount ?a]
-                [(cook.pool/check-pool $ ?r :resource/pool ?pool-name ?requesting-default-pool)]]]
-    (->> (d/q query db type pool-name' requesting-default-pool)
-      (into {}))))
-
-(defn- retrieve-user->quota-attribute-count
-  "Returns the user->count-quota for all count quota attributes specified on the user entity.
-   This function only supports the legacy mechanism of storing quota counts as attributes."
-  [db users]
-  (let [query '[:find ?u ?c
-                :in $ [?u ...]
-                :where
-                [?e :quota/user ?u]
-                [?e :quota/count ?c]]]
-    (->> (d/q query db users)
-      (into {}))))
-
-(defn- retrieve-user->count-quota
-  "Returns the map for user to count-quota for all the provided users.
-   It accounts for both the resource-based and attribute-based lookup of the count quota."
-  [db pool-name all-users default-quota]
-  (let [user->quota-resource-count (retrieve-user->resource-quota-amount db pool-name :count)
-        remaining-users (vec (set/difference (set all-users) (set (keys user->quota-resource-count))))
-        user->quota-attribute-count (when (seq remaining-users)
-                                      (retrieve-user->quota-attribute-count db remaining-users))]
-    (pc/map-from-keys
-      (fn [user]
-        (int
-          ; As part of the pool migration, there might be a mix of quotas that have the count as an attribute or a resource.
-          ; Hence, we prefer resource over the field on the user for count quota.
-          ; Refer to the implementation of `get-quota` for further details.
-          (or (get user->quota-resource-count user)
-              (get user->quota-attribute-count user)
-              default-quota)))
-      all-users)))
+  [conn user pool-name reason & {:as args}]
+  (quotashare/set-quota! (defaultify-pool pool-name) user args reason))
 
 (defn create-user->quota-fn
   "Returns a function which will return the quota same as `(get-quota db user)`
@@ -275,37 +155,14 @@
    and returns the `default-user` value if a user is not returned.
    This is usefully if the application will go over ALL users during processing"
   [db pool-name]
-  (let [default-type->quota (get-quota db default-user pool-name)
-        default-count-quota (get default-type->quota :count)
-        all-resource-types (queries/get-all-resource-types db)
-        type->user->quota (pc/map-from-keys #(retrieve-user->resource-quota-amount db pool-name %) all-resource-types)
-        all-quota-users (d/q '[:find [?user ...] :where [?q :quota/user ?user]] db) ;; returns a sequence without duplicates
-        user->count-quota (retrieve-user->count-quota db pool-name all-quota-users default-count-quota)
-        user->quota-cache (-> (pc/map-from-keys
-                                (fn [user]
-                                  (-> (pc/map-from-keys
-                                        #(get-in type->user->quota [% user] (get default-type->quota %))
-                                        all-resource-types)
-                                    (assoc :count (user->count-quota user))))
-                                all-quota-users)
-                            (assoc default-user default-type->quota))]
-    (fn user->quota
-      [user]
-      (or (get user->quota-cache user)
-          (get user->quota-cache default-user)))))
+  ; TODO: Cache should be a global cache we refresh every minute and use. See text in cook.quotsshare.
+  (let [cache (quotashare/sql-result->quotamap (quotashare/query-quotashares-all))]
+    (fn [user] (quotashare/get-quota-pool-user-from-cache cache (defaultify-pool pool-name) user))))
 
 (defn create-pool->user->quota-fn
   "Creates a function that takes a pool name, and returns an equivalent of user->quota-fn for each pool"
   [db]
-  (let [all-pools (map :pool/name (pool/all-pools db))
-        using-pools? (seq all-pools)]
-    (if using-pools?
-      (let [pool->quota-cache (pc/map-from-keys (fn [pool-name] (create-user->quota-fn db pool-name))
-                                                all-pools)]
-        (fn pool->user->quota
-          [pool]
-          (pool->quota-cache pool)))
-      (let [quota-cache (create-user->quota-fn db nil)]
-        (fn pool->user->quota
-          [pool]
-          quota-cache)))))
+  ; TODO: Cache should be a global cache we refresh every minute and use. See text in cook.quotsshare.
+  (let [cache (quotashare/sql-result->quotamap (quotashare/query-quotashares-all))]
+    (fn [pool-name]
+      (fn [user] (quotashare/get-quota-pool-user-from-cache cache (defaultify-pool pool-name) user)))))

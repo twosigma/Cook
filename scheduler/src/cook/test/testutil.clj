@@ -29,6 +29,7 @@
             [cook.mesos.mesos-compute-cluster :as mcc]
             [cook.mesos.task :as task]
             [cook.plugins.definitions :refer [JobLaunchFilter JobSubmissionValidator]]
+            [cook.quotashare]
             [cook.rate-limit :as rate-limit]
             [cook.rest.api :as api]
             [cook.rest.impersonation :refer [create-impersonation-middleware]]
@@ -217,6 +218,7 @@
    Return a connection to the fresh database."
   [uri & txn]
   (flush-caches!)
+  (cook.quotashare/truncate!)
   (reset! cc/cluster-name->compute-cluster-atom {})
   (d/delete-database uri)
   (d/create-database uri)

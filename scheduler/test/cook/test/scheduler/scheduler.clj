@@ -1028,7 +1028,7 @@
   (let [framework-id "my-original-framework-id"]
     (test-attr-equals-host-placement-constraint framework-id make-k8s-vm-offer)))
 
-(deftest ^:benchmark stress-test-constraint
+'(deftest ^:benchmark stress-test-constraint
   (setup)
   (let [framework-id #mesomatic.types.FrameworkID{:value "my-original-framework-id"}
         uri "datomic:mem://stress-test-constraint"
@@ -2277,6 +2277,7 @@
                         :pool/state :pool.state/active}
                        {:pool/name "old pool"
                         :pool/state :pool.state/inactive}])
+                    cook.quota/create-user->quota-fn (fn [_ _] (constantly {:fakeresource 12}))
                     sched/make-fenzo-state (fn [_ _ _])
                     sched/make-offer-handler (fn [_ _ _ _ _ _ _ _ trigger-chan _ _ pool-name _ _]
                                                (tools/chime-at-ch

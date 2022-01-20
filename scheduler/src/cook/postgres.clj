@@ -1,6 +1,7 @@
 (ns cook.postgres
   (:require [clojure.tools.logging :as log]
-            [cook.config :as config])
+            [cook.config :as config]
+            [next.jdbc :as sql])
   (:import (com.mchange.v2.c3p0 ComboPooledDataSource)))
 
 ; With unit tests, we need to create a new configuration dictionary in the test fixture.
@@ -50,7 +51,7 @@
       (.setPassword cpds password))
     (when user
       (.setUser cpds user))
-    {:datasource cpds}))
+    (sql/get-datasource cpds)))
 
 (defn get-pg-config
   "Return access information for a postgresql database suitable for database access.
