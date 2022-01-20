@@ -132,7 +132,8 @@
                  [org.apache.curator/curator-test "2.7.1"
                  :exclusions [io.netty/netty
                               io.netty/netty-transport-native-epoll]]
-                 [org.clojure/java.jdbc "0.7.12"]
+                 [com.mchange/c3p0 "0.9.5.5"] ; Connection pooling.
+                 [com.github.seancorfield/next.jdbc "1.2.761"]
 
                  ;; Dependency management
                  [mount "0.1.12"]
@@ -200,8 +201,7 @@
                    [twosigma/mesomatic "1.5.0-r4"]
                    ; Opensource JDBC
                    [org.postgresql/postgresql "42.2.18"] ; Use PG 13.2 features.
-                   [com.mchange/c3p0 "0.9.5.2"] ; Connection pooling.
-]}
+                   ]}
 
    :uberjar
    {:aot [cook.components]
