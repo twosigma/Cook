@@ -11,7 +11,7 @@
   db for each test."
   []
   (when-let [pg-dict @pg/c3p0-connection-pool]
-    (.close (:datasource pg-dict))
+    (.close pg-dict)
     (reset! pg/c3p0-connection-pool nil)))
 
 
