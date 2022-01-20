@@ -22,6 +22,7 @@
   Given a list of maps, a function for extracting a key from the maps, group the map
   by that key, then call another function on teh underlying map."
   [amap key-fn sub-fn]
+  (log/info "Net-map: " key-fn " -- " amap " ======>   " (group-by key-fn amap))
   (->> amap
       (group-by key-fn)
        (pc/map-vals sub-fn)))
@@ -64,6 +65,7 @@
 (defn make-quotadict-from-val
   "Given a :resource_name and :amount keys in a sql result, map them into the quota keywords (:count, :gpus, etc.) and assoc onto the result."
   [result {:keys [:resource_limits/resource_name :resource_limits/amount] :as tuple}]
+  (log/info "sql-one-key"  tuple)
   (assoc result
     (case resource_name
       "count" :count
@@ -90,6 +92,7 @@
   "Given a sql result, extract just the 'quota' fields and turn into a map:
      pool -> user -> {:cpu ... :mem ... :count ... ...}"
   [sql-result]
+  (log/info "sql-result"  sql-result)
   (let [split-by-type (group-by :resource_limits/resource_limit_type sql-result)
         sqlresult-quota (get split-by-type "quota")]
     ; TODO: This should just cache all of the quota maps and refresh every 30 seconds into a global var for quota and share.
