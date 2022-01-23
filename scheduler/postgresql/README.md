@@ -82,7 +82,7 @@ Then can connect to the postgres interactively with
 
 To run unit tests (assumes `PGPASSWORD` is already set). Note you need to set `COOK_DB_TEST_AUTOCREATE_SCHEMA` to the script for creating a new schema for schema autocreation.
 
-    (export COOK_DB_TEST_PG_USER=cook_scheduler COOK_DB_TEST_PG_SERVER=127.0.0.1 COOK_DB_TEST_AUTOCREATE_SCHEMA=/home/twosigma/source/Cook/scheduler/postgresql/bin/setup-new-schema.sh ; time lein test)
+    (unset COOK_DB_TEST_PG_SCHEMA; export COOK_DB_TEST_PG_USER=cook_scheduler COOK_DB_TEST_PG_SERVER=127.0.0.1 COOK_DB_TEST_AUTOCREATE_SCHEMA=/home/twosigma/source/Cook/scheduler/postgresql/bin/setup-new-schema.sh ; time lein test)
 
 
 Alternately, if you want to use the pre-existing cook_local persistent schema name, you can do;
