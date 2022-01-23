@@ -1,8 +1,8 @@
 (ns cook.test.postgres
-  (:require [clojure.java.jdbc :as sql]
-            [clojure.test :refer :all]
+  (:require [clojure.test :refer :all]
             [clojure.tools.logging :as log]
-            [cook.postgres :as pg])
+            [cook.postgres :as pg]
+            [next.jdbc :as sql])
   (:import (java.lang Runtime)
            (java.util Random)))
 
@@ -11,7 +11,7 @@
   db for each test."
   []
   (when-let [pg-dict @pg/c3p0-connection-pool]
-    (.close (:datasource pg-dict))
+    (.close pg-dict)
     (reset! pg/c3p0-connection-pool nil)))
 
 
