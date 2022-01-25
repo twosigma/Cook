@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.58.12] - 2022-01-24
+### Added
+- Initial Liquibase support for Cook for postgres configuration, from @scrosby
+### Changed
+- Switch from java.jdbc to next.jdbc, from @scrosby
+- Switch Cook to using c3p0 for database pooling, from @scrosby
+- Switch OSS test runtime from Minimesos to GKE, from @scrosby
+
 ## [1.58.11] - 2022-01-14
 ### Fixed
 - Fix pod label value validation regex, from @nsinkov
