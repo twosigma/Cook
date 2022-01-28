@@ -50,13 +50,10 @@ then
     docker rm ${NAME}
 fi
 
-COOK_NAME=cook-scheduler-${COOK_PORT}
+COOK_NAME="cook-scheduler-${COOK_PORT}.localhost"
 
 COOK_IP=$(docker inspect ${COOK_NAME} | jq -r '.[].NetworkSettings.IPAddress')
 COOK_URL="http://${COOK_IP}:${COOK_PORT}"
-
-MESOS_MASTER_NAME=$(docker ps -q -f name=minimesos-master)
-MESOS_MASTER_IP=$(docker inspect $MESOS_MASTER_NAME | jq -r '.[].NetworkSettings.IPAddress')
 
 COOK_MULTICLUSTER_ENV=""
 if [ -n "${COOK_MULTI_CLUSTER+1}" ];
@@ -80,7 +77,6 @@ docker create \
        --name=cook-integration \
        -e "COOK_SCHEDULER_URL=${COOK_URL}" \
        -e "USER=root" \
-       -e "COOK_MESOS_LEADER_URL=http://${MESOS_MASTER_IP}:5050" \
        -e "COOK_TEST_DOCKER_IMAGE=python:3.5.9-stretch" \
        -v "/tmp/cook-integration-mount:/tmp/cook-integration-mount" \
        ${COOK_MULTICLUSTER_ENV} \

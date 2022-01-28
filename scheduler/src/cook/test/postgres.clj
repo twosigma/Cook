@@ -11,8 +11,7 @@
   db for each test."
   []
   (when-let [pg-dict @pg/c3p0-connection-pool]
-    (.close pg-dict)
-    (reset! pg/c3p0-connection-pool nil)))
+    (.close pg-dict) (reset! pg/c3p0-connection-pool nil)))
 
 
 (defn setup-database
