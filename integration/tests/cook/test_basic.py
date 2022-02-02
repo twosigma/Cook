@@ -2081,7 +2081,7 @@ class CookTest(util.CookTest):
                                          command='python -m http.server 8080',
                                          ports=2,
                                          container={'type': 'DOCKER',
-                                                    'docker': {'image': 'python:3.6',
+                                                    'docker': {'image': 'python:3.9',
                                                                'network': 'BRIDGE',
                                                                'port-mapping': [{'host-port': 0,  # first assigned port
                                                                                  'container-port': 8080},

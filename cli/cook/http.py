@@ -68,7 +68,10 @@ def __delete(url, params=None):
 
 def __make_url(cluster, endpoint):
     """Given a cluster and an endpoint, returns the corresponding full URL"""
-    return urljoin(cluster['url'], endpoint)
+    url = cluster['url']
+    if not url.startswith("http"):
+        url = "http://" + url
+    return urljoin(url, endpoint)
 
 
 def post(cluster, endpoint, json_body):
