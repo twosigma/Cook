@@ -371,6 +371,7 @@ def retrieve_cook_url(varname='COOK_SCHEDULER_URL', value='http://localhost:1232
     return cook_url
 
 
+## Mesos only test.
 @functools.lru_cache()
 def retrieve_mesos_url(varname='MESOS_PORT', value='5050'):
     mesos_url = os.getenv('COOK_MESOS_LEADER_URL')
@@ -1486,34 +1487,9 @@ def using_kubernetes_default_shell():
     default_shell = ['/bin/sh', '-c']
     return k8s_custom_shell == default_shell
 
-
-def slave_cpus(mesos_url, hostname):
-    """Returns the cpus of the specified Mesos agent"""
-    slaves = get_mesos_slaves(mesos_url)['slaves']
-    # Here we need to use unreserved_resources because Mesos might only
-    # send offers for the unreserved (role = "*") portions of the agents.
-    slave_cpus = next(s['unreserved_resources']['cpus'] for s in slaves if s['hostname'] == hostname)
-    return slave_cpus
-
-
 def _pool_attribute_name(cook_url):
     pool_selection_plugin_config = settings(cook_url).get('plugins', {}).get('pool-selection', {})
     return pool_selection_plugin_config.get('attribute-name', None) or 'cook-pool'
-
-
-def slave_pool(cook_url, mesos_url, hostname):
-    """Returns the pool of the specified Mesos agent, or None if the agent doesn't have the attribute"""
-    slaves = get_mesos_slaves(mesos_url)['slaves']
-    attribute_name = _pool_attribute_name(cook_url)
-    pool = next(s.get('attributes', {}).get(attribute_name, None) for s in slaves if s['hostname'] == hostname)
-    return pool
-
-
-def max_mesos_slave_cpus(mesos_url):
-    """Returns the max cpus of all current Mesos agents"""
-    slaves = get_mesos_slaves(mesos_url)['slaves']
-    max_slave_cpus = max([s['resources']['cpus'] for s in slaves])
-    return max_slave_cpus
 
 
 @functools.lru_cache()
@@ -1540,14 +1516,6 @@ def get_kubernetes_compute_cluster():
         return kubernetes_compute_clusters[0]
     else:
         return None
-
-
-@functools.lru_cache()
-def mesos_node_pool(nodename):
-    cook_url = retrieve_cook_url()
-    mesos_url = retrieve_mesos_url()
-    node_pool = slave_pool(cook_url, mesos_url, nodename)
-    return node_pool
 
 
 def get_compute_cluster_type(compute_cluster_dictionary):
@@ -1638,18 +1606,6 @@ def valid_gpu_models_on_pool(pool_name):
     return valid_models_on_pool
 
 
-def mesos_hostnames_to_consider(cook_url, mesos_url):
-    """
-    Returns the hostnames in the default pool, or all hosts if the cluster is not using pools
-    """
-    slaves = get_mesos_slaves(mesos_url)['slaves']
-    pool = default_pool(cook_url)
-    attribute_name = _pool_attribute_name(cook_url)
-    slaves = [s for s in slaves if s['attributes'].get(attribute_name, None) == pool] if pool else slaves
-    num_to_log = min(len(slaves), 10)
-    logging.info(f'First {num_to_log} hosts to consider: {json.dumps(slaves[:num_to_log], indent=2)}')
-    return [s['hostname'] for s in slaves]
-
 
 def should_expect_sandbox_directory(instance):
     """
@@ -1726,13 +1682,6 @@ def _supported_isolators():
     except Exception:
         logger.exception(f'Unable to parse response as json: {slave_response.text}')
     return []
-
-
-def supports_mesos_containerizer_images():
-    if using_kubernetes():
-        return False
-    isolators = _supported_isolators()
-    return 'filesystem/linux' in isolators and 'docker/runtime' in isolators
 
 def get_compute_cluster_test_mode():
     return os.getenv("COOK_TEST_COMPUTE_CLUSTER_TYPE", "mesos")
