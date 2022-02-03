@@ -2266,6 +2266,7 @@
      :put! (partial create-jobs! conn)
      :post! (partial create-jobs! conn)
      :handle-exception (fn [{:keys [exception]}]
+                         (log/warn exception "Exception occurred while creating jobs" (.getMessage exception))
                          (if (datomic/transaction-timeout? exception)
                            {:error (str "Transaction timed out."
                                         " Your jobs may not have been created successfully."
