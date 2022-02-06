@@ -19,6 +19,8 @@
             [cook.config :as config]
             [cook.datomic]
             [cook.pool :as pool]
+            [cook.postgres :as pg]
+            [cook.quota-pg :as quota-pg]
             [cook.rate-limit]
             [cook.rate-limit.generic :as rtg]
             [cook.queries :as queries]
@@ -86,29 +88,34 @@
    `default-user`. If there is NO `default-user` value for a specific type,
    return Double.MAX_VALUE."
   [db user pool-name]
-  (let [mesos-resource-quota (pc/map-from-keys (fn [type] (get-quota-by-type-or-default db type user pool-name))
-                                               (queries/get-all-resource-types db))
-        ;; As part of the pool migration, there might be a mix of quotas that have the count as an attribute or a resource.
-        ;; We prefer to read the resource if available and fall back to the attribute.
-        count-quota (or (get-quota-by-type db :resource.type/count user pool-name) ; prefer resource
-                        (:quota/count (d/entity db [:quota/user user])) ; then the field on the user
-                        (get-quota-by-type db :resource.type/count default-user pool-name) ; then the resource from the default user
-                        (:quota/count (d/entity db [:quota/user default-user])) ; then the field on the default user
-                        Integer/MAX_VALUE)
-        launch-rate-saved (get-quota-extra db
-                                                     :resource.type/launch-rate-saved
-                                                     user
-                                                     pool-name
-                                                     default-launch-rate-saved)
-        launch-rate-per-minute (get-quota-extra
-                                           db
-                                           :resource.type/launch-rate-per-minute
-                                           user
-                                           pool-name
-                                           default-launch-rate-per-minute)]
-    (assoc mesos-resource-quota :count (int count-quota)
-                                :launch-rate-saved launch-rate-saved
-                                :launch-rate-per-minute launch-rate-per-minute)))
+  (pg/mirror-read
+    (str "get-quota " user " " pool-name)
+    (fn []
+      (let [mesos-resource-quota (pc/map-from-keys (fn [type] (get-quota-by-type-or-default db type user pool-name))
+                                                   (queries/get-all-resource-types db))
+            ;; As part of the pool migration, there might be a mix of quotas that have the count as an attribute or a resource.
+            ;; We prefer to read the resource if available and fall back to the attribute.
+            count-quota (or (get-quota-by-type db :resource.type/count user pool-name) ; prefer resource
+                            (:quota/count (d/entity db [:quota/user user])) ; then the field on the user
+                            (get-quota-by-type db :resource.type/count default-user pool-name) ; then the resource from the default user
+                            (:quota/count (d/entity db [:quota/user default-user])) ; then the field on the default user
+                            Integer/MAX_VALUE)
+            launch-rate-saved (get-quota-extra db
+                                               :resource.type/launch-rate-saved
+                                               user
+                                               pool-name
+                                               default-launch-rate-saved)
+            launch-rate-per-minute (get-quota-extra
+                                     db
+                                     :resource.type/launch-rate-per-minute
+                                     user
+                                     pool-name
+                                     default-launch-rate-per-minute)]
+        (assoc mesos-resource-quota :count (int count-quota)
+                                    :launch-rate-saved launch-rate-saved
+                                    :launch-rate-per-minute launch-rate-per-minute)))
+    (partial quota-pg/get-quota db user pool-name)
+    true))
 
 (defn pool+user->token-key
   "Given a pool name and a user, create a key suitable for the per-user-per-pool ratelimit code"
@@ -155,6 +162,10 @@
 
 (defn retract-quota!
   [conn user pool-name reason]
+  (pg/mirror-write
+    (str "retract-quota! " user " " pool-name)
+    (partial quota-pg/retract-quota! conn user pool-name)
+    true)
   (let [db (d/db conn)
         pool-name' (pool/pool-name-or-default pool-name)
         requesting-default-pool? (pool/requesting-default-pool? pool-name)
@@ -186,6 +197,10 @@
    (set-quota! conn \"u1\" \"pool-a\" \"updating quota\" :cpus 20.0)
    etc."
   [conn user pool-name reason & kvs]
+  (pg/mirror-write
+    (str "set-quota! " user " " pool-name " " kvs)
+    (partial apply quota-pg/set-quota! conn user pool-name reason kvs)
+    true)
   (let [pool-name' (pool/pool-name-or-default pool-name)
         requesting-default-pool? (pool/requesting-default-pool? pool-name)
         db (d/db conn)]
@@ -275,24 +290,33 @@
    and returns the `default-user` value if a user is not returned.
    This is usefully if the application will go over ALL users during processing"
   [db pool-name]
-  (let [default-type->quota (get-quota db default-user pool-name)
-        default-count-quota (get default-type->quota :count)
-        all-resource-types (queries/get-all-resource-types db)
-        type->user->quota (pc/map-from-keys #(retrieve-user->resource-quota-amount db pool-name %) all-resource-types)
-        all-quota-users (d/q '[:find [?user ...] :where [?q :quota/user ?user]] db) ;; returns a sequence without duplicates
-        user->count-quota (retrieve-user->count-quota db pool-name all-quota-users default-count-quota)
-        user->quota-cache (-> (pc/map-from-keys
-                                (fn [user]
-                                  (-> (pc/map-from-keys
-                                        #(get-in type->user->quota [% user] (get default-type->quota %))
-                                        all-resource-types)
-                                    (assoc :count (user->count-quota user))))
-                                all-quota-users)
-                            (assoc default-user default-type->quota))]
-    (fn user->quota
-      [user]
-      (or (get user->quota-cache user)
-          (get user->quota-cache default-user)))))
+  (let [datomic-fn (let [default-type->quota (get-quota db default-user pool-name)
+                         default-count-quota (get default-type->quota :count)
+                         all-resource-types (queries/get-all-resource-types db)
+                         type->user->quota (pc/map-from-keys #(retrieve-user->resource-quota-amount db pool-name %) all-resource-types)
+                         all-quota-users (d/q '[:find [?user ...] :where [?q :quota/user ?user]] db) ;; returns a sequence without duplicates
+                         user->count-quota (retrieve-user->count-quota db pool-name all-quota-users default-count-quota)
+                         user->quota-cache (-> (pc/map-from-keys
+                                                 (fn [user]
+                                                   (-> (pc/map-from-keys
+                                                         #(get-in type->user->quota [% user] (get default-type->quota %))
+                                                         all-resource-types)
+                                                     (assoc :count (user->count-quota user))))
+                                                 all-quota-users)
+                                             (assoc default-user default-type->quota))]
+                     (fn user->quota
+                       [user]
+                       (or (get user->quota-cache user)
+                           (get user->quota-cache default-user))))]
+    (if (pg/mirror-to-postgres?)
+      (let [pg-fn (quota-pg/create-user->quota-fn db pool-name)]
+        (fn [user]
+          (pg/mirror-read
+            (str "create-user->quota-fn " pool-name " " user)
+            (partial datomic-fn user)
+            (partial pg-fn user)
+            true)))
+      datomic-fn)))
 
 (defn create-pool->user->quota-fn
   "Creates a function that takes a pool name, and returns an equivalent of user->quota-fn for each pool"

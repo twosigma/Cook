@@ -92,3 +92,37 @@
     (when-not @c3p0-connection-pool
       (reset! c3p0-connection-pool (make-c3p0-datasource (get-pg-config))))
     @c3p0-connection-pool))
+
+(defn mirror-to-postgres?
+  []
+  (-> config/config :settings :pg-config :mirror-to-postgres?))
+
+(defn mirror-write
+  "Utility method to mirror a write to datomic with a write to postgres. Takes a description of what is being written and
+  a function to invoke that writes to postgres. The write to postgres only happens if mirror-to-postgres configuration is enabled"
+  [description postgres-write-fn log?]
+  (when (mirror-to-postgres?)
+    (postgres-write-fn)
+    (when log?
+      (log/info "Mirrored write of" description "to postgres"))))
+
+(defn- datomic-and-pg-values-equal?
+  [datomic-value postgres-value]
+  (if (map? datomic-value)
+    (clojure.set/subset? (set datomic-value) (set postgres-value))
+    (= datomic-value postgres-value)))
+
+(defn mirror-read
+  "Utility method to mirror a read from datomic with a read from postgres. Takes a description of what is being read and
+  functions to invoke that read from datomic and postgres. The read from postgres only happens if mirror-to-postgres configuration is enabled.
+  The postgres and datomic values are compared"
+  [description datomic-read-fn postgres-read-fn log?]
+  (if (mirror-to-postgres?)
+    (let [datomic-value (datomic-read-fn)
+          postgres-value (postgres-read-fn)]
+      (when log?
+        (log/info "Mirrored read of" description "from postgres"))
+      (when (not (datomic-and-pg-values-equal? datomic-value postgres-value))
+        (log/warn "Datomic and Postgres don't match on read of" description {:datomic-value datomic-value :postgres-value postgres-value}))
+      datomic-value)
+    (datomic-read-fn)))
