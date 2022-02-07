@@ -1,4 +1,4 @@
-FROM python:3.6
+FROM python:3.9
 
 WORKDIR /opt/cook/integration
 COPY requirements.txt /opt/cook/integration

@@ -2346,10 +2346,11 @@ if __name__ == '__main__':
                 self.assertEqual(1, len(notebook['cells']))
                 self.assertEqual('code', cell['cell_type'])
                 self.assertEqual(1, cell['execution_count'])
-                self.assertLessEqual(1, len(cell['outputs']))
+                self.assertLessEqual(2, len(cell['outputs']))
                 self.assertEqual('stdout', output['name'], ''.join(output['text']))
                 self.assertEqual('\n', output['text'][0])
-                self.assertIn('=== Job: ', output['text'][1])
+                self.logger.info("Log output: "+repr(notebook))
+                self.assertIn('=== Job: ', cell['outputs'][1]['text'][0])
             finally:
                 os.remove(executed_notebook_filename)
         finally:
