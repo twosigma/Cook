@@ -29,8 +29,8 @@
             [cook.mesos.mesos-compute-cluster :as mcc]
             [cook.mesos.task :as task]
             [cook.plugins.definitions :refer [JobLaunchFilter JobSubmissionValidator]]
-            [cook.quotashare]
             [cook.rate-limit :as rate-limit]
+            [cook.resource-limit]
             [cook.rest.api :as api]
             [cook.rest.impersonation :refer [create-impersonation-middleware]]
             [cook.scheduler.constraints :as constraints]
@@ -137,7 +137,7 @@
                          #'caches/task-ent->user-cache
                          #'caches/task->feature-vector-cache
                          #'caches/job-ent->user-cache
-                         #'cook.quota/per-user-per-pool-launch-rate-limiter
+                         #'cook.quota-pg/per-user-per-pool-launch-rate-limiter
                          #'caches/user->group-ids-cache
                          #'caches/recent-synthetic-pod-job-uuids
                          #'caches/pool-name->exists?-cache
@@ -145,9 +145,7 @@
                          #'caches/pool-name->db-id-cache
                          #'caches/user-and-pool-name->quota
                          #'caches/instance-uuid->job-uuid
-                         #'caches/job-uuid->job-map
-                         ;#'caches/resource-limits
-                         ))
+                         #'caches/job-uuid->job-map))
 
 (defn run-test-server-in-thread
   "Runs a minimal cook scheduler server for testing inside a thread. Note that it is not properly kerberized."
@@ -212,8 +210,7 @@
   (.invalidateAll caches/user-and-pool-name->quota)
   (.invalidateAll caches/instance-uuid->job-uuid)
   (.invalidateAll caches/job-uuid->job-map)
-  ;(.invalidateAll caches/resource-limits)
-  )
+  (cook.resource-limit/invalidate-resource-limits-cache!))
 
 (defn restore-fresh-database!
   "Completely delete all data, start a fresh database and apply transactions if
@@ -222,7 +219,7 @@
    Return a connection to the fresh database."
   [uri & txn]
   (flush-caches!)
-  (cook.quotashare/truncate!)
+  (cook.resource-limit/truncate!)
   (reset! cc/cluster-name->compute-cluster-atom {})
   (d/delete-database uri)
   (d/create-database uri)

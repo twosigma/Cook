@@ -3,7 +3,7 @@
             [cook.cache :as ccache]
             [cook.config :as config]
             [mount.core :as mount])
-  (:import (com.google.common.cache Cache CacheBuilder)
+  (:import (com.google.common.cache Cache CacheLoader CacheBuilder)
            (java.util.concurrent TimeUnit)))
 
 (defn new-cache [config]
@@ -22,14 +22,6 @@
     (.maximumSize (get-in config [:settings :passport :job-cache-set-size]))
     (.expireAfterAccess (get-in config [:settings :passport :job-cache-expiry-time-hours]) TimeUnit/HOURS)
     (.build)))
-
-;(defn resource-limit-cache [config]
-;  "Build a new cache for resource limits"
-;  (-> (CacheBuilder/newBuilder)
-;    (.maximumSize (or (get-in config [:settings :pg-config :resource-limit-cache-size]) 10000))
-;    (.expireAfterAccess (or (get-in config [:settings :pg-config :resource-limit-cache-expiry-time-seconds]) 30) TimeUnit/SECONDS)
-;    (.refreshAfterWrite (or (get-in config [:settings :pg-config :resource-limit-cache-refresh-time-seconds]) 10) TimeUnit/SECONDS)
-;    (.build)))
 
 (defn lookup-cache-datomic-entity!
   "Specialized function for caching where datomic entities are the key.
@@ -55,4 +47,3 @@
 (mount/defstate ^Cache user-and-pool-name->quota :start (new-cache config/config))
 (mount/defstate ^Cache instance-uuid->job-uuid :start (passport-cache config/config))
 (mount/defstate ^Cache job-uuid->job-map :start (passport-cache config/config))
-;(mount/defstate ^Cache resource-limits :start (resource-limit-cache config/config))

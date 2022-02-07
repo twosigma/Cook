@@ -144,9 +144,7 @@
                          #'caches/pool-name->db-id-cache
                          #'caches/user-and-pool-name->quota
                          #'caches/instance-uuid->job-uuid
-                         #'caches/job-uuid->job-map
-                         ;#'caches/resource-limits
-                         ))
+                         #'caches/job-uuid->job-map))
 
 (defn run-test-server-in-thread
   "Runs a minimal cook scheduler server for testing inside a thread. Note that it is not properly kerberized."
@@ -210,9 +208,7 @@
   (.invalidateAll caches/pool-name->db-id-cache)
   (.invalidateAll caches/user-and-pool-name->quota)
   (.invalidateAll caches/instance-uuid->job-uuid)
-  (.invalidateAll caches/job-uuid->job-map)
-  ;(.invalidateAll caches/resource-limits)
-  )
+  (.invalidateAll caches/job-uuid->job-map))
 
 (defn restore-fresh-database!
   "Completely delete all data, start a fresh database and apply transactions if

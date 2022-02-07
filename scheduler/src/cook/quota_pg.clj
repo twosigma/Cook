@@ -88,7 +88,6 @@
 (def ratelimit-quota-fields #{:resource.type/launch-rate-saved
                               :resource.type/launch-rate-per-minute})
 
-
 (defn maybe-flush-ratelimit
   "Look at the quota being updated (or retracted) and flush the rate limit
   if it's a rate-limit related quota"
@@ -102,7 +101,7 @@
 
 (defn retract-quota!
   [conn user pool-name reason]
-  (resource-limit/retract-quota! (defaultify-pool pool-name) user))
+  (resource-limit/retract-quota! (defaultify-pool pool-name) user reason))
 
 (defn set-quota!
   "Set the quota for a user. Note that the type of resource must be in the
@@ -122,14 +121,11 @@
    and returns the `default-user` value if a user is not returned.
    This is usefully if the application will go over ALL users during processing"
   [db pool-name]
-  ; TODO: Cache should be a global cache we refresh every minute and use. See text in cook.quotsshare.
-  (let [cache (resource-limit/sql-result->quotamap (resource-limit/get-all-resource-limits))]
-    (fn [user] (resource-limit/get-quota-pool-user-from-cache cache (defaultify-pool pool-name) user))))
+  (let [defaulted-pool-name (defaultify-pool pool-name)]
+    (fn [user] (resource-limit/get-quota-pool-user defaulted-pool-name user))))
 
 (defn create-pool->user->quota-fn
   "Creates a function that takes a pool name, and returns an equivalent of user->quota-fn for each pool"
   [db]
-  ; TODO: Cache should be a global cache we refresh every minute and use. See text in cook.quotsshare.
-  (let [cache (resource-limit/sql-result->quotamap (resource-limit/get-all-resource-limits))]
-    (fn [pool-name]
-      (fn [user] (resource-limit/get-quota-pool-user-from-cache cache (defaultify-pool pool-name) user)))))
+  (fn [pool-name]
+    (fn [user] (resource-limit/get-quota-pool-user (defaultify-pool pool-name) user))))
