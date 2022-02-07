@@ -218,7 +218,8 @@
                       "MESOS_DIRECTORY"
                       "MESOS_SANDBOX"
                       "SAMPLE_DEFAULT_ENV_KEY"
-                      "SIDECAR_WORKDIR"]
+                      "SIDECAR_WORKDIR"
+                      "USER"]
                      (->> container-env (map #(.getName %)) sort)))
               (is (= "/mnt/sandbox" (.getWorkingDir container)))
               (let [cook-sandbox-mount (->> container

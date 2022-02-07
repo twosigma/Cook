@@ -1368,7 +1368,8 @@
                       "COOK_JOB_NAME" job-name
                       "COOK_JOB_USER" user
                       "COOK_POOL" pool-name
-                      "COOK_SCHEDULER_REST_URL" (config/scheduler-rest-url)}
+                      "COOK_SCHEDULER_REST_URL" (config/scheduler-rest-url)
+                      "USER" user}
         main-env-base (merge environment params-env progress-env sandbox-env checkpoint-env metadata-env)
         progress-file-var (get main-env-base task/progress-meta-env-name task/default-progress-env-name)
         progress-file-path (get main-env-base progress-file-var)
