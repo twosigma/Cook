@@ -1417,6 +1417,45 @@
                    (and include-telemetry telemetry-version-var-name)
                    (assoc telemetry-version-var-name
                           (or (:application/version application) "undefined")))
+        ; Calculate and add to the env the main container image
+        main-container-image-var-name "COOK_MAIN_CONTAINER_IMAGE"
+        main-env (let [{:keys [image]} docker
+                       main-container-image
+                       (if (synthetic-pod? pod-name)
+                         image
+                         (let [checkpoint (calculate-effective-checkpointing-config job task-id)
+                               job-submit-time (tools/job->submit-time job)]
+                           (calculate-effective-image
+                             (config/kubernetes) job-submit-time image checkpoint task-id)))]
+                   (assoc main-env main-container-image-var-name main-container-image))
+        ; Calculate and add to the env the init container image, if applicable
+        init-container-image-var-name "COOK_INIT_CONTAINER_IMAGE"
+        main-env (if use-cook-init?
+                   (let [{:keys [image image-fallback]} init-container
+                         init-container-image
+                         (or
+                           ; We allow the init container image to
+                           ; be overriden via the same env variable
+                           (get main-env-base init-container-image-var-name)
+                           (resolve-image-from-incremental-config
+                             job passport-event-base passport/init-container-image-selected
+                             image image-fallback))]
+                     (assoc main-env init-container-image-var-name init-container-image))
+                   main-env)
+        ; Calculate and add to the env the sidecar container image, if applicable
+        sidecar-container-image-var-name "COOK_SIDECAR_CONTAINER_IMAGE"
+        main-env (if use-cook-sidecar?
+                   (let [{:keys [image image-fallback]} sidecar
+                         sidecar-container-image
+                         (or
+                           ; We allow the sidecar container image to
+                           ; be overriden via the same env variable
+                           (get main-env sidecar-container-image-var-name)
+                           (resolve-image-from-incremental-config
+                             job passport-event-base passport/sidecar-image-selected
+                             image image-fallback))]
+                     (assoc main-env sidecar-container-image-var-name sidecar-container-image))
+                   main-env)
         main-env-vars (cond->> (-> main-env
                                  (merge (get-default-env-for-pool pool-name))
                                  make-filtered-env-vars)
@@ -1463,7 +1502,7 @@
     (let [{:keys [resources]} task-request
           ;; NOTE: The scheduler's adjust-job-resources-for-pool-fn may modify :resources,
           ;; whereas :scalar-requests always contains the unmodified job resource values.
-          {:keys [image port-mapping]} docker
+          {:keys [port-mapping]} docker
           ; gpu count is not stored in scalar-requests because Fenzo does not handle gpus in binpacking
           gpus (or (:gpus resources) 0)
           gpu-model-requested (constraints/job->gpu-model-requested gpus job pool-name)
@@ -1475,11 +1514,7 @@
           disk-limit (when enable-disk-constraint? (-> resources :disk :limit))
           ;; if user did not specify disk type, use default on pool
           disk-type (when enable-disk-constraint? (constraints/job-resources->disk-type resources pool-name))
-          checkpoint (calculate-effective-checkpointing-config job task-id)
-          job-submit-time (tools/job->submit-time job)
-          image (if (synthetic-pod? pod-name)
-                  image
-                  (calculate-effective-image (config/kubernetes) job-submit-time image checkpoint task-id))
+          image (get main-env main-container-image-var-name)
 
           container (V1Container.)
           resources (V1ResourceRequirements.)]
@@ -1536,7 +1571,7 @@
 
     ;init container
     (when use-cook-init?
-      (let [{:keys [command image image-fallback]} init-container
+      (let [{:keys [command]} init-container
             container (V1Container.)
             get-resource-requirements-fn (fn [fieldname] (if use-cook-sidecar?
                                                            (get-in sidecar [:resource-requirements fieldname])
@@ -1548,9 +1583,7 @@
             resources (V1ResourceRequirements.)]
         ; container
         (.setName container cook-init-container-name)
-        (.setImage container (resolve-image-from-incremental-config
-                               job passport-event-base passport/init-container-image-selected
-                               image image-fallback))
+        (.setImage container (get main-env init-container-image-var-name))
         (.setCommand container command)
         (.setWorkingDir container init-container-workdir)
         (.setEnv container main-env-vars)
@@ -1563,15 +1596,13 @@
 
     ; sandbox file server container
     (when use-cook-sidecar?
-      (let [{:keys [command health-check-endpoint image image-fallback port resource-requirements]} sidecar
+      (let [{:keys [command health-check-endpoint port resource-requirements]} sidecar
             {:keys [cpu-request cpu-limit memory-request memory-limit]} resource-requirements
             container (V1Container.)
             resources (V1ResourceRequirements.)]
         ; container
         (.setName container cook-container-name-for-file-server)
-        (.setImage container (resolve-image-from-incremental-config
-                               job passport-event-base passport/sidecar-image-selected
-                               image image-fallback))
+        (.setImage container (get main-env sidecar-container-image-var-name))
         (.setCommand container (conj command (str port)))
         (.setWorkingDir container sidecar-workdir)
         (.setPorts container [(.containerPort (V1ContainerPort.) (int port))])
