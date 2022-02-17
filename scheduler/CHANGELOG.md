@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.59.1] - 2022-02-17
+### Added
+- Set USER env variable, in addition to COOK_JOB_USER, in Kubernetes by default, from @laurameng
+### Changed
+- Increase logging verbosity when submission fails with an exception, from @scrosby
+
 ## [1.58.12] - 2022-01-24
 ### Added
 - Initial Liquibase support for Cook for postgres configuration, from @scrosby
