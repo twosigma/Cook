@@ -633,7 +633,6 @@
             assignments (-> result .getResultMap .values)]
         (doall (map (fn [^VirtualMachineLease lease]
                       (when (-> lease :offer :reject-after-match-attempt)
-                        (log/info "In" pool-name "pool, retracting lease" (-> lease :offer :id))
                         (locking fenzo
                           (.expireLease fenzo (.getId lease)))))
                     leases))
