@@ -12,6 +12,12 @@ then
   exit 1
 fi
 
+if [ -z "$PGPASSWORD" ]
+then
+  echo "Please set \$PGPASSWORD"
+  exit 1
+fi
+
 scheduler=/vagrant/scheduler
 home_dir=/home/vagrant
 bashrc=$home_dir/.bashrc
@@ -53,3 +59,37 @@ gcloud components install kubectl
 
 # Start in the scheduler dir
 echo 'cd '"$scheduler" | tee -a $bashrc
+
+# Install postgres
+echo "deb http://apt.postgresql.org/pub/repos/apt/ `lsb_release -cs`-pgdg main" | tee /etc/apt/sources.list.d/openjdk-r-ubuntu-ppa-bionic.list
+wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add -
+apt-get -y update
+apt install -y postgresql-13
+apt-get install -y libpostgresql-jdbc-java
+
+postgres_envs=$home_dir/.postgres_envs
+echo 'export PGPASSWORD="'"$PGPASSWORD"'"' | tee -a $postgres_envs
+echo 'export COOK_DB_TEST_PG_USER="cook_scheduler"' | tee -a $postgres_envs
+echo 'export COOK_DB_TEST_PG_DB="cook_local"' | tee -a $postgres_envs
+echo 'export COOK_DB_TEST_PG_SCHEMA="cook_local"' | tee -a $postgres_envs
+echo 'export COOK_DB_TEST_PG_DATABASE="cook_local"' | tee -a $postgres_envs
+echo 'export COOK_DB_TEST_PG_SERVER="cook-postgres"' | tee -a $postgres_envs
+echo 'export COOK_SCHEMA=cook_local' | tee -a $postgres_envs
+echo '. '$postgres_envs | tee -a $bashrc
+
+echo "127.0.0.1 cook-postgres" | tee -a /etc/hosts
+
+# Make postgres reachable from outside Vagrant. e.g. for unit tests running in Intellij
+sed -i "s/#listen_addresses = 'localhost'/listen_addresses = '*'/" /etc/postgresql/13/main/postgresql.conf
+echo "host all all $(route -n | grep 'UG[ \t]' | awk '{print $2}')/32 md5" | sudo tee -a /etc/postgresql/13/main/pg_hba.conf
+service postgresql start
+
+# Install liquibase
+wget --quiet -O - https://github.com/liquibase/liquibase/releases/download/v4.7.1/liquibase-4.7.1.tar.gz > /tmp/liquibase-4.7.1.tar.gz
+mkdir /usr/share/liquibase
+tar -xf /tmp/liquibase-4.7.1.tar.gz -C /usr/share/liquibase
+ln -s /usr/share/liquibase/liquibase /usr/bin/liquibase
+
+# Setup postgres DB
+. $postgres_envs
+"$scheduler"/postgresql/bin/vagrant-setup-database.sh

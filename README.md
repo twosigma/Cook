@@ -38,14 +38,14 @@ The quickest way to get Cook running locally against [GKE](https://cloud.google.
 1. [Install Vagrant](https://www.vagrantup.com/downloads.html)
 1. [Install Virtualbox](https://www.virtualbox.org/wiki/Downloads)
 1. Clone down this repo
-1. Run `GCP_PROJECT_NAME=<gcp_project_name> vagrant up --provider=virtualbox` to create the dev environment
+1. Run `GCP_PROJECT_NAME=<gcp_project_name> PGPASSWORD=<random_string> vagrant up --provider=virtualbox` to create the dev environment
 1. Run `vagrant ssh` to ssh into the dev environment
 
 #### In your Vagrant dev environment
 
 1. Run `gcloud auth login` to login to Google cloud
 1. Run `bin/make-gke-test-clusters` to create GKE clusters
-1. Run `bin/start-datomic.sh` to start Datomic (Cook database)
+1. Run `bin/start-datomic.sh` to start Datomic (Cook database) (Wait until "System started datomic:free://0.0.0.0:4334/<DB-NAME>, storing data in: data")
 1. Run `lein exec -p datomic/data/seed_k8s_pools.clj $COOK_DATOMIC_URI` to seed some Cook pools in the database
 1. Run `bin/run-local-kubernetes.sh` to start the Cook scheduler
 1. Cook should now be listening locally on port 12321
@@ -57,7 +57,6 @@ To test a simple job submission:
 
 To run automated tests:
 
-1. Run `cd ../jobclient/java && mvn install -DskipTests && cd -` to build jobclient dependency
 1. Run `lein test :all-but-benchmark` to run unit tests
 1. Run `cd ../integration && pytest -m 'not cli'` to run integration tests
 1. Run `cd ../integration && pytest tests/cook/test_basic.py -k test_basic_submit -n 0 -s` to run a particular integration test

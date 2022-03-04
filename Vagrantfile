@@ -1,5 +1,6 @@
 Vagrant.configure("2") do |config|
   config.vm.box = "hashicorp/bionic64"
+  config.vm.network "forwarded_port", guest: 5432, host: 5432
   config.vm.network "forwarded_port", guest: 12321, host: 12321
   config.vm.provider "virtualbox" do |v|
     v.memory = 6144
@@ -7,7 +8,10 @@ Vagrant.configure("2") do |config|
   end
 
   # This runs as root:
-  config.vm.provision :shell, path: "scheduler/bin/bootstrap", env: {"GKE_CLUSTER_OWNER" => ENV["USER"], "GCP_PROJECT_NAME" => ENV["GCP_PROJECT_NAME"]}
+  config.vm.provision "bootstrap_as_root", type: "shell", path: "scheduler/bin/bootstrap", env: {
+  "PGPASSWORD" => ENV["PGPASSWORD"],
+  "GKE_CLUSTER_OWNER" => ENV["USER"],
+  "GCP_PROJECT_NAME" => ENV["GCP_PROJECT_NAME"]}
 
   # This runs as vagrant:
   $script = <<-SCRIPT
@@ -49,6 +53,8 @@ Vagrant.configure("2") do |config|
   pip3 install -e .
   rm -f $HOME/.cs.json
   ln -s $cli/.cs.json $HOME/.cs.json
+
+  sudo service postgresql restart
   SCRIPT
-  config.vm.provision "shell", inline: $script, privileged: false
+  config.vm.provision "bootstrap_as_vagrant", type: "shell", inline: $script, privileged: false
 end
