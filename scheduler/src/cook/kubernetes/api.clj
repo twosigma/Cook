@@ -1072,6 +1072,13 @@
         default-envs (get-in config/config [:settings :pools :default-env])]
     (regexp-tools/match-based-on-pool-name default-envs effective-pool-name :env :default-value {})))
 
+(defn get-default-pod-labels-for-pool
+  "Given a pool name, determine the default labels for pods in that pool"
+  [pool-name]
+  (let [effective-pool-name (or pool-name config/default-pool "")
+        default-pod-labels (get-in config/config [:settings :pools :default-pod-labels])]
+    (regexp-tools/match-based-on-pool-name default-pod-labels effective-pool-name :pod-labels :default-value {})))
+
 (defn- add-as-decimals
   "Takes two doubles and adds them as decimals to avoid floating point error. Kubernetes will not be able to launch a
    pod if the required cpu has too much precision. For example, adding 0.1 and 0.02 as doubles results in 0.12000000000000001"
@@ -1263,10 +1270,10 @@
                (into {})))
         pod-labels-from-job-application
         (some-> job
-                :job/application
-                walk/stringify-keys
-                add-pod-label-prefix
-                force-valid-pod-label-values)]
+          :job/application
+          walk/stringify-keys
+          add-pod-label-prefix
+          force-valid-pod-label-values)]
     (merge (pod-labels-defaults)
            pod-labels-from-job-labels
            pod-labels-from-job-application)))
@@ -1321,7 +1328,7 @@
         pod (V1Pod.)
         pod-spec (V1PodSpec.)
         metadata (V1ObjectMeta.)
-        pod-labels (merge (job->pod-labels job) pod-labels)
+        pod-labels (merge (job->pod-labels job) (get-default-pod-labels-for-pool pool-name) pod-labels)
         labels (assoc pod-labels cook-pod-label compute-cluster-name)
         security-context (make-security-context parameters (:user command))
         sandbox-dir (:default-workdir (config/kubernetes))

@@ -143,7 +143,11 @@
          :default-env
          [{:pool-regex "unused" :env {"foo" "bar"}}
                        {:pool-regex ".*" :env
-                        {"SAMPLE_DEFAULT_ENV_KEY" "SAMPLE_DEFAULT_ENV_VAL"}}]}
+                        {"SAMPLE_DEFAULT_ENV_KEY" "SAMPLE_DEFAULT_ENV_VAL"}}]
+         :default-pod-labels
+         [{:pool-regex "unused" :pod-labels {"org.foo/application" "label-val"}}
+          {:pool-regex ".*" :pod-labels
+           {"SAMPLE_DEFAULT_POD_LABEL_KEY" "SAMPLE_DEFAULT_POD_LABEL_VAL"}}]}
 
  :port #config/env-int "COOK_PORT"
  :ssl {:port #config/env-int "COOK_SSL_PORT"
