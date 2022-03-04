@@ -178,7 +178,6 @@
     (log/info "In" name "compute cluster, doing taskid scan. Visiting" (count taskids) "taskids")
     (doseq [^String taskid taskids]
       (try
-        (log/info "In" name "compute cluster, doing scan of" taskid)
         (controller/scan-process kcc taskid)
         (catch Exception e
           (log/error e "In" name
