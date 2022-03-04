@@ -1328,7 +1328,7 @@
         pod (V1Pod.)
         pod-spec (V1PodSpec.)
         metadata (V1ObjectMeta.)
-        pod-labels (merge (job->pod-labels job) (get-default-pod-labels-for-pool pool-name) pod-labels)
+        pod-labels (merge (get-default-pod-labels-for-pool pool-name) (job->pod-labels job) pod-labels)
         labels (assoc pod-labels cook-pod-label compute-cluster-name)
         security-context (make-security-context parameters (:user command))
         sandbox-dir (:default-workdir (config/kubernetes))
