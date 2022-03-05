@@ -1223,3 +1223,24 @@
         image-fallback "fallback-image"]
     (is (= "my-image" (api/resolve-image-from-incremental-config job nil nil image-config image-fallback)))
     (is (= "fallback-image" (api/resolve-image-from-incremental-config job nil nil nil image-fallback)))))
+
+(deftest test-default-pod-labels
+  (tu/setup :config {:pools {:default-pod-labels [{:pool-regex "unused" :pod-labels {"org.foo/application" "label-val"}}
+                                                  {:pool-regex ".*" :pod-labels
+                                                   {"SAMPLE_DEFAULT_POD_LABEL_KEY" "SAMPLE_DEFAULT_POD_LABEL_VAL"}}]}})
+  (let [fake-cc-config {:name "test-compute-cluster" :cook-pool-taint-name "test-taint" :cook-pool-taint-prefix ""}
+        conn (tu/restore-fresh-database! "datomic:mem://test-default-pod-labels")]
+    (with-redefs [cook.config-incremental/get-conn (fn [] conn)]
+      (testing "default pod labels -> pod labels"
+        (let [task-metadata {:command {:user "test-user"}
+                             ; labels from job
+                             :task-request {:job {:job/label {}}
+                                            :scalar-requests {"mem" 512 "cpus" 1.0}}}]
+          (let [^V1Pod pod (api/task-metadata->pod "test-namespace"
+                                                   fake-cc-config
+                                                   task-metadata)
+                pod-labels (-> pod .getMetadata .getLabels)]
+            ; test .*
+            (is (contains? pod-labels "SAMPLE_DEFAULT_POD_LABEL_KEY"))
+            ; test unmatched pool
+            (is (not (contains? pod-labels "org.foo/application")))))))))
