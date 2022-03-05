@@ -438,12 +438,13 @@
 (defn process
   "Visit this pod-name, processing the new level-state. Returns the new cook expected state. Returns
   empty dictionary to indicate that the result should be deleted. NOTE: Must be invoked with the lock."
-  [{:keys [api-client k8s-actual-state-map cook-expected-state-map cook-starting-pods name] :as compute-cluster} ^String pod-name]
+  [{:keys [api-client k8s-actual-state-map cook-expected-state-map cook-starting-pods name] :as compute-cluster} ^String pod-name doing-scan?]
   (timers/time! (metrics/timer "controller-process" name)
     (loop [{:keys [cook-expected-state waiting-metric-timer] :as cook-expected-state-dict} (get @cook-expected-state-map pod-name)
            {:keys [synthesized-state pod] :as k8s-actual-state-dict} (get @k8s-actual-state-map pod-name)]
-      ; Skip logging when both Cook and Kubernetes think the pod is running
-      (when-not (and (= cook-expected-state :cook-expected-state/running) (= synthesized-state :pod/running))
+      ; Skip logging when process invocation is due to a scan and both Cook and Kubernetes think the pod is running
+      ; We still want to log when process is invoked due to a state change
+      (when-not (and doing-scan? (= cook-expected-state :cook-expected-state/running) (= synthesized-state :pod/running))
         (log/info "In" name "compute cluster, processing pod" pod-name ";"
                   "cook-expected:" (prepare-cook-expected-state-dict-for-logging cook-expected-state-dict) ","
                   "k8s-actual:" (prepare-k8s-actual-state-dict-for-logging k8s-actual-state-dict)))
@@ -666,8 +667,8 @@
   pod and calls process if the state changed, or
   if force-process? is true."
   ([compute-cluster pod-name ^V1Pod pod]
-   (synthesize-state-and-process-pod-if-changed compute-cluster pod-name pod false))
-  ([{:keys [k8s-actual-state-map api-client name] :as compute-cluster} pod-name ^V1Pod pod force-process?]
+   (synthesize-state-and-process-pod-if-changed compute-cluster pod-name pod false false))
+  ([{:keys [k8s-actual-state-map api-client name] :as compute-cluster} pod-name ^V1Pod pod force-process? doing-scan?]
 
    (api/delete-collect-results-finalizer compute-cluster pod-name pod)
 
@@ -690,7 +691,7 @@
        (when-not force-process?
          (meters/mark! (metrics/meter "pods-processed-unforced" name)))
        (try
-         (process compute-cluster pod-name)
+         (process compute-cluster pod-name doing-scan?)
          (catch Exception e
            (log/error e "In compute-cluster" name ", error while processing pod" pod-name)))))))
 
@@ -717,7 +718,7 @@
         pod-name
         (swap! k8s-actual-state-map dissoc pod-name)
         (try
-          (process compute-cluster pod-name)
+          (process compute-cluster pod-name false)
           (catch Exception e
             (log/error e (str "In compute-cluster " name ", error while processing pod-delete for " pod-name))))))))
 
@@ -739,7 +740,7 @@
         (when-not (cook-expected-state-equivalent? new-expected-state-dict-merged old-state)
           (update-cook-starting-pods-cache cook-starting-pods pod-name new-cook-expected-state-dict)
           (swap! cook-expected-state-map assoc pod-name new-expected-state-dict-merged)
-          (process compute-cluster pod-name))))))
+          (process compute-cluster pod-name false))))))
 
 (defn starting-namespaced-pod-name->pod
   "Returns a map from {:namespace pod-namespace :name pod-name}->pod for all instances that we're attempting to send to
@@ -761,4 +762,5 @@
       compute-cluster
       pod-name
       (let [{:keys [pod]} (get @k8s-actual-state-map pod-name)]
-        (synthesize-state-and-process-pod-if-changed compute-cluster pod-name pod true)))))
+        ; When scanning, set force-process? and doing-scan? to true
+        (synthesize-state-and-process-pod-if-changed compute-cluster pod-name pod true true)))))
