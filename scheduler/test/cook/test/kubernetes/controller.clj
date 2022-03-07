@@ -73,7 +73,7 @@
                                          :k8s-actual-state-map (atom {name {:synthesized-state (or custom-test-state {:state k8s-actual-state})
                                                                             :pod (if force-nil-pod? nil pod)}})
                                          :cook-starting-pods (atom {})}
-                                        name)
+                                        name false)
                                       (get @cook-expected-state-map name {}))))
           do-process (fn [cook-expected-state k8s-actual-state & {:keys [create-namespaced-pod-fn
                                                                          ^V1PodCondition pod-condition
@@ -238,7 +238,7 @@
       (swap! k8s-actual-state-map assoc pod-name {:pod :a-watch-pod
                                                   :synthesized-state {:state :pod/waiting}})
       ; We're in :missing, :pod/starting. Should kill the pod and move to missing,missing.
-      (controller/process mock-cc pod-name)
+      (controller/process mock-cc pod-name false)
       (is (nil? (extract-cook-expected-state)))
 
       (is (= 2 @count-kill-pod)))))
@@ -253,7 +253,7 @@
                           :cook-expected-state-map cook-expected-state-map
                           :k8s-actual-state-map (atom {name {:synthesized-state {:state k8s-actual-state} :pod nil}})
                           :cook-starting-pods (atom {})}
-                         name)
+                         name false)
                        (:cook-expected-state (get @cook-expected-state-map name {}))))
         count-delete-pod (atom 0)]
     (with-redefs [controller/delete-pod  (fn [_ _ cook-expected-state-dict _] (swap! count-delete-pod inc) cook-expected-state-dict)
