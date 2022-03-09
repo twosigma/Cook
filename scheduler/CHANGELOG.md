@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.59.2] - 2022-03-09
+### Added
+- Add capability for configuring default Kubernetes pod labels on a per pool basis, from @laurameng
+### Changed
+- Reduced Cook logging to condense log volume, from @laurameng
+  - Remove low-value Fenzo log as part of log diet efforts
+  - Remove Kubernetes controller pod process logs on scans when Cook & Kubernetes agree on "running" state
+  - Remove taskid scan log
+
 ## [1.59.1] - 2022-02-17
 ### Added
 - Set USER env variable, in addition to COOK_JOB_USER, in Kubernetes by default, from @laurameng
