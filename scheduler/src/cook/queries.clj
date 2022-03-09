@@ -14,7 +14,8 @@
 ;; limitations under the License.
 ;;
 (ns cook.queries
-  (:require [datomic.api :as d :refer [q]]
+  (:require [cook.other.map-mock :as mm]
+            [datomic.api :as d :refer [q]]
             [metrics.timers :as timers]))
 
 ;;
@@ -49,7 +50,8 @@
             [?j :job/commit-latch ?cl]
             [?cl :commit-latch/committed? ?committed?]]
           unfiltered-db :job.state/waiting committed?)
-       (map (partial d/entity unfiltered-db))))
+       (map (partial d/entity unfiltered-db))
+       (map #(mm/->AccessLoggingMapType % "pending-job"))))
 
 (timers/deftimer [cook-mesos scheduler get-pending-jobs-duration])
 

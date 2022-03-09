@@ -28,6 +28,7 @@
             [cook.cached-queries :as cached-queries]
             [cook.caches :as caches]
             [cook.config :as config]
+            [cook.other.map-mock :as mm]
             [cook.pool :as pool]
             [cook.queries :as queries]
             [cook.quota :as quota]
@@ -488,7 +489,8 @@
               :where
               [?i :instance/status ?status]]
             db [:instance.status/running :instance.status/unknown])
-         (map (partial d/entity db)))))
+         (map (partial d/entity db))
+         (map #(mm/->AccessLoggingMapType % "running-task")))))
 
 (defn retrieve-instance
   "Given an instance UUID, return the instance entity."
