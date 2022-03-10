@@ -10,4 +10,4 @@ SET SCHEMA :'cook_schema';
 COMMIT
 
 -- Just show the tables at the end.
-\dt :cook_schema.*
+\dt :'cook_schema'.

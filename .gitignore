@@ -34,7 +34,7 @@ scheduler/src/cfg
 scheduler/trace*.csv
 scheduler/.cook_kubeconfig_*
 scheduler/cook.p12
-scheduler/datomic/datomic-free-0.9.5394/
+scheduler/datomic/datomic-free-0.9.5561.56/
 src/cfg/current.clj
 target
 test-log
