@@ -444,7 +444,7 @@
            {:keys [synthesized-state pod] :as k8s-actual-state-dict} (get @k8s-actual-state-map pod-name)]
       ; Skip logging when process invocation is due to a scan and both Cook and Kubernetes think the pod is running
       ; We still want to log when process is invoked due to a state change
-      (when-not (and doing-scan? (= cook-expected-state :cook-expected-state/running) (= synthesized-state :pod/running))
+      (when-not (and doing-scan? (= cook-expected-state :cook-expected-state/running) (= (:state synthesized-state) :pod/running))
         (log/info "In" name "compute cluster, processing pod" pod-name ";"
                   "cook-expected:" (prepare-cook-expected-state-dict-for-logging cook-expected-state-dict) ","
                   "k8s-actual:" (prepare-k8s-actual-state-dict-for-logging k8s-actual-state-dict)))
