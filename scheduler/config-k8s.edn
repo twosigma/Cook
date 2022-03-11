@@ -188,7 +188,8 @@
              :ssl false
              :sslfactory "org.postgresql.ssl.NonValidatingFactory"
              :password #config/env "PGPASSWORD"
-             :user "cook_scheduler"}
+             :user "cook_scheduler"
+             :mirror-to-postgres? true}
  :scheduler {:offer-incubate-ms 15000
              :task-constraints {:command-length-limit 5000
                                 :cpus 10

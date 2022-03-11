@@ -17,7 +17,9 @@
   (:require [clojure.tools.logging :as log]
             [cook.config :as config]
             [cook.pool :as pool]
+            [cook.postgres :as pg]
             [cook.queries :as queries]
+            [cook.scheduler.share-pg :as share-pg]
             [datomic.api :as d]
             [metatransaction.core :refer [db]]
             [metrics.timers :as timers]
@@ -110,7 +112,12 @@
   ([db user]
    (get-share db user nil))
   ([db user pool]
-   (get-share db user pool (queries/get-all-resource-types db)))
+   (pg/mirror-read
+     (str "get-share " user " " pool)
+     (fn []
+       (get-share db user pool (queries/get-all-resource-types db)))
+     (partial share-pg/get-share db user pool)
+     true))
   ([db user pool resource-types]
    (let [type->default (get-share-by-types db default-user pool resource-types {})]
      (get-share db user pool resource-types type->default)))
@@ -127,7 +134,12 @@
   ([db users]
    (get-shares db users nil))
   ([db users pool-name]
-   (get-shares db users pool-name (queries/get-all-resource-types db)))
+   (pg/mirror-read
+     (str "get-shares " users " " pool-name)
+     (fn []
+       (get-shares db users pool-name (queries/get-all-resource-types db)))
+     (partial share-pg/get-shares db db users pool-name)
+     true))
   ([db users pool-name resource-types]
    (timers/time!
      get-shares-duration
@@ -137,6 +149,10 @@
 
 (defn retract-share!
   [conn user pool reason]
+  (pg/mirror-write
+    (str "retract-share! " user " " pool " " reason)
+    (partial share-pg/retract-share! conn user pool reason)
+    true)
   (let [db (d/db conn)]
     (->> (queries/get-all-resource-types db)
          (map (fn [type]
@@ -154,6 +170,10 @@
    (set-share! conn \"u1\" :cpus 20.0)
    etc."
   [conn user pool-name reason & kvs]
+  (pg/mirror-write
+    (str "set-share! " user " " pool-name " " reason " " kvs)
+    (partial apply share-pg/set-share! conn user pool-name reason kvs)
+    true)
   (loop [[type amount & kvs] kvs
          txns []]
     (if (and amount (pos? amount))
@@ -189,17 +209,28 @@
    and returns the `default-user` value if a user is not returned.
    This is useful if the application will go over ALL users during processing"
   [db pool-name]
-  (timers/time!
-    create-user->share-fn-duration
-    (let [all-share-users (d/q '[:find [?user ...]
-                                 :where
-                                 [?q :share/user ?user]]
-                               db)
-          default-user-share (get-share db default-user pool-name)
-          user->share-cache (-> (get-shares db all-share-users pool-name)
-                                ;; In case default-user doesn't have an explicit share
-                                (assoc default-user default-user-share))]
-      (fn user->share
-        [user]
-        (or (get user->share-cache user)
-            default-user-share)))))
+  (let [datomic-fn
+        (timers/time!
+          create-user->share-fn-duration
+          (let [all-share-users (d/q '[:find [?user ...]
+                                       :where
+                                       [?q :share/user ?user]]
+                                     db)
+                default-user-share (get-share db default-user pool-name)
+                user->share-cache (-> (get-shares db all-share-users pool-name)
+                                    ;; In case default-user doesn't have an explicit share
+                                    (assoc default-user default-user-share))]
+            (fn user->share
+              [user]
+              (or (get user->share-cache user)
+                  default-user-share))))]
+    (if (pg/mirror-to-postgres?)
+      (let [pg-fn (share-pg/create-user->share-fn db pool-name)]
+        (fn [user]
+          (pg/mirror-read
+            (str "create-user->share-fn " pool-name " " user)
+            (partial datomic-fn user)
+            (partial pg-fn user)
+            true)))
+      datomic-fn)
+    ))

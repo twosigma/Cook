@@ -3,7 +3,7 @@
             [cook.cache :as ccache]
             [cook.config :as config]
             [mount.core :as mount])
-  (:import (com.google.common.cache Cache CacheBuilder)
+  (:import (com.google.common.cache Cache CacheLoader CacheBuilder)
            (java.util.concurrent TimeUnit)))
 
 (defn new-cache [config]
