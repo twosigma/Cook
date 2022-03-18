@@ -649,6 +649,18 @@
               (is (find pod-annotations "k3"))
               (is (find pod-annotations "k4"))
               (is (empty? (select-keys pod-annotations ["k1", "k2", "ka", "kb", "kc"])))))
+          ; Comma-delimited duplicates
+          (let [task-metadata {:command {:user "test-user"}
+                               :task-request {:job {:job/label [{:label/key "add-pod-annotation"
+                                                                 :label/value "label1,label1"}]}
+                                              :scalar-requests {"mem" 512 "cpus" 1.0}}}]
+            (let [^V1Pod pod (api/task-metadata->pod "test-namespace"
+                                                     fake-cc-config
+                                                     task-metadata)
+                  pod-annotations (-> pod .getMetadata .getAnnotations)]
+              (is (find pod-annotations "k1"))
+              (is (find pod-annotations "k2"))
+              (is (empty? (select-keys pod-annotations ["k3", "k4", "ka", "kb", "kc"])))))
           ; No-matches
           (let [task-metadata {:command {:user "test-user"}
                                :task-request {:job {:job/label [{:label/key "add-pod-annotation"
