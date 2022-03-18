@@ -1310,6 +1310,43 @@
                                     :resolved-config resolved-config}))
         resolved-config))))
 
+(defn get-use-all-gids-annotation
+  "Helper method to get use-all-gids pod annotation "
+  [task-id]
+  ; For non-synthetic (real job) pods, when configured to do so,
+  ; we add a pod annotation indicating that Kubernetes should
+  ; use all of the group IDs the user is a member of, in order
+  ; to avoid contradictions between which group Cook thinks a
+  ; user belongs to and which group Kubernetes thinks the user
+  ; belongs to.
+  (let [[resolved-config _]
+        (config-incremental/resolve-incremental-config
+          task-id :add-use-all-gids-annotation "false")
+        use-all-gids-annotation-name
+        (:use-all-gids-annotation-name (config/kubernetes))]
+    (if
+      (and
+        (= "true" resolved-config)
+        use-all-gids-annotation-name)
+      {use-all-gids-annotation-name "true"}
+      {}))
+  )
+
+(defn job-label->pod-annotations
+  "Given a job, return all pod annotations configured based on the job's labels"
+  [job]
+  (let [job-label-to-pod-annotation-map (:job-label-to-pod-annotation-map (config/kubernetes))
+        job-labels->requested-pod-annotations
+        (-> job
+          (tools/job-ent->label) ; labels map
+          (get "add-pod-annotation" "")
+          (str/split #",") ; split comma-separated sequence
+          )]
+    (->> job-labels->requested-pod-annotations
+         (select-keys job-label-to-pod-annotation-map)
+         (map val)
+         (into {}))))
+
 (defn ^V1Pod task-metadata->pod
   "Given a task-request and other data generate the kubernetes V1Pod to launch that task."
   [namespace {:keys [cook-pool-taint-name cook-pool-taint-prefix cook-pool-label-name] compute-cluster-name :name}
@@ -1449,22 +1486,8 @@
     (let [pod-annotations'
           (if (synthetic-pod? pod-name)
             pod-annotations
-            ; For non-synthetic (real job) pods, when configured to do so,
-            ; we add a pod annotation indicating that Kubernetes should
-            ; use all of the group IDs the user is a member of, in order
-            ; to avoid contradictions between which group Cook thinks a
-            ; user belongs to and which group Kubernetes thinks the user
-            ; belongs to.
-            (let [[resolved-config _]
-                  (config-incremental/resolve-incremental-config
-                    task-id :add-use-all-gids-annotation "false")
-                  use-all-gids-annotation-name
-                  (:use-all-gids-annotation-name (config/kubernetes))]
-              (cond-> pod-annotations
-                (and
-                  (= "true" resolved-config)
-                  use-all-gids-annotation-name)
-                (assoc use-all-gids-annotation-name "true"))))]
+            ; add additional annotations for real pods
+            (merge (job-label->pod-annotations job) (get-use-all-gids-annotation task-id) pod-annotations))]
       (when (seq pod-annotations')
         (.setAnnotations metadata pod-annotations')))
 
