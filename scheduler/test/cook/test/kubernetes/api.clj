@@ -582,7 +582,83 @@
             (is (= "required-cook-job-container" (.getName container)))
             (is (not (set/subset?
                        #{"TEST_AGENT"}
-                       (->> container-env (map #(.getName %)) set))))))))))
+                       (->> container-env (map #(.getName %)) set)))))))
+
+      (testing "job-labels->pod-annotations"
+        (with-redefs [config/kubernetes (constantly {:job-label-to-pod-annotation-map {"label1" {"k1" "v1", "k2" "v2"},
+                                                                                       "label2" {"k3" "v3", "k4" "v4"},
+                                                                                       "label3" {"ka" "va", "kb" "vb", "kc" "vc"}}})]
+          ; No labels
+          (let [task-metadata {:command {:user "test-user"}
+                               :task-request {:job {:job/label []}
+                                              :scalar-requests {"mem" 512 "cpus" 1.0}}}]
+            (let [^V1Pod pod (api/task-metadata->pod "test-namespace"
+                                                     fake-cc-config
+                                                     task-metadata)
+                  pod-annotations (-> pod .getMetadata .getAnnotations)]
+              (is (empty? (select-keys pod-annotations ["k1", "k2", "k3", "k4", "ka", "kb", "kc"])))))
+
+          ; Single label
+          (let [task-metadata {:command {:user "test-user"}
+                               :task-request {:job {:job/label [{:label/key "add-pod-annotation"
+                                                                 :label/value "label1"}
+                                                                {:label/key "platform/baz"
+                                                                 :label/value "qux"}
+                                                                {:label/key "platform/another"
+                                                                 :label/value "included"}]}
+                                              :scalar-requests {"mem" 512 "cpus" 1.0}}}]
+            ; Simple match
+            (let [^V1Pod pod (api/task-metadata->pod "test-namespace"
+                                                     fake-cc-config
+                                                     task-metadata)
+                  pod-annotations (-> pod .getMetadata .getAnnotations)]
+              (is (find pod-annotations "k1"))
+              (is (find pod-annotations "k2"))
+              (is (empty? (select-keys pod-annotations ["k3", "k4", "ka", "kb", "kc"]))))
+            ; No pod-annotations
+            (with-redefs [config/kubernetes (constantly {})]
+              (let [^V1Pod pod (api/task-metadata->pod "test-namespace"
+                                                       fake-cc-config
+                                                       task-metadata)
+                    pod-annotations (-> pod .getMetadata .getAnnotations)]
+                (is (empty? (select-keys pod-annotations ["k1", "k2", "k3", "k4", "ka", "kb", "kc"]))))))
+          ; Comma-delimited multi-match
+          (let [task-metadata {:command {:user "test-user"}
+                               :task-request {:job {:job/label [{:label/key "add-pod-annotation"
+                                                                 :label/value "label3,label1"}]}
+                                              :scalar-requests {"mem" 512 "cpus" 1.0}}}]
+            (let [^V1Pod pod (api/task-metadata->pod "test-namespace"
+                                                     fake-cc-config
+                                                     task-metadata)
+                  pod-annotations (-> pod .getMetadata .getAnnotations)]
+              (is (find pod-annotations "k1"))
+              (is (find pod-annotations "k2"))
+              (is (find pod-annotations "ka"))
+              (is (find pod-annotations "kb"))
+              (is (find pod-annotations "kc"))
+              (is (empty? (select-keys pod-annotations ["k3", "k4"])))))
+          ; Comma-delimited partial-match
+          (let [task-metadata {:command {:user "test-user"}
+                               :task-request {:job {:job/label [{:label/key "add-pod-annotation"
+                                                                 :label/value "label2,not-yet-defined"}]}
+                                              :scalar-requests {"mem" 512 "cpus" 1.0}}}]
+            (let [^V1Pod pod (api/task-metadata->pod "test-namespace"
+                                                     fake-cc-config
+                                                     task-metadata)
+                  pod-annotations (-> pod .getMetadata .getAnnotations)]
+              (is (find pod-annotations "k3"))
+              (is (find pod-annotations "k4"))
+              (is (empty? (select-keys pod-annotations ["k1", "k2", "ka", "kb", "kc"])))))
+          ; No-matches
+          (let [task-metadata {:command {:user "test-user"}
+                               :task-request {:job {:job/label [{:label/key "add-pod-annotation"
+                                                                 :label/value "not-yet-defined"}]}
+                                              :scalar-requests {"mem" 512 "cpus" 1.0}}}]
+            (let [^V1Pod pod (api/task-metadata->pod "test-namespace"
+                                                     fake-cc-config
+                                                     task-metadata)
+                  pod-annotations (-> pod .getMetadata .getAnnotations)]
+              (is (empty? (select-keys pod-annotations ["k1", "k2", "k3", "k4", "ka", "kb", "kc"]))))))))))
 
 (defn- k8s-volume->clj [^V1Volume volume]
   {:name (.getName volume)
