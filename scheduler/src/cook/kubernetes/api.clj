@@ -885,8 +885,8 @@
 (def cook-container-name-for-file-server
   "aux-cook-sidecar-container")
 ; see pod->synthesized-pod-state comment for container naming conventions
-(def cook-container-name-for-checkpoint-injection
-  "aux-cook-checkpoint-injection-container")
+(def checkpoint-cook-init-container-name
+  "aux-cook-init-container-for-checkpoint")
 ; see pod->synthesized-pod-state comment for container naming conventions
 (def cook-init-container-name
   "aux-cook-init-container")
@@ -1584,13 +1584,13 @@
         ;
         ; The idea is the init container injects some scripts into a shared volume used by the checkpoint container.
         ; The checkpoint container then runs. As it runs with the same image as the user container, those scripts can
-        ; inspect the platform the user container is on and install the right checkpoint or further installation.
+        ; inspect the platform the user container is on and install the right checkpoint or other code.
         (when use-checkpoint-injection?
           (let [{:keys [command]} checkpoint-container
                 container (V1Container.)
                 resources (V1ResourceRequirements.)]
             ; container
-            (.setName container cook-container-name-for-checkpoint-injection)
+            (.setName container checkpoint-cook-init-container-name)
             (.setImage container image)
             (.setCommand container command)
             ; Shares the same workdir as the init container.
