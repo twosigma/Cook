@@ -585,7 +585,8 @@
                        (->> container-env (map #(.getName %)) set)))))))
 
       (testing "job-labels->pod-annotations"
-        (with-redefs [config/kubernetes (constantly {:job-label-to-pod-annotation-map {"label1" {"k1" "v1", "k2" "v2"},
+        (with-redefs [config/kubernetes (constantly {:job-label-to-pod-annotation-lookup-key "add-pod-annotation"
+                                                     :job-label-to-pod-annotation-map {"label1" {"k1" "v1", "k2" "v2"},
                                                                                        "label2" {"k3" "v3", "k4" "v4"},
                                                                                        "label3" {"ka" "va", "kb" "vb", "kc" "vc"}}})]
           ; No labels
@@ -615,7 +616,33 @@
               (is (find pod-annotations "k1"))
               (is (find pod-annotations "k2"))
               (is (empty? (select-keys pod-annotations ["k3", "k4", "ka", "kb", "kc"]))))
+            ; No lookup-key
+            (with-redefs [config/kubernetes (constantly {:job-label-to-pod-annotation-map {"label1" {"k1" "v1", "k2" "v2"},
+                                                                                           "label2" {"k3" "v3", "k4" "v4"},
+                                                                                           "label3" {"ka" "va", "kb" "vb", "kc" "vc"}}})]
+              (let [^V1Pod pod (api/task-metadata->pod "test-namespace"
+                                                       fake-cc-config
+                                                       task-metadata)
+                    pod-annotations (-> pod .getMetadata .getAnnotations)]
+                (is (empty? (select-keys pod-annotations ["k1", "k2", "k3", "k4", "ka", "kb", "kc"])))))
+            ; Empty lookup-key
+            (with-redefs [config/kubernetes (constantly {:job-label-to-pod-annotation-lookup-key ""
+                                                         :job-label-to-pod-annotation-map {"label1" {"k1" "v1", "k2" "v2"},
+                                                                                           "label2" {"k3" "v3", "k4" "v4"},
+                                                                                           "label3" {"ka" "va", "kb" "vb", "kc" "vc"}}})]
+              (let [^V1Pod pod (api/task-metadata->pod "test-namespace"
+                                                       fake-cc-config
+                                                       task-metadata)
+                    pod-annotations (-> pod .getMetadata .getAnnotations)]
+                (is (empty? (select-keys pod-annotations ["k1", "k2", "k3", "k4", "ka", "kb", "kc"])))))
             ; No pod-annotations
+            (with-redefs [config/kubernetes (constantly {:job-label-to-pod-annotation-lookup-key "add-pod-annotation"})]
+              (let [^V1Pod pod (api/task-metadata->pod "test-namespace"
+                                                       fake-cc-config
+                                                       task-metadata)
+                    pod-annotations (-> pod .getMetadata .getAnnotations)]
+                (is (empty? (select-keys pod-annotations ["k1", "k2", "k3", "k4", "ka", "kb", "kc"])))))
+            ; Neither lookup-key nor pod-annotations
             (with-redefs [config/kubernetes (constantly {})]
               (let [^V1Pod pod (api/task-metadata->pod "test-namespace"
                                                        fake-cc-config

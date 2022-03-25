@@ -1335,14 +1335,15 @@
 (defn job-label->pod-annotations
   "Given a job, return all pod annotations configured based on the job's labels"
   [job]
-  (let [{:keys [job-label-to-pod-annotation-map]} (config/kubernetes)
+  (let [{:keys [job-label-to-pod-annotation-map job-label-to-pod-annotation-lookup-key]} (config/kubernetes)
         requested-pod-annotations
-        (-> job
-          (tools/job-ent->label)
-          (get "add-pod-annotation" "")
-          ; the user can pass us multiple comma-separated values
-          (str/split #",")
-          )]
+        (if job-label-to-pod-annotation-lookup-key
+          (-> job
+            (tools/job-ent->label)
+            (get job-label-to-pod-annotation-lookup-key "")
+            ; the user can pass us multiple comma-separated values
+            (str/split #","))
+          "")]
     (->> requested-pod-annotations
          (select-keys job-label-to-pod-annotation-map)
          (vals)
