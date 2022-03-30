@@ -159,5 +159,92 @@ public class InstanceTest {
         Assert.assertEquals(Integer.valueOf(progressPercent), actualInstance.getProgress());
         Assert.assertEquals(progressMessage, actualInstance.getProgressMessage());
     }
+
+    @Test
+    public void testBuilderWithExitCode() throws JSONException {
+        final int exitCode = 0;
+
+        final Instance.Builder instanceBuilder = new Instance.Builder();
+        populateBuilder(instanceBuilder);
+        instanceBuilder.setExitCode(exitCode);
+
+        Instance basicInstance = instanceBuilder.build();
+
+        Assert.assertEquals(Integer.valueOf(exitCode), basicInstance.getExitCode());
+    }
+
+    @Test
+    public void testBuilderWithoutExitCode() throws JSONException {
+        final Instance.Builder instanceBuilder = new Instance.Builder();
+        populateBuilder(instanceBuilder);
+
+        Instance basicInstance = instanceBuilder.build();
+
+        Assert.assertNull(basicInstance.getExitCode());
+    }
+
+    @Test
+    public void testParseFromJsonWithExitCode() throws JSONException {
+        final int exitCode = -1;
+
+        final Instance.Builder instanceBuilder = new Instance.Builder();
+        populateBuilder(instanceBuilder);
+        Instance basicInstance = instanceBuilder.build();
+
+        Assert.assertNull(basicInstance.getExitCode());
+
+        final JSONObject json = new JSONObject();
+        populateJson(json, basicInstance);
+        json.put("exit_code", exitCode);
+
+        final String jsonString = new JSONArray().put(json).toString();
+        final List<Instance> instances = Instance.parseFromJSON(jsonString);
+
+        Assert.assertEquals(instances.size(), 1);
+        final Instance actualInstance = instances.get(0);
+        Assert.assertEquals(Integer.valueOf(exitCode), actualInstance.getExitCode());
+    }
+
+    @Test
+    public void testBuilderWithURLs() throws JSONException {
+        final String outputURL = "file://fileDir/";
+        final String fileURL = "http://fileserver.com/";
+
+        final Instance.Builder instanceBuilder = new Instance.Builder();
+        populateBuilder(instanceBuilder);
+        instanceBuilder.setOutputURL(outputURL);
+        instanceBuilder.setFileURL(fileURL);
+
+        Instance basicInstance = instanceBuilder.build();
+
+        Assert.assertEquals(outputURL, basicInstance.getOutputURL());
+        Assert.assertEquals(fileURL, basicInstance.getFileURL());
+    }
+
+    @Test
+    public void testParseFromJsonWithURLs() throws JSONException {
+        final String outputURL = "file://fileDir/";
+        final String fileURL = "http://fileserver.com/";
+
+        final Instance.Builder instanceBuilder = new Instance.Builder();
+        populateBuilder(instanceBuilder);
+        Instance basicInstance = instanceBuilder.build();
+
+        Assert.assertNotEquals(outputURL, basicInstance.getOutputURL());
+        Assert.assertNotEquals(fileURL, basicInstance.getFileURL());
+
+        final JSONObject json = new JSONObject();
+        populateJson(json, basicInstance);
+        json.put("output_url", outputURL);
+        json.put("file_url", fileURL);
+
+        final String jsonString = new JSONArray().put(json).toString();
+        final List<Instance> instances = Instance.parseFromJSON(jsonString);
+
+        Assert.assertEquals(instances.size(), 1);
+        final Instance actualInstance = instances.get(0);
+        Assert.assertEquals(outputURL, actualInstance.getOutputURL());
+        Assert.assertEquals(fileURL, actualInstance.getFileURL());
+    }
 }
 
