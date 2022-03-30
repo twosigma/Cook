@@ -85,7 +85,8 @@ def run(args, plugins):
         _, config_map = configuration.load_config_with_defaults(config_path)
         try:
             metrics.initialize(config_map)
-            metrics.inc('command.%s.runs' % action)
+            # measure the number of times users specify each cluster, including when none is specified
+            metrics.inc('command.%s.runs' % action, {'cluster': (cluster or 'default')})
             clusters = load_target_clusters(config_map, url, cluster)
             http.configure(config_map, plugins)
             cook.plugins.configure(plugins)

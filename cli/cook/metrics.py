@@ -71,7 +71,7 @@ def __send(metric):
         logging.exception('exception when sending metric %s' % metric)
 
 
-def inc(metric_name, count=1):
+def inc(metric_name, count=1, additional_tags={}):
     """Increments a counter with the given metric_name by count"""
     if __disabled:
         return
@@ -81,4 +81,6 @@ def inc(metric_name, count=1):
               'host': __host,
               'user': __user,
               'type': 'count'}
+    if additional_tags:
+        metric.update(additional_tags)
     __send(metric)
