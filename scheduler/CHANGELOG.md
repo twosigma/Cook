@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.59.3] - 2022-03-31
+### Added
+- Add second init sidecar for checkpointing, from @scrosby
+  - Add support for a second auxiliary init container for k8s that runs in the user's image in k8s, allowing it to introspect the platform and do any custom changes.
+- Add Postgres support to Vagrant environment setup, from @nsinkov
+### Changed
+- Update sidecar dependencies and prepare to release sidecar 1.2.2, from @scrosby
+### Fixed
+- Corrected implementation of Kubernetes controller pod process log removal, from @laurameng
+
 ## [1.59.2] - 2022-03-09
 ### Added
 - Add capability for configuring default Kubernetes pod labels on a per pool basis, from @laurameng
