@@ -74,10 +74,12 @@ final public class Instance {
         private Long _reasonCode;
         private Boolean _preempted;
         private String _outputURL;
+        private String _fileURL;
         private String _hostName;
         private Executor _executor;
         private Boolean _reasonMeaCulpa;
         private String _reasonString;
+        private Integer _exitCode;
 
         /**
          * The task id must be provided prior to {@code build()}. If the instance status is not
@@ -92,7 +94,8 @@ final public class Instance {
             }
             return new Instance(
                     _taskID, _slaveID, _executorID, _startTime, _endTime, _status, _progress, _progressMessage,
-                    _reasonCode, _preempted, _outputURL, _hostName, _executor, _reasonMeaCulpa, _reasonString);
+                    _reasonCode, _preempted, _outputURL, _fileURL, _hostName, _executor, _reasonMeaCulpa, _reasonString,
+                    _exitCode);
         }
 
         /**
@@ -219,6 +222,18 @@ final public class Instance {
         }
 
         /**
+         * The `file_url` is an optional alternative API for accessing the files stored in an instance's sandbox.
+         * If supported by Cook, each instance will have a `file_url` variable, otherwise null.
+         *
+         * @param fileURL {@link String} specifies the task local output directory in the instance sandbox.
+         * @return this builder.
+         */
+        public Builder setFileURL(String fileURL) {
+            _fileURL = fileURL;
+            return this;
+        }
+
+        /**
          * Set the Mesos host for the task expected to build.
          *
          * @param hostName {@link String} specifies the host where this task is assigned to.
@@ -257,6 +272,16 @@ final public class Instance {
          */
         public Builder setReasonMeaCulpa(Boolean meaCulpa) {
             _reasonMeaCulpa = meaCulpa;
+            return this;
+        }
+
+        /**
+         * Set the instance exit code
+         * @param exitCode the exit code, if available, for the instance
+         * @return this builder.
+         */
+        public Builder setExitCode(Integer exitCode) {
+            _exitCode = exitCode;
             return this;
         }
 
@@ -303,6 +328,10 @@ final public class Instance {
             return _outputURL;
         }
 
+        public String getFileURL() {
+            return _fileURL;
+        }
+
         public String getHostName() {
             return _hostName;
         }
@@ -313,6 +342,10 @@ final public class Instance {
 
         public Boolean getReasonMeaCulpa() {
             return _reasonMeaCulpa;
+        }
+
+        public Integer getExitCode() {
+            return _exitCode;
         }
     }
 
@@ -330,14 +363,17 @@ final public class Instance {
     final private Long _reasonCode;
     final private Boolean _preempted;
     final private String _outputURL;
+    final private String _fileURL;
     final private String _hostName;
     final private Executor _executor;
     final private Boolean _reasonMeaCulpa;
     final private String _reasonString;
+    final private Integer _exitCode;
 
     private Instance(UUID taskID, String slaveID, String executorID, Long startTime, Long endTime,
                      Status status, Integer progress, String progressMessage, Long reasonCode, Boolean preempted,
-                     String outputURL, String hostName, Executor executor, Boolean reasonMeaCulpa, String reasonString) {
+                     String outputURL, String fileURL, String hostName, Executor executor, Boolean reasonMeaCulpa,
+                     String reasonString, Integer exitCode) {
         _taskID = taskID;
         _slaveID = slaveID;
         _executorID = executorID;
@@ -349,10 +385,12 @@ final public class Instance {
         _reasonCode = reasonCode;
         _preempted = preempted;
         _outputURL = outputURL;
+        _fileURL = fileURL;
         _hostName = hostName;
         _executor = executor;
         _reasonMeaCulpa = reasonMeaCulpa;
         _reasonString = reasonString;
+        _exitCode = exitCode;
     }
 
     /**
@@ -424,6 +462,9 @@ final public class Instance {
             if (json.has("output_url")) {
                 instanceBuilder.setOutputURL(json.getString("output_url"));
             }
+            if (json.has("file_url")) {
+                instanceBuilder.setFileURL(json.getString("file_url"));
+            }
             if (json.has("reason_code")) {
                 instanceBuilder.setReasonCode(json.getLong("reason_code"));
             }
@@ -432,6 +473,9 @@ final public class Instance {
             }
             if (json.has("reason_string")) {
                 instanceBuilder.setReasonString(json.getString("reason_string"));
+            }
+            if (json.has("exit_code")) {
+                instanceBuilder.setExitCode(json.getInt("exit_code"));
             }
             if (decorator != null) {
                 instanceBuilder = decorator.decorate(instanceBuilder);
@@ -462,7 +506,7 @@ final public class Instance {
                 + ", _status=" + _status + ", _progress=" + _progress + ", _progressMessage=" + _progressMessage
                 + ", _reasonCode=" + _reasonCode + ", _preempted=" + _preempted + ", _outputURL=" + _outputURL
                 + ", _hostName=" + _hostName + ", _executor=" + _executor + ", _reasonMeaCulpa=" + _reasonMeaCulpa
-                + ", _reasonString=" + _reasonString + "]";
+                + ", _reasonString=" + _reasonString + ", _fileURL=" + _fileURL + ", _exitCode=" + _exitCode + "]";
     }
 
     public UUID getTaskID() {
@@ -519,6 +563,10 @@ final public class Instance {
         return _outputURL;
     }
 
+    public String getFileURL() {
+        return _fileURL;
+    }
+
     public String getHostName() {
         return _hostName;
     }
@@ -529,6 +577,10 @@ final public class Instance {
 
     public Boolean getReasonMeaCulpa() {
         return _reasonMeaCulpa;
+    }
+
+    public Integer getExitCode() {
+        return _exitCode;
     }
 
 

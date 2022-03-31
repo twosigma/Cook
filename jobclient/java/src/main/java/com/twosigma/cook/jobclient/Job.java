@@ -627,7 +627,7 @@ final public class Job {
          * @param pool {@link String} specifies the pool the job is expected to run in.
          * @return this builder.
          */
-        private Builder setPool(String pool) {
+        public Builder setPool(String pool) {
             _pool = pool;
             return this;
         }
