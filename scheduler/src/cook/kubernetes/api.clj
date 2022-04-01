@@ -1335,19 +1335,11 @@
 (defn job-label->pod-annotations
   "Given a job, return all pod annotations configured based on the job's labels"
   [job]
-  (let [{:keys [job-label-to-pod-annotation-map job-label-to-pod-annotation-lookup-key]} (config/kubernetes)
-        requested-pod-annotations
-        (if job-label-to-pod-annotation-lookup-key
-          (-> job
-            (tools/job-ent->label)
-            (get job-label-to-pod-annotation-lookup-key "")
-            ; the user can pass us multiple comma-separated values
-            (str/split #","))
-          "")]
-    (->> requested-pod-annotations
-         (select-keys job-label-to-pod-annotation-map)
-         (vals)
-         (into {}))))
+  {"ad.datadog.com/required-cook-job-container.check_names" "spark"
+   "ad.datadog.com/required-cook-job-container.init_configs" "{}"
+   "ad.datadog.com/required-cook-job-container.instances" "{\"spark_url\": \"%%host%%:8080\", \"cluster_name\": \"test-spark-cluster\"}"
+   }
+  )
 
 (defn ^V1Pod task-metadata->pod
   "Given a task-request and other data generate the kubernetes V1Pod to launch that task."
