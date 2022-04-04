@@ -82,6 +82,11 @@
                                :factory-fn "cook.plugins.demo-plugin/launch-factory"}}
  :hostname #config/env "COOK_HOSTNAME"
  :kubernetes {:add-job-label-to-pod-prefix "platform/"
+              :job-label-to-pod-annotation-lookup-key "add-pod-annotation"
+              :job-label-to-pod-annotation-map { "job-label1" {"annotation-1" "value-1",
+                                                             "annotation-2" "value-2"},
+                                                "job-label2" {"annotation-3" "value-3",
+                                                              "annotation-4" "value-4"}}
               :clobber-synthetic-pods true
               :disallowed-container-paths #{"/mnt/bad"}
               :disallowed-var-names #{"BADVAR"}
