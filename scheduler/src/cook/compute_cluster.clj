@@ -530,11 +530,13 @@
         dissoc-ca-cert-vals
         (fn [configs]
           (map-vals dissoc-ca-cert configs))]
-    (log/info "Updating dynamic clusters."
-              {:current-configs (dissoc-ca-cert-vals current-configs)
-               :force? force?
-               :new-configs (dissoc-ca-cert-vals new-configs)
-               :updates (map #(update % :goal-config dissoc-ca-cert) updates)})
+    (log/info "Updating dynamic clusters.")
+    (doseq [current-config (dissoc-ca-cert-vals current-configs)]
+      (log/info "Updating dynamic cluster" (key current-config) "current config:" current-config))
+    (doseq [new-config (dissoc-ca-cert-vals new-configs)]
+      (log/info "Updating dynamic cluster" (key new-config) "new config:" new-config))
+    (doseq [updated-config (map #(update % :goal-config dissoc-ca-cert) updates)]
+      (log/info "Updating dynamic cluster" :force? force? "updated config:" updated-config))
     (let [updates-with-results (map
                                  #(assoc % :update-result
                                            (when (:valid? %) (execute-update! conn %)))
