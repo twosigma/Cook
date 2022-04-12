@@ -171,7 +171,7 @@
                       :path "version"
                       :bytes version})}]
 
-  :java-source-paths ["java"]
+  :java-source-paths ["./java"]
 
   :profiles
   {; By default, activate the :oss profile (explained below)
