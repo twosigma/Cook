@@ -1027,7 +1027,7 @@
 (counters/defcounter [cook-scheduler match cycle-unmatched])
 
 (defn handle-match-cycle-metrics
-  [pool-name considerable-jobs matches offers offers-scheduled head-job-matched? head-job-resources
+  [pool-name max-considerable considerable-jobs matches offers offers-scheduled head-job-matched? head-job-resources
    number-considerable-jobs number-matched-jobs number-unmatched-jobs]
   (let [user->number-matched-considerable-jobs (->> matches
                                                     matches->jobs
@@ -1043,12 +1043,14 @@
       ; nonzero considerables case
       (log/info (json/write-str {:inputs {:jobs-considerable number-considerable-jobs
                                           :offers (count offers)
-                                          :users user->number-total-considerable-jobs}
+                                          :users user->number-total-considerable-jobs
+                                          :max-considerable max-considerable
+                                          :queue-was-full (= max-considerable number-considerable-jobs)}
                                  :matched {:jobs-considerable number-matched-jobs
                                            :offers (count offers-scheduled)
                                            :users user->number-matched-considerable-jobs
                                            :match-percent (/ number-matched-jobs number-considerable-jobs)
-                                           :head-matched head-job-matched?}
+                                           :head-was-matched head-job-matched?}
                                  :pool-name pool-name
                                  :unmatched {:jobs-considerable number-unmatched-jobs
                                              :offers (- (count offers) (count offers-scheduled))
@@ -1102,7 +1104,7 @@
               number-considerable-jobs (count considerable-jobs)
               number-unmatched-jobs (- number-considerable-jobs number-matched-jobs)]
 
-          (handle-match-cycle-metrics pool-name considerable-jobs matches offers offers-scheduled
+          (handle-match-cycle-metrics pool-name num-considerable considerable-jobs matches offers offers-scheduled
                                       matched-considerable-jobs-head? first-considerable-job-resources
                                       number-considerable-jobs number-matched-jobs number-unmatched-jobs)
 
