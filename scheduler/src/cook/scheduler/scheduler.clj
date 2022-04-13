@@ -19,6 +19,7 @@
             [clj-time.core :as time]
             [clojure.core.async :as async]
             [clojure.core.cache :as cache]
+            [clojure.data.json :as json]
             [clojure.edn :as edn]
             [clojure.set :as set]
             [clojure.string :as str]
@@ -57,8 +58,7 @@
             [metrics.histograms :as histograms]
             [metrics.meters :as meters]
             [metrics.timers :as timers]
-            [plumbing.core :as pc]
-            [clojure.data.json :as json])
+            [plumbing.core :as pc])
   (:import (com.netflix.fenzo
              TaskAssignmentResult TaskRequest TaskScheduler TaskScheduler$Builder VirtualMachineCurrentState
              VirtualMachineLease SchedulingResult VMAssignmentResult)
@@ -1027,9 +1027,11 @@
 (counters/defcounter [cook-scheduler match cycle-unmatched])
 
 (defn handle-match-cycle-metrics
-  [pool-name max-considerable considerable-jobs matches offers offers-scheduled head-job-matched? head-job-resources
-   number-considerable-jobs number-matched-jobs number-unmatched-jobs]
-  (let [user->number-matched-considerable-jobs (->> matches
+  [match-map]
+  (let [{:keys [considerable-jobs head-matched? head-resources matches max-considerable
+                number-considerable-jobs number-matched-jobs number-unmatched-jobs offers offers-scheduled
+                pool-name]} match-map
+        user->number-matched-considerable-jobs (->> matches
                                                     matches->jobs
                                                     (map cached-queries/job-ent->user)
                                                     frequencies)
@@ -1050,7 +1052,7 @@
                                            :offers (count offers-scheduled)
                                            :users user->number-matched-considerable-jobs
                                            :match-percent (/ number-matched-jobs number-considerable-jobs)
-                                           :head-was-matched head-job-matched?}
+                                           :head-was-matched head-matched?}
                                  :pool-name pool-name
                                  :unmatched {:jobs-considerable number-unmatched-jobs
                                              :offers (- (count offers) (count offers-scheduled))
@@ -1060,7 +1062,7 @@
                                                       user->number-matched-considerable-jobs)}
                                  :stats {:jobs-considerable (jobs->stats considerable-jobs)
                                          :offers (offers->stats offers)
-                                         :head-resources head-job-resources}})))
+                                         :head-resources head-resources}})))
     (counters/inc! cycle-considerable number-considerable-jobs)
     (counters/inc! cycle-matched number-matched-jobs)
     (counters/inc! cycle-unmatched number-unmatched-jobs)))
@@ -1104,9 +1106,17 @@
               number-considerable-jobs (count considerable-jobs)
               number-unmatched-jobs (- number-considerable-jobs number-matched-jobs)]
 
-          (handle-match-cycle-metrics pool-name num-considerable considerable-jobs matches offers offers-scheduled
-                                      matched-considerable-jobs-head? first-considerable-job-resources
-                                      number-considerable-jobs number-matched-jobs number-unmatched-jobs)
+          (handle-match-cycle-metrics {:considerable-jobs considerable-jobs
+                                       :head-matched? matched-considerable-jobs-head?
+                                       :head-resources first-considerable-job-resources
+                                       :matches matches
+                                       :max-considerable num-considerable
+                                       :number-considerable-jobs number-considerable-jobs
+                                       :number-matched-jobs number-matched-jobs
+                                       :number-unmatched-jobs number-unmatched-jobs
+                                       :offers offers
+                                       :offers-scheduled offers-scheduled
+                                       :pool-name pool-name})
 
           ; We want to log warnings when jobs have gone unmatched for a long time.
           ; In order to do this, we keep track, per pool, of the jobs that did not
