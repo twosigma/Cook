@@ -1,11 +1,11 @@
 Releasing Cook Executor
 =======================
 
-Cook Sidecar is released on [PyPI](https://pypi.org/project/cook-executor/)
+Cook's Jobclient API is released on [PyPI](https://pypi.org/project/cook-executor/)
 
 Prerequisites
 -------------
-Ensure you can build the executor followng the instructions in README.md
+Ensure you can build it following the instructions in README.md
 
 Install `twine`:
 ```bash
