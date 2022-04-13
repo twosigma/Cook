@@ -1036,22 +1036,29 @@
         user->number-total-considerable-jobs (->> considerable-jobs
                                                   (map cached-queries/job-ent->user)
                                                   frequencies)]
-    (log/info (json/write-str {:jobs-considerable {:head-matched? head-job-matched?
-                                                   :head-resources head-job-resources number-matched-jobs number-matched-jobs
-                                                   :number-considerable-jobs number-considerable-jobs
-                                                   :number-unmatched-jobs number-unmatched-jobs
-                                                   :stats (jobs->stats considerable-jobs)
-                                                   :user->number-matched user->number-matched-considerable-jobs
-                                                   :user->number-total user->number-total-considerable-jobs
-                                                   :user->number-unmatched (merge-with
-                                                                             -
-                                                                             user->number-total-considerable-jobs
-                                                                             user->number-matched-considerable-jobs)}
-                               :offers {:number-matched (count offers-scheduled)
-                                        :number-total (count offers)
-                                        :number-unmatched (- (count offers) (count offers-scheduled))
-                                        :stats (offers->stats offers)}
-                               :pool-name pool-name}))
+    (if (= number-considerable-jobs 0)
+      ; keep the log slim in the 0 considerables case
+      (log/info (json/write-str {:jobs-considerable {:total 0}
+                                 :pool-name pool-name}))
+      ; nonzero considerables case
+      (log/info (json/write-str {:jobs-considerable {:matched number-matched-jobs
+                                                     :total number-considerable-jobs
+                                                     :unmatched number-unmatched-jobs
+                                                     :stats (jobs->stats considerable-jobs)}
+                                 :head-considerable {:was-matched head-job-matched?
+                                                     :resources head-job-resources}
+                                 :offers {:matched (count offers-scheduled)
+                                          :total (count offers)
+                                          :unmatched (- (count offers) (count offers-scheduled))
+                                          :stats (offers->stats offers)}
+                                 :pool-name pool-name
+                                 :users-considerable user->number-total-considerable-jobs
+                                 :users-matched user->number-matched-considerable-jobs
+                                 :users-unmatched (merge-with
+                                                    -
+                                                    user->number-total-considerable-jobs
+                                                    user->number-matched-considerable-jobs)
+                                 })))
     (counters/inc! cycle-considerable number-considerable-jobs)
     (counters/inc! cycle-matched number-matched-jobs)
     (counters/inc! cycle-unmatched number-unmatched-jobs)))
