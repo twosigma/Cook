@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.59.4] - 2022-04-14
+### Changed
+- Splitting 'updating dynamic clusters' log into separate entries, from @samincheva
+- Convert match cycle log line to structured logging, from @laurameng
+
 ## [1.59.3] - 2022-03-31
 ### Added
 - Add second init sidecar for checkpointing, from @scrosby
