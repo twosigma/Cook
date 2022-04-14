@@ -11,6 +11,9 @@ Install `twine`:
 ```bash
 pip3 install twine
 ```
+Update version number
+------------
+Look at setup.py, and edit the version number which may reference another python variable to be edited.
 
 Test Release
 ------------
