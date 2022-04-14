@@ -19,6 +19,7 @@
             [clj-time.core :as time]
             [clojure.core.async :as async]
             [clojure.core.cache :as cache]
+            [clojure.data.json :as json]
             [clojure.edn :as edn]
             [clojure.set :as set]
             [clojure.string :as str]
@@ -1021,6 +1022,51 @@
 
 (def pool-name->unmatched-job-uuid->unmatched-cycles-atom (atom {}))
 
+(counters/defcounter [cook-scheduler match cycle-considerable])
+(counters/defcounter [cook-scheduler match cycle-matched])
+(counters/defcounter [cook-scheduler match cycle-unmatched])
+
+(defn handle-match-cycle-metrics
+  [match-map]
+  (let [{:keys [considerable-jobs head-matched? head-resources matches max-considerable
+                number-considerable-jobs number-matched-jobs number-unmatched-jobs offers offers-scheduled
+                pool-name]} match-map
+        user->number-matched-considerable-jobs (->> matches
+                                                    matches->jobs
+                                                    (map cached-queries/job-ent->user)
+                                                    frequencies)
+        user->number-total-considerable-jobs (->> considerable-jobs
+                                                  (map cached-queries/job-ent->user)
+                                                  frequencies)]
+    (if (= number-considerable-jobs 0)
+      ; keep the log slim in the 0 considerables case
+      (log/info (json/write-str {:inputs {:jobs-considerable 0}
+                                 :pool-name pool-name}))
+      ; nonzero considerables case
+      (log/info (json/write-str {:inputs {:jobs-considerable number-considerable-jobs
+                                          :offers (count offers)
+                                          :users user->number-total-considerable-jobs
+                                          :max-considerable max-considerable
+                                          :queue-was-full (= max-considerable number-considerable-jobs)}
+                                 :matched {:jobs-considerable number-matched-jobs
+                                           :offers (count offers-scheduled)
+                                           :users user->number-matched-considerable-jobs
+                                           :match-percent (/ number-matched-jobs number-considerable-jobs)
+                                           :head-was-matched head-matched?}
+                                 :pool-name pool-name
+                                 :unmatched {:jobs-considerable number-unmatched-jobs
+                                             :offers (- (count offers) (count offers-scheduled))
+                                             :users (merge-with
+                                                      -
+                                                      user->number-total-considerable-jobs
+                                                      user->number-matched-considerable-jobs)}
+                                 :stats {:jobs-considerable (jobs->stats considerable-jobs)
+                                         :offers (offers->stats offers)
+                                         :head-resources head-resources}})))
+    (counters/inc! cycle-considerable number-considerable-jobs)
+    (counters/inc! cycle-matched number-matched-jobs)
+    (counters/inc! cycle-unmatched number-unmatched-jobs)))
+
 (defn handle-resource-offers!
   "Gets a list of offers from mesos. Decides what to do with them all--they should all
    be accepted or rejected at the end of the function."
@@ -1055,34 +1101,22 @@
                                   (matches->job-uuids matches pool-name))
               first-considerable-job-resources (-> considerable-jobs first tools/job-ent->resources)
               matched-considerable-jobs-head? (contains? matched-job-uuids (-> considerable-jobs first :job/uuid))
-              user->number-matched-considerable-jobs (->> matches
-                                                          matches->jobs
-                                                          (map cached-queries/job-ent->user)
-                                                          frequencies)
-              user->number-total-considerable-jobs (->> considerable-jobs
-                                                        (map cached-queries/job-ent->user)
-                                                        frequencies)
+
               number-matched-jobs (count matched-job-uuids)
               number-considerable-jobs (count considerable-jobs)
               number-unmatched-jobs (- number-considerable-jobs number-matched-jobs)]
 
-          (log/info "In" pool-name "pool, matching offers to considerable jobs"
-                    {:jobs-considerable {:head-matched? matched-considerable-jobs-head?
-                                         :head-resources first-considerable-job-resources
-                                         :number-matched-jobs number-matched-jobs
-                                         :number-considerable-jobs number-considerable-jobs
-                                         :number-unmatched-jobs number-unmatched-jobs
-                                         :stats (jobs->stats considerable-jobs)
-                                         :user->number-matched user->number-matched-considerable-jobs
-                                         :user->number-total user->number-total-considerable-jobs
-                                         :user->number-unmatched (merge-with
-                                                                   -
-                                                                   user->number-total-considerable-jobs
-                                                                   user->number-matched-considerable-jobs)}
-                     :offers {:number-matched (count offers-scheduled)
-                              :number-total (count offers)
-                              :number-unmatched (- (count offers) (count offers-scheduled))
-                              :stats (offers->stats offers)}})
+          (handle-match-cycle-metrics {:considerable-jobs considerable-jobs
+                                       :head-matched? matched-considerable-jobs-head?
+                                       :head-resources first-considerable-job-resources
+                                       :matches matches
+                                       :max-considerable num-considerable
+                                       :number-considerable-jobs number-considerable-jobs
+                                       :number-matched-jobs number-matched-jobs
+                                       :number-unmatched-jobs number-unmatched-jobs
+                                       :offers offers
+                                       :offers-scheduled offers-scheduled
+                                       :pool-name pool-name})
 
           ; We want to log warnings when jobs have gone unmatched for a long time.
           ; In order to do this, we keep track, per pool, of the jobs that did not
