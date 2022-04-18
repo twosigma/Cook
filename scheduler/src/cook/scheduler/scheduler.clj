@@ -532,8 +532,7 @@
                      [resource]
                      (->> resource-maps
                           (sort-by #(get % resource))
-                          last
-                          tools/format-resource-map))
+                          last))
                    resources-of-interest)
      :percentiles (pc/map-from-keys
                     (fn percentiles
@@ -541,13 +540,9 @@
                       (let [resource-values (->> resource-maps
                                                  (map #(get % resource))
                                                  (remove nil?))]
-                        (-> resource-values
-                            (task-stats/percentiles 50 95 100)
-                            tools/format-resource-map)))
+                        (task-stats/percentiles resource-values 50 95 100)))
                     resources-of-interest)
-     :totals (->> resource-maps
-                  (reduce (partial merge-with +))
-                  tools/format-resource-map)}))
+     :totals (reduce (partial merge-with +) resource-maps)}))
 
 (defn offers->stats
   "Given a collection of offers, returns stats about the offers"
@@ -1041,7 +1036,7 @@
     (if (= number-considerable-jobs 0)
       ; keep the log slim in the 0 considerables case
       (log/info (json/write-str {:inputs {:jobs-considerable 0}
-                                 :pool-name pool-name}))
+                                 :pool pool-name}))
       ; nonzero considerables case
       (log/info (json/write-str {:inputs {:jobs-considerable number-considerable-jobs
                                           :offers (count offers)
@@ -1053,7 +1048,7 @@
                                            :users user->number-matched-considerable-jobs
                                            :match-percent (/ number-matched-jobs number-considerable-jobs)
                                            :head-was-matched head-matched?}
-                                 :pool-name pool-name
+                                 :pool pool-name
                                  :unmatched {:jobs-considerable number-unmatched-jobs
                                              :offers (- (count offers) (count offers-scheduled))
                                              :users (merge-with
