@@ -237,7 +237,7 @@ class ClientTest(util.CookTest):
         else:
             for pool_name in pools_with_gpus:
                 matching_gpu_models = util.valid_gpu_models_on_pool(pool_name)
-                gpu_model = matching_gpu_models[0][0]
+                gpu_model = matching_gpu_models[0]
                 self.gpu_submit_helper(pool_name, 1, gpu_model)
 
     def test_bulk_ops(self):
