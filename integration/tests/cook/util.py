@@ -1584,14 +1584,14 @@ def are_gpus_enabled():
 
 
 def gpu_enabled_pools():
-    """"Returns a list of pools that support GPUs."""
+    """"Returns a list of pools that support the default GPU."""
     cook_url = retrieve_cook_url()
     all_active_pools, _ = active_pools(cook_url)
     pools_with_gpus = []
     for pool in all_active_pools:
         pool_name = pool['name']
         matching_gpu_models = valid_gpu_models_on_pool(pool_name)
-        if not (len(matching_gpu_models) == 0 or len(matching_gpu_models[0]) == 0):
+        if not (len(matching_gpu_models)) == 0:
             pools_with_gpus.append(pool_name)
     return pools_with_gpus
 
@@ -1601,7 +1601,7 @@ def valid_gpu_models_on_pool(pool_name):
     cook_url = retrieve_cook_url()
     settings_dict = settings(cook_url)
     valid_gpu_models_config_map = settings_dict.get('pools', {}).get('valid-gpu-models', [])
-    valid_models_on_pool = [ii['valid-models'] for ii in valid_gpu_models_config_map
+    valid_models_on_pool = [ii['default-model'] for ii in valid_gpu_models_config_map
                             if re.match(ii['pool-regex'], pool_name)]
     return valid_models_on_pool
 
