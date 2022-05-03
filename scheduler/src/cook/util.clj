@@ -16,6 +16,7 @@
 (ns cook.util
   (:refer-clojure :exclude [cast merge empty split replace])
   (:require [clojure.data :as data]
+            [clojure.data.json :as json]
             [clojure.java.io :as io :refer [file reader]]
             [clojure.java.shell :refer :all]
             [clojure.pprint :refer :all]
@@ -230,3 +231,11 @@
     (let [old-val @atom
           swap-happened (compare-and-set! atom old-val newval)]
       (if swap-happened old-val (recur)))))
+
+(defn log-structured
+  "Log a structured message at the info level.
+  Takes as input a metadata dictionary and a data string.
+  Can specify a custom logger namespace if desired.
+  "
+  ([data metadata] (log/info (json/write-str (assoc metadata :data data))))
+  ([logger-ns data metadata] (log/log logger-ns :info nil (json/write-str (assoc metadata :data data)))))
