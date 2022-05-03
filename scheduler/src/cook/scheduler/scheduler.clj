@@ -19,7 +19,6 @@
             [clj-time.core :as time]
             [clojure.core.async :as async]
             [clojure.core.cache :as cache]
-            [clojure.data.json :as json]
             [clojure.edn :as edn]
             [clojure.set :as set]
             [clojure.string :as str]
@@ -68,6 +67,8 @@
 (defn now
   ^Date []
   (tc/to-date (time/now)))
+
+(def match-cycle-logger-ns "cook.scheduler.scheduler.match")
 
 
 (timers/deftimer [cook-mesos scheduler handle-status-update-duration])
@@ -356,6 +357,7 @@
   (log/info "Starting tx-report-queue")
   (let [kill-chan (async/chan)
         query-db (d/db conn)
+        query-basis (d/basis-t query-db)
         query-basis (d/basis-t query-db)
         tasks-to-kill (q '[:find ?i
                            :in $ [?status ...]
@@ -1037,32 +1039,41 @@
                                                     frequencies)
         user->number-total-considerable-jobs (->> considerable-jobs
                                                   (map cached-queries/job-ent->user)
-                                                  frequencies)]
+                                                  frequencies)
+        user->number-unmatched-considerable-jobs (merge-with
+                                                   -
+                                                   user->number-total-considerable-jobs
+                                                   user->number-matched-considerable-jobs)]
     (if (= number-considerable-jobs 0)
       ; keep the log slim in the 0 considerables case
-      (log/info (json/write-str {:inputs {:jobs-considerable 0}
-                                 :pool-name pool-name}))
+      (util/log-structured match-cycle-logger-ns "total match cycle metric"
+                           {:inputs {:jobs-considerable 0} :pool pool-name})
       ; nonzero considerables case
-      (log/info (json/write-str {:inputs {:jobs-considerable number-considerable-jobs
-                                          :offers (count offers)
-                                          :users user->number-total-considerable-jobs
-                                          :max-considerable max-considerable
-                                          :queue-was-full (= max-considerable number-considerable-jobs)}
-                                 :matched {:jobs-considerable number-matched-jobs
-                                           :offers (count offers-scheduled)
-                                           :users user->number-matched-considerable-jobs
-                                           :match-percent (/ number-matched-jobs number-considerable-jobs)
-                                           :head-was-matched head-matched?}
-                                 :pool-name pool-name
-                                 :unmatched {:jobs-considerable number-unmatched-jobs
-                                             :offers (- (count offers) (count offers-scheduled))
-                                             :users (merge-with
-                                                      -
-                                                      user->number-total-considerable-jobs
-                                                      user->number-matched-considerable-jobs)}
-                                 :stats {:jobs-considerable (jobs->stats considerable-jobs)
-                                         :offers (offers->stats offers)
-                                         :head-resources head-resources}})))
+      (do
+        ; compute the considerable, matched, and unmatched jobs for each user and emit individual metrics
+        (doseq [[user metrics] (reduce (fn [m key] (assoc m key {:user-considerable (user->number-total-considerable-jobs key 0)
+                                                                 :user-matched (user->number-matched-considerable-jobs key 0)
+                                                                 :user-unmatched (user->number-unmatched-considerable-jobs key 0)}))
+                                       {}
+                                       (keys user->number-total-considerable-jobs))]
+          (util/log-structured match-cycle-logger-ns "user match cycle metric"
+                               (merge metrics {:user user :pool pool-name})))
+        (util/log-structured "cook.scheduler.scheduler.match" "total match cycle metric"
+                             {:inputs {:jobs-considerable number-considerable-jobs
+                                       :offers (count offers)
+                                       :max-considerable max-considerable
+                                       :queue-was-full (= max-considerable number-considerable-jobs)}
+                              :matched {:jobs-considerable number-matched-jobs
+                                        :offers (count offers-scheduled)
+                                        :match-percent (/ number-matched-jobs number-considerable-jobs)
+                                        :head-was-matched head-matched?}
+                              :pool pool-name
+                              :unmatched {:jobs-considerable number-unmatched-jobs
+                                          :offers (- (count offers) (count offers-scheduled))}
+                              :stats {:jobs-considerable (jobs->stats considerable-jobs)
+                                      :offers (offers->stats offers)
+                                      :head-resources head-resources}})))
+
     (counters/inc! cycle-considerable number-considerable-jobs)
     (counters/inc! cycle-matched number-matched-jobs)
     (counters/inc! cycle-unmatched number-unmatched-jobs)))
