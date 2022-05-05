@@ -561,7 +561,12 @@
 (defn create-task-ent
   "Takes a pending job entity and returns a synthetic running task entity for that job"
   [pending-job-ent & {:keys [hostname slave-id] :or {hostname nil slave-id nil}}]
-  (merge {:job/_instance pending-job-ent
+  ; task-ent->user uses :db/id as a cache key. However, synthetic tasks
+  ; entities for pending jobs don't have that and aren't cached. This makes
+  ; that cache essentially noop for pending jobs; they always miss.
+  ; Fix this by borrowing the :db/id of the source job.
+  (merge {:db/id (- (:db/id pending-job-ent))
+          :job/_instance pending-job-ent
           :instance/status :instance.status/running}
          (when hostname {:instance/hostname hostname})
          (when slave-id {:instance/slave-id slave-id})))
