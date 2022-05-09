@@ -1030,6 +1030,15 @@
                   (str %))
                resource-map))
 
+(defn format-resource-map-for-structured-logging
+  "Given a map with resource amount values,
+   formats the amount values for structured logging"
+  [resource-map]
+  (pc/map-vals #(if (number? %)
+                  % ; don't stringify #s
+                  (str %))
+               resource-map))
+
 (defn job->submit-time
   "Get submit-time for a job. due to a bug, submit time may not exist for some jobs"
   [job]

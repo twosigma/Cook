@@ -533,7 +533,7 @@
                      (->> resource-maps
                           (sort-by #(get % resource))
                           last
-                          tools/format-resource-map))
+                          tools/format-resource-map-for-structured-logging))
                    resources-of-interest)
      :percentiles (pc/map-from-keys
                     (fn percentiles
@@ -543,11 +543,11 @@
                                                  (remove nil?))]
                         (-> resource-values
                             (task-stats/percentiles 50 95 100)
-                            tools/format-resource-map)))
+                            tools/format-resource-map-for-structured-logging)))
                     resources-of-interest)
      :totals (->> resource-maps
                   (reduce (partial merge-with +))
-                  tools/format-resource-map)}))
+                  tools/format-resource-map-for-structured-logging)}))
 
 (defn offers->stats
   "Given a collection of offers, returns stats about the offers"
