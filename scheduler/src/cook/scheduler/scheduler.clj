@@ -31,6 +31,7 @@
             [cook.config :as config]
             [cook.datomic :as datomic]
             [cook.group :as group]
+            [cook.log-structured :as log-structured]
             [cook.mesos.reason :as reason]
             [cook.mesos.task :as task]
             [cook.plugins.completion :as completion]
@@ -68,7 +69,8 @@
   ^Date []
   (tc/to-date (time/now)))
 
-(def match-cycle-logger-ns "cook.scheduler.scheduler.match")
+; Use a separate namespace for match cycle metrics to be able to send them to a different index.
+(def match-cycle-logger-ns "cook.scheduler.scheduler-match")
 
 
 (timers/deftimer [cook-mesos scheduler handle-status-update-duration])
@@ -357,7 +359,6 @@
   (log/info "Starting tx-report-queue")
   (let [kill-chan (async/chan)
         query-db (d/db conn)
-        query-basis (d/basis-t query-db)
         query-basis (d/basis-t query-db)
         tasks-to-kill (q '[:find ?i
                            :in $ [?status ...]
@@ -1046,19 +1047,20 @@
                                                    user->number-matched-considerable-jobs)]
     (if (= number-considerable-jobs 0)
       ; keep the log slim in the 0 considerables case
-      (util/log-structured match-cycle-logger-ns "total match cycle metric"
-                           {:inputs {:jobs-considerable 0} :pool pool-name})
+      (log-structured/info "total match cycle metric"
+                           {:inputs {:jobs-considerable 0} :pool pool-name} match-cycle-logger-ns)
       ; nonzero considerables case
       (do
         ; compute the considerable, matched, and unmatched jobs for each user and emit individual metrics
-        (doseq [[user metrics] (reduce (fn [m key] (assoc m key {:user-considerable (user->number-total-considerable-jobs key 0)
-                                                                 :user-matched (user->number-matched-considerable-jobs key 0)
-                                                                 :user-unmatched (user->number-unmatched-considerable-jobs key 0)}))
-                                       {}
-                                       (keys user->number-total-considerable-jobs))]
-          (util/log-structured match-cycle-logger-ns "user match cycle metric"
-                               (merge metrics {:user user :pool pool-name})))
-        (util/log-structured "cook.scheduler.scheduler.match" "total match cycle metric"
+        ; the user->number-total-considerable-jobs map contains all users considered this cycle, so we can use its keys to iterate
+        (doseq [[user considerable] user->number-total-considerable-jobs]
+          (log-structured/info "user match cycle metric"
+                               {:user user :pool pool-name
+                                :user-considerable considerable
+                                :user-matched (user->number-matched-considerable-jobs user 0)
+                                :user-unmatched (user->number-unmatched-considerable-jobs user 0)}
+                               match-cycle-logger-ns))
+        (log-structured/info "total match cycle metric"
                              {:inputs {:jobs-considerable number-considerable-jobs
                                        :offers (count offers)
                                        :max-considerable max-considerable
@@ -1072,7 +1074,8 @@
                                           :offers (- (count offers) (count offers-scheduled))}
                               :stats {:jobs-considerable (jobs->stats considerable-jobs)
                                       :offers (offers->stats offers)
-                                      :head-resources head-resources}})))
+                                      :head-resources head-resources}}
+                             match-cycle-logger-ns)))
 
     (counters/inc! cycle-considerable number-considerable-jobs)
     (counters/inc! cycle-matched number-matched-jobs)
