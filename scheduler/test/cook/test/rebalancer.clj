@@ -893,7 +893,8 @@
           pool-ent {:pool/name "no-pool"
                     :pool/dru-mode :pool.dru-mode/default}
           state (rebalancer/init-state db running-task-ents pending-job-ents host->spare-resources pool-ent)]
-      (let [task-ent9 {:job/_instance job-ent9
+      (let [task-ent9 {:db/id (- (:db/id job-ent9)) ; When we make fake task entities for pending jobs, we give them the :db/id of the underlying job for caching purposes.
+                       :job/_instance job-ent9
                        :instance/hostname "hostB"
                        :instance/slave-id "testB"
                        :instance/status :instance.status/running}
@@ -919,7 +920,8 @@
                   (dru/->ScoredTask task-ent5 0.32 8.0 8.0)]
                  (vals task->scored-task'')))))
 
-      (let [task-ent10 {:job/_instance job-ent10
+      (let [task-ent10 {:db/id (- (:db/id job-ent10)) ; When we make fake task entities for pending jobs, we give them the :db/id of the underlying job for caching purposes.
+                        :job/_instance job-ent10
                         :instance/slave-id "testA"
                         :instance/hostname "hostA"
                         :instance/status :instance.status/running}
@@ -944,7 +946,8 @@
                   (dru/->ScoredTask task-ent5 0.32 8.0 8.0)]
                  (vals task->scored-task'')))))
 
-      (let [task-ent12 {:job/_instance job-ent12
+      (let [task-ent12 {:db/id (- (:db/id job-ent12)) ; When we make fake task entities for pending jobs, we give them the :db/id of the underlying job for caching purposes.
+                        :job/_instance job-ent12
                         :instance/hostname "hostA"
                         :instance/status :instance.status/running}
             user->sorted-running-task-ents' {"ljin" (into (sorted-set-by (util/same-user-task-comparator)) [task-ent1 task-ent2 task-ent3 task-ent4])
