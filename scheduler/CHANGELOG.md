@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.59.5] - 2022-05-10
+### Added
+- Development documentation for Cook, from @scrosby
+- Utility for emitting structured logs, from @samincheva
+### Changed
+- Updated unit tests for GPU model types, from @scrosby
+### Fixed
+- Corrected numbers to not use string format in match cycle metrics, from @laurameng
+
 ## [1.59.4] - 2022-04-14
 ### Changed
 - Splitting 'updating dynamic clusters' log into separate entries, from @samincheva
