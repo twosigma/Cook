@@ -167,7 +167,7 @@
   (let [user (:job/user pending-job-ent)
         {gpu-req :gpus} (util/job-ent->resources pending-job-ent)
         gpu-divisor (-> user user->dru-divisors :gpus)
-        pending-task-ent (util/create-task-ent pending-job-ent)
+        pending-task-ent (util/create-task-ent-0 pending-job-ent) ; Taint, but not used.
         nearest-task-ent (some-> user->sorted-running-task-ents
                                  (get user)
                                  (rsubseq <= pending-task-ent)
@@ -181,6 +181,28 @@
 
     pending-job-dru))
 
+(defn mk-bound-fn
+  [^clojure.lang.Sorted sc test key]
+  (fn [e]
+    (test (.. sc comparator (compare (. sc entryKey e) key)) 0)))
+
+(defn rsubseq0
+  "sc must be a sorted collection, test(s) one of <, <=, > or
+  >=. Returns a reverse seq of those entries with keys ek for
+  which (test (.. sc comparator (compare ek key)) 0) is true"
+  {:added "1.0"
+   :static true}
+  ([^clojure.lang.Sorted sc test key]
+   (let [include (mk-bound-fn sc test key)]
+     (if (#{< <=} test)
+       (when-let [[e :as s] (. sc seqFrom key false)]
+         (if (include e) s (next s)))
+       (take-while include (. sc seq false)))))
+  ([^clojure.lang.Sorted sc start-test start-key end-test end-key]
+   (when-let [[e :as s] (. sc seqFrom end-key false)]
+     (take-while (mk-bound-fn sc start-test start-key)
+                 (if ((mk-bound-fn sc end-test end-key) e) s (next s))))))
+
 (defn compute-pending-default-job-dru
   "Takes state and a pending job entity, returns the dru of the pending-job. In the case where the pending job causes user's dominant
    resource type to change, the dru is not accurate and is only a upper bound. However, this inaccuracy won't affect the correctness
@@ -192,16 +214,31 @@
   (let [user (:job/user pending-job-ent)
         {mem-req :mem cpus-req :cpus} (util/job-ent->resources pending-job-ent)
         {mem-divisor :mem cpus-divisor :cpus} (user->dru-divisors user)
-        pending-task-ent (util/create-task-ent pending-job-ent)
+        pending-task-ent (util/create-task-ent-0 pending-job-ent) ; Taint, but not used.
         nearest-task-ent (some-> user->sorted-running-task-ents
                                  (get user)
-                                 (rsubseq <= pending-task-ent)
+                                 (rsubseq0 <= pending-task-ent)
                                  (first))
+        _ (println "COUNT:" (count user->sorted-running-task-ents)
+                   " --- " (some-> user->sorted-running-task-ents
+                                    (get user)
+                                   (count))
+                   " --- " '(compare (some-> user->sorted-running-task-ents
+                                   (get user)
+                                   first) pending-task-ent)
+                   " ---- "
+                   (some->>
+                              (some-> user->sorted-running-task-ents
+                                 (get user)
+                                 (rsubseq0 <= pending-task-ent))
+                              (map :db/id)))
         nearest-task-dru (if nearest-task-ent
                            (get-in task->scored-task [nearest-task-ent :dru])
                            0.0)
         pending-job-dru (max (+ nearest-task-dru (/ mem-req mem-divisor))
-                             (+ nearest-task-dru (/ cpus-req cpus-divisor)))]
+                             (+ nearest-task-dru (/ cpus-req cpus-divisor)))
+        _ (println "A:" (:db/id pending-job-ent) pending-job-dru
+                   (map #(list (first %) (count (second %))) user->sorted-running-task-ents))]
     (histograms/update! (histograms/histogram (metric-title "pending-job-drus" pool)) (dru-at-scale pending-job-dru))
     (histograms/update! (histograms/histogram (metric-title "nearest-task-drus" pool)) (dru-at-scale nearest-task-dru))
 
@@ -294,6 +331,7 @@
                     (update-in task-ents-by-user [user] f task-ent)))
                 user->sorted-running-task-ents
                 (conj preempted-task-ents new-running-task-ent))
+        ;_ (println "A1: " (map #(list (first %) (count (second %))) user->sorted-running-task-ents' ))
         task->scored-task' (dru/next-task->scored-task task->scored-task
                                                        user->sorted-running-task-ents
                                                        user->sorted-running-task-ents'
@@ -304,6 +342,7 @@
                                        :gpus (- (:gpus preemption-decision 0.0) (or gpus-req 0.0))
                                        :cpus (- (:cpus preemption-decision) cpus-req)})
         preempted-tasks' (into preempted-tasks preempted-task-ents)
+        ;_ (log/info "State info: " (count preempted-tasks'))  ;; Differs bebetween old and new!
         state' (->State task->scored-task' user->sorted-running-task-ents' host->spare-resources' user->dru-divisors'
                         compute-pending-job-dru preempted-tasks' user->quota-fn)]
     state'))
@@ -325,6 +364,7 @@
    pool-name
    pending-job-ent
    cotask-cache]
+ ; (println "D: Compute-preemption-decision")
   (timers/time!
    (timers/timer (metric-title "compute-preemption-decision-duration" pool-name))
    (let [{pending-job-mem :mem pending-job-cpus :cpus pending-job-gpus :gpus} (util/job-ent->resources pending-job-ent)
@@ -343,6 +383,7 @@
                                  (filter (partial exceeds-min-diff? pending-job-dru min-dru-diff pool-name))
                                  (group-by (fn [{:keys [task]}]
                                              (:instance/hostname task))))
+       ;  _ (println "Host->ScoredTask: " (map #(list (first %) (count (second %))) host->scored-tasks ))
 
          host->formatted-spare-resources (->> host->spare-resources
                                               (map (fn [[host {:keys [mem cpus gpus]}]]
@@ -405,6 +446,7 @@
   "Takes state, params and a pending job entity, returns new state and preemption decision"
   [db agent-attributes-cache state params pending-job cotask-cache pool-name]
   (log/debug "Trying to find space for: " pending-job)
+ ; (println "C1" (:db/id pending-job))
   (if-let [preemption-decision (compute-preemption-decision db agent-attributes-cache state params pool-name pending-job cotask-cache)]
     [(next-state state pending-job preemption-decision)
      (assoc preemption-decision
@@ -437,6 +479,7 @@
            remaining-preemption max-preemption
            [pending-job-ent & jobs-to-make-room-for] jobs-to-make-room-for
            preemption-decisions []]
+     ; (println "B1:" (count pending-job-ent) remaining-preemption)
       (if (and pending-job-ent (pos? remaining-preemption))
         (let [[state' preemption-decision]
               (compute-next-state-and-preemption-decision db agent-attributes-cache state

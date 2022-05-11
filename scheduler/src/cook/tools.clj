@@ -38,7 +38,7 @@
             [metatransaction.core :refer [db]]
             [metrics.timers :as timers]
             [plumbing.core :as pc :refer [map-keys map-vals]])
-  (:import (java.util Date)))
+  (:import (java.util Date Random)))
 
 (defn retrieve-system-ids
   "Executes a shell command to retrieve the user/group id for the specified user"
@@ -558,6 +558,20 @@
     (catch clojure.lang.ExceptionInfo e
       false)))
 
+(defn create-task-ent-0
+  "Takes a pending job entity and returns a synthetic running task entity for that job"
+  [pending-job-ent & {:keys [hostname slave-id] :or {hostname nil slave-id nil}}]
+  ; task-ent->user uses :db/id as a cache key. However, synthetic tasks
+  ; entities for pending jobs don't have that and aren't cached. This makes
+  ; that cache essentially noop for pending jobs; they always miss.
+  ; Fix this by borrowing the :db/id of the source job.
+  (merge {;:db/id (- (:db/id pending-job-ent))
+          :db/id 0
+          :job/_instance pending-job-ent
+          :instance/status :instance.status/running}
+         (when hostname {:instance/hostname hostname})
+         (when slave-id {:instance/slave-id slave-id})))
+
 (defn create-task-ent
   "Takes a pending job entity and returns a synthetic running task entity for that job"
   [pending-job-ent & {:keys [hostname slave-id] :or {hostname nil slave-id nil}}]
@@ -566,6 +580,7 @@
   ; that cache essentially noop for pending jobs; they always miss.
   ; Fix this by borrowing the :db/id of the source job.
   (merge {:db/id (- (:db/id pending-job-ent))
+          ;:db/id 0
           :job/_instance pending-job-ent
           :instance/status :instance.status/running}
          (when hostname {:instance/hostname hostname})
@@ -573,10 +588,11 @@
 
 (defn task-ent->user
   [task-ent]
-  (let [task-ent->user-miss
-        (fn [task-ent]
-          (get-in task-ent [:job/_instance :job/user]))]
-    (caches/lookup-cache-datomic-entity! caches/task-ent->user-cache task-ent->user-miss task-ent)))
+  (get-in task-ent [:job/_instance :job/user]))
+;  (let [task-ent->user-miss
+;        (fn [task-ent]
+;          ]
+;    (caches/lookup-cache-datomic-entity! caches/task-ent->user-cache task-ent->user-miss task-ent)))
 
 (def ^:const default-job-priority 50)
 
