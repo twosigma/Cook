@@ -86,7 +86,7 @@ def run(args, plugins):
         try:
             metrics.initialize(config_map)
             # measure the number of times users specify each cluster, including when none is specified
-            metrics.inc('command.%s.runs' % action, {'cluster': (cluster or 'default')})
+            metrics.inc('command.%s.runs' % action, additional_tags={'cluster': (cluster or 'default')})
             clusters = load_target_clusters(config_map, url, cluster)
             http.configure(config_map, plugins)
             cook.plugins.configure(plugins)
