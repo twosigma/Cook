@@ -108,7 +108,7 @@ def submit_federated(clusters, jobs, group, pool):
             resp = http.post(cluster, 'jobs', json_body)
             print_submit_result(cluster, resp)
             if resp.status_code == 201:
-                metrics.inc('command.submit.jobs', len(jobs))
+                metrics.inc('command.submit.jobs', len(jobs), additional_tags={'cluster': cluster})
                 return 0
         except requests.exceptions.ReadTimeout as rt:
             logging.exception(rt)
