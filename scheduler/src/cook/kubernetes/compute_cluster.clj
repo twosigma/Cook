@@ -14,6 +14,7 @@
             [cook.kubernetes.api :as api]
             [cook.kubernetes.controller :as controller]
             [cook.kubernetes.metrics :as metrics]
+            [cook.log-structured :as log-structured]
             [cook.monitor :as monitor]
             [cook.pool]
             [cook.scheduler.constraints :as constraints]
@@ -41,8 +42,9 @@
   (if-let [^V1Node node (node-name->node node-name)]
     (api/node-schedulable? compute-cluster node (cc/max-tasks-per-host compute-cluster) node-name->pods)
     (do
-      (log/error "In" (cc/compute-cluster-name compute-cluster)
-                 "compute cluster, unable to get node from node name" node-name)
+      (log-structured/error "Unable to get node from node name"
+                            {:compute-cluster (cc/compute-cluster-name compute-cluster)
+                             :node node-name})
       false)))
 
 (defn total-resource
@@ -100,12 +102,13 @@
         number-nodes-schedulable (count node-name->schedulable)
         number-nodes-total (count node-name->node)]
 
-    (log/info "In" compute-cluster-name "compute cluster, generating offers"
-              {:first-10-capacity (take 10 node-name->capacity)
-               :first-10-consumed (take 10 node-name->consumed)
-               :number-nodes-not-schedulable (- number-nodes-total number-nodes-schedulable)
-               :number-nodes-schedulable number-nodes-schedulable
-               :number-nodes-total number-nodes-total})
+    (log-structured/info "Generating offers"
+                         {:compute-cluster compute-cluster-name
+                          :number-nodes-not-schedulable (- number-nodes-total number-nodes-schedulable)
+                          :number-nodes-schedulable number-nodes-schedulable
+                          :number-nodes-total number-nodes-total
+                          :first-ten-capacity (print-str (take 10 node-name->capacity))
+                          :first-ten-consumed (print-str (take 10 node-name->consumed))})
 
     (monitor/set-counter! (metrics/counter "capacity-cpus" compute-cluster-name)
                           (total-resource node-name->capacity :cpus))
@@ -171,18 +174,23 @@
 (defn scan-tasks
   "Scan all taskids. Note: May block or be slow due to rate limits."
   [{:keys [name] :as kcc}]
-  (log/info "In" name "compute cluster, starting taskid scan")
+  (log-structured/info "Starting taskid scan" {:compute-cluster name})
   ; TODO Add in rate limits; only visit non-running/running task so fast.
   ; TODO Add in maximum-visit frequency. Only visit a task once every XX seconds.
   (let [taskids (taskids-to-scan kcc)]
-    (log/info "In" name "compute cluster, doing taskid scan. Visiting" (count taskids) "taskids")
+    (log-structured/info "Doing taskid scan"
+                         {:compute-cluster name
+                          :number-tasks (count taskids)})
     (doseq [^String taskid taskids]
       (try
         (controller/scan-process kcc taskid)
         (catch Exception e
-          (log/error e "In" name
-                     "compute cluster, encountered exception scanning task"
-                     taskid))))))
+          (log-structured/error "Encountered exception scanning task"
+                                {:compute-cluster name
+                                 :task-id taskid}
+                                e))))
+    (log-structured/info "Done with taskid scan"
+                         {:compute-cluster name})))
 
 (defn regular-scanner
   "Trigger a channel that scans all taskids (shortly) after this function is invoked and on a regular interval."
@@ -233,11 +241,13 @@
   (let [db (d/db conn)
         [_ pod-name->pod] (api/try-forever-get-all-pods-in-kubernetes api-client compute-cluster-name)
         all-tasks-ids-in-pods (into #{} (keys pod-name->pod))
-        _ (log/debug "All tasks in pods (for initializing cook expected state): " all-tasks-ids-in-pods)
+        _ (log-structured/debug (print-str "All tasks in pods (for initializing cook expected state): " all-tasks-ids-in-pods)
+                                {:compute-cluster compute-cluster-name})
         running-tasks-in-cc-ents (map #(d/entity db %) (cc/get-job-instance-ids-for-cluster-name db compute-cluster-name))
         running-task-id->task (task-ents->map-by-task-id running-tasks-in-cc-ents)
         cc-running-tasks-ids (->> running-task-id->task keys (into #{}))
-        _ (log/debug "Running tasks in compute cluster in datomic: " cc-running-tasks-ids)
+        _ (log-structured/debug (print-str "Running tasks in compute cluster in datomic: " cc-running-tasks-ids)
+                                {:compute-cluster compute-cluster-name})
         ; We already have task entities for everything running, in datomic.
         ; Now figure out what pods kubernetes has that aren't in that set, and then load those task entities too.
         extra-tasks-id->task (->> (set/difference all-tasks-ids-in-pods cc-running-tasks-ids)
@@ -248,15 +258,15 @@
                                   (filter (fn [[_ task-ent]] (some? task-ent)))
                                   (into {}))
         all-task-id->task (merge extra-tasks-id->task running-task-id->task)]
-    (log/info "Initialized tasks on startup:"
-              (count all-tasks-ids-in-pods) "tasks in pods and"
-              (count running-task-id->task) "running tasks in compute cluster" compute-cluster-name "in datomic. "
-              "We need to load an extra"
-              (count extra-tasks-id->task) "pods that aren't running in datomic. "
-              "For a total expected state size of"
-              (count all-task-id->task) "tasks in cook expected state.")
+    (log-structured/info (print-str "Initialized tasks on startup:"
+                                    (count all-tasks-ids-in-pods) "tasks in pods and"
+                                    (count running-task-id->task) "running tasks in datomic. "
+                                    "We need to load an extra" (count extra-tasks-id->task) "pods that aren't running in datomic. "
+                                    "For a total expected state size of" (count all-task-id->task) "tasks in cook expected state.")
+                         {:compute-cluster compute-cluster-name})
     (doseq [[k v] all-task-id->task]
-      (log/debug "Setting cook expected state for " k " ---> " (task-ent->cook-expected-state v)))
+      (log-structured/debug (print-str "Setting cook expected state for " k " ---> " (task-ent->cook-expected-state v))
+                            {:compute-cluster compute-cluster-name}))
     (into {}
           (map (fn [[k v]] [k (task-ent->cook-expected-state v)]) all-task-id->task))))
 
@@ -302,10 +312,12 @@
       (controller/update-cook-expected-state compute-cluster pod-name new-cook-expected-state-dict)
       (.stop timer-context)
       (catch Exception e
-        (log/error e "In" name "compute cluster, encountered exception launching task"
-                   {:pod-name pod-name
-                    :pod-namespace pod-namespace
-                    :task-metadata task-metadata})))))
+        (log-structured/error "Encountered exception launching task"
+                              {:pod-name pod-name
+                               :pod-namespace pod-namespace
+                               :task-metadata (print-str task-metadata)
+                               :compute-cluster name}
+                              e)))))
 
 (defn get-name->node-for-pool
   "Given a pool->node-name->node and pool, return a node-name->pool, for any pool"
@@ -332,9 +344,11 @@
   cc/ComputeCluster
   (launch-tasks [this pool-name matches process-task-post-launch-fn]
     (let [task-metadata-seq (mapcat :task-metadata-seq matches)]
-      (log/info "In" pool-name "pool, launching tasks for" name "compute cluster"
-                {:num-matches (count matches)
-                 :num-tasks (count task-metadata-seq)})
+      (log-structured/info "Launching tasks"
+                           {:pool pool-name
+                            :compute-cluster name
+                            :number-matches (count matches)
+                            :number-tasks (count task-metadata-seq)})
       (let [futures
             (doall
               (map (fn [task-metadata]
@@ -349,9 +363,10 @@
   (kill-task [this task-id]
     (let [state @state-atom]
       (if (= state :deleted)
-        (log/error "In" name "compute cluster, attempting to delete task, with ID" task-id
-                   "but the current cluster state is :deleted. Can't perform any client API calls"
-                   "when the cluster has been deleted. Will not attempt to kill task.")
+        (log-structured/error (print-str "Attempting to delete task, but the current cluster state is :deleted."
+                                         "Can't perform any client API calls when the cluster has been deleted."
+                                         "Will not attempt to kill task.")
+                              {:compute-cluster name :task-id task-id})
         ; Note we can't use timer/time! because it wraps the body in a Callable, which rebinds 'this' to another 'this'
         ; causing breakage.
         (let [timer-context (timers/start (metrics/timer "cc-kill-tasks" name))]
@@ -372,7 +387,7 @@
     ; so we launch within a future so that our caller can continue initializing other clusters.
     (future
       (try
-        (log/info "Initializing Kubernetes compute cluster" name)
+        (log-structured/info "Initializing Kubernetes compute cluster" {:compute-cluster name})
 
         ; We need to reset! the pool-name->fenzo-state atom before initializing the
         ; watches, because otherwise, we will start to see and handle events
@@ -397,7 +412,7 @@
 
         (api/initialize-event-watch this)
         (catch Throwable e
-          (log/error e "Failed to bring up compute cluster" name)
+          (log-structured/error "Failed to bring up compute cluster" {:compute-cluster name} e)
           (throw e))))
 
     ; We keep leadership indefinitely in kubernetes.
@@ -406,14 +421,14 @@
   (pending-offers [this pool-name]
     (let [state @state-atom]
       (if-not (= state :running)
-        (log/info "In" name "compute cluster, skipping generating offers for pool" pool-name
-                  "because the current state," state ", is not :running.")
+        (log-structured/info "Skipping generating offers for pool because the current state is not :running."
+                             {:compute-cluster name :pool pool-name :state state})
         (let [node-name->node (get @pool->node-name->node pool-name)]
           (if-not (or (cc/autoscaling? this pool-name) node-name->node)
-            (log/info "In" name "compute cluster, not looking for offers for pool" pool-name
-                      "; it doesn't autoscale for, and has 0 nodes tainted for" pool-name)
+            (log-structured/info "Not looking for offers for pool; it doesn't autoscale for, and has 0 nodes tainted"
+                                 {:compute-cluster name :pool pool-name})
             (do
-              (log/info "In" name "compute cluster, looking for offers for pool" pool-name)
+              (log-structured/info "Looking for offers for pool" {:compute-cluster name :pool pool-name})
               (let [timer (timers/start (metrics/timer "cc-pending-offers-compute" name))
                     pods (add-starting-pods this @all-pods-atom)
                     nodes @current-nodes-atom
@@ -427,12 +442,13 @@
                          (take 10)
                          tools/offers->resource-maps
                          (map tools/format-resource-map))]
-                (log/info "In" name "compute cluster, generated offers for pool"
-                          {:first-10-offers-this-pool offers-this-pool-for-logging
-                           :number-offers-this-pool (count offers-this-pool)
-                           :number-total-nodes-in-compute-cluster (count nodes)
-                           :number-total-pods-in-compute-cluster (count pods)
-                           :pool-name pool-name})
+                (log-structured/info "Generated offers for pool"
+                                     {:compute-cluster name
+                                      :pool pool-name
+                                      :number-offers-this-pool (count offers-this-pool)
+                                      :number-total-nodes-in-compute-cluster (count nodes)
+                                      :number-total-pods-in-compute-cluster (count pods)
+                                      :first-ten-offers-this-pool (print-str offers-this-pool-for-logging)})
                 (timers/stop timer)
                 offers-this-pool)))))))
 
@@ -444,9 +460,9 @@
 
   (autoscale! [this pool-name jobs adjust-job-resources-for-pool-fn]
     (if-not (cc/autoscaling? this pool-name)
-      (log/warn "In" name "compute cluster, ignoring request to autoscale in pool" pool-name
-                "because autoscaling? is now false. This should almost never happen. But might benignly"
-                "happen because of a race." {:state @state-atom})
+      (log-structured/warn (print-str "Ignoring request to autoscale in pool because autoscaling? is now false."
+                                      "This should almost never happen. But might benignly happen because of a race." {:state @state-atom})
+                           {:compute-cluster name :pool pool-name})
       (try
         (assert (cc/autoscaling? this pool-name)
                 (str "In " name " compute cluster, request to autoscale despite invalid / missing config"))
@@ -465,17 +481,20 @@
                                  counter-value))]
 
           (when (>= total-pods max-total-pods)
-            (log/warn "In" name "compute cluster, total pods are maxed out"
-                      {:max-total-pods max-total-pods
-                       :total-pods total-pods}))
+            (log-structured/warn "Total pods are maxed out"
+                                 {:compute-cluster name
+                                  :number-max-total-pods max-total-pods
+                                  :number-total-pods total-pods}))
           (when (>= total-nodes max-total-nodes)
-            (log/warn "In" name "compute cluster, nodes are maxed out"
-                      {:max-total-nodes max-total-nodes
-                       :total-nodes total-nodes}))
+            (log-structured/warn "Nodes are maxed out"
+                                 {:compute-cluster name
+                                  :number-max-total-nodes max-total-nodes
+                                  :number-total-nodes total-nodes}))
           (when (>= num-synthetic-pods max-pods-outstanding)
-            (log/warn "In" name "compute cluster, synthetic pods are maxed out"
-                      {:max-synthetic-pods max-pods-outstanding
-                       :synthetic-pods num-synthetic-pods}))
+            (log-structured/warn "Synthetic pods are maxed out"
+                                 {:compute-cluster name
+                                  :number-max-synthetic-pods max-pods-outstanding
+                                  :number-synthetic-pods num-synthetic-pods}))
 
           (set-counter-fn "total-synthetic-pods" num-synthetic-pods)
           (set-counter-fn "max-total-synthetic-pods" max-pods-outstanding)
@@ -484,13 +503,14 @@
                                     (- max-total-nodes total-nodes)
                                     (- max-total-pods total-pods))]
             (if (not (pos? max-launchable))
-              (log/warn "In" name "compute cluster, cannot launch more synthetic pods"
-                        {:max-synthetic-pods max-pods-outstanding
-                         :max-total-nodes max-total-nodes
-                         :max-total-pods max-total-pods
-                         :synthetic-pods num-synthetic-pods
-                         :total-nodes total-nodes
-                         :total-pods total-pods})
+              (log-structured/warn "Cannot launch more synthetic pods"
+                                   {:compute-cluster name
+                                    :number-max-synthetic-pods max-pods-outstanding
+                                    :number-max-total-nodes max-total-nodes
+                                    :number-max-total-pods max-total-pods
+                                    :number-synthetic-pods num-synthetic-pods
+                                    :number-total-nodes total-nodes
+                                    :number-total-pods total-pods})
               (let [using-pools? (config/default-pool)
                     synthetic-task-pool-name (when using-pools? pool-name)
                     new-jobs (remove (fn [{:keys [job/uuid]}]
@@ -552,8 +572,10 @@
                                                   :resources pool-specific-resources}}))))
                     num-synthetic-pods-to-launch (count task-metadata-seq)]
                 (meters/mark! (metrics/meter "cc-synthetic-pod-submit-rate" name) num-synthetic-pods-to-launch)
-                (log/info "In" name "compute cluster, launching" num-synthetic-pods-to-launch
-                          "synthetic pod(s) in" synthetic-task-pool-name "pool")
+                (log-structured/info "Launching synthetic pod(s) in pool"
+                                     {:compute-cluster name
+                                      :pool synthetic-task-pool-name
+                                      :number-synthetic-pods-to-launch num-synthetic-pods-to-launch})
                 (let [timer-context-launch-tasks (timers/start (metrics/timer "cc-synthetic-pod-launch-tasks" name))]
                   (cc/launch-tasks this
                                    synthetic-task-pool-name
@@ -562,8 +584,7 @@
                   (.stop timer-context-launch-tasks)))))
           (.stop timer-context-autoscale))
         (catch Throwable e
-          (log/error e "In" name "compute cluster, encountered error launching synthetic pod(s) in"
-                     pool-name "pool")))))
+          (log-structured/error "Encountered error launching synthetic pod(s)" {:compute-cluster name :pool pool-name} e)))))
 
   (use-cook-executor? [_] false)
 
