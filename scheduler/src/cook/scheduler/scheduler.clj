@@ -908,15 +908,10 @@
               num-offers-matched (->> offers-matched
                                       (map (comp :value :id))
                                       distinct
-                                      count)
-              user->num-jobs (->> matches
-                                  (mapcat :task-metadata-seq)
-                                  (map (comp cached-queries/job-ent->user :job :task-request))
-                                  frequencies)]
+                                      count)]
           (log/info "In" pool-name "pool, launching matched tasks"
                     {:number-offers-matched num-offers-matched
-                     :number-tasks (count task-txns)
-                     :user->number-jobs user->num-jobs})
+                     :number-tasks (count task-txns)})
           (meters/mark! scheduler-offer-matched num-offers-matched)
           (histograms/update! number-offers-matched num-offers-matched))
         (meters/mark! (meters/meter (metric-title "matched-tasks" pool-name)) (count task-txns))
