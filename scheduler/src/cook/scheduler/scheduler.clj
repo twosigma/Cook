@@ -1717,6 +1717,7 @@
   ;; to only those jobs that have been committed.
   (let [pool-name->pending-job-ents (group-by cached-queries/job->pool-name (queries/get-pending-job-ents unfiltered-db))
         pool-name->pending-task-ents (pc/map-vals #(map tools/create-task-ent %1) pool-name->pending-job-ents)
+        ;; DANGER WILL ROBINSON DANGER WILL ROBINSON These create-task-ents sort in a 'wrong order' compared to the defaults ones, or where the :db/id is positive.
         pool-name->running-task-ents (group-by (comp cached-queries/job->pool-name :job/_instance)
                                                (tools/get-running-task-ents unfiltered-db))
         pools (->> unfiltered-db pool/all-pools (filter pool/schedules-jobs?))

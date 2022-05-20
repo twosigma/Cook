@@ -565,8 +565,8 @@
   ; entities for pending jobs don't have that and aren't cached. This makes
   ; that cache essentially noop for pending jobs; they always miss.
   ; Fix this by borrowing the :db/id of the source job.
-  (merge {;:db/id (- (:db/id pending-job-ent))
-          :db/id 0
+  (merge {:db/id (- (:db/id pending-job-ent))
+          ;:db/id 0
           :job/_instance pending-job-ent
           :instance/status :instance.status/running}
          (when hostname {:instance/hostname hostname})
@@ -615,7 +615,7 @@
         (fn [task]
           [(- (:job/priority (:job/_instance task) default-job-priority))
            (:instance/start-time task (java.util.Date. Long/MAX_VALUE))
-           (:db/id task)
+           (:db/id task) ;; The essence of the bug. This is exposed to rebalancer an dmay be null for synthetic tasks. For those. we want to use.... XXX.
            (abs (:db/id (:job/_instance task)))])
         extract-key
         (fn [item]
@@ -623,7 +623,7 @@
     (ccache/lookup-cache! caches/task->feature-vector-cache extract-key task->feature-vector-miss task)))
 
 (defn same-user-task-comparator
-  "Comparator to order same user's tasks"
+  "Comparator to order same user's tasks."
   ([]
    (same-user-task-comparator []))
   ([tasks]

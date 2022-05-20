@@ -184,7 +184,8 @@
 (defn mk-bound-fn
   [^clojure.lang.Sorted sc test key]
   (fn [e]
-    (test (.. sc comparator (compare (. sc entryKey e) key)) 0)))
+    (println "Compare: " e " <= " key " ----> " (<= (.. sc comparator (compare (. sc entryKey e) key)) 0))
+    (<= (.. sc comparator (compare (. sc entryKey e) key)) 0)))
 
 (defn rsubseq0
   "sc must be a sorted collection, test(s) one of <, <=, > or
@@ -192,16 +193,10 @@
   which (test (.. sc comparator (compare ek key)) 0) is true"
   {:added "1.0"
    :static true}
-  ([^clojure.lang.Sorted sc test key]
-   (let [include (mk-bound-fn sc test key)]
-     (if (#{< <=} test)
+  ([^clojure.lang.Sorted sc _ key]
+   (let [include (mk-bound-fn sc _ key)]
        (when-let [[e :as s] (. sc seqFrom key false)]
-         (if (include e) s (next s)))
-       (take-while include (. sc seq false)))))
-  ([^clojure.lang.Sorted sc start-test start-key end-test end-key]
-   (when-let [[e :as s] (. sc seqFrom end-key false)]
-     (take-while (mk-bound-fn sc start-test start-key)
-                 (if ((mk-bound-fn sc end-test end-key) e) s (next s))))))
+         (if (include e) s (next s))))))
 
 (defn compute-pending-default-job-dru
   "Takes state and a pending job entity, returns the dru of the pending-job. In the case where the pending job causes user's dominant
@@ -223,9 +218,9 @@
                    " --- " (some-> user->sorted-running-task-ents
                                     (get user)
                                    (count))
-                   " --- " '(compare (some-> user->sorted-running-task-ents
-                                   (get user)
-                                   first) pending-task-ent)
+                   ;" --- " (compare (some-> user->sorted-running-task-ents
+                   ;                (get user)
+                   ;                first) pending-task-ent)
                    " ---- "
                    (some->>
                               (some-> user->sorted-running-task-ents
