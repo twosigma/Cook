@@ -10,6 +10,7 @@
             [cook.config :as config]
             [cook.config-incremental :as config-incremental]
             [cook.kubernetes.metrics :as metrics]
+            [cook.log-structured :as log-structured]
             [cook.monitor :as monitor]
             [cook.passport :as passport]
             [cook.regexp-tools :as regexp-tools]
@@ -203,9 +204,10 @@
         (histograms/update!
           (metrics/histogram metric-name compute-cluster-name) millis)
         (when log?
-          (log/info
-            "In" compute-cluster-name "compute cluster, marked watch gap"
-            {:metric-name metric-name
+          (log-structured/info
+            "Marked watch gap"
+            {:compute-cluster compute-cluster-name
+             :metric-name metric-name
              :watch-gap-millis millis
              :watch-last-event (-> last-watch-response-or-connect-millis tc/from-long str)}))))
     (swap!
@@ -245,9 +247,8 @@
                   :watch-object-type watch-object-type
                   :watch-status (.-status watch-response)
                   :watch-type type})))))
-  (log/info
-    "In" compute-cluster-name "compute cluster, there are no more"
-    (name watch-object-type) "watch updates"))
+  (log-structured/info (print-str "There are no more" (name watch-object-type) "watch updates")
+                       {:compute-cluster compute-cluster-name}))
 
 (defn get-pod-namespaced-key
   [^V1Pod pod]
@@ -285,8 +286,9 @@
     (loop [all-pods []
            continue-string nil
            resource-version-string nil]
-      (log/info "In" compute-cluster-name "compute cluster, listing pods for all namespaces"
-                {:continue continue-string
+      (log-structured/info "Listing pods for all namespaces"
+                {:compute-cluster compute-cluster-name
+                 :continue continue-string
                  :limit limit
                  :number-pods-so-far (count all-pods)
                  :resource-version resource-version-string})
@@ -314,12 +316,12 @@
 
         (if (str/blank? continue)
           (do
-            (log/info "In" compute-cluster-name
-                      "compute cluster, done listing pods for all namespaces"
-                      {:limit limit
-                       :number-pods (count new-all-pods)
-                       :number-pods-this-chunk (count pods)
-                       :resource-version resource-version})
+            (log-structured/info "Done listing pods for all namespaces"
+                                 {:compute-cluster compute-cluster-name
+                                  :limit limit
+                                  :number-pods (count new-all-pods)
+                                  :number-pods-this-chunk (count pods)
+                                  :resource-version resource-version})
             {:pods new-all-pods
              :resource-version resource-version})
           (recur new-all-pods
@@ -342,8 +344,10 @@
           out (try
                 (get-all-pods-in-kubernetes api-client compute-cluster-name list-pods-limit)
                 (catch Throwable e
-                  (log/error e "Error during cluster startup getting all pods for" compute-cluster-name
-                             "and sleeping" reconnect-delay-ms "milliseconds before reconnect")
+                  (log-structured/error "Error during cluster startup getting all pods for cluster; sleeping before reconnect"
+                                        {:compute-cluster compute-cluster-name
+                                         :reconnect-delay-ms reconnect-delay-ms}
+                                        e)
                   (Thread/sleep reconnect-delay-ms)
                   nil))]
       (if out
@@ -376,9 +380,10 @@
         old-all-pods @all-pods-atom
         new-pod-names (set (keys namespaced-pod-name->pod))
         old-pod-names (set (keys old-all-pods))]
-    (log/info "In" compute-cluster-name "compute cluster, pod watch processing pods"
-              {:number-pods (count namespaced-pod-name->pod)
-               :resource-version resource-version})
+    (log-structured/info "Pod watch processing pods"
+                         {:compute-cluster compute-cluster-name
+                          :number-pods (count namespaced-pod-name->pod)
+                          :resource-version (print-str resource-version)})
     ; We want to process all changes through the callback process.
     ; So compute the delta between the old and new and process those via the callbacks.
     ; Note as a side effect, the callbacks mutate all-pods-atom
@@ -389,22 +394,27 @@
                    (.submit
                      controller-executor-service
                      ^Callable (fn []
-                                 (log/info "In" compute-cluster-name "compute cluster, pod watch doing callback"
-                                           {:new? (contains? new-pod-names task)
-                                            :old? (contains? old-pod-names task)
-                                            :pod-name task})
+                                 (log-structured/info "Pod watch doing callback for task"
+                                           {:compute-cluster compute-cluster-name
+                                            :pod-name (:name task)
+                                            :pod-namespace (:namespace task)
+                                            :new? (contains? new-pod-names task)
+                                            :old? (contains? old-pod-names task)})
                                  (doseq [callback callbacks]
                                    (try
                                      (callback task (get old-all-pods task) (get namespaced-pod-name->pod task))
                                      (catch Exception e
-                                       (log/error e "In" compute-cluster-name
-                                                  "compute cluster, pod watch error while processing callback for" task)))))))
+                                       (log-structured/error (print-str "Pod watch error while processing callback for" task)
+                                                             {:compute-cluster compute-cluster-name}
+                                                             e)))))))
                  tasks))]
       (run! deref futures))
+    (log-structured/info "Pod watch done doing callbacks for tasks, starting handling pod watch updates"
+                         {:compute-cluster compute-cluster-name})
     (let [watch (create-pod-watch api-client resource-version)]
       (fn []
         (try
-          (log/info "In" compute-cluster-name "compute cluster, handling pod watch updates")
+          (log-structured/info "Handling pod watch updates" {:compute-cluster compute-cluster-name})
           (handle-watch-updates
             all-pods-atom
             watch
@@ -418,8 +428,8 @@
           (catch Exception e
             (let [cause (.getCause e)]
               (if (and cause (instance? SocketTimeoutException cause))
-                (log/info e "In" compute-cluster-name "compute cluster, pod watch timed out")
-                (log/error e "In" compute-cluster-name "compute cluster, error during pod watch"))))
+                (log-structured/info "Pod watch timed out" {:compute-cluster compute-cluster-name} e)
+                (log-structured/error "Error during pod watch" {:compute-cluster compute-cluster-name} e))))
           (finally
             (.close watch)
             (initialize-pod-watch compute-cluster cook-pod-callback)))))))
@@ -427,24 +437,24 @@
 (defn initialize-pod-watch
   "Initialize the pod watch. This fills all-pods-atom with data and invokes the callback on pod changes."
   [{:keys [state-atom] compute-cluster-name :name :as compute-cluster} cook-pod-callback]
-  (log/info "In" compute-cluster-name "compute cluster, initializing pod watch")
+  (log-structured/info "Initializing pod watch" {:compute-cluster compute-cluster-name})
   ; We'll iterate trying to connect to k8s until the initialize-pod-watch-helper returns a watch function.
   (let [{:keys [reconnect-delay-ms]} (config/kubernetes)
         tmpfn (fn []
                 (try
-                  (log/info "In" compute-cluster-name "compute cluster, initializing pod watch helper")
+                  (log-structured/info "Initializing pod watch helper" {:compute-cluster compute-cluster-name})
                   (initialize-pod-watch-helper compute-cluster cook-pod-callback)
                   (catch Exception e
                     (let [state @state-atom]
                       (if (= state :deleted)
-                        (log/info
-                          e "In" compute-cluster-name
-                          "compute cluster, cannot create pod watch (cluster is deleted); sleeping before next attempt"
-                          {:reconnect-delay-ms reconnect-delay-ms :state state})
-                        (log/error
-                          e "In" compute-cluster-name
-                          "compute cluster, error during pod watch initial setup; sleeping before next attempt"
-                          {:reconnect-delay-ms reconnect-delay-ms :state state})))
+                        (log-structured/info
+                          "Cannot create pod watch (cluster is deleted); sleeping before next attempt"
+                          {:compute-cluster compute-cluster-name :reconnect-delay-ms reconnect-delay-ms :state state}
+                          e)
+                        (log-structured/error
+                          "Error during pod watch initial setup; sleeping before next attempt"
+                          {:compute-cluster compute-cluster-name :reconnect-delay-ms reconnect-delay-ms :state state}
+                          e)))
                     (Thread/sleep reconnect-delay-ms)
                     nil)))
         ^Callable first-success (->> tmpfn repeatedly (some identity))]
@@ -496,27 +506,31 @@
         old-current-nodes @current-nodes-atom
         new-node-names (set (keys current-nodes))
         old-node-names (set (keys old-current-nodes))]
-    (log/info "In" compute-cluster-name "compute cluster, node watch processing nodes"
-              {:number-nodes (count current-nodes)})
+    (log-structured/info "Node watch processing nodes"
+                         {:compute-cluster compute-cluster-name :number-nodes (count current-nodes)})
     ; We want to process all changes through the callback process.
     ; So compute the delta between the old and new and process those via the callbacks.
     ; Note as a side effect, the callbacks mutate current-nodes-atom
     (doseq [node-name (set/union new-node-names old-node-names)]
-      (log/info "In" compute-cluster-name "compute cluster, node watch doing callback"
-                {:new? (contains? new-node-names node-name)
-                 :old? (contains? old-node-names node-name)
-                 :node-name node-name})
+      (log-structured/info "Node watch doing callback"
+                           {:compute-cluster compute-cluster-name
+                            :new? (contains? new-node-names node-name)
+                            :old? (contains? old-node-names node-name)
+                            :node node-name})
       (doseq [callback callbacks]
         (try
           (callback node-name (get old-current-nodes node-name) (get current-nodes node-name))
           (catch Exception e
-            (log/error e "In" compute-cluster-name
-                       "compute cluster, node watch error while processing callback for" node-name)))))
+            (log-structured/error "Node watch error while processing callback for node"
+                                  {:compute-cluster compute-cluster-name
+                                   :node node-name}
+                                  e)))))
 
     (let [watch (WatchHelper/createNodeWatch api-client (-> current-nodes-raw .getMetadata .getResourceVersion))]
       (fn []
         (try
-          (log/info "In" compute-cluster-name "compute cluster, handling node watch updates")
+          (log-structured/info "Handling node watch updates"
+                               {:compute-cluster compute-cluster-name})
           (handle-watch-updates
             current-nodes-atom
             watch
@@ -532,8 +546,12 @@
               (if (= cause "Socket closed")
                 ; We expect timeouts to happen on the node watch when there is
                 ; no node-related activity, so we log with INFO instead of WARN
-                (log/info e "Timeout during node watch for compute cluster" compute-cluster-name)
-                (log/warn e "Error during node watch for compute cluster" compute-cluster-name {:cause cause}))))
+                (log-structured/info "Node watch timed out"
+                                     {:compute-cluster compute-cluster-name}
+                                     e)
+                (log-structured/warn "Error during node watch"
+                                     {:compute-cluster compute-cluster-name :cause cause}
+                                     e))))
           (finally
             (.close watch)
             (initialize-node-watch compute-cluster)))))))
@@ -541,24 +559,24 @@
 (defn initialize-node-watch
   "Initialize the node watch. This fills current-nodes-atom with data and invokes the callback on pod changes."
   [{:keys [state-atom] compute-cluster-name :name :as compute-cluster}]
-  (log/info "In" compute-cluster-name "compute cluster, initializing node watch")
+  (log-structured/info "Initializing node watch" {:compute-cluster compute-cluster-name})
   ; We'll iterate trying to connect to k8s until the initialize-node-watch-helper returns a watch function.
   (let [{:keys [reconnect-delay-ms]} (config/kubernetes)
         tmpfn (fn []
                 (try
-                  (log/info "In" compute-cluster-name "compute cluster, initializing node watch helper")
+                  (log-structured/info "Initializing node watch helper" {:compute-cluster compute-cluster-name})
                   (initialize-node-watch-helper compute-cluster)
                   (catch Exception e
                     (let [state @state-atom]
                       (if (= state :deleted)
-                        (log/info
-                          e "In" compute-cluster-name
-                          "compute cluster, cannot create node watch (cluster is deleted); sleeping before next attempt"
-                          {:reconnect-delay-ms reconnect-delay-ms :state state})
-                        (log/error
-                          e "In" compute-cluster-name
-                          "compute cluster, error during node watch initial setup; sleeping before next attempt"
-                          {:reconnect-delay-ms reconnect-delay-ms :state state})))
+                        (log-structured/info
+                          "Cannot create node watch (cluster is deleted); sleeping before next attempt"
+                          {:compute-cluster compute-cluster-name :reconnect-delay-ms reconnect-delay-ms :state state}
+                          e)
+                        (log-structured/error
+                          "Error during node watch initial setup; sleeping before next attempt"
+                          {:compute-cluster compute-cluster-name :reconnect-delay-ms reconnect-delay-ms :state state}
+                          e)))
                     (Thread/sleep reconnect-delay-ms)
                     nil)))
         ^Callable first-success (->> tmpfn repeatedly (some identity))]
@@ -620,7 +638,7 @@
   (let [watch (WatchHelper/createEventWatch api-client nil)]
     (fn []
       (try
-        (log/info "In" compute-cluster-name "compute cluster, handling event watch updates")
+        (log-structured/info "Handling event watch updates" {:compute-cluster compute-cluster-name})
         (while (.hasNext watch)
           (let [watch-response (.next watch)
                 ^CoreV1Event event (.-object watch-response)]
@@ -645,9 +663,10 @@
                               ; The fieldPath is something like:
                               ; "spec.containers{aux-cook-sidecar-container}"
                               (some-> field-path str/lower-case (str/includes? "cook"))))
-                      (log/info "In" compute-cluster-name
-                                "compute cluster, received pod event"
-                                {:event-reason (.getReason event)
+                      (log-structured/info
+                                "Received pod event"
+                                {:compute-cluster compute-cluster-name
+                                 :event-reason (.getReason event)
                                  :event {:first-timestamp (some-> event .getFirstTimestamp .toString)
                                          :involved-object
                                          (cond->
@@ -669,8 +688,8 @@
         (catch Exception e
           (let [cause (.getCause e)]
             (if (and cause (instance? SocketTimeoutException cause))
-              (log/info e "In" compute-cluster-name "compute cluster, event watch timed out")
-              (log/error e "In" compute-cluster-name "compute cluster, error during event watch"))))
+              (log-structured/info "Event watch timed out" {:compute-cluster compute-cluster-name} e)
+              (log-structured/error "Error during event watch" {:compute-cluster compute-cluster-name} e))))
         (finally
           (.close watch)
           (initialize-event-watch compute-cluster))))))
@@ -678,23 +697,24 @@
 (defn initialize-event-watch
   "Initializes the event watch"
   [{:keys [state-atom] compute-cluster-name :name :as compute-cluster}]
-  (log/info "In" compute-cluster-name "compute cluster, initializing event watch")
+  (log-structured/info "Initializing event watch" {:compute-cluster compute-cluster-name})
   (let [{:keys [reconnect-delay-ms]} (config/kubernetes)
         tmpfn (fn []
                 (try
-                  (log/info "In" compute-cluster-name "compute cluster, initializing event watch helper")
+                  (log-structured/info "Initializing event watch helper"
+                            {:compute-cluster compute-cluster-name})
                   (initialize-event-watch-helper compute-cluster)
                   (catch Exception e
                     (let [state @state-atom]
                       (if (= state :deleted)
-                        (log/info
-                          e "In" compute-cluster-name
-                          "compute cluster, cannot create event watch (cluster is deleted); sleeping before next attempt"
-                          {:reconnect-delay-ms reconnect-delay-ms :state state})
-                        (log/error
-                          e "In" compute-cluster-name
-                          "compute cluster, error during event watch initial setup; sleeping before next attempt"
-                          {:reconnect-delay-ms reconnect-delay-ms :state state})))
+                        (log-structured/info
+                          "Cannot create event watch (cluster is deleted); sleeping before next attempt"
+                          {:compute-cluster compute-cluster-name :reconnect-delay-ms reconnect-delay-ms :state state}
+                          e)
+                        (log-structured/error
+                          "Error during event watch initial setup; sleeping before next attempt"
+                          {:compute-cluster compute-cluster-name :reconnect-delay-ms reconnect-delay-ms :state state}
+                          e)))
                     (Thread/sleep reconnect-delay-ms)
                     nil)))
         ^Callable first-success (->> tmpfn repeatedly (some identity))]
@@ -759,7 +779,9 @@
     ;; Note that node-unschedulable may be nil or false or true.
     :let [node-unschedulable (some-> node .getSpec .getUnschedulable)]
     node-unschedulable (do
-                         (log/info "Filtering out" node-name "because it is unschedulable" node-unschedulable)
+                         (log-structured/info "Filtering out node because it is unschedulable"
+                                              {:node node-name
+                                               :reason "unschedulable"})
                          false)
 
     :let [taints-on-node (or (some-> node .getSpec .getTaints) [])
@@ -769,19 +791,28 @@
                      (.getKey ^V1Taint %))
                   taints-on-node)]
     (seq other-taints) (do
-                         (log/info "Filtering out" node-name "because it has taints" other-taints)
+                         (log-structured/info "Filtering out node because it has taints"
+                                              {:node node-name
+                                               :reason "taints"
+                                               :filtered-taints (print-str other-taints)})
                          false)
 
     :let [num-pods-on-node (-> node-name->pods (get node-name []) count)]
     (>= num-pods-on-node pod-count-capacity) (do
-                                               (log/info "Filtering out" node-name "because it is at or above its pod count capacity of"
-                                                         pod-count-capacity "(" num-pods-on-node ")")
+                                               (log-structured/info "Filtering out node because it is at or above its pod count capacity"
+                                                                    {:node node-name
+                                                                     :reason "pod_limit"
+                                                                     :pod-count-capacity pod-count-capacity
+                                                                     :pod-count-current num-pods-on-node})
                                                false)
 
     :let [labels-on-node (or (some-> node .getMetadata .getLabels) {})
           matching-node-blocklist-keyvals (select-keys labels-on-node node-blocklist-labels)]
     (seq matching-node-blocklist-keyvals) (do
-                                            (log/info "Filtering out" node-name "because it has node blocklist labels" matching-node-blocklist-keyvals)
+                                            (log-structured/info "Filtering out node because it has node blocklist labels"
+                                                                 {:node node-name
+                                                                  :reason "blocklist_labels"
+                                                                  :blocklist-labels (print-str matching-node-blocklist-keyvals)})
                                             false)
 
     ; If a node is tainted as having GPUs but has no allocatable GPUs, log and filter it
@@ -790,12 +821,13 @@
           has-allocatable-gpus? (some-> node node->resource-map :gpus pos?)]
     (and has-gpu-node-taint? (not has-allocatable-gpus?))
     (let [filter-out? (:filter-out-unsound-gpu-nodes? (config/kubernetes))]
-      (log/error
-        "In" name "compute cluster, encountered node with GPU taint but no allocatable GPUs"
+      (log-structured/error
+        "Encountered node with GPU taint but no allocatable GPUs"
         {:allocatable (some->> node .getStatus .getAllocatable (pc/map-vals #(.toSuffixedString %)))
          :filter-out? filter-out?
-         :gpu-node-taint gpu-node-taint
-         :node-name node-name})
+         :gpu-node-taint (print-str gpu-node-taint)
+         :compute-cluster name
+         :node node-name})
       (not filter-out?))
 
     :else true))
@@ -1192,21 +1224,21 @@
                                                 (contains? checkpoint-failure-reasons (:reason/name reason)))
                                               instance)]
               (if (-> checkpoint-failures count (>= max-checkpoint-attempts))
-                (log/info "Will not checkpoint, there are at least" max-checkpoint-attempts "checkpoint failures"
-                          {:job-uuid uuid
-                           :max-checkpoint-attempts max-checkpoint-attempts
-                           :number-checkpoint-failures (count checkpoint-failures)
-                           :task-id task-id})
+                (log-structured/info "Will not checkpoint, has reached the max checkout failure level"
+                                     {:job-id uuid
+                                      :max-checkpoint-attempts max-checkpoint-attempts
+                                      :number-checkpoint-failures (count checkpoint-failures)
+                                      :task-id task-id})
                 checkpoint))
             checkpoint)
           (if supported-pools
             (let [pool-name (cached-queries/job->pool-name job)]
               (if (contains? supported-pools pool-name)
                 checkpoint
-                (log/info "Will not checkpoint, pool" pool-name "is not supported"
-                          {:job-uuid uuid
-                           :pool-name pool-name
-                           :task-id task-id})))
+                (log-structured/info "Will not checkpoint, pool is not supported"
+                                     {:job-id uuid
+                                      :pool pool-name
+                                      :task-id task-id})))
             checkpoint))))))
 
 (defn calculate-effective-image
@@ -1217,10 +1249,11 @@
     (try
       ((util/lazy-load-var-memo calculate-effective-image-fn) kubernetes-config job-submit-time image)
       (catch Exception e
-        (log/error e "Error calculating effective image for checkpointing"
-                   {:calculate-effective-image-fn calculate-effective-image-fn
-                    :image image
-                    :task-id task-id})
+        (log-structured/error "Error calculating effective image for checkpointing"
+                              {:calculate-effective-image-fn calculate-effective-image-fn
+                               :image image
+                               :task-id task-id}
+                              e)
         image))
     image))
 
@@ -1798,14 +1831,15 @@
                 (t/plus (t/seconds pod-condition-seconds)))
             now (t/now)
             threshold-passed? (t/before? last-transition-time-plus-threshold-seconds now)]
-        (log/info "Pod" pod-name "has unready pod condition"
-                  {:last-transition-time-plus-threshold-seconds last-transition-time-plus-threshold-seconds
-                   :now now
-                   :pod-condition pod-condition
-                   :pod-condition-reason pod-condition-reason
-                   :pod-condition-seconds pod-condition-seconds
-                   :pod-condition-type pod-condition-type
-                   :threshold-passed? threshold-passed?})
+        (log-structured/info "Pod has unready pod condition"
+                             {:pod-name pod-name
+                              :last-transition-time-plus-threshold-seconds (print-str last-transition-time-plus-threshold-seconds)
+                              :now (print-str now)
+                              :pod-condition (print-str pod-condition)
+                              :pod-condition-reason pod-condition-reason
+                              :pod-condition-seconds pod-condition-seconds
+                              :pod-condition-type pod-condition-type
+                              :threshold-passed? threshold-passed?})
         threshold-passed?))))
 
 (defn pod-containers-not-initialized?
@@ -1937,10 +1971,10 @@
                 (pod-unschedulable? pod-name pod-status)
                 (let [synthesized-state {:state :pod/failed
                                          :reason "Unschedulable"}]
-                  (log/info "Encountered unschedulable pod"
-                            {:pod-name pod-name
-                             :pod-status pod-status
-                             :synthesized-state synthesized-state})
+                  (log-structured/info "Encountered unschedulable pod"
+                                       {:pod-name pod-name
+                                        :pod-status (print-str pod-status)
+                                        :synthesized-state (print-str synthesized-state)})
                   synthesized-state)
 
                 :else {:state :pod/waiting
@@ -2004,13 +2038,15 @@
           ;
           ; They actually advise catching the exception and moving on!
           ;
-          (log/info "In" compute-cluster-name "compute cluster, caught the https://github.com/kubernetes-client/java/issues/252 exception deleting" pod-name))
+          (log-structured/info "Caught the https://github.com/kubernetes-client/java/issues/252 exception deleting pod"
+                               {:pod-name pod-name :compute-cluster compute-cluster-name}))
         (catch ApiException e
           (meters/mark! (metrics/meter "delete-pod-errors" compute-cluster-name))
           (let [code (.getCode e)
                 already-deleted? (contains? #{404} code)]
             (if already-deleted?
-              (log/info "In" compute-cluster-name "compute cluster, pod" pod-name "was already deleted")
+              (log-structured/info "Pod was already deleted"
+                                   {:pod-name pod-name :compute-cluster compute-cluster-name})
               (throw e))))))))
 
 (defn delete-collect-results-finalizer
@@ -2023,11 +2059,12 @@
     (when (and finalizers (> (.size finalizers) 1))
       ; Finalizers are stored in a list and deleted by index. If there's more than one,
       ; cook can race with whatever deletes the other one, or even delete both (see race discussed below)
-      (log/error "In" name "compute cluster, deleting finalizer for pod " pod-name
-                 " Cook's deletion of more than one finalizer on a pod is racy and not supported. "
-                 "Finalizers are" finalizers))
+      (log-structured/error (print-str "Deleting finalizer pod. Cook's deletion of more than one finalizer on a pod is
+                             racy and not supported. Finalizers are" finalizers)
+                            {:pod-name pod-name :compute-cluster compute-cluster-name}))
     (when (and pod-deletion-timestamp (some #(= FinalizerHelper/collectResultsFinalizer %) finalizers))
-      (log/info "In" name "compute cluster, deleting finalizer for pod" pod-name)
+      (log-structured/info "Deleting finalizer for pod"
+                           {:pod-name pod-name :compute-cluster compute-cluster-name})
       (timers/time! (metrics/timer "delete-finalizer" compute-cluster-name)
         (try
           (FinalizerHelper/removeFinalizer api-client pod)
@@ -2041,17 +2078,23 @@
                 404
                 (do
                   (meters/mark! (metrics/meter "delete-finalizer-expected-errors" compute-cluster-name))
-                  (log/info "In" name "compute cluster, Not Found error deleting finalizer for pod" pod-name))
+                  (log-structured/info "Not Found error deleting finalizer for pod"
+                                       {:pod-name pod-name :compute-cluster compute-cluster-name}))
                 422
                 (do
                   (meters/mark! (metrics/meter "delete-finalizer-expected-errors" compute-cluster-name))
-                  (log/info "In" name "compute cluster, Unprocessable Entity error deleting finalizer for pod" pod-name))
+                  (log-structured/info "Unprocessable Entity error deleting finalizer for pod"
+                            {:pod-name pod-name :compute-cluster compute-cluster-name}))
                 (do
                   (meters/mark! (metrics/meter "delete-finalizer-unexpected-errors" compute-cluster-name))
-                  (log/error e "In" name "compute cluster, error deleting finalizer for pod" pod-name)))))
+                  (log-structured/error "Error deleting finalizer for pod"
+                             {:pod-name pod-name :compute-cluster compute-cluster-name}
+                             e)))))
           (catch Exception e
             (meters/mark! (metrics/meter "delete-finalizer-unexpected-errors" compute-cluster-name))
-            (log/error e "In" name "compute cluster, error deleting finalizer for pod" pod-name)))))))
+            (log-structured/error "Error deleting finalizer for pod"
+                                  {:pod-name pod-name :compute-cluster compute-cluster-name}
+                                  e)))))))
 
 
 
@@ -2085,7 +2128,11 @@
         (assert (= pod-name-from-pod pod-name)
                 (str "Pod name from pod (" pod-name-from-pod ") "
                      "does not match pod name argument (" pod-name ")"))
-        (log/info "In" compute-cluster-name "compute cluster, launching pod with name" pod-name "in namespace" namespace ":" (.serialize json pod))
+        (log-structured/info "Launching pod"
+                             {:compute-cluster compute-cluster-name
+                              :pod-name pod-name
+                              :pod-json (print-str (.serialize json pod))
+                              :pod-namespace namespace})
         (try
           (timers/time! (metrics/timer "launch-pod" compute-cluster-name)
             (create-namespaced-pod api namespace pod))
@@ -2122,17 +2169,18 @@
                    :event-type passport-event-type
                    :k8s-api-error? k8s-api-error?
                    :terminal-failure? terminal-failure?}))
-              (log/info e "In" compute-cluster-name "compute cluster, error submitting pod"
-                        {:bad-pod-spec? bad-pod-spec?
+              (log-structured/info "Error submitting pod"
+                        {:compute-cluster compute-cluster-name
+                         :bad-pod-spec? bad-pod-spec?
                          :code code
-                         :compute-cluster compute-cluster-name
                          :duration-ms duration-ms
                          :failure-reason failure-reason
                          :k8s-api-error? k8s-api-error?
-                         :namespace namespace
+                         :pod-namespace namespace
                          :pod-name pod-name
                          :response-body (.getResponseBody e)
-                         :terminal-failure? terminal-failure?})
+                         :terminal-failure? terminal-failure?}
+                        e)
               (if bad-pod-spec?
                 (meters/mark! (metrics/meter "launch-pod-bad-spec-errors" compute-cluster-name))
                 (meters/mark! (metrics/meter "launch-pod-good-spec-errors" compute-cluster-name)))
@@ -2144,7 +2192,8 @@
         ; store into datomic, but then the Cook Scheduler exits --- before k8s creates a pod (either
         ; the message isn't sent, or there's a k8s problem) --- we will be unable to create a new
         ; pod and we can't retry this at the kubernetes level.
-        (log/info "Unable to launch pod because we do not reconstruct the pod on startup:" pod-name)
+        (log-structured/info "Unable to launch pod because we do not reconstruct the pod on startup:"
+                             {:pod-name pod-name :compute-cluster compute-cluster-name})
         {:failure-reason :reason-could-not-reconstruct-pod
          :terminal-failure? true}))))
 
