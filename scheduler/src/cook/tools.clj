@@ -590,11 +590,11 @@
 
 (defn task-ent->user
   [task-ent]
-  (get-in task-ent [:job/_instance :job/user]))
-;  (let [task-ent->user-miss
-;        (fn [task-ent]
-;          ]
-;    (caches/lookup-cache-datomic-entity! caches/task-ent->user-cache task-ent->user-miss task-ent)))
+  (let [task-ent->user-miss (fn [task-ent]
+                              (get-in task-ent [:job/_instance :job/user]))
+        task-ent->key-fn (fn [task-ent]
+                           (or (:db/id task-ent (-> :job/_instance :db/id))))]
+    (ccache/lookup-cache! caches/task-ent->user-cache task-ent->key-fn task-ent->user-miss task-ent)))
 
 (def ^:const default-job-priority 50)
 
