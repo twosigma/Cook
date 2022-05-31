@@ -566,16 +566,29 @@
          (when hostname {:instance/hostname hostname})
          (when slave-id {:instance/slave-id slave-id})))
 
+
 (defn task-ent->user
+  "Given a task entity, either a real task entity, or a fake one created by
+  create-task-ent above. (This is used to create task entities for waiting jobs for
+  DRU sorting purposes, DRU sort normalizes everything as a task).
+
+  We cannot cache these using the standard cache/lookup-cache-datomic-entity! because
+  the fake create-task-ent tasks do not have a :db/id, so would be uncached.
+
+  We really want to cache the user mapping for these. This makes it faster to sort
+  and group by user lazily to compute per-user DRU and prevents us from blowing out
+  the in-memory cache at the datomic layer which can cause rank time to become 10x
+  more expensive."
   [task-ent]
-  (let [task-ent->user-miss
-        (fn [task-ent]
-          (get-in task-ent [:job/_instance :job/user]))]
-    (caches/lookup-cache-datomic-entity! caches/task-ent->user-cache task-ent->user-miss task-ent)))
+  (let [task-ent->user-miss (fn [task-ent]
+                              (get-in task-ent [:job/_instance :job/user]))
+        extract-key (fn [task-ent]
+                      (or (:db/id task-ent (-> task-ent :job/_instance :db/id))))]
+    (ccache/lookup-cache! caches/task-ent->user-cache extract-key task-ent->user-miss task-ent)))
 
 (def ^:const default-job-priority 50)
 
-
+; This code is tested with test-sorted-task-scored-task-pairs-with-running
 (defn task->feature-vector
   "Vector of comparable features of a task.
    We use :instance/start-time, because this sort sees all running and waiting jobs for a user.
