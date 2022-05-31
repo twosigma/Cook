@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.59.6] - 2022-05-31
+### Changed
+- Updated scheduler, compute cluster, and kubernetes API code to use structured logging, from @samincheva
+
 ## [1.59.5] - 2022-05-10
 ### Added
 - Development documentation for Cook, from @scrosby
