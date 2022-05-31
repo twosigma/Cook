@@ -565,7 +565,7 @@
   ; entities for pending jobs don't have that and aren't cached. This makes
   ; that cache essentially noop for pending jobs; they always miss.
   ; Fix this by borrowing the :db/id of the source job.
-  (merge {:db/id (- (:db/id pending-job-ent))
+  (merge {:db/id (+ (:db/id pending-job-ent))
           ;:db/id 0
           :job/_instance pending-job-ent
           :instance/status :instance.status/running}
