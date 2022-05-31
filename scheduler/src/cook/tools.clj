@@ -558,6 +558,7 @@
     (catch clojure.lang.ExceptionInfo e
       false)))
 
+; Temp version for rebalancer.
 (defn create-task-ent-0
   "Takes a pending job entity and returns a synthetic running task entity for that job"
   [pending-job-ent & {:keys [hostname slave-id] :or {hostname nil slave-id nil}}]
@@ -565,13 +566,14 @@
   ; entities for pending jobs don't have that and aren't cached. This makes
   ; that cache essentially noop for pending jobs; they always miss.
   ; Fix this by borrowing the :db/id of the source job.
-  (merge {:db/id (+ (:db/id pending-job-ent))
+  (merge {;:db/id (+ (:db/id pending-job-ent))
           ;:db/id 0
           :job/_instance pending-job-ent
           :instance/status :instance.status/running}
          (when hostname {:instance/hostname hostname})
          (when slave-id {:instance/slave-id slave-id})))
 
+; Temp version for everywhere else.
 (defn create-task-ent
   "Takes a pending job entity and returns a synthetic running task entity for that job"
   [pending-job-ent & {:keys [hostname slave-id] :or {hostname nil slave-id nil}}]
@@ -579,7 +581,7 @@
   ; entities for pending jobs don't have that and aren't cached. This makes
   ; that cache essentially noop for pending jobs; they always miss.
   ; Fix this by borrowing the :db/id of the source job.
-  (merge {:db/id (- (:db/id pending-job-ent))
+  (merge {;:db/id (+ (:db/id pending-job-ent))
           ;:db/id 0
           :job/_instance pending-job-ent
           :instance/status :instance.status/running}
