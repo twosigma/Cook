@@ -38,7 +38,7 @@
             [metatransaction.core :refer [db]]
             [metrics.timers :as timers]
             [plumbing.core :as pc :refer [map-keys map-vals]])
-  (:import (java.util Date)))
+  (:import (java.util Date Random)))
 
 (defn retrieve-system-ids
   "Executes a shell command to retrieve the user/group id for the specified user"
@@ -558,23 +558,51 @@
     (catch clojure.lang.ExceptionInfo e
       false)))
 
+; Temp version for rebalancer.
+(defn create-task-ent-0
+  "Takes a pending job entity and returns a synthetic running task entity for that job"
+  [pending-job-ent & {:keys [hostname slave-id] :or {hostname nil slave-id nil}}]
+  ; task-ent->user uses :db/id as a cache key. However, synthetic tasks
+  ; entities for pending jobs don't have that and aren't cached. This makes
+  ; that cache essentially noop for pending jobs; they always miss.
+  ; Fix this by borrowing the :db/id of the source job.
+  (merge {;:db/id (+ (:db/id pending-job-ent))
+          ;:db/id 0
+          :job/_instance pending-job-ent
+          :instance/status :instance.status/running}
+         (when hostname {:instance/hostname hostname})
+         (when slave-id {:instance/slave-id slave-id})))
+
+; Temp version for everywhere else.
 (defn create-task-ent
   "Takes a pending job entity and returns a synthetic running task entity for that job"
   [pending-job-ent & {:keys [hostname slave-id] :or {hostname nil slave-id nil}}]
-  (merge {:job/_instance pending-job-ent
+  ; task-ent->user uses :db/id as a cache key. However, synthetic tasks
+  ; entities for pending jobs don't have that and aren't cached. This makes
+  ; that cache essentially noop for pending jobs; they always miss.
+  ; Fix this by borrowing the :db/id of the source job.
+  (merge {;:db/id (+ (:db/id pending-job-ent))
+          ;:db/id 0
+          :job/_instance pending-job-ent
           :instance/status :instance.status/running}
          (when hostname {:instance/hostname hostname})
          (when slave-id {:instance/slave-id slave-id})))
 
 (defn task-ent->user
   [task-ent]
-  (let [task-ent->user-miss
-        (fn [task-ent]
-          (get-in task-ent [:job/_instance :job/user]))]
-    (caches/lookup-cache-datomic-entity! caches/task-ent->user-cache task-ent->user-miss task-ent)))
+  (let [task-ent->user-miss (fn [task-ent]
+                              (get-in task-ent [:job/_instance :job/user]))
+        task-ent->key-fn (fn [task-ent]
+                           (or (:db/id task-ent (-> :job/_instance :db/id))))]
+    (ccache/lookup-cache! caches/task-ent->user-cache task-ent->key-fn task-ent->user-miss task-ent)))
 
 (def ^:const default-job-priority 50)
 
+
+(defn abs
+  "Placeholder for abs, until we use clojure 1.11"
+  [n]
+  (if (> 0) n  (- n)))
 
 (defn task->feature-vector
   "Vector of comparable features of a task.
@@ -589,15 +617,15 @@
         (fn [task]
           [(- (:job/priority (:job/_instance task) default-job-priority))
            (:instance/start-time task (java.util.Date. Long/MAX_VALUE))
-           (:db/id task)
-           (:db/id (:job/_instance task))])
+           (:db/id task) ;; The essence of the bug. This is exposed to rebalancer an dmay be null for synthetic tasks. For those. we want to use.... XXX.
+           (abs (:db/id (:job/_instance task)))])
         extract-key
         (fn [item]
           (or (:db/id item) (:db/id (:job/_instance item))))]
     (ccache/lookup-cache! caches/task->feature-vector-cache extract-key task->feature-vector-miss task)))
 
 (defn same-user-task-comparator
-  "Comparator to order same user's tasks"
+  "Comparator to order same user's tasks."
   ([]
    (same-user-task-comparator []))
   ([tasks]
