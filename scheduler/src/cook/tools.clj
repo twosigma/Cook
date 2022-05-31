@@ -581,6 +581,11 @@
 (def ^:const default-job-priority 50)
 
 
+(defn abs
+  "Placeholder for abs, until we use clojure 1.11"
+  [n]
+  (if (> 0) n  (- n)))
+
 (defn task->feature-vector
   "Vector of comparable features of a task.
    We use :instance/start-time, because this sort sees all running and waiting jobs for a user.
@@ -595,7 +600,7 @@
           [(- (:job/priority (:job/_instance task) default-job-priority))
            (:instance/start-time task (java.util.Date. Long/MAX_VALUE))
            (:db/id task)
-           (:db/id (:job/_instance task))])
+           (abs (:db/id (:job/_instance task)))])
         extract-key
         (fn [item]
           (or (:db/id item) (:db/id (:job/_instance item))))]
