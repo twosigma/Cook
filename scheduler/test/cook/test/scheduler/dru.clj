@@ -145,8 +145,8 @@
         tasks (into (vec running-task-ents) pending-task-ents)]
 
     (let [share {:mem 10.0 :cpus 10.0}
-          ; Queue should be job3, job5, becasue they're running, then 1 2 4.
-          ; DRU:     8.0 10.0 (not seen) 11.0 15.0 31.0
+          ; Queue should be job4, job2, becasue they're running, then 1 3 5.
+          ; DRU:     8.0 10.0 11.0 15.0 31.0
           ordered-drus [8.0 10.0 11.0 15.0 31.0]]
       (testing "dru order correct"
         (is (= ordered-drus
@@ -156,6 +156,7 @@
                       "no-pool"
                       (map-vals (partial sort-by identity (util/same-user-task-comparator))
                                 (group-by util/task-ent->user tasks)))))))
+      ; Test that all 5 jobs we hit are in the cache.
       (is (= 5 (-> caches/task-ent->user-cache
                    .asMap
                    .size))))))

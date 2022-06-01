@@ -569,8 +569,9 @@
 
 (defn task-ent->user
   "Given a task entity, either a real task entity, or a fake one created by
-  create-task-ent above. (This is used to create task entities for waiting jobs for
-  DRU sorting purposes, DRU sort normalizes everything as a task).
+  create-task-ent above, return the user who owns it.
+  (create-task-ent is used to create task entities for waiting jobs for DRU sorting
+   purposes, DRU sort normalizes everything as a task.)
 
   We cannot cache these using the standard cache/lookup-cache-datomic-entity! because
   the fake create-task-ent tasks do not have a :db/id, so would be uncached.
