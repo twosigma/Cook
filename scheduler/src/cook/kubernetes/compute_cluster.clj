@@ -441,7 +441,7 @@
                     (->> offers-this-pool
                          (take 10)
                          tools/offers->resource-maps
-                         (map tools/format-resource-map))]
+                         (map util/format-resource-map))]
                 (log-structured/info "Generated offers for pool"
                                      {:compute-cluster name
                                       :pool pool-name

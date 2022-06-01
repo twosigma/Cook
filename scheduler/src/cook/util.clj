@@ -22,6 +22,7 @@
             [clojure.string :refer :all]
             [clojure.tools.logging :as log]
             [clojure.tools.namespace.dependency :refer :all]
+            [plumbing.core :as pc]
             [postal.core :as postal]
             [schema.core :as s])
   (:import (java.util.concurrent.atomic AtomicLong)
@@ -230,3 +231,21 @@
     (let [old-val @atom
           swap-happened (compare-and-set! atom old-val newval)]
       (if swap-happened old-val (recur)))))
+
+(defn format-resource-map
+  "Given a map with resource amount values,
+   formats the amount values for logging"
+  [resource-map]
+  (pc/map-vals #(if (float? %)
+                  (format "%.3f" %)
+                  (str %))
+               resource-map))
+
+(defn format-map-for-structured-logging
+  "Given a map with different types of values,
+   formats the amount values as number and everything else as string for structured logging"
+  [resource-map]
+  (pc/map-vals #(if (number? %)
+                  % ; don't stringify #s
+                  (str %))
+               resource-map))

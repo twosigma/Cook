@@ -37,16 +37,17 @@
   (:require
     [clojure.data.json :as json]
     [clojure.tools.logging :as log]
-    [cook.tools :as tools]))
+    [cook.util :as util]))
 
 (defn safe-jsonify
-  "Tries to jsonify the given map and returns its json string representation.
+  "Tries to convert the given map to json and return the json string representation.
   If conversion to json fail, returns just the map as-is."
   [log-map]
-  (try
-    (json/write-str (tools/format-map-for-structured-logging log-map))
-    (catch Exception e
-      log-map)))
+    (try
+      (json/write-str (util/format-map-for-structured-logging log-map))
+      (catch Exception e
+        (log/error e "Unable to convert to json for structured logging" (str log-map))
+        log-map)))
 
 (defmacro logs
   "Logs a structured message at the specified level.
