@@ -247,8 +247,8 @@
            (when (#{:instance.status/success :instance.status/failed} instance-status)
              (if unassign-task-set
                (swap! unassign-task-set conj {:task-id task-id :hostname (:instance/hostname instance-ent)})
-               (log/error "In" pool-name "pool, unable to unassign task" task-id "from"
-                          (:instance/hostname instance-ent) "because fenzo state or unassign-task-set is nil:" (keys pool-name->fenzo-state))))
+               (log-structured/error (print-str "Unable to unassign task from" (:instance/hostname instance-ent) "because fenzo state or unassign-task-set is nil:" (keys pool-name->fenzo-state))
+                                     {:pool pool-name :task-id task-id})))
            (when (= instance-status :instance.status/success)
              (handle-throughput-metrics job-resources instance-runtime :succeeded pool-name)
              (handle-throughput-metrics job-resources instance-runtime :completed pool-name))
@@ -372,7 +372,8 @@
             compute-cluster-name (cook.task/task-entity-id->compute-cluster-name query-db task-entity-id)]
         (if-let [compute-cluster (cc/compute-cluster-name->ComputeCluster compute-cluster-name)]
           (try
-            (log/info "Attempting to kill task" task-id "in" compute-cluster-name "from already completed job")
+            (log-structured/info "Attempting to kill task from already completed job"
+                                 {:compute-cluster compute-cluster-name :task-id task-id})
             (meters/mark! tx-report-queue-tasks-killed)
             (cc/safe-kill-task compute-cluster task-id)
             (catch Exception e
@@ -406,12 +407,14 @@
                                              (let [task-id (cook.task/task-entity-id->task-id db task-entity-id)
                                                    compute-cluster-name (cook.task/task-entity-id->compute-cluster-name db task-entity-id)]
                                                (if-let [compute-cluster (cc/compute-cluster-name->ComputeCluster compute-cluster-name)]
-                                                 (do (log/info "Attempting to kill task" task-id "in" compute-cluster-name "due to job completion")
+                                                 (do (log-structured/info "Attempting to kill task due to job completion"
+                                                                          {:compute-cluster compute-cluster-name :task-id task-id})
                                                      (meters/mark! tx-report-queue-tasks-killed)
                                                      @(d/transact conn [[:db/add task-entity-id :instance/reason
                                                                          [:reason/name :reason-killed-by-user]]])
                                                      (cc/safe-kill-task compute-cluster task-id))
-                                                 (log/error "Couldn't kill task" task-id "due to no Mesos driver for compute cluster" compute-cluster-name "!")))))
+                                                 (log-structured/error "Couldn't kill task due to no Mesos driver!"
+                                                            {:compute-cluster compute-cluster-name :task-id task-id})))))
                                          (catch Exception e
                                            (log/error e "Unexpected exception on tx report queue processor")))))))))
                            (recur))
@@ -580,12 +583,10 @@
       ; Fenzo tracks which tasks are on which nodes with assignment. To, e.g., make
       ; sure it can distribute tasks across hosts. This instructs fenzo that a task
       ; is no longer on a given host.
-      (log/debug "In" pool-name "pool, unassigning task"
-                 task-id "from" hostname)
+      (log-structured/debug "Unassigning task from host" {:pool pool-name :task-id task-id :node hostname})
       (.call unassigner task-id hostname)
       (catch Exception e
-        (log/error e "In" pool-name "pool, failed to unassign task"
-                   task-id "from" hostname)))))
+        (log-structured/error "Failed to unassign task from host" {:pool pool-name :task-id task-id :node hostname} e)))))
 
 (defn match-offer-to-schedule
   "Given an offer and a schedule, computes all the tasks should be launched as a result.
@@ -603,11 +604,10 @@
     ; destined to get rejected after the match attempt, we
     ; might as well skip this matching iteration.
     (do
-      (log/info "In" pool-name
-                "pool, skip matching (0 considerable jobs)")
+      (log-structured/info "Skip matching (0 considerable jobs)" {:pool pool-name})
       {:matches [] :failures []})
     (do
-      (log/debug "In" pool-name "pool, tasks to scheduleOnce" considerable)
+      (log-structured/debug (print-str "Tasks to scheduleOnce" considerable) {:pool pool-name})
       (let [t (System/currentTimeMillis)
             leases (mapv #(offer/offer->lease % t) offers)
             considerable->task-id (plumbing.core/map-from-keys (fn [_] (str (d/squuid))) considerable)
@@ -641,7 +641,7 @@
                           (.expireLease fenzo (.getId lease)))))
                     leases))
 
-        (log/debug "In" pool-name "pool, found this assignment:" result)
+        (log-structured/debug (print-str "Found this assignment:" result) {:pool pool-name})
 
         {:matches (mapv (fn [^VMAssignmentResult assignment]
                           {:leases (.getLeasesUsed assignment)
@@ -689,7 +689,8 @@
   "Limit the pending jobs to considerable jobs based on usage and quota.
    Further limit the considerable jobs to a maximum of num-considerable jobs."
   [db pending-jobs user->quota user->usage num-considerable pool-name]
-  (log/debug "In" pool-name "pool, there are" (count pending-jobs) "pending jobs:" pending-jobs)
+  (log-structured/debug (print-str "There are pending jobs:" pending-jobs)
+                        {:pool pool-name :num-pending-jobs (count pending-jobs)})
   (let [enforcing-job-launch-rate-limit? (ratelimit/enforce? quota/per-user-per-pool-launch-rate-limiter)
         user->rate-limit-count (atom {})
         user->passed-count (atom {})
@@ -704,12 +705,13 @@
              ; Force this to be taken eagerly so that the log line is accurate.
              (doall))]
     (swap! tools/pool->user->num-rate-limited-jobs update pool-name (constantly @user->rate-limit-count))
-    (log/info "In" pool-name "pool, job launch rate-limiting"
+    (log-structured/info "Job launch rate-limiting"
               {:enforcing-job-launch-rate-limit? enforcing-job-launch-rate-limit?
                :total-rate-limit-count (->> @user->rate-limit-count vals (reduce +))
                :user->rate-limit-count @user->rate-limit-count
                :total-passed-count (->> @user->passed-count vals (reduce +))
-               :user->passed-count @user->passed-count})
+               :user->passed-count @user->passed-count
+               :pool pool-name})
     considerable-jobs))
 
 
@@ -726,7 +728,7 @@
   [matches pool-name]
   (let [jobs (matches->jobs matches)
         job-uuids (set (map :job/uuid jobs))]
-    (log/debug "In" pool-name "pool, matched jobs:" (count job-uuids))
+    (log-structured/debug "Matched jobs" {:pool pool-name :number-matched-jobs (count job-uuids)})
     (when (seq matches)
       (let [matched-normal-jobs-resource-requirements (tools/sum-resources-of-jobs jobs)]
         (meters/mark! (meters/meter (metric-title "matched-tasks-cpus" pool-name))
@@ -820,8 +822,9 @@
               (.getTaskAssigner)
               (.call task-request hostname)))))
     (catch Throwable t
-      (log/error t "In" pool-name "pool, error launching tasks for"
-                 (cc/compute-cluster-name compute-cluster) "compute cluster"))))
+      (log-structured/error "Error launching tasks for compute cluster"
+                            {:pool pool-name :compute-cluster (cc/compute-cluster-name compute-cluster)}
+                            t))))
 
 (defn filter-matches-for-ratelimit
   "Given a set of matches, determine which compute clusters are beyond the rate limit and filter matches in those compute clusters out."
@@ -869,16 +872,17 @@
   (let [matches (map #(update-match-with-task-metadata-seq % db mesos-run-as-user) matches)
         task-txns (matches->task-txns matches)
         kill-lock-timer-context (timers/start kill-lock-timer-for-launch)]
-    (log/info "In" pool-name "pool, writing tasks"
-              {:first-10-tasks
-               (take
-                 10
-                 (for [{:keys [task-metadata-seq]} matches
-                       {:keys [task-id task-request]} task-metadata-seq]
-                   {:job-uuid (-> task-request (get-in [:job :job/uuid]) str)
-                    :task-id task-id}))
-               :number-tasks
-               (count task-txns)})
+    (log-structured/info "Writing tasks"
+                         ; use print-str for the first 10 tasks so that we don't treat the map as json
+                         {:first-ten-tasks (print-str
+                                             (take
+                                               10
+                                               (for [{:keys [task-metadata-seq]} matches
+                                                     {:keys [task-id task-request]} task-metadata-seq]
+                                                 {:job-uuid (-> task-request (get-in [:job :job/uuid]) str)
+                                                  :task-id task-id})))
+                          :pool pool-name
+                          :number-tasks (count task-txns)})
     (timers/time!
       (timers/timer (metric-title "launch-matched-tasks-all-duration" pool-name))
       ; Avoids a race. See docs for kill-lock-object.
@@ -896,10 +900,8 @@
             conn
             (reduce into [] task-txns)
             (fn [e]
-              (log/warn e
-                        "In" pool-name "pool, transaction timed out, so these tasks might be present"
-                        "in Datomic without actually having been launched in Mesos"
-                        matches)
+              (log/warn e "In" pool-name ", transaction timed out, so these tasks might be present"
+                        "in Datomic without actually having been launched in Mesos" matches)
               (throw e))))
 
         (let [offers-matched (->> matches
@@ -913,10 +915,11 @@
                                   (mapcat :task-metadata-seq)
                                   (map (comp cached-queries/job-ent->user :job :task-request))
                                   frequencies)]
-          (log/info "In" pool-name "pool, launching matched tasks"
-                    {:number-offers-matched num-offers-matched
-                     :number-tasks (count task-txns)
-                     :user->number-jobs user->num-jobs})
+          (log-structured/info "Launching matched tasks"
+                               {:number-offers-matched num-offers-matched
+                                :number-tasks (count task-txns)
+                                :number-jobs-per-user (print-str user->num-jobs) ; don't treat the map as json
+                                :pool pool-name})
           (meters/mark! scheduler-offer-matched num-offers-matched)
           (histograms/update! number-offers-matched num-offers-matched))
         (meters/mark! (meters/meter (metric-title "matched-tasks" pool-name)) (count task-txns))
@@ -930,7 +933,8 @@
                (map
                  (fn [[compute-cluster matches-in-compute-cluster]]
                    (let [compute-cluster-name (cc/compute-cluster-name compute-cluster)
-                         _ (log/info "In" pool-name "pool, launching matched tasks for" compute-cluster-name "compute cluster")
+                         _ (log-structured/info "Launching matched tasks for compute cluster"
+                                                {:pool pool-name :compute-cluster compute-cluster-name})
                          launch-matches-in-compute-cluster!
                          #(launch-matches! compute-cluster pool-name
                                            matches-in-compute-cluster fenzo)]
@@ -992,9 +996,9 @@
                      (-> uuid hash (mod (count preferred-compute-clusters)))))))
           autoscalable-jobs)]
     (when-let [jobs (:no-acceptable-compute-cluster compute-cluster->jobs)]
-      (log/info "In" pool-name
-                "pool, there are jobs with no acceptable compute cluster for autoscaling"
-                {:first-10-jobs (->> jobs (take 10) (map :job/uuid) (map str))}))
+      (log-structured/info "There are jobs with no acceptable compute cluster for autoscaling"
+                           {:pool pool-name
+                            :first-ten-jobs (print-str (->> jobs (take 10) (map :job/uuid) (map str)))}))
     (dissoc compute-cluster->jobs :no-acceptable-compute-cluster)))
 
 (defn trigger-autoscaling!
@@ -1008,20 +1012,20 @@
       (let [autoscaling-compute-clusters (filter #(cc/autoscaling? % pool-name) compute-clusters)
             num-autoscaling-compute-clusters (count autoscaling-compute-clusters)]
         (when (and (pos? num-autoscaling-compute-clusters) (seq pending-jobs-for-autoscaling))
-          (log/info "In" pool-name "pool, preparing for autoscaling")
+          (log-structured/info "Preparing for autoscaling" {:pool pool-name})
           (let [compute-cluster->jobs (distribute-jobs-to-compute-clusters
                                         pending-jobs-for-autoscaling pool-name autoscaling-compute-clusters
                                         job->acceptable-compute-clusters-fn)]
-            (log/info "In" pool-name "pool, starting autoscaling")
+            (log-structured/info "Starting autoscaling" {:pool pool-name})
             (->> compute-cluster->jobs
                  (map
                    (fn [[compute-cluster jobs-for-cluster]]
                      (future (cc/autoscale! compute-cluster pool-name jobs-for-cluster adjust-job-resources-for-pool-fn))))
                  doall
                  (run! deref)))
-          (log/info "In" pool-name "pool, done autoscaling")))
+          (log-structured/info "Done autoscaling" {:pool pool-name})))
       (catch Throwable e
-        (log/error e "In" pool-name "pool, encountered error while triggering autoscaling")))))
+        (log-structured/error "Encountered error while triggering autoscaling" {:pool pool-name} e)))))
 
 (def pool-name->unmatched-job-uuid->unmatched-cycles-atom (atom {}))
 
@@ -1048,7 +1052,7 @@
     (if (= number-considerable-jobs 0)
       ; keep the log slim in the 0 considerables case
       (log-structured/info "total match cycle metric"
-                           {:inputs {:jobs-considerable 0} :pool pool-name} match-cycle-logger-ns)
+                           {:inputs {:jobs-considerable 0} :pool pool-name} nil match-cycle-logger-ns)
       ; nonzero considerables case
       (do
         ; compute the considerable, matched, and unmatched jobs for each user and emit individual metrics
@@ -1059,7 +1063,7 @@
                                 :user-considerable considerable
                                 :user-matched (user->number-matched-considerable-jobs user 0)
                                 :user-unmatched (user->number-unmatched-considerable-jobs user 0)}
-                               match-cycle-logger-ns))
+                               nil match-cycle-logger-ns))
         (log-structured/info "total match cycle metric"
                              {:inputs {:jobs-considerable number-considerable-jobs
                                        :offers (count offers)
@@ -1075,7 +1079,7 @@
                               :stats {:jobs-considerable (jobs->stats considerable-jobs)
                                       :offers (offers->stats offers)
                                       :head-resources head-resources}}
-                             match-cycle-logger-ns)))
+                             nil match-cycle-logger-ns)))
 
     (counters/inc! cycle-considerable number-considerable-jobs)
     (counters/inc! cycle-matched number-matched-jobs)
@@ -1087,7 +1091,7 @@
   [conn fenzo-state pool-name->pending-jobs-atom mesos-run-as-user
    user->usage user->quota num-considerable offers rebalancer-reservation-atom pool-name compute-clusters
    job->acceptable-compute-clusters-fn]
-  (log/debug "In" pool-name "pool, invoked handle-resource-offers!")
+  (log-structured/debug "Invoked handle-resource-offers!" {:pool pool-name})
   (let [offer-stash (atom nil)] ;; This is a way to ensure we never lose offers fenzo assigned if an error occurs in the middle of processing
     ;; TODO: It is possible to have an offer expire by mesos because we recycle it a bunch of times.
     ;; TODO: If there is an exception before offers are sent to fenzo (scheduleOnce) then the offers will be lost. This is fine with offer expiration, but not great.
@@ -1106,7 +1110,7 @@
                                            (match-offer-to-schedule db fenzo-state considerable-jobs offers
                                                                     rebalancer-reservation-atom pool-name))
               matches (filter-matches-for-ratelimit matches)
-              _ (log/debug "In" pool-name "pool, got matches after rate limit:" matches)
+              _ (log-structured/debug (print-str "Got matches after rate limit:" matches) {:pool pool-name})
               offers-scheduled (for [{:keys [leases]} matches
                                      lease leases]
                                  (:offer lease))
@@ -1207,12 +1211,13 @@
                           (> unmatched-fraction-warn-threshold)))
                     ; Including the first 10 job uuids that have gone unmatched for too
                     ; long can help in troubleshooting the issue when this happens
-                    (log/warn "In" pool-name "pool, jobs are unmatched for too long"
-                              {:first-10-unmatched-too-long (take 10 unmatched-too-long)
-                               :number-considerable (count considerable-jobs)
-                               :number-unmatched-too-long (count unmatched-too-long)
-                               :unmatched-cycles-warn-threshold unmatched-cycles-warn-threshold
-                               :unmatched-fraction-warn-threshold unmatched-fraction-warn-threshold}))
+                    (log-structured/warn "Jobs are unmatched for too long"
+                                         {:pool pool-name
+                                          :first-ten-unmatched-too-long (print-str (take 10 unmatched-too-long))
+                                          :number-considerable (count considerable-jobs)
+                                          :number-unmatched-too-long (count unmatched-too-long)
+                                          :unmatched-cycles-warn-threshold unmatched-cycles-warn-threshold
+                                          :unmatched-fraction-warn-threshold unmatched-fraction-warn-threshold}))
                   ; We need to update the overall map so that we update the
                   ; job-uuid -> cycle-count state from iteration to iteration
                   (assoc
@@ -1238,9 +1243,8 @@
                     (swap! pool-name->pending-jobs-atom
                            remove-matched-jobs-from-pending-jobs
                            matched-job-uuids pool-name)
-                    (log/debug "In" pool-name
-                               "pool, updated pool-name->pending-jobs-atom:"
-                               @pool-name->pending-jobs-atom)
+                    (log-structured/debug (print-str "Updated pool-name->pending-jobs-atom:" @pool-name->pending-jobs-atom)
+                                          {:pool pool-name})
                     (launch-matched-tasks! matches conn db (:fenzo fenzo-state) mesos-run-as-user pool-name)
                     (update-host-reservations! rebalancer-reservation-atom matched-job-uuids)
                     matched-considerable-jobs-head?))
@@ -1277,12 +1281,14 @@
             (when (> number-considerable-jobs (:considerable-job-threshold-to-collect-job-match-statistics (config/offer-matching)))
               (histograms/update! (histograms/histogram (metric-title "fraction-unmatched-jobs" pool-name)) fraction-unmatched-jobs))
             (when (pos? number-considerable-jobs)
-              (log/info "In" pool-name "pool, autoscaling variables" {:autoscalable-jobs (count autoscalable-jobs)
-                                                                      :filtered-autoscalable-jobs (count filtered-autoscalable-jobs)
-                                                                      :fraction-unmatched-jobs fraction-unmatched-jobs
-                                                                      :max-jobs-for-autoscaling-scaled max-jobs-for-autoscaling-scaled
-                                                                      :number-considerable-jobs number-considerable-jobs
-                                                                      :number-unmatched-jobs number-unmatched-jobs})
+              (log-structured/info "Autoscaling variables"
+                                   {:pool pool-name
+                                    :autoscalable-jobs (count autoscalable-jobs)
+                                    :filtered-autoscalable-jobs (count filtered-autoscalable-jobs)
+                                    :fraction-unmatched-jobs fraction-unmatched-jobs
+                                    :max-jobs-for-autoscaling-scaled max-jobs-for-autoscaling-scaled
+                                    :number-considerable-jobs number-considerable-jobs
+                                    :number-unmatched-jobs number-unmatched-jobs})
               ;; This call needs to happen *after* launch-matched-tasks!
               ;; in order to avoid autoscaling tasks taking up available
               ;; capacity that was already matched for real Cook tasks.
@@ -1290,14 +1296,16 @@
             matched-head-or-no-matches?))
         (catch Throwable t
           (meters/mark! handle-resource-offer!-errors)
-          (log/error t "In" pool-name "pool, error in match:" (ex-data t))
+          (log-structured/error (print-str "Error in match:" (ex-data t)) {:pool pool-name} t)
           (when-let [offers @offer-stash]
             ; Group the set of all offers by compute cluster and route them to that compute cluster for restoring.
             (doseq [[compute-cluster offer-subset] (group-by :compute-cluster offers)]
               (try
                 (cc/restore-offers compute-cluster pool-name offer-subset)
                 (catch Throwable t
-                  (log/error t "For" pool-name "error restoring offers for compute cluster" compute-cluster)))))
+                  (log-structured/error "Error restoring offers for compute cluster"
+                                        {:pool pool-name :compute-cluster compute-cluster}
+                                        t)))))
           ; if an error happened, it doesn't mean we need to penalize Fenzo
           true)))))
 
@@ -1329,7 +1337,7 @@
     (tools/chime-at-ch
       trigger-chan
       (fn match-jobs-event []
-        (log/info "In" pool-name "pool, starting offer matching")
+        (log-structured/info "Starting offer matching" {:pool pool-name})
         (timers/time!
           (timers/timer (metric-title "match-jobs-event" pool-name))
           (let [num-considerable @fenzo-num-considerable-atom
@@ -1361,9 +1369,10 @@
                                                     (try
                                                       (cc/pending-offers compute-cluster pool-name)
                                                       (catch Throwable t
-                                                        (log/error t "In" pool-name
-                                                                   "pool, error getting pending offers for"
-                                                                   (cc/compute-cluster-name compute-cluster))
+                                                        (log-structured/error "Error getting pending offers"
+                                                                              {:pool pool-name
+                                                                               :compute-cluster (cc/compute-cluster-name compute-cluster)}
+                                                                              t)
                                                         (list))))
                                                   compute-clusters))
                         _ (doseq [offer offers
@@ -1393,13 +1402,13 @@
                     (if matched-head?
                       max-considerable
                       (let [new-considerable (max 1 (long (* scaleback num-considerable)))] ;; With max=1000 and 1 iter/sec, this will take 88 seconds to reach 1
-                        (log/info "In" pool-name "pool, failed to match head, reducing number of considerable jobs"
-                                  {:prev-considerable num-considerable
-                                   :new-considerable new-considerable
-                                   :pool pool-name})
+                        (log-structured/info "Failed to match head, reducing number of considerable jobs"
+                                             {:prev-considerable num-considerable
+                                              :new-considerable new-considerable
+                                              :pool pool-name})
                         new-considerable)))
                   (catch Exception e
-                    (log/error e "In" pool-name "pool, offer handler encountered exception; continuing")
+                    (log-structured/error "Offer handler encountered exception; continuing" {:pool pool-name} e)
                     max-considerable))]
 
             (if (= next-considerable 1)
@@ -1407,21 +1416,25 @@
               (counters/clear! iterations-at-fenzo-floor))
 
             (if (>= (counters/value iterations-at-fenzo-floor) floor-iterations-before-warn)
-              (log/warn "In" pool-name "pool, offer handler has been showing Fenzo only 1 job for"
-                        (counters/value iterations-at-fenzo-floor) "iterations"))
+              (log-structured/warn (print-str "Offer handler has been showing Fenzo only 1 job for" (counters/value iterations-at-fenzo-floor) "iterations")
+                                   {:pool pool-name
+                                    :iterations-count (counters/value iterations-at-fenzo-floor)}))
 
             (reset! fenzo-num-considerable-atom
                     (if (>= (counters/value iterations-at-fenzo-floor) floor-iterations-before-reset)
                       (do
-                        (log/error "In" pool-name "pool, FENZO CANNOT MATCH THE MOST IMPORTANT JOB."
-                                   "Fenzo has seen only 1 job for" (counters/value iterations-at-fenzo-floor)
-                                   "iterations, and still hasn't matched it.  Cook is now giving up and will "
-                                   "now give Fenzo" max-considerable "jobs to look at.")
+                        (log-structured/error (print-str "FENZO CANNOT MATCH THE MOST IMPORTANT JOB."
+                                                         "Fenzo has seen only 1 job for" (counters/value iterations-at-fenzo-floor)
+                                                         "iterations, and still hasn't matched it.  Cook is now giving up and will "
+                                                         "now give Fenzo" max-considerable "jobs to look at.")
+                                              {:pool pool-name
+                                               :iterations-count (counters/value iterations-at-fenzo-floor)
+                                               :number-max-considerable max-considerable})
                         (meters/mark! fenzo-abandon-and-reset-meter)
                         max-considerable)
                       next-considerable))))
-        (log/info "In" pool-name "pool, done with offer matching"))
-      {:error-handler (fn [ex] (log/error ex "In" pool-name "pool, error occurred in match"))})
+        (log-structured/info "Done with offer matching" {:pool pool-name}))
+      {:error-handler (fn [ex] (log-structured/error "Error occurred in match" {:pool pool-name} ex))})
     resources-atom))
 
 (defn reconcile-jobs

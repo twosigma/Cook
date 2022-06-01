@@ -25,7 +25,7 @@
 
 ;; Within the metadata dictionary, we are standardizing the following key names to be used, where relevant:
 ; :pool
-; :compute-cluster-name
+; :compute-cluster
 ; :user
 ; :instance-id
 ; :job-id
@@ -42,30 +42,38 @@
   "Logs a structured message at the specified level.
   Supports specifying a custom logger namespace as an optional parameter."
   ([level data metadata]
-   `log/log ~level (json/write-str (assoc ~metadata :data ~data)))
-  ([level data metadata logger-ns]
-   `(log/log ~logger-ns ~level nil (json/write-str (assoc ~metadata :data ~data)))))
+   `(log/log ~level (json/write-str (assoc ~metadata :data ~data))))
+  ([level data metadata throwable]
+   `(log/log ~level (json/write-str (assoc ~metadata :data ~data
+                                                     :error (with-out-str (clojure.stacktrace/print-throwable ~throwable))
+                                                     :stacktrace (with-out-str (clojure.stacktrace/print-cause-trace ~throwable))))))
+  ([level data metadata throwable logger-ns]
+   (if (nil? throwable)
+     `(log/log ~logger-ns ~level nil (json/write-str (assoc ~metadata :data ~data)))
+     `(log/log ~logger-ns ~level nil (json/write-str (assoc ~metadata :data ~data
+                                                                      :error (with-out-str (clojure.stacktrace/print-throwable ~throwable))
+                                                                      :stacktrace (with-out-str (clojure.stacktrace/print-cause-trace ~throwable))))))))
 
 (defmacro debug
   "Logs a structured message at the debug level"
-  {:arglists '([data metadata] [data metadata logger-ns])}
+  {:arglists '([data metadata] [data metadata throwable] [data metadata throwable logger-ns])}
   [& args]
   `(logs :debug ~@args))
 
 (defmacro info
   "Logs a structured message at the info level"
-  {:arglists '([data metadata] [data metadata logger-ns])}
+  {:arglists '([data metadata] [data metadata throwable] [data metadata throwable logger-ns])}
   [& args]
   `(logs :info ~@args))
 
 (defmacro warn
   "Logs a structured message at the warn level"
-  {:arglists '([data metadata] [data metadata logger-ns])}
+  {:arglists '([data metadata] [data metadata throwable] [data metadata throwable logger-ns])}
   [& args]
   `(logs :warn ~@args))
 
 (defmacro error
   "Logs a structured message at the error level"
-  {:arglists '([data metadata] [data metadata logger-ns])}
+  {:arglists '([data metadata] [data metadata throwable] [data metadata throwable logger-ns])}
   [& args]
   `(logs :error ~@args))
