@@ -15,10 +15,12 @@
 ;;
 (ns cook.test.scheduler.dru
   (:require [clojure.test :refer :all]
-            [cook.test.postgres]
+            [cook.caches :as caches]
+            [cook.queries :as queries]
             [cook.scheduler.dru :as dru]
             [cook.scheduler.share :as share]
-            [cook.test.testutil :refer [create-dummy-instance create-dummy-job restore-fresh-database!]]
+            [cook.test.postgres]
+            [cook.test.testutil :refer [create-dummy-instance create-dummy-job restore-fresh-database! setup]]
             [cook.tools :as util]
             [datomic.api :as d :refer [db q]]
             [plumbing.core :refer [map-vals]]))
@@ -119,6 +121,46 @@
                       seq
                       shuffle
                       (into {})))))))))
+
+;; This test makes sure that running and queued jobs are sorted with the right
+;; implcit order, in particular, it makes sure the codepath of create-task-ent
+;; created fake instances for waiting jobs sort in the right order with respect
+;; to actual running instances by task->feature-vector
+(deftest test-sorted-task-scored-task-pairs-with-running
+  (setup)
+  (let [datomic-uri "datomic:mem://test-sorted-task-scored-task-pairs-order"
+        conn (restore-fresh-database! datomic-uri)
+        job1 (create-dummy-job conn :user "ljin" :memory 10.0 :ncpus 10.0 :name "1")
+        job2 (create-dummy-job conn :user "ljin" :memory 20.0 :ncpus 20.0 :name "2" :job-state :job.state/running)
+        job3 (create-dummy-job conn :user "ljin" :memory 40.0 :ncpus 40.0 :name "3")
+        job4 (create-dummy-job conn :user "ljin" :memory 80.0 :ncpus 80.0 :name "4" :job-state :job.state/running)
+        job5 (create-dummy-job conn :user "ljin" :memory 160.0 :ncpus 160.0 :name "5")
+        _ (create-dummy-instance conn job4 :instance-status :instance.status/running)
+        _ (create-dummy-instance conn job2 :instance-status :instance.status/running)
+        db (d/db conn)
+
+        pending-task-ents (->> (queries/get-pending-job-ents db)
+                               (map util/create-task-ent))
+        running-task-ents (util/get-running-task-ents db)
+        tasks (into (vec running-task-ents) pending-task-ents)]
+
+    (let [share {:mem 10.0 :cpus 10.0}
+          ; Queue should be job4, job2, becasue they're running, then 1 3 5.
+          ; DRU:     8.0 10.0 11.0 15.0 31.0
+          ordered-drus [8.0 10.0 11.0 15.0 31.0]]
+      (testing "dru order correct"
+        (is (= ordered-drus
+               (map (comp :dru second)
+                    (dru/sorted-task-scored-task-pairs
+                      {"ljin" share}
+                      "no-pool"
+                      (map-vals (partial sort-by identity (util/same-user-task-comparator))
+                                (group-by util/task-ent->user tasks)))))))
+      ; Test that all 5 jobs we hit are in the cache.
+      (is (= 5 (-> caches/task-ent->user-cache
+                   .asMap
+                   .size))))))
+
 
 (deftest test-compute-sorted-task-cumulative-gpu-score-pairs
   (testing "return empty set on input empty set"
