@@ -1,5 +1,6 @@
 (ns cook.test.postgres
-  (:require [clojure.test :refer :all]
+  (:require [clj-time.format]
+            [clojure.test :refer :all]
             [clojure.tools.logging :as log]
             [cook.postgres :as pg]
             [next.jdbc :as sql])
