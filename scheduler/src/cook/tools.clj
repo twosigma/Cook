@@ -1044,9 +1044,9 @@
                   (str %))
                resource-map))
 
-(defn format-resource-map-for-structured-logging
-  "Given a map with resource amount values,
-   formats the amount values for structured logging"
+(defn format-map-for-structured-logging
+  "Given a map with different types of values,
+   formats the amount values as number and everything else as string for structured logging"
   [resource-map]
   (pc/map-vals #(if (number? %)
                   % ; don't stringify #s
