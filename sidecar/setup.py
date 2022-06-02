@@ -7,7 +7,7 @@ from cook.sidecar import version
 requirements = [
     'flask~=1.1.0',
     'gunicorn~=20.1.0',
-    'requests~=2.26.0',
+    'requests~=2.27.0',
 ]
 
 test_requirements = [
