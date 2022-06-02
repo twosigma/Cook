@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.59.7] - 2022-06-02
+### Changed
+- Updated instance->user cache to handle fake entities for waiting jobs, to speed up worst-case rank loop performance, by @scrosby
+
+### Fixed
+- Updated structured logging utility to handle failed json conversion, from @samincheva
+- Updated format-map-for-structured-logging to traverse nested maps instead of flattening them, from @samincheva 
+
 ## [1.59.6] - 2022-05-31
 ### Changed
 - Updated scheduler, compute cluster, and kubernetes API code to use structured logging, from @samincheva
