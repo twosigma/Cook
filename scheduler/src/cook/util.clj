@@ -242,10 +242,15 @@
                resource-map))
 
 (defn format-map-for-structured-logging
-  "Given a map with different types of values,
-   formats the amount values as number and everything else as string for structured logging"
+  "Given a map with different types of values, formats the amount values as a number,
+   and everything else as string for structured logging.
+   Traverses nested maps to format appropriately."
   [resource-map]
-  (pc/map-vals #(if (number? %)
-                  % ; don't stringify #s
-                  (str %))
+  (pc/map-vals #(cond
+                  ; keep numbers as numbers
+                  (number? %) %
+                  ; for nested maps, traverse the map and format its values
+                  (map? %) (format-map-for-structured-logging %)
+                  ; everything else is a string
+                  :else (str %))
                resource-map))

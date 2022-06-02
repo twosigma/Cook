@@ -15,7 +15,9 @@
 ;;
 (ns cook.test.util
   (:require [clojure.test :refer :all]
-            [cook.util :refer :all]))
+            [cook.util :refer :all])
+  (:import (java.util UUID)))
+
 
 (deftest test-diff-map-keys
   (is (= [#{:b} #{:c} #{:a :d}]
@@ -57,3 +59,10 @@
     (is (= (set-atom! state "a") {}))
     (is (= (set-atom! state {:a :b}) "a"))
     (is (= @state {:a :b}))))
+
+(deftest test-format-map-for-structured-logging
+  "Tests that the format-map-for-structured logging preserves nested maps."
+  (let [uuid (UUID/randomUUID)
+        map {:integer 2 :float 1.2 :string "foo" :uuid uuid :nested-map {:nested-string "bar" :nested-int 3}}
+        formatted-map (format-map-for-structured-logging map)]
+    (is (= {:integer 2 :float 1.2 :string "foo" :uuid (str uuid) :nested-map {:nested-string "bar" :nested-int 3}} formatted-map))))
