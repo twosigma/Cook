@@ -15,7 +15,8 @@
 ;;
 (ns cook.test.log_structured
   (:require [clojure.test :refer :all]
-             [cook.log-structured :as log-structured]))
+            [cook.log-structured :as log-structured])
+  (:import (java.util UUID)))
 
 (deftest test-level-disabled
   "Tests that functions are not evaluated at a disabled log level."
@@ -30,3 +31,7 @@
         should-be-called (fn [] (reset! fn-was-called true))]
     (log-structured/info (str (should-be-called)) {:test (should-be-called)})
     (is (= @fn-was-called true))))
+
+(deftest test-not-json-compatible
+  "Tests that passing a value that cannot be converted to json works as expected."
+  (log-structured/info "some message" {:uuid (UUID/randomUUID)}))

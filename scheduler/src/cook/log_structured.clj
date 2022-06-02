@@ -36,23 +36,34 @@
 (ns cook.log-structured
   (:require
     [clojure.data.json :as json]
-    [clojure.tools.logging :as log]))
+    [clojure.tools.logging :as log]
+    [cook.util :as util]))
+
+(defn safe-jsonify
+  "Tries to convert the given map to json and return the json string representation.
+  If conversion to json fail, returns just the map as-is."
+  [log-map]
+    (try
+      (json/write-str (util/format-map-for-structured-logging log-map))
+      (catch Exception e
+        (log/error e "Unable to convert to json for structured logging" (str log-map))
+        log-map)))
 
 (defmacro logs
   "Logs a structured message at the specified level.
   Supports specifying a custom logger namespace as an optional parameter."
   ([level data metadata]
-   `(log/log ~level (json/write-str (assoc ~metadata :data ~data))))
+   `(log/log ~level (safe-jsonify (assoc ~metadata :data ~data))))
   ([level data metadata throwable]
-   `(log/log ~level (json/write-str (assoc ~metadata :data ~data
-                                                     :error (with-out-str (clojure.stacktrace/print-throwable ~throwable))
-                                                     :stacktrace (with-out-str (clojure.stacktrace/print-cause-trace ~throwable))))))
+   `(log/log ~level (safe-jsonify (assoc ~metadata :data ~data
+                                                   :error (with-out-str (clojure.stacktrace/print-throwable ~throwable))
+                                                   :stacktrace (with-out-str (clojure.stacktrace/print-cause-trace ~throwable))))))
   ([level data metadata throwable logger-ns]
    (if (nil? throwable)
-     `(log/log ~logger-ns ~level nil (json/write-str (assoc ~metadata :data ~data)))
-     `(log/log ~logger-ns ~level nil (json/write-str (assoc ~metadata :data ~data
-                                                                      :error (with-out-str (clojure.stacktrace/print-throwable ~throwable))
-                                                                      :stacktrace (with-out-str (clojure.stacktrace/print-cause-trace ~throwable))))))))
+     `(log/log ~logger-ns ~level nil (safe-jsonify (assoc ~metadata :data ~data)))
+     `(log/log ~logger-ns ~level nil (safe-jsonify (assoc ~metadata :data ~data
+                                                                    :error (with-out-str (clojure.stacktrace/print-throwable ~throwable))
+                                                                    :stacktrace (with-out-str (clojure.stacktrace/print-cause-trace ~throwable))))))))
 
 (defmacro debug
   "Logs a structured message at the debug level"
