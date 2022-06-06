@@ -1340,7 +1340,7 @@
 
 (defn ^V1Pod task-metadata->pod
   "Given a task-request and other data generate the kubernetes V1Pod to launch that task."
-  [namespace {:keys [cook-pool-taint-name cook-pool-taint-prefix cook-pool-label-name] compute-cluster-name :name}
+  [namespace {:keys [cook-pool-taint-name cook-pool-taint-prefix cook-pool-label-name cook-pool-label-prefix] compute-cluster-name :name}
    {:keys [task-id command container task-request hostname pod-annotations pod-constraints pod-hostnames-to-avoid
            pod-labels pod-priority-class pod-supports-cook-init? pod-supports-cook-sidecar?]
     :or {pod-priority-class cook-job-pod-priority-class
@@ -1705,7 +1705,7 @@
     (.addTolerationsItem pod-spec (toleration-for-pool cook-pool-taint-name cook-pool-taint-prefix pool-name))
     ; We need to make sure synthetic pods --- which don't have a hostname set --- have a node selector
     ; to run only in nodes labelled with the appropriate cook pool
-    (when-not hostname (add-node-selector pod-spec cook-pool-label-name pool-name))
+    (when-not hostname (add-node-selector pod-spec cook-pool-label-name (str cook-pool-label-prefix pool-name)))
 
     (when pod-constraints
       (doseq [{:keys [constraint/attribute
