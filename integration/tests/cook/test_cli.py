@@ -55,7 +55,7 @@ class CookCliTest(util.CookTest):
     def test_config_defaults_are_respected(self):
         # Submit job with defaults in config file
         config = {'defaults': {'submit': {'mem': 256,
-                                          'cpus': 2,
+                                          'cpus': 0.2,
                                           'priority': 16,
                                           'max-retries': 2,
                                           'max-runtime': 300}}}
@@ -154,7 +154,7 @@ if __name__ == '__main__':
     def test_specifying_cluster_name_explicitly(self):
         cluster_name = 'foo'
         config = {'clusters': [{'name': cluster_name, 'url': self.cook_url}],
-                  'defaults': {'submit': {'mem': 256, 'cpus': 2, 'max-retries': 2}}}
+                  'defaults': {'submit': {'mem': 256, 'cpus': 0.2, 'max-retries': 2}}}
         with cli.temp_config_file(config) as path:
             flags = f'--config {path} --cluster {cluster_name}'
             cp, uuids = cli.submit('ls', flags=flags)
@@ -2442,7 +2442,7 @@ if __name__ == '__main__':
     def test_bad_cluster_argument(self):
         cluster_name = 'foo'
         config = {'clusters': [{'name': cluster_name, 'url': self.cook_url}],
-                  'defaults': {'submit': {'mem': 256, 'cpus': 2, 'max-retries': 2}}}
+                  'defaults': {'submit': {'mem': 256, 'cpus': 0.2, 'max-retries': 2}}}
         with cli.temp_config_file(config) as path:
             flags = f'--config {path} --cluster badcluster'
             cp = cli.cli('jobs', flags=flags)
