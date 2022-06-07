@@ -611,7 +611,10 @@
         (.setKey taint "foo-taint-probably-broken-TODO")
         (.setValue taint pool)
         (.setEffect taint "NoSchedule")
-        (-> spec (.addTaintsItem taint))))
+        (-> spec (.addTaintsItem taint))
+        ; "l-p" is the label name as used in test-generate-offers
+        (-> metadata (.setLabels {"l-p" pool}))))
+
     (.setStatus node status)
     (.setName metadata node-name)
     (.setMetadata node metadata)
@@ -651,4 +654,5 @@
                                     "some-random-taint-A"
                                     "taint-prefix-1"
                                     "some-random-label-A"
+                                    "some-random-label-val-B"
                                     (repeatedly 16 #(ReentrantLock.)))))

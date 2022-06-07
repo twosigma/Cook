@@ -467,22 +467,17 @@
 
 (defn get-node-pool
   "Get the pool for a node. In the case of no pool, return 'no-pool"
-  [cook-pool-taint-name cook-pool-taint-prefix ^V1Node node]
+  [cook-pool-label-name cook-pool-label-prefix ^V1Node node]
   ; In the case of nil, we have taints-on-node == [], and we'll map to no-pool.
-  (let [taints-on-node (or (some-> node .getSpec .getTaints) [])
-        found-cook-pool-taint (filter #(= cook-pool-taint-name (.getKey ^V1Taint %)) taints-on-node)]
-    (if (= 1 (count found-cook-pool-taint))
-      (let [^String taint-value
-            (-> found-cook-pool-taint ^V1Taint first .getValue)]
-        (if (str/starts-with? taint-value cook-pool-taint-prefix)
-          (subs taint-value (count cook-pool-taint-prefix))
-          "no-pool"))
-      "no-pool")))
+  (let [^String label-value (or (some-> node .getMetadata .getLabels (get cook-pool-label-name "")) "")]
+        (if (str/starts-with? label-value cook-pool-label-prefix)
+          (subs label-value (count cook-pool-label-prefix))
+          "no-pool")))
 
 (declare initialize-node-watch)
 (defn initialize-node-watch-helper
   "Help creating node watch. Returns a new watch Callable"
-  [{:keys [^ApiClient api-client current-nodes-atom pool->node-name->node cook-pool-taint-name cook-pool-taint-prefix]
+  [{:keys [^ApiClient api-client current-nodes-atom pool->node-name->node cook-pool-label-name cook-pool-label-prefix]
     compute-cluster-name :name {:keys [max-total-nodes]} :synthetic-pods-config :as compute-cluster}]
   (let [api (CoreV1Api. api-client)
         ^V1NodeList current-nodes-raw
@@ -502,7 +497,7 @@
         current-nodes (pc/map-from-vals node->node-name (.getItems current-nodes-raw))
         callbacks
         [(tools/make-atom-updater current-nodes-atom) ; Update the set of all pods.
-         (tools/make-nested-atom-updater pool->node-name->node (partial get-node-pool cook-pool-taint-name cook-pool-taint-prefix) node->node-name)]
+         (tools/make-nested-atom-updater pool->node-name->node (partial get-node-pool cook-pool-label-name cook-pool-label-prefix) node->node-name)]
         old-current-nodes @current-nodes-atom
         new-node-names (set (keys current-nodes))
         old-node-names (set (keys old-current-nodes))]
@@ -1345,7 +1340,7 @@
 
 (defn ^V1Pod task-metadata->pod
   "Given a task-request and other data generate the kubernetes V1Pod to launch that task."
-  [namespace {:keys [cook-pool-taint-name cook-pool-taint-prefix cook-pool-label-name] compute-cluster-name :name}
+  [namespace {:keys [cook-pool-taint-name cook-pool-taint-prefix cook-pool-label-name cook-pool-label-prefix] compute-cluster-name :name}
    {:keys [task-id command container task-request hostname pod-annotations pod-constraints pod-hostnames-to-avoid
            pod-labels pod-priority-class pod-supports-cook-init? pod-supports-cook-sidecar?]
     :or {pod-priority-class cook-job-pod-priority-class
@@ -1710,7 +1705,7 @@
     (.addTolerationsItem pod-spec (toleration-for-pool cook-pool-taint-name cook-pool-taint-prefix pool-name))
     ; We need to make sure synthetic pods --- which don't have a hostname set --- have a node selector
     ; to run only in nodes labelled with the appropriate cook pool
-    (when-not hostname (add-node-selector pod-spec cook-pool-label-name pool-name))
+    (when-not hostname (add-node-selector pod-spec cook-pool-label-name (str cook-pool-label-prefix pool-name)))
 
     (when pod-constraints
       (doseq [{:keys [constraint/attribute

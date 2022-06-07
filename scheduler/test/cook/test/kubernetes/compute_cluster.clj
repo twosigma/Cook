@@ -77,7 +77,7 @@
                                                               {:kind :static :namespace "cook"} nil nil nil nil
                                                               (Executors/newSingleThreadExecutor)
                                                               {} (atom :running) (atom false) false
-                                                              cook.rate-limit/AllowAllRateLimiter "t-a" "p-a" "l-a" (repeatedly 16 #(ReentrantLock.)))
+                                                              cook.rate-limit/AllowAllRateLimiter "t-a" "p-a" "l-p" "l-v1" (repeatedly 16 #(ReentrantLock.)))
               task-metadata (task/TaskAssignmentResult->task-metadata (d/db conn)
                                                                       nil
                                                                       compute-cluster
@@ -98,7 +98,7 @@
                                                               {:kind :per-user} nil nil nil nil
                                                               (Executors/newSingleThreadExecutor)
                                                               {} (atom :running) (atom false) false
-                                                              cook.rate-limit/AllowAllRateLimiter "t-b" "p-b" "l-b" (repeatedly 16 #(ReentrantLock.)))
+                                                              cook.rate-limit/AllowAllRateLimiter "t-b" "p-b" "l-p" "l-v2" (repeatedly 16 #(ReentrantLock.)))
               task-metadata (task/TaskAssignmentResult->task-metadata (d/db conn)
                                                                       nil
                                                                       compute-cluster
@@ -127,7 +127,7 @@
                                                             {:kind :static :namespace "cook"} nil 3 nil nil
                                                             (Executors/newSingleThreadExecutor)
                                                             {} (atom :running) (atom false) false
-                                                            cook.rate-limit/AllowAllRateLimiter "t-c" "p-c" "l-c" (repeatedly 16 #(ReentrantLock.)))
+                                                            cook.rate-limit/AllowAllRateLimiter "t-c" "p-c" "l-p" "l-c2" (repeatedly 16 #(ReentrantLock.)))
             node-name->node {"nodeA" (tu/node-helper "nodeA" 1.0 1000.0 10 "nvidia-tesla-p100" nil nil)
                              "nodeB" (tu/node-helper "nodeB" 1.0 1000.0 25 "nvidia-tesla-p100" nil nil)
                              "nodeC" (tu/node-helper "nodeC" 1.0 1000.0 nil nil nil nil)
