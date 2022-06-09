@@ -246,6 +246,13 @@
       (= "OutOfMemory" pod-status-reason) :reason-container-limitation-memory
       (= "Error" container-terminated-reason) :reason-command-executor-failed
       (= "OOMKilled" container-terminated-reason) :reason-container-limitation-memory
+
+      ; Check the node pod for NodeAffinity.
+      (= "NodeAffinity" pod-status-reason)
+      (do
+        (log/info "In compute cluster" name ", encountered NodeAffinity pod status reason for " instance-id)
+        :reason-slave-removed)
+
       (and pod-status-message (or
                                 ; this message is given when pod exceeds pod ephemeral-storage limit
                                 (str/includes? pod-status-message "ephemeral local storage usage exceeds")
