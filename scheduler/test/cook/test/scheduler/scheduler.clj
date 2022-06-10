@@ -2161,7 +2161,8 @@
           job-id (create-dummy-job conn)
           job (d/entity (d/db conn) job-id)
           ^TaskRequest task-request (sched/make-task-request (d/db conn) job nil)
-          matches [{:tasks [(SimpleAssignmentResult. [] nil task-request)]}]]
+          matches [{:tasks [(SimpleAssignmentResult. [] nil task-request)]
+                    :leases {:offer {:compute-cluster "kubernetes"}}}]]
       (with-redefs [cc/db-id (constantly -1) ; So we don't throw prematurely when trying to create the task structure.
                     d/transact (fn [_ _]
                                  (throw timeout-exception))
