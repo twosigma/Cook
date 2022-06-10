@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.60.1] - 2022-06-09
+### Changed
+- Cook now determines which pool a k8s node is in via a label instead of a taint, from @scrosby
+
+### Fixed
+- Ascribe NodeAffinity k8s failures to node preemption, from @scrosby
+
 ## [1.59.7] - 2022-06-02
 ### Changed
 - Updated instance->user cache to handle fake entities for waiting jobs, to speed up worst-case rank loop performance, by @scrosby
