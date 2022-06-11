@@ -32,6 +32,7 @@
             [datomic.api :as d]
             [plumbing.core :refer [map-from-vals map-keys map-vals]])
   (:import (java.util Date)
+           (java.util.concurrent.locks ReentrantReadWriteLock)
            (org.apache.curator.framework CuratorFrameworkFactory)
            (org.apache.curator.framework.state ConnectionStateListener)
            (org.apache.curator.retry BoundedExponentialBackoffRetry)
@@ -147,7 +148,8 @@
                                                               {}
                                                               {"no-pool" (async/chan 100)}
                                                               {}
-                                                              cook.rate-limit/AllowAllRateLimiter))
+                                                              cook.rate-limit/AllowAllRateLimiter
+                                                              (ReentrantReadWriteLock. true)))
          prepare-match-trigger-chan-orig# ~sched/prepare-match-trigger-chan]
      (try
        (with-redefs [executor-config (constantly executor-config#)

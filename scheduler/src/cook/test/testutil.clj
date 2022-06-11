@@ -46,7 +46,7 @@
            (io.kubernetes.client.custom Quantity Quantity$Format)
            (io.kubernetes.client.openapi.models V1Container V1Node V1NodeSpec V1NodeStatus V1ObjectMeta V1Pod V1PodSpec V1ResourceRequirements V1Taint)
            (java.util.concurrent Executors TimeUnit)
-           (java.util.concurrent.locks ReentrantLock)
+           (java.util.concurrent.locks ReentrantLock ReentrantReadWriteLock)
            (java.util UUID)
            (org.apache.log4j ConsoleAppender Logger PatternLayout)))
 
@@ -69,7 +69,8 @@
                                {}
                                {"no-pool" (async/chan 100)}
                                {}
-                               rate-limit/AllowAllRateLimiter)))
+                               rate-limit/AllowAllRateLimiter
+                               (ReentrantReadWriteLock. true))))
 
 (defn fake-test-compute-cluster-with-driver
   "Create a test compute cluster with associated driver attached to it. Returns the compute cluster."
@@ -655,4 +656,5 @@
                                     "taint-prefix-1"
                                     "some-random-label-A"
                                     "some-random-label-val-B"
-                                    (repeatedly 16 #(ReentrantLock.)))))
+                                    (repeatedly 16 #(ReentrantLock.))
+                                    (ReentrantReadWriteLock. true))))

@@ -21,8 +21,7 @@
             [cook.util :as util]
             [datomic.api :as d]
             [metrics.timers :as timers]
-            [plumbing.core :refer [map-from-keys map-from-vals map-vals]])
-  (:import (java.util.concurrent.locks ReentrantReadWriteLock)))
+            [plumbing.core :refer [map-from-keys map-from-vals map-vals]]))
 
 (defprotocol ComputeCluster
   (launch-tasks [this pool-name matches process-task-post-launch-fn]
@@ -77,34 +76,33 @@
   (launch-rate-limiter [this]
     "Return the RateLimiter that should be used to limit launches to this compute cluster")
 
+  ; There's an ugly race where the core cook scheduler can kill a job before it tries to launch it.
+  ; What happens is:
+  ;   1. In launch-matched-tasks, we write instance objects to datomic for everything that matches,
+  ;      we have not submitted these to the compute cluster backends yet.
+  ;   2. A kill command arrives to kill the job. The job is put into completed.
+  ;   3. The monitor-tx-queue happens to notice the job just completed. It sees the instance written in step 1.
+  ;   4. We submit a kill-task to the compute cluster backend.
+  ;   5. Kill task processes. There's not much to do, as there's no task to kill.
+  ;   6. launch-matched-tasks now visits the task and submits it to the compute cluster backend.
+  ;   7. Task executes and is not killed.
+  ;
+  ; At the core the bug is an atomicity bug. The intermediate state of written-to-datomic but not yet sent (via launch-task)
+  ; to the backend. We work around this race by having a lock around of all launch-matched-tasks that contains the database
+  ; update and the submit to kubernetes. We re-use the same lock to wrap kill-task to force an ordering relationship, so
+  ; that kill-task must happen after the write-to-datomic and launch-task have been invoked.
+  ;
+  ; ComputeCluster/kill-task cannot be invoked before we write the task to datomic. If it is invoked after the write to
+  ; datomic, the lock ensures that it won't be acted upon until after launch-task has been invoked on the compute cluster.
+  ;
+  ; So, we must grab this lock before calling kill-task in the compute cluster API. As all of our invocations to it are via
+  ; safe-kill-task, we add the lock there.
+  ;
+  ; We use a ReaderWriterLock where launch tasks grab the readers, so multiple pools can launch at the same time, and a writer lock
+  ; here so that kills are blocked until nobody is in the middle of launching. Note that we don't actually need to hold this lock while
+  ; we kill, just to delay the kill until after any task-id written in the database is also guaranteed to be into the backend.
   (kill-lock-object [this]
-    "Returns the cluster's read-write lock used for ordering launch and kill operations"
-    ; There's an ugly race where the core cook scheduler can kill a job before it tries to launch it.
-    ; What happens is:
-    ;   1. In launch-matched-tasks, we write instance objects to datomic for everything that matches,
-    ;      we have not submitted these to the compute cluster backends yet.
-    ;   2. A kill command arrives to kill the job. The job is put into completed.
-    ;   3. The monitor-tx-queue happens to notice the job just completed. It sees the instance written in step 1.
-    ;   4. We submit a kill-task to the compute cluster backend.
-    ;   5. Kill task processes. There's not much to do, as there's no task to kill.
-    ;   6. launch-matched-tasks now visits the task and submits it to the compute cluster backend.
-    ;   7. Task executes and is not killed.
-    ;
-    ; At the core the bug is an atomicity bug. The intermediate state of written-to-datomic but not yet sent (via launch-task)
-    ; to the backend. We work around this race by having a lock around of all launch-matched-tasks that contains the database
-    ; update and the submit to kubernetes. We re-use the same lock to wrap kill-task to force an ordering relationship, so
-    ; that kill-task must happen after the write-to-datomic and launch-task have been invoked.
-    ;
-    ; ComputeCluster/kill-task cannot be invoked before we write the task to datomic. If it is invoked after the write to
-    ; datomic, the lock ensures that it won't be acted upon until after launch-task has been invoked on the compute cluster.
-    ;
-    ; So, we must grab this lock before calling kill-task in the compute cluster API. As all of our invocations to it are via
-    ; safe-kill-task, we add the lock there.
-    ;
-    ; We use a ReaderWriterLock where launch tasks grab the readers, so multiple pools can launch at the same time, and a writer lock
-    ; here so that kills are blocked until nobody is in the middle of launching. Note that we don't actually need to hold this lock while
-    ; we kill, just to delay the kill until after any task-id written in the database is also guaranteed to be into the backend.
-    (ReentrantReadWriteLock. true)))
+    "Returns the cluster's read-write lock used for ordering launch and kill operations"))
 
 (def kill-lock-timer-for-kill (timers/timer ["cook-mesos" "scheduler" "kill-lock-acquire-for-kill"]))
 
